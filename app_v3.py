@@ -649,9 +649,7 @@ Return JSON with:
     
     def do_OPTIONS(self):
         self.send_response(200)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, DELETE')
-        self.send_header('Access-Control-Allow-Headers', '*')
+        # CORS headers are automatically added by our custom end_headers() method
         self.end_headers()
     
     def end_headers(self):
