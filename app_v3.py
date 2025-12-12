@@ -1,6 +1,6 @@
 """
-TDL Equity Analyzer - Backend API Proxy
-Bypasses CORS restrictions by proxying requests to Anthropic's API
+TDL Equity Analyzer - Backend API with PostgreSQL
+Cross-device sync for portfolio analyses and overviews
 """
 
 from flask import Flask, request, jsonify
@@ -9,11 +9,430 @@ import requests
 import os
 import json
 import base64
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from datetime import datetime
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
+
+# ============================================
+# DATABASE CONNECTION
+# ============================================
+
+def get_db_connection():
+    """Get PostgreSQL database connection"""
+    database_url = os.environ.get('DATABASE_URL')
+    if not database_url:
+        raise Exception('DATABASE_URL environment variable not set')
+    
+    # Render uses postgres:// but psycopg2 needs postgresql://
+    if database_url.startswith('postgres://'):
+        database_url = database_url.replace('postgres://', 'postgresql://', 1)
+    
+    conn = psycopg2.connect(database_url, cursor_factory=RealDictCursor)
+    return conn
+
+def init_db():
+    """Initialize database tables"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Portfolio Analyses table
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS portfolio_analyses (
+                id SERIAL PRIMARY KEY,
+                ticker VARCHAR(20) UNIQUE NOT NULL,
+                company VARCHAR(255),
+                analysis JSONB,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Stock Overviews table
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS stock_overviews (
+                id SERIAL PRIMARY KEY,
+                ticker VARCHAR(20) UNIQUE NOT NULL,
+                company_name VARCHAR(255),
+                company_overview TEXT,
+                business_model TEXT,
+                opportunities TEXT,
+                risks TEXT,
+                conclusion TEXT,
+                raw_content TEXT,
+                history JSONB DEFAULT '[]',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Chat Histories table
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS chat_histories (
+                id VARCHAR(100) PRIMARY KEY,
+                title VARCHAR(255),
+                messages JSONB DEFAULT '[]',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        print("Database tables initialized")
+    except Exception as e:
+        print(f"Database init error (may be normal on first run): {e}")
+
+# Initialize database on startup
+try:
+    init_db()
+except:
+    pass  # Will init when DATABASE_URL is available
+
+
+# ============================================
+# PORTFOLIO ANALYSES ENDPOINTS
+# ============================================
+
+@app.route('/api/analyses', methods=['GET'])
+def get_analyses():
+    """Get all saved portfolio analyses"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('''
+            SELECT ticker, company, analysis, updated_at 
+            FROM portfolio_analyses 
+            ORDER BY ticker ASC
+        ''')
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        result = []
+        for row in rows:
+            result.append({
+                'ticker': row['ticker'],
+                'company': row['company'],
+                'analysis': row['analysis'],
+                'updated': row['updated_at'].isoformat() if row['updated_at'] else None
+            })
+        
+        return jsonify(result)
+    except Exception as e:
+        print(f"Error getting analyses: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/analysis/<ticker>', methods=['GET'])
+def get_analysis(ticker):
+    """Get a specific portfolio analysis by ticker"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('''
+            SELECT ticker, company, analysis, updated_at 
+            FROM portfolio_analyses 
+            WHERE ticker = %s
+        ''', (ticker.upper(),))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        
+        if not row:
+            return jsonify({'error': 'Analysis not found'}), 404
+        
+        return jsonify({
+            'ticker': row['ticker'],
+            'company': row['company'],
+            'analysis': row['analysis'],
+            'updated': row['updated_at'].isoformat() if row['updated_at'] else None
+        })
+    except Exception as e:
+        print(f"Error getting analysis: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/save-analysis', methods=['POST'])
+def save_analysis():
+    """Save or update a portfolio analysis"""
+    try:
+        data = request.json
+        ticker = data.get('ticker', '').upper()
+        company = data.get('companyName', data.get('company', ''))
+        analysis = data.get('analysis', {})
+        
+        if not ticker:
+            return jsonify({'error': 'Ticker is required'}), 400
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Upsert - insert or update
+        cur.execute('''
+            INSERT INTO portfolio_analyses (ticker, company, analysis, updated_at)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (ticker) 
+            DO UPDATE SET 
+                company = EXCLUDED.company,
+                analysis = EXCLUDED.analysis,
+                updated_at = EXCLUDED.updated_at
+            RETURNING ticker
+        ''', (ticker, company, json.dumps(analysis), datetime.utcnow()))
+        
+        result = cur.fetchone()
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({'success': True, 'ticker': result['ticker']})
+    except Exception as e:
+        print(f"Error saving analysis: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/delete-analysis', methods=['POST'])
+def delete_analysis():
+    """Delete a portfolio analysis"""
+    try:
+        data = request.json
+        ticker = data.get('ticker', '').upper()
+        
+        if not ticker:
+            return jsonify({'error': 'Ticker is required'}), 400
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('DELETE FROM portfolio_analyses WHERE ticker = %s', (ticker,))
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error deleting analysis: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================
+# STOCK OVERVIEWS ENDPOINTS
+# ============================================
+
+@app.route('/api/overviews', methods=['GET'])
+def get_overviews():
+    """Get all saved stock overviews"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('''
+            SELECT ticker, company_name, company_overview, business_model, 
+                   opportunities, risks, conclusion, raw_content, history, updated_at 
+            FROM stock_overviews 
+            ORDER BY ticker ASC
+        ''')
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        result = []
+        for row in rows:
+            result.append({
+                'ticker': row['ticker'],
+                'companyName': row['company_name'],
+                'companyOverview': row['company_overview'],
+                'businessModel': row['business_model'],
+                'opportunities': row['opportunities'],
+                'risks': row['risks'],
+                'conclusion': row['conclusion'],
+                'rawContent': row['raw_content'],
+                'history': row['history'] or [],
+                'updatedAt': row['updated_at'].isoformat() if row['updated_at'] else None
+            })
+        
+        return jsonify(result)
+    except Exception as e:
+        print(f"Error getting overviews: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/save-overview', methods=['POST'])
+def save_overview():
+    """Save or update a stock overview"""
+    try:
+        data = request.json
+        ticker = data.get('ticker', '').upper()
+        
+        if not ticker:
+            return jsonify({'error': 'Ticker is required'}), 400
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Upsert
+        cur.execute('''
+            INSERT INTO stock_overviews (
+                ticker, company_name, company_overview, business_model,
+                opportunities, risks, conclusion, raw_content, history, updated_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (ticker) 
+            DO UPDATE SET 
+                company_name = EXCLUDED.company_name,
+                company_overview = EXCLUDED.company_overview,
+                business_model = EXCLUDED.business_model,
+                opportunities = EXCLUDED.opportunities,
+                risks = EXCLUDED.risks,
+                conclusion = EXCLUDED.conclusion,
+                raw_content = EXCLUDED.raw_content,
+                history = EXCLUDED.history,
+                updated_at = EXCLUDED.updated_at
+            RETURNING ticker
+        ''', (
+            ticker,
+            data.get('companyName', ''),
+            data.get('companyOverview', ''),
+            data.get('businessModel', ''),
+            data.get('opportunities', ''),
+            data.get('risks', ''),
+            data.get('conclusion', ''),
+            data.get('rawContent', ''),
+            json.dumps(data.get('history', [])),
+            datetime.utcnow()
+        ))
+        
+        result = cur.fetchone()
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({'success': True, 'ticker': result['ticker']})
+    except Exception as e:
+        print(f"Error saving overview: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/delete-overview', methods=['POST'])
+def delete_overview():
+    """Delete a stock overview"""
+    try:
+        data = request.json
+        ticker = data.get('ticker', '').upper()
+        
+        if not ticker:
+            return jsonify({'error': 'Ticker is required'}), 400
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('DELETE FROM stock_overviews WHERE ticker = %s', (ticker,))
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error deleting overview: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================
+# CHAT HISTORY ENDPOINTS
+# ============================================
+
+@app.route('/api/chats', methods=['GET'])
+def get_chats():
+    """Get all chat histories"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('''
+            SELECT id, title, messages, updated_at 
+            FROM chat_histories 
+            ORDER BY updated_at DESC
+        ''')
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        result = []
+        for row in rows:
+            result.append({
+                'id': row['id'],
+                'title': row['title'],
+                'messages': row['messages'] or [],
+                'updatedAt': row['updated_at'].isoformat() if row['updated_at'] else None
+            })
+        
+        return jsonify(result)
+    except Exception as e:
+        print(f"Error getting chats: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/save-chat', methods=['POST'])
+def save_chat():
+    """Save or update a chat history"""
+    try:
+        data = request.json
+        chat_id = data.get('id', '')
+        
+        if not chat_id:
+            return jsonify({'error': 'Chat ID is required'}), 400
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        cur.execute('''
+            INSERT INTO chat_histories (id, title, messages, updated_at)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (id) 
+            DO UPDATE SET 
+                title = EXCLUDED.title,
+                messages = EXCLUDED.messages,
+                updated_at = EXCLUDED.updated_at
+            RETURNING id
+        ''', (
+            chat_id,
+            data.get('title', 'New Chat'),
+            json.dumps(data.get('messages', [])),
+            datetime.utcnow()
+        ))
+        
+        result = cur.fetchone()
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({'success': True, 'id': result['id']})
+    except Exception as e:
+        print(f"Error saving chat: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/delete-chat', methods=['POST'])
+def delete_chat():
+    """Delete a chat history"""
+    try:
+        data = request.json
+        chat_id = data.get('id', '')
+        
+        if not chat_id:
+            return jsonify({'error': 'Chat ID is required'}), 400
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('DELETE FROM chat_histories WHERE id = %s', (chat_id,))
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error deleting chat: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================
+# ANTHROPIC API PROXY ENDPOINTS
+# ============================================
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
@@ -27,7 +446,6 @@ def chat():
         if not api_key:
             return jsonify({'error': 'API key is required'}), 400
         
-        # Prepare request to Anthropic
         headers = {
             'Content-Type': 'application/json',
             'x-api-key': api_key,
@@ -43,7 +461,6 @@ def chat():
         if system:
             payload['system'] = system
         
-        # Make request to Anthropic
         response = requests.post(ANTHROPIC_API_URL, headers=headers, json=payload)
         
         if response.status_code != 200:
@@ -88,7 +505,7 @@ def analyze_multi():
         
         # Add each document
         for doc in enabled_docs:
-            doc_content = doc.get('fileData', '')  # Frontend uses 'fileData'
+            doc_content = doc.get('fileData', '')
             doc_name = doc.get('filename', 'document.pdf')
             doc_type = doc.get('fileType', 'pdf')
             mime_type = doc.get('mimeType', 'application/pdf')
@@ -96,7 +513,6 @@ def analyze_multi():
             if not doc_content:
                 continue
                 
-            # Handle different file types
             if doc_type == 'pdf':
                 content.append({
                     "type": "document",
@@ -107,7 +523,6 @@ def analyze_multi():
                     }
                 })
             elif doc_type == 'image':
-                # For images (screenshots, charts)
                 content.append({
                     "type": "image",
                     "source": {
@@ -117,7 +532,6 @@ def analyze_multi():
                     }
                 })
             else:
-                # For text-based files, try to decode and send as text
                 try:
                     decoded_text = base64.b64decode(doc_content).decode('utf-8')
                     content.append({
@@ -125,7 +539,6 @@ def analyze_multi():
                         "text": f"=== Document: {doc_name} ===\n{decoded_text}"
                     })
                 except:
-                    # If decoding fails, skip this document
                     continue
         
         if not content:
@@ -184,7 +597,6 @@ Return ONLY valid JSON, no markdown, no explanation."""
             "text": analysis_prompt
         })
         
-        # Prepare request to Anthropic
         headers = {
             'Content-Type': 'application/json',
             'x-api-key': api_key,
@@ -200,7 +612,6 @@ Return ONLY valid JSON, no markdown, no explanation."""
             'system': 'You are an expert equity research analyst. Analyze documents thoroughly and provide institutional-quality investment analysis. Always respond with valid JSON only.'
         }
         
-        # Make request to Anthropic with longer timeout
         response = requests.post(ANTHROPIC_API_URL, headers=headers, json=payload, timeout=180)
         
         if response.status_code != 200:
@@ -213,18 +624,15 @@ Return ONLY valid JSON, no markdown, no explanation."""
         
         # Parse the JSON response
         try:
-            # Clean up the response - remove markdown code blocks if present
             cleaned = assistant_content.strip()
             if cleaned.startswith('```'):
-                cleaned = cleaned.split('\n', 1)[1]  # Remove first line
+                cleaned = cleaned.split('\n', 1)[1]
             if cleaned.endswith('```'):
-                cleaned = cleaned.rsplit('\n', 1)[0]  # Remove last line
+                cleaned = cleaned.rsplit('\n', 1)[0]
             if cleaned.startswith('json'):
                 cleaned = cleaned[4:].strip()
             
             analysis = json.loads(cleaned)
-            
-            # Extract changes if present
             changes = analysis.pop('changes', [])
             
             return jsonify({
@@ -234,7 +642,6 @@ Return ONLY valid JSON, no markdown, no explanation."""
             })
             
         except json.JSONDecodeError as e:
-            # If JSON parsing fails, return raw content with error
             return jsonify({
                 'error': f'Failed to parse analysis: {str(e)}',
                 'raw_response': assistant_content
@@ -260,7 +667,6 @@ def parse():
         if not api_key:
             return jsonify({'error': 'API key is required'}), 400
         
-        # Prepare request to Anthropic
         headers = {
             'Content-Type': 'application/json',
             'x-api-key': api_key,
@@ -276,7 +682,6 @@ def parse():
             'system': 'You are a precise JSON extractor. Extract content into the exact JSON format requested. Return ONLY valid JSON with no markdown formatting, no code blocks, no explanation - just the raw JSON object.'
         }
         
-        # Make request to Anthropic
         response = requests.post(ANTHROPIC_API_URL, headers=headers, json=payload)
         
         if response.status_code != 200:
@@ -294,11 +699,10 @@ def parse():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/health', methods=['GET'])
-def health():
-    """Health check endpoint"""
-    return jsonify({'status': 'ok'})
 
+# ============================================
+# EMAIL ENDPOINTS
+# ============================================
 
 @app.route('/api/email', methods=['POST'])
 def send_email():
@@ -317,18 +721,15 @@ def send_email():
         subject = data.get('subject')
         body = data.get('body')
         
-        # Validate required fields
         if not all([smtp_server, email, password, recipient, subject, body]):
             return jsonify({'error': 'Missing required email fields'}), 400
         
-        # Create message
         msg = MIMEMultipart()
         msg['From'] = email
         msg['To'] = recipient
         msg['Subject'] = subject
         msg.attach(MIMEText(body, 'plain'))
         
-        # Send email
         with smtplib.SMTP(smtp_server, smtp_port) as server:
             server.starttls()
             server.login(email, password)
@@ -360,7 +761,6 @@ def send_overview_email():
         subject = data.get('customSubject', f'{ticker} - Stock Overview')
         smtp_config = data.get('smtpConfig', {})
         
-        # Extract SMTP settings
         use_gmail = smtp_config.get('use_gmail', True)
         gmail_user = smtp_config.get('gmail_user', '')
         gmail_password = smtp_config.get('gmail_app_password', '')
@@ -372,13 +772,11 @@ def send_overview_email():
         if use_gmail and (not gmail_user or not gmail_password):
             return jsonify({'error': 'Gmail credentials required'}), 400
         
-        # Create message
         msg = MIMEMultipart('alternative')
         msg['From'] = from_email
         msg['To'] = recipient
         msg['Subject'] = subject
         
-        # Create plain text version
         plain_text = html_body.replace('<h1>', '\n').replace('</h1>', '\n' + '='*50 + '\n')
         plain_text = plain_text.replace('<h2>', '\n\n').replace('</h2>', '\n' + '-'*30 + '\n')
         plain_text = plain_text.replace('<p>', '').replace('</p>', '\n')
@@ -387,7 +785,6 @@ def send_overview_email():
         msg.attach(MIMEText(plain_text, 'plain'))
         msg.attach(MIMEText(html_body, 'html'))
         
-        # Send via Gmail
         if use_gmail:
             with smtplib.SMTP('smtp.gmail.com', 587) as server:
                 server.starttls()
@@ -406,7 +803,7 @@ def send_overview_email():
 
 @app.route('/api/email-analysis', methods=['POST'])
 def send_analysis_email():
-    """Send Analysis email via SMTP (fallback for overview)"""
+    """Send Analysis email via SMTP"""
     import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
@@ -418,7 +815,6 @@ def send_analysis_email():
         subject = data.get('customSubject', f"{analysis.get('ticker', 'Stock')} - Analysis")
         smtp_config = data.get('smtpConfig', {})
         
-        # Extract SMTP settings
         use_gmail = smtp_config.get('use_gmail', True)
         gmail_user = smtp_config.get('gmail_user', '')
         gmail_password = smtp_config.get('gmail_app_password', '')
@@ -430,7 +826,6 @@ def send_analysis_email():
         if use_gmail and (not gmail_user or not gmail_password):
             return jsonify({'error': 'Gmail credentials required'}), 400
         
-        # Build email body from analysis
         ticker = analysis.get('ticker', 'N/A')
         company = analysis.get('company', 'N/A')
         thesis = analysis.get('thesis', {})
@@ -449,7 +844,7 @@ def send_analysis_email():
 """
         if thesis.get('pillars'):
             for pillar in thesis['pillars']:
-                email_body += f"• {pillar.get('pillar', '')}: {pillar.get('detail', '')}\n"
+                email_body += f"* {pillar.get('pillar', pillar.get('title', ''))}: {pillar.get('detail', pillar.get('description', ''))}\n"
         
         email_body += f"""
 {'='*60}
@@ -457,7 +852,7 @@ def send_analysis_email():
 {'='*60}
 """
         for sp in signposts:
-            email_body += f"• {sp.get('signpost', '')}: {sp.get('target', '')}\n"
+            email_body += f"* {sp.get('signpost', '')}: {sp.get('target', '')}\n"
         
         email_body += f"""
 {'='*60}
@@ -465,7 +860,7 @@ def send_analysis_email():
 {'='*60}
 """
         for threat in threats:
-            email_body += f"• {threat.get('threat', '')}\n"
+            email_body += f"* {threat.get('threat', '')}\n"
         
         if conclusion:
             email_body += f"""
@@ -478,17 +873,15 @@ def send_analysis_email():
         email_body += f"""
 ---
 Generated by TDL Equity Analyzer
-{__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M')}
+{datetime.now().strftime('%Y-%m-%d %H:%M')}
 """
         
-        # Create message
         msg = MIMEMultipart()
         msg['From'] = from_email
         msg['To'] = recipient
         msg['Subject'] = subject
         msg.attach(MIMEText(email_body, 'plain'))
         
-        # Send via Gmail
         if use_gmail:
             with smtplib.SMTP('smtp.gmail.com', 587) as server:
                 server.starttls()
@@ -504,11 +897,22 @@ Generated by TDL Equity Analyzer
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
+# ============================================
+# HEALTH CHECK
+# ============================================
+
+@app.route('/health', methods=['GET'])
+def health():
+    """Health check endpoint"""
+    return jsonify({'status': 'ok', 'database': 'postgresql'})
+
+
 if __name__ == '__main__':
-    import os
     port = int(os.environ.get('PORT', 5000))
     print("=" * 50)
     print("TDL Equity Analyzer - Backend Server")
+    print("With PostgreSQL Database Support")
     print("=" * 50)
     print(f"Starting server on http://0.0.0.0:{port}")
     print("=" * 50)
