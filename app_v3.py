@@ -155,7 +155,7 @@ class AnalyzerHandler(SimpleHTTPRequestHandler):
             self.send_error_response(500, str(e))
     
     def save_analysis(self):
-        """Save or update an analysis"""
+        """Save or update an analysis with version history"""
         try:
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
@@ -173,11 +173,35 @@ class AnalyzerHandler(SimpleHTTPRequestHandler):
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Check if exists
-            cursor.execute('SELECT id FROM analyses WHERE ticker = ?', (ticker,))
-            exists = cursor.fetchone()
+            # Check if exists and get current version for history
+            cursor.execute('SELECT analysis_json FROM analyses WHERE ticker = ?', (ticker,))
+            existing = cursor.fetchone()
             
-            if exists:
+            if existing:
+                # Get existing analysis to save to history
+                existing_analysis = json.loads(existing[0])
+                
+                # Get existing history or create new
+                history = analysis.get('history', []) or existing_analysis.get('history', []) or []
+                
+                # Save current version to history before updating
+                # (only if thesis/signposts/threats exist - don't save empty analyses)
+                if existing_analysis.get('thesis') or existing_analysis.get('signposts') or existing_analysis.get('threats'):
+                    history_entry = {
+                        'timestamp': datetime.now().isoformat(),
+                        'thesis': existing_analysis.get('thesis'),
+                        'signposts': existing_analysis.get('signposts'),
+                        'threats': existing_analysis.get('threats')
+                    }
+                    history.append(history_entry)
+                    
+                    # Keep only last 20 versions to prevent bloat
+                    if len(history) > 20:
+                        history = history[-20:]
+                
+                # Add history to the analysis being saved
+                analysis['history'] = history
+                
                 # Update
                 cursor.execute('''
                     UPDATE analyses
@@ -186,7 +210,8 @@ class AnalyzerHandler(SimpleHTTPRequestHandler):
                 ''', (company_name, json.dumps(analysis), json.dumps(documents), ticker))
                 action = 'updated'
             else:
-                # Insert
+                # Insert new (no history yet)
+                analysis['history'] = []
                 cursor.execute('''
                     INSERT INTO analyses (ticker, company_name, analysis_json, documents_json)
                     VALUES (?, ?, ?, ?)
@@ -196,7 +221,7 @@ class AnalyzerHandler(SimpleHTTPRequestHandler):
             conn.commit()
             conn.close()
             
-            print(f"✅ Analysis {action} for {ticker}")
+            print(f"✅ Analysis {action} for {ticker} (history: {len(analysis.get('history', []))} versions)")
             
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
