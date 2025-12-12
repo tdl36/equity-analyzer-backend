@@ -698,7 +698,7 @@ Return JSON with:
                     }
                 )
                 
-                with urllib.request.urlopen(req, timeout=120) as response:
+                with urllib.request.urlopen(req, timeout=180) as response:  # 3 min timeout for large docs
                     result = json.loads(response.read().decode('utf-8'))
                     text = result['content'][0]['text']
                     
@@ -720,6 +720,19 @@ Return JSON with:
                 if e.code == 429 and attempt < max_retries - 1:
                     wait = (2 ** attempt) * 3
                     print(f"   ⚠️  Rate limit. Retrying in {wait}s...")
+                    time.sleep(wait)
+                    continue
+                # Handle 5xx server errors with retry
+                if e.code >= 500 and attempt < max_retries - 1:
+                    wait = (2 ** attempt) * 2
+                    print(f"   ⚠️  Server error ({e.code}). Retrying in {wait}s...")
+                    time.sleep(wait)
+                    continue
+                raise
+            except (urllib.error.URLError, TimeoutError) as e:
+                if attempt < max_retries - 1:
+                    wait = (2 ** attempt) * 2
+                    print(f"   ⚠️  Connection error. Retrying in {wait}s...")
                     time.sleep(wait)
                     continue
                 raise
