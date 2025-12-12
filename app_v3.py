@@ -7,6 +7,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
 import os
+import json
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
@@ -56,6 +57,165 @@ def chat():
             'usage': result.get('usage', {})
         })
         
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/analyze-multi', methods=['POST'])
+def analyze_multi():
+    """Analyze multiple PDF documents and generate investment thesis"""
+    try:
+        data = request.json
+        api_key = data.get('apiKey')
+        documents = data.get('documents', [])
+        existing_analysis = data.get('existingAnalysis')
+        
+        if not api_key:
+            return jsonify({'error': 'API key is required'}), 400
+        
+        if not documents:
+            return jsonify({'error': 'No documents provided'}), 400
+        
+        # Filter enabled documents
+        enabled_docs = [d for d in documents if d.get('enabled', True)]
+        
+        if not enabled_docs:
+            return jsonify({'error': 'No enabled documents'}), 400
+        
+        # Build the content array for Claude
+        content = []
+        
+        # Add each document as a PDF
+        for doc in enabled_docs:
+            doc_content = doc.get('content', '')
+            doc_name = doc.get('name', 'document.pdf')
+            
+            # If content is base64 PDF
+            if doc_content:
+                # Remove data URL prefix if present
+                if ',' in doc_content:
+                    doc_content = doc_content.split(',')[1]
+                
+                content.append({
+                    "type": "document",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "application/pdf",
+                        "data": doc_content
+                    }
+                })
+        
+        # Add the analysis prompt
+        analysis_prompt = """Analyze these broker research documents and create a comprehensive investment analysis.
+
+Return a JSON object with this exact structure:
+{
+    "ticker": "STOCK_TICKER",
+    "company": "Company Name",
+    "thesis": {
+        "summary": "2-3 sentence investment thesis summary",
+        "pillars": [
+            {"title": "Pillar 1 Title", "description": "Detailed explanation"},
+            {"title": "Pillar 2 Title", "description": "Detailed explanation"},
+            {"title": "Pillar 3 Title", "description": "Detailed explanation"}
+        ]
+    },
+    "signposts": [
+        {"signpost": "Key metric or event to watch", "target": "Target value or outcome", "timeframe": "When to expect"},
+        {"signpost": "Another signpost", "target": "Target", "timeframe": "Timeframe"}
+    ],
+    "threats": [
+        {"threat": "Risk factor 1", "mitigation": "How to monitor or mitigate"},
+        {"threat": "Risk factor 2", "mitigation": "How to monitor or mitigate"}
+    ]
+}
+
+Focus on:
+1. Why own this stock? (Investment Thesis)
+2. What are we looking for? (Signposts - specific KPIs, events, milestones)
+3. Where can we be wrong? (Threats - bear case scenarios)
+
+Return ONLY valid JSON, no markdown, no explanation."""
+
+        if existing_analysis:
+            analysis_prompt = f"""Update this existing analysis with new information from the documents.
+
+Existing Analysis:
+{json.dumps(existing_analysis, indent=2)}
+
+Review the new documents and:
+1. Update or confirm the investment thesis
+2. Add any new signposts or update existing ones
+3. Add any new threats or update existing ones
+4. Note what has changed
+
+Return the updated analysis as JSON with the same structure, plus a "changes" array describing what's new or different.
+
+Return ONLY valid JSON, no markdown, no explanation."""
+
+        content.append({
+            "type": "text",
+            "text": analysis_prompt
+        })
+        
+        # Prepare request to Anthropic
+        headers = {
+            'Content-Type': 'application/json',
+            'x-api-key': api_key,
+            'anthropic-version': '2023-06-01'
+        }
+        
+        payload = {
+            'model': 'claude-sonnet-4-20250514',
+            'max_tokens': 8192,
+            'messages': [
+                {'role': 'user', 'content': content}
+            ],
+            'system': 'You are an expert equity research analyst. Analyze documents thoroughly and provide institutional-quality investment analysis. Always respond with valid JSON only.'
+        }
+        
+        # Make request to Anthropic with longer timeout
+        response = requests.post(ANTHROPIC_API_URL, headers=headers, json=payload, timeout=180)
+        
+        if response.status_code != 200:
+            error_data = response.json()
+            error_msg = error_data.get('error', {}).get('message', 'API request failed')
+            return jsonify({'error': error_msg}), response.status_code
+        
+        result = response.json()
+        assistant_content = result.get('content', [{}])[0].get('text', '')
+        
+        # Parse the JSON response
+        try:
+            # Clean up the response - remove markdown code blocks if present
+            cleaned = assistant_content.strip()
+            if cleaned.startswith('```'):
+                cleaned = cleaned.split('\n', 1)[1]  # Remove first line
+            if cleaned.endswith('```'):
+                cleaned = cleaned.rsplit('\n', 1)[0]  # Remove last line
+            if cleaned.startswith('json'):
+                cleaned = cleaned[4:].strip()
+            
+            analysis = json.loads(cleaned)
+            
+            # Extract changes if present
+            changes = analysis.pop('changes', [])
+            
+            return jsonify({
+                'analysis': analysis,
+                'changes': changes,
+                'usage': result.get('usage', {})
+            })
+            
+        except json.JSONDecodeError as e:
+            # If JSON parsing fails, return raw content with error
+            return jsonify({
+                'error': f'Failed to parse analysis: {str(e)}',
+                'raw_response': assistant_content
+            }), 500
+        
+    except requests.Timeout:
+        return jsonify({'error': 'Request timed out. Try with fewer or smaller documents.'}), 504
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
