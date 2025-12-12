@@ -535,12 +535,18 @@ class AnalyzerHandler(SimpleHTTPRequestHandler):
     
     def analyze_initial_document(self, api_key, pdf_data, metadata, weight):
         """Analyze first document to create base thesis"""
-        prompt = f"""You are an institutional equity research analyst. This is the FIRST document in a series.
+        prompt = f"""You are an institutional equity research analyst creating INDEPENDENT analysis.
 
 Document Type: {metadata.get('type', 'Unknown')}
-Source: {metadata.get('analyst', 'Unknown')}
 Date: {metadata.get('date', 'Unknown')}
 Weight: {weight}x
+
+IMPORTANT GUIDELINES:
+- Write as YOUR OWN independent analysis - do NOT reference or cite source brokers/analysts by name
+- Do NOT mention specific broker price targets (e.g., "Wells Fargo's $85 target")
+- Do NOT use phrases like "According to [Broker]..." or "[Analyst] believes..."
+- Synthesize insights into your own original thesis
+- Present conclusions as your own analytical view, not as summaries of others' views
 
 Analyze and create a FOUNDATIONAL investment thesis.
 
@@ -557,9 +563,9 @@ Format as JSON with this structure (be sure to include the ticker field):
     "weight": {weight}
   }}],
   "thesis": {{
-    "summary": "2-3 sentence summary",
-    "pillars": [{{"title": "Title", "description": "Description", "confidence": "High/Medium/Low", "sources": ["{metadata.get('filename')}"], "weight": {weight}}}],
-    "valuation": "Valuation perspective",
+    "summary": "2-3 sentence summary (your own words, no broker citations)",
+    "pillars": [{{"title": "Title", "description": "Description (independent analysis)", "confidence": "High/Medium/Low", "sources": ["{metadata.get('filename')}"], "weight": {weight}}}],
+    "valuation": "Valuation perspective (no broker price targets)",
     "returnProfile": "Expected returns"
   }},
   "signposts": [{{
@@ -583,7 +589,7 @@ Format as JSON with this structure (be sure to include the ticker field):
   }}]
 }}
 
-Provide 3-5 pillars, 5-8 signposts, 4-6 threats."""
+Provide 3-5 pillars, 5-8 signposts, 4-6 threats. Remember: Write as independent analysis without broker citations."""
         return self.call_anthropic_single(api_key, pdf_data, prompt)
     
     def refine_with_new_document(self, api_key, existing_analysis, new_pdf_data, metadata, weight):
@@ -595,15 +601,22 @@ EXISTING THESIS:
 
 NEW DOCUMENT:
 Type: {metadata.get('type')}
-Source: {metadata.get('analyst')}
 Date: {metadata.get('date')}
 Weight: {weight}x
 
-Update the thesis incorporating this document. Weight {weight}x means this is {weight}x as important.
+IMPORTANT GUIDELINES:
+- Write as YOUR OWN independent analysis - do NOT reference or cite source brokers/analysts by name
+- Do NOT mention specific broker price targets (e.g., "Goldman's $120 target")  
+- Do NOT use phrases like "According to [Broker]..." or "[Firm] expects..."
+- Synthesize new insights into your own original thesis
+- If the new document has a different view, incorporate it as "alternative perspectives exist" without naming the source
+- Present all conclusions as your own analytical view
+
+Update the thesis incorporating insights from this document. Weight {weight}x means this is {weight}x as important.
 
 Return JSON with:
 {{
-  "analysis": {{...updated full analysis...}},
+  "analysis": {{...updated full analysis with independent voice, no broker citations...}},
   "changes": ["Change 1", "Change 2", ...]
 }}"""
         return self.call_anthropic_refinement(api_key, new_pdf_data, prompt)
