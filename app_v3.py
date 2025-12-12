@@ -475,8 +475,13 @@ class AnalyzerHandler(SimpleHTTPRequestHandler):
                 doc_metadata = doc.get('metadata', {})
                 doc_weight = doc.get('weight', 1.0)
                 
+                # Get file data - support both old format (pdfData) and new format (fileData)
+                file_data = doc.get('fileData') or doc.get('pdfData')
+                file_type = doc.get('fileType', 'pdf')
+                mime_type = doc.get('mimeType', 'application/pdf')
+                
                 print(f"📄 Document {idx}/{len(enabled_docs)}: {doc_metadata.get('filename', 'Unknown')}")
-                print(f"   Weight: {doc_weight}x | Type: {doc_metadata.get('type', 'Unknown')}")
+                print(f"   Weight: {doc_weight}x | Type: {doc_metadata.get('type', 'Unknown')} | Format: {file_type.upper()}")
                 
                 # Add delay between requests to avoid rate limiting (except for first doc)
                 if idx > 1 or existing_analysis:
@@ -489,7 +494,9 @@ class AnalyzerHandler(SimpleHTTPRequestHandler):
                     print(f"   → Creating initial thesis...")
                     cumulative_analysis = self.analyze_initial_document(
                         api_key, 
-                        doc['pdfData'],
+                        file_data,
+                        file_type,
+                        mime_type,
                         doc_metadata,
                         doc_weight
                     )
@@ -499,7 +506,9 @@ class AnalyzerHandler(SimpleHTTPRequestHandler):
                     result = self.refine_with_new_document(
                         api_key,
                         cumulative_analysis,
-                        doc['pdfData'],
+                        file_data,
+                        file_type,
+                        mime_type,
                         doc_metadata,
                         doc_weight
                     )
@@ -533,7 +542,7 @@ class AnalyzerHandler(SimpleHTTPRequestHandler):
     # [Include all the analyze_initial_document, refine_with_new_document, and API call methods from V2]
     # [Keeping this concise - the methods are identical to V2]
     
-    def analyze_initial_document(self, api_key, pdf_data, metadata, weight):
+    def analyze_initial_document(self, api_key, file_data, file_type, mime_type, metadata, weight):
         """Analyze first document to create base thesis"""
         prompt = f"""You are an institutional equity research analyst creating INDEPENDENT analysis.
 
@@ -590,9 +599,9 @@ Format as JSON with this structure (be sure to include the ticker field):
 }}
 
 Provide 3-5 pillars, 5-8 signposts, 4-6 threats. Remember: Write as independent analysis without broker citations."""
-        return self.call_anthropic_single(api_key, pdf_data, prompt)
+        return self.call_anthropic_single(api_key, file_data, file_type, mime_type, prompt)
     
-    def refine_with_new_document(self, api_key, existing_analysis, new_pdf_data, metadata, weight):
+    def refine_with_new_document(self, api_key, existing_analysis, file_data, file_type, mime_type, metadata, weight):
         """Refine existing analysis with new document"""
         prompt = f"""You previously analyzed {existing_analysis.get('company')}.
 
@@ -619,10 +628,54 @@ Return JSON with:
   "analysis": {{...updated full analysis with independent voice, no broker citations...}},
   "changes": ["Change 1", "Change 2", ...]
 }}"""
-        return self.call_anthropic_refinement(api_key, new_pdf_data, prompt)
+        return self.call_anthropic_refinement(api_key, file_data, file_type, mime_type, prompt)
     
-    def call_anthropic_with_retry(self, api_key, pdf_data, prompt, max_retries=3, max_tokens=4000):
-        """Call Anthropic API with retry logic"""
+    def build_content_block(self, file_data, file_type, mime_type):
+        """Build the appropriate content block based on file type"""
+        # Determine the correct MIME type if not provided
+        if not mime_type or mime_type == 'application/octet-stream':
+            mime_map = {
+                'pdf': 'application/pdf',
+                'image': 'image/png',  # Default for images
+                'doc': 'application/msword',
+                'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                'text': 'text/plain',
+                'html': 'text/html',
+                'email': 'message/rfc822'
+            }
+            mime_type = mime_map.get(file_type, 'application/octet-stream')
+        
+        # Handle different file types
+        if file_type == 'image':
+            # Images use "image" type
+            return {"type": "image", "source": {"type": "base64", "media_type": mime_type, "data": file_data}}
+        elif file_type == 'text' or file_type == 'html':
+            # Text files - decode and include as text
+            try:
+                import base64
+                decoded_text = base64.b64decode(file_data).decode('utf-8')
+                return {"type": "text", "text": f"[Document Content]:\n{decoded_text}"}
+            except:
+                # If decoding fails, treat as document
+                return {"type": "document", "source": {"type": "base64", "media_type": mime_type, "data": file_data}}
+        elif file_type == 'email':
+            # Email files - try to decode as text
+            try:
+                import base64
+                decoded_text = base64.b64decode(file_data).decode('utf-8', errors='replace')
+                return {"type": "text", "text": f"[Email Content]:\n{decoded_text}"}
+            except:
+                return {"type": "document", "source": {"type": "base64", "media_type": mime_type, "data": file_data}}
+        else:
+            # PDFs, Word docs, and other documents
+            return {"type": "document", "source": {"type": "base64", "media_type": mime_type, "data": file_data}}
+    
+    def call_anthropic_with_retry(self, api_key, file_data, file_type, mime_type, prompt, max_retries=3, max_tokens=4000):
+        """Call Anthropic API with retry logic - supports multiple file types"""
+        
+        # Build the content block based on file type
+        content_block = self.build_content_block(file_data, file_type, mime_type)
+        
         for attempt in range(max_retries):
             try:
                 req = urllib.request.Request(
@@ -633,7 +686,7 @@ Return JSON with:
                         "messages": [{
                             "role": "user",
                             "content": [
-                                {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_data}},
+                                content_block,
                                 {"type": "text", "text": prompt}
                             ]
                         }]
@@ -673,11 +726,11 @@ Return JSON with:
         
         raise Exception("Failed after all retries")
     
-    def call_anthropic_single(self, api_key, pdf_data, prompt):
-        return self.call_anthropic_with_retry(api_key, pdf_data, prompt, max_tokens=4000)
+    def call_anthropic_single(self, api_key, file_data, file_type, mime_type, prompt):
+        return self.call_anthropic_with_retry(api_key, file_data, file_type, mime_type, prompt, max_tokens=4000)
     
-    def call_anthropic_refinement(self, api_key, pdf_data, prompt):
-        return self.call_anthropic_with_retry(api_key, pdf_data, prompt, max_tokens=5000)
+    def call_anthropic_refinement(self, api_key, file_data, file_type, mime_type, prompt):
+        return self.call_anthropic_with_retry(api_key, file_data, file_type, mime_type, prompt, max_tokens=5000)
     
     def send_error_response(self, code, message):
         self.send_response(code)
