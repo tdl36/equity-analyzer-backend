@@ -8,6 +8,7 @@ from flask_cors import CORS
 import requests
 import os
 import json
+import base64
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
@@ -85,17 +86,18 @@ def analyze_multi():
         # Build the content array for Claude
         content = []
         
-        # Add each document as a PDF
+        # Add each document
         for doc in enabled_docs:
-            doc_content = doc.get('content', '')
-            doc_name = doc.get('name', 'document.pdf')
+            doc_content = doc.get('fileData', '')  # Frontend uses 'fileData'
+            doc_name = doc.get('filename', 'document.pdf')
+            doc_type = doc.get('fileType', 'pdf')
+            mime_type = doc.get('mimeType', 'application/pdf')
             
-            # If content is base64 PDF
-            if doc_content:
-                # Remove data URL prefix if present
-                if ',' in doc_content:
-                    doc_content = doc_content.split(',')[1]
+            if not doc_content:
+                continue
                 
+            # Handle different file types
+            if doc_type == 'pdf':
                 content.append({
                     "type": "document",
                     "source": {
@@ -104,6 +106,30 @@ def analyze_multi():
                         "data": doc_content
                     }
                 })
+            elif doc_type == 'image':
+                # For images (screenshots, charts)
+                content.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": mime_type or "image/png",
+                        "data": doc_content
+                    }
+                })
+            else:
+                # For text-based files, try to decode and send as text
+                try:
+                    decoded_text = base64.b64decode(doc_content).decode('utf-8')
+                    content.append({
+                        "type": "text",
+                        "text": f"=== Document: {doc_name} ===\n{decoded_text}"
+                    })
+                except:
+                    # If decoding fails, skip this document
+                    continue
+        
+        if not content:
+            return jsonify({'error': 'No valid documents to analyze'}), 400
         
         # Add the analysis prompt
         analysis_prompt = """Analyze these broker research documents and create a comprehensive investment analysis.
@@ -217,7 +243,10 @@ Return ONLY valid JSON, no markdown, no explanation."""
     except requests.Timeout:
         return jsonify({'error': 'Request timed out. Try with fewer or smaller documents.'}), 504
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        import traceback
+        print(f"Error in analyze-multi: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({'error': f'Server error: {str(e)}'}), 500
 
 
 @app.route('/api/parse', methods=['POST'])
