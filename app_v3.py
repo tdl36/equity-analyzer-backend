@@ -574,8 +574,8 @@ Return a JSON object with this exact structure:
         ]
     },
     "signposts": [
-        {"metric": "Key metric or KPI name", "target": "Target value or outcome", "timeframe": "When to expect", "confidence": "High/Medium/Low", "sources": [{"filename": "Document name", "excerpt": "Brief supporting quote"}]},
-        {"metric": "Another metric name", "target": "Target", "timeframe": "Timeframe", "confidence": "High/Medium/Low", "sources": [{"filename": "Document name", "excerpt": "Brief supporting quote"}]}
+        {"metric": "Key metric or KPI name", "target": "Target value or outcome", "timeframe": "When to expect", "category": "Financial/Operational/Strategic/Market", "confidence": "High/Medium/Low", "sources": [{"filename": "Document name", "excerpt": "Brief supporting quote"}]},
+        {"metric": "Another metric name", "target": "Target", "timeframe": "Timeframe", "category": "Financial/Operational/Strategic/Market", "confidence": "High/Medium/Low", "sources": [{"filename": "Document name", "excerpt": "Brief supporting quote"}]}
     ],
     "threats": [
         {"threat": "Risk factor description", "likelihood": "High/Medium/Low", "impact": "High/Medium/Low", "triggerPoints": "What to watch for - early warning signs", "sources": [{"filename": "Document name", "excerpt": "Brief supporting quote"}]},
