@@ -583,6 +583,13 @@ Return a JSON object with this exact structure:
     ]
 }
 
+IMPORTANT STYLE RULES:
+- Do NOT reference any sellside broker names (e.g., "Goldman Sachs believes...", "According to Morgan Stanley...")
+- Do NOT reference specific analyst names
+- Do NOT include specific broker price targets
+- Write as independent analysis that synthesizes the information without attribution to sources in the prose
+- The output should read like original independent research, not a summary of broker views
+
 Focus on:
 1. Why own this stock? (Investment Thesis) - include confidence level and source citations
 2. What are we looking for? (Signposts - specific KPIs, events, milestones with metric names)
@@ -606,6 +613,13 @@ Review the new documents and:
 3. Add any new threats or update existing ones
 4. Note what has changed
 5. Update sources for each point based on all documents analyzed
+
+IMPORTANT STYLE RULES:
+- Do NOT reference any sellside broker names (e.g., "Goldman Sachs believes...", "According to Morgan Stanley...")
+- Do NOT reference specific analyst names
+- Do NOT include specific broker price targets
+- Write as independent analysis that synthesizes the information without attribution to sources in the prose
+- The output should read like original independent research, not a summary of broker views
 
 For each pillar, signpost, and threat, include:
 - "sources": Array of source documents that support this point, with filename and a brief excerpt
