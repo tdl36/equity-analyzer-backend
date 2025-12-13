@@ -94,6 +94,28 @@ def init_db():
             )
         ''')
         
+        # Document Files table - stores actual document content for re-analysis
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS document_files (
+                id SERIAL PRIMARY KEY,
+                ticker VARCHAR(20) NOT NULL,
+                filename VARCHAR(255) NOT NULL,
+                file_data TEXT NOT NULL,
+                file_type VARCHAR(50),
+                mime_type VARCHAR(100),
+                metadata JSONB DEFAULT '{}',
+                file_size INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(ticker, filename)
+            )
+        ''')
+        
+        # Create index for faster lookups
+        cur.execute('''
+            CREATE INDEX IF NOT EXISTS idx_document_files_ticker 
+            ON document_files(ticker)
+        ''')
+        
         conn.commit()
         cur.close()
         conn.close()
@@ -446,6 +468,214 @@ def delete_chat():
 
 
 # ============================================
+# DOCUMENT STORAGE ENDPOINTS
+# ============================================
+
+@app.route('/api/documents/<ticker>', methods=['GET'])
+def get_documents(ticker):
+    """Get all stored documents for a ticker"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute('''
+            SELECT filename, file_type, mime_type, metadata, file_size, created_at
+            FROM document_files 
+            WHERE ticker = %s
+            ORDER BY created_at DESC
+        ''', (ticker.upper(),))
+        docs = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'documents': [{
+                'filename': d['filename'],
+                'fileType': d['file_type'],
+                'mimeType': d['mime_type'],
+                'metadata': d['metadata'] or {},
+                'fileSize': d['file_size'],
+                'createdAt': d['created_at'].isoformat() if d['created_at'] else None,
+                'stored': True
+            } for d in docs]
+        })
+    except Exception as e:
+        print(f"Error getting documents: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/documents/<ticker>/content', methods=['GET'])
+def get_documents_with_content(ticker):
+    """Get all stored documents with file content for re-analysis"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute('''
+            SELECT filename, file_data, file_type, mime_type, metadata
+            FROM document_files 
+            WHERE ticker = %s
+        ''', (ticker.upper(),))
+        docs = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'documents': [{
+                'filename': d['filename'],
+                'fileData': d['file_data'],
+                'fileType': d['file_type'],
+                'mimeType': d['mime_type'],
+                'metadata': d['metadata'] or {},
+                'stored': True
+            } for d in docs]
+        })
+    except Exception as e:
+        print(f"Error getting document content: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/documents/save', methods=['POST'])
+def save_documents():
+    """Save document files to database for a ticker"""
+    try:
+        data = request.json
+        ticker = data.get('ticker', '').upper()
+        documents = data.get('documents', [])
+        
+        if not ticker:
+            return jsonify({'error': 'Ticker is required'}), 400
+        
+        if not documents:
+            return jsonify({'error': 'No documents provided'}), 400
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        saved_count = 0
+        for doc in documents:
+            filename = doc.get('filename')
+            file_data = doc.get('fileData')
+            file_type = doc.get('fileType', 'pdf')
+            mime_type = doc.get('mimeType', 'application/pdf')
+            metadata = doc.get('metadata', {})
+            
+            if not filename or not file_data:
+                continue
+            
+            # Calculate approximate file size (base64 is ~1.33x original)
+            file_size = len(file_data) * 3 // 4
+            
+            cur.execute('''
+                INSERT INTO document_files (ticker, filename, file_data, file_type, mime_type, metadata, file_size)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (ticker, filename) 
+                DO UPDATE SET 
+                    file_data = EXCLUDED.file_data,
+                    file_type = EXCLUDED.file_type,
+                    mime_type = EXCLUDED.mime_type,
+                    metadata = EXCLUDED.metadata,
+                    file_size = EXCLUDED.file_size
+            ''', (ticker, filename, file_data, file_type, mime_type, json.dumps(metadata), file_size))
+            saved_count += 1
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({'success': True, 'savedCount': saved_count})
+    except Exception as e:
+        print(f"Error saving documents: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/documents/delete', methods=['POST'])
+def delete_document():
+    """Delete a specific document for a ticker"""
+    try:
+        data = request.json
+        ticker = data.get('ticker', '').upper()
+        filename = data.get('filename')
+        
+        if not ticker or not filename:
+            return jsonify({'error': 'Ticker and filename are required'}), 400
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('''
+            DELETE FROM document_files 
+            WHERE ticker = %s AND filename = %s
+        ''', (ticker, filename))
+        deleted = cur.rowcount > 0
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({'success': True, 'deleted': deleted})
+    except Exception as e:
+        print(f"Error deleting document: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/documents/delete-all', methods=['POST'])
+def delete_all_documents():
+    """Delete all documents for a ticker"""
+    try:
+        data = request.json
+        ticker = data.get('ticker', '').upper()
+        
+        if not ticker:
+            return jsonify({'error': 'Ticker is required'}), 400
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('DELETE FROM document_files WHERE ticker = %s', (ticker,))
+        deleted_count = cur.rowcount
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({'success': True, 'deletedCount': deleted_count})
+    except Exception as e:
+        print(f"Error deleting all documents: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/documents/storage-stats', methods=['GET'])
+def get_storage_stats():
+    """Get storage statistics"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute('''
+            SELECT 
+                ticker,
+                COUNT(*) as doc_count,
+                SUM(file_size) as total_size
+            FROM document_files 
+            GROUP BY ticker
+            ORDER BY total_size DESC
+        ''')
+        stats = cur.fetchall()
+        
+        cur.execute('SELECT SUM(file_size) as total FROM document_files')
+        total = cur.fetchone()
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'byTicker': [{
+                'ticker': s['ticker'],
+                'docCount': s['doc_count'],
+                'totalSize': s['total_size'] or 0
+            } for s in stats],
+            'totalSize': total['total'] or 0 if total else 0
+        })
+    except Exception as e:
+        print(f"Error getting storage stats: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================
 # ANTHROPIC API PROXY ENDPOINTS
 # ============================================
 
@@ -502,6 +732,7 @@ def analyze_multi():
         api_key = data.get('apiKey')
         documents = data.get('documents', [])
         existing_analysis = data.get('existingAnalysis')
+        historical_weights = data.get('historicalWeights', [])
         
         if not api_key:
             return jsonify({'error': 'API key is required'}), 400
@@ -518,15 +749,59 @@ def analyze_multi():
         # Build the content array for Claude
         content = []
         
+        # Calculate total weight including both new and historical docs
+        new_doc_weight = sum(doc.get('weight', 1) for doc in enabled_docs)
+        hist_doc_weight = sum(hw.get('weight', 1) for hw in historical_weights)
+        total_weight = new_doc_weight + hist_doc_weight
+        
+        # Add document weighting information at the start
+        weight_info = "DOCUMENT WEIGHTING (use these weights to prioritize information):\n\n"
+        
+        # Historical documents (from existing analysis)
+        if historical_weights:
+            weight_info += "PREVIOUSLY ANALYZED DOCUMENTS (their insights are in the existing analysis):\n"
+            for hw in historical_weights:
+                hw_name = hw.get('filename', 'document')
+                hw_weight = hw.get('weight', 1)
+                hw_pct = round((hw_weight / total_weight) * 100) if total_weight > 0 else 0
+                weight_info += f"- {hw_name}: {hw_pct}% weight\n"
+            weight_info += "\n"
+        
+        # New documents being analyzed now
+        weight_info += "NEW DOCUMENTS (being analyzed now):\n"
+        for doc in enabled_docs:
+            doc_name = doc.get('filename', 'document.pdf')
+            doc_weight = doc.get('weight', 1)
+            doc_pct = round((doc_weight / total_weight) * 100) if total_weight > 0 else 0
+            weight_info += f"- {doc_name}: {doc_pct}% weight\n"
+        
+        weight_info += "\nWhen synthesizing the analysis:\n"
+        weight_info += "- Give MORE emphasis to higher-weighted documents\n"
+        weight_info += "- If updating existing analysis, respect the weights of previously analyzed documents\n"
+        weight_info += "- Higher-weighted historical docs = keep more of their conclusions in the existing analysis\n"
+        
+        content.append({
+            "type": "text",
+            "text": weight_info
+        })
+        
         # Add each document
         for doc in enabled_docs:
             doc_content = doc.get('fileData', '')
             doc_name = doc.get('filename', 'document.pdf')
             doc_type = doc.get('fileType', 'pdf')
             mime_type = doc.get('mimeType', 'application/pdf')
+            doc_weight = doc.get('weight', 1)
+            doc_pct = round((doc_weight / total_weight) * 100) if total_weight > 0 else 0
             
             if not doc_content:
                 continue
+            
+            # Add document header with weight
+            content.append({
+                "type": "text",
+                "text": f"\n=== DOCUMENT: {doc_name} (Weight: {doc_pct}%) ==="
+            })
                 
             if doc_type == 'pdf':
                 content.append({
@@ -551,7 +826,7 @@ def analyze_multi():
                     decoded_text = base64.b64decode(doc_content).decode('utf-8')
                     content.append({
                         "type": "text",
-                        "text": f"=== Document: {doc_name} ===\n{decoded_text}"
+                        "text": decoded_text
                     })
                 except:
                     continue
@@ -590,6 +865,12 @@ IMPORTANT STYLE RULES:
 - Write as independent analysis that synthesizes the information without attribution to sources in the prose
 - The output should read like original independent research, not a summary of broker views
 
+DOCUMENT WEIGHTING:
+- Each document has an assigned weight percentage shown at the start
+- Give MORE emphasis to higher-weighted documents when forming conclusions
+- Higher-weighted documents should have more influence on the thesis, signposts, and threats
+- If documents conflict, prefer the view from the higher-weighted document
+
 Focus on:
 1. Why own this stock? (Investment Thesis) - include confidence level and source citations
 2. What are we looking for? (Signposts - specific KPIs, events, milestones with metric names)
@@ -620,6 +901,12 @@ IMPORTANT STYLE RULES:
 - Do NOT include specific broker price targets
 - Write as independent analysis that synthesizes the information without attribution to sources in the prose
 - The output should read like original independent research, not a summary of broker views
+
+DOCUMENT WEIGHTING:
+- Each document has an assigned weight percentage shown at the start
+- Give MORE emphasis to higher-weighted documents when forming conclusions
+- Higher-weighted documents should have more influence on the thesis, signposts, and threats
+- If documents conflict, prefer the view from the higher-weighted document
 
 For each pillar, signpost, and threat, include:
 - "sources": Array of source documents that support this point, with filename and a brief excerpt
