@@ -569,25 +569,28 @@ Return a JSON object with this exact structure:
     "thesis": {
         "summary": "2-3 sentence investment thesis summary",
         "pillars": [
-            {"title": "Pillar 1 Title", "description": "Detailed explanation"},
-            {"title": "Pillar 2 Title", "description": "Detailed explanation"},
-            {"title": "Pillar 3 Title", "description": "Detailed explanation"}
+            {"title": "Pillar 1 Title", "description": "Detailed explanation", "confidence": "High/Medium/Low", "sources": [{"filename": "Document name", "excerpt": "Brief supporting quote"}]},
+            {"title": "Pillar 2 Title", "description": "Detailed explanation", "confidence": "High/Medium/Low", "sources": [{"filename": "Document name", "excerpt": "Brief supporting quote"}]}
         ]
     },
     "signposts": [
-        {"metric": "Key metric or KPI name", "target": "Target value or outcome", "timeframe": "When to expect"},
-        {"metric": "Another metric name", "target": "Target", "timeframe": "Timeframe"}
+        {"metric": "Key metric or KPI name", "target": "Target value or outcome", "timeframe": "When to expect", "confidence": "High/Medium/Low", "sources": [{"filename": "Document name", "excerpt": "Brief supporting quote"}]},
+        {"metric": "Another metric name", "target": "Target", "timeframe": "Timeframe", "confidence": "High/Medium/Low", "sources": [{"filename": "Document name", "excerpt": "Brief supporting quote"}]}
     ],
     "threats": [
-        {"threat": "Risk factor description", "likelihood": "High/Medium/Low", "impact": "High/Medium/Low", "triggerPoints": "What to watch for - early warning signs"},
-        {"threat": "Another risk", "likelihood": "Medium", "impact": "High", "triggerPoints": "Monitoring triggers"}
+        {"threat": "Risk factor description", "likelihood": "High/Medium/Low", "impact": "High/Medium/Low", "triggerPoints": "What to watch for - early warning signs", "sources": [{"filename": "Document name", "excerpt": "Brief supporting quote"}]},
+        {"threat": "Another risk", "likelihood": "Medium", "impact": "High", "triggerPoints": "Monitoring triggers", "sources": [{"filename": "Document name", "excerpt": "Brief supporting quote"}]}
     ]
 }
 
 Focus on:
-1. Why own this stock? (Investment Thesis)
+1. Why own this stock? (Investment Thesis) - include confidence level and source citations
 2. What are we looking for? (Signposts - specific KPIs, events, milestones with metric names)
 3. Where can we be wrong? (Threats - bear case scenarios with likelihood, impact, and trigger points)
+
+For each pillar, signpost, and threat, include:
+- "sources": Array of source documents that support this point, with filename and a brief excerpt
+- Use the actual document filenames provided in the analysis
 
 Return ONLY valid JSON, no markdown, no explanation."""
 
@@ -602,6 +605,12 @@ Review the new documents and:
 2. Add any new signposts or update existing ones
 3. Add any new threats or update existing ones
 4. Note what has changed
+5. Update sources for each point based on all documents analyzed
+
+For each pillar, signpost, and threat, include:
+- "sources": Array of source documents that support this point, with filename and a brief excerpt
+- "confidence": High/Medium/Low for pillars and signposts
+- Use the actual document filenames provided
 
 Return the updated analysis as JSON with the same structure, plus a "changes" array describing what's new or different.
 
