@@ -61,6 +61,7 @@ def init_db():
                 company_name VARCHAR(255),
                 company_overview TEXT,
                 business_model TEXT,
+                business_mix TEXT,
                 opportunities TEXT,
                 risks TEXT,
                 conclusion TEXT,
@@ -69,6 +70,17 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
+        ''')
+        
+        # Add business_mix column if it doesn't exist (migration)
+        cur.execute('''
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                              WHERE table_name='stock_overviews' AND column_name='business_mix') THEN
+                    ALTER TABLE stock_overviews ADD COLUMN business_mix TEXT;
+                END IF;
+            END $$;
         ''')
         
         # Chat Histories table
@@ -228,7 +240,7 @@ def get_overviews():
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute('''
-            SELECT ticker, company_name, company_overview, business_model, 
+            SELECT ticker, company_name, company_overview, business_model, business_mix,
                    opportunities, risks, conclusion, raw_content, history, updated_at 
             FROM stock_overviews 
             ORDER BY ticker ASC
@@ -244,6 +256,7 @@ def get_overviews():
                 'companyName': row['company_name'],
                 'companyOverview': row['company_overview'],
                 'businessModel': row['business_model'],
+                'businessMix': row.get('business_mix', ''),
                 'opportunities': row['opportunities'],
                 'risks': row['risks'],
                 'conclusion': row['conclusion'],
@@ -273,15 +286,16 @@ def save_overview():
         # Upsert
         cur.execute('''
             INSERT INTO stock_overviews (
-                ticker, company_name, company_overview, business_model,
+                ticker, company_name, company_overview, business_model, business_mix,
                 opportunities, risks, conclusion, raw_content, history, updated_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (ticker) 
             DO UPDATE SET 
                 company_name = EXCLUDED.company_name,
                 company_overview = EXCLUDED.company_overview,
                 business_model = EXCLUDED.business_model,
+                business_mix = EXCLUDED.business_mix,
                 opportunities = EXCLUDED.opportunities,
                 risks = EXCLUDED.risks,
                 conclusion = EXCLUDED.conclusion,
@@ -294,6 +308,7 @@ def save_overview():
             data.get('companyName', ''),
             data.get('companyOverview', ''),
             data.get('businessModel', ''),
+            data.get('businessMix', ''),
             data.get('opportunities', ''),
             data.get('risks', ''),
             data.get('conclusion', ''),
