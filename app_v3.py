@@ -733,6 +733,7 @@ def analyze_multi():
         documents = data.get('documents', [])
         existing_analysis = data.get('existingAnalysis')
         historical_weights = data.get('historicalWeights', [])
+        weighting_config = data.get('weightingConfig', {})
         
         if not api_key:
             return jsonify({'error': 'API key is required'}), 400
@@ -749,41 +750,71 @@ def analyze_multi():
         # Build the content array for Claude
         content = []
         
-        # Calculate total weight including both new and historical docs
-        new_doc_weight = sum(doc.get('weight', 1) for doc in enabled_docs)
-        hist_doc_weight = sum(hw.get('weight', 1) for hw in historical_weights)
-        total_weight = new_doc_weight + hist_doc_weight
+        # Check if using simple weighting mode
+        simple_mode = weighting_config.get('mode') == 'simple'
+        existing_weight = weighting_config.get('existingAnalysisWeight', 70) if simple_mode else None
+        new_docs_weight = weighting_config.get('newDocsWeight', 30) if simple_mode else None
         
-        # Add document weighting information at the start
+        # Build weighting information string
         weight_info = "DOCUMENT WEIGHTING (use these weights to prioritize information):\n\n"
         
-        # Historical documents (from existing analysis)
-        if historical_weights:
-            weight_info += "PREVIOUSLY ANALYZED DOCUMENTS (their insights are in the existing analysis):\n"
-            for hw in historical_weights:
-                hw_name = hw.get('filename', 'document')
-                hw_weight = hw.get('weight', 1)
-                hw_pct = round((hw_weight / total_weight) * 100) if total_weight > 0 else 0
-                weight_info += f"- {hw_name}: {hw_pct}% weight\n"
-            weight_info += "\n"
-        
-        # New documents being analyzed now
-        weight_info += "NEW DOCUMENTS (being analyzed now):\n"
-        for doc in enabled_docs:
-            doc_name = doc.get('filename', 'document.pdf')
-            doc_weight = doc.get('weight', 1)
-            doc_pct = round((doc_weight / total_weight) * 100) if total_weight > 0 else 0
-            weight_info += f"- {doc_name}: {doc_pct}% weight\n"
-        
-        weight_info += "\nWhen synthesizing the analysis:\n"
-        weight_info += "- Give MORE emphasis to higher-weighted documents\n"
-        weight_info += "- If updating existing analysis, respect the weights of previously analyzed documents\n"
-        weight_info += "- Higher-weighted historical docs = keep more of their conclusions in the existing analysis\n"
+        if simple_mode and existing_analysis:
+            # Simple mode: one aggregate weight for existing analysis, one for new docs
+            weight_info += f"EXISTING ANALYSIS: {existing_weight}% weight\n"
+            weight_info += "- Keep the existing thesis, signposts, and threats mostly intact\n"
+            weight_info += "- Only make minor updates based on new information\n\n"
+            
+            weight_info += f"NEW DOCUMENTS: {new_docs_weight}% weight (combined)\n"
+            for doc in enabled_docs:
+                doc_name = doc.get('filename', 'document.pdf')
+                weight_info += f"- {doc_name}\n"
+            
+            weight_info += f"\nIMPORTANT: The existing analysis should dominate ({existing_weight}%). "
+            weight_info += f"New documents ({new_docs_weight}%) should only add marginal updates, "
+            weight_info += "not fundamentally change the thesis unless there's critical new information.\n"
+        else:
+            # Advanced mode: per-document weights
+            # Calculate total weight including both new and historical docs
+            new_doc_weight = sum(doc.get('weight', 1) for doc in enabled_docs)
+            hist_doc_weight = sum(hw.get('weight', 1) for hw in historical_weights)
+            total_weight = new_doc_weight + hist_doc_weight
+            
+            # Historical documents (from existing analysis)
+            if historical_weights:
+                weight_info += "PREVIOUSLY ANALYZED DOCUMENTS (their insights are in the existing analysis):\n"
+                for hw in historical_weights:
+                    hw_name = hw.get('filename', 'document')
+                    hw_weight = hw.get('weight', 1)
+                    hw_pct = round((hw_weight / total_weight) * 100) if total_weight > 0 else 0
+                    weight_info += f"- {hw_name}: {hw_pct}% weight\n"
+                weight_info += "\n"
+            
+            # New documents being analyzed now
+            weight_info += "NEW DOCUMENTS (being analyzed now):\n"
+            for doc in enabled_docs:
+                doc_name = doc.get('filename', 'document.pdf')
+                doc_weight = doc.get('weight', 1)
+                doc_pct = round((doc_weight / total_weight) * 100) if total_weight > 0 else 0
+                weight_info += f"- {doc_name}: {doc_pct}% weight\n"
+            
+            weight_info += "\nWhen synthesizing the analysis:\n"
+            weight_info += "- Give MORE emphasis to higher-weighted documents\n"
+            weight_info += "- If updating existing analysis, respect the weights of previously analyzed documents\n"
+            weight_info += "- Higher-weighted historical docs = keep more of their conclusions in the existing analysis\n"
         
         content.append({
             "type": "text",
             "text": weight_info
         })
+        
+        # Calculate total weight for document headers (use simple mode weight or calculated weight)
+        if simple_mode and existing_analysis:
+            # In simple mode, all new docs share the new_docs_weight equally
+            per_doc_weight = new_docs_weight / len(enabled_docs) if enabled_docs else 0
+        else:
+            new_doc_weight = sum(doc.get('weight', 1) for doc in enabled_docs)
+            hist_doc_weight = sum(hw.get('weight', 1) for hw in historical_weights)
+            total_weight = new_doc_weight + hist_doc_weight
         
         # Add each document
         for doc in enabled_docs:
@@ -791,8 +822,12 @@ def analyze_multi():
             doc_name = doc.get('filename', 'document.pdf')
             doc_type = doc.get('fileType', 'pdf')
             mime_type = doc.get('mimeType', 'application/pdf')
-            doc_weight = doc.get('weight', 1)
-            doc_pct = round((doc_weight / total_weight) * 100) if total_weight > 0 else 0
+            
+            if simple_mode and existing_analysis:
+                doc_pct = round(per_doc_weight)
+            else:
+                doc_weight = doc.get('weight', 1)
+                doc_pct = round((doc_weight / total_weight) * 100) if total_weight > 0 else 0
             
             if not doc_content:
                 continue
