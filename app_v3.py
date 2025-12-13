@@ -560,19 +560,19 @@ Return a JSON object with this exact structure:
         ]
     },
     "signposts": [
-        {"signpost": "Key metric or event to watch", "target": "Target value or outcome", "timeframe": "When to expect"},
-        {"signpost": "Another signpost", "target": "Target", "timeframe": "Timeframe"}
+        {"metric": "Key metric or KPI name", "target": "Target value or outcome", "timeframe": "When to expect"},
+        {"metric": "Another metric name", "target": "Target", "timeframe": "Timeframe"}
     ],
     "threats": [
-        {"threat": "Risk factor 1", "mitigation": "How to monitor or mitigate"},
-        {"threat": "Risk factor 2", "mitigation": "How to monitor or mitigate"}
+        {"threat": "Risk factor description", "likelihood": "High/Medium/Low", "impact": "High/Medium/Low", "triggerPoints": "What to watch for - early warning signs"},
+        {"threat": "Another risk", "likelihood": "Medium", "impact": "High", "triggerPoints": "Monitoring triggers"}
     ]
 }
 
 Focus on:
 1. Why own this stock? (Investment Thesis)
-2. What are we looking for? (Signposts - specific KPIs, events, milestones)
-3. Where can we be wrong? (Threats - bear case scenarios)
+2. What are we looking for? (Signposts - specific KPIs, events, milestones with metric names)
+3. Where can we be wrong? (Threats - bear case scenarios with likelihood, impact, and trigger points)
 
 Return ONLY valid JSON, no markdown, no explanation."""
 
@@ -803,7 +803,7 @@ def send_overview_email():
 
 @app.route('/api/email-analysis', methods=['POST'])
 def send_analysis_email():
-    """Send Analysis email via SMTP"""
+    """Send Analysis email via SMTP with HTML formatting"""
     import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
@@ -812,8 +812,14 @@ def send_analysis_email():
         data = request.json
         analysis = data.get('analysis', {})
         recipient = data.get('email')
-        subject = data.get('customSubject', f"{analysis.get('ticker', 'Stock')} - Analysis")
         smtp_config = data.get('smtpConfig', {})
+        
+        ticker = analysis.get('ticker', 'Stock')
+        company = analysis.get('company', '')
+        
+        # Default subject if not provided
+        default_subject = f"{ticker} - Investment Analysis"
+        subject = data.get('customSubject') or default_subject
         
         use_gmail = smtp_config.get('use_gmail', True)
         gmail_user = smtp_config.get('gmail_user', '')
@@ -826,61 +832,88 @@ def send_analysis_email():
         if use_gmail and (not gmail_user or not gmail_password):
             return jsonify({'error': 'Gmail credentials required'}), 400
         
-        ticker = analysis.get('ticker', 'N/A')
-        company = analysis.get('company', 'N/A')
         thesis = analysis.get('thesis', {})
         signposts = analysis.get('signposts', [])
         threats = analysis.get('threats', [])
-        conclusion = analysis.get('conclusion', '')
         
-        email_body = f"""EQUITY RESEARCH SUMMARY: {ticker}
-{company}
-
-{'='*60}
-1. INVESTMENT THESIS (Why do we own the stock?)
-{'='*60}
-{thesis.get('summary', 'N/A')}
-
+        # Build HTML email
+        html_body = f"""
+<html>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 700px;">
+    <h1 style="color: #1a365d; border-bottom: 2px solid #2c5282; padding-bottom: 10px;">{ticker} - {company}</h1>
+    
+    <h2 style="color: #2c5282; margin-top: 25px;">1. Investment Thesis</h2>
+    <p style="margin-left: 20px;">{thesis.get('summary', 'N/A')}</p>
 """
+        
+        if thesis.get('pillars'):
+            html_body += '<ul style="margin-left: 20px;">'
+            for pillar in thesis['pillars']:
+                title = pillar.get('pillar', pillar.get('title', ''))
+                desc = pillar.get('detail', pillar.get('description', ''))
+                html_body += f'<li style="margin-bottom: 8px;"><strong>{title}:</strong> {desc}</li>'
+            html_body += '</ul>'
+        
+        html_body += '<h2 style="color: #2c5282; margin-top: 25px;">2. Signposts (What We\'re Watching)</h2>'
+        html_body += '<ul style="margin-left: 20px;">'
+        for sp in signposts:
+            metric = sp.get('metric', sp.get('signpost', ''))
+            target = sp.get('target', '')
+            timeframe = sp.get('timeframe', '')
+            html_body += f'<li style="margin-bottom: 8px;"><strong>{metric}:</strong> {target}'
+            if timeframe:
+                html_body += f' <em>({timeframe})</em>'
+            html_body += '</li>'
+        html_body += '</ul>'
+        
+        html_body += '<h2 style="color: #2c5282; margin-top: 25px;">3. Thesis Threats (Where We Can Be Wrong)</h2>'
+        html_body += '<ul style="margin-left: 20px;">'
+        for threat in threats:
+            threat_desc = threat.get('threat', '')
+            likelihood = threat.get('likelihood', '')
+            impact = threat.get('impact', '')
+            triggers = threat.get('triggerPoints', '')
+            html_body += f'<li style="margin-bottom: 10px;"><strong>{threat_desc}</strong>'
+            if likelihood or impact:
+                html_body += f'<br><span style="color: #666; font-size: 0.9em;">Likelihood: {likelihood} | Impact: {impact}</span>'
+            if triggers:
+                html_body += f'<br><span style="color: #666; font-size: 0.9em;">Watch for: {triggers}</span>'
+            html_body += '</li>'
+        html_body += '</ul>'
+        
+        html_body += """
+</body>
+</html>
+"""
+        
+        # Plain text version
+        plain_text = f"{ticker} - {company}\n\n"
+        plain_text += "1. INVESTMENT THESIS\n"
+        plain_text += f"{thesis.get('summary', 'N/A')}\n\n"
+        
         if thesis.get('pillars'):
             for pillar in thesis['pillars']:
-                email_body += f"* {pillar.get('pillar', pillar.get('title', ''))}: {pillar.get('detail', pillar.get('description', ''))}\n"
+                title = pillar.get('pillar', pillar.get('title', ''))
+                desc = pillar.get('detail', pillar.get('description', ''))
+                plain_text += f"  - {title}: {desc}\n"
         
-        email_body += f"""
-{'='*60}
-2. SIGNPOSTS (What are we looking for?)
-{'='*60}
-"""
+        plain_text += "\n2. SIGNPOSTS\n"
         for sp in signposts:
-            email_body += f"* {sp.get('signpost', '')}: {sp.get('target', '')}\n"
+            metric = sp.get('metric', sp.get('signpost', ''))
+            target = sp.get('target', '')
+            plain_text += f"  - {metric}: {target}\n"
         
-        email_body += f"""
-{'='*60}
-3. THESIS THREATS (Where can we be wrong?)
-{'='*60}
-"""
+        plain_text += "\n3. THESIS THREATS\n"
         for threat in threats:
-            email_body += f"* {threat.get('threat', '')}\n"
+            plain_text += f"  - {threat.get('threat', '')}\n"
         
-        if conclusion:
-            email_body += f"""
-{'='*60}
-4. CONCLUSION
-{'='*60}
-{conclusion}
-"""
-        
-        email_body += f"""
----
-Generated by TDL Equity Analyzer
-{datetime.now().strftime('%Y-%m-%d %H:%M')}
-"""
-        
-        msg = MIMEMultipart()
+        msg = MIMEMultipart('alternative')
         msg['From'] = from_email
         msg['To'] = recipient
         msg['Subject'] = subject
-        msg.attach(MIMEText(email_body, 'plain'))
+        
+        msg.attach(MIMEText(plain_text, 'plain'))
+        msg.attach(MIMEText(html_body, 'html'))
         
         if use_gmail:
             with smtplib.SMTP('smtp.gmail.com', 587) as server:
