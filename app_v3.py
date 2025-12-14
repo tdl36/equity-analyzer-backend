@@ -756,23 +756,40 @@ def analyze_multi():
         new_docs_weight = weighting_config.get('newDocsWeight', 30) if simple_mode else None
         
         # Build weighting information string
-        weight_info = "DOCUMENT WEIGHTING (use these weights to prioritize information):\n\n"
+        weight_info = ""
         
         if simple_mode and existing_analysis:
-            # Simple mode: one aggregate weight for existing analysis, one for new docs
-            weight_info += f"EXISTING ANALYSIS: {existing_weight}% weight\n"
-            weight_info += "- Keep the existing thesis, signposts, and threats mostly intact\n"
-            weight_info += "- Only make minor updates based on new information\n\n"
-            
-            weight_info += f"NEW DOCUMENTS: {new_docs_weight}% weight (combined)\n"
+            # Simple mode: clear instruction about preservation vs updates
+            weight_info = f"""=== ANALYSIS UPDATE MODE: SIMPLE WEIGHTING ===
+
+PRESERVATION RATIO: {existing_weight}% existing / {new_docs_weight}% new
+
+This means:
+- PRESERVE {existing_weight}% of the existing thesis, pillars, signposts, and threats
+- Allow only {new_docs_weight}% worth of modifications from the new document(s)
+- The new document is SUPPLEMENTARY, not a replacement
+
+New document(s) being added:
+"""
             for doc in enabled_docs:
                 doc_name = doc.get('filename', 'document.pdf')
                 weight_info += f"- {doc_name}\n"
             
-            weight_info += f"\nIMPORTANT: The existing analysis should dominate ({existing_weight}%). "
-            weight_info += f"New documents ({new_docs_weight}%) should only add marginal updates, "
-            weight_info += "not fundamentally change the thesis unless there's critical new information.\n"
-        else:
+            weight_info += f"""
+Remember: With {existing_weight}% preservation, you should keep most existing content intact.
+Only add minor refinements, new data points, or small additions from the new document.
+Do NOT rewrite or fundamentally change the existing analysis.
+
+"""
+        elif simple_mode and not existing_analysis:
+            # Simple mode but new analysis - just list documents
+            weight_info = "DOCUMENT WEIGHTING:\n\n"
+            weight_info += "NEW DOCUMENTS (being analyzed now):\n"
+            for doc in enabled_docs:
+                doc_name = doc.get('filename', 'document.pdf')
+                weight_info += f"- {doc_name}\n"
+            weight_info += "\n"
+        elif not simple_mode:
             # Advanced mode: per-document weights
             # Calculate total weight including both new and historical docs
             new_doc_weight = sum(doc.get('weight', 1) for doc in enabled_docs)
@@ -825,9 +842,12 @@ def analyze_multi():
             
             if simple_mode and existing_analysis:
                 doc_pct = round(per_doc_weight)
+                # In simple mode, label as supplementary to reinforce it's not primary
+                doc_header = f"\n=== NEW DOCUMENT (Supplementary - {doc_pct}% update weight): {doc_name} ==="
             else:
                 doc_weight = doc.get('weight', 1)
                 doc_pct = round((doc_weight / total_weight) * 100) if total_weight > 0 else 0
+                doc_header = f"\n=== DOCUMENT: {doc_name} (Weight: {doc_pct}%) ==="
             
             if not doc_content:
                 continue
@@ -835,7 +855,7 @@ def analyze_multi():
             # Add document header with weight
             content.append({
                 "type": "text",
-                "text": f"\n=== DOCUMENT: {doc_name} (Weight: {doc_pct}%) ==="
+                "text": doc_header
             })
                 
             if doc_type == 'pdf':
@@ -974,16 +994,47 @@ For each pillar, signpost, and threat, include:
 Return ONLY valid JSON, no markdown, no explanation."""
 
         if existing_analysis:
+            # Build weighting instruction specific to the mode
+            if simple_mode:
+                weighting_instruction = f"""
+CRITICAL WEIGHTING INSTRUCTION (SIMPLE MODE):
+You MUST preserve {existing_weight}% of the existing analysis. The new documents can only contribute {new_docs_weight}% worth of changes.
+
+What this means:
+- KEEP {existing_weight}% of the existing thesis, pillars, signposts, and threats UNCHANGED
+- Only make MINOR refinements or additions based on the new document(s)
+- Do NOT fundamentally rewrite or replace the existing analysis
+- Do NOT treat the new document as a "primary source" - it is a SUPPLEMENTARY source
+- The new document should ADD to or SLIGHTLY REFINE the existing analysis, not replace it
+
+Example of correct behavior with {existing_weight}% existing / {new_docs_weight}% new:
+- If existing thesis has 3 pillars, keep all 3, maybe slightly update wording or add a 4th minor pillar
+- If existing has 5 signposts, keep them mostly intact, maybe add 1-2 new ones or update targets slightly
+- Do NOT remove or majorly rewrite existing content unless it's factually contradicted
+
+In the "changes" array, describe what minor updates were made, NOT that you've rewritten the analysis.
+"""
+            else:
+                weighting_instruction = """
+DOCUMENT WEIGHTING:
+- Each document has an assigned weight percentage shown at the start
+- Give MORE emphasis to higher-weighted documents when forming conclusions
+- Higher-weighted documents should have more influence on the thesis, signposts, and threats
+- If documents conflict, prefer the view from the higher-weighted document
+"""
+            
             analysis_prompt = f"""Update this existing analysis with new information from the documents.
 
 Existing Analysis:
 {json.dumps(existing_analysis, indent=2)}
 
+{weighting_instruction}
+
 Review the new documents and:
-1. Update or confirm the investment thesis
+1. Update or confirm the investment thesis (respecting the weighting above)
 2. Add any new signposts or update existing ones
 3. Add any new threats or update existing ones
-4. Note what has changed
+4. Note what has changed in the "changes" array
 5. Update sources for each point based on all documents analyzed
 6. Extract metadata for ALL documents (both new and from existing analysis)
 
@@ -1007,18 +1058,12 @@ IMPORTANT STYLE RULES:
 - Write as independent analysis that synthesizes the information without attribution to sources in the prose
 - The output should read like original independent research, not a summary of broker views
 
-DOCUMENT WEIGHTING:
-- Each document has an assigned weight percentage shown at the start
-- Give MORE emphasis to higher-weighted documents when forming conclusions
-- Higher-weighted documents should have more influence on the thesis, signposts, and threats
-- If documents conflict, prefer the view from the higher-weighted document
-
 For each pillar, signpost, and threat, include:
 - "sources": Array of source documents that support this point, with filename and a brief excerpt
 - "confidence": High/Medium/Low for pillars and signposts
 - Use the actual document filenames provided
 
-Return the updated analysis as JSON with the same structure (including "documentMetadata" array), plus a "changes" array describing what's new or different.
+Return the updated analysis as JSON with the same structure (including "documentMetadata" array), plus a "changes" array describing what minor updates were made.
 
 Return ONLY valid JSON, no markdown, no explanation."""
 
