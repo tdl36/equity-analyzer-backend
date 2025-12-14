@@ -890,8 +890,64 @@ Return a JSON object with this exact structure:
     "threats": [
         {"threat": "Risk factor description", "likelihood": "High/Medium/Low", "impact": "High/Medium/Low", "triggerPoints": "What to watch for - early warning signs", "sources": [{"filename": "Document name", "excerpt": "Brief supporting quote"}]},
         {"threat": "Another risk", "likelihood": "Medium", "impact": "High", "triggerPoints": "Monitoring triggers", "sources": [{"filename": "Document name", "excerpt": "Brief supporting quote"}]}
+    ],
+    "documentMetadata": [
+        {"filename": "exact_filename.pdf", "docType": "broker_report", "source": "Citi", "publishDate": "YYYY-MM-DD", "authors": ["Analyst Name"], "title": "Report Title"},
+        {"filename": "transcript.pdf", "docType": "earnings_call", "source": "Company Name", "publishDate": "YYYY-MM-DD", "quarter": "Q3 2025", "title": "Q3 2025 Earnings Call"},
+        {"filename": "email_screenshot.png", "docType": "email", "source": "Sender Name/Org", "publishDate": "YYYY-MM-DD", "title": "Email Subject"}
     ]
 }
+
+DOCUMENT METADATA EXTRACTION (CRITICAL):
+For EACH document provided, identify the document type and extract appropriate metadata:
+
+**For Broker Reports:**
+- "docType": "broker_report"
+- "source": Investment bank/broker name (e.g., "Citi", "Morgan Stanley", "Goldman Sachs", "Wolfe Research")
+- "publishDate": Report date in YYYY-MM-DD format
+- "authors": Array of analyst names
+- "title": Report title/headline
+
+**For Earnings Call Transcripts:**
+- "docType": "earnings_call"  
+- "source": Company name (e.g., "Union Pacific", "Apple Inc.")
+- "publishDate": Call date in YYYY-MM-DD format
+- "quarter": Fiscal quarter (e.g., "Q3 2025", "FY 2025")
+- "title": e.g., "Q3 2025 Earnings Call Transcript"
+
+**For SEC Filings (10-K, 10-Q, 8-K):**
+- "docType": "sec_filing"
+- "source": Company name
+- "publishDate": Filing date in YYYY-MM-DD format
+- "filingType": "10-K", "10-Q", "8-K", etc.
+- "title": Filing description
+
+**For Emails/Email Screenshots:**
+- "docType": "email"
+- "source": Sender name or organization
+- "publishDate": Email date in YYYY-MM-DD format
+- "title": Email subject line if visible
+
+**For Company Presentations:**
+- "docType": "presentation"
+- "source": Company name or presenting organization
+- "publishDate": Presentation date in YYYY-MM-DD format
+- "title": Presentation title
+
+**For News Articles:**
+- "docType": "news"
+- "source": Publication name (e.g., "Wall Street Journal", "Reuters")
+- "publishDate": Article date in YYYY-MM-DD format
+- "authors": Array of journalist names if visible
+- "title": Article headline
+
+**For Screenshots/Images (if content type unclear):**
+- "docType": "screenshot"
+- "source": Infer source if visible in image
+- "publishDate": Infer date if visible, otherwise null
+- "title": Brief description of content
+
+Always include "filename" with the exact filename provided.
 
 IMPORTANT STYLE RULES:
 - Do NOT reference any sellside broker names (e.g., "Goldman Sachs believes...", "According to Morgan Stanley...")
@@ -929,6 +985,20 @@ Review the new documents and:
 3. Add any new threats or update existing ones
 4. Note what has changed
 5. Update sources for each point based on all documents analyzed
+6. Extract metadata for ALL documents (both new and from existing analysis)
+
+DOCUMENT METADATA EXTRACTION (CRITICAL):
+For EACH document (new AND previously analyzed), identify the document type and extract appropriate metadata:
+
+**For Broker Reports:** docType="broker_report", source=Broker name, publishDate, authors=Analyst names, title
+**For Earnings Calls:** docType="earnings_call", source=Company name, publishDate, quarter, title
+**For SEC Filings:** docType="sec_filing", source=Company, publishDate, filingType, title
+**For Emails:** docType="email", source=Sender, publishDate, title=Subject
+**For Presentations:** docType="presentation", source=Company/Org, publishDate, title
+**For News:** docType="news", source=Publication, publishDate, authors, title
+**For Screenshots:** docType="screenshot", source=Inferred source, publishDate=if visible, title=description
+
+For previously analyzed documents in the existing analysis, use the filenames from documentHistory and extract what metadata you can infer from the existing analysis context.
 
 IMPORTANT STYLE RULES:
 - Do NOT reference any sellside broker names (e.g., "Goldman Sachs believes...", "According to Morgan Stanley...")
@@ -948,7 +1018,7 @@ For each pillar, signpost, and threat, include:
 - "confidence": High/Medium/Low for pillars and signposts
 - Use the actual document filenames provided
 
-Return the updated analysis as JSON with the same structure, plus a "changes" array describing what's new or different.
+Return the updated analysis as JSON with the same structure (including "documentMetadata" array), plus a "changes" array describing what's new or different.
 
 Return ONLY valid JSON, no markdown, no explanation."""
 
@@ -994,10 +1064,12 @@ Return ONLY valid JSON, no markdown, no explanation."""
             
             analysis = json.loads(cleaned)
             changes = analysis.pop('changes', [])
+            document_metadata = analysis.pop('documentMetadata', [])
             
             return jsonify({
                 'analysis': analysis,
                 'changes': changes,
+                'documentMetadata': document_metadata,
                 'usage': result.get('usage', {})
             })
             
