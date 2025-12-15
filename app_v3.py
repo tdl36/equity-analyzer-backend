@@ -12,6 +12,7 @@ import base64
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime
+import anthropic
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
@@ -1824,6 +1825,89 @@ def send_analysis_email():
     except smtplib.SMTPException as e:
         return jsonify({'error': f'SMTP error: {str(e)}'}), 500
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================
+# RESEARCH ANALYSIS ENDPOINT
+# ============================================
+
+@app.route('/api/research-analyze', methods=['POST'])
+def research_analyze():
+    """
+    Deep analysis of sell-side research using customizable prompt frameworks.
+    Calls Anthropic API directly for better control and reliability.
+    
+    Request body:
+    {
+        "text": "Full prompt with document content",
+        "promptId": "executive-brief",
+        "promptName": "Executive Brief",
+        "apiKey": "sk-ant-..." (from user's Settings)
+    }
+    """
+    try:
+        data = request.json
+        text = data.get('text', '')
+        prompt_id = data.get('promptId', '')
+        prompt_name = data.get('promptName', '')
+        api_key = data.get('apiKey', '')
+        
+        if not text:
+            return jsonify({'error': 'No text provided'}), 400
+        
+        # Get API key - from request or fallback to environment
+        if not api_key:
+            api_key = os.environ.get('ANTHROPIC_API_KEY', '')
+        
+        if not api_key:
+            return jsonify({'error': 'No API key provided. Please add your API key in Settings.'}), 400
+        
+        # Initialize Anthropic client
+        client = anthropic.Anthropic(api_key=api_key)
+        
+        # Call Claude API
+        message = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=4096,
+            messages=[
+                {
+                    "role": "user",
+                    "content": text
+                }
+            ]
+        )
+        
+        # Extract response text
+        result_text = ""
+        for block in message.content:
+            if hasattr(block, 'text'):
+                result_text += block.text
+        
+        return jsonify({
+            'result': result_text,
+            'promptId': prompt_id,
+            'promptName': prompt_name,
+            'usage': {
+                'input_tokens': message.usage.input_tokens,
+                'output_tokens': message.usage.output_tokens
+            }
+        })
+        
+    except anthropic.APIConnectionError as e:
+        print(f"API Connection Error: {e}")
+        return jsonify({'error': 'Failed to connect to Anthropic API. Check your internet connection.'}), 503
+    except anthropic.RateLimitError as e:
+        print(f"Rate Limit Error: {e}")
+        return jsonify({'error': 'Rate limit exceeded. Please wait a moment and try again.'}), 429
+    except anthropic.AuthenticationError as e:
+        print(f"Auth Error: {e}")
+        return jsonify({'error': 'Invalid API key. Please check your API key in Settings.'}), 401
+    except anthropic.APIStatusError as e:
+        print(f"API Status Error: {e}")
+        return jsonify({'error': f'API error: {e.message}'}), e.status_code
+    except Exception as e:
+        print(f"Research analysis error: {e}")
         return jsonify({'error': str(e)}), 500
 
 
