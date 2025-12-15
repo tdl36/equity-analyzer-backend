@@ -150,6 +150,24 @@ def init_db():
             )
         ''')
         
+        # Research Results table - stores deep analysis results
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS research_results (
+                id VARCHAR(100) PRIMARY KEY,
+                prompt_id VARCHAR(100),
+                prompt_name VARCHAR(255),
+                prompt_icon VARCHAR(10),
+                input_preview TEXT,
+                result TEXT,
+                ticker VARCHAR(20),
+                topic VARCHAR(255),
+                file_names JSONB DEFAULT '[]',
+                usage JSONB DEFAULT '{}',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
         # Create index for faster lookups
         cur.execute('''
             CREATE INDEX IF NOT EXISTS idx_document_files_ticker 
@@ -1955,6 +1973,219 @@ def research_analyze():
         return jsonify({'error': f'API error: {e.message}'}), e.status_code
     except Exception as e:
         print(f"Research analysis error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================
+# RESEARCH RESULTS ENDPOINTS
+# ============================================
+
+@app.route('/api/research-results', methods=['GET'])
+def get_research_results():
+    """Get all research results"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('''
+            SELECT id, prompt_id, prompt_name, prompt_icon, input_preview, 
+                   result, ticker, topic, file_names, usage, created_at, updated_at
+            FROM research_results 
+            ORDER BY updated_at DESC
+        ''')
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        results = []
+        for row in rows:
+            results.append({
+                'id': row['id'],
+                'promptId': row['prompt_id'],
+                'promptName': row['prompt_name'],
+                'promptIcon': row['prompt_icon'],
+                'inputPreview': row['input_preview'],
+                'result': row['result'],
+                'ticker': row['ticker'],
+                'topic': row['topic'],
+                'fileNames': row['file_names'] or [],
+                'usage': row['usage'],
+                'timestamp': row['created_at'].isoformat() if row['created_at'] else None
+            })
+        
+        return jsonify(results)
+    except Exception as e:
+        print(f"Error getting research results: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/save-research', methods=['POST'])
+def save_research():
+    """Save or update a research result"""
+    try:
+        data = request.json
+        result_id = data.get('id', '')
+        
+        if not result_id:
+            return jsonify({'error': 'Result ID is required'}), 400
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        cur.execute('''
+            INSERT INTO research_results (id, prompt_id, prompt_name, prompt_icon, input_preview, 
+                                          result, ticker, topic, file_names, usage, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (id) 
+            DO UPDATE SET 
+                result = EXCLUDED.result,
+                ticker = EXCLUDED.ticker,
+                topic = EXCLUDED.topic,
+                updated_at = EXCLUDED.updated_at
+            RETURNING id
+        ''', (
+            result_id,
+            data.get('promptId', ''),
+            data.get('promptName', ''),
+            data.get('promptIcon', ''),
+            data.get('inputPreview', ''),
+            data.get('result', ''),
+            data.get('ticker'),
+            data.get('topic'),
+            json.dumps(data.get('fileNames', [])),
+            json.dumps(data.get('usage', {})),
+            datetime.utcnow()
+        ))
+        
+        result = cur.fetchone()
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({'success': True, 'id': result['id']})
+    except Exception as e:
+        print(f"Error saving research: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/delete-research', methods=['POST'])
+def delete_research():
+    """Delete a research result"""
+    try:
+        data = request.json
+        result_id = data.get('id', '')
+        
+        if not result_id:
+            return jsonify({'error': 'Result ID is required'}), 400
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('DELETE FROM research_results WHERE id = %s', (result_id,))
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error deleting research: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/email-research', methods=['POST'])
+def email_research():
+    """Email a research result"""
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    import markdown
+    
+    try:
+        data = request.json
+        recipient = data.get('email', '')
+        subject = data.get('subject', 'Research Analysis')
+        content = data.get('content', '')
+        prompt_name = data.get('promptName', '')
+        ticker = data.get('ticker', '')
+        topic = data.get('topic', '')
+        smtp_config = data.get('smtpConfig', {})
+        
+        if not recipient:
+            return jsonify({'error': 'Recipient email is required'}), 400
+        
+        # Build HTML email
+        header_info = []
+        if ticker:
+            header_info.append(f"<strong>Ticker:</strong> {ticker}")
+        if topic:
+            header_info.append(f"<strong>Topic:</strong> {topic}")
+        if prompt_name:
+            header_info.append(f"<strong>Framework:</strong> {prompt_name}")
+        
+        header_html = " | ".join(header_info) if header_info else ""
+        
+        # Convert markdown to HTML
+        try:
+            content_html = markdown.markdown(content, extensions=['tables', 'fenced_code'])
+        except:
+            content_html = f"<pre style='white-space: pre-wrap;'>{content}</pre>"
+        
+        html_body = f"""
+        <html>
+        <head>
+            <style>
+                body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; }}
+                h1, h2, h3 {{ color: #1a1a2e; }}
+                .header {{ background: linear-gradient(135deg, #0f172a, #1e293b); color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; }}
+                .header h1 {{ margin: 0 0 10px 0; color: white; }}
+                .header-meta {{ font-size: 14px; opacity: 0.9; }}
+                .content {{ background: #f8fafc; padding: 20px; border-radius: 10px; border: 1px solid #e2e8f0; }}
+                table {{ border-collapse: collapse; width: 100%; margin: 15px 0; }}
+                th, td {{ border: 1px solid #e2e8f0; padding: 10px; text-align: left; }}
+                th {{ background: #f1f5f9; }}
+                code {{ background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 14px; }}
+                pre {{ background: #1e293b; color: #e2e8f0; padding: 15px; border-radius: 8px; overflow-x: auto; }}
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>📊 Research Analysis</h1>
+                <div class="header-meta">{header_html}</div>
+            </div>
+            <div class="content">
+                {content_html}
+            </div>
+            <p style="color: #64748b; font-size: 12px; margin-top: 30px; text-align: center;">
+                Generated by Charlie - Equity Analyzer
+            </p>
+        </body>
+        </html>
+        """
+        
+        # Send email
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = subject
+        msg['To'] = recipient
+        
+        # Plain text version
+        msg.attach(MIMEText(content, 'plain'))
+        # HTML version
+        msg.attach(MIMEText(html_body, 'html'))
+        
+        if smtp_config.get('use_gmail') and smtp_config.get('gmail_user') and smtp_config.get('gmail_app_password'):
+            msg['From'] = smtp_config['gmail_user']
+            with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+                server.login(smtp_config['gmail_user'], smtp_config['gmail_app_password'])
+                server.send_message(msg)
+        else:
+            return jsonify({'error': 'Email not configured. Please set up Gmail in Settings.'}), 400
+        
+        return jsonify({'success': True, 'message': 'Research email sent successfully'})
+        
+    except smtplib.SMTPAuthenticationError:
+        return jsonify({'error': 'Gmail authentication failed. Check your email and app password.'}), 401
+    except smtplib.SMTPException as e:
+        return jsonify({'error': f'SMTP error: {str(e)}'}), 500
+    except Exception as e:
+        print(f"Error sending research email: {e}")
         return jsonify({'error': str(e)}), 500
 
 
