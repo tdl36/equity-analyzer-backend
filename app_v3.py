@@ -102,8 +102,25 @@ def init_db():
                 raw_notes TEXT,
                 summary TEXT,
                 questions TEXT,
+                topic VARCHAR(100) DEFAULT 'General',
+                topic_type VARCHAR(20) DEFAULT 'other',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
+        ''')
+        
+        # Add topic columns if they don't exist (migration)
+        cur.execute('''
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                              WHERE table_name='meeting_summaries' AND column_name='topic') THEN
+                    ALTER TABLE meeting_summaries ADD COLUMN topic VARCHAR(100) DEFAULT 'General';
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                              WHERE table_name='meeting_summaries' AND column_name='topic_type') THEN
+                    ALTER TABLE meeting_summaries ADD COLUMN topic_type VARCHAR(20) DEFAULT 'other';
+                END IF;
+            END $$;
         ''')
         
         # Document Files table - stores actual document content for re-analysis
@@ -490,7 +507,7 @@ def get_summaries():
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute('''
-            SELECT id, title, raw_notes, summary, questions, created_at 
+            SELECT id, title, raw_notes, summary, questions, topic, topic_type, created_at 
             FROM meeting_summaries 
             ORDER BY created_at DESC
         ''')
@@ -506,6 +523,8 @@ def get_summaries():
                 'rawNotes': row['raw_notes'],
                 'summary': row['summary'],
                 'questions': row['questions'],
+                'topic': row.get('topic') or 'General',
+                'topicType': row.get('topic_type') or 'other',
                 'createdAt': row['created_at'].isoformat() if row['created_at'] else None
             })
         
@@ -528,14 +547,16 @@ def save_summary():
         cur = conn.cursor()
         
         cur.execute('''
-            INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, topic, topic_type, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (id) 
             DO UPDATE SET 
                 title = EXCLUDED.title,
                 raw_notes = EXCLUDED.raw_notes,
                 summary = EXCLUDED.summary,
-                questions = EXCLUDED.questions
+                questions = EXCLUDED.questions,
+                topic = EXCLUDED.topic,
+                topic_type = EXCLUDED.topic_type
             RETURNING id
         ''', (
             summary_id,
@@ -543,6 +564,8 @@ def save_summary():
             data.get('rawNotes', ''),
             data.get('summary', ''),
             data.get('questions', ''),
+            data.get('topic', 'General'),
+            data.get('topicType', 'other'),
             data.get('createdAt', datetime.utcnow().isoformat())
         ))
         
@@ -576,6 +599,152 @@ def delete_summary():
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error deleting summary: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/email-summary-section', methods=['POST'])
+def email_summary_section():
+    """Email a specific section of a summary (takeaways or questions)"""
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    import re
+    
+    try:
+        data = request.json
+        email = data.get('email', '')
+        subject = data.get('subject', 'Summary Notes')
+        section = data.get('section', '')  # 'takeaways' or 'questions'
+        content = data.get('content', '')
+        title = data.get('title', 'Meeting Summary')
+        topic = data.get('topic', 'General')
+        smtp_config = data.get('smtpConfig', {})
+        
+        if not email or not content:
+            return jsonify({'error': 'Email and content are required'}), 400
+        
+        # Get SMTP configuration
+        use_gmail = smtp_config.get('use_gmail', True)
+        gmail_user = smtp_config.get('gmail_user', '')
+        gmail_password = smtp_config.get('gmail_app_password', '')
+        from_email = smtp_config.get('from_email', gmail_user)
+        
+        if use_gmail and (not gmail_user or not gmail_password):
+            return jsonify({'error': 'Gmail credentials required. Please set them in Settings.'}), 400
+        
+        # Convert HTML to plain text
+        plain_text = re.sub(r'<[^>]+>', '', content)
+        plain_text = plain_text.replace('&nbsp;', ' ').replace('&amp;', '&')
+        
+        # Format the section label
+        section_label = "Key Takeaways" if section == 'takeaways' else "Follow-up Questions"
+        header_color = "#0d9488" if section == 'takeaways' else "#d97706"
+        
+        # Build HTML email
+        html_content = f"""
+        <html>
+        <head>
+            <style>
+                body {{
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    line-height: 1.6;
+                    color: #333;
+                    max-width: 800px;
+                    margin: 0 auto;
+                    padding: 20px;
+                }}
+                h1 {{
+                    color: {header_color};
+                    border-bottom: 2px solid {header_color};
+                    padding-bottom: 10px;
+                }}
+                h2 {{
+                    color: #374151;
+                    margin-top: 24px;
+                }}
+                h3 {{
+                    color: #4b5563;
+                }}
+                ul, ol {{
+                    padding-left: 24px;
+                }}
+                li {{
+                    margin-bottom: 8px;
+                }}
+                strong {{
+                    color: #111;
+                }}
+                .header {{
+                    background: linear-gradient(135deg, {header_color} 0%, {'#0891b2' if section == 'takeaways' else '#ea580c'} 100%);
+                    color: white;
+                    padding: 20px;
+                    border-radius: 8px;
+                    margin-bottom: 24px;
+                }}
+                .topic-badge {{
+                    display: inline-block;
+                    background: rgba(255,255,255,0.2);
+                    padding: 4px 12px;
+                    border-radius: 12px;
+                    font-size: 12px;
+                    margin-top: 8px;
+                }}
+                .content {{
+                    background: #f9fafb;
+                    padding: 24px;
+                    border-radius: 8px;
+                    border: 1px solid #e5e7eb;
+                }}
+                .footer {{
+                    margin-top: 24px;
+                    padding-top: 16px;
+                    border-top: 1px solid #e5e7eb;
+                    font-size: 12px;
+                    color: #6b7280;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1 style="color: white; border: none; margin: 0;">{section_label}</h1>
+                <p style="margin: 8px 0 0 0; opacity: 0.9;">{title}</p>
+                <span class="topic-badge">{topic}</span>
+            </div>
+            <div class="content">
+                {content}
+            </div>
+            <div class="footer">
+                Generated by TDL Equity Analyzer
+            </div>
+        </body>
+        </html>
+        """
+        
+        # Create email message
+        msg = MIMEMultipart('alternative')
+        msg['From'] = from_email
+        msg['To'] = email
+        msg['Subject'] = subject
+        
+        # Attach both plain text and HTML versions
+        msg.attach(MIMEText(plain_text, 'plain'))
+        msg.attach(MIMEText(html_content, 'html'))
+        
+        # Send via Gmail SMTP
+        if use_gmail:
+            with smtplib.SMTP('smtp.gmail.com', 587) as server:
+                server.starttls()
+                server.login(gmail_user, gmail_password)
+                server.send_message(msg)
+        
+        return jsonify({'success': True, 'message': 'Email sent successfully'})
+        
+    except smtplib.SMTPAuthenticationError:
+        return jsonify({'error': 'Gmail authentication failed. Check your email and app password.'}), 401
+    except smtplib.SMTPException as e:
+        return jsonify({'error': f'SMTP error: {str(e)}'}), 500
+    except Exception as e:
+        print(f"Error sending summary email: {e}")
         return jsonify({'error': str(e)}), 500
 
 
