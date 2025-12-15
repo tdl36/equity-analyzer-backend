@@ -1829,6 +1829,53 @@ def send_analysis_email():
 
 
 # ============================================
+# PDF EXTRACTION ENDPOINT
+# ============================================
+
+@app.route('/api/extract-pdf', methods=['POST'])
+def extract_pdf():
+    """
+    Extract text from uploaded PDF file.
+    Used by Research tab for document analysis.
+    """
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        # Read PDF and extract text
+        from PyPDF2 import PdfReader
+        import io
+        
+        pdf_bytes = file.read()
+        pdf_reader = PdfReader(io.BytesIO(pdf_bytes))
+        
+        text_content = []
+        for page in pdf_reader.pages:
+            page_text = page.extract_text()
+            if page_text:
+                text_content.append(page_text)
+        
+        full_text = '\n\n'.join(text_content)
+        
+        if not full_text.strip():
+            return jsonify({'error': 'Could not extract text from PDF. It may be scanned/image-based.'}), 400
+        
+        return jsonify({
+            'text': full_text,
+            'pages': len(pdf_reader.pages),
+            'filename': file.filename
+        })
+        
+    except Exception as e:
+        print(f"PDF extraction error: {e}")
+        return jsonify({'error': f'Failed to extract PDF: {str(e)}'}), 500
+
+
+# ============================================
 # RESEARCH ANALYSIS ENDPOINT
 # ============================================
 
