@@ -94,6 +94,18 @@ def init_db():
             )
         ''')
         
+        # Meeting Summaries table
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS meeting_summaries (
+                id VARCHAR(100) PRIMARY KEY,
+                title VARCHAR(255),
+                raw_notes TEXT,
+                summary TEXT,
+                questions TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
         # Document Files table - stores actual document content for re-analysis
         cur.execute('''
             CREATE TABLE IF NOT EXISTS document_files (
@@ -464,6 +476,106 @@ def delete_chat():
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error deleting chat: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================
+# MEETING SUMMARY ENDPOINTS
+# ============================================
+
+@app.route('/api/summaries', methods=['GET'])
+def get_summaries():
+    """Get all meeting summaries"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('''
+            SELECT id, title, raw_notes, summary, questions, created_at 
+            FROM meeting_summaries 
+            ORDER BY created_at DESC
+        ''')
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        result = []
+        for row in rows:
+            result.append({
+                'id': row['id'],
+                'title': row['title'],
+                'rawNotes': row['raw_notes'],
+                'summary': row['summary'],
+                'questions': row['questions'],
+                'createdAt': row['created_at'].isoformat() if row['created_at'] else None
+            })
+        
+        return jsonify(result)
+    except Exception as e:
+        print(f"Error getting summaries: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/save-summary', methods=['POST'])
+def save_summary():
+    """Save or update a meeting summary"""
+    try:
+        data = request.json
+        summary_id = data.get('id', '')
+        
+        if not summary_id:
+            return jsonify({'error': 'Summary ID is required'}), 400
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        cur.execute('''
+            INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (id) 
+            DO UPDATE SET 
+                title = EXCLUDED.title,
+                raw_notes = EXCLUDED.raw_notes,
+                summary = EXCLUDED.summary,
+                questions = EXCLUDED.questions
+            RETURNING id
+        ''', (
+            summary_id,
+            data.get('title', 'Meeting Summary'),
+            data.get('rawNotes', ''),
+            data.get('summary', ''),
+            data.get('questions', ''),
+            data.get('createdAt', datetime.utcnow().isoformat())
+        ))
+        
+        result = cur.fetchone()
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({'success': True, 'id': result['id']})
+    except Exception as e:
+        print(f"Error saving summary: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/delete-summary', methods=['POST'])
+def delete_summary():
+    """Delete a meeting summary"""
+    try:
+        data = request.json
+        summary_id = data.get('id', '')
+        
+        if not summary_id:
+            return jsonify({'error': 'Summary ID is required'}), 400
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('DELETE FROM meeting_summaries WHERE id = %s', (summary_id,))
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error deleting summary: {e}")
         return jsonify({'error': str(e)}), 500
 
 
