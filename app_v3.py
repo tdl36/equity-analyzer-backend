@@ -104,11 +104,13 @@ def init_db():
                 questions TEXT,
                 topic VARCHAR(100) DEFAULT 'General',
                 topic_type VARCHAR(20) DEFAULT 'other',
+                source_type VARCHAR(20) DEFAULT 'paste',
+                source_files JSONB DEFAULT '[]',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
-        # Add topic columns if they don't exist (migration)
+        # Add columns if they don't exist (migration)
         cur.execute('''
             DO $$ 
             BEGIN 
@@ -119,6 +121,14 @@ def init_db():
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
                               WHERE table_name='meeting_summaries' AND column_name='topic_type') THEN
                     ALTER TABLE meeting_summaries ADD COLUMN topic_type VARCHAR(20) DEFAULT 'other';
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                              WHERE table_name='meeting_summaries' AND column_name='source_type') THEN
+                    ALTER TABLE meeting_summaries ADD COLUMN source_type VARCHAR(20) DEFAULT 'paste';
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                              WHERE table_name='meeting_summaries' AND column_name='source_files') THEN
+                    ALTER TABLE meeting_summaries ADD COLUMN source_files JSONB DEFAULT '[]';
                 END IF;
             END $$;
         ''')
@@ -507,7 +517,7 @@ def get_summaries():
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute('''
-            SELECT id, title, raw_notes, summary, questions, topic, topic_type, created_at 
+            SELECT id, title, raw_notes, summary, questions, topic, topic_type, source_type, source_files, created_at 
             FROM meeting_summaries 
             ORDER BY created_at DESC
         ''')
@@ -525,6 +535,8 @@ def get_summaries():
                 'questions': row['questions'],
                 'topic': row.get('topic') or 'General',
                 'topicType': row.get('topic_type') or 'other',
+                'sourceType': row.get('source_type') or 'paste',
+                'sourceFiles': row.get('source_files') or [],
                 'createdAt': row['created_at'].isoformat() if row['created_at'] else None
             })
         
@@ -543,12 +555,17 @@ def save_summary():
         if not summary_id:
             return jsonify({'error': 'Summary ID is required'}), 400
         
+        # Convert sourceFiles list to JSON
+        source_files = data.get('sourceFiles', [])
+        if isinstance(source_files, list):
+            source_files = json.dumps(source_files)
+        
         conn = get_db_connection()
         cur = conn.cursor()
         
         cur.execute('''
-            INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, topic, topic_type, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, topic, topic_type, source_type, source_files, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (id) 
             DO UPDATE SET 
                 title = EXCLUDED.title,
@@ -556,7 +573,9 @@ def save_summary():
                 summary = EXCLUDED.summary,
                 questions = EXCLUDED.questions,
                 topic = EXCLUDED.topic,
-                topic_type = EXCLUDED.topic_type
+                topic_type = EXCLUDED.topic_type,
+                source_type = EXCLUDED.source_type,
+                source_files = EXCLUDED.source_files
             RETURNING id
         ''', (
             summary_id,
@@ -566,6 +585,8 @@ def save_summary():
             data.get('questions', ''),
             data.get('topic', 'General'),
             data.get('topicType', 'other'),
+            data.get('sourceType', 'paste'),
+            source_files,
             data.get('createdAt', datetime.utcnow().isoformat())
         ))
         
@@ -745,6 +766,123 @@ def email_summary_section():
         return jsonify({'error': f'SMTP error: {str(e)}'}), 500
     except Exception as e:
         print(f"Error sending summary email: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/extract-summary-text', methods=['POST'])
+def extract_summary_text():
+    """Extract text from uploaded files (PDF, DOCX, images, TXT) for summary generation"""
+    try:
+        if 'files' not in request.files:
+            return jsonify({'error': 'No files provided'}), 400
+        
+        files = request.files.getlist('files')
+        if not files or files[0].filename == '':
+            return jsonify({'error': 'No files selected'}), 400
+        
+        all_text = []
+        first_filename = files[0].filename
+        
+        for file in files:
+            filename = file.filename.lower()
+            file_content = file.read()
+            extracted_text = ''
+            
+            try:
+                # Handle PDF files
+                if filename.endswith('.pdf'):
+                    try:
+                        import io
+                        from PyPDF2 import PdfReader
+                        pdf_reader = PdfReader(io.BytesIO(file_content))
+                        for page in pdf_reader.pages:
+                            text = page.extract_text()
+                            if text:
+                                extracted_text += text + '\n\n'
+                    except ImportError:
+                        # Fallback: try pdfplumber
+                        try:
+                            import pdfplumber
+                            import io
+                            with pdfplumber.open(io.BytesIO(file_content)) as pdf:
+                                for page in pdf.pages:
+                                    text = page.extract_text()
+                                    if text:
+                                        extracted_text += text + '\n\n'
+                        except ImportError:
+                            return jsonify({'error': 'PDF processing libraries not available'}), 500
+                
+                # Handle Word documents
+                elif filename.endswith('.docx') or filename.endswith('.doc'):
+                    try:
+                        import io
+                        from docx import Document
+                        doc = Document(io.BytesIO(file_content))
+                        for para in doc.paragraphs:
+                            if para.text.strip():
+                                extracted_text += para.text + '\n'
+                        # Also extract from tables
+                        for table in doc.tables:
+                            for row in table.rows:
+                                row_text = ' | '.join(cell.text.strip() for cell in row.cells if cell.text.strip())
+                                if row_text:
+                                    extracted_text += row_text + '\n'
+                    except ImportError:
+                        return jsonify({'error': 'Word document processing library not available'}), 500
+                
+                # Handle plain text files
+                elif filename.endswith('.txt'):
+                    try:
+                        extracted_text = file_content.decode('utf-8')
+                    except UnicodeDecodeError:
+                        extracted_text = file_content.decode('latin-1')
+                
+                # Handle images (try OCR if available)
+                elif filename.endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')):
+                    try:
+                        import pytesseract
+                        from PIL import Image
+                        import io
+                        image = Image.open(io.BytesIO(file_content))
+                        extracted_text = pytesseract.image_to_string(image)
+                    except ImportError:
+                        # OCR not available, try to describe what we have
+                        extracted_text = f"[Image file: {file.filename} - OCR not available. Please copy text manually if needed.]"
+                    except Exception as ocr_error:
+                        extracted_text = f"[Image file: {file.filename} - Could not extract text: {str(ocr_error)}]"
+                
+                else:
+                    # Try to read as text
+                    try:
+                        extracted_text = file_content.decode('utf-8')
+                    except:
+                        extracted_text = f"[Unsupported file type: {file.filename}]"
+                
+                if extracted_text.strip():
+                    # Add filename header if multiple files
+                    if len(files) > 1:
+                        all_text.append(f"=== {file.filename} ===\n{extracted_text}")
+                    else:
+                        all_text.append(extracted_text)
+                        
+            except Exception as file_error:
+                print(f"Error processing file {file.filename}: {file_error}")
+                all_text.append(f"[Error processing {file.filename}: {str(file_error)}]")
+        
+        combined_text = '\n\n'.join(all_text)
+        
+        if not combined_text.strip():
+            return jsonify({'error': 'Could not extract any text from the uploaded files'}), 400
+        
+        return jsonify({
+            'success': True,
+            'text': combined_text,
+            'filename': first_filename,
+            'fileCount': len(files)
+        })
+        
+    except Exception as e:
+        print(f"Error extracting text: {e}")
         return jsonify({'error': str(e)}), 500
 
 
