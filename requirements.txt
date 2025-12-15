@@ -3,3 +3,6 @@ flask-cors
 requests
 gunicorn
 psycopg2-binary
+PyPDF2
+python-docx
+pillow
