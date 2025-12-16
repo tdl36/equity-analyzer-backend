@@ -168,8 +168,30 @@ def init_db():
                 name VARCHAR(255) NOT NULL,
                 content TEXT,
                 file_names JSONB DEFAULT '[]',
+                smart_name VARCHAR(500),
+                original_filename VARCHAR(500),
+                published_date VARCHAR(100),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
+        ''')
+        
+        # Migration: Add new columns if they don't exist
+        cur.execute('''
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                              WHERE table_name='research_documents' AND column_name='smart_name') THEN
+                    ALTER TABLE research_documents ADD COLUMN smart_name VARCHAR(500);
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                              WHERE table_name='research_documents' AND column_name='original_filename') THEN
+                    ALTER TABLE research_documents ADD COLUMN original_filename VARCHAR(500);
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                              WHERE table_name='research_documents' AND column_name='published_date') THEN
+                    ALTER TABLE research_documents ADD COLUMN published_date VARCHAR(100);
+                END IF;
+            END $$;
         ''')
         
         # Research Analyses (framework results under documents)
@@ -2082,7 +2104,7 @@ def get_research_documents():
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute('SELECT id, category_id, name, content, file_names, created_at FROM research_documents ORDER BY created_at DESC')
+        cur.execute('SELECT id, category_id, name, content, file_names, smart_name, original_filename, published_date, created_at FROM research_documents ORDER BY created_at DESC')
         rows = cur.fetchall()
         cur.close()
         conn.close()
@@ -2093,6 +2115,9 @@ def get_research_documents():
             'name': row['name'],
             'content': row['content'],
             'fileNames': row['file_names'] or [],
+            'smartName': row['smart_name'],
+            'originalFilename': row['original_filename'],
+            'publishedDate': row['published_date'],
             'createdAt': row['created_at'].isoformat() if row['created_at'] else None
         } for row in rows])
     except Exception as e:
@@ -2114,19 +2139,25 @@ def save_research_document():
         cur = conn.cursor()
         
         cur.execute('''
-            INSERT INTO research_documents (id, category_id, name, content, file_names)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO research_documents (id, category_id, name, content, file_names, smart_name, original_filename, published_date)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (id) DO UPDATE SET 
                 name = EXCLUDED.name,
                 content = EXCLUDED.content,
-                file_names = EXCLUDED.file_names
+                file_names = EXCLUDED.file_names,
+                smart_name = EXCLUDED.smart_name,
+                original_filename = EXCLUDED.original_filename,
+                published_date = EXCLUDED.published_date
             RETURNING id
         ''', (
             doc_id,
             data.get('categoryId', ''),
             data.get('name', ''),
             data.get('content', ''),
-            json.dumps(data.get('fileNames', []))
+            json.dumps(data.get('fileNames', [])),
+            data.get('smartName'),
+            data.get('originalFilename'),
+            data.get('publishedDate')
         ))
         
         conn.commit()
