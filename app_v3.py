@@ -2201,8 +2201,15 @@ def save_research_file():
         file_data = data.get('fileData', '')
         file_size = data.get('fileSize', 0)
         
+        print(f"📁 save_research_file: docId={document_id}, filename={filename}, fileType={file_type}, dataLen={len(file_data) if file_data else 0}, fileSize={file_size}")
+        
         if not document_id or not filename:
+            print(f"❌ Missing required fields: docId={document_id}, filename={filename}")
             return jsonify({'error': 'Document ID and filename are required'}), 400
+        
+        if not file_data:
+            print(f"❌ No file data provided for {filename}")
+            return jsonify({'error': 'No file data provided'}), 400
         
         conn = get_db_connection()
         cur = conn.cursor()
@@ -2213,13 +2220,17 @@ def save_research_file():
             RETURNING id
         ''', (document_id, filename, file_type, file_data, file_size))
         
+        inserted_id = cur.fetchone()[0]
         conn.commit()
         cur.close()
         conn.close()
         
-        return jsonify({'success': True})
+        print(f"✅ File saved successfully: id={inserted_id}, filename={filename}")
+        return jsonify({'success': True, 'id': inserted_id})
     except Exception as e:
-        print(f"Error saving research file: {e}")
+        print(f"❌ Error saving research file: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 
