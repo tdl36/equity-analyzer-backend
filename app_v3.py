@@ -2150,6 +2150,8 @@ def save_research_document():
         data = request.json
         doc_id = data.get('id', '')
         
+        print(f"📄 save_research_document: id={doc_id}, name={data.get('name', '')[:50]}")
+        
         if not doc_id:
             return jsonify({'error': 'Document ID is required'}), 400
         
@@ -2184,17 +2186,26 @@ def save_research_document():
         cur.close()
         conn.close()
         
+        print(f"✅ Document saved: {doc_id}")
         return jsonify({'success': True})
     except Exception as e:
-        print(f"Error saving research document: {e}")
+        print(f"❌ Error saving research document: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/save-research-file', methods=['POST'])
 def save_research_file():
     """Save a file for a research document"""
+    conn = None
+    cur = None
     try:
         data = request.json
+        if not data:
+            print("❌ No JSON data received")
+            return jsonify({'error': 'No JSON data received'}), 400
+            
         document_id = data.get('documentId', '')
         filename = data.get('filename', '')
         file_type = data.get('fileType', '')
@@ -2211,8 +2222,19 @@ def save_research_file():
             print(f"❌ No file data provided for {filename}")
             return jsonify({'error': 'No file data provided'}), 400
         
+        # Check if document exists first
         conn = get_db_connection()
         cur = conn.cursor()
+        
+        cur.execute('SELECT id FROM research_documents WHERE id = %s', (document_id,))
+        doc_exists = cur.fetchone()
+        if not doc_exists:
+            print(f"❌ Document {document_id} does not exist in research_documents table")
+            cur.close()
+            conn.close()
+            return jsonify({'error': f'Document {document_id} not found - must save document first'}), 400
+        
+        print(f"✅ Document {document_id} exists, proceeding with file save")
         
         cur.execute('''
             INSERT INTO research_document_files (document_id, filename, file_type, file_data, file_size)
@@ -2220,7 +2242,15 @@ def save_research_file():
             RETURNING id
         ''', (document_id, filename, file_type, file_data, file_size))
         
-        inserted_id = cur.fetchone()[0]
+        result = cur.fetchone()
+        if result is None:
+            print(f"❌ INSERT did not return an id")
+            conn.rollback()
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'Insert failed - no id returned'}), 500
+            
+        inserted_id = result[0]
         conn.commit()
         cur.close()
         conn.close()
@@ -2228,10 +2258,21 @@ def save_research_file():
         print(f"✅ File saved successfully: id={inserted_id}, filename={filename}")
         return jsonify({'success': True, 'id': inserted_id})
     except Exception as e:
-        print(f"❌ Error saving research file: {e}")
+        print(f"❌ Error saving research file: {type(e).__name__}: {e}")
         import traceback
         traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        if cur:
+            try:
+                cur.close()
+            except:
+                pass
+        if conn:
+            try:
+                conn.rollback()
+                conn.close()
+            except:
+                pass
+        return jsonify({'error': f'{type(e).__name__}: {str(e)}'}), 500
 
 
 @app.route('/api/research-document-files/<document_id>', methods=['GET'])
