@@ -211,6 +211,30 @@ def init_db():
             )
         ''')
         
+        # Summary Files (stored PDFs/files for summaries)
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS summary_files (
+                id SERIAL PRIMARY KEY,
+                summary_id VARCHAR(100) REFERENCES meeting_summaries(id) ON DELETE CASCADE,
+                filename VARCHAR(500) NOT NULL,
+                file_type VARCHAR(100),
+                file_data TEXT,
+                file_size INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Migration: Add has_stored_files to meeting_summaries if not exists
+        cur.execute('''
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                              WHERE table_name='meeting_summaries' AND column_name='has_stored_files') THEN
+                    ALTER TABLE meeting_summaries ADD COLUMN has_stored_files BOOLEAN DEFAULT FALSE;
+                END IF;
+            END $$;
+        ''')
+        
         # Research Analyses (framework results under documents)
         cur.execute('''
             CREATE TABLE IF NOT EXISTS research_analyses (
@@ -593,7 +617,7 @@ def get_summaries():
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute('''
-            SELECT id, title, raw_notes, summary, questions, topic, topic_type, source_type, source_files, created_at 
+            SELECT id, title, raw_notes, summary, questions, topic, topic_type, source_type, source_files, has_stored_files, created_at 
             FROM meeting_summaries 
             ORDER BY created_at DESC
         ''')
@@ -613,6 +637,7 @@ def get_summaries():
                 'topicType': row.get('topic_type') or 'other',
                 'sourceType': row.get('source_type') or 'paste',
                 'sourceFiles': row.get('source_files') or [],
+                'hasStoredFiles': row.get('has_stored_files') or False,
                 'createdAt': row['created_at'].isoformat() if row['created_at'] else None
             })
         
@@ -688,6 +713,8 @@ def delete_summary():
         
         conn = get_db_connection()
         cur = conn.cursor()
+        # Delete associated files first (CASCADE should handle this, but being explicit)
+        cur.execute('DELETE FROM summary_files WHERE summary_id = %s', (summary_id,))
         cur.execute('DELETE FROM meeting_summaries WHERE id = %s', (summary_id,))
         conn.commit()
         cur.close()
@@ -696,6 +723,114 @@ def delete_summary():
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error deleting summary: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================
+# SUMMARY FILES ENDPOINTS
+# ============================================
+
+@app.route('/api/summary-files/<summary_id>', methods=['GET'])
+def get_summary_files(summary_id):
+    """Get stored files for a summary"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        cur.execute('''
+            SELECT id, filename, file_type, file_data, file_size, created_at
+            FROM summary_files
+            WHERE summary_id = %s
+            ORDER BY created_at ASC
+        ''', (summary_id,))
+        
+        files = []
+        for row in cur.fetchall():
+            files.append({
+                'id': row['id'],
+                'filename': row['filename'],
+                'fileType': row['file_type'],
+                'fileData': row['file_data'],
+                'fileSize': row['file_size'],
+                'createdAt': row['created_at'].isoformat() if row['created_at'] else None
+            })
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify(files)
+    except Exception as e:
+        print(f"Error getting summary files: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/summary-files/<summary_id>', methods=['POST'])
+def save_summary_files(summary_id):
+    """Save files for a summary"""
+    try:
+        data = request.json
+        files = data.get('files', [])
+        
+        if not files:
+            return jsonify({'error': 'No files provided'}), 400
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        saved_count = 0
+        for file_data in files:
+            cur.execute('''
+                INSERT INTO summary_files (summary_id, filename, file_type, file_data, file_size)
+                VALUES (%s, %s, %s, %s, %s)
+            ''', (
+                summary_id,
+                file_data.get('filename', 'document.pdf'),
+                file_data.get('fileType', 'application/pdf'),
+                file_data.get('fileData', ''),
+                file_data.get('fileSize', 0)
+            ))
+            saved_count += 1
+        
+        # Update has_stored_files flag on the summary
+        cur.execute('''
+            UPDATE meeting_summaries 
+            SET has_stored_files = TRUE 
+            WHERE id = %s
+        ''', (summary_id,))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({'success': True, 'savedCount': saved_count})
+    except Exception as e:
+        print(f"Error saving summary files: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/summary-files/<summary_id>', methods=['DELETE'])
+def delete_summary_files(summary_id):
+    """Delete all stored files for a summary"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        cur.execute('DELETE FROM summary_files WHERE summary_id = %s', (summary_id,))
+        
+        # Update has_stored_files flag
+        cur.execute('''
+            UPDATE meeting_summaries 
+            SET has_stored_files = FALSE 
+            WHERE id = %s
+        ''', (summary_id,))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error deleting summary files: {e}")
         return jsonify({'error': str(e)}), 500
 
 
