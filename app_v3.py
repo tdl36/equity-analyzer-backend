@@ -2228,7 +2228,7 @@ def get_research_document_files(document_id):
     """Get stored files for a research document"""
     try:
         conn = get_db_connection()
-        cur = conn.cursor()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute('''
             SELECT id, filename, file_type, file_data, file_size, created_at 
             FROM research_document_files 
