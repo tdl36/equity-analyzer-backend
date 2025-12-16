@@ -1388,6 +1388,10 @@ def analyze_multi():
         # Build weighting information string
         weight_info = ""
         
+        # Pre-categorize documents for simple mode
+        truly_new_docs = [d for d in enabled_docs if d.get('isNew', True)]
+        stored_existing_docs = [d for d in enabled_docs if not d.get('isNew', True)]
+        
         if simple_mode and existing_analysis:
             # Simple mode: clear instruction about preservation vs updates
             weight_info = f"""=== ANALYSIS UPDATE MODE: SIMPLE WEIGHTING ===
@@ -1397,17 +1401,26 @@ PRESERVATION RATIO: {existing_weight}% existing / {new_docs_weight}% new
 This means:
 - PRESERVE {existing_weight}% of the existing thesis, pillars, signposts, and threats
 - Allow only {new_docs_weight}% worth of modifications from the new document(s)
-- The new document is SUPPLEMENTARY, not a replacement
+- The new document(s) are SUPPLEMENTARY, not replacements
 
-New document(s) being added:
 """
-            for doc in enabled_docs:
-                doc_name = doc.get('filename', 'document.pdf')
-                weight_info += f"- {doc_name}\n"
+            if stored_existing_docs:
+                weight_info += "EXISTING DOCUMENTS (re-uploaded for reference, part of the preserved analysis):\n"
+                for doc in stored_existing_docs:
+                    doc_name = doc.get('filename', 'document.pdf')
+                    weight_info += f"- {doc_name}\n"
+                weight_info += "\n"
             
-            weight_info += f"""
-Remember: With {existing_weight}% preservation, you should keep most existing content intact.
-Only add minor refinements, new data points, or small additions from the new document.
+            if truly_new_docs:
+                per_new_doc_weight = new_docs_weight / len(truly_new_docs)
+                weight_info += f"NEW DOCUMENTS (sharing the {new_docs_weight}% update allocation):\n"
+                for doc in truly_new_docs:
+                    doc_name = doc.get('filename', 'document.pdf')
+                    weight_info += f"- {doc_name} ({round(per_new_doc_weight)}% weight)\n"
+                weight_info += "\n"
+            
+            weight_info += f"""Remember: With {existing_weight}% preservation, you should keep most existing content intact.
+Only add minor refinements, new data points, or small additions from the new document(s).
 Do NOT rewrite or fundamentally change the existing analysis.
 
 """
@@ -1456,8 +1469,12 @@ Do NOT rewrite or fundamentally change the existing analysis.
         
         # Calculate total weight for document headers (use simple mode weight or calculated weight)
         if simple_mode and existing_analysis:
-            # In simple mode, all new docs share the new_docs_weight equally
-            per_doc_weight = new_docs_weight / len(enabled_docs) if enabled_docs else 0
+            # In simple mode, only truly NEW documents share the new_docs_weight
+            # Stored existing documents are re-uploaded for context but shouldn't count as "new"
+            truly_new_docs = [d for d in enabled_docs if d.get('isNew', True)]
+            stored_docs = [d for d in enabled_docs if not d.get('isNew', True)]
+            
+            per_new_doc_weight = new_docs_weight / len(truly_new_docs) if truly_new_docs else 0
         else:
             new_doc_weight = sum(doc.get('weight', 1) for doc in enabled_docs)
             hist_doc_weight = sum(hw.get('weight', 1) for hw in historical_weights)
@@ -1469,11 +1486,15 @@ Do NOT rewrite or fundamentally change the existing analysis.
             doc_name = doc.get('filename', 'document.pdf')
             doc_type = doc.get('fileType', 'pdf')
             mime_type = doc.get('mimeType', 'application/pdf')
+            is_new = doc.get('isNew', True)
             
             if simple_mode and existing_analysis:
-                doc_pct = round(per_doc_weight)
-                # In simple mode, label as supplementary to reinforce it's not primary
-                doc_header = f"\n=== NEW DOCUMENT (Supplementary - {doc_pct}% update weight): {doc_name} ==="
+                if is_new:
+                    doc_pct = round(per_new_doc_weight)
+                    doc_header = f"\n=== NEW DOCUMENT (Supplementary - {doc_pct}% update weight): {doc_name} ==="
+                else:
+                    # Stored existing document - re-uploaded for reference, part of the existing analysis
+                    doc_header = f"\n=== EXISTING DOCUMENT (Reference - part of {existing_weight}% preserved analysis): {doc_name} ==="
             else:
                 doc_weight = doc.get('weight', 1)
                 doc_pct = round((doc_weight / total_weight) * 100) if total_weight > 0 else 0
