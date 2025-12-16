@@ -2250,7 +2250,7 @@ def save_research_file():
             conn.close()
             return jsonify({'error': 'Insert failed - no id returned'}), 500
             
-        inserted_id = result[0]
+        inserted_id = result['id']  # Access by column name since RealDictCursor is default
         conn.commit()
         cur.close()
         conn.close()
