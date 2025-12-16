@@ -150,21 +150,39 @@ def init_db():
             )
         ''')
         
-        # Research Results table - stores deep analysis results
+        # Research Categories (tickers + topics)
         cur.execute('''
-            CREATE TABLE IF NOT EXISTS research_results (
+            CREATE TABLE IF NOT EXISTS research_categories (
                 id VARCHAR(100) PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                type VARCHAR(20) DEFAULT 'ticker',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Research Documents (files/text under categories)
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS research_documents (
+                id VARCHAR(100) PRIMARY KEY,
+                category_id VARCHAR(100) REFERENCES research_categories(id) ON DELETE CASCADE,
+                name VARCHAR(255) NOT NULL,
+                content TEXT,
+                file_names JSONB DEFAULT '[]',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Research Analyses (framework results under documents)
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS research_analyses (
+                id VARCHAR(100) PRIMARY KEY,
+                document_id VARCHAR(100) REFERENCES research_documents(id) ON DELETE CASCADE,
                 prompt_id VARCHAR(100),
                 prompt_name VARCHAR(255),
                 prompt_icon VARCHAR(10),
-                input_preview TEXT,
                 result TEXT,
-                ticker VARCHAR(20),
-                topic VARCHAR(255),
-                file_names JSONB DEFAULT '[]',
                 usage JSONB DEFAULT '{}',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
@@ -1977,116 +1995,261 @@ def research_analyze():
 
 
 # ============================================
-# RESEARCH RESULTS ENDPOINTS
+# RESEARCH HIERARCHICAL ENDPOINTS
 # ============================================
 
-@app.route('/api/research-results', methods=['GET'])
-def get_research_results():
-    """Get all research results"""
+# --- Categories ---
+@app.route('/api/research-categories', methods=['GET'])
+def get_research_categories():
+    """Get all research categories"""
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute('''
-            SELECT id, prompt_id, prompt_name, prompt_icon, input_preview, 
-                   result, ticker, topic, file_names, usage, created_at, updated_at
-            FROM research_results 
-            ORDER BY updated_at DESC
-        ''')
+        cur.execute('SELECT id, name, type, created_at FROM research_categories ORDER BY created_at DESC')
         rows = cur.fetchall()
         cur.close()
         conn.close()
         
-        results = []
-        for row in rows:
-            results.append({
-                'id': row['id'],
-                'promptId': row['prompt_id'],
-                'promptName': row['prompt_name'],
-                'promptIcon': row['prompt_icon'],
-                'inputPreview': row['input_preview'],
-                'result': row['result'],
-                'ticker': row['ticker'],
-                'topic': row['topic'],
-                'fileNames': row['file_names'] or [],
-                'usage': row['usage'],
-                'timestamp': row['created_at'].isoformat() if row['created_at'] else None
-            })
-        
-        return jsonify(results)
+        return jsonify([{
+            'id': row['id'],
+            'name': row['name'],
+            'type': row['type'],
+            'createdAt': row['created_at'].isoformat() if row['created_at'] else None
+        } for row in rows])
     except Exception as e:
-        print(f"Error getting research results: {e}")
-        return jsonify({'error': str(e)}), 500
+        print(f"Error getting research categories: {e}")
+        return jsonify([])
 
 
-@app.route('/api/save-research', methods=['POST'])
-def save_research():
-    """Save or update a research result"""
+@app.route('/api/save-research-category', methods=['POST'])
+def save_research_category():
+    """Save a research category"""
     try:
         data = request.json
-        result_id = data.get('id', '')
+        cat_id = data.get('id', '')
         
-        if not result_id:
-            return jsonify({'error': 'Result ID is required'}), 400
+        if not cat_id:
+            return jsonify({'error': 'Category ID is required'}), 400
         
         conn = get_db_connection()
         cur = conn.cursor()
         
         cur.execute('''
-            INSERT INTO research_results (id, prompt_id, prompt_name, prompt_icon, input_preview, 
-                                          result, ticker, topic, file_names, usage, updated_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (id) 
-            DO UPDATE SET 
-                result = EXCLUDED.result,
-                ticker = EXCLUDED.ticker,
-                topic = EXCLUDED.topic,
-                updated_at = EXCLUDED.updated_at
+            INSERT INTO research_categories (id, name, type)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, type = EXCLUDED.type
             RETURNING id
-        ''', (
-            result_id,
-            data.get('promptId', ''),
-            data.get('promptName', ''),
-            data.get('promptIcon', ''),
-            data.get('inputPreview', ''),
-            data.get('result', ''),
-            data.get('ticker'),
-            data.get('topic'),
-            json.dumps(data.get('fileNames', [])),
-            json.dumps(data.get('usage', {})),
-            datetime.utcnow()
-        ))
+        ''', (cat_id, data.get('name', ''), data.get('type', 'ticker')))
         
-        result = cur.fetchone()
-        conn.commit()
-        cur.close()
-        conn.close()
-        
-        return jsonify({'success': True, 'id': result['id']})
-    except Exception as e:
-        print(f"Error saving research: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/delete-research', methods=['POST'])
-def delete_research():
-    """Delete a research result"""
-    try:
-        data = request.json
-        result_id = data.get('id', '')
-        
-        if not result_id:
-            return jsonify({'error': 'Result ID is required'}), 400
-        
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('DELETE FROM research_results WHERE id = %s', (result_id,))
         conn.commit()
         cur.close()
         conn.close()
         
         return jsonify({'success': True})
     except Exception as e:
-        print(f"Error deleting research: {e}")
+        print(f"Error saving research category: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/delete-research-category', methods=['POST'])
+def delete_research_category():
+    """Delete a research category and all its documents/analyses"""
+    try:
+        data = request.json
+        cat_id = data.get('id', '')
+        
+        if not cat_id:
+            return jsonify({'error': 'Category ID is required'}), 400
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        # CASCADE will delete documents and analyses
+        cur.execute('DELETE FROM research_categories WHERE id = %s', (cat_id,))
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error deleting research category: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# --- Documents ---
+@app.route('/api/research-documents', methods=['GET'])
+def get_research_documents():
+    """Get all research documents"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('SELECT id, category_id, name, content, file_names, created_at FROM research_documents ORDER BY created_at DESC')
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        return jsonify([{
+            'id': row['id'],
+            'categoryId': row['category_id'],
+            'name': row['name'],
+            'content': row['content'],
+            'fileNames': row['file_names'] or [],
+            'createdAt': row['created_at'].isoformat() if row['created_at'] else None
+        } for row in rows])
+    except Exception as e:
+        print(f"Error getting research documents: {e}")
+        return jsonify([])
+
+
+@app.route('/api/save-research-document', methods=['POST'])
+def save_research_document():
+    """Save a research document"""
+    try:
+        data = request.json
+        doc_id = data.get('id', '')
+        
+        if not doc_id:
+            return jsonify({'error': 'Document ID is required'}), 400
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        cur.execute('''
+            INSERT INTO research_documents (id, category_id, name, content, file_names)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (id) DO UPDATE SET 
+                name = EXCLUDED.name,
+                content = EXCLUDED.content,
+                file_names = EXCLUDED.file_names
+            RETURNING id
+        ''', (
+            doc_id,
+            data.get('categoryId', ''),
+            data.get('name', ''),
+            data.get('content', ''),
+            json.dumps(data.get('fileNames', []))
+        ))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error saving research document: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/delete-research-document', methods=['POST'])
+def delete_research_document():
+    """Delete a research document and all its analyses"""
+    try:
+        data = request.json
+        doc_id = data.get('id', '')
+        
+        if not doc_id:
+            return jsonify({'error': 'Document ID is required'}), 400
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        # CASCADE will delete analyses
+        cur.execute('DELETE FROM research_documents WHERE id = %s', (doc_id,))
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error deleting research document: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# --- Analyses ---
+@app.route('/api/research-analyses', methods=['GET'])
+def get_research_analyses():
+    """Get all research analyses"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('SELECT id, document_id, prompt_id, prompt_name, prompt_icon, result, usage, created_at FROM research_analyses ORDER BY created_at DESC')
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        return jsonify([{
+            'id': row['id'],
+            'documentId': row['document_id'],
+            'promptId': row['prompt_id'],
+            'promptName': row['prompt_name'],
+            'promptIcon': row['prompt_icon'],
+            'result': row['result'],
+            'usage': row['usage'],
+            'createdAt': row['created_at'].isoformat() if row['created_at'] else None
+        } for row in rows])
+    except Exception as e:
+        print(f"Error getting research analyses: {e}")
+        return jsonify([])
+
+
+@app.route('/api/save-research-analysis', methods=['POST'])
+def save_research_analysis():
+    """Save a research analysis"""
+    try:
+        data = request.json
+        analysis_id = data.get('id', '')
+        
+        if not analysis_id:
+            return jsonify({'error': 'Analysis ID is required'}), 400
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        cur.execute('''
+            INSERT INTO research_analyses (id, document_id, prompt_id, prompt_name, prompt_icon, result, usage)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (id) DO UPDATE SET 
+                result = EXCLUDED.result,
+                usage = EXCLUDED.usage
+            RETURNING id
+        ''', (
+            analysis_id,
+            data.get('documentId', ''),
+            data.get('promptId', ''),
+            data.get('promptName', ''),
+            data.get('promptIcon', ''),
+            data.get('result', ''),
+            json.dumps(data.get('usage', {}))
+        ))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error saving research analysis: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/delete-research-analysis', methods=['POST'])
+def delete_research_analysis():
+    """Delete a research analysis"""
+    try:
+        data = request.json
+        analysis_id = data.get('id', '')
+        
+        if not analysis_id:
+            return jsonify({'error': 'Analysis ID is required'}), 400
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('DELETE FROM research_analyses WHERE id = %s', (analysis_id,))
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error deleting research analysis: {e}")
         return jsonify({'error': str(e)}), 500
 
 
