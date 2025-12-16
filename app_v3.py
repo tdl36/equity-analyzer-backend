@@ -191,7 +191,24 @@ def init_db():
                               WHERE table_name='research_documents' AND column_name='published_date') THEN
                     ALTER TABLE research_documents ADD COLUMN published_date VARCHAR(100);
                 END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                              WHERE table_name='research_documents' AND column_name='has_stored_files') THEN
+                    ALTER TABLE research_documents ADD COLUMN has_stored_files BOOLEAN DEFAULT FALSE;
+                END IF;
             END $$;
+        ''')
+        
+        # Research Document Files (stored PDFs/files for re-analysis)
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS research_document_files (
+                id SERIAL PRIMARY KEY,
+                document_id VARCHAR(100) REFERENCES research_documents(id) ON DELETE CASCADE,
+                filename VARCHAR(500) NOT NULL,
+                file_type VARCHAR(100),
+                file_data TEXT,
+                file_size INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
         ''')
         
         # Research Analyses (framework results under documents)
@@ -2104,7 +2121,7 @@ def get_research_documents():
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute('SELECT id, category_id, name, content, file_names, smart_name, original_filename, published_date, created_at FROM research_documents ORDER BY created_at DESC')
+        cur.execute('SELECT id, category_id, name, content, file_names, smart_name, original_filename, published_date, has_stored_files, created_at FROM research_documents ORDER BY created_at DESC')
         rows = cur.fetchall()
         cur.close()
         conn.close()
@@ -2118,6 +2135,7 @@ def get_research_documents():
             'smartName': row['smart_name'],
             'originalFilename': row['original_filename'],
             'publishedDate': row['published_date'],
+            'hasStoredFiles': row['has_stored_files'] or False,
             'createdAt': row['created_at'].isoformat() if row['created_at'] else None
         } for row in rows])
     except Exception as e:
@@ -2139,15 +2157,16 @@ def save_research_document():
         cur = conn.cursor()
         
         cur.execute('''
-            INSERT INTO research_documents (id, category_id, name, content, file_names, smart_name, original_filename, published_date)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO research_documents (id, category_id, name, content, file_names, smart_name, original_filename, published_date, has_stored_files)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (id) DO UPDATE SET 
                 name = EXCLUDED.name,
                 content = EXCLUDED.content,
                 file_names = EXCLUDED.file_names,
                 smart_name = EXCLUDED.smart_name,
                 original_filename = EXCLUDED.original_filename,
-                published_date = EXCLUDED.published_date
+                published_date = EXCLUDED.published_date,
+                has_stored_files = EXCLUDED.has_stored_files
             RETURNING id
         ''', (
             doc_id,
@@ -2157,7 +2176,8 @@ def save_research_document():
             json.dumps(data.get('fileNames', [])),
             data.get('smartName'),
             data.get('originalFilename'),
-            data.get('publishedDate')
+            data.get('publishedDate'),
+            data.get('hasStoredFiles', False)
         ))
         
         conn.commit()
@@ -2167,6 +2187,85 @@ def save_research_document():
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error saving research document: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/save-research-file', methods=['POST'])
+def save_research_file():
+    """Save a file for a research document"""
+    try:
+        data = request.json
+        document_id = data.get('documentId', '')
+        filename = data.get('filename', '')
+        file_type = data.get('fileType', '')
+        file_data = data.get('fileData', '')
+        file_size = data.get('fileSize', 0)
+        
+        if not document_id or not filename:
+            return jsonify({'error': 'Document ID and filename are required'}), 400
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        cur.execute('''
+            INSERT INTO research_document_files (document_id, filename, file_type, file_data, file_size)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id
+        ''', (document_id, filename, file_type, file_data, file_size))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error saving research file: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/research-document-files/<document_id>', methods=['GET'])
+def get_research_document_files(document_id):
+    """Get stored files for a research document"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('''
+            SELECT id, filename, file_type, file_data, file_size, created_at 
+            FROM research_document_files 
+            WHERE document_id = %s
+            ORDER BY created_at
+        ''', (document_id,))
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        return jsonify([{
+            'id': row['id'],
+            'filename': row['filename'],
+            'fileType': row['file_type'],
+            'fileData': row['file_data'],
+            'fileSize': row['file_size'],
+            'createdAt': row['created_at'].isoformat() if row['created_at'] else None
+        } for row in rows])
+    except Exception as e:
+        print(f"Error getting research document files: {e}")
+        return jsonify([])
+
+
+@app.route('/api/delete-research-file/<int:file_id>', methods=['DELETE'])
+def delete_research_file(file_id):
+    """Delete a stored research file"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('DELETE FROM research_document_files WHERE id = %s', (file_id,))
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error deleting research file: {e}")
         return jsonify({'error': str(e)}), 500
 
 
