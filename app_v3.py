@@ -1061,19 +1061,80 @@ def extract_summary_text():
                     except UnicodeDecodeError:
                         extracted_text = file_content.decode('latin-1')
                 
-                # Handle images (try OCR if available)
-                elif filename.endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')):
-                    try:
-                        import pytesseract
-                        from PIL import Image
-                        import io
-                        image = Image.open(io.BytesIO(file_content))
-                        extracted_text = pytesseract.image_to_string(image)
-                    except ImportError:
-                        # OCR not available, try to describe what we have
-                        extracted_text = f"[Image file: {file.filename} - OCR not available. Please copy text manually if needed.]"
-                    except Exception as ocr_error:
-                        extracted_text = f"[Image file: {file.filename} - Could not extract text: {str(ocr_error)}]"
+                # Handle images (use Claude Vision API for OCR)
+                elif filename.endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp')):
+                    # Try Claude Vision API first (most reliable)
+                    api_key = os.environ.get('ANTHROPIC_API_KEY')
+                    if api_key:
+                        try:
+                            # Determine media type
+                            ext = filename.split('.')[-1].lower()
+                            media_types = {'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'gif': 'image/gif', 'bmp': 'image/bmp', 'webp': 'image/webp'}
+                            media_type = media_types.get(ext, 'image/jpeg')
+                            
+                            # Encode image to base64
+                            image_base64 = base64.b64encode(file_content).decode('utf-8')
+                            
+                            # Call Claude Vision API for OCR
+                            headers = {
+                                'x-api-key': api_key,
+                                'Content-Type': 'application/json',
+                                'anthropic-version': '2023-06-01'
+                            }
+                            
+                            ocr_payload = {
+                                'model': 'claude-sonnet-4-20250514',
+                                'max_tokens': 8000,
+                                'messages': [{
+                                    'role': 'user',
+                                    'content': [
+                                        {
+                                            'type': 'image',
+                                            'source': {
+                                                'type': 'base64',
+                                                'media_type': media_type,
+                                                'data': image_base64
+                                            }
+                                        },
+                                        {
+                                            'type': 'text',
+                                            'text': 'Please extract ALL text from this image exactly as it appears. Preserve the original formatting, paragraphs, and structure. Output ONLY the extracted text, nothing else. If this is a screenshot of an article, extract the full article text.'
+                                        }
+                                    ]
+                                }]
+                            }
+                            
+                            ocr_response = requests.post(
+                                'https://api.anthropic.com/v1/messages',
+                                headers=headers,
+                                json=ocr_payload,
+                                timeout=60
+                            )
+                            
+                            if ocr_response.status_code == 200:
+                                ocr_result = ocr_response.json()
+                                if ocr_result.get('content') and len(ocr_result['content']) > 0:
+                                    extracted_text = ocr_result['content'][0].get('text', '')
+                                    print(f"✅ Claude Vision OCR extracted {len(extracted_text)} chars from {file.filename}")
+                            else:
+                                print(f"⚠️ Claude Vision OCR failed: {ocr_response.status_code} - {ocr_response.text[:200]}")
+                                extracted_text = f"[Image file: {file.filename} - Claude Vision OCR failed]"
+                                
+                        except Exception as claude_error:
+                            print(f"⚠️ Claude Vision OCR error: {claude_error}")
+                            extracted_text = f"[Image file: {file.filename} - OCR error: {str(claude_error)[:100]}]"
+                    else:
+                        # Fallback to pytesseract if no API key
+                        try:
+                            import pytesseract
+                            from PIL import Image
+                            import io
+                            image = Image.open(io.BytesIO(file_content))
+                            extracted_text = pytesseract.image_to_string(image)
+                        except ImportError:
+                            extracted_text = f"[Image file: {file.filename} - OCR not available. Set ANTHROPIC_API_KEY for Claude Vision OCR.]"
+                        except Exception as ocr_error:
+                            extracted_text = f"[Image file: {file.filename} - Could not extract text: {str(ocr_error)}]"
                 
                 else:
                     # Try to read as text
