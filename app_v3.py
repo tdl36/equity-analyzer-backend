@@ -176,6 +176,7 @@ def init_db():
                 smart_name VARCHAR(500),
                 original_filename VARCHAR(500),
                 published_date VARCHAR(100),
+                doc_type VARCHAR(50) DEFAULT 'other',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -199,6 +200,10 @@ def init_db():
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
                               WHERE table_name='research_documents' AND column_name='has_stored_files') THEN
                     ALTER TABLE research_documents ADD COLUMN has_stored_files BOOLEAN DEFAULT FALSE;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                              WHERE table_name='research_documents' AND column_name='doc_type') THEN
+                    ALTER TABLE research_documents ADD COLUMN doc_type VARCHAR(50) DEFAULT 'other';
                 END IF;
             END $$;
         ''')
@@ -2285,7 +2290,7 @@ def get_research_documents():
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute('SELECT id, category_id, name, content, file_names, smart_name, original_filename, published_date, has_stored_files, created_at FROM research_documents ORDER BY created_at DESC')
+        cur.execute('SELECT id, category_id, name, content, file_names, smart_name, original_filename, published_date, doc_type, has_stored_files, created_at FROM research_documents ORDER BY created_at DESC')
         rows = cur.fetchall()
         cur.close()
         conn.close()
@@ -2299,6 +2304,7 @@ def get_research_documents():
             'smartName': row['smart_name'],
             'originalFilename': row['original_filename'],
             'publishedDate': row['published_date'],
+            'docType': row.get('doc_type') or 'other',
             'hasStoredFiles': row['has_stored_files'] or False,
             'createdAt': row['created_at'].isoformat() if row['created_at'] else None
         } for row in rows])
@@ -2323,8 +2329,8 @@ def save_research_document():
         cur = conn.cursor()
         
         cur.execute('''
-            INSERT INTO research_documents (id, category_id, name, content, file_names, smart_name, original_filename, published_date, has_stored_files)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO research_documents (id, category_id, name, content, file_names, smart_name, original_filename, published_date, doc_type, has_stored_files)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (id) DO UPDATE SET 
                 name = EXCLUDED.name,
                 content = EXCLUDED.content,
@@ -2332,6 +2338,7 @@ def save_research_document():
                 smart_name = EXCLUDED.smart_name,
                 original_filename = EXCLUDED.original_filename,
                 published_date = EXCLUDED.published_date,
+                doc_type = EXCLUDED.doc_type,
                 has_stored_files = EXCLUDED.has_stored_files
             RETURNING id
         ''', (
@@ -2343,6 +2350,7 @@ def save_research_document():
             data.get('smartName'),
             data.get('originalFilename'),
             data.get('publishedDate'),
+            data.get('docType', 'other'),
             data.get('hasStoredFiles', False)
         ))
         
