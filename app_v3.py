@@ -2598,6 +2598,25 @@ def email_research():
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
     import markdown
+    import re
+    
+    def preprocess_bullets(text):
+        """Convert bullet characters to standard markdown format"""
+        # Split into lines for processing
+        lines = text.split('\n')
+        processed_lines = []
+        
+        for line in lines:
+            # Handle lines that start with bullet characters (with optional whitespace)
+            line = re.sub(r'^(\s*)[•·▪▸►‣⁃]\s*', r'\1- ', line)
+            
+            # Handle inline bullets (mid-line) - add newline before them
+            # This catches patterns like "text • more text"
+            line = re.sub(r'\s+[•·▪▸►‣⁃]\s+', '\n- ', line)
+            
+            processed_lines.append(line)
+        
+        return '\n'.join(processed_lines)
     
     try:
         data = request.json
@@ -2623,9 +2642,15 @@ def email_research():
         
         header_html = " | ".join(header_info) if header_info else ""
         
-        # Convert markdown to HTML
+        # Preprocess bullet characters before markdown conversion
+        processed_content = preprocess_bullets(content)
+        
+        # Convert markdown to HTML with nl2br for line break preservation
         try:
-            content_html = markdown.markdown(content, extensions=['tables', 'fenced_code'])
+            content_html = markdown.markdown(
+                processed_content, 
+                extensions=['tables', 'fenced_code', 'nl2br']
+            )
         except:
             content_html = f"<pre style='white-space: pre-wrap;'>{content}</pre>"
         
@@ -2634,16 +2659,21 @@ def email_research():
         <head>
             <style>
                 body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; }}
-                h1, h2, h3 {{ color: #1a1a2e; }}
+                h1, h2, h3 {{ color: #1a1a2e; margin-top: 1.5em; margin-bottom: 0.5em; }}
                 .header {{ background: linear-gradient(135deg, #0f172a, #1e293b); color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; }}
                 .header h1 {{ margin: 0 0 10px 0; color: white; }}
                 .header-meta {{ font-size: 14px; opacity: 0.9; }}
                 .content {{ background: #f8fafc; padding: 20px; border-radius: 10px; border: 1px solid #e2e8f0; }}
+                ul {{ margin: 10px 0; padding-left: 25px; }}
+                li {{ margin-bottom: 8px; line-height: 1.5; }}
+                ul ul {{ margin-top: 8px; }}
                 table {{ border-collapse: collapse; width: 100%; margin: 15px 0; }}
                 th, td {{ border: 1px solid #e2e8f0; padding: 10px; text-align: left; }}
                 th {{ background: #f1f5f9; }}
                 code {{ background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 14px; }}
                 pre {{ background: #1e293b; color: #e2e8f0; padding: 15px; border-radius: 8px; overflow-x: auto; }}
+                p {{ margin: 0.8em 0; }}
+                strong {{ color: #1e293b; }}
             </style>
         </head>
         <body>
