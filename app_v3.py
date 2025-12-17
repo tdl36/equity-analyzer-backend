@@ -107,6 +107,7 @@ def init_db():
                 topic_type VARCHAR(20) DEFAULT 'other',
                 source_type VARCHAR(20) DEFAULT 'paste',
                 source_files JSONB DEFAULT '[]',
+                doc_type VARCHAR(50) DEFAULT 'other',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -130,6 +131,10 @@ def init_db():
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
                               WHERE table_name='meeting_summaries' AND column_name='source_files') THEN
                     ALTER TABLE meeting_summaries ADD COLUMN source_files JSONB DEFAULT '[]';
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                              WHERE table_name='meeting_summaries' AND column_name='doc_type') THEN
+                    ALTER TABLE meeting_summaries ADD COLUMN doc_type VARCHAR(50) DEFAULT 'other';
                 END IF;
             END $$;
         ''')
@@ -617,7 +622,7 @@ def get_summaries():
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute('''
-            SELECT id, title, raw_notes, summary, questions, topic, topic_type, source_type, source_files, has_stored_files, created_at 
+            SELECT id, title, raw_notes, summary, questions, topic, topic_type, source_type, source_files, doc_type, has_stored_files, created_at 
             FROM meeting_summaries 
             ORDER BY created_at DESC
         ''')
@@ -637,6 +642,7 @@ def get_summaries():
                 'topicType': row.get('topic_type') or 'other',
                 'sourceType': row.get('source_type') or 'paste',
                 'sourceFiles': row.get('source_files') or [],
+                'docType': row.get('doc_type') or 'other',
                 'hasStoredFiles': row.get('has_stored_files') or False,
                 'createdAt': row['created_at'].isoformat() if row['created_at'] else None
             })
@@ -665,8 +671,8 @@ def save_summary():
         cur = conn.cursor()
         
         cur.execute('''
-            INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, topic, topic_type, source_type, source_files, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, topic, topic_type, source_type, source_files, doc_type, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (id) 
             DO UPDATE SET 
                 title = EXCLUDED.title,
@@ -676,7 +682,8 @@ def save_summary():
                 topic = EXCLUDED.topic,
                 topic_type = EXCLUDED.topic_type,
                 source_type = EXCLUDED.source_type,
-                source_files = EXCLUDED.source_files
+                source_files = EXCLUDED.source_files,
+                doc_type = EXCLUDED.doc_type
             RETURNING id
         ''', (
             summary_id,
@@ -688,6 +695,7 @@ def save_summary():
             data.get('topicType', 'other'),
             data.get('sourceType', 'paste'),
             source_files,
+            data.get('docType', 'other'),
             data.get('createdAt', datetime.utcnow().isoformat())
         ))
         
