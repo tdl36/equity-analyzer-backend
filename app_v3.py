@@ -1004,6 +1004,10 @@ def extract_summary_text():
         if not files or files[0].filename == '':
             return jsonify({'error': 'No files selected'}), 400
         
+        # Get API key from form data (for Claude Vision OCR)
+        api_key = request.form.get('apiKey', '') or os.environ.get('ANTHROPIC_API_KEY', '')
+        print(f"📸 extract-summary-text: {len(files)} files, API key present: {bool(api_key)}, API key length: {len(api_key) if api_key else 0}")
+        
         all_text = []
         first_filename = files[0].filename
         
@@ -1063,8 +1067,7 @@ def extract_summary_text():
                 
                 # Handle images (use Claude Vision API for OCR)
                 elif filename.endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp')):
-                    # Try Claude Vision API first (most reliable)
-                    api_key = os.environ.get('ANTHROPIC_API_KEY')
+                    # Use API key from form data or environment
                     if api_key:
                         try:
                             # Determine media type
@@ -1132,7 +1135,7 @@ def extract_summary_text():
                             image = Image.open(io.BytesIO(file_content))
                             extracted_text = pytesseract.image_to_string(image)
                         except ImportError:
-                            extracted_text = f"[Image file: {file.filename} - OCR not available. Set ANTHROPIC_API_KEY for Claude Vision OCR.]"
+                            extracted_text = f"[Image file: {file.filename} - OCR not available. Please set your API key in Settings.]"
                         except Exception as ocr_error:
                             extracted_text = f"[Image file: {file.filename} - Could not extract text: {str(ocr_error)}]"
                 
@@ -1158,6 +1161,15 @@ def extract_summary_text():
         
         if not combined_text.strip():
             return jsonify({'error': 'Could not extract any text from the uploaded files'}), 400
+        
+        # Check if OCR failed for images (all we got was placeholder text)
+        if '[Image file:' in combined_text and 'OCR' in combined_text:
+            # Count how many images failed
+            failed_count = combined_text.count('[Image file:')
+            if failed_count == len(files):
+                return jsonify({
+                    'error': f'Could not extract text from {failed_count} image(s). Please ensure your API key is set in Settings, or use PDFs/text files instead.'
+                }), 400
         
         return jsonify({
             'success': True,
