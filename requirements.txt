@@ -5,6 +5,7 @@ psycopg2-binary
 anthropic
 openai
 pydub
+audioop-lts
 PyPDF2
 pdfplumber
 python-docx
