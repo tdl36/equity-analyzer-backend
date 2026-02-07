@@ -4,6 +4,7 @@ requests
 psycopg2-binary
 anthropic
 openai
+pydub
 PyPDF2
 pdfplumber
 python-docx

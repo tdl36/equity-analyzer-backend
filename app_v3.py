@@ -1190,8 +1190,11 @@ def extract_summary_text():
 
 @app.route('/api/transcribe-audio', methods=['POST'])
 def transcribe_audio():
-    """Transcribe audio file using OpenAI Whisper API"""
+    """Transcribe audio file using OpenAI Whisper API, with auto-compression for large files"""
     try:
+        import io
+        from pydub import AudioSegment
+
         if 'file' not in request.files:
             return jsonify({'error': 'No audio file provided'}), 400
 
@@ -1210,32 +1213,90 @@ def transcribe_audio():
         if not filename_lower.endswith(allowed_extensions):
             return jsonify({'error': f'Unsupported audio format. Supported: {", ".join(allowed_extensions)}'}), 400
 
+        # Map file extensions to pydub format names
+        format_map = {
+            '.mp3': 'mp3', '.mp4': 'mp4', '.mpeg': 'mp3', '.mpga': 'mp3',
+            '.m4a': 'mp4', '.wav': 'wav', '.webm': 'webm'
+        }
+        file_ext = '.' + filename_lower.rsplit('.', 1)[-1]
+        audio_format = format_map.get(file_ext, 'mp3')
+
         # Read file content
         file_content = file.read()
         file_size_mb = len(file_content) / (1024 * 1024)
 
-        # Validate file size (Whisper API limit is 25MB)
-        if file_size_mb > 25:
-            return jsonify({
-                'error': f'Audio file is {file_size_mb:.1f}MB. OpenAI Whisper has a 25MB limit. Please compress or trim the audio file.'
-            }), 400
-
         print(f"Transcribing audio: {file.filename} ({file_size_mb:.1f}MB)")
 
-        # Call OpenAI Whisper API
-        import io
         client = openai.OpenAI(api_key=openai_api_key)
+        WHISPER_LIMIT_MB = 24  # Stay under 25MB with margin
 
-        audio_file = io.BytesIO(file_content)
-        audio_file.name = file.filename
+        # If file is small enough, transcribe directly
+        if file_size_mb <= WHISPER_LIMIT_MB:
+            audio_file = io.BytesIO(file_content)
+            audio_file.name = file.filename
 
-        transcript = client.audio.transcriptions.create(
-            model="whisper-1",
-            file=audio_file,
-            response_format="text"
-        )
+            transcript = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file,
+                response_format="text"
+            )
+            transcript_text = transcript if isinstance(transcript, str) else transcript.text
 
-        transcript_text = transcript if isinstance(transcript, str) else transcript.text
+        else:
+            # Large file: load with pydub, compress, and chunk if needed
+            print(f"File exceeds {WHISPER_LIMIT_MB}MB, compressing...")
+            audio = AudioSegment.from_file(io.BytesIO(file_content), format=audio_format)
+
+            # Try compressing to 48kbps mono MP3
+            compressed = io.BytesIO()
+            audio.set_channels(1).export(compressed, format="mp3", bitrate="48k")
+            compressed_size_mb = compressed.tell() / (1024 * 1024)
+            print(f"Compressed to {compressed_size_mb:.1f}MB (48kbps mono)")
+
+            if compressed_size_mb <= WHISPER_LIMIT_MB:
+                # Compressed file fits in one request
+                compressed.seek(0)
+                compressed.name = "compressed_audio.mp3"
+                transcript = client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=compressed,
+                    response_format="text"
+                )
+                transcript_text = transcript if isinstance(transcript, str) else transcript.text
+            else:
+                # Still too large: split into chunks by duration
+                duration_ms = len(audio)
+                # Calculate chunk duration to stay under limit
+                # Ratio: target_size / actual_size * total_duration
+                chunk_duration_ms = int((WHISPER_LIMIT_MB / compressed_size_mb) * duration_ms * 0.9)
+                chunk_duration_ms = max(chunk_duration_ms, 60000)  # At least 1 minute per chunk
+
+                print(f"Splitting {duration_ms/1000:.0f}s audio into ~{chunk_duration_ms/1000:.0f}s chunks")
+
+                transcript_parts = []
+                for start_ms in range(0, duration_ms, chunk_duration_ms):
+                    end_ms = min(start_ms + chunk_duration_ms, duration_ms)
+                    chunk = audio[start_ms:end_ms]
+
+                    chunk_buf = io.BytesIO()
+                    chunk.set_channels(1).export(chunk_buf, format="mp3", bitrate="48k")
+                    chunk_buf.seek(0)
+                    chunk_buf.name = f"chunk_{start_ms // 1000}s.mp3"
+
+                    chunk_num = (start_ms // chunk_duration_ms) + 1
+                    total_chunks = (duration_ms + chunk_duration_ms - 1) // chunk_duration_ms
+                    print(f"Transcribing chunk {chunk_num}/{total_chunks} ({start_ms/1000:.0f}s - {end_ms/1000:.0f}s)")
+
+                    result = client.audio.transcriptions.create(
+                        model="whisper-1",
+                        file=chunk_buf,
+                        response_format="text"
+                    )
+                    part_text = result if isinstance(result, str) else result.text
+                    if part_text and part_text.strip():
+                        transcript_parts.append(part_text.strip())
+
+                transcript_text = " ".join(transcript_parts)
 
         if not transcript_text or not transcript_text.strip():
             return jsonify({'error': 'Transcription returned empty result. The audio may be silent or unrecognizable.'}), 400
