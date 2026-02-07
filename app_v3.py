@@ -16,6 +16,7 @@ import anthropic
 import openai
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max upload size
 CORS(app)  # Enable CORS for all routes
 
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
