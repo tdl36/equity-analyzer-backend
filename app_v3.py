@@ -1282,6 +1282,59 @@ Requirements:
         return jsonify({'error': f'Transcription failed: {str(e)}'}), 500
 
 
+@app.route('/api/text-to-docx', methods=['POST'])
+def text_to_docx():
+    """Convert transcript text to a .docx file and return as base64"""
+    try:
+        from docx import Document
+        from docx.shared import Pt, Inches
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        import base64
+        import io
+
+        data = request.get_json()
+        if not data or 'text' not in data:
+            return jsonify({'error': 'No text provided'}), 400
+
+        text = data['text']
+        title = data.get('title', 'Transcript')
+
+        doc = Document()
+
+        # Set default font
+        style = doc.styles['Normal']
+        font = style.font
+        font.name = 'Calibri'
+        font.size = Pt(11)
+
+        # Add title
+        heading = doc.add_heading(title, level=1)
+        heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
+
+        # Add transcript content, preserving line breaks
+        for line in text.split('\n'):
+            if line.strip():
+                doc.add_paragraph(line)
+            else:
+                doc.add_paragraph('')
+
+        # Save to bytes
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+        docx_base64 = base64.b64encode(buffer.read()).decode('utf-8')
+
+        return jsonify({
+            'success': True,
+            'fileData': docx_base64,
+            'fileSize': len(buffer.getvalue())
+        })
+
+    except Exception as e:
+        print(f"Error creating docx: {e}")
+        return jsonify({'error': f'Failed to create document: {str(e)}'}), 500
+
+
 # ============================================
 # DOCUMENT STORAGE ENDPOINTS
 # ============================================
