@@ -13,7 +13,6 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime
 import anthropic
-import openai
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max upload size
@@ -1191,10 +1190,9 @@ def extract_summary_text():
 
 @app.route('/api/transcribe-audio', methods=['POST'])
 def transcribe_audio():
-    """Transcribe audio file using OpenAI Whisper API, with auto-compression for large files"""
+    """Transcribe audio file using Google Gemini API"""
     try:
-        import io
-        from pydub import AudioSegment
+        from google import genai
 
         if 'file' not in request.files:
             return jsonify({'error': 'No audio file provided'}), 400
@@ -1203,101 +1201,68 @@ def transcribe_audio():
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
 
-        # Get OpenAI API key from form data or environment
-        openai_api_key = request.form.get('openaiApiKey', '') or os.environ.get('OPENAI_API_KEY', '')
-        if not openai_api_key:
-            return jsonify({'error': 'OpenAI API key is required for audio transcription. Please add it in Settings.'}), 400
+        # Get Gemini API key from form data or environment
+        gemini_api_key = request.form.get('geminiApiKey', '') or os.environ.get('GEMINI_API_KEY', '')
+        if not gemini_api_key:
+            return jsonify({'error': 'Gemini API key is required for audio transcription. Please add it in Settings.'}), 400
 
         # Validate file extension
-        allowed_extensions = ('.mp3', '.mp4', '.mpeg', '.mpga', '.m4a', '.wav', '.webm')
+        allowed_extensions = ('.mp3', '.mp4', '.mpeg', '.mpga', '.m4a', '.wav', '.webm', '.ogg', '.flac')
         filename_lower = file.filename.lower()
         if not filename_lower.endswith(allowed_extensions):
             return jsonify({'error': f'Unsupported audio format. Supported: {", ".join(allowed_extensions)}'}), 400
 
-        # Map file extensions to pydub format names
-        format_map = {
-            '.mp3': 'mp3', '.mp4': 'mp4', '.mpeg': 'mp3', '.mpga': 'mp3',
-            '.m4a': 'mp4', '.wav': 'wav', '.webm': 'webm'
+        # Map extensions to MIME types
+        mime_map = {
+            '.mp3': 'audio/mpeg', '.mp4': 'audio/mp4', '.mpeg': 'audio/mpeg',
+            '.mpga': 'audio/mpeg', '.m4a': 'audio/mp4', '.wav': 'audio/wav',
+            '.webm': 'audio/webm', '.ogg': 'audio/ogg', '.flac': 'audio/flac'
         }
         file_ext = '.' + filename_lower.rsplit('.', 1)[-1]
-        audio_format = format_map.get(file_ext, 'mp3')
+        mime_type = mime_map.get(file_ext, 'audio/mpeg')
 
         # Read file content
         file_content = file.read()
         file_size_mb = len(file_content) / (1024 * 1024)
 
-        print(f"Transcribing audio: {file.filename} ({file_size_mb:.1f}MB)")
+        print(f"Transcribing audio with Gemini: {file.filename} ({file_size_mb:.1f}MB)")
 
-        client = openai.OpenAI(api_key=openai_api_key)
-        WHISPER_LIMIT_MB = 24  # Stay under 25MB with margin
+        # Initialize Gemini client
+        client = genai.Client(api_key=gemini_api_key)
 
-        # If file is small enough, transcribe directly
-        if file_size_mb <= WHISPER_LIMIT_MB:
-            audio_file = io.BytesIO(file_content)
-            audio_file.name = file.filename
+        # Upload file to Gemini
+        import io
+        uploaded_file = client.files.upload(
+            file=io.BytesIO(file_content),
+            config={'mime_type': mime_type, 'display_name': file.filename}
+        )
 
-            transcript = client.audio.transcriptions.create(
-                model="whisper-1",
-                file=audio_file,
-                response_format="text"
-            )
-            transcript_text = transcript if isinstance(transcript, str) else transcript.text
+        print(f"File uploaded to Gemini: {uploaded_file.name}")
 
-        else:
-            # Large file: load with pydub, compress, and chunk if needed
-            print(f"File exceeds {WHISPER_LIMIT_MB}MB, compressing...")
-            audio = AudioSegment.from_file(io.BytesIO(file_content), format=audio_format)
+        # Transcribe with Gemini
+        transcription_prompt = """Please provide a complete, word-for-word professional transcription of this audio recording.
 
-            # Try compressing to 48kbps mono MP3
-            compressed = io.BytesIO()
-            audio.set_channels(1).export(compressed, format="mp3", bitrate="48k")
-            compressed_size_mb = compressed.tell() / (1024 * 1024)
-            print(f"Compressed to {compressed_size_mb:.1f}MB (48kbps mono)")
+Requirements:
+- Transcribe EVERY word spoken, do not summarize or skip any content
+- Identify different speakers where possible (e.g., "Speaker 1:", "Speaker 2:", or use names if mentioned)
+- Include filler words like "um", "uh", "you know" for accuracy
+- Use proper punctuation and paragraph breaks for readability
+- If a speaker's name is mentioned or identifiable, use their name as the label
+- Start each speaker's turn on a new line with their label
+- Do NOT add any commentary, headers, timestamps, or notes - just the pure transcription"""
 
-            if compressed_size_mb <= WHISPER_LIMIT_MB:
-                # Compressed file fits in one request
-                compressed.seek(0)
-                compressed.name = "compressed_audio.mp3"
-                transcript = client.audio.transcriptions.create(
-                    model="whisper-1",
-                    file=compressed,
-                    response_format="text"
-                )
-                transcript_text = transcript if isinstance(transcript, str) else transcript.text
-            else:
-                # Still too large: split into chunks by duration
-                duration_ms = len(audio)
-                # Calculate chunk duration to stay under limit
-                # Ratio: target_size / actual_size * total_duration
-                chunk_duration_ms = int((WHISPER_LIMIT_MB / compressed_size_mb) * duration_ms * 0.9)
-                chunk_duration_ms = max(chunk_duration_ms, 60000)  # At least 1 minute per chunk
+        response = client.models.generate_content(
+            model='gemini-2.0-flash',
+            contents=[uploaded_file, transcription_prompt]
+        )
 
-                print(f"Splitting {duration_ms/1000:.0f}s audio into ~{chunk_duration_ms/1000:.0f}s chunks")
+        transcript_text = response.text
 
-                transcript_parts = []
-                for start_ms in range(0, duration_ms, chunk_duration_ms):
-                    end_ms = min(start_ms + chunk_duration_ms, duration_ms)
-                    chunk = audio[start_ms:end_ms]
-
-                    chunk_buf = io.BytesIO()
-                    chunk.set_channels(1).export(chunk_buf, format="mp3", bitrate="48k")
-                    chunk_buf.seek(0)
-                    chunk_buf.name = f"chunk_{start_ms // 1000}s.mp3"
-
-                    chunk_num = (start_ms // chunk_duration_ms) + 1
-                    total_chunks = (duration_ms + chunk_duration_ms - 1) // chunk_duration_ms
-                    print(f"Transcribing chunk {chunk_num}/{total_chunks} ({start_ms/1000:.0f}s - {end_ms/1000:.0f}s)")
-
-                    result = client.audio.transcriptions.create(
-                        model="whisper-1",
-                        file=chunk_buf,
-                        response_format="text"
-                    )
-                    part_text = result if isinstance(result, str) else result.text
-                    if part_text and part_text.strip():
-                        transcript_parts.append(part_text.strip())
-
-                transcript_text = " ".join(transcript_parts)
+        # Clean up the uploaded file
+        try:
+            client.files.delete(name=uploaded_file.name)
+        except Exception:
+            pass  # Non-critical if cleanup fails
 
         if not transcript_text or not transcript_text.strip():
             return jsonify({'error': 'Transcription returned empty result. The audio may be silent or unrecognizable.'}), 400
@@ -1312,10 +1277,6 @@ def transcribe_audio():
             'charCount': len(transcript_text)
         })
 
-    except openai.AuthenticationError:
-        return jsonify({'error': 'Invalid OpenAI API key. Please check your key in Settings.'}), 401
-    except openai.RateLimitError:
-        return jsonify({'error': 'OpenAI rate limit reached. Please wait a moment and try again.'}), 429
     except Exception as e:
         print(f"Error transcribing audio: {e}")
         return jsonify({'error': f'Transcription failed: {str(e)}'}), 500
