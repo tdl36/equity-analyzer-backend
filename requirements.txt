@@ -1,10 +1,12 @@
 flask
 flask-cors
 requests
-gunicorn
 psycopg2-binary
-PyPDF2
-python-docx
-pillow
 anthropic
-markdown
+openai
+PyPDF2
+pdfplumber
+python-docx
+pytesseract
+Pillow
+gunicorn

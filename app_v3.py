@@ -13,6 +13,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime
 import anthropic
+import openai
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
@@ -1181,6 +1182,81 @@ def extract_summary_text():
     except Exception as e:
         print(f"Error extracting text: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+# ============================================
+# AUDIO TRANSCRIPTION ENDPOINT
+# ============================================
+
+@app.route('/api/transcribe-audio', methods=['POST'])
+def transcribe_audio():
+    """Transcribe audio file using OpenAI Whisper API"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No audio file provided'}), 400
+
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+
+        # Get OpenAI API key from form data or environment
+        openai_api_key = request.form.get('openaiApiKey', '') or os.environ.get('OPENAI_API_KEY', '')
+        if not openai_api_key:
+            return jsonify({'error': 'OpenAI API key is required for audio transcription. Please add it in Settings.'}), 400
+
+        # Validate file extension
+        allowed_extensions = ('.mp3', '.mp4', '.mpeg', '.mpga', '.m4a', '.wav', '.webm')
+        filename_lower = file.filename.lower()
+        if not filename_lower.endswith(allowed_extensions):
+            return jsonify({'error': f'Unsupported audio format. Supported: {", ".join(allowed_extensions)}'}), 400
+
+        # Read file content
+        file_content = file.read()
+        file_size_mb = len(file_content) / (1024 * 1024)
+
+        # Validate file size (Whisper API limit is 25MB)
+        if file_size_mb > 25:
+            return jsonify({
+                'error': f'Audio file is {file_size_mb:.1f}MB. OpenAI Whisper has a 25MB limit. Please compress or trim the audio file.'
+            }), 400
+
+        print(f"Transcribing audio: {file.filename} ({file_size_mb:.1f}MB)")
+
+        # Call OpenAI Whisper API
+        import io
+        client = openai.OpenAI(api_key=openai_api_key)
+
+        audio_file = io.BytesIO(file_content)
+        audio_file.name = file.filename
+
+        transcript = client.audio.transcriptions.create(
+            model="whisper-1",
+            file=audio_file,
+            response_format="text"
+        )
+
+        transcript_text = transcript if isinstance(transcript, str) else transcript.text
+
+        if not transcript_text or not transcript_text.strip():
+            return jsonify({'error': 'Transcription returned empty result. The audio may be silent or unrecognizable.'}), 400
+
+        print(f"Transcription complete: {len(transcript_text)} characters from {file.filename}")
+
+        return jsonify({
+            'success': True,
+            'text': transcript_text,
+            'filename': file.filename,
+            'fileSizeMb': round(file_size_mb, 1),
+            'charCount': len(transcript_text)
+        })
+
+    except openai.AuthenticationError:
+        return jsonify({'error': 'Invalid OpenAI API key. Please check your key in Settings.'}), 401
+    except openai.RateLimitError:
+        return jsonify({'error': 'OpenAI rate limit reached. Please wait a moment and try again.'}), 429
+    except Exception as e:
+        print(f"Error transcribing audio: {e}")
+        return jsonify({'error': f'Transcription failed: {str(e)}'}), 500
 
 
 # ============================================
