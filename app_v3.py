@@ -1239,7 +1239,7 @@ def transcribe_audio():
 
         print(f"File uploaded to Gemini: {uploaded_file.name}")
 
-        # Transcribe with Gemini
+        # Transcribe with Gemini (with retry for rate limits)
         transcription_prompt = """Please provide a complete, word-for-word professional transcription of this audio recording.
 
 Requirements:
@@ -1251,12 +1251,41 @@ Requirements:
 - Start each speaker's turn on a new line with their label
 - Do NOT add any commentary, headers, timestamps, or notes - just the pure transcription"""
 
-        response = client.models.generate_content(
-            model='gemini-2.0-flash',
-            contents=[uploaded_file, transcription_prompt]
-        )
+        import time
+        models_to_try = ['gemini-3-flash-preview', 'gemini-2.0-flash', 'gemini-2.0-flash-lite']
+        transcript_text = None
+        last_error = None
 
-        transcript_text = response.text
+        for model_name in models_to_try:
+            max_retries = 2
+            for attempt in range(max_retries):
+                try:
+                    print(f"Trying {model_name} (attempt {attempt + 1}/{max_retries})...")
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=[uploaded_file, transcription_prompt]
+                    )
+                    transcript_text = response.text
+                    print(f"Success with {model_name}")
+                    break
+                except Exception as retry_err:
+                    last_error = retry_err
+                    err_str = str(retry_err)
+                    if '429' in err_str or 'RESOURCE_EXHAUSTED' in err_str:
+                        if attempt < max_retries - 1:
+                            wait_time = (attempt + 1) * 10
+                            print(f"Rate limited on {model_name}, retrying in {wait_time}s...")
+                            time.sleep(wait_time)
+                        else:
+                            print(f"{model_name} exhausted, falling back to next model...")
+                            break
+                    else:
+                        raise
+            if transcript_text:
+                break
+
+        if transcript_text is None:
+            raise last_error or Exception("Transcription failed across all models")
 
         # Clean up the uploaded file
         try:
@@ -1279,7 +1308,10 @@ Requirements:
 
     except Exception as e:
         print(f"Error transcribing audio: {e}")
-        return jsonify({'error': f'Transcription failed: {str(e)}'}), 500
+        err_str = str(e)
+        if '429' in err_str or 'RESOURCE_EXHAUSTED' in err_str:
+            return jsonify({'error': 'Gemini API rate limit reached. Please wait 1-2 minutes and try again. If this persists, check your API quota at console.cloud.google.com.'}), 429
+        return jsonify({'error': f'Transcription failed: {err_str}'}), 500
 
 
 @app.route('/api/text-to-docx', methods=['POST'])
