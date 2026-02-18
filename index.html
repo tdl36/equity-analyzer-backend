@@ -4893,12 +4893,14 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     const analyses = [];
                     let totalTokens = 0;
                     // Helper to parse streaming response (spaces as keepalive, JSON on last line)
-                    const parseStreamResponse = async (resp) => {
+                    const parseStreamResponse = async (resp, stepName) => {
                         const text = await resp.text();
                         const trimmed = text.trim();
                         const lastNewline = trimmed.lastIndexOf('\n');
                         const jsonStr = lastNewline >= 0 ? trimmed.substring(lastNewline + 1) : trimmed;
-                        return JSON.parse(jsonStr);
+                        const data = JSON.parse(jsonStr);
+                        if (data.error) throw new Error(`${stepName}: ${data.error}`);
+                        return data;
                     };
 
                     for (let i = 0; i < docsWithText.length; i++) {
@@ -4918,7 +4920,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             const errText = await resp.text().catch(() => '');
                             throw new Error(`Analysis failed for ${d.filename}: ${errText}`);
                         }
-                        const data = await parseStreamResponse(resp);
+                        const data = await parseStreamResponse(resp, `Analysis of ${d.filename}`);
                         analyses.push({ ...data.analysis, _source_filename: d.filename, _source_id: d.id });
                         totalTokens += data.tokensUsed || 0;
                     }
@@ -4941,7 +4943,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         const errText = await synthResp.text().catch(() => '');
                         throw new Error(`Synthesis failed: ${errText}`);
                     }
-                    const synthData = await parseStreamResponse(synthResp);
+                    const synthData = await parseStreamResponse(synthResp, 'Synthesis');
                     totalTokens += synthData.tokensUsed || 0;
 
                     // Step 3: Generate questions
@@ -4961,7 +4963,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         const errText = await qResp.text().catch(() => '');
                         throw new Error(`Question generation failed: ${errText}`);
                     }
-                    const qData = await parseStreamResponse(qResp);
+                    const qData = await parseStreamResponse(qResp, 'Question generation');
                     totalTokens += qData.tokensUsed || 0;
 
                     // Step 4: Save

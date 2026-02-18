@@ -3076,7 +3076,7 @@ def email_research():
 import re as _re
 
 def parse_mp_json(text):
-    """Parse JSON from AI response, handling markdown fencing."""
+    """Parse JSON from AI response, handling markdown fencing and truncation."""
     text = text.strip()
     if text.startswith("```"):
         lines = text.split("\n")
@@ -3096,6 +3096,28 @@ def parse_mp_json(text):
                 return json.loads(text[s:e + 1])
             except json.JSONDecodeError:
                 continue
+    # Try to repair truncated JSON by closing open brackets/braces
+    for sc, ec in [("{", "}"), ("[", "]")]:
+        s = text.find(sc)
+        if s != -1:
+            fragment = text[s:]
+            # Count open vs close brackets
+            for attempt in range(5):
+                try:
+                    return json.loads(fragment)
+                except json.JSONDecodeError:
+                    # Try closing with appropriate bracket
+                    open_braces = fragment.count('{') - fragment.count('}')
+                    open_brackets = fragment.count('[') - fragment.count(']')
+                    # Remove trailing partial content after last comma or complete value
+                    last_comma = fragment.rfind(',')
+                    if last_comma > 0:
+                        fragment = fragment[:last_comma]
+                    fragment += '}' * max(0, open_braces) + ']' * max(0, open_brackets)
+                    try:
+                        return json.loads(fragment)
+                    except json.JSONDecodeError:
+                        break
     raise ValueError(f"Could not parse JSON from response: {text[:300]}")
 
 
@@ -3528,24 +3550,26 @@ def mp_analyze_document():
         client = anthropic.Anthropic(api_key=api_key)
 
         def generate():
-            result_text = ""
-            tokens_used = 0
-            with client.messages.stream(
-                model="claude-sonnet-4-20250514",
-                max_tokens=16384,
-                system=prompt,
-                messages=[{"role": "user", "content": user_msg}]
-            ) as stream:
-                for text in stream.text_stream:
-                    result_text += text
-                    # Send a space as keepalive every chunk to prevent timeout
-                    yield " "
-                response = stream.get_final_message()
-                tokens_used = response.usage.input_tokens + response.usage.output_tokens
+            try:
+                result_text = ""
+                tokens_used = 0
+                with client.messages.stream(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=16384,
+                    system=prompt,
+                    messages=[{"role": "user", "content": user_msg}]
+                ) as stream:
+                    for text in stream.text_stream:
+                        result_text += text
+                        yield " "
+                    response = stream.get_final_message()
+                    tokens_used = response.usage.input_tokens + response.usage.output_tokens
 
-            analysis = parse_mp_json(result_text)
-            # Final result as JSON on last line
-            yield "\n" + json.dumps({'analysis': analysis, 'tokensUsed': tokens_used, 'filename': filename})
+                analysis = parse_mp_json(result_text)
+                yield "\n" + json.dumps({'analysis': analysis, 'tokensUsed': tokens_used, 'filename': filename})
+            except Exception as e:
+                print(f"MP analyze stream error: {e}")
+                yield "\n" + json.dumps({'error': str(e)})
 
         return app.response_class(generate(), mimetype='text/plain')
 
@@ -3598,22 +3622,26 @@ def mp_synthesize():
         client = anthropic.Anthropic(api_key=api_key)
 
         def generate():
-            result_text = ""
-            tokens_used = 0
-            with client.messages.stream(
-                model="claude-sonnet-4-20250514",
-                max_tokens=16384,
-                system=prompt,
-                messages=[{"role": "user", "content": "Synthesize the above document analyses."}]
-            ) as stream:
-                for text in stream.text_stream:
-                    result_text += text
-                    yield " "
-                response = stream.get_final_message()
-                tokens_used = response.usage.input_tokens + response.usage.output_tokens
+            try:
+                result_text = ""
+                tokens_used = 0
+                with client.messages.stream(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=16384,
+                    system=prompt,
+                    messages=[{"role": "user", "content": "Synthesize the above document analyses."}]
+                ) as stream:
+                    for text in stream.text_stream:
+                        result_text += text
+                        yield " "
+                    response = stream.get_final_message()
+                    tokens_used = response.usage.input_tokens + response.usage.output_tokens
 
-            synthesis = parse_mp_json(result_text)
-            yield "\n" + json.dumps({'synthesis': synthesis, 'tokensUsed': tokens_used})
+                synthesis = parse_mp_json(result_text)
+                yield "\n" + json.dumps({'synthesis': synthesis, 'tokensUsed': tokens_used})
+            except Exception as e:
+                print(f"MP synthesize stream error: {e}")
+                yield "\n" + json.dumps({'error': str(e)})
 
         return app.response_class(generate(), mimetype='text/plain')
 
@@ -3657,22 +3685,26 @@ def mp_generate_questions():
         client = anthropic.Anthropic(api_key=api_key)
 
         def generate():
-            result_text = ""
-            tokens_used = 0
-            with client.messages.stream(
-                model="claude-sonnet-4-20250514",
-                max_tokens=16384,
-                system=prompt,
-                messages=[{"role": "user", "content": "Generate the meeting preparation questions."}]
-            ) as stream:
-                for text in stream.text_stream:
-                    result_text += text
-                    yield " "
-                response = stream.get_final_message()
-                tokens_used = response.usage.input_tokens + response.usage.output_tokens
+            try:
+                result_text = ""
+                tokens_used = 0
+                with client.messages.stream(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=16384,
+                    system=prompt,
+                    messages=[{"role": "user", "content": "Generate the meeting preparation questions."}]
+                ) as stream:
+                    for text in stream.text_stream:
+                        result_text += text
+                        yield " "
+                    response = stream.get_final_message()
+                    tokens_used = response.usage.input_tokens + response.usage.output_tokens
 
-            topics = parse_mp_json(result_text)
-            yield "\n" + json.dumps({'topics': topics, 'tokensUsed': tokens_used})
+                topics = parse_mp_json(result_text)
+                yield "\n" + json.dumps({'topics': topics, 'tokensUsed': tokens_used})
+            except Exception as e:
+                print(f"MP generate questions stream error: {e}")
+                yield "\n" + json.dumps({'error': str(e)})
 
         return app.response_class(generate(), mimetype='text/plain')
 
