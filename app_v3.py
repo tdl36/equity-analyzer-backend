@@ -3947,11 +3947,12 @@ def mp_search_drive():
 
 @app.route('/api/mp/import-drive-files', methods=['POST'])
 def mp_import_drive_files():
-    """Download files from Google Drive and import into a meeting."""
+    """Download files from Google Drive and import into a meeting. Handles zip files by extracting PDFs."""
     try:
         import requests as http_requests
         from PyPDF2 import PdfReader
         import io
+        import zipfile
 
         data = request.json
         access_token = data.get('accessToken', '')
@@ -3977,12 +3978,43 @@ def mp_import_drive_files():
         cur.execute('SELECT COALESCE(MAX(upload_order), 0) AS max_order FROM mp_documents WHERE meeting_id = %s', (meeting_id,))
         order = cur.fetchone()['max_order']
 
+        def import_pdf(pdf_bytes, filename, doc_date, cur, meeting_id, order):
+            """Extract text from PDF bytes and insert into mp_documents."""
+            extracted_text = ''
+            page_count = None
+            try:
+                reader = PdfReader(io.BytesIO(pdf_bytes))
+                pages = []
+                for page in reader.pages:
+                    t = page.extract_text()
+                    if t:
+                        pages.append(t)
+                extracted_text = '\n\n'.join(pages)
+                page_count = len(reader.pages)
+            except Exception as ex:
+                print(f"PDF extraction error for {filename}: {ex}")
+
+            doc_type = classify_mp_document(filename, extracted_text)
+            token_estimate = len(extracted_text) // 4 if extracted_text else 0
+            file_size = len(pdf_bytes)
+
+            cur.execute('''
+                INSERT INTO mp_documents (meeting_id, filename, file_data, doc_type, doc_date,
+                    page_count, token_estimate, extracted_text, upload_order, file_size)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id, filename, doc_type, doc_date, page_count, token_estimate, upload_order, file_size, created_at
+            ''', (meeting_id, filename, '', doc_type, doc_date,
+                  page_count, token_estimate, extracted_text, order, file_size))
+            row = dict(cur.fetchone())
+            row['created_at'] = row['created_at'].isoformat() if row['created_at'] else None
+            return row
+
         results = []
         for file_info in files_to_import:
             file_id = file_info.get('id')
             filename = file_info.get('name', 'unknown')
             mime_type = file_info.get('mimeType', '')
-            order += 1
+            doc_date = file_info.get('modifiedTime', '')[:10] if file_info.get('modifiedTime') else None
 
             try:
                 # Download file content via REST API
@@ -3993,35 +4025,34 @@ def mp_import_drive_files():
                 dl_resp.raise_for_status()
                 file_content = dl_resp.content
 
-                # Extract text from PDF
-                extracted_text = ''
-                page_count = None
-                try:
-                    reader = PdfReader(io.BytesIO(file_content))
-                    pages = []
-                    for page in reader.pages:
-                        t = page.extract_text()
-                        if t:
-                            pages.append(t)
-                    extracted_text = '\n\n'.join(pages)
-                    page_count = len(reader.pages)
-                except Exception as ex:
-                    print(f"PDF extraction error for {filename}: {ex}")
+                is_zip = (mime_type == 'application/zip' or
+                          mime_type == 'application/x-zip-compressed' or
+                          filename.lower().endswith('.zip'))
 
-                doc_type = classify_mp_document(filename, extracted_text)
-                token_estimate = len(extracted_text) // 4 if extracted_text else 0
-                file_size = len(file_content) if file_content else 0
-
-                cur.execute('''
-                    INSERT INTO mp_documents (meeting_id, filename, file_data, doc_type, doc_date,
-                        page_count, token_estimate, extracted_text, upload_order, file_size)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    RETURNING id, filename, doc_type, doc_date, page_count, token_estimate, upload_order, file_size, created_at
-                ''', (meeting_id, filename, '', doc_type, file_info.get('modifiedTime', '')[:10] if file_info.get('modifiedTime') else None,
-                      page_count, token_estimate, extracted_text, order, file_size))
-                row = dict(cur.fetchone())
-                row['created_at'] = row['created_at'].isoformat() if row['created_at'] else None
-                results.append(row)
+                if is_zip:
+                    # Extract all PDFs from the zip file
+                    try:
+                        with zipfile.ZipFile(io.BytesIO(file_content)) as zf:
+                            pdf_names = [n for n in zf.namelist()
+                                         if n.lower().endswith('.pdf') and not n.startswith('__MACOSX')]
+                            if not pdf_names:
+                                results.append({'filename': filename, 'error': 'No PDF files found inside zip'})
+                                continue
+                            for pdf_name in pdf_names:
+                                order += 1
+                                pdf_bytes = zf.read(pdf_name)
+                                # Use just the PDF filename, not full zip path
+                                pdf_filename = pdf_name.split('/')[-1] if '/' in pdf_name else pdf_name
+                                row = import_pdf(pdf_bytes, pdf_filename, doc_date, cur, meeting_id, order)
+                                row['fromZip'] = filename
+                                results.append(row)
+                    except zipfile.BadZipFile:
+                        results.append({'filename': filename, 'error': 'Invalid or corrupted zip file'})
+                else:
+                    # Regular PDF file
+                    order += 1
+                    row = import_pdf(file_content, filename, doc_date, cur, meeting_id, order)
+                    results.append(row)
 
             except Exception as ex:
                 print(f"Error importing {filename}: {ex}")
