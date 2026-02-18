@@ -4809,52 +4809,51 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 if (!files.length || !mpSelectedMeeting) return;
                 setMpUploading(true);
                 try {
-                    const docs = [];
-                    for (const file of files) {
-                        // Read as base64
-                        const rawFileData = await new Promise((resolve, reject) => {
-                            const reader = new FileReader();
-                            reader.onload = () => resolve(reader.result.split(',')[1]);
-                            reader.onerror = reject;
-                            reader.readAsDataURL(file);
-                        });
+                    for (let i = 0; i < files.length; i++) {
+                        const file = files[i];
+                        setMpPipelineStep(`Uploading ${i + 1} of ${files.length}: ${file.name}`);
 
-                        // Try extracting text via existing endpoint
+                        // Extract text via existing endpoint
                         let extractedText = '';
                         let pageCount = null;
-                        if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
-                            try {
-                                const formData = new FormData();
-                                formData.append('file', file);
-                                const pdfRes = await fetch(`${API_URL}/api/extract-pdf`, { method: 'POST', body: formData });
-                                if (pdfRes.ok) {
-                                    const pdfData = await pdfRes.json();
-                                    extractedText = pdfData.text || '';
-                                    pageCount = pdfData.pages || null;
-                                }
-                            } catch (ex) { console.error('PDF extract error:', ex); }
-                        }
+                        try {
+                            const formData = new FormData();
+                            formData.append('file', file);
+                            const pdfRes = await fetch(`${API_URL}/api/extract-pdf`, { method: 'POST', body: formData });
+                            if (pdfRes.ok) {
+                                const pdfData = await pdfRes.json();
+                                extractedText = pdfData.text || '';
+                                pageCount = pdfData.pages || null;
+                            } else {
+                                console.error('PDF extract failed:', pdfRes.status, await pdfRes.text().catch(() => ''));
+                            }
+                        } catch (ex) { console.error('PDF extract error:', ex); }
 
-                        docs.push({
+                        // Upload one doc at a time (text + metadata only)
+                        const payload = { documents: [{
                             filename: file.name,
-                            fileData: rawFileData,
+                            fileData: '',
                             extractedText,
                             pageCount,
+                        }] };
+                        console.log('Uploading doc:', file.name, 'text length:', extractedText.length);
+                        const res = await fetch(`${API_URL}/api/mp/meetings/${mpSelectedMeeting.id}/documents`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
                         });
+                        if (!res.ok) {
+                            const errText = await res.text().catch(() => '');
+                            throw new Error(`Upload failed (${res.status}): ${errText}`);
+                        }
                     }
 
-                    // Upload to backend
-                    const res = await fetch(`${API_URL}/api/mp/meetings/${mpSelectedMeeting.id}/documents`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ documents: docs })
-                    });
-                    if (!res.ok) throw new Error((await res.json()).error || 'Upload failed');
-
+                    setMpPipelineStep('');
                     await loadMpMeeting(mpSelectedMeeting.id);
                 } catch (err) { alert('Upload error: ' + err.message); }
                 finally {
                     setMpUploading(false);
+                    setMpPipelineStep('');
                     if (mpFileInputRef.current) mpFileInputRef.current.value = '';
                 }
             };
@@ -4893,6 +4892,15 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     // Step 1: Analyze each document
                     const analyses = [];
                     let totalTokens = 0;
+                    // Helper to parse streaming response (spaces as keepalive, JSON on last line)
+                    const parseStreamResponse = async (resp) => {
+                        const text = await resp.text();
+                        const trimmed = text.trim();
+                        const lastNewline = trimmed.lastIndexOf('\n');
+                        const jsonStr = lastNewline >= 0 ? trimmed.substring(lastNewline + 1) : trimmed;
+                        return JSON.parse(jsonStr);
+                    };
+
                     for (let i = 0; i < docsWithText.length; i++) {
                         const d = docsWithText[i];
                         setMpPipelineStep('analyzing');
@@ -4906,8 +4914,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 docId: d.id, extractedText: d.extractedText, docType: d.docType, filename: d.filename
                             })
                         });
-                        if (!resp.ok) throw new Error((await resp.json()).error || `Analysis failed for ${d.filename}`);
-                        const data = await resp.json();
+                        if (!resp.ok) {
+                            const errText = await resp.text().catch(() => '');
+                            throw new Error(`Analysis failed for ${d.filename}: ${errText}`);
+                        }
+                        const data = await parseStreamResponse(resp);
                         analyses.push({ ...data.analysis, _source_filename: d.filename, _source_id: d.id });
                         totalTokens += data.tokensUsed || 0;
                     }
@@ -4926,8 +4937,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             sector: meeting.sector || '', analyses, pastQuestions: mpPastQuestions, timeframe
                         })
                     });
-                    if (!synthResp.ok) throw new Error((await synthResp.json()).error || 'Synthesis failed');
-                    const synthData = await synthResp.json();
+                    if (!synthResp.ok) {
+                        const errText = await synthResp.text().catch(() => '');
+                        throw new Error(`Synthesis failed: ${errText}`);
+                    }
+                    const synthData = await parseStreamResponse(synthResp);
                     totalTokens += synthData.tokensUsed || 0;
 
                     // Step 3: Generate questions
@@ -4943,8 +4957,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             sector: meeting.sector || '', synthesis: synthData.synthesis, unresolvedQuestions: unresolved
                         })
                     });
-                    if (!qResp.ok) throw new Error((await qResp.json()).error || 'Question generation failed');
-                    const qData = await qResp.json();
+                    if (!qResp.ok) {
+                        const errText = await qResp.text().catch(() => '');
+                        throw new Error(`Question generation failed: ${errText}`);
+                    }
+                    const qData = await parseStreamResponse(qResp);
                     totalTokens += qData.tokensUsed || 0;
 
                     // Step 4: Save

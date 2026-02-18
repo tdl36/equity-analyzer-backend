@@ -3501,7 +3501,7 @@ def mp_delete_document(meeting_id, doc_id):
 
 @app.route('/api/mp/analyze-document', methods=['POST'])
 def mp_analyze_document():
-    """Step 1: Analyze a single document. Returns structured analysis JSON."""
+    """Step 1: Analyze a single document. Uses streaming to avoid Render timeout."""
     try:
         data = request.json
         api_key = data.get('apiKey', '') or os.environ.get('ANTHROPIC_API_KEY', '')
@@ -3517,7 +3517,6 @@ def mp_analyze_document():
         if not extracted_text:
             return jsonify({'error': 'No document text provided'}), 400
 
-        # Truncate if too long
         if len(extracted_text) > 400000:
             extracted_text = extracted_text[:400000] + "\n\n[... document truncated for length ...]"
 
@@ -3527,35 +3526,31 @@ def mp_analyze_document():
         user_msg = f"Document: {filename}\n\n{extracted_text}"
 
         client = anthropic.Anthropic(api_key=api_key)
-        message = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=16384,
-            system=prompt,
-            messages=[{"role": "user", "content": user_msg}]
-        )
 
-        result_text = ""
-        for block in message.content:
-            if hasattr(block, 'text'):
-                result_text += block.text
+        def generate():
+            result_text = ""
+            tokens_used = 0
+            with client.messages.stream(
+                model="claude-sonnet-4-20250514",
+                max_tokens=16384,
+                system=prompt,
+                messages=[{"role": "user", "content": user_msg}]
+            ) as stream:
+                for text in stream.text_stream:
+                    result_text += text
+                    # Send a space as keepalive every chunk to prevent timeout
+                    yield " "
+                response = stream.get_final_message()
+                tokens_used = response.usage.input_tokens + response.usage.output_tokens
 
-        analysis = parse_mp_json(result_text)
-        tokens_used = message.usage.input_tokens + message.usage.output_tokens
+            analysis = parse_mp_json(result_text)
+            # Final result as JSON on last line
+            yield "\n" + json.dumps({'analysis': analysis, 'tokensUsed': tokens_used, 'filename': filename})
 
-        return jsonify({
-            'analysis': analysis,
-            'tokensUsed': tokens_used,
-            'filename': filename,
-        })
+        return app.response_class(generate(), mimetype='text/plain')
 
-    except anthropic.APIConnectionError:
-        return jsonify({'error': 'Failed to connect to Anthropic API.'}), 503
-    except anthropic.RateLimitError:
-        return jsonify({'error': 'Rate limit exceeded. Please wait and try again.'}), 429
     except anthropic.AuthenticationError:
         return jsonify({'error': 'Invalid API key.'}), 401
-    except anthropic.APIStatusError as e:
-        return jsonify({'error': f'API error: {e.message}'}), e.status_code
     except Exception as e:
         print(f"MP analyze error: {e}")
         return jsonify({'error': str(e)}), 500
@@ -3563,7 +3558,7 @@ def mp_analyze_document():
 
 @app.route('/api/mp/synthesize', methods=['POST'])
 def mp_synthesize():
-    """Step 2: Cross-reference all document analyses. Returns synthesis JSON."""
+    """Step 2: Cross-reference all document analyses. Uses streaming to avoid timeout."""
     try:
         data = request.json
         api_key = data.get('apiKey', '') or os.environ.get('ANTHROPIC_API_KEY', '')
@@ -3580,13 +3575,11 @@ def mp_synthesize():
         if not analyses:
             return jsonify({'error': 'No analyses provided'}), 400
 
-        # Format analyses text
         analyses_parts = []
         for i, a in enumerate(analyses):
             analyses_parts.append(f"### Document {i+1}: {a.get('_source_filename', 'unknown')}\n{json.dumps(a, indent=2)}")
         analyses_text = "\n\n".join(analyses_parts)
 
-        # Format past questions
         past_q_text = ""
         if past_questions:
             pq_items = []
@@ -3603,34 +3596,29 @@ def mp_synthesize():
         )
 
         client = anthropic.Anthropic(api_key=api_key)
-        message = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=16384,
-            system=prompt,
-            messages=[{"role": "user", "content": "Synthesize the above document analyses."}]
-        )
 
-        result_text = ""
-        for block in message.content:
-            if hasattr(block, 'text'):
-                result_text += block.text
+        def generate():
+            result_text = ""
+            tokens_used = 0
+            with client.messages.stream(
+                model="claude-sonnet-4-20250514",
+                max_tokens=16384,
+                system=prompt,
+                messages=[{"role": "user", "content": "Synthesize the above document analyses."}]
+            ) as stream:
+                for text in stream.text_stream:
+                    result_text += text
+                    yield " "
+                response = stream.get_final_message()
+                tokens_used = response.usage.input_tokens + response.usage.output_tokens
 
-        synthesis = parse_mp_json(result_text)
-        tokens_used = message.usage.input_tokens + message.usage.output_tokens
+            synthesis = parse_mp_json(result_text)
+            yield "\n" + json.dumps({'synthesis': synthesis, 'tokensUsed': tokens_used})
 
-        return jsonify({
-            'synthesis': synthesis,
-            'tokensUsed': tokens_used,
-        })
+        return app.response_class(generate(), mimetype='text/plain')
 
-    except anthropic.APIConnectionError:
-        return jsonify({'error': 'Failed to connect to Anthropic API.'}), 503
-    except anthropic.RateLimitError:
-        return jsonify({'error': 'Rate limit exceeded. Please wait and try again.'}), 429
     except anthropic.AuthenticationError:
         return jsonify({'error': 'Invalid API key.'}), 401
-    except anthropic.APIStatusError as e:
-        return jsonify({'error': f'API error: {e.message}'}), e.status_code
     except Exception as e:
         print(f"MP synthesize error: {e}")
         return jsonify({'error': str(e)}), 500
@@ -3638,7 +3626,7 @@ def mp_synthesize():
 
 @app.route('/api/mp/generate-questions', methods=['POST'])
 def mp_generate_questions():
-    """Step 3: Generate questions from synthesis. Returns topics array."""
+    """Step 3: Generate questions from synthesis. Uses streaming to avoid timeout."""
     try:
         data = request.json
         api_key = data.get('apiKey', '') or os.environ.get('ANTHROPIC_API_KEY', '')
@@ -3667,34 +3655,29 @@ def mp_generate_questions():
         )
 
         client = anthropic.Anthropic(api_key=api_key)
-        message = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=16384,
-            system=prompt,
-            messages=[{"role": "user", "content": "Generate the meeting preparation questions."}]
-        )
 
-        result_text = ""
-        for block in message.content:
-            if hasattr(block, 'text'):
-                result_text += block.text
+        def generate():
+            result_text = ""
+            tokens_used = 0
+            with client.messages.stream(
+                model="claude-sonnet-4-20250514",
+                max_tokens=16384,
+                system=prompt,
+                messages=[{"role": "user", "content": "Generate the meeting preparation questions."}]
+            ) as stream:
+                for text in stream.text_stream:
+                    result_text += text
+                    yield " "
+                response = stream.get_final_message()
+                tokens_used = response.usage.input_tokens + response.usage.output_tokens
 
-        topics = parse_mp_json(result_text)
-        tokens_used = message.usage.input_tokens + message.usage.output_tokens
+            topics = parse_mp_json(result_text)
+            yield "\n" + json.dumps({'topics': topics, 'tokensUsed': tokens_used})
 
-        return jsonify({
-            'topics': topics,
-            'tokensUsed': tokens_used,
-        })
+        return app.response_class(generate(), mimetype='text/plain')
 
-    except anthropic.APIConnectionError:
-        return jsonify({'error': 'Failed to connect to Anthropic API.'}), 503
-    except anthropic.RateLimitError:
-        return jsonify({'error': 'Rate limit exceeded. Please wait and try again.'}), 429
     except anthropic.AuthenticationError:
         return jsonify({'error': 'Invalid API key.'}), 401
-    except anthropic.APIStatusError as e:
-        return jsonify({'error': f'API error: {e.message}'}), e.status_code
     except Exception as e:
         print(f"MP generate questions error: {e}")
         return jsonify({'error': str(e)}), 500
