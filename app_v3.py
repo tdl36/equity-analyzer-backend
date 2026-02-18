@@ -3874,6 +3874,171 @@ def mp_get_document_text(meeting_id, doc_id):
 
 
 # ============================================
+# MEETING PREP — GOOGLE DRIVE INTEGRATION
+# ============================================
+
+@app.route('/api/mp/search-drive', methods=['POST'])
+def mp_search_drive():
+    """Search Google Drive 'Research Reports Char' folder for documents matching a ticker."""
+    try:
+        from googleapiclient.discovery import build
+        from google.oauth2.credentials import Credentials
+        from datetime import datetime, timedelta
+
+        data = request.json
+        access_token = data.get('accessToken', '')
+        ticker = data.get('ticker', '')
+        time_range = data.get('timeRange', '3months')
+
+        if not access_token:
+            return jsonify({'error': 'Google access token required'}), 400
+        if not ticker:
+            return jsonify({'error': 'Ticker required'}), 400
+
+        # Calculate date cutoff
+        ranges = {
+            'day': 1, 'week': 7, 'month': 30, '3months': 90,
+            '6months': 180, 'year': 365, '3years': 1095
+        }
+        days = ranges.get(time_range, 90)
+        cutoff = (datetime.utcnow() - timedelta(days=days)).strftime('%Y-%m-%dT%H:%M:%S')
+
+        creds = Credentials(token=access_token)
+        service = build('drive', 'v3', credentials=creds)
+
+        # Find "Research Reports Char" folder
+        folder_query = "name = 'Research Reports Char' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+        folder_results = service.files().list(q=folder_query, fields='files(id, name)', pageSize=5).execute()
+        folders = folder_results.get('files', [])
+
+        if not folders:
+            return jsonify({'error': 'Folder "Research Reports Char" not found in your Google Drive'}), 404
+
+        folder_id = folders[0]['id']
+
+        # Search for files matching ticker in that folder
+        file_query = (
+            f"'{folder_id}' in parents and trashed = false "
+            f"and modifiedTime > '{cutoff}' "
+            f"and (name contains '{ticker}' or fullText contains '{ticker}')"
+        )
+        file_results = service.files().list(
+            q=file_query,
+            fields='files(id, name, mimeType, modifiedTime, size)',
+            pageSize=50,
+            orderBy='modifiedTime desc'
+        ).execute()
+        files = file_results.get('files', [])
+
+        return jsonify({'files': files, 'folderId': folder_id, 'folderName': folders[0]['name']})
+
+    except Exception as e:
+        error_msg = str(e)
+        print(f"Drive search error: {error_msg}")
+        if 'invalid_grant' in error_msg.lower() or '401' in error_msg:
+            return jsonify({'error': 'Google authentication expired. Please re-authenticate.'}), 401
+        return jsonify({'error': error_msg}), 500
+
+
+@app.route('/api/mp/import-drive-files', methods=['POST'])
+def mp_import_drive_files():
+    """Download files from Google Drive and import into a meeting."""
+    try:
+        from googleapiclient.discovery import build
+        from google.oauth2.credentials import Credentials
+        from PyPDF2 import PdfReader
+        import io
+
+        data = request.json
+        access_token = data.get('accessToken', '')
+        meeting_id = data.get('meetingId')
+        files_to_import = data.get('files', [])
+
+        if not access_token or not meeting_id or not files_to_import:
+            return jsonify({'error': 'accessToken, meetingId, and files are required'}), 400
+
+        creds = Credentials(token=access_token)
+        service = build('drive', 'v3', credentials=creds)
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # Verify meeting exists
+        cur.execute('SELECT id FROM mp_meetings WHERE id = %s', (meeting_id,))
+        if not cur.fetchone():
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'Meeting not found'}), 404
+
+        cur.execute('SELECT COALESCE(MAX(upload_order), 0) AS max_order FROM mp_documents WHERE meeting_id = %s', (meeting_id,))
+        order = cur.fetchone()['max_order']
+
+        results = []
+        for file_info in files_to_import:
+            file_id = file_info.get('id')
+            filename = file_info.get('name', 'unknown')
+            mime_type = file_info.get('mimeType', '')
+            order += 1
+
+            try:
+                # Download file content
+                if mime_type == 'application/vnd.google-apps.document':
+                    # Export Google Docs as PDF
+                    file_content = service.files().export(fileId=file_id, mimeType='application/pdf').execute()
+                elif mime_type == 'application/vnd.google-apps.spreadsheet':
+                    file_content = service.files().export(fileId=file_id, mimeType='application/pdf').execute()
+                else:
+                    file_content = service.files().get_media(fileId=file_id).execute()
+
+                # Extract text from PDF
+                extracted_text = ''
+                page_count = None
+                try:
+                    reader = PdfReader(io.BytesIO(file_content))
+                    pages = []
+                    for page in reader.pages:
+                        t = page.extract_text()
+                        if t:
+                            pages.append(t)
+                    extracted_text = '\n\n'.join(pages)
+                    page_count = len(reader.pages)
+                except Exception as ex:
+                    print(f"PDF extraction error for {filename}: {ex}")
+
+                doc_type = classify_mp_document(filename, extracted_text)
+                token_estimate = len(extracted_text) // 4 if extracted_text else 0
+                file_size = len(file_content) if file_content else 0
+
+                cur.execute('''
+                    INSERT INTO mp_documents (meeting_id, filename, file_data, doc_type, doc_date,
+                        page_count, token_estimate, extracted_text, upload_order, file_size)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id, filename, doc_type, doc_date, page_count, token_estimate, upload_order, file_size, created_at
+                ''', (meeting_id, filename, '', doc_type, file_info.get('modifiedTime', '')[:10] if file_info.get('modifiedTime') else None,
+                      page_count, token_estimate, extracted_text, order, file_size))
+                row = dict(cur.fetchone())
+                row['created_at'] = row['created_at'].isoformat() if row['created_at'] else None
+                results.append(row)
+
+            except Exception as ex:
+                print(f"Error importing {filename}: {ex}")
+                results.append({'filename': filename, 'error': str(ex)})
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        return jsonify(results)
+
+    except Exception as e:
+        error_msg = str(e)
+        print(f"Drive import error: {error_msg}")
+        if 'invalid_grant' in error_msg.lower() or '401' in error_msg:
+            return jsonify({'error': 'Google authentication expired. Please re-authenticate.'}), 401
+        return jsonify({'error': error_msg}), 500
+
+
+# ============================================
 # HEALTH CHECK
 # ============================================
 

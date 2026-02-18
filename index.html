@@ -67,6 +67,7 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script>
         tailwind.config = {
             theme: {
@@ -1461,6 +1462,18 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [mpDataLoaded, setMpDataLoaded] = useState(false);
             const [mpPastQuestions, setMpPastQuestions] = useState([]);
             const [mpUploading, setMpUploading] = useState(false);
+
+            // Meeting Prep — Google Drive state
+            const [mpDriveToken, setMpDriveToken] = useState(null);
+            const [mpDriveResults, setMpDriveResults] = useState([]);
+            const [mpDriveSearching, setMpDriveSearching] = useState(false);
+            const [mpDriveImporting, setMpDriveImporting] = useState(false);
+            const [mpDriveTimeRange, setMpDriveTimeRange] = useState('3months');
+            const [mpDriveSelected, setMpDriveSelected] = useState(new Set());
+            const [mpDriveError, setMpDriveError] = useState(null);
+            const [googleClientId, setGoogleClientId] = useState(() => {
+                try { return localStorage.getItem('google_oauth_client_id') || ''; } catch(e) { return ''; }
+            });
 
             // Stock search state
             const [stockSearch, setStockSearch] = useState('');
@@ -4994,6 +5007,175 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 setMpExpandedTopics(prev => {
                     const next = new Set(prev);
                     if (next.has(index)) next.delete(index); else next.add(index);
+                    return next;
+                });
+            };
+
+            const quickEmailMpQuestions = async () => {
+                const saved = localStorage.getItem('emailCredentials');
+                if (!saved) { alert('Please configure email in Settings first'); return; }
+                let creds;
+                try { creds = JSON.parse(saved); } catch (e) { return; }
+                if (!creds.email) { alert('Please set a default recipient email in Settings'); return; }
+
+                if (!mpQuestionSet || !mpQuestionSet.topics || !mpQuestionSet.topics.length) {
+                    alert('No questions to email. Generate questions first.'); return;
+                }
+
+                const ticker = mpSelectedMeeting?.ticker || '';
+                const company = mpSelectedMeeting?.company_name || ticker;
+
+                // Build markdown from topics
+                let md = `# ${ticker} — Meeting Prep Questions\n\n`;
+                if (company !== ticker) md += `**${company}**\n\n`;
+
+                for (const topic of mpQuestionSet.topics) {
+                    md += `## ${topic.topic}\n`;
+                    if (topic.description) md += `*${topic.description}*\n\n`;
+
+                    const byPriority = { high: [], medium: [], low: [] };
+                    for (const q of (topic.questions || [])) {
+                        const p = q.priority || 'medium';
+                        (byPriority[p] || byPriority.medium).push(q);
+                    }
+
+                    for (const [priority, questions] of Object.entries(byPriority)) {
+                        if (!questions.length) continue;
+                        md += `### ${priority.toUpperCase()} PRIORITY\n\n`;
+                        questions.forEach((q, i) => {
+                            md += `${i + 1}. **${q.question}**\n`;
+                            if (q.context) md += `   - *Context:* ${q.context}\n`;
+                            if (q.source) md += `   - *Source:* ${q.source}\n`;
+                            if (q.follow_up_angle) md += `   - *Follow-up:* ${q.follow_up_angle}\n`;
+                            md += '\n';
+                        });
+                    }
+                }
+
+                try {
+                    const response = await fetch(`${API_URL}/api/email-research`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            email: creds.email,
+                            subject: `${ticker} - Meeting Prep Questions`,
+                            content: md,
+                            promptName: 'Meeting Prep',
+                            ticker: ticker,
+                            topic: `${company} Meeting Prep`,
+                            smtpConfig: {
+                                use_gmail: creds.useGmail,
+                                gmail_user: creds.gmailUser,
+                                gmail_app_password: creds.gmailPassword,
+                                from_email: creds.gmailUser
+                            }
+                        })
+                    });
+                    if (response.ok) {
+                        alert('Questions emailed successfully!');
+                    } else {
+                        const err = await response.json();
+                        throw new Error(err.error || 'Failed to send');
+                    }
+                } catch (err) {
+                    alert('Failed to send email: ' + err.message);
+                }
+            };
+
+            // Google Drive functions for Meeting Prep
+            const mpAuthGoogle = () => {
+                return new Promise((resolve, reject) => {
+                    const clientId = googleClientId || localStorage.getItem('google_oauth_client_id') || '';
+                    if (!clientId) {
+                        reject(new Error('Please add your Google OAuth Client ID in Settings first'));
+                        return;
+                    }
+                    if (mpDriveToken) { resolve(mpDriveToken); return; }
+                    try {
+                        const tokenClient = google.accounts.oauth2.initTokenClient({
+                            client_id: clientId,
+                            scope: 'https://www.googleapis.com/auth/drive.readonly',
+                            callback: (response) => {
+                                if (response.error) { reject(new Error(response.error)); return; }
+                                setMpDriveToken(response.access_token);
+                                resolve(response.access_token);
+                            },
+                            error_callback: (err) => reject(new Error(err.message || 'Google auth failed')),
+                        });
+                        tokenClient.requestAccessToken();
+                    } catch (e) {
+                        reject(new Error('Google Identity Services not loaded. Try refreshing the page.'));
+                    }
+                });
+            };
+
+            const mpSearchDrive = async () => {
+                if (!mpSelectedMeeting) return;
+                setMpDriveSearching(true);
+                setMpDriveError(null);
+                setMpDriveResults([]);
+                setMpDriveSelected(new Set());
+                try {
+                    const token = mpDriveToken || await mpAuthGoogle();
+                    const res = await fetch(`${API_URL}/api/mp/search-drive`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ accessToken: token, ticker: mpSelectedMeeting.ticker, timeRange: mpDriveTimeRange })
+                    });
+                    if (res.status === 401) {
+                        setMpDriveToken(null);
+                        throw new Error('Google authentication expired. Please try again.');
+                    }
+                    if (!res.ok) {
+                        const err = await res.json();
+                        throw new Error(err.error || 'Search failed');
+                    }
+                    const data = await res.json();
+                    setMpDriveResults(data.files || []);
+                    if (!data.files || data.files.length === 0) {
+                        setMpDriveError(`No files matching "${mpSelectedMeeting.ticker}" found in the selected time range.`);
+                    }
+                } catch (err) {
+                    setMpDriveError(err.message);
+                } finally {
+                    setMpDriveSearching(false);
+                }
+            };
+
+            const mpImportDriveFiles = async () => {
+                if (!mpDriveSelected.size || !mpSelectedMeeting) return;
+                setMpDriveImporting(true);
+                setMpDriveError(null);
+                try {
+                    const token = mpDriveToken || await mpAuthGoogle();
+                    const filesToImport = mpDriveResults.filter(f => mpDriveSelected.has(f.id));
+                    const res = await fetch(`${API_URL}/api/mp/import-drive-files`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ accessToken: token, meetingId: mpSelectedMeeting.id, files: filesToImport })
+                    });
+                    if (res.status === 401) {
+                        setMpDriveToken(null);
+                        throw new Error('Google authentication expired. Please try again.');
+                    }
+                    if (!res.ok) {
+                        const err = await res.json();
+                        throw new Error(err.error || 'Import failed');
+                    }
+                    setMpDriveResults([]);
+                    setMpDriveSelected(new Set());
+                    await loadMpMeeting(mpSelectedMeeting.id);
+                } catch (err) {
+                    setMpDriveError(err.message);
+                } finally {
+                    setMpDriveImporting(false);
+                }
+            };
+
+            const toggleDriveSelect = (fileId) => {
+                setMpDriveSelected(prev => {
+                    const next = new Set(prev);
+                    if (next.has(fileId)) next.delete(fileId); else next.add(fileId);
                     return next;
                 });
             };
@@ -11203,7 +11385,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         <span className="text-teal-400">{mpSelectedMeeting.ticker}</span>
                                                         {mpSelectedMeeting.company_name && <span className="text-slate-400 font-normal ml-2">{mpSelectedMeeting.company_name}</span>}
                                                     </h1>
-                                                    <div className="flex gap-2 items-center mt-1 text-sm text-slate-500">
+                                                    <div className="flex gap-2 items-center mt-1 text-sm text-slate-300">
                                                         <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                                                             mpSelectedMeeting.status === 'ready' ? 'bg-green-500/20 text-green-400' :
                                                             mpSelectedMeeting.status === 'generating' ? 'bg-amber-500/20 text-amber-400' :
@@ -11213,7 +11395,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         {mpSelectedMeeting.meeting_date && <span>{mpSelectedMeeting.meeting_date}</span>}
                                                     </div>
                                                 </div>
-                                                <button onClick={() => deleteMpMeeting(mpSelectedMeeting.id)} className="text-slate-500 hover:text-red-400 text-xs">Delete</button>
+                                                <button onClick={() => deleteMpMeeting(mpSelectedMeeting.id)} className="text-slate-400 hover:text-red-400 text-xs">Delete</button>
                                             </div>
                                         </div>
                                         <div className="flex-1 overflow-y-auto p-4 space-y-4" onScroll={(e) => { setShowScrollTop(e.target.scrollTop > 300); scrollContainerRef.current = e.target; }}>
@@ -11239,8 +11421,67 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     className="border-2 border-dashed border-white/20 rounded-xl p-6 text-center cursor-pointer hover:border-teal-500/50 transition-all mb-3"
                                                 >
                                                     <p className="text-slate-400">{mpUploading ? 'Uploading...' : 'Drag & drop PDF files here'}</p>
-                                                    <p className="text-xs text-slate-600 mt-1">or click to select</p>
+                                                    <p className="text-xs text-slate-400 mt-1">or click to select</p>
                                                     <input ref={mpFileInputRef} type="file" multiple accept=".pdf" onChange={handleMpFileUpload} className="hidden" />
+                                                </div>
+
+                                                {/* Google Drive Search */}
+                                                <div className="mb-3">
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <div className="flex-1 h-px bg-white/10"></div>
+                                                        <span className="text-xs text-slate-400">or search Google Drive</span>
+                                                        <div className="flex-1 h-px bg-white/10"></div>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <select value={mpDriveTimeRange} onChange={e => setMpDriveTimeRange(e.target.value)}
+                                                            className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-slate-300">
+                                                            <option value="day">Past Day</option>
+                                                            <option value="week">Past Week</option>
+                                                            <option value="month">Past Month</option>
+                                                            <option value="3months">Past 3 Months</option>
+                                                            <option value="6months">Past 6 Months</option>
+                                                            <option value="year">Past Year</option>
+                                                            <option value="3years">Past 3 Years</option>
+                                                        </select>
+                                                        <button onClick={mpSearchDrive} disabled={mpDriveSearching}
+                                                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg text-sm font-medium transition-all flex items-center gap-2">
+                                                            {mpDriveSearching ? (
+                                                                <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Searching...</>
+                                                            ) : (
+                                                                <><Search className="w-4 h-4" /> Search Drive</>
+                                                            )}
+                                                        </button>
+                                                    </div>
+                                                    {mpDriveError && (
+                                                        <p className="text-xs text-amber-400 mt-2">{mpDriveError}</p>
+                                                    )}
+                                                    {mpDriveResults.length > 0 && (
+                                                        <div className="mt-2 border border-white/10 rounded-lg overflow-hidden">
+                                                            <div className="max-h-48 overflow-y-auto">
+                                                                {mpDriveResults.map(f => (
+                                                                    <label key={f.id} className="flex items-center gap-3 p-2 hover:bg-white/5 cursor-pointer border-b border-white/5 last:border-0">
+                                                                        <input type="checkbox" checked={mpDriveSelected.has(f.id)}
+                                                                            onChange={() => toggleDriveSelect(f.id)}
+                                                                            className="rounded accent-teal-500" />
+                                                                        <div className="min-w-0 flex-1">
+                                                                            <p className="text-sm text-slate-200 truncate">{f.name}</p>
+                                                                            <p className="text-xs text-slate-400">
+                                                                                {f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString() : ''}
+                                                                                {f.size ? ` · ${(parseInt(f.size) / 1024 / 1024).toFixed(1)}MB` : ''}
+                                                                            </p>
+                                                                        </div>
+                                                                    </label>
+                                                                ))}
+                                                            </div>
+                                                            <div className="p-2 border-t border-white/10 flex items-center justify-between bg-white/[0.03]">
+                                                                <span className="text-xs text-slate-400">{mpDriveSelected.size} of {mpDriveResults.length} selected</span>
+                                                                <button onClick={mpImportDriveFiles} disabled={!mpDriveSelected.size || mpDriveImporting}
+                                                                    className="px-3 py-1.5 bg-teal-600 hover:bg-teal-500 disabled:opacity-50 rounded-lg text-xs font-medium transition-all">
+                                                                    {mpDriveImporting ? 'Importing...' : `Import Selected (${mpDriveSelected.size})`}
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
 
                                                 {mpDocuments.length > 0 ? (
@@ -11250,15 +11491,15 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 <div className="flex items-center gap-2 flex-wrap min-w-0">
                                                                     <span className="text-sm font-medium truncate">{doc.filename}</span>
                                                                     <span className="px-1.5 py-0.5 rounded text-xs bg-white/10 text-slate-400">{doc.doc_type}</span>
-                                                                    {doc.page_count && <span className="text-xs text-slate-500">{doc.page_count}p</span>}
-                                                                    {doc.token_estimate && <span className="text-xs text-slate-600">~{(doc.token_estimate / 1000).toFixed(1)}K tokens</span>}
+                                                                    {doc.page_count && <span className="text-xs text-slate-300">{doc.page_count}p</span>}
+                                                                    {doc.token_estimate && <span className="text-xs text-slate-400">~{(doc.token_estimate / 1000).toFixed(1)}K tokens</span>}
                                                                 </div>
-                                                                <button onClick={() => deleteMpDocument(doc.id)} className="text-slate-600 hover:text-red-400 ml-2 flex-shrink-0">&times;</button>
+                                                                <button onClick={() => deleteMpDocument(doc.id)} className="text-slate-400 hover:text-red-400 ml-2 flex-shrink-0">&times;</button>
                                                             </div>
                                                         ))}
                                                     </div>
                                                 ) : (
-                                                    <p className="text-center text-slate-600 text-sm py-2">No documents yet</p>
+                                                    <p className="text-center text-slate-400 text-sm py-2">No documents yet</p>
                                                 )}
                                             </div>
 
@@ -11266,11 +11507,20 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl border border-white/10 p-4">
                                                 <div className="flex items-center justify-between mb-3">
                                                     <h2 className="font-semibold">Questions</h2>
-                                                    {mpDocuments.length > 0 && !mpPipelineRunning && (
-                                                        <button onClick={runMpPipeline} className="px-4 py-2 bg-teal-600 hover:bg-teal-500 rounded-lg text-sm font-medium transition-all">
-                                                            {mpQuestionSet && mpQuestionSet.status === 'ready' ? 'Regenerate Questions' : 'Generate Questions'}
-                                                        </button>
-                                                    )}
+                                                    <div className="flex items-center gap-2">
+                                                        {mpQuestionSet && mpQuestionSet.topics && mpQuestionSet.topics.length > 0 && (
+                                                            <button onClick={quickEmailMpQuestions}
+                                                                className="p-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 shadow-lg shadow-amber-500/20 transition-all"
+                                                                title="Email questions">
+                                                                <Mail className="w-4 h-4 text-white" />
+                                                            </button>
+                                                        )}
+                                                        {mpDocuments.length > 0 && !mpPipelineRunning && (
+                                                            <button onClick={runMpPipeline} className="px-4 py-2 bg-teal-600 hover:bg-teal-500 rounded-lg text-sm font-medium transition-all">
+                                                                {mpQuestionSet && mpQuestionSet.status === 'ready' ? 'Regenerate Questions' : 'Generate Questions'}
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
 
                                                 {/* Pipeline Progress */}
@@ -11285,7 +11535,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                      mpPipelineStep === 'generating' ? 'Step 3/3: Generating Questions' :
                                                                      'Saving Results...'}
                                                                 </p>
-                                                                <p className="text-xs text-slate-500 mt-0.5">{mpPipelineProgress}</p>
+                                                                <p className="text-xs text-slate-300 mt-0.5">{mpPipelineProgress}</p>
                                                             </div>
                                                         </div>
                                                         <div className="mt-3 h-1.5 bg-white/10 rounded-full overflow-hidden">
@@ -11333,9 +11583,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                         <button onClick={() => toggleMpTopic(ti)} className="w-full p-3 flex items-center justify-between hover:bg-white/5 text-left">
                                                                             <div>
                                                                                 <h3 className="font-semibold text-teal-400 text-sm">{topic.topic}</h3>
-                                                                                {topic.description && <p className="text-xs text-slate-500 mt-0.5">{topic.description}</p>}
+                                                                                {topic.description && <p className="text-xs text-slate-300 mt-0.5">{topic.description}</p>}
                                                                             </div>
-                                                                            <span className="text-xs text-slate-500 flex-shrink-0 ml-2">{questions.length}q</span>
+                                                                            <span className="text-xs text-slate-300 flex-shrink-0 ml-2">{questions.length}q</span>
                                                                         </button>
                                                                         {mpExpandedTopics.has(ti) && (
                                                                             <div className="border-t border-white/10 p-3 space-y-2">
@@ -11354,10 +11604,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                             }`}>{q.priority}</span>
                                                                                         </div>
                                                                                         {mpShowContext && q.context && (
-                                                                                            <div className="mt-2 p-2 bg-white/5 rounded text-xs text-slate-500 italic">{q.context}</div>
+                                                                                            <div className="mt-2 p-2 bg-white/5 rounded text-xs text-slate-300 italic">{q.context}</div>
                                                                                         )}
                                                                                         {mpShowContext && q.source && (
-                                                                                            <div className="mt-1 text-xs text-slate-600">Source: {q.source}</div>
+                                                                                            <div className="mt-1 text-xs text-slate-400">Source: {q.source}</div>
                                                                                         )}
                                                                                         {q.follow_up_angle && (
                                                                                             <details className="mt-2">
@@ -11375,13 +11625,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         </div>
 
                                                         {mpQuestionSet.generation_tokens && (
-                                                            <div className="mt-3 text-xs text-slate-600 text-right">
+                                                            <div className="mt-3 text-xs text-slate-400 text-right">
                                                                 v{mpQuestionSet.version} &middot; {(mpQuestionSet.generation_tokens / 1000).toFixed(1)}K tokens
                                                             </div>
                                                         )}
                                                     </div>
                                                 ) : !mpPipelineRunning && (
-                                                    <p className="text-center text-slate-600 text-sm py-4">
+                                                    <p className="text-center text-slate-400 text-sm py-4">
                                                         {mpDocuments.length === 0 ? 'Upload documents first, then generate questions.' : 'Click "Generate Questions" to start.'}
                                                     </p>
                                                 )}
@@ -11445,7 +11695,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             'bg-slate-500/20 text-slate-400'
                                                         }`}>{m.status}</span>
                                                     </div>
-                                                    <div className="flex gap-3 mt-1.5 text-xs text-slate-500">
+                                                    <div className="flex gap-3 mt-1.5 text-xs text-slate-300">
                                                         <span>{m.meeting_type}</span>
                                                         {m.meeting_date && <span>{m.meeting_date}</span>}
                                                         <span>{m.doc_count || 0} doc{m.doc_count !== 1 ? 's' : ''}</span>
@@ -11453,7 +11703,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 </div>
                                             ))}
                                             {mpMeetings.length === 0 && !showMpCreateForm && (
-                                                <div className="text-center text-slate-500 py-12">
+                                                <div className="text-center text-slate-400 py-12">
                                                     <Target className="w-12 h-12 mx-auto mb-3 opacity-30" />
                                                     <p>No meetings yet. Create one to get started.</p>
                                                 </div>
@@ -11526,6 +11776,33 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             </button>
                                         </div>
                                         <p className="text-xs text-slate-500 mt-2">Required for audio transcription. Stored locally only.</p>
+                                    </div>
+
+                                    {/* Google Drive OAuth Client ID Section */}
+                                    <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl p-4 border border-white/10">
+                                        <h3 className="font-semibold mb-3 flex items-center gap-2">
+                                            <Search className="w-4 h-4 text-indigo-400" />
+                                            Google Drive (Meeting Prep)
+                                        </h3>
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                value={googleClientId}
+                                                onChange={(e) => setGoogleClientId(e.target.value)}
+                                                placeholder="OAuth Client ID (e.g., 123456789.apps.googleusercontent.com)"
+                                                className="flex-1 px-4 py-2 bg-white/5 border border-white/10 backdrop-blur-md rounded-lg text-sm"
+                                            />
+                                            <button
+                                                onClick={() => {
+                                                    localStorage.setItem('google_oauth_client_id', googleClientId);
+                                                    alert('Google Client ID saved!');
+                                                }}
+                                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-sm font-medium"
+                                            >
+                                                Save
+                                            </button>
+                                        </div>
+                                        <p className="text-xs text-slate-400 mt-2">Required for auto-finding research documents from Google Drive. Stored locally only.</p>
                                     </div>
 
                                     {/* Email Credentials Section */}
