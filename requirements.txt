@@ -11,4 +11,5 @@ pytesseract
 Pillow
 google-api-python-client
 google-auth
+markdown
 gunicorn

@@ -5075,8 +5075,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     if (response.ok) {
                         alert('Questions emailed successfully!');
                     } else {
-                        const err = await response.json();
-                        throw new Error(err.error || 'Failed to send');
+                        let errMsg = `Failed to send (${response.status})`;
+                        try { const err = await response.json(); errMsg = err.error || errMsg; } catch(e) {}
+                        throw new Error(errMsg);
                     }
                 } catch (err) {
                     alert('Failed to send email: ' + err.message);
