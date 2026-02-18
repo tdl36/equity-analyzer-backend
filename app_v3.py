@@ -262,10 +262,86 @@ def init_db():
         
         # Create index for faster lookups
         cur.execute('''
-            CREATE INDEX IF NOT EXISTS idx_document_files_ticker 
+            CREATE INDEX IF NOT EXISTS idx_document_files_ticker
             ON document_files(ticker)
         ''')
-        
+
+        # ============================================
+        # MEETING PREP TABLES
+        # ============================================
+
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS mp_companies (
+                id SERIAL PRIMARY KEY,
+                ticker VARCHAR(20) UNIQUE NOT NULL,
+                name VARCHAR(255),
+                sector VARCHAR(100),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS mp_meetings (
+                id SERIAL PRIMARY KEY,
+                company_id INTEGER REFERENCES mp_companies(id),
+                meeting_date DATE,
+                meeting_type VARCHAR(50) DEFAULT 'other',
+                status VARCHAR(20) DEFAULT 'draft',
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        cur.execute('CREATE INDEX IF NOT EXISTS idx_mp_meetings_company ON mp_meetings(company_id)')
+
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS mp_documents (
+                id SERIAL PRIMARY KEY,
+                meeting_id INTEGER REFERENCES mp_meetings(id) ON DELETE CASCADE,
+                filename VARCHAR(500) NOT NULL,
+                file_data TEXT,
+                doc_type VARCHAR(50) DEFAULT 'other',
+                doc_date VARCHAR(20),
+                page_count INTEGER,
+                token_estimate INTEGER,
+                extracted_text TEXT,
+                upload_order INTEGER,
+                file_size INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        cur.execute('CREATE INDEX IF NOT EXISTS idx_mp_documents_meeting ON mp_documents(meeting_id)')
+
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS mp_question_sets (
+                id SERIAL PRIMARY KEY,
+                meeting_id INTEGER REFERENCES mp_meetings(id) ON DELETE CASCADE,
+                version INTEGER DEFAULT 1,
+                status VARCHAR(20) DEFAULT 'ready',
+                topics_json TEXT,
+                synthesis_json TEXT,
+                generation_model VARCHAR(100),
+                generation_tokens INTEGER,
+                error_message TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        cur.execute('CREATE INDEX IF NOT EXISTS idx_mp_question_sets_meeting ON mp_question_sets(meeting_id)')
+
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS mp_past_questions (
+                id SERIAL PRIMARY KEY,
+                company_id INTEGER REFERENCES mp_companies(id),
+                meeting_id INTEGER REFERENCES mp_meetings(id) ON DELETE SET NULL,
+                question TEXT NOT NULL,
+                topic VARCHAR(255),
+                response_notes TEXT,
+                status VARCHAR(20) DEFAULT 'asked',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        cur.execute('CREATE INDEX IF NOT EXISTS idx_mp_past_questions_company ON mp_past_questions(company_id)')
+
         conn.commit()
         cur.close()
         conn.close()
@@ -2990,6 +3066,795 @@ def email_research():
         return jsonify({'error': f'SMTP error: {str(e)}'}), 500
     except Exception as e:
         print(f"Error sending research email: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================
+# MEETING PREP - HELPERS & PROMPTS
+# ============================================
+
+import re as _re
+
+def parse_mp_json(text):
+    """Parse JSON from AI response, handling markdown fencing."""
+    text = text.strip()
+    if text.startswith("```"):
+        lines = text.split("\n")
+        lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    for sc, ec in [("[", "]"), ("{", "}")]:
+        s = text.find(sc)
+        e = text.rfind(ec)
+        if s != -1 and e != -1 and e > s:
+            try:
+                return json.loads(text[s:e + 1])
+            except json.JSONDecodeError:
+                continue
+    raise ValueError(f"Could not parse JSON from response: {text[:300]}")
+
+
+MP_DOC_TYPE_PATTERNS = {
+    "earnings_transcript": [
+        r"earnings\s*(call|transcript)",
+        r"q[1-4]\s*\d{4}\s*(call|transcript|results)",
+        r"(quarterly|annual)\s*results\s*call",
+    ],
+    "conference_transcript": [
+        r"conference\s*(transcript|presentation)",
+        r"investor\s*(day|conference|presentation)",
+        r"fireside\s*chat",
+    ],
+    "broker_report": [
+        r"(initiat|maintain|reiterat|upgrad|downgrad|price\s*target)",
+        r"(buy|sell|hold|overweight|underweight|neutral|outperform)\s*(rating)?",
+        r"(equity\s*research|research\s*report|analyst\s*note)",
+    ],
+    "press_release": [
+        r"press\s*release",
+        r"(announces|reports)\s*(q[1-4]|quarterly|annual|full.year)",
+    ],
+    "filing": [
+        r"(10-[kq]|8-k|def\s*14a|proxy|annual\s*report)",
+        r"securities\s*and\s*exchange\s*commission",
+    ],
+}
+
+def classify_mp_document(filename, text_sample=""):
+    """Auto-classify document type from filename and first 2000 chars of content."""
+    combined = f"{filename} {text_sample[:2000]}".lower()
+    for doc_type, patterns in MP_DOC_TYPE_PATTERNS.items():
+        for pattern in patterns:
+            if _re.search(pattern, combined, _re.IGNORECASE):
+                return doc_type
+    return "other"
+
+
+MP_ANALYSIS_PROMPT = """You are a senior equity research analyst assistant preparing for a management meeting.
+
+Analyze the following {doc_type} for {ticker} ({company_name}).
+
+Extract and organize the following into a structured JSON response:
+
+1. **key_metrics**: Array of objects with {{metric, value, change, period}} — revenue, margins, EPS, guidance, segment data, KPIs. Be specific with numbers.
+2. **management_claims**: Array of strings — specific commitments, promises, strategic statements management made. Quote where possible.
+3. **guidance_changes**: Array of objects with {{metric, old_guidance, new_guidance, direction}} — any changes to forward guidance.
+4. **risks_concerns**: Array of strings — risks flagged by management, analysts, or evident from data.
+5. **catalysts**: Array of strings — upcoming events, product launches, regulatory decisions, etc. that could move the stock.
+6. **contradictions**: Array of strings — anything that contradicts prior statements, guidance, or consensus.
+7. **notable_quotes**: Array of objects with {{quote, speaker, context}} — important verbatim quotes worth referencing.
+8. **key_numbers**: Object — the most important 5-10 data points someone should know before a meeting.
+
+Return ONLY valid JSON, no markdown fencing."""
+
+MP_SYNTHESIS_PROMPT = """You are preparing a senior equity research analyst for a management meeting with {ticker} ({company_name}, {sector} sector).
+
+You have analyses of {doc_count} documents spanning the {timeframe} period. Your task is to synthesize these into a coherent picture that identifies what the analyst MUST explore in the meeting.
+
+{analyses_text}
+
+{past_questions_text}
+
+Synthesize into a JSON object with:
+
+1. **narrative_arc**: 3-5 sentences describing the story across these documents — what's the trajectory? What's changed?
+2. **key_themes**: Array of objects with {{theme, description, supporting_evidence}} — the 4-7 major themes emerging.
+3. **contradictions**: Array of objects with {{claim_1, source_1, claim_2, source_2, significance}} — where documents or statements conflict.
+4. **information_gaps**: Array of strings — what's NOT being discussed that should be? What data is missing?
+5. **tone_shifts**: Array of objects with {{topic, old_tone, new_tone, source}} — where management messaging has shifted.
+6. **unresolved_from_prior**: Array of objects with {{question, original_date, why_still_relevant}} — past questions that need follow-up.
+7. **consensus_vs_reality**: Array of strings — where consensus expectations seem misaligned with what documents reveal.
+
+Return ONLY valid JSON, no markdown fencing."""
+
+MP_QUESTION_PROMPT = """You are helping a senior equity research analyst prepare 25-30 sophisticated questions for a management meeting with {ticker} ({company_name}, {sector} sector).
+
+Context from document synthesis:
+{synthesis_text}
+
+CRITICAL RULES FOR QUESTION TEXT:
+- Questions must sound 100% proprietary — as if the analyst developed them entirely from their own deep, independent research on the company
+- The ONLY acceptable references in question text are: the company's own filings, earnings calls, press releases, management's own statements/quotes, and publicly reported financial data
+- NEVER reference or allude to sell-side in ANY form. This includes:
+  - Direct: "Wells Fargo notes...", "according to Deutsche Bank...", "Jefferies estimates..."
+  - Indirect: "analysts are cutting estimates", "the Street expects", "consensus is...", "the investment community", "market participants", "some observers note", "there's skepticism among investors"
+- Instead, ground every question in the company's OWN words, data, and disclosures: "You guided to X but reported Y", "Your 10-K shows margin compression from Z to W", "On the Q3 call you said X, but Q4 results suggest otherwise"
+- The analyst's edge comes from connecting dots across the company's own disclosures — not from citing what other analysts think
+- The "source" and "context" fields ARE where you indicate which broker report or document the question was derived from — that metadata is for the analyst's private reference only, never surfaced in the question
+
+Generate questions that are:
+- **Proprietary-sounding**: Every question reads as if the analyst personally identified the issue through their own deep research
+- **Specific**: Reference concrete data points, quotes, or metrics — but attribute them to the company's own disclosures, not to broker commentary
+- **Probing**: Push management beyond their prepared talking points — ask about inconsistencies, gaps, and changes
+- **Organized**: Group by dynamically determined topics relevant to THIS company/sector (NOT a generic template)
+- **Prioritized**: Mark each as high (must-ask, 8-10 questions), medium (important, 10-12 questions), or low (if time permits, 5-8 questions)
+- **Strategic**: Include questions about capital allocation, competitive dynamics, and forward catalysts
+
+For each question, also provide:
+- **context**: Why this question matters — what data point or observation prompted it. THIS is where you can reference the sell-side source for the analyst's private notes (1-2 sentences)
+- **source**: Which document(s) the question draws from (e.g., "Wells Fargo report, p.3; Q4 Earnings Transcript, p.12"). This is private metadata for the analyst.
+- **follow_up_angle**: What to ask if management gives an evasive or generic answer
+
+{unresolved_text}
+
+Return a JSON array of topic groups:
+[
+  {{
+    "topic": "Revenue Growth Trajectory",
+    "description": "Brief description of why this topic matters for this company",
+    "questions": [
+      {{
+        "question": "Proprietary-sounding question with NO broker/analyst attribution",
+        "context": "Private note: sourced from Wells Fargo report highlighting X — important because Y",
+        "source": "Wells Fargo report p.3, Q4 Earnings Transcript p.12",
+        "priority": "high",
+        "follow_up_angle": "If they deflect, ask about..."
+      }}
+    ]
+  }}
+]
+
+Return ONLY valid JSON, no markdown fencing."""
+
+
+# ============================================
+# MEETING PREP - MEETING ENDPOINTS
+# ============================================
+
+@app.route('/api/mp/meetings', methods=['POST'])
+def mp_create_meeting():
+    """Create a new meeting prep session."""
+    try:
+        data = request.json
+        ticker = data.get('ticker', '').upper().strip()
+        company_name = data.get('companyName', '')
+        sector = data.get('sector', '')
+        meeting_date = data.get('meetingDate') or None
+        meeting_type = data.get('meetingType', 'other')
+        notes = data.get('notes', '')
+
+        if not ticker:
+            return jsonify({'error': 'Ticker is required'}), 400
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # Upsert company
+        cur.execute('''
+            INSERT INTO mp_companies (ticker, name, sector)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (ticker) DO UPDATE SET
+                name = COALESCE(NULLIF(EXCLUDED.name, ''), mp_companies.name),
+                sector = COALESCE(NULLIF(EXCLUDED.sector, ''), mp_companies.sector)
+            RETURNING id, ticker, name, sector
+        ''', (ticker, company_name, sector))
+        company = dict(cur.fetchone())
+
+        # Create meeting
+        cur.execute('''
+            INSERT INTO mp_meetings (company_id, meeting_date, meeting_type, notes)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id, company_id, meeting_date, meeting_type, status, notes, created_at, updated_at
+        ''', (company['id'], meeting_date, meeting_type, notes))
+        meeting = dict(cur.fetchone())
+        meeting['ticker'] = company['ticker']
+        meeting['company_name'] = company['name']
+        meeting['sector'] = company['sector']
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        return jsonify(meeting)
+    except Exception as e:
+        print(f"Error creating meeting: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/mp/meetings', methods=['GET'])
+def mp_list_meetings():
+    """List all meeting prep sessions."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('''
+            SELECT m.*, c.ticker, c.name as company_name, c.sector,
+                   (SELECT COUNT(*) FROM mp_documents WHERE meeting_id = m.id) as doc_count,
+                   (SELECT COUNT(*) FROM mp_question_sets WHERE meeting_id = m.id AND status = 'ready') as qs_count
+            FROM mp_meetings m
+            JOIN mp_companies c ON m.company_id = c.id
+            ORDER BY m.created_at DESC
+        ''')
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        result = []
+        for r in rows:
+            result.append({
+                'id': r['id'],
+                'company_id': r['company_id'],
+                'ticker': r['ticker'],
+                'company_name': r['company_name'],
+                'sector': r['sector'],
+                'meeting_date': str(r['meeting_date']) if r['meeting_date'] else None,
+                'meeting_type': r['meeting_type'],
+                'status': r['status'],
+                'notes': r['notes'],
+                'doc_count': r['doc_count'],
+                'qs_count': r['qs_count'],
+                'created_at': r['created_at'].isoformat() if r['created_at'] else None,
+            })
+
+        return jsonify(result)
+    except Exception as e:
+        print(f"Error listing meetings: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/mp/meetings/<int:meeting_id>', methods=['GET'])
+def mp_get_meeting(meeting_id):
+    """Get a meeting with its documents and latest question set."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # Get meeting
+        cur.execute('''
+            SELECT m.*, c.ticker, c.name as company_name, c.sector
+            FROM mp_meetings m
+            JOIN mp_companies c ON m.company_id = c.id
+            WHERE m.id = %s
+        ''', (meeting_id,))
+        row = cur.fetchone()
+        if not row:
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'Meeting not found'}), 404
+
+        meeting = dict(row)
+        meeting['meeting_date'] = str(meeting['meeting_date']) if meeting['meeting_date'] else None
+        meeting['created_at'] = meeting['created_at'].isoformat() if meeting['created_at'] else None
+        meeting['updated_at'] = meeting['updated_at'].isoformat() if meeting['updated_at'] else None
+
+        # Get documents (without file_data to keep response small)
+        cur.execute('''
+            SELECT id, meeting_id, filename, doc_type, doc_date, page_count, token_estimate,
+                   upload_order, file_size, created_at
+            FROM mp_documents WHERE meeting_id = %s ORDER BY upload_order
+        ''', (meeting_id,))
+        docs = []
+        for d in cur.fetchall():
+            dd = dict(d)
+            dd['created_at'] = dd['created_at'].isoformat() if dd['created_at'] else None
+            docs.append(dd)
+
+        # Get latest question set
+        cur.execute('''
+            SELECT * FROM mp_question_sets
+            WHERE meeting_id = %s ORDER BY version DESC LIMIT 1
+        ''', (meeting_id,))
+        qs_row = cur.fetchone()
+        question_set = None
+        if qs_row:
+            question_set = dict(qs_row)
+            if question_set['topics_json']:
+                question_set['topics'] = json.loads(question_set['topics_json'])
+            else:
+                question_set['topics'] = []
+            question_set['created_at'] = question_set['created_at'].isoformat() if question_set['created_at'] else None
+
+        cur.close()
+        conn.close()
+
+        return jsonify({
+            'meeting': meeting,
+            'documents': docs,
+            'questionSet': question_set,
+        })
+    except Exception as e:
+        print(f"Error getting meeting: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/mp/meetings/<int:meeting_id>', methods=['DELETE'])
+def mp_delete_meeting(meeting_id):
+    """Delete a meeting and all related data."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('DELETE FROM mp_meetings WHERE id = %s', (meeting_id,))
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error deleting meeting: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================
+# MEETING PREP - DOCUMENT ENDPOINTS
+# ============================================
+
+@app.route('/api/mp/meetings/<int:meeting_id>/documents', methods=['POST'])
+def mp_upload_documents(meeting_id):
+    """Upload PDF documents for a meeting. Expects JSON with base64 file data."""
+    try:
+        from PyPDF2 import PdfReader
+        import io
+
+        data = request.json
+        documents = data.get('documents', [])
+
+        if not documents:
+            return jsonify({'error': 'No documents provided'}), 400
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # Verify meeting exists
+        cur.execute('SELECT id FROM mp_meetings WHERE id = %s', (meeting_id,))
+        if not cur.fetchone():
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'Meeting not found'}), 404
+
+        # Get current max upload_order
+        cur.execute('SELECT COALESCE(MAX(upload_order), 0) FROM mp_documents WHERE meeting_id = %s', (meeting_id,))
+        order = cur.fetchone()[0]
+
+        results = []
+        for doc in documents:
+            order += 1
+            filename = doc.get('filename', 'unknown.pdf')
+            file_data = doc.get('fileData', '')
+            extracted_text = doc.get('extractedText', '')
+            page_count = doc.get('pageCount')
+
+            # If no extracted text provided, try extracting from base64 PDF
+            if not extracted_text and file_data:
+                try:
+                    pdf_bytes = base64.b64decode(file_data)
+                    reader = PdfReader(io.BytesIO(pdf_bytes))
+                    pages = []
+                    for page in reader.pages:
+                        t = page.extract_text()
+                        if t:
+                            pages.append(t)
+                    extracted_text = '\n\n'.join(pages)
+                    if page_count is None:
+                        page_count = len(reader.pages)
+                except Exception as ex:
+                    print(f"PDF extraction error for {filename}: {ex}")
+
+            # Classify and estimate tokens
+            doc_type = classify_mp_document(filename, extracted_text)
+            token_estimate = len(extracted_text) // 4 if extracted_text else 0
+            file_size = len(file_data) * 3 // 4 if file_data else 0
+
+            cur.execute('''
+                INSERT INTO mp_documents (meeting_id, filename, file_data, doc_type, doc_date,
+                    page_count, token_estimate, extracted_text, upload_order, file_size)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id, filename, doc_type, doc_date, page_count, token_estimate, upload_order, file_size, created_at
+            ''', (meeting_id, filename, file_data, doc_type, doc.get('docDate'),
+                  page_count, token_estimate, extracted_text, order, file_size))
+            row = dict(cur.fetchone())
+            row['created_at'] = row['created_at'].isoformat() if row['created_at'] else None
+            results.append(row)
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        return jsonify(results)
+    except Exception as e:
+        print(f"Error uploading documents: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/mp/meetings/<int:meeting_id>/documents/<int:doc_id>', methods=['DELETE'])
+def mp_delete_document(meeting_id, doc_id):
+    """Delete a document from a meeting."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('DELETE FROM mp_documents WHERE id = %s AND meeting_id = %s', (doc_id, meeting_id))
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error deleting document: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================
+# MEETING PREP - PIPELINE ENDPOINTS
+# ============================================
+
+@app.route('/api/mp/analyze-document', methods=['POST'])
+def mp_analyze_document():
+    """Step 1: Analyze a single document. Returns structured analysis JSON."""
+    try:
+        data = request.json
+        api_key = data.get('apiKey', '') or os.environ.get('ANTHROPIC_API_KEY', '')
+        if not api_key:
+            return jsonify({'error': 'No API key provided. Please add your API key in Settings.'}), 400
+
+        ticker = data.get('ticker', '')
+        company_name = data.get('companyName', ticker)
+        doc_type = data.get('docType', 'document')
+        filename = data.get('filename', '')
+        extracted_text = data.get('extractedText', '')
+
+        if not extracted_text:
+            return jsonify({'error': 'No document text provided'}), 400
+
+        # Truncate if too long
+        if len(extracted_text) > 400000:
+            extracted_text = extracted_text[:400000] + "\n\n[... document truncated for length ...]"
+
+        prompt = MP_ANALYSIS_PROMPT.format(
+            doc_type=doc_type, ticker=ticker, company_name=company_name
+        )
+        user_msg = f"Document: {filename}\n\n{extracted_text}"
+
+        client = anthropic.Anthropic(api_key=api_key)
+        message = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=16384,
+            system=prompt,
+            messages=[{"role": "user", "content": user_msg}]
+        )
+
+        result_text = ""
+        for block in message.content:
+            if hasattr(block, 'text'):
+                result_text += block.text
+
+        analysis = parse_mp_json(result_text)
+        tokens_used = message.usage.input_tokens + message.usage.output_tokens
+
+        return jsonify({
+            'analysis': analysis,
+            'tokensUsed': tokens_used,
+            'filename': filename,
+        })
+
+    except anthropic.APIConnectionError:
+        return jsonify({'error': 'Failed to connect to Anthropic API.'}), 503
+    except anthropic.RateLimitError:
+        return jsonify({'error': 'Rate limit exceeded. Please wait and try again.'}), 429
+    except anthropic.AuthenticationError:
+        return jsonify({'error': 'Invalid API key.'}), 401
+    except anthropic.APIStatusError as e:
+        return jsonify({'error': f'API error: {e.message}'}), e.status_code
+    except Exception as e:
+        print(f"MP analyze error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/mp/synthesize', methods=['POST'])
+def mp_synthesize():
+    """Step 2: Cross-reference all document analyses. Returns synthesis JSON."""
+    try:
+        data = request.json
+        api_key = data.get('apiKey', '') or os.environ.get('ANTHROPIC_API_KEY', '')
+        if not api_key:
+            return jsonify({'error': 'No API key provided.'}), 400
+
+        ticker = data.get('ticker', '')
+        company_name = data.get('companyName', ticker)
+        sector = data.get('sector', 'unknown')
+        analyses = data.get('analyses', [])
+        past_questions = data.get('pastQuestions', [])
+        timeframe = data.get('timeframe', 'recent')
+
+        if not analyses:
+            return jsonify({'error': 'No analyses provided'}), 400
+
+        # Format analyses text
+        analyses_parts = []
+        for i, a in enumerate(analyses):
+            analyses_parts.append(f"### Document {i+1}: {a.get('_source_filename', 'unknown')}\n{json.dumps(a, indent=2)}")
+        analyses_text = "\n\n".join(analyses_parts)
+
+        # Format past questions
+        past_q_text = ""
+        if past_questions:
+            pq_items = []
+            for pq in past_questions[:30]:
+                status_note = f" [STATUS: {pq.get('status', '')}]" if pq.get('status') != 'asked' else ""
+                response = f" — Response: {pq.get('response_notes', '')}" if pq.get('response_notes') else ""
+                pq_items.append(f"- [{pq.get('meeting_date', '?')}] {pq.get('question', '')}{status_note}{response}")
+            past_q_text = "PAST QUESTIONS FROM PRIOR MEETINGS (reference these and flag unresolved items):\n" + "\n".join(pq_items)
+
+        prompt = MP_SYNTHESIS_PROMPT.format(
+            ticker=ticker, company_name=company_name, sector=sector,
+            doc_count=len(analyses), timeframe=timeframe,
+            analyses_text=analyses_text, past_questions_text=past_q_text,
+        )
+
+        client = anthropic.Anthropic(api_key=api_key)
+        message = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=16384,
+            system=prompt,
+            messages=[{"role": "user", "content": "Synthesize the above document analyses."}]
+        )
+
+        result_text = ""
+        for block in message.content:
+            if hasattr(block, 'text'):
+                result_text += block.text
+
+        synthesis = parse_mp_json(result_text)
+        tokens_used = message.usage.input_tokens + message.usage.output_tokens
+
+        return jsonify({
+            'synthesis': synthesis,
+            'tokensUsed': tokens_used,
+        })
+
+    except anthropic.APIConnectionError:
+        return jsonify({'error': 'Failed to connect to Anthropic API.'}), 503
+    except anthropic.RateLimitError:
+        return jsonify({'error': 'Rate limit exceeded. Please wait and try again.'}), 429
+    except anthropic.AuthenticationError:
+        return jsonify({'error': 'Invalid API key.'}), 401
+    except anthropic.APIStatusError as e:
+        return jsonify({'error': f'API error: {e.message}'}), e.status_code
+    except Exception as e:
+        print(f"MP synthesize error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/mp/generate-questions', methods=['POST'])
+def mp_generate_questions():
+    """Step 3: Generate questions from synthesis. Returns topics array."""
+    try:
+        data = request.json
+        api_key = data.get('apiKey', '') or os.environ.get('ANTHROPIC_API_KEY', '')
+        if not api_key:
+            return jsonify({'error': 'No API key provided.'}), 400
+
+        ticker = data.get('ticker', '')
+        company_name = data.get('companyName', ticker)
+        sector = data.get('sector', 'unknown')
+        synthesis = data.get('synthesis', {})
+        unresolved = data.get('unresolvedQuestions', [])
+
+        if not synthesis:
+            return jsonify({'error': 'No synthesis provided'}), 400
+
+        synthesis_text = json.dumps(synthesis, indent=2)
+
+        unresolved_text = ""
+        if unresolved:
+            items = [f"- {q.get('question', '')} (from {q.get('meeting_date', '?')})" for q in unresolved[:15]]
+            unresolved_text = "UNRESOLVED QUESTIONS FROM PRIOR MEETINGS (include follow-ups for these):\n" + "\n".join(items)
+
+        prompt = MP_QUESTION_PROMPT.format(
+            ticker=ticker, company_name=company_name, sector=sector,
+            synthesis_text=synthesis_text, unresolved_text=unresolved_text,
+        )
+
+        client = anthropic.Anthropic(api_key=api_key)
+        message = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=16384,
+            system=prompt,
+            messages=[{"role": "user", "content": "Generate the meeting preparation questions."}]
+        )
+
+        result_text = ""
+        for block in message.content:
+            if hasattr(block, 'text'):
+                result_text += block.text
+
+        topics = parse_mp_json(result_text)
+        tokens_used = message.usage.input_tokens + message.usage.output_tokens
+
+        return jsonify({
+            'topics': topics,
+            'tokensUsed': tokens_used,
+        })
+
+    except anthropic.APIConnectionError:
+        return jsonify({'error': 'Failed to connect to Anthropic API.'}), 503
+    except anthropic.RateLimitError:
+        return jsonify({'error': 'Rate limit exceeded. Please wait and try again.'}), 429
+    except anthropic.AuthenticationError:
+        return jsonify({'error': 'Invalid API key.'}), 401
+    except anthropic.APIStatusError as e:
+        return jsonify({'error': f'API error: {e.message}'}), e.status_code
+    except Exception as e:
+        print(f"MP generate questions error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/mp/save-results', methods=['POST'])
+def mp_save_results():
+    """Save pipeline results: question set + past questions."""
+    try:
+        data = request.json
+        meeting_id = data.get('meetingId')
+        topics = data.get('topics', [])
+        synthesis_json = data.get('synthesisJson')
+        total_tokens = data.get('totalTokens', 0)
+        model = data.get('model', 'claude-sonnet-4-20250514')
+
+        if not meeting_id:
+            return jsonify({'error': 'meetingId is required'}), 400
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # Get next version
+        cur.execute('SELECT COALESCE(MAX(version), 0) + 1 FROM mp_question_sets WHERE meeting_id = %s', (meeting_id,))
+        version = cur.fetchone()[0]
+
+        # Insert question set
+        cur.execute('''
+            INSERT INTO mp_question_sets (meeting_id, version, status, topics_json, synthesis_json, generation_model, generation_tokens)
+            VALUES (%s, %s, 'ready', %s, %s, %s, %s)
+            RETURNING id, version
+        ''', (meeting_id, version, json.dumps(topics), json.dumps(synthesis_json) if synthesis_json else None, model, total_tokens))
+        qs = dict(cur.fetchone())
+
+        # Update meeting status
+        cur.execute("UPDATE mp_meetings SET status = 'ready', updated_at = CURRENT_TIMESTAMP WHERE id = %s", (meeting_id,))
+
+        # Save questions to past_questions
+        cur.execute('SELECT company_id FROM mp_meetings WHERE id = %s', (meeting_id,))
+        company_row = cur.fetchone()
+        if company_row:
+            company_id = company_row['company_id']
+            for topic in (topics if isinstance(topics, list) else []):
+                topic_name = topic.get('topic', '') if isinstance(topic, dict) else ''
+                questions = topic.get('questions', []) if isinstance(topic, dict) else []
+                for q in questions:
+                    q_text = q.get('question', '') if isinstance(q, dict) else ''
+                    if q_text:
+                        cur.execute('''
+                            INSERT INTO mp_past_questions (company_id, meeting_id, question, topic, status)
+                            VALUES (%s, %s, %s, %s, 'asked')
+                        ''', (company_id, meeting_id, q_text, topic_name))
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        return jsonify({'questionSetId': qs['id'], 'version': qs['version']})
+    except Exception as e:
+        print(f"Error saving results: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================
+# MEETING PREP - HISTORY ENDPOINTS
+# ============================================
+
+@app.route('/api/mp/companies/<ticker>/past-questions', methods=['GET'])
+def mp_get_past_questions(ticker):
+    """Get past questions for a company."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('SELECT * FROM mp_companies WHERE ticker = %s', (ticker.upper(),))
+        company = cur.fetchone()
+        if not company:
+            cur.close()
+            conn.close()
+            return jsonify({'company': None, 'pastQuestions': []})
+
+        cur.execute('''
+            SELECT pq.*, m.meeting_date, m.meeting_type
+            FROM mp_past_questions pq
+            LEFT JOIN mp_meetings m ON pq.meeting_id = m.id
+            WHERE pq.company_id = %s
+            ORDER BY pq.created_at DESC
+            LIMIT 100
+        ''', (company['id'],))
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        pqs = []
+        for r in rows:
+            d = dict(r)
+            d['created_at'] = d['created_at'].isoformat() if d['created_at'] else None
+            d['meeting_date'] = str(d['meeting_date']) if d['meeting_date'] else None
+            pqs.append(d)
+
+        return jsonify({'company': dict(company), 'pastQuestions': pqs})
+    except Exception as e:
+        print(f"Error getting past questions: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/mp/past-questions/<int:pq_id>/note', methods=['POST'])
+def mp_update_past_question(pq_id):
+    """Update notes/status on a past question."""
+    try:
+        data = request.json
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        updates = []
+        params = []
+        if 'responseNotes' in data:
+            updates.append('response_notes = %s')
+            params.append(data['responseNotes'])
+        if 'status' in data:
+            updates.append('status = %s')
+            params.append(data['status'])
+
+        if updates:
+            params.append(pq_id)
+            cur.execute(f"UPDATE mp_past_questions SET {', '.join(updates)} WHERE id = %s", params)
+            conn.commit()
+
+        cur.close()
+        conn.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error updating past question: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/mp/meetings/<int:meeting_id>/documents/<int:doc_id>/text', methods=['GET'])
+def mp_get_document_text(meeting_id, doc_id):
+    """Get extracted text for a document (needed by frontend pipeline)."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('''
+            SELECT id, filename, doc_type, extracted_text
+            FROM mp_documents WHERE id = %s AND meeting_id = %s
+        ''', (doc_id, meeting_id))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        if not row:
+            return jsonify({'error': 'Document not found'}), 404
+
+        return jsonify({
+            'id': row['id'],
+            'filename': row['filename'],
+            'docType': row['doc_type'],
+            'extractedText': row['extracted_text'] or '',
+        })
+    except Exception as e:
+        print(f"Error getting document text: {e}")
         return jsonify({'error': str(e)}), 500
 
 
