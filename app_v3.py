@@ -3426,8 +3426,8 @@ def mp_upload_documents(meeting_id):
             return jsonify({'error': 'Meeting not found'}), 404
 
         # Get current max upload_order
-        cur.execute('SELECT COALESCE(MAX(upload_order), 0) FROM mp_documents WHERE meeting_id = %s', (meeting_id,))
-        order = cur.fetchone()[0]
+        cur.execute('SELECT COALESCE(MAX(upload_order), 0) AS max_order FROM mp_documents WHERE meeting_id = %s', (meeting_id,))
+        order = cur.fetchone()['max_order']
 
         results = []
         for doc in documents:
@@ -3718,8 +3718,8 @@ def mp_save_results():
         cur = conn.cursor()
 
         # Get next version
-        cur.execute('SELECT COALESCE(MAX(version), 0) + 1 FROM mp_question_sets WHERE meeting_id = %s', (meeting_id,))
-        version = cur.fetchone()[0]
+        cur.execute('SELECT COALESCE(MAX(version), 0) + 1 AS next_ver FROM mp_question_sets WHERE meeting_id = %s', (meeting_id,))
+        version = cur.fetchone()['next_ver']
 
         # Insert question set
         cur.execute('''
