@@ -3881,9 +3881,8 @@ def mp_get_document_text(meeting_id, doc_id):
 def mp_search_drive():
     """Search Google Drive 'Research Reports Char' folder for documents matching a ticker."""
     try:
-        from googleapiclient.discovery import build
-        from google.oauth2.credentials import Credentials
         from datetime import datetime, timedelta
+        import requests as http_requests
 
         data = request.json
         access_token = data.get('accessToken', '')
@@ -3895,6 +3894,9 @@ def mp_search_drive():
         if not ticker:
             return jsonify({'error': 'Ticker required'}), 400
 
+        headers = {'Authorization': f'Bearer {access_token}'}
+        drive_api = 'https://www.googleapis.com/drive/v3/files'
+
         # Calculate date cutoff
         ranges = {
             'day': 1, 'week': 7, 'month': 30, '3months': 90,
@@ -3903,13 +3905,15 @@ def mp_search_drive():
         days = ranges.get(time_range, 90)
         cutoff = (datetime.utcnow() - timedelta(days=days)).strftime('%Y-%m-%dT%H:%M:%S')
 
-        creds = Credentials(token=access_token)
-        service = build('drive', 'v3', credentials=creds)
-
         # Find "Research Reports Char" folder
         folder_query = "name = 'Research Reports Char' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
-        folder_results = service.files().list(q=folder_query, fields='files(id, name)', pageSize=5).execute()
-        folders = folder_results.get('files', [])
+        folder_resp = http_requests.get(drive_api, headers=headers, params={
+            'q': folder_query, 'fields': 'files(id, name)', 'pageSize': 5
+        })
+        if folder_resp.status_code == 401:
+            return jsonify({'error': 'Google authentication expired. Please re-authenticate.'}), 401
+        folder_resp.raise_for_status()
+        folders = folder_resp.json().get('files', [])
 
         if not folders:
             return jsonify({'error': 'Folder "Research Reports Char" not found in your Google Drive'}), 404
@@ -3922,20 +3926,21 @@ def mp_search_drive():
             f"and modifiedTime > '{cutoff}' "
             f"and (name contains '{ticker}' or fullText contains '{ticker}')"
         )
-        file_results = service.files().list(
-            q=file_query,
-            fields='files(id, name, mimeType, modifiedTime, size)',
-            pageSize=50,
-            orderBy='modifiedTime desc'
-        ).execute()
-        files = file_results.get('files', [])
+        file_resp = http_requests.get(drive_api, headers=headers, params={
+            'q': file_query,
+            'fields': 'files(id, name, mimeType, modifiedTime, size)',
+            'pageSize': 50,
+            'orderBy': 'modifiedTime desc'
+        })
+        file_resp.raise_for_status()
+        files = file_resp.json().get('files', [])
 
         return jsonify({'files': files, 'folderId': folder_id, 'folderName': folders[0]['name']})
 
     except Exception as e:
         error_msg = str(e)
         print(f"Drive search error: {error_msg}")
-        if 'invalid_grant' in error_msg.lower() or '401' in error_msg:
+        if '401' in error_msg:
             return jsonify({'error': 'Google authentication expired. Please re-authenticate.'}), 401
         return jsonify({'error': error_msg}), 500
 
@@ -3944,8 +3949,7 @@ def mp_search_drive():
 def mp_import_drive_files():
     """Download files from Google Drive and import into a meeting."""
     try:
-        from googleapiclient.discovery import build
-        from google.oauth2.credentials import Credentials
+        import requests as http_requests
         from PyPDF2 import PdfReader
         import io
 
@@ -3957,8 +3961,8 @@ def mp_import_drive_files():
         if not access_token or not meeting_id or not files_to_import:
             return jsonify({'error': 'accessToken, meetingId, and files are required'}), 400
 
-        creds = Credentials(token=access_token)
-        service = build('drive', 'v3', credentials=creds)
+        headers = {'Authorization': f'Bearer {access_token}'}
+        drive_api = 'https://www.googleapis.com/drive/v3/files'
 
         conn = get_db_connection()
         cur = conn.cursor()
@@ -3981,14 +3985,13 @@ def mp_import_drive_files():
             order += 1
 
             try:
-                # Download file content
-                if mime_type == 'application/vnd.google-apps.document':
-                    # Export Google Docs as PDF
-                    file_content = service.files().export(fileId=file_id, mimeType='application/pdf').execute()
-                elif mime_type == 'application/vnd.google-apps.spreadsheet':
-                    file_content = service.files().export(fileId=file_id, mimeType='application/pdf').execute()
+                # Download file content via REST API
+                if mime_type in ('application/vnd.google-apps.document', 'application/vnd.google-apps.spreadsheet'):
+                    dl_resp = http_requests.get(f'{drive_api}/{file_id}/export', headers=headers, params={'mimeType': 'application/pdf'})
                 else:
-                    file_content = service.files().get_media(fileId=file_id).execute()
+                    dl_resp = http_requests.get(f'{drive_api}/{file_id}', headers=headers, params={'alt': 'media'})
+                dl_resp.raise_for_status()
+                file_content = dl_resp.content
 
                 # Extract text from PDF
                 extracted_text = ''
