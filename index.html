@@ -5012,7 +5012,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 });
             };
 
-            const quickEmailMpQuestions = async () => {
+            const quickEmailMpQuestions = async (mode = 'clean') => {
                 const saved = localStorage.getItem('emailCredentials');
                 if (!saved) { alert('Please configure email in Settings first'); return; }
                 let creds;
@@ -5025,14 +5025,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
                 const ticker = mpSelectedMeeting?.ticker || '';
                 const company = mpSelectedMeeting?.company_name || ticker;
+                const isDetailed = mode === 'detailed';
 
-                // Build markdown from topics
                 let md = `# ${ticker} — Meeting Prep Questions\n\n`;
                 if (company !== ticker) md += `**${company}**\n\n`;
 
                 for (const topic of mpQuestionSet.topics) {
-                    md += `## ${topic.topic}\n`;
-                    if (topic.description) md += `*${topic.description}*\n\n`;
+                    md += `## ${topic.topic}\n\n`;
 
                     const byPriority = { high: [], medium: [], low: [] };
                     for (const q of (topic.questions || [])) {
@@ -5043,23 +5042,31 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     for (const [priority, questions] of Object.entries(byPriority)) {
                         if (!questions.length) continue;
                         md += `### ${priority.toUpperCase()} PRIORITY\n\n`;
-                        questions.forEach((q, i) => {
-                            md += `${i + 1}. **${q.question}**\n`;
-                            if (q.context) md += `   - *Context:* ${q.context}\n`;
-                            if (q.source) md += `   - *Source:* ${q.source}\n`;
-                            if (q.follow_up_angle) md += `   - *Follow-up:* ${q.follow_up_angle}\n`;
+                        if (isDetailed) {
+                            for (const q of questions) {
+                                md += `**${q.question}**\n\n`;
+                                if (q.context) md += `*Context:* ${q.context}\n\n`;
+                                if (q.source) md += `*Source:* ${q.source}\n\n`;
+                                if (q.follow_up_angle) md += `*Follow-up:* ${q.follow_up_angle}\n\n`;
+                                md += `---\n\n`;
+                            }
+                        } else {
+                            questions.forEach((q, i) => {
+                                md += `${i + 1}. ${q.question}\n`;
+                            });
                             md += '\n';
-                        });
+                        }
                     }
                 }
 
                 try {
+                    const label = isDetailed ? 'Detailed' : 'Questions';
                     const response = await fetch(`${API_URL}/api/email-research`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             email: creds.email,
-                            subject: `${ticker} - Meeting Prep Questions`,
+                            subject: `${ticker} - Meeting Prep ${label}`,
                             content: md,
                             promptName: 'Meeting Prep',
                             ticker: ticker,
@@ -5073,7 +5080,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         })
                     });
                     if (response.ok) {
-                        alert('Questions emailed successfully!');
+                        alert(`${label} emailed successfully!`);
                     } else {
                         let errMsg = `Failed to send (${response.status})`;
                         try { const err = await response.json(); errMsg = err.error || errMsg; } catch(e) {}
@@ -11527,13 +11534,18 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 <div className="flex items-center justify-between mb-3">
                                                     <h2 className="font-semibold">Questions</h2>
                                                     <div className="flex items-center gap-2">
-                                                        {mpQuestionSet && mpQuestionSet.topics && mpQuestionSet.topics.length > 0 && (
-                                                            <button onClick={quickEmailMpQuestions}
+                                                        {mpQuestionSet && mpQuestionSet.topics && mpQuestionSet.topics.length > 0 && (<>
+                                                            <button onClick={() => quickEmailMpQuestions('clean')}
                                                                 className="p-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 shadow-lg shadow-amber-500/20 transition-all"
-                                                                title="Email questions">
+                                                                title="Email questions only">
                                                                 <Mail className="w-4 h-4 text-white" />
                                                             </button>
-                                                        )}
+                                                            <button onClick={() => quickEmailMpQuestions('detailed')}
+                                                                className="p-2 rounded-lg bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 shadow-lg shadow-purple-500/20 transition-all"
+                                                                title="Email with context & sources">
+                                                                <FileText className="w-4 h-4 text-white" />
+                                                            </button>
+                                                        </>)}
                                                         {mpDocuments.length > 0 && !mpPipelineRunning && (
                                                             <button onClick={runMpPipeline} className="px-4 py-2 bg-teal-600 hover:bg-teal-500 rounded-lg text-sm font-medium transition-all">
                                                                 {mpQuestionSet && mpQuestionSet.status === 'ready' ? 'Regenerate Questions' : 'Generate Questions'}
