@@ -3888,6 +3888,7 @@ def mp_search_drive():
         access_token = data.get('accessToken', '')
         ticker = data.get('ticker', '')
         time_range = data.get('timeRange', '3months')
+        keyword = data.get('keyword', '').strip()
 
         if not access_token:
             return jsonify({'error': 'Google access token required'}), 400
@@ -3920,11 +3921,12 @@ def mp_search_drive():
 
         folder_id = folders[0]['id']
 
-        # Search for files matching ticker in that folder
+        # Search for files matching ticker (and optional keyword) in that folder
+        search_term = keyword if keyword else ticker
         file_query = (
             f"'{folder_id}' in parents and trashed = false "
             f"and modifiedTime > '{cutoff}' "
-            f"and (name contains '{ticker}' or fullText contains '{ticker}')"
+            f"and (name contains '{search_term}' or fullText contains '{search_term}')"
         )
         file_resp = http_requests.get(drive_api, headers=headers, params={
             'q': file_query,

@@ -1469,6 +1469,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [mpDriveSearching, setMpDriveSearching] = useState(false);
             const [mpDriveImporting, setMpDriveImporting] = useState(false);
             const [mpDriveTimeRange, setMpDriveTimeRange] = useState('3months');
+            const [mpDriveKeyword, setMpDriveKeyword] = useState('');
             const [mpDriveSelected, setMpDriveSelected] = useState(new Set());
             const [mpDriveError, setMpDriveError] = useState(null);
             const [googleClientId, setGoogleClientId] = useState(() => {
@@ -5120,7 +5121,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     const res = await fetch(`${API_URL}/api/mp/search-drive`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ accessToken: token, ticker: mpSelectedMeeting.ticker, timeRange: mpDriveTimeRange })
+                        body: JSON.stringify({ accessToken: token, ticker: mpSelectedMeeting.ticker, timeRange: mpDriveTimeRange, keyword: mpDriveKeyword.trim() || undefined })
                     });
                     if (res.status === 401) {
                         setMpDriveToken(null);
@@ -5133,7 +5134,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     const data = await res.json();
                     setMpDriveResults(data.files || []);
                     if (!data.files || data.files.length === 0) {
-                        setMpDriveError(`No files matching "${mpSelectedMeeting.ticker}" found in the selected time range.`);
+                        const searchTerms = mpDriveKeyword.trim() ? `"${mpSelectedMeeting.ticker}" + "${mpDriveKeyword.trim()}"` : `"${mpSelectedMeeting.ticker}"`;
+                        setMpDriveError(`No files matching ${searchTerms} found in the selected time range.`);
                     }
                 } catch (err) {
                     setMpDriveError(err.message);
@@ -11433,6 +11435,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         <div className="flex-1 h-px bg-white/10"></div>
                                                     </div>
                                                     <div className="flex items-center gap-2">
+                                                        <input type="text" value={mpDriveKeyword} onChange={e => setMpDriveKeyword(e.target.value)}
+                                                            onKeyDown={e => e.key === 'Enter' && mpSearchDrive()}
+                                                            placeholder="Keyword (e.g. CI, Cigna)"
+                                                            className="flex-1 min-w-0 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500/50" />
                                                         <select value={mpDriveTimeRange} onChange={e => setMpDriveTimeRange(e.target.value)}
                                                             className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-slate-300">
                                                             <option value="day">Past Day</option>
@@ -11444,7 +11450,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             <option value="3years">Past 3 Years</option>
                                                         </select>
                                                         <button onClick={mpSearchDrive} disabled={mpDriveSearching}
-                                                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg text-sm font-medium transition-all flex items-center gap-2">
+                                                            className="shrink-0 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg text-sm font-medium transition-all flex items-center gap-2">
                                                             {mpDriveSearching ? (
                                                                 <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Searching...</>
                                                             ) : (
