@@ -3947,6 +3947,52 @@ def mp_search_drive():
         return jsonify({'error': error_msg}), 500
 
 
+@app.route('/api/mp/preview-zip', methods=['POST'])
+def mp_preview_zip():
+    """Download a zip file from Google Drive and list the PDF files inside."""
+    try:
+        import requests as http_requests
+        import io
+        import zipfile
+
+        data = request.json
+        access_token = data.get('accessToken', '')
+        file_id = data.get('fileId', '')
+
+        if not access_token or not file_id:
+            return jsonify({'error': 'accessToken and fileId are required'}), 400
+
+        headers = {'Authorization': f'Bearer {access_token}'}
+        drive_api = 'https://www.googleapis.com/drive/v3/files'
+
+        dl_resp = http_requests.get(f'{drive_api}/{file_id}', headers=headers, params={'alt': 'media'})
+        if dl_resp.status_code == 401:
+            return jsonify({'error': 'Google authentication expired. Please re-authenticate.'}), 401
+        dl_resp.raise_for_status()
+
+        try:
+            with zipfile.ZipFile(io.BytesIO(dl_resp.content)) as zf:
+                pdfs = []
+                for info in zf.infolist():
+                    if info.filename.lower().endswith('.pdf') and not info.filename.startswith('__MACOSX'):
+                        name = info.filename.split('/')[-1] if '/' in info.filename else info.filename
+                        pdfs.append({
+                            'zipPath': info.filename,
+                            'name': name,
+                            'size': info.file_size
+                        })
+                return jsonify({'pdfs': pdfs})
+        except zipfile.BadZipFile:
+            return jsonify({'error': 'Invalid or corrupted zip file'}), 400
+
+    except Exception as e:
+        error_msg = str(e)
+        print(f"Zip preview error: {error_msg}")
+        if '401' in error_msg:
+            return jsonify({'error': 'Google authentication expired. Please re-authenticate.'}), 401
+        return jsonify({'error': error_msg}), 500
+
+
 @app.route('/api/mp/import-drive-files', methods=['POST'])
 def mp_import_drive_files():
     """Download files from Google Drive and import into a meeting. Handles zip files by extracting PDFs."""
@@ -4032,18 +4078,20 @@ def mp_import_drive_files():
                           filename.lower().endswith('.zip'))
 
                 if is_zip:
-                    # Extract all PDFs from the zip file
+                    # Extract selected (or all) PDFs from the zip file
+                    selected_pdfs = set(file_info.get('selectedPdfs', []))
                     try:
                         with zipfile.ZipFile(io.BytesIO(file_content)) as zf:
                             pdf_names = [n for n in zf.namelist()
                                          if n.lower().endswith('.pdf') and not n.startswith('__MACOSX')]
+                            if selected_pdfs:
+                                pdf_names = [n for n in pdf_names if n in selected_pdfs]
                             if not pdf_names:
-                                results.append({'filename': filename, 'error': 'No PDF files found inside zip'})
+                                results.append({'filename': filename, 'error': 'No matching PDF files found inside zip'})
                                 continue
                             for pdf_name in pdf_names:
                                 order += 1
                                 pdf_bytes = zf.read(pdf_name)
-                                # Use just the PDF filename, not full zip path
                                 pdf_filename = pdf_name.split('/')[-1] if '/' in pdf_name else pdf_name
                                 row = import_pdf(pdf_bytes, pdf_filename, doc_date, cur, meeting_id, order)
                                 row['fromZip'] = filename

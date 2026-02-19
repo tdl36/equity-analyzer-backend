@@ -1471,6 +1471,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [mpDriveTimeRange, setMpDriveTimeRange] = useState('3months');
             const [mpDriveKeyword, setMpDriveKeyword] = useState('');
             const [mpDriveSelected, setMpDriveSelected] = useState(new Set());
+            const [mpDriveZipContents, setMpDriveZipContents] = useState({});
+            const [mpDriveZipLoading, setMpDriveZipLoading] = useState({});
             const [mpDriveError, setMpDriveError] = useState(null);
             const [googleClientId, setGoogleClientId] = useState(() => {
                 try { return localStorage.getItem('google_oauth_client_id') || ''; } catch(e) { return ''; }
@@ -5124,6 +5126,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 setMpDriveError(null);
                 setMpDriveResults([]);
                 setMpDriveSelected(new Set());
+                setMpDriveZipContents({});
+                setMpDriveZipLoading({});
                 try {
                     const token = mpDriveToken || await mpAuthGoogle();
                     const res = await fetch(`${API_URL}/api/mp/search-drive`, {
@@ -5152,28 +5156,75 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 }
             };
 
+            const mpPreviewZip = async (fileId) => {
+                if (mpDriveZipContents[fileId]) {
+                    // Already loaded — toggle collapse
+                    setMpDriveZipContents(prev => { const n = {...prev}; delete n[fileId]; return n; });
+                    // Remove sub-selections
+                    setMpDriveSelected(prev => {
+                        const next = new Set(prev);
+                        next.forEach(k => { if (k.startsWith(fileId + '::')) next.delete(k); });
+                        return next;
+                    });
+                    return;
+                }
+                setMpDriveZipLoading(prev => ({...prev, [fileId]: true}));
+                try {
+                    const token = mpDriveToken || await mpAuthGoogle();
+                    const res = await fetch(`${API_URL}/api/mp/preview-zip`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ accessToken: token, fileId })
+                    });
+                    if (res.status === 401) { setMpDriveToken(null); throw new Error('Auth expired'); }
+                    if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Preview failed'); }
+                    const data = await res.json();
+                    setMpDriveZipContents(prev => ({...prev, [fileId]: data.pdfs || []}));
+                } catch (err) {
+                    setMpDriveError(err.message);
+                } finally {
+                    setMpDriveZipLoading(prev => ({...prev, [fileId]: false}));
+                }
+            };
+
             const mpImportDriveFiles = async () => {
                 if (!mpDriveSelected.size || !mpSelectedMeeting) return;
                 setMpDriveImporting(true);
                 setMpDriveError(null);
                 try {
                     const token = mpDriveToken || await mpAuthGoogle();
-                    const filesToImport = mpDriveResults.filter(f => mpDriveSelected.has(f.id));
+                    // Build import list: regular files + zips with selected PDFs
+                    const filesToImport = [];
+                    const zipSelections = {};
+                    mpDriveSelected.forEach(key => {
+                        if (key.includes('::')) {
+                            const [zipId, zipPath] = key.split('::', 2);
+                            if (!zipSelections[zipId]) zipSelections[zipId] = [];
+                            zipSelections[zipId].push(zipPath);
+                        } else {
+                            const f = mpDriveResults.find(r => r.id === key);
+                            if (f) {
+                                const isZip = f.name.toLowerCase().endsWith('.zip') || f.mimeType === 'application/zip';
+                                if (!isZip) filesToImport.push(f);
+                            }
+                        }
+                    });
+                    // Add zips with their selected PDFs
+                    for (const [zipId, paths] of Object.entries(zipSelections)) {
+                        const f = mpDriveResults.find(r => r.id === zipId);
+                        if (f) filesToImport.push({...f, selectedPdfs: paths});
+                    }
+                    if (!filesToImport.length) { setMpDriveError('No files selected for import'); setMpDriveImporting(false); return; }
                     const res = await fetch(`${API_URL}/api/mp/import-drive-files`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ accessToken: token, meetingId: mpSelectedMeeting.id, files: filesToImport })
                     });
-                    if (res.status === 401) {
-                        setMpDriveToken(null);
-                        throw new Error('Google authentication expired. Please try again.');
-                    }
-                    if (!res.ok) {
-                        const err = await res.json();
-                        throw new Error(err.error || 'Import failed');
-                    }
+                    if (res.status === 401) { setMpDriveToken(null); throw new Error('Auth expired'); }
+                    if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Import failed'); }
                     setMpDriveResults([]);
                     setMpDriveSelected(new Set());
+                    setMpDriveZipContents({});
                     await loadMpMeeting(mpSelectedMeeting.id);
                 } catch (err) {
                     setMpDriveError(err.message);
@@ -5182,10 +5233,23 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 }
             };
 
-            const toggleDriveSelect = (fileId) => {
+            const toggleDriveSelect = (key) => {
                 setMpDriveSelected(prev => {
                     const next = new Set(prev);
-                    if (next.has(fileId)) next.delete(fileId); else next.add(fileId);
+                    if (next.has(key)) next.delete(key); else next.add(key);
+                    return next;
+                });
+            };
+
+            const toggleZipSelectAll = (fileId) => {
+                const pdfs = mpDriveZipContents[fileId] || [];
+                setMpDriveSelected(prev => {
+                    const next = new Set(prev);
+                    const allSelected = pdfs.every(p => next.has(fileId + '::' + p.zipPath));
+                    pdfs.forEach(p => {
+                        const k = fileId + '::' + p.zipPath;
+                        if (allSelected) next.delete(k); else next.add(k);
+                    });
                     return next;
                 });
             };
@@ -11471,36 +11535,74 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     )}
                                                     {mpDriveResults.length > 0 && (
                                                         <div className="mt-2 border border-white/10 rounded-lg overflow-hidden">
-                                                            {mpDriveResults.some(f => f.name.toLowerCase().endsWith('.zip') || f.mimeType === 'application/zip') && (
-                                                                <div className="px-3 py-1.5 bg-purple-500/10 border-b border-white/10">
-                                                                    <p className="text-xs text-purple-300">ZIP files will be auto-extracted — all PDFs inside will be imported individually.</p>
-                                                                </div>
-                                                            )}
-                                                            <div className="max-h-48 overflow-y-auto">
+                                                            <div className="max-h-64 overflow-y-auto">
                                                                 {mpDriveResults.map(f => {
                                                                     const isZip = f.name.toLowerCase().endsWith('.zip') || f.mimeType === 'application/zip';
+                                                                    const zipPdfs = mpDriveZipContents[f.id];
+                                                                    const zipLoading = mpDriveZipLoading[f.id];
                                                                     return (
-                                                                    <label key={f.id} className="flex items-center gap-3 p-2 hover:bg-white/5 cursor-pointer border-b border-white/5 last:border-0">
-                                                                        <input type="checkbox" checked={mpDriveSelected.has(f.id)}
-                                                                            onChange={() => toggleDriveSelect(f.id)}
-                                                                            className="rounded accent-teal-500" />
-                                                                        <div className="min-w-0 flex-1">
-                                                                            <div className="flex items-center gap-2">
-                                                                                <p className="text-sm text-slate-200 truncate">{f.name}</p>
-                                                                                {isZip && <span className="shrink-0 px-1.5 py-0.5 bg-purple-500/20 text-purple-300 text-[10px] font-bold rounded">ZIP</span>}
+                                                                    <div key={f.id} className="border-b border-white/5 last:border-0">
+                                                                        {isZip ? (
+                                                                            <div className="flex items-center gap-3 p-2 hover:bg-white/5 cursor-pointer"
+                                                                                onClick={() => mpPreviewZip(f.id)}>
+                                                                                <div className="w-4 h-4 flex items-center justify-center text-purple-400 text-xs">
+                                                                                    {zipLoading ? <div className="w-3 h-3 border-2 border-purple-400/40 border-t-purple-400 rounded-full animate-spin" />
+                                                                                        : zipPdfs ? '▼' : '▶'}
+                                                                                </div>
+                                                                                <div className="min-w-0 flex-1">
+                                                                                    <div className="flex items-center gap-2">
+                                                                                        <p className="text-sm text-slate-200 truncate">{f.name}</p>
+                                                                                        <span className="shrink-0 px-1.5 py-0.5 bg-purple-500/20 text-purple-300 text-[10px] font-bold rounded">ZIP</span>
+                                                                                    </div>
+                                                                                    <p className="text-xs text-slate-400">
+                                                                                        {f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString() : ''}
+                                                                                        {f.size ? ` · ${(parseInt(f.size) / 1024 / 1024).toFixed(1)}MB` : ''}
+                                                                                        {zipPdfs ? ` · ${zipPdfs.length} PDFs` : ' · tap to expand'}
+                                                                                    </p>
+                                                                                </div>
                                                                             </div>
-                                                                            <p className="text-xs text-slate-400">
-                                                                                {f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString() : ''}
-                                                                                {f.size ? ` · ${(parseInt(f.size) / 1024 / 1024).toFixed(1)}MB` : ''}
-                                                                                {isZip ? ' · PDFs auto-extracted' : ''}
-                                                                            </p>
-                                                                        </div>
-                                                                    </label>
+                                                                        ) : (
+                                                                            <label className="flex items-center gap-3 p-2 hover:bg-white/5 cursor-pointer">
+                                                                                <input type="checkbox" checked={mpDriveSelected.has(f.id)}
+                                                                                    onChange={() => toggleDriveSelect(f.id)}
+                                                                                    className="rounded accent-teal-500" />
+                                                                                <div className="min-w-0 flex-1">
+                                                                                    <p className="text-sm text-slate-200 truncate">{f.name}</p>
+                                                                                    <p className="text-xs text-slate-400">
+                                                                                        {f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString() : ''}
+                                                                                        {f.size ? ` · ${(parseInt(f.size) / 1024 / 1024).toFixed(1)}MB` : ''}
+                                                                                    </p>
+                                                                                </div>
+                                                                            </label>
+                                                                        )}
+                                                                        {isZip && zipPdfs && (
+                                                                            <div className="bg-white/[0.02] border-t border-white/5">
+                                                                                <div className="px-2 py-1 flex items-center justify-between border-b border-white/5">
+                                                                                    <span className="text-[10px] text-purple-300 pl-7">{zipPdfs.length} PDFs in zip</span>
+                                                                                    <button onClick={() => toggleZipSelectAll(f.id)}
+                                                                                        className="text-[10px] text-purple-300 hover:text-purple-200 px-1">
+                                                                                        {zipPdfs.every(p => mpDriveSelected.has(f.id + '::' + p.zipPath)) ? 'Deselect all' : 'Select all'}
+                                                                                    </button>
+                                                                                </div>
+                                                                                {zipPdfs.map(p => (
+                                                                                    <label key={p.zipPath} className="flex items-center gap-3 pl-7 pr-2 py-1.5 hover:bg-white/5 cursor-pointer">
+                                                                                        <input type="checkbox" checked={mpDriveSelected.has(f.id + '::' + p.zipPath)}
+                                                                                            onChange={() => toggleDriveSelect(f.id + '::' + p.zipPath)}
+                                                                                            className="rounded accent-purple-500" />
+                                                                                        <div className="min-w-0 flex-1">
+                                                                                            <p className="text-xs text-slate-300 truncate">{p.name}</p>
+                                                                                            {p.size > 0 && <p className="text-[10px] text-slate-500">{(p.size / 1024 / 1024).toFixed(1)}MB</p>}
+                                                                                        </div>
+                                                                                    </label>
+                                                                                ))}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
                                                                     );
                                                                 })}
                                                             </div>
                                                             <div className="p-2 border-t border-white/10 flex items-center justify-between bg-white/[0.03]">
-                                                                <span className="text-xs text-slate-400">{mpDriveSelected.size} of {mpDriveResults.length} selected</span>
+                                                                <span className="text-xs text-slate-400">{mpDriveSelected.size} selected</span>
                                                                 <button onClick={mpImportDriveFiles} disabled={!mpDriveSelected.size || mpDriveImporting}
                                                                     className="px-3 py-1.5 bg-teal-600 hover:bg-teal-500 disabled:opacity-50 rounded-lg text-xs font-medium transition-all">
                                                                     {mpDriveImporting ? 'Importing...' : `Import Selected (${mpDriveSelected.size})`}
