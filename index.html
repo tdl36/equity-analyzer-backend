@@ -5034,30 +5034,20 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
                 for (const topic of mpQuestionSet.topics) {
                     md += `## ${topic.topic}\n\n`;
-
-                    const byPriority = { high: [], medium: [], low: [] };
-                    for (const q of (topic.questions || [])) {
-                        const p = q.priority || 'medium';
-                        (byPriority[p] || byPriority.medium).push(q);
-                    }
-
-                    for (const [priority, questions] of Object.entries(byPriority)) {
-                        if (!questions.length) continue;
-                        md += `### ${priority.toUpperCase()} PRIORITY\n\n`;
-                        if (isDetailed) {
-                            for (const q of questions) {
-                                md += `**${q.question}**\n\n`;
-                                if (q.context) md += `*Context:* ${q.context}\n\n`;
-                                if (q.source) md += `*Source:* ${q.source}\n\n`;
-                                if (q.follow_up_angle) md += `*Follow-up:* ${q.follow_up_angle}\n\n`;
-                                md += `---\n\n`;
-                            }
-                        } else {
-                            questions.forEach((q, i) => {
-                                md += `${i + 1}. ${q.question}\n`;
-                            });
-                            md += '\n';
+                    const allQuestions = topic.questions || [];
+                    if (isDetailed) {
+                        for (const q of allQuestions) {
+                            md += `**${q.question}**\n\n`;
+                            if (q.context) md += `*Context:* ${q.context}\n\n`;
+                            if (q.source) md += `*Source:* ${q.source}\n\n`;
+                            if (q.follow_up_angle) md += `*Follow-up:* ${q.follow_up_angle}\n\n`;
+                            md += `---\n\n`;
                         }
+                    } else {
+                        for (const q of allQuestions) {
+                            md += `- ${q.question}\n`;
+                        }
+                        md += '\n';
                     }
                 }
 
@@ -5070,9 +5060,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             email: creds.email,
                             subject: `${ticker} - Meeting Prep ${label}`,
                             content: md,
-                            promptName: 'Meeting Prep',
-                            ticker: ticker,
-                            topic: `${company} Meeting Prep`,
+                            minimal: true,
                             smtpConfig: {
                                 use_gmail: creds.useGmail,
                                 gmail_user: creds.gmailUser,
