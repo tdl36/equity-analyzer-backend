@@ -1463,17 +1463,17 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [mpPastQuestions, setMpPastQuestions] = useState([]);
             const [mpUploading, setMpUploading] = useState(false);
 
-            // Meeting Prep — Google Drive state
-            const [mpDriveToken, setMpDriveToken] = useState(null);
-            const [mpDriveResults, setMpDriveResults] = useState([]);
-            const [mpDriveSearching, setMpDriveSearching] = useState(false);
-            const [mpDriveImporting, setMpDriveImporting] = useState(false);
-            const [mpDriveTimeRange, setMpDriveTimeRange] = useState('3months');
-            const [mpDriveKeyword, setMpDriveKeyword] = useState('');
-            const [mpDriveSelected, setMpDriveSelected] = useState(new Set());
-            const [mpDriveZipContents, setMpDriveZipContents] = useState({});
-            const [mpDriveZipLoading, setMpDriveZipLoading] = useState({});
-            const [mpDriveError, setMpDriveError] = useState(null);
+            // Google Drive state (shared across tabs)
+            const [driveToken, setDriveToken] = useState(null);
+            const [driveResults, setDriveResults] = useState([]);
+            const [driveSearching, setDriveSearching] = useState(false);
+            const [driveImporting, setDriveImporting] = useState(false);
+            const [driveTimeRange, setDriveTimeRange] = useState('3months');
+            const [driveKeyword, setDriveKeyword] = useState('');
+            const [driveSelected, setDriveSelected] = useState(new Set());
+            const [driveZipContents, setDriveZipContents] = useState({});
+            const [driveZipLoading, setDriveZipLoading] = useState({});
+            const [driveError, setDriveError] = useState(null);
             const [googleClientId, setGoogleClientId] = useState(() => {
                 try { return localStorage.getItem('google_oauth_client_id') || ''; } catch(e) { return ''; }
             });
@@ -4733,6 +4733,12 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 setActiveTab(newTab);
                 setShowScrollTop(false); // Reset scroll button when switching tabs
 
+                // Clear Drive search state on tab switch
+                setDriveResults([]);
+                setDriveSelected(new Set());
+                setDriveZipContents({});
+                setDriveError(null);
+
                 // If switching between Portfolio and Overview, try to navigate to same ticker
                 if (prevTab === 'portfolio' && newTab === 'overview' && currentTicker) {
                     const matchingOverview = savedOverviews.find(o => o.ticker === currentTicker);
@@ -5081,22 +5087,22 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 }
             };
 
-            // Google Drive functions for Meeting Prep
-            const mpAuthGoogle = () => {
+            // Google Drive functions (shared across tabs)
+            const authGoogle = () => {
                 return new Promise((resolve, reject) => {
                     const clientId = googleClientId || localStorage.getItem('google_oauth_client_id') || '';
                     if (!clientId) {
                         reject(new Error('Please add your Google OAuth Client ID in Settings first'));
                         return;
                     }
-                    if (mpDriveToken) { resolve(mpDriveToken); return; }
+                    if (driveToken) { resolve(driveToken); return; }
                     try {
                         const tokenClient = google.accounts.oauth2.initTokenClient({
                             client_id: clientId,
                             scope: 'https://www.googleapis.com/auth/drive.readonly',
                             callback: (response) => {
                                 if (response.error) { reject(new Error(response.error)); return; }
-                                setMpDriveToken(response.access_token);
+                                setDriveToken(response.access_token);
                                 resolve(response.access_token);
                             },
                             error_callback: (err) => reject(new Error(err.message || 'Google auth failed')),
@@ -5108,23 +5114,22 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 });
             };
 
-            const mpSearchDrive = async () => {
-                if (!mpSelectedMeeting) return;
-                setMpDriveSearching(true);
-                setMpDriveError(null);
-                setMpDriveResults([]);
-                setMpDriveSelected(new Set());
-                setMpDriveZipContents({});
-                setMpDriveZipLoading({});
+            const searchDrive = async (ticker) => {
+                setDriveSearching(true);
+                setDriveError(null);
+                setDriveResults([]);
+                setDriveSelected(new Set());
+                setDriveZipContents({});
+                setDriveZipLoading({});
                 try {
-                    const token = mpDriveToken || await mpAuthGoogle();
+                    const token = driveToken || await authGoogle();
                     const res = await fetch(`${API_URL}/api/mp/search-drive`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ accessToken: token, ticker: mpSelectedMeeting.ticker, timeRange: mpDriveTimeRange, keyword: mpDriveKeyword.trim() || undefined })
+                        body: JSON.stringify({ accessToken: token, ticker: ticker || '', timeRange: driveTimeRange, keyword: driveKeyword.trim() || undefined })
                     });
                     if (res.status === 401) {
-                        setMpDriveToken(null);
+                        setDriveToken(null);
                         throw new Error('Google authentication expired. Please try again.');
                     }
                     if (!res.ok) {
@@ -5132,97 +5137,267 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         throw new Error(err.error || 'Search failed');
                     }
                     const data = await res.json();
-                    setMpDriveResults(data.files || []);
+                    setDriveResults(data.files || []);
                     if (!data.files || data.files.length === 0) {
-                        const searchTerms = mpDriveKeyword.trim() ? `"${mpSelectedMeeting.ticker}" + "${mpDriveKeyword.trim()}"` : `"${mpSelectedMeeting.ticker}"`;
-                        setMpDriveError(`No files matching ${searchTerms} found in the selected time range.`);
+                        const searchTerms = driveKeyword.trim() ? (ticker ? `"${ticker}" + "${driveKeyword.trim()}"` : `"${driveKeyword.trim()}"`) : `"${ticker || 'all'}"`;
+                        setDriveError(`No files matching ${searchTerms} found in the selected time range.`);
                     }
                 } catch (err) {
-                    setMpDriveError(err.message);
+                    setDriveError(err.message);
                 } finally {
-                    setMpDriveSearching(false);
+                    setDriveSearching(false);
                 }
             };
 
-            const mpPreviewZip = async (fileId) => {
-                if (mpDriveZipContents[fileId]) {
+            const previewZip = async (fileId) => {
+                if (driveZipContents[fileId]) {
                     // Already loaded — toggle collapse
-                    setMpDriveZipContents(prev => { const n = {...prev}; delete n[fileId]; return n; });
+                    setDriveZipContents(prev => { const n = {...prev}; delete n[fileId]; return n; });
                     // Remove sub-selections
-                    setMpDriveSelected(prev => {
+                    setDriveSelected(prev => {
                         const next = new Set(prev);
                         next.forEach(k => { if (k.startsWith(fileId + '::')) next.delete(k); });
                         return next;
                     });
                     return;
                 }
-                setMpDriveZipLoading(prev => ({...prev, [fileId]: true}));
+                setDriveZipLoading(prev => ({...prev, [fileId]: true}));
                 try {
-                    const token = mpDriveToken || await mpAuthGoogle();
+                    const token = driveToken || await authGoogle();
                     const res = await fetch(`${API_URL}/api/mp/preview-zip`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ accessToken: token, fileId })
                     });
-                    if (res.status === 401) { setMpDriveToken(null); throw new Error('Auth expired'); }
+                    if (res.status === 401) { setDriveToken(null); throw new Error('Auth expired'); }
                     if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Preview failed'); }
                     const data = await res.json();
-                    setMpDriveZipContents(prev => ({...prev, [fileId]: data.pdfs || []}));
+                    setDriveZipContents(prev => ({...prev, [fileId]: data.pdfs || []}));
                 } catch (err) {
-                    setMpDriveError(err.message);
+                    setDriveError(err.message);
                 } finally {
-                    setMpDriveZipLoading(prev => ({...prev, [fileId]: false}));
+                    setDriveZipLoading(prev => ({...prev, [fileId]: false}));
                 }
             };
 
-            const mpImportDriveFiles = async () => {
-                if (!mpDriveSelected.size || !mpSelectedMeeting) return;
-                setMpDriveImporting(true);
-                setMpDriveError(null);
-                try {
-                    const token = mpDriveToken || await mpAuthGoogle();
-                    // Build import list: regular files + zips with selected PDFs
-                    const filesToImport = [];
-                    const zipSelections = {};
-                    mpDriveSelected.forEach(key => {
-                        if (key.includes('::')) {
-                            const [zipId, zipPath] = key.split('::', 2);
-                            if (!zipSelections[zipId]) zipSelections[zipId] = [];
-                            zipSelections[zipId].push(zipPath);
-                        } else {
-                            const f = mpDriveResults.find(r => r.id === key);
-                            if (f) {
-                                const isZip = f.name.toLowerCase().endsWith('.zip') || f.mimeType === 'application/zip';
-                                if (!isZip) filesToImport.push(f);
-                            }
+            // Build import file list from current selections (shared helper)
+            const buildDriveImportList = () => {
+                const filesToImport = [];
+                const zipSelections = {};
+                driveSelected.forEach(key => {
+                    if (key.includes('::')) {
+                        const [zipId, zipPath] = key.split('::', 2);
+                        if (!zipSelections[zipId]) zipSelections[zipId] = [];
+                        zipSelections[zipId].push(zipPath);
+                    } else {
+                        const f = driveResults.find(r => r.id === key);
+                        if (f) {
+                            const isZip = f.name.toLowerCase().endsWith('.zip') || f.mimeType === 'application/zip';
+                            if (!isZip) filesToImport.push(f);
                         }
-                    });
-                    // Add zips with their selected PDFs
-                    for (const [zipId, paths] of Object.entries(zipSelections)) {
-                        const f = mpDriveResults.find(r => r.id === zipId);
-                        if (f) filesToImport.push({...f, selectedPdfs: paths});
                     }
-                    if (!filesToImport.length) { setMpDriveError('No files selected for import'); setMpDriveImporting(false); return; }
+                });
+                for (const [zipId, paths] of Object.entries(zipSelections)) {
+                    const f = driveResults.find(r => r.id === zipId);
+                    if (f) filesToImport.push({...f, selectedPdfs: paths});
+                }
+                return filesToImport;
+            };
+
+            // Generic download from Drive (returns extracted text, no DB storage)
+            const downloadDriveFiles = async () => {
+                const token = driveToken || await authGoogle();
+                const filesToImport = buildDriveImportList();
+                if (!filesToImport.length) throw new Error('No files selected for import');
+                const res = await fetch(`${API_URL}/api/drive/download-files`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ accessToken: token, files: filesToImport })
+                });
+                if (res.status === 401) { setDriveToken(null); throw new Error('Auth expired'); }
+                if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Download failed'); }
+                const data = await res.json();
+                return data.files || [];
+            };
+
+            const clearDriveState = () => {
+                setDriveResults([]);
+                setDriveSelected(new Set());
+                setDriveZipContents({});
+                setDriveError(null);
+                setDriveKeyword('');
+            };
+
+            // Meeting Prep: import via existing MP endpoint (stores in mp_documents)
+            const handleDriveImportMp = async () => {
+                if (!driveSelected.size || !mpSelectedMeeting) return;
+                setDriveImporting(true);
+                setDriveError(null);
+                try {
+                    const token = driveToken || await authGoogle();
+                    const filesToImport = buildDriveImportList();
+                    if (!filesToImport.length) { setDriveError('No files selected for import'); setDriveImporting(false); return; }
                     const res = await fetch(`${API_URL}/api/mp/import-drive-files`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ accessToken: token, meetingId: mpSelectedMeeting.id, files: filesToImport })
                     });
-                    if (res.status === 401) { setMpDriveToken(null); throw new Error('Auth expired'); }
+                    if (res.status === 401) { setDriveToken(null); throw new Error('Auth expired'); }
                     if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Import failed'); }
-                    setMpDriveResults([]);
-                    setMpDriveSelected(new Set());
-                    setMpDriveZipContents({});
+                    clearDriveState();
                     await loadMpMeeting(mpSelectedMeeting.id);
                 } catch (err) {
-                    setMpDriveError(err.message);
+                    setDriveError(err.message);
                 } finally {
-                    setMpDriveImporting(false);
+                    setDriveImporting(false);
+                }
+            };
+
+            // Research tab: download files and add to researchFiles state
+            const handleDriveImportResearch = async () => {
+                if (!driveSelected.size) return;
+                setDriveImporting(true);
+                setDriveError(null);
+                try {
+                    const downloaded = await downloadDriveFiles();
+                    const newFiles = downloaded.filter(f => !f.error).map(f => ({
+                        id: Date.now() + Math.random(),
+                        name: f.filename,
+                        content: f.extractedText || '',
+                        type: 'application/pdf',
+                        isImage: false,
+                        rawFileData: f.fileData,
+                        fileSize: f.fileSize
+                    }));
+                    if (newFiles.length > 0) {
+                        setResearchFiles(prev => [...prev, ...newFiles]);
+                        if (!newDocumentName && newFiles[0]) {
+                            setNewDocumentName(newFiles[0].name.replace(/\.[^/.]+$/, ''));
+                        }
+                        setShowAddResearchDoc(true);
+                    }
+                    clearDriveState();
+                    alert(`${newFiles.length} file(s) imported from Drive. Configure analysis settings and click "Create & Analyze".`);
+                } catch (err) {
+                    setDriveError(err.message);
+                } finally {
+                    setDriveImporting(false);
+                }
+            };
+
+            // Summary tab: download files, extract text, generate summary
+            const handleDriveImportSummary = async () => {
+                if (!driveSelected.size) return;
+                setDriveImporting(true);
+                setDriveError(null);
+                try {
+                    const downloaded = await downloadDriveFiles();
+                    const validFiles = downloaded.filter(f => !f.error && f.extractedText);
+                    if (!validFiles.length) { setDriveError('No text could be extracted from selected files'); setDriveImporting(false); return; }
+
+                    const combinedText = validFiles.map(f => `--- ${f.filename} ---\n${f.extractedText}`).join('\n\n');
+                    const filenames = validFiles.map(f => f.filename);
+
+                    // Generate summary via webhook
+                    setSummaryFileUploading(true);
+                    setSummaryUploadProgress('Generating summary from Drive files...');
+
+                    const webhookResponse = await fetch(SUMMARY_WEBHOOK_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ notes: combinedText })
+                    });
+                    if (!webhookResponse.ok) throw new Error('Summary generation failed');
+                    const data = await webhookResponse.json();
+
+                    const title = summaryTitleInput.trim() || filenames[0].replace(/\.[^/.]+$/, '').substring(0, 100) || 'Drive Import';
+                    const newSummary = {
+                        id: 'summary-' + Date.now(),
+                        title: title,
+                        rawNotes: combinedText.substring(0, 5000) + (combinedText.length > 5000 ? '...' : ''),
+                        summary: data.summary,
+                        questions: data.questions,
+                        topic: newTopicName || currentSummaryTopic || 'General',
+                        topicType: newTopicType || 'other',
+                        docType: summaryDocType || 'other',
+                        sourceType: 'drive',
+                        sourceFiles: filenames,
+                        hasStoredFiles: false,
+                        createdAt: new Date().toISOString()
+                    };
+
+                    await saveSummaryToDb(newSummary);
+
+                    // Store file data
+                    const fileDataArray = validFiles.map(f => ({
+                        filename: f.filename,
+                        fileType: 'application/pdf',
+                        fileData: f.fileData,
+                        fileSize: f.fileSize
+                    }));
+                    try {
+                        const saveResp = await fetch(`${API_URL}/api/summary-files/${newSummary.id}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ files: fileDataArray })
+                        });
+                        if (saveResp.ok) newSummary.hasStoredFiles = true;
+                    } catch (e) { console.warn('File storage failed:', e); }
+
+                    setSavedSummaries(prev => [newSummary, ...prev]);
+                    setCurrentSummary(newSummary);
+                    setSummaryTitleInput('');
+                    setNewTopicName('');
+                    setSummaryDocType('');
+                    setShowSummaryInputModal(false);
+                    setSummaryViewMode('detail');
+                    clearDriveState();
+                    alert('Summary generated from Drive files!');
+                } catch (err) {
+                    setDriveError(err.message);
+                } finally {
+                    setDriveImporting(false);
+                    setSummaryFileUploading(false);
+                    setSummaryUploadProgress('');
+                }
+            };
+
+            // Portfolio/Thesis tab: download files and add to documents state
+            const handleDriveImportPortfolio = async () => {
+                if (!driveSelected.size) return;
+                setDriveImporting(true);
+                setDriveError(null);
+                try {
+                    const downloaded = await downloadDriveFiles();
+                    const newDocs = downloaded.filter(f => !f.error).map(f => ({
+                        id: Date.now() + Math.random(),
+                        filename: f.filename,
+                        fileData: f.fileData,
+                        fileType: 'pdf',
+                        mimeType: 'application/pdf',
+                        enabled: true,
+                        weight: 1.0,
+                        metadata: {
+                            filename: f.filename,
+                            type: 'broker_report',
+                            analyst: '',
+                            date: new Date().toISOString().split('T')[0]
+                        }
+                    }));
+                    if (newDocs.length > 0) {
+                        setDocuments(prev => [...prev, ...newDocs]);
+                    }
+                    clearDriveState();
+                    alert(`${newDocs.length} document(s) imported from Drive.`);
+                } catch (err) {
+                    setDriveError(err.message);
+                } finally {
+                    setDriveImporting(false);
                 }
             };
 
             const toggleDriveSelect = (key) => {
-                setMpDriveSelected(prev => {
+                setDriveSelected(prev => {
                     const next = new Set(prev);
                     if (next.has(key)) next.delete(key); else next.add(key);
                     return next;
@@ -5230,8 +5405,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
             };
 
             const toggleZipSelectAll = (fileId) => {
-                const pdfs = mpDriveZipContents[fileId] || [];
-                setMpDriveSelected(prev => {
+                const pdfs = driveZipContents[fileId] || [];
+                setDriveSelected(prev => {
                     const next = new Set(prev);
                     const allSelected = pdfs.every(p => next.has(fileId + '::' + p.zipPath));
                     pdfs.forEach(p => {
@@ -5240,6 +5415,126 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     });
                     return next;
                 });
+            };
+
+            // Reusable Drive search UI component
+            const renderDriveSearch = (ticker, onImport) => {
+                return React.createElement('div', { className: 'mb-3' },
+                    React.createElement('div', { className: 'flex items-center gap-2 mb-2' },
+                        React.createElement('div', { className: 'flex-1 h-px bg-white/10' }),
+                        React.createElement('span', { className: 'text-xs text-slate-400' }, 'or search Google Drive'),
+                        React.createElement('div', { className: 'flex-1 h-px bg-white/10' })
+                    ),
+                    React.createElement('input', {
+                        type: 'text', value: driveKeyword,
+                        onChange: e => setDriveKeyword(e.target.value),
+                        onKeyDown: e => e.key === 'Enter' && searchDrive(ticker),
+                        placeholder: 'Search keyword (e.g. CI, Cigna, earnings...)',
+                        className: 'w-full mb-2 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500/50'
+                    }),
+                    React.createElement('div', { className: 'flex items-center gap-2' },
+                        React.createElement('select', {
+                            value: driveTimeRange, onChange: e => setDriveTimeRange(e.target.value),
+                            className: 'px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-slate-300'
+                        },
+                            React.createElement('option', { value: 'day' }, 'Past Day'),
+                            React.createElement('option', { value: 'week' }, 'Past Week'),
+                            React.createElement('option', { value: 'month' }, 'Past Month'),
+                            React.createElement('option', { value: '3months' }, 'Past 3 Months'),
+                            React.createElement('option', { value: '6months' }, 'Past 6 Months'),
+                            React.createElement('option', { value: 'year' }, 'Past Year'),
+                            React.createElement('option', { value: '3years' }, 'Past 3 Years')
+                        ),
+                        React.createElement('button', {
+                            onClick: () => searchDrive(ticker), disabled: driveSearching,
+                            className: 'flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2'
+                        },
+                            driveSearching
+                                ? React.createElement(React.Fragment, null,
+                                    React.createElement('div', { className: 'w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin' }),
+                                    ' Searching...')
+                                : React.createElement(React.Fragment, null,
+                                    React.createElement(Search, { className: 'w-4 h-4' }),
+                                    ' Search Drive')
+                        )
+                    ),
+                    driveError && React.createElement('p', { className: 'text-xs text-amber-400 mt-2' }, driveError),
+                    driveResults.length > 0 && React.createElement('div', { className: 'mt-2 border border-white/10 rounded-lg overflow-hidden' },
+                        React.createElement('div', { className: 'max-h-64 overflow-y-auto' },
+                            driveResults.map(f => {
+                                const isZip = f.name.toLowerCase().endsWith('.zip') || f.mimeType === 'application/zip';
+                                const zipPdfs = driveZipContents[f.id];
+                                const zipLoading = driveZipLoading[f.id];
+                                return React.createElement('div', { key: f.id, className: 'border-b border-white/5 last:border-0' },
+                                    isZip
+                                        ? React.createElement('div', {
+                                            className: 'flex items-center gap-3 p-2 hover:bg-white/5 cursor-pointer',
+                                            onClick: () => previewZip(f.id)
+                                        },
+                                            React.createElement('div', { className: 'w-4 h-4 flex items-center justify-center text-purple-400 text-xs' },
+                                                zipLoading ? React.createElement('div', { className: 'w-3 h-3 border-2 border-purple-400/40 border-t-purple-400 rounded-full animate-spin' })
+                                                    : zipPdfs ? '\u25BC' : '\u25B6'),
+                                            React.createElement('div', { className: 'min-w-0 flex-1' },
+                                                React.createElement('div', { className: 'flex items-center gap-2' },
+                                                    React.createElement('p', { className: 'text-sm text-slate-200 truncate' }, f.name),
+                                                    React.createElement('span', { className: 'shrink-0 px-1.5 py-0.5 bg-purple-500/20 text-purple-300 text-[10px] font-bold rounded' }, 'ZIP')
+                                                ),
+                                                React.createElement('p', { className: 'text-xs text-slate-400' },
+                                                    (f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString() : '') +
+                                                    (f.size ? ` \u00B7 ${(parseInt(f.size) / 1024 / 1024).toFixed(1)}MB` : '') +
+                                                    (zipPdfs ? ` \u00B7 ${zipPdfs.length} PDFs` : ' \u00B7 tap to expand')
+                                                )
+                                            )
+                                        )
+                                        : React.createElement('label', { className: 'flex items-center gap-3 p-2 hover:bg-white/5 cursor-pointer' },
+                                            React.createElement('input', {
+                                                type: 'checkbox', checked: driveSelected.has(f.id),
+                                                onChange: () => toggleDriveSelect(f.id),
+                                                className: 'rounded accent-teal-500'
+                                            }),
+                                            React.createElement('div', { className: 'min-w-0 flex-1' },
+                                                React.createElement('p', { className: 'text-sm text-slate-200 truncate' }, f.name),
+                                                React.createElement('p', { className: 'text-xs text-slate-400' },
+                                                    (f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString() : '') +
+                                                    (f.size ? ` \u00B7 ${(parseInt(f.size) / 1024 / 1024).toFixed(1)}MB` : '')
+                                                )
+                                            )
+                                        ),
+                                    isZip && zipPdfs && React.createElement('div', { className: 'bg-white/[0.02] border-t border-white/5' },
+                                        React.createElement('div', { className: 'px-2 py-1 flex items-center justify-between border-b border-white/5' },
+                                            React.createElement('span', { className: 'text-[10px] text-purple-300 pl-7' }, `${zipPdfs.length} PDFs in zip`),
+                                            React.createElement('button', {
+                                                onClick: () => toggleZipSelectAll(f.id),
+                                                className: 'text-[10px] text-purple-300 hover:text-purple-200 px-1'
+                                            }, zipPdfs.every(p => driveSelected.has(f.id + '::' + p.zipPath)) ? 'Deselect all' : 'Select all')
+                                        ),
+                                        zipPdfs.map(p => React.createElement('label', {
+                                            key: p.zipPath,
+                                            className: 'flex items-center gap-3 pl-7 pr-2 py-1.5 hover:bg-white/5 cursor-pointer'
+                                        },
+                                            React.createElement('input', {
+                                                type: 'checkbox', checked: driveSelected.has(f.id + '::' + p.zipPath),
+                                                onChange: () => toggleDriveSelect(f.id + '::' + p.zipPath),
+                                                className: 'rounded accent-purple-500'
+                                            }),
+                                            React.createElement('div', { className: 'min-w-0 flex-1' },
+                                                React.createElement('p', { className: 'text-xs text-slate-300 truncate' }, p.name),
+                                                p.size > 0 && React.createElement('p', { className: 'text-[10px] text-slate-500' }, `${(p.size / 1024 / 1024).toFixed(1)}MB`)
+                                            )
+                                        ))
+                                    )
+                                );
+                            })
+                        ),
+                        React.createElement('div', { className: 'p-2 border-t border-white/10 flex items-center justify-between bg-white/[0.03]' },
+                            React.createElement('span', { className: 'text-xs text-slate-400' }, `${driveSelected.size} selected`),
+                            React.createElement('button', {
+                                onClick: onImport, disabled: !driveSelected.size || driveImporting,
+                                className: 'px-3 py-1.5 bg-teal-600 hover:bg-teal-500 disabled:opacity-50 rounded-lg text-xs font-medium transition-all'
+                            }, driveImporting ? 'Importing...' : `Import Selected (${driveSelected.size})`)
+                        )
+                    )
+                );
             };
 
             const loadAnalysis = async (ticker) => {
@@ -7443,6 +7738,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             </div>
                                             <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.gif,.webp,.eml,.msg,.txt,.html" multiple onChange={handleFileUpload} className="hidden" />
                                         </div>
+
+                                        {renderDriveSearch(currentTicker || '', handleDriveImportPortfolio)}
 
                                         {/* Desktop table header - hidden on mobile */}
                                         <div className="hidden md:grid grid-cols-12 gap-4 px-4 py-2 text-xs font-semibold text-slate-400 uppercase mb-3">
@@ -10185,6 +10482,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             </p>
                                                         </div>
 
+                                                        {renderDriveSearch(null, handleDriveImportSummary)}
+
                                                         {/* Selected Files */}
                                                         {summaryFiles.length > 0 && (
                                                             <div className="mt-4 space-y-2">
@@ -10794,6 +11093,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                     <FileUp className="w-8 h-8 mx-auto mb-2 text-slate-500" />
                                                                     <p className="text-sm text-slate-400">Click to upload</p>
                                                                 </div>
+                                                                {renderDriveSearch(
+                                                                    selectedResearchCategory ? (researchCategories.find(c => c.id === selectedResearchCategory)?.name || '') : '',
+                                                                    handleDriveImportResearch
+                                                                )}
                                                                 {researchFiles.length > 0 && (
                                                                     <div className="mt-3 space-y-2">
                                                                         {researchFiles.map(file => (
@@ -11488,117 +11791,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 </div>
 
                                                 {/* Google Drive Search */}
-                                                <div className="mb-3">
-                                                    <div className="flex items-center gap-2 mb-2">
-                                                        <div className="flex-1 h-px bg-white/10"></div>
-                                                        <span className="text-xs text-slate-400">or search Google Drive</span>
-                                                        <div className="flex-1 h-px bg-white/10"></div>
-                                                    </div>
-                                                    <input type="text" value={mpDriveKeyword} onChange={e => setMpDriveKeyword(e.target.value)}
-                                                        onKeyDown={e => e.key === 'Enter' && mpSearchDrive()}
-                                                        placeholder="Search keyword (e.g. CI, Cigna, earnings...)"
-                                                        className="w-full mb-2 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500/50" />
-                                                    <div className="flex items-center gap-2">
-                                                        <select value={mpDriveTimeRange} onChange={e => setMpDriveTimeRange(e.target.value)}
-                                                            className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-slate-300">
-                                                            <option value="day">Past Day</option>
-                                                            <option value="week">Past Week</option>
-                                                            <option value="month">Past Month</option>
-                                                            <option value="3months">Past 3 Months</option>
-                                                            <option value="6months">Past 6 Months</option>
-                                                            <option value="year">Past Year</option>
-                                                            <option value="3years">Past 3 Years</option>
-                                                        </select>
-                                                        <button onClick={mpSearchDrive} disabled={mpDriveSearching}
-                                                            className="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2">
-                                                            {mpDriveSearching ? (
-                                                                <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Searching...</>
-                                                            ) : (
-                                                                <><Search className="w-4 h-4" /> Search Drive</>
-                                                            )}
-                                                        </button>
-                                                    </div>
-                                                    {mpDriveError && (
-                                                        <p className="text-xs text-amber-400 mt-2">{mpDriveError}</p>
-                                                    )}
-                                                    {mpDriveResults.length > 0 && (
-                                                        <div className="mt-2 border border-white/10 rounded-lg overflow-hidden">
-                                                            <div className="max-h-64 overflow-y-auto">
-                                                                {mpDriveResults.map(f => {
-                                                                    const isZip = f.name.toLowerCase().endsWith('.zip') || f.mimeType === 'application/zip';
-                                                                    const zipPdfs = mpDriveZipContents[f.id];
-                                                                    const zipLoading = mpDriveZipLoading[f.id];
-                                                                    return (
-                                                                    <div key={f.id} className="border-b border-white/5 last:border-0">
-                                                                        {isZip ? (
-                                                                            <div className="flex items-center gap-3 p-2 hover:bg-white/5 cursor-pointer"
-                                                                                onClick={() => mpPreviewZip(f.id)}>
-                                                                                <div className="w-4 h-4 flex items-center justify-center text-purple-400 text-xs">
-                                                                                    {zipLoading ? <div className="w-3 h-3 border-2 border-purple-400/40 border-t-purple-400 rounded-full animate-spin" />
-                                                                                        : zipPdfs ? '▼' : '▶'}
-                                                                                </div>
-                                                                                <div className="min-w-0 flex-1">
-                                                                                    <div className="flex items-center gap-2">
-                                                                                        <p className="text-sm text-slate-200 truncate">{f.name}</p>
-                                                                                        <span className="shrink-0 px-1.5 py-0.5 bg-purple-500/20 text-purple-300 text-[10px] font-bold rounded">ZIP</span>
-                                                                                    </div>
-                                                                                    <p className="text-xs text-slate-400">
-                                                                                        {f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString() : ''}
-                                                                                        {f.size ? ` · ${(parseInt(f.size) / 1024 / 1024).toFixed(1)}MB` : ''}
-                                                                                        {zipPdfs ? ` · ${zipPdfs.length} PDFs` : ' · tap to expand'}
-                                                                                    </p>
-                                                                                </div>
-                                                                            </div>
-                                                                        ) : (
-                                                                            <label className="flex items-center gap-3 p-2 hover:bg-white/5 cursor-pointer">
-                                                                                <input type="checkbox" checked={mpDriveSelected.has(f.id)}
-                                                                                    onChange={() => toggleDriveSelect(f.id)}
-                                                                                    className="rounded accent-teal-500" />
-                                                                                <div className="min-w-0 flex-1">
-                                                                                    <p className="text-sm text-slate-200 truncate">{f.name}</p>
-                                                                                    <p className="text-xs text-slate-400">
-                                                                                        {f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString() : ''}
-                                                                                        {f.size ? ` · ${(parseInt(f.size) / 1024 / 1024).toFixed(1)}MB` : ''}
-                                                                                    </p>
-                                                                                </div>
-                                                                            </label>
-                                                                        )}
-                                                                        {isZip && zipPdfs && (
-                                                                            <div className="bg-white/[0.02] border-t border-white/5">
-                                                                                <div className="px-2 py-1 flex items-center justify-between border-b border-white/5">
-                                                                                    <span className="text-[10px] text-purple-300 pl-7">{zipPdfs.length} PDFs in zip</span>
-                                                                                    <button onClick={() => toggleZipSelectAll(f.id)}
-                                                                                        className="text-[10px] text-purple-300 hover:text-purple-200 px-1">
-                                                                                        {zipPdfs.every(p => mpDriveSelected.has(f.id + '::' + p.zipPath)) ? 'Deselect all' : 'Select all'}
-                                                                                    </button>
-                                                                                </div>
-                                                                                {zipPdfs.map(p => (
-                                                                                    <label key={p.zipPath} className="flex items-center gap-3 pl-7 pr-2 py-1.5 hover:bg-white/5 cursor-pointer">
-                                                                                        <input type="checkbox" checked={mpDriveSelected.has(f.id + '::' + p.zipPath)}
-                                                                                            onChange={() => toggleDriveSelect(f.id + '::' + p.zipPath)}
-                                                                                            className="rounded accent-purple-500" />
-                                                                                        <div className="min-w-0 flex-1">
-                                                                                            <p className="text-xs text-slate-300 truncate">{p.name}</p>
-                                                                                            {p.size > 0 && <p className="text-[10px] text-slate-500">{(p.size / 1024 / 1024).toFixed(1)}MB</p>}
-                                                                                        </div>
-                                                                                    </label>
-                                                                                ))}
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                    );
-                                                                })}
-                                                            </div>
-                                                            <div className="p-2 border-t border-white/10 flex items-center justify-between bg-white/[0.03]">
-                                                                <span className="text-xs text-slate-400">{mpDriveSelected.size} selected</span>
-                                                                <button onClick={mpImportDriveFiles} disabled={!mpDriveSelected.size || mpDriveImporting}
-                                                                    className="px-3 py-1.5 bg-teal-600 hover:bg-teal-500 disabled:opacity-50 rounded-lg text-xs font-medium transition-all">
-                                                                    {mpDriveImporting ? 'Importing...' : `Import Selected (${mpDriveSelected.size})`}
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </div>
+                                                {renderDriveSearch(mpSelectedMeeting?.ticker, handleDriveImportMp)}
 
                                                 {mpDocuments.length > 0 ? (
                                                     <div className="space-y-2">

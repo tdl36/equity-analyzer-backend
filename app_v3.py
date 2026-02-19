@@ -4142,6 +4142,109 @@ def mp_import_drive_files():
 
 
 # ============================================
+# GENERIC GOOGLE DRIVE DOWNLOAD (for Research, Summary, Portfolio tabs)
+# ============================================
+
+@app.route('/api/drive/download-files', methods=['POST'])
+def drive_download_files():
+    """Download files from Google Drive and extract text. Returns extracted data without storing in DB."""
+    try:
+        import requests as http_requests
+        from PyPDF2 import PdfReader
+        import io
+        import zipfile
+        import base64
+
+        data = request.json
+        access_token = data.get('accessToken', '')
+        files_to_import = data.get('files', [])
+
+        if not access_token or not files_to_import:
+            return jsonify({'error': 'accessToken and files are required'}), 400
+
+        headers = {'Authorization': f'Bearer {access_token}'}
+        drive_api = 'https://www.googleapis.com/drive/v3/files'
+
+        def extract_pdf(pdf_bytes, filename):
+            """Extract text from PDF bytes and return data dict."""
+            extracted_text = ''
+            page_count = None
+            try:
+                reader = PdfReader(io.BytesIO(pdf_bytes))
+                pages = []
+                for page in reader.pages:
+                    t = page.extract_text()
+                    if t:
+                        pages.append(t)
+                extracted_text = '\n\n'.join(pages)
+                page_count = len(reader.pages)
+            except Exception as ex:
+                print(f"PDF extraction error for {filename}: {ex}")
+
+            return {
+                'filename': filename,
+                'extractedText': extracted_text,
+                'pageCount': page_count,
+                'fileSize': len(pdf_bytes),
+                'fileData': base64.b64encode(pdf_bytes).decode('utf-8')
+            }
+
+        results = []
+        for file_info in files_to_import:
+            file_id = file_info.get('id')
+            filename = file_info.get('name', 'unknown')
+            mime_type = file_info.get('mimeType', '')
+
+            try:
+                if mime_type in ('application/vnd.google-apps.document', 'application/vnd.google-apps.spreadsheet'):
+                    dl_resp = http_requests.get(f'{drive_api}/{file_id}/export', headers=headers, params={'mimeType': 'application/pdf'})
+                else:
+                    dl_resp = http_requests.get(f'{drive_api}/{file_id}', headers=headers, params={'alt': 'media'})
+                dl_resp.raise_for_status()
+                file_content = dl_resp.content
+
+                is_zip = (mime_type == 'application/zip' or
+                          mime_type == 'application/x-zip-compressed' or
+                          filename.lower().endswith('.zip'))
+
+                if is_zip:
+                    selected_pdfs = set(file_info.get('selectedPdfs', []))
+                    try:
+                        with zipfile.ZipFile(io.BytesIO(file_content)) as zf:
+                            pdf_names = [n for n in zf.namelist()
+                                         if n.lower().endswith('.pdf') and not n.startswith('__MACOSX')]
+                            if selected_pdfs:
+                                pdf_names = [n for n in pdf_names if n in selected_pdfs]
+                            if not pdf_names:
+                                results.append({'filename': filename, 'error': 'No matching PDF files found inside zip'})
+                                continue
+                            for pdf_name in pdf_names:
+                                pdf_bytes = zf.read(pdf_name)
+                                pdf_filename = pdf_name.split('/')[-1] if '/' in pdf_name else pdf_name
+                                row = extract_pdf(pdf_bytes, pdf_filename)
+                                row['fromZip'] = filename
+                                results.append(row)
+                    except zipfile.BadZipFile:
+                        results.append({'filename': filename, 'error': 'Invalid or corrupted zip file'})
+                else:
+                    row = extract_pdf(file_content, filename)
+                    results.append(row)
+
+            except Exception as ex:
+                print(f"Error downloading {filename}: {ex}")
+                results.append({'filename': filename, 'error': str(ex)})
+
+        return jsonify({'files': results})
+
+    except Exception as e:
+        error_msg = str(e)
+        print(f"Drive download error: {error_msg}")
+        if 'invalid_grant' in error_msg.lower() or '401' in error_msg:
+            return jsonify({'error': 'Google authentication expired. Please re-authenticate.'}), 401
+        return jsonify({'error': error_msg}), 500
+
+
+# ============================================
 # HEALTH CHECK
 # ============================================
 
