@@ -1023,25 +1023,39 @@ def email_summary_section():
 
 @app.route('/api/extract-summary-text', methods=['POST'])
 def extract_summary_text():
-    """Extract text from uploaded files (PDF, DOCX, images, TXT) for summary generation"""
+    """Extract text from uploaded files (PDF, DOCX, images, TXT) for summary generation.
+    Accepts either multipart/form-data or JSON with base64-encoded files."""
     try:
-        if 'files' not in request.files:
+        # Support both JSON (base64 files) and multipart/form-data uploads
+        file_items = []  # list of (filename, file_content_bytes)
+
+        if request.is_json or (request.content_type and 'application/json' in request.content_type):
+            # JSON mode: files sent as base64
+            data = request.get_json()
+            if not data or 'files' not in data or not data['files']:
+                return jsonify({'error': 'No files provided'}), 400
+            api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('apiKey', '')
+            for f in data['files']:
+                file_content = base64.b64decode(f['fileData'])
+                file_items.append((f['filename'], file_content))
+            print(f"extract-summary-text (JSON): {len(file_items)} files, API key present: {bool(api_key)}")
+        elif 'files' in request.files:
+            # Multipart mode: standard file upload
+            files = request.files.getlist('files')
+            if not files or files[0].filename == '':
+                return jsonify({'error': 'No files selected'}), 400
+            api_key = os.environ.get('ANTHROPIC_API_KEY', '') or request.form.get('apiKey', '')
+            for file in files:
+                file_items.append((file.filename, file.read()))
+            print(f"extract-summary-text (multipart): {len(file_items)} files, API key present: {bool(api_key)}")
+        else:
             return jsonify({'error': 'No files provided'}), 400
-        
-        files = request.files.getlist('files')
-        if not files or files[0].filename == '':
-            return jsonify({'error': 'No files selected'}), 400
-        
-        # Get API key (prefer env var, fallback to frontend)
-        api_key = os.environ.get('ANTHROPIC_API_KEY', '') or request.form.get('apiKey', '')
-        print(f"📸 extract-summary-text: {len(files)} files, API key present: {bool(api_key)}, API key length: {len(api_key) if api_key else 0}")
-        
+
         all_text = []
-        first_filename = files[0].filename
-        
-        for file in files:
-            filename = file.filename.lower()
-            file_content = file.read()
+        first_filename = file_items[0][0]
+
+        for orig_filename, file_content in file_items:
+            filename = orig_filename.lower()
             extracted_text = ''
             
             try:
@@ -1146,14 +1160,14 @@ def extract_summary_text():
                                 ocr_result = ocr_response.json()
                                 if ocr_result.get('content') and len(ocr_result['content']) > 0:
                                     extracted_text = ocr_result['content'][0].get('text', '')
-                                    print(f"✅ Claude Vision OCR extracted {len(extracted_text)} chars from {file.filename}")
+                                    print(f"Claude Vision OCR extracted {len(extracted_text)} chars from {orig_filename}")
                             else:
-                                print(f"⚠️ Claude Vision OCR failed: {ocr_response.status_code} - {ocr_response.text[:200]}")
-                                extracted_text = f"[Image file: {file.filename} - Claude Vision OCR failed]"
-                                
+                                print(f"Claude Vision OCR failed: {ocr_response.status_code} - {ocr_response.text[:200]}")
+                                extracted_text = f"[Image file: {orig_filename} - Claude Vision OCR failed]"
+
                         except Exception as claude_error:
-                            print(f"⚠️ Claude Vision OCR error: {claude_error}")
-                            extracted_text = f"[Image file: {file.filename} - OCR error: {str(claude_error)[:100]}]"
+                            print(f"Claude Vision OCR error: {claude_error}")
+                            extracted_text = f"[Image file: {orig_filename} - OCR error: {str(claude_error)[:100]}]"
                     else:
                         # Fallback to pytesseract if no API key
                         try:
@@ -1163,27 +1177,27 @@ def extract_summary_text():
                             image = Image.open(io.BytesIO(file_content))
                             extracted_text = pytesseract.image_to_string(image)
                         except ImportError:
-                            extracted_text = f"[Image file: {file.filename} - OCR not available. Please set your API key in Settings.]"
+                            extracted_text = f"[Image file: {orig_filename} - OCR not available. Please set your API key in Settings.]"
                         except Exception as ocr_error:
-                            extracted_text = f"[Image file: {file.filename} - Could not extract text: {str(ocr_error)}]"
-                
+                            extracted_text = f"[Image file: {orig_filename} - Could not extract text: {str(ocr_error)}]"
+
                 else:
                     # Try to read as text
                     try:
                         extracted_text = file_content.decode('utf-8')
                     except:
-                        extracted_text = f"[Unsupported file type: {file.filename}]"
-                
+                        extracted_text = f"[Unsupported file type: {orig_filename}]"
+
                 if extracted_text.strip():
                     # Add filename header if multiple files
-                    if len(files) > 1:
-                        all_text.append(f"=== {file.filename} ===\n{extracted_text}")
+                    if len(file_items) > 1:
+                        all_text.append(f"=== {orig_filename} ===\n{extracted_text}")
                     else:
                         all_text.append(extracted_text)
-                        
+
             except Exception as file_error:
-                print(f"Error processing file {file.filename}: {file_error}")
-                all_text.append(f"[Error processing {file.filename}: {str(file_error)}]")
+                print(f"Error processing file {orig_filename}: {file_error}")
+                all_text.append(f"[Error processing {orig_filename}: {str(file_error)}]")
         
         combined_text = '\n\n'.join(all_text)
         
@@ -1194,16 +1208,16 @@ def extract_summary_text():
         if '[Image file:' in combined_text:
             # Count how many images failed
             failed_count = combined_text.count('[Image file:')
-            if failed_count == len(files):
+            if failed_count == len(file_items):
                 return jsonify({
                     'error': f'Could not extract text from {failed_count} image(s). Please ensure your API key is set in Settings, or use PDFs/text files instead.'
                 }), 400
-        
+
         return jsonify({
             'success': True,
             'text': combined_text,
             'filename': first_filename,
-            'fileCount': len(files)
+            'fileCount': len(file_items)
         })
         
     except Exception as e:
