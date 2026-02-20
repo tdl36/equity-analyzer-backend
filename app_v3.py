@@ -1032,8 +1032,8 @@ def extract_summary_text():
         if not files or files[0].filename == '':
             return jsonify({'error': 'No files selected'}), 400
         
-        # Get API key from form data (for Claude Vision OCR)
-        api_key = request.form.get('apiKey', '') or os.environ.get('ANTHROPIC_API_KEY', '')
+        # Get API key (prefer env var, fallback to frontend)
+        api_key = os.environ.get('ANTHROPIC_API_KEY', '') or request.form.get('apiKey', '')
         print(f"📸 extract-summary-text: {len(files)} files, API key present: {bool(api_key)}, API key length: {len(api_key) if api_key else 0}")
         
         all_text = []
@@ -1228,8 +1228,8 @@ def transcribe_audio():
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
 
-        # Get Gemini API key from form data or environment
-        gemini_api_key = request.form.get('geminiApiKey', '') or os.environ.get('GEMINI_API_KEY', '')
+        # Get Gemini API key (prefer env var, fallback to frontend)
+        gemini_api_key = os.environ.get('GEMINI_API_KEY', '') or request.form.get('geminiApiKey', '')
         if not gemini_api_key:
             return jsonify({'error': 'Gemini API key is required for audio transcription. Please add it in Settings.'}), 400
 
@@ -1587,12 +1587,12 @@ def chat():
     """Proxy chat requests to Anthropic API"""
     try:
         data = request.json
-        api_key = data.get('api_key')
+        api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('api_key', '')
         messages = data.get('messages', [])
         system = data.get('system', '')
-        
+
         if not api_key:
-            return jsonify({'error': 'API key is required'}), 400
+            return jsonify({'error': 'No API key provided. Please add your API key in Settings.'}), 400
         
         headers = {
             'Content-Type': 'application/json',
@@ -1609,20 +1609,22 @@ def chat():
         if system:
             payload['system'] = system
         
-        response = requests.post(ANTHROPIC_API_URL, headers=headers, json=payload)
-        
+        response = requests.post(ANTHROPIC_API_URL, headers=headers, json=payload, timeout=120)
+
         if response.status_code != 200:
             error_data = response.json()
             return jsonify({'error': error_data.get('error', {}).get('message', 'API request failed')}), response.status_code
-        
+
         result = response.json()
         assistant_content = result.get('content', [{}])[0].get('text', '')
-        
+
         return jsonify({
             'response': assistant_content,
             'usage': result.get('usage', {})
         })
-        
+
+    except requests.Timeout:
+        return jsonify({'error': 'Request timed out. Please try again.'}), 504
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -1632,14 +1634,14 @@ def analyze_multi():
     """Analyze multiple PDF documents and generate investment thesis"""
     try:
         data = request.json
-        api_key = data.get('apiKey')
+        api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('apiKey', '')
         documents = data.get('documents', [])
         existing_analysis = data.get('existingAnalysis')
         historical_weights = data.get('historicalWeights', [])
         weighting_config = data.get('weightingConfig', {})
-        
+
         if not api_key:
-            return jsonify({'error': 'API key is required'}), 400
+            return jsonify({'error': 'No API key provided. Please add your API key in Settings.'}), 400
         
         if not documents:
             return jsonify({'error': 'No documents provided'}), 400
@@ -2062,11 +2064,11 @@ def parse():
     """Use Claude to intelligently parse stock analysis into sections"""
     try:
         data = request.json
-        api_key = data.get('api_key')
+        api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('api_key', '')
         content = data.get('content', '')
-        
+
         if not api_key:
-            return jsonify({'error': 'API key is required'}), 400
+            return jsonify({'error': 'No API key provided. Please add your API key in Settings.'}), 400
         
         headers = {
             'Content-Type': 'application/json',
@@ -2083,20 +2085,22 @@ def parse():
             'system': 'You are a precise JSON extractor. Extract content into the exact JSON format requested. Return ONLY valid JSON with no markdown formatting, no code blocks, no explanation - just the raw JSON object.'
         }
         
-        response = requests.post(ANTHROPIC_API_URL, headers=headers, json=payload)
-        
+        response = requests.post(ANTHROPIC_API_URL, headers=headers, json=payload, timeout=120)
+
         if response.status_code != 200:
             error_data = response.json()
             return jsonify({'error': error_data.get('error', {}).get('message', 'API request failed')}), response.status_code
-        
+
         result = response.json()
         assistant_content = result.get('content', [{}])[0].get('text', '')
-        
+
         return jsonify({
             'response': assistant_content,
             'usage': result.get('usage', {})
         })
-        
+
+    except requests.Timeout:
+        return jsonify({'error': 'Request timed out. Please try again.'}), 504
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -2402,15 +2406,11 @@ def research_analyze():
         text = data.get('text', '')
         prompt_id = data.get('promptId', '')
         prompt_name = data.get('promptName', '')
-        api_key = data.get('apiKey', '')
-        
+        api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('apiKey', '')
+
         if not text:
             return jsonify({'error': 'No text provided'}), 400
-        
-        # Get API key - from request or fallback to environment
-        if not api_key:
-            api_key = os.environ.get('ANTHROPIC_API_KEY', '')
-        
+
         if not api_key:
             return jsonify({'error': 'No API key provided. Please add your API key in Settings.'}), 400
         
@@ -3374,7 +3374,7 @@ def mp_analyze_document():
     """Step 1: Analyze a single document. Uses streaming to avoid Render timeout."""
     try:
         data = request.json
-        api_key = data.get('apiKey', '') or os.environ.get('ANTHROPIC_API_KEY', '')
+        api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('apiKey', '')
         if not api_key:
             return jsonify({'error': 'No API key provided. Please add your API key in Settings.'}), 400
 
@@ -3433,7 +3433,7 @@ def mp_synthesize():
     """Step 2: Cross-reference all document analyses. Uses streaming to avoid timeout."""
     try:
         data = request.json
-        api_key = data.get('apiKey', '') or os.environ.get('ANTHROPIC_API_KEY', '')
+        api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('apiKey', '')
         if not api_key:
             return jsonify({'error': 'No API key provided.'}), 400
 
@@ -3505,7 +3505,7 @@ def mp_generate_questions():
     """Step 3: Generate questions from synthesis. Uses streaming to avoid timeout."""
     try:
         data = request.json
-        api_key = data.get('apiKey', '') or os.environ.get('ANTHROPIC_API_KEY', '')
+        api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('apiKey', '')
         if not api_key:
             return jsonify({'error': 'No API key provided.'}), 400
 
@@ -3725,6 +3725,15 @@ def mp_search_drive():
         if not ticker:
             return jsonify({'error': 'Ticker required'}), 400
 
+        # Sanitize inputs to prevent Drive API query injection
+        import re
+        def sanitize_drive_query(s):
+            """Escape single quotes and strip non-printable chars for Drive API queries"""
+            return re.sub(r"['\\\x00-\x1f]", '', s.strip())[:100]
+
+        ticker = sanitize_drive_query(ticker)
+        keyword = sanitize_drive_query(keyword)
+
         headers = {'Authorization': f'Bearer {access_token}'}
         drive_api = 'https://www.googleapis.com/drive/v3/files'
 
@@ -3740,7 +3749,7 @@ def mp_search_drive():
         folder_query = "name = 'Research Reports Char' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
         folder_resp = http_requests.get(drive_api, headers=headers, params={
             'q': folder_query, 'fields': 'files(id, name)', 'pageSize': 5
-        })
+        }, timeout=15)
         if folder_resp.status_code == 401:
             return jsonify({'error': 'Google authentication expired. Please re-authenticate.'}), 401
         folder_resp.raise_for_status()
@@ -3763,7 +3772,7 @@ def mp_search_drive():
             'fields': 'files(id, name, mimeType, modifiedTime, size)',
             'pageSize': 50,
             'orderBy': 'modifiedTime desc'
-        })
+        }, timeout=15)
         file_resp.raise_for_status()
         files = file_resp.json().get('files', [])
 
@@ -3795,7 +3804,7 @@ def mp_preview_zip():
         headers = {'Authorization': f'Bearer {access_token}'}
         drive_api = 'https://www.googleapis.com/drive/v3/files'
 
-        dl_resp = http_requests.get(f'{drive_api}/{file_id}', headers=headers, params={'alt': 'media'})
+        dl_resp = http_requests.get(f'{drive_api}/{file_id}', headers=headers, params={'alt': 'media'}, timeout=60)
         if dl_resp.status_code == 401:
             return jsonify({'error': 'Google authentication expired. Please re-authenticate.'}), 401
         dl_resp.raise_for_status()
@@ -3893,9 +3902,9 @@ def mp_import_drive_files():
                 try:
                     # Download file content via REST API
                     if mime_type in ('application/vnd.google-apps.document', 'application/vnd.google-apps.spreadsheet'):
-                        dl_resp = http_requests.get(f'{drive_api}/{file_id}/export', headers=headers, params={'mimeType': 'application/pdf'})
+                        dl_resp = http_requests.get(f'{drive_api}/{file_id}/export', headers=headers, params={'mimeType': 'application/pdf'}, timeout=60)
                     else:
-                        dl_resp = http_requests.get(f'{drive_api}/{file_id}', headers=headers, params={'alt': 'media'})
+                        dl_resp = http_requests.get(f'{drive_api}/{file_id}', headers=headers, params={'alt': 'media'}, timeout=60)
                     dl_resp.raise_for_status()
                     file_content = dl_resp.content
 
@@ -4000,9 +4009,9 @@ def drive_download_files():
 
             try:
                 if mime_type in ('application/vnd.google-apps.document', 'application/vnd.google-apps.spreadsheet'):
-                    dl_resp = http_requests.get(f'{drive_api}/{file_id}/export', headers=headers, params={'mimeType': 'application/pdf'})
+                    dl_resp = http_requests.get(f'{drive_api}/{file_id}/export', headers=headers, params={'mimeType': 'application/pdf'}, timeout=60)
                 else:
-                    dl_resp = http_requests.get(f'{drive_api}/{file_id}', headers=headers, params={'alt': 'media'})
+                    dl_resp = http_requests.get(f'{drive_api}/{file_id}', headers=headers, params={'alt': 'media'}, timeout=60)
                 dl_resp.raise_for_status()
                 file_content = dl_resp.content
 

@@ -67,6 +67,7 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script>
         tailwind.config = {
@@ -914,7 +915,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 flushTable();
             }
             
-            return result.join('');
+            const html = result.join('');
+            return typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(html) : html;
         };
 
         // Chat Interface Component - built-in chat UI
@@ -10073,7 +10075,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 <>
                                                                     <div 
                                                                         className="p-6 summary-content"
-                                                                        dangerouslySetInnerHTML={{ __html: currentSummary.summary }}
+                                                                        dangerouslySetInnerHTML={{ __html: typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(currentSummary.summary) : currentSummary.summary }}
                                                                     />
                                                                     <div className="border-t border-white/10 px-4 py-3 flex gap-2">
                                                                         <button
@@ -10181,7 +10183,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 <>
                                                                     <div 
                                                                         className="p-6 summary-content"
-                                                                        dangerouslySetInnerHTML={{ __html: currentSummary.questions }}
+                                                                        dangerouslySetInnerHTML={{ __html: typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(currentSummary.questions) : currentSummary.questions }}
                                                                     />
                                                                     <div className="border-t border-white/10 px-4 py-3 flex gap-2">
                                                                         <button
