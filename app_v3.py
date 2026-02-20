@@ -1191,7 +1191,7 @@ def extract_summary_text():
             return jsonify({'error': 'Could not extract any text from the uploaded files'}), 400
         
         # Check if OCR failed for images (all we got was placeholder text)
-        if '[Image file:' in combined_text and 'OCR' in combined_text:
+        if '[Image file:' in combined_text:
             # Count how many images failed
             failed_count = combined_text.count('[Image file:')
             if failed_count == len(files):
