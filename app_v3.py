@@ -28,6 +28,38 @@ CORS(app, origins=[
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
 
 # ============================================
+# IN-MEMORY CACHE
+# ============================================
+import time
+import threading
+
+class SimpleCache:
+    """Thread-safe in-memory cache with TTL and manual invalidation."""
+    def __init__(self):
+        self._data = {}
+        self._lock = threading.Lock()
+
+    def get(self, key):
+        with self._lock:
+            entry = self._data.get(key)
+            if entry and time.time() < entry['expires']:
+                return entry['value']
+            if entry:
+                del self._data[key]
+            return None
+
+    def set(self, key, value, ttl=300):
+        with self._lock:
+            self._data[key] = {'value': value, 'expires': time.time() + ttl}
+
+    def invalidate(self, *keys):
+        with self._lock:
+            for key in keys:
+                self._data.pop(key, None)
+
+cache = SimpleCache()
+
+# ============================================
 # DATABASE CONNECTION
 # ============================================
 
@@ -412,6 +444,10 @@ except:
 def get_analyses():
     """Get all saved portfolio analyses"""
     try:
+        cached = cache.get('analyses')
+        if cached is not None:
+            return jsonify(cached)
+
         with get_db() as (conn, cur):
             cur.execute('''
                 SELECT ticker, company, analysis, updated_at
@@ -429,6 +465,7 @@ def get_analyses():
                 'updated': row['updated_at'].isoformat() if row['updated_at'] else None
             })
 
+        cache.set('analyses', result, ttl=300)
         return jsonify(result)
     except Exception as e:
         print(f"Error getting analyses: {e}")
@@ -486,6 +523,7 @@ def save_analysis():
 
             result = cur.fetchone()
 
+        cache.invalidate('analyses')
         return jsonify({'success': True, 'ticker': result['ticker']})
     except Exception as e:
         print(f"Error saving analysis: {e}")
@@ -497,13 +535,14 @@ def delete_analysis():
     try:
         data = request.json
         ticker = data.get('ticker', '').upper()
-        
+
         if not ticker:
             return jsonify({'error': 'Ticker is required'}), 400
 
         with get_db(commit=True) as (conn, cur):
             cur.execute('DELETE FROM portfolio_analyses WHERE ticker = %s', (ticker,))
 
+        cache.invalidate('analyses')
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error deleting analysis: {e}")
@@ -518,6 +557,10 @@ def delete_analysis():
 def get_overviews():
     """Get all saved stock overviews"""
     try:
+        cached = cache.get('overviews')
+        if cached is not None:
+            return jsonify(cached)
+
         with get_db() as (conn, cur):
             cur.execute('''
                 SELECT ticker, company_name, company_overview, business_model, business_mix,
@@ -543,6 +586,7 @@ def get_overviews():
                 'updatedAt': row['updated_at'].isoformat() if row['updated_at'] else None
             })
 
+        cache.set('overviews', result, ttl=300)
         return jsonify(result)
     except Exception as e:
         print(f"Error getting overviews: {e}")
@@ -595,6 +639,7 @@ def save_overview():
 
             result = cur.fetchone()
 
+        cache.invalidate('overviews')
         return jsonify({'success': True, 'ticker': result['ticker']})
     except Exception as e:
         print(f"Error saving overview: {e}")
@@ -606,13 +651,14 @@ def delete_overview():
     try:
         data = request.json
         ticker = data.get('ticker', '').upper()
-        
+
         if not ticker:
             return jsonify({'error': 'Ticker is required'}), 400
 
         with get_db(commit=True) as (conn, cur):
             cur.execute('DELETE FROM stock_overviews WHERE ticker = %s', (ticker,))
 
+        cache.invalidate('overviews')
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error deleting overview: {e}")
@@ -710,6 +756,10 @@ def delete_chat():
 def get_summaries():
     """Get all meeting summaries"""
     try:
+        cached = cache.get('summaries')
+        if cached is not None:
+            return jsonify(cached)
+
         with get_db() as (conn, cur):
             cur.execute('''
                 SELECT id, title, raw_notes, summary, questions, topic, topic_type, source_type, source_files, doc_type, has_stored_files, created_at
@@ -735,6 +785,7 @@ def get_summaries():
                 'createdAt': row['created_at'].isoformat() if row['created_at'] else None
             })
 
+        cache.set('summaries', result, ttl=300)
         return jsonify(result)
     except Exception as e:
         print(f"Error getting summaries: {e}")
@@ -787,6 +838,7 @@ def save_summary():
 
             result = cur.fetchone()
 
+        cache.invalidate('summaries')
         return jsonify({'success': True, 'id': result['id']})
     except Exception as e:
         print(f"Error saving summary: {e}")
@@ -798,15 +850,15 @@ def delete_summary():
     try:
         data = request.json
         summary_id = data.get('id', '')
-        
+
         if not summary_id:
             return jsonify({'error': 'Summary ID is required'}), 400
 
         with get_db(commit=True) as (conn, cur):
-            # Delete associated files first (CASCADE should handle this, but being explicit)
             cur.execute('DELETE FROM summary_files WHERE summary_id = %s', (summary_id,))
             cur.execute('DELETE FROM meeting_summaries WHERE id = %s', (summary_id,))
 
+        cache.invalidate('summaries')
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error deleting summary: {e}")
@@ -2121,7 +2173,7 @@ def parse():
         }
         
         payload = {
-            'model': 'claude-sonnet-4-20250514',
+            'model': 'claude-haiku-4-5-20251001',
             'max_tokens': 4096,
             'messages': [
                 {'role': 'user', 'content': content}
@@ -2515,16 +2567,22 @@ def research_analyze():
 def get_research_categories():
     """Get all research categories"""
     try:
+        cached = cache.get('research_categories')
+        if cached is not None:
+            return jsonify(cached)
+
         with get_db() as (_, cur):
             cur.execute('SELECT id, name, type, created_at FROM research_categories ORDER BY created_at DESC')
             rows = cur.fetchall()
 
-        return jsonify([{
+        result = [{
             'id': row['id'],
             'name': row['name'],
             'type': row['type'],
             'createdAt': row['created_at'].isoformat() if row['created_at'] else None
-        } for row in rows])
+        } for row in rows]
+        cache.set('research_categories', result, ttl=600)
+        return jsonify(result)
     except Exception as e:
         print(f"Error getting research categories: {e}")
         return jsonify([])
@@ -2548,6 +2606,7 @@ def save_research_category():
                 RETURNING id
             ''', (cat_id, data.get('name', ''), data.get('type', 'ticker')))
 
+        cache.invalidate('research_categories')
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error saving research category: {e}")
@@ -2560,14 +2619,14 @@ def delete_research_category():
     try:
         data = request.json
         cat_id = data.get('id', '')
-        
+
         if not cat_id:
             return jsonify({'error': 'Category ID is required'}), 400
-        
+
         with get_db(commit=True) as (_, cur):
-            # CASCADE will delete documents and analyses
             cur.execute('DELETE FROM research_categories WHERE id = %s', (cat_id,))
 
+        cache.invalidate('research_categories')
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error deleting research category: {e}")
