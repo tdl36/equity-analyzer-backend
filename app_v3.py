@@ -1128,7 +1128,7 @@ def extract_summary_text():
                             }
                             
                             ocr_payload = {
-                                'model': 'claude-sonnet-4-20250514',
+                                'model': 'claude-sonnet-4-5-20250929',
                                 'max_tokens': 8000,
                                 'messages': [{
                                     'role': 'user',
@@ -1162,12 +1162,13 @@ def extract_summary_text():
                                     extracted_text = ocr_result['content'][0].get('text', '')
                                     print(f"Claude Vision OCR extracted {len(extracted_text)} chars from {orig_filename}")
                             else:
-                                print(f"Claude Vision OCR failed: {ocr_response.status_code} - {ocr_response.text[:200]}")
-                                extracted_text = f"[Image file: {orig_filename} - Claude Vision OCR failed]"
+                                err_detail = ocr_response.text[:200]
+                                print(f"Claude Vision OCR failed: {ocr_response.status_code} - {err_detail}")
+                                extracted_text = f"[Image file: {orig_filename} - OCR failed ({ocr_response.status_code}): {err_detail}]"
 
                         except Exception as claude_error:
                             print(f"Claude Vision OCR error: {claude_error}")
-                            extracted_text = f"[Image file: {orig_filename} - OCR error: {str(claude_error)[:100]}]"
+                            extracted_text = f"[Image file: {orig_filename} - OCR error: {str(claude_error)[:150]}]"
                     else:
                         # Fallback to pytesseract if no API key
                         try:
