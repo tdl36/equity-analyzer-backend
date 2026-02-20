@@ -16,7 +16,13 @@ import anthropic
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max upload size
-CORS(app)  # Enable CORS for all routes
+CORS(app, origins=[
+    "https://equity-analyzer.tonydlee.workers.dev",
+    "http://localhost:3000",
+    "http://localhost:5000",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5000",
+])
 
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
 
@@ -37,314 +43,327 @@ def get_db_connection():
     conn = psycopg2.connect(database_url, cursor_factory=RealDictCursor)
     return conn
 
+from contextlib import contextmanager
+
+@contextmanager
+def get_db(commit=False):
+    """Context manager for database connections. Auto-closes on exit, optionally commits."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        yield conn, cur
+        if commit:
+            conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
 def init_db():
     """Initialize database tables"""
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        
-        # Portfolio Analyses table
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS portfolio_analyses (
-                id SERIAL PRIMARY KEY,
-                ticker VARCHAR(20) UNIQUE NOT NULL,
-                company VARCHAR(255),
-                analysis JSONB,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Stock Overviews table
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS stock_overviews (
-                id SERIAL PRIMARY KEY,
-                ticker VARCHAR(20) UNIQUE NOT NULL,
-                company_name VARCHAR(255),
-                company_overview TEXT,
-                business_model TEXT,
-                business_mix TEXT,
-                opportunities TEXT,
-                risks TEXT,
-                conclusion TEXT,
-                raw_content TEXT,
-                history JSONB DEFAULT '[]',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Add business_mix column if it doesn't exist (migration)
-        cur.execute('''
-            DO $$ 
-            BEGIN 
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                              WHERE table_name='stock_overviews' AND column_name='business_mix') THEN
-                    ALTER TABLE stock_overviews ADD COLUMN business_mix TEXT;
-                END IF;
-            END $$;
-        ''')
-        
-        # Chat Histories table
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS chat_histories (
-                id VARCHAR(100) PRIMARY KEY,
-                title VARCHAR(255),
-                messages JSONB DEFAULT '[]',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Meeting Summaries table
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS meeting_summaries (
-                id VARCHAR(100) PRIMARY KEY,
-                title VARCHAR(255),
-                raw_notes TEXT,
-                summary TEXT,
-                questions TEXT,
-                topic VARCHAR(100) DEFAULT 'General',
-                topic_type VARCHAR(20) DEFAULT 'other',
-                source_type VARCHAR(20) DEFAULT 'paste',
-                source_files JSONB DEFAULT '[]',
-                doc_type VARCHAR(50) DEFAULT 'other',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Add columns if they don't exist (migration)
-        cur.execute('''
-            DO $$ 
-            BEGIN 
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                              WHERE table_name='meeting_summaries' AND column_name='topic') THEN
-                    ALTER TABLE meeting_summaries ADD COLUMN topic VARCHAR(100) DEFAULT 'General';
-                END IF;
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                              WHERE table_name='meeting_summaries' AND column_name='topic_type') THEN
-                    ALTER TABLE meeting_summaries ADD COLUMN topic_type VARCHAR(20) DEFAULT 'other';
-                END IF;
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                              WHERE table_name='meeting_summaries' AND column_name='source_type') THEN
-                    ALTER TABLE meeting_summaries ADD COLUMN source_type VARCHAR(20) DEFAULT 'paste';
-                END IF;
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                              WHERE table_name='meeting_summaries' AND column_name='source_files') THEN
-                    ALTER TABLE meeting_summaries ADD COLUMN source_files JSONB DEFAULT '[]';
-                END IF;
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                              WHERE table_name='meeting_summaries' AND column_name='doc_type') THEN
-                    ALTER TABLE meeting_summaries ADD COLUMN doc_type VARCHAR(50) DEFAULT 'other';
-                END IF;
-            END $$;
-        ''')
-        
-        # Document Files table - stores actual document content for re-analysis
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS document_files (
-                id SERIAL PRIMARY KEY,
-                ticker VARCHAR(20) NOT NULL,
-                filename VARCHAR(255) NOT NULL,
-                file_data TEXT NOT NULL,
-                file_type VARCHAR(50),
-                mime_type VARCHAR(100),
-                metadata JSONB DEFAULT '{}',
-                file_size INTEGER,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(ticker, filename)
-            )
-        ''')
-        
-        # Research Categories (tickers + topics)
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS research_categories (
-                id VARCHAR(100) PRIMARY KEY,
-                name VARCHAR(255) NOT NULL,
-                type VARCHAR(20) DEFAULT 'ticker',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Research Documents (files/text under categories)
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS research_documents (
-                id VARCHAR(100) PRIMARY KEY,
-                category_id VARCHAR(100) REFERENCES research_categories(id) ON DELETE CASCADE,
-                name VARCHAR(255) NOT NULL,
-                content TEXT,
-                file_names JSONB DEFAULT '[]',
-                smart_name VARCHAR(500),
-                original_filename VARCHAR(500),
-                published_date VARCHAR(100),
-                doc_type VARCHAR(50) DEFAULT 'other',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Migration: Add new columns if they don't exist
-        cur.execute('''
-            DO $$ 
-            BEGIN 
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                              WHERE table_name='research_documents' AND column_name='smart_name') THEN
-                    ALTER TABLE research_documents ADD COLUMN smart_name VARCHAR(500);
-                END IF;
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                              WHERE table_name='research_documents' AND column_name='original_filename') THEN
-                    ALTER TABLE research_documents ADD COLUMN original_filename VARCHAR(500);
-                END IF;
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                              WHERE table_name='research_documents' AND column_name='published_date') THEN
-                    ALTER TABLE research_documents ADD COLUMN published_date VARCHAR(100);
-                END IF;
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                              WHERE table_name='research_documents' AND column_name='has_stored_files') THEN
-                    ALTER TABLE research_documents ADD COLUMN has_stored_files BOOLEAN DEFAULT FALSE;
-                END IF;
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                              WHERE table_name='research_documents' AND column_name='doc_type') THEN
-                    ALTER TABLE research_documents ADD COLUMN doc_type VARCHAR(50) DEFAULT 'other';
-                END IF;
-            END $$;
-        ''')
-        
-        # Research Document Files (stored PDFs/files for re-analysis)
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS research_document_files (
-                id SERIAL PRIMARY KEY,
-                document_id VARCHAR(100) REFERENCES research_documents(id) ON DELETE CASCADE,
-                filename VARCHAR(500) NOT NULL,
-                file_type VARCHAR(100),
-                file_data TEXT,
-                file_size INTEGER,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Summary Files (stored PDFs/files for summaries)
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS summary_files (
-                id SERIAL PRIMARY KEY,
-                summary_id VARCHAR(100) REFERENCES meeting_summaries(id) ON DELETE CASCADE,
-                filename VARCHAR(500) NOT NULL,
-                file_type VARCHAR(100),
-                file_data TEXT,
-                file_size INTEGER,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Migration: Add has_stored_files to meeting_summaries if not exists
-        cur.execute('''
-            DO $$ 
-            BEGIN 
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                              WHERE table_name='meeting_summaries' AND column_name='has_stored_files') THEN
-                    ALTER TABLE meeting_summaries ADD COLUMN has_stored_files BOOLEAN DEFAULT FALSE;
-                END IF;
-            END $$;
-        ''')
-        
-        # Research Analyses (framework results under documents)
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS research_analyses (
-                id VARCHAR(100) PRIMARY KEY,
-                document_id VARCHAR(100) REFERENCES research_documents(id) ON DELETE CASCADE,
-                prompt_id VARCHAR(100),
-                prompt_name VARCHAR(255),
-                prompt_icon VARCHAR(10),
-                result TEXT,
-                usage JSONB DEFAULT '{}',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Create index for faster lookups
-        cur.execute('''
-            CREATE INDEX IF NOT EXISTS idx_document_files_ticker
-            ON document_files(ticker)
-        ''')
+        with get_db(commit=True) as (_, cur):
+            # Portfolio Analyses table
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS portfolio_analyses (
+                    id SERIAL PRIMARY KEY,
+                    ticker VARCHAR(20) UNIQUE NOT NULL,
+                    company VARCHAR(255),
+                    analysis JSONB,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
 
-        # ============================================
-        # MEETING PREP TABLES
-        # ============================================
+            # Stock Overviews table
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS stock_overviews (
+                    id SERIAL PRIMARY KEY,
+                    ticker VARCHAR(20) UNIQUE NOT NULL,
+                    company_name VARCHAR(255),
+                    company_overview TEXT,
+                    business_model TEXT,
+                    business_mix TEXT,
+                    opportunities TEXT,
+                    risks TEXT,
+                    conclusion TEXT,
+                    raw_content TEXT,
+                    history JSONB DEFAULT '[]',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
 
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS mp_companies (
-                id SERIAL PRIMARY KEY,
-                ticker VARCHAR(20) UNIQUE NOT NULL,
-                name VARCHAR(255),
-                sector VARCHAR(100),
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
+            # Add business_mix column if it doesn't exist (migration)
+            cur.execute('''
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                  WHERE table_name='stock_overviews' AND column_name='business_mix') THEN
+                        ALTER TABLE stock_overviews ADD COLUMN business_mix TEXT;
+                    END IF;
+                END $$;
+            ''')
 
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS mp_meetings (
-                id SERIAL PRIMARY KEY,
-                company_id INTEGER REFERENCES mp_companies(id),
-                meeting_date DATE,
-                meeting_type VARCHAR(50) DEFAULT 'other',
-                status VARCHAR(20) DEFAULT 'draft',
-                notes TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        cur.execute('CREATE INDEX IF NOT EXISTS idx_mp_meetings_company ON mp_meetings(company_id)')
+            # Chat Histories table
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS chat_histories (
+                    id VARCHAR(100) PRIMARY KEY,
+                    title VARCHAR(255),
+                    messages JSONB DEFAULT '[]',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
 
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS mp_documents (
-                id SERIAL PRIMARY KEY,
-                meeting_id INTEGER REFERENCES mp_meetings(id) ON DELETE CASCADE,
-                filename VARCHAR(500) NOT NULL,
-                file_data TEXT,
-                doc_type VARCHAR(50) DEFAULT 'other',
-                doc_date VARCHAR(20),
-                page_count INTEGER,
-                token_estimate INTEGER,
-                extracted_text TEXT,
-                upload_order INTEGER,
-                file_size INTEGER,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        cur.execute('CREATE INDEX IF NOT EXISTS idx_mp_documents_meeting ON mp_documents(meeting_id)')
+            # Meeting Summaries table
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS meeting_summaries (
+                    id VARCHAR(100) PRIMARY KEY,
+                    title VARCHAR(255),
+                    raw_notes TEXT,
+                    summary TEXT,
+                    questions TEXT,
+                    topic VARCHAR(100) DEFAULT 'General',
+                    topic_type VARCHAR(20) DEFAULT 'other',
+                    source_type VARCHAR(20) DEFAULT 'paste',
+                    source_files JSONB DEFAULT '[]',
+                    doc_type VARCHAR(50) DEFAULT 'other',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
 
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS mp_question_sets (
-                id SERIAL PRIMARY KEY,
-                meeting_id INTEGER REFERENCES mp_meetings(id) ON DELETE CASCADE,
-                version INTEGER DEFAULT 1,
-                status VARCHAR(20) DEFAULT 'ready',
-                topics_json TEXT,
-                synthesis_json TEXT,
-                generation_model VARCHAR(100),
-                generation_tokens INTEGER,
-                error_message TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        cur.execute('CREATE INDEX IF NOT EXISTS idx_mp_question_sets_meeting ON mp_question_sets(meeting_id)')
+            # Add columns if they don't exist (migration)
+            cur.execute('''
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                  WHERE table_name='meeting_summaries' AND column_name='topic') THEN
+                        ALTER TABLE meeting_summaries ADD COLUMN topic VARCHAR(100) DEFAULT 'General';
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                  WHERE table_name='meeting_summaries' AND column_name='topic_type') THEN
+                        ALTER TABLE meeting_summaries ADD COLUMN topic_type VARCHAR(20) DEFAULT 'other';
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                  WHERE table_name='meeting_summaries' AND column_name='source_type') THEN
+                        ALTER TABLE meeting_summaries ADD COLUMN source_type VARCHAR(20) DEFAULT 'paste';
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                  WHERE table_name='meeting_summaries' AND column_name='source_files') THEN
+                        ALTER TABLE meeting_summaries ADD COLUMN source_files JSONB DEFAULT '[]';
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                  WHERE table_name='meeting_summaries' AND column_name='doc_type') THEN
+                        ALTER TABLE meeting_summaries ADD COLUMN doc_type VARCHAR(50) DEFAULT 'other';
+                    END IF;
+                END $$;
+            ''')
 
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS mp_past_questions (
-                id SERIAL PRIMARY KEY,
-                company_id INTEGER REFERENCES mp_companies(id),
-                meeting_id INTEGER REFERENCES mp_meetings(id) ON DELETE SET NULL,
-                question TEXT NOT NULL,
-                topic VARCHAR(255),
-                response_notes TEXT,
-                status VARCHAR(20) DEFAULT 'asked',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        cur.execute('CREATE INDEX IF NOT EXISTS idx_mp_past_questions_company ON mp_past_questions(company_id)')
+            # Document Files table - stores actual document content for re-analysis
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS document_files (
+                    id SERIAL PRIMARY KEY,
+                    ticker VARCHAR(20) NOT NULL,
+                    filename VARCHAR(255) NOT NULL,
+                    file_data TEXT NOT NULL,
+                    file_type VARCHAR(50),
+                    mime_type VARCHAR(100),
+                    metadata JSONB DEFAULT '{}',
+                    file_size INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(ticker, filename)
+                )
+            ''')
 
-        conn.commit()
-        cur.close()
-        conn.close()
+            # Research Categories (tickers + topics)
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS research_categories (
+                    id VARCHAR(100) PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    type VARCHAR(20) DEFAULT 'ticker',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+            # Research Documents (files/text under categories)
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS research_documents (
+                    id VARCHAR(100) PRIMARY KEY,
+                    category_id VARCHAR(100) REFERENCES research_categories(id) ON DELETE CASCADE,
+                    name VARCHAR(255) NOT NULL,
+                    content TEXT,
+                    file_names JSONB DEFAULT '[]',
+                    smart_name VARCHAR(500),
+                    original_filename VARCHAR(500),
+                    published_date VARCHAR(100),
+                    doc_type VARCHAR(50) DEFAULT 'other',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+            # Migration: Add new columns if they don't exist
+            cur.execute('''
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                  WHERE table_name='research_documents' AND column_name='smart_name') THEN
+                        ALTER TABLE research_documents ADD COLUMN smart_name VARCHAR(500);
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                  WHERE table_name='research_documents' AND column_name='original_filename') THEN
+                        ALTER TABLE research_documents ADD COLUMN original_filename VARCHAR(500);
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                  WHERE table_name='research_documents' AND column_name='published_date') THEN
+                        ALTER TABLE research_documents ADD COLUMN published_date VARCHAR(100);
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                  WHERE table_name='research_documents' AND column_name='has_stored_files') THEN
+                        ALTER TABLE research_documents ADD COLUMN has_stored_files BOOLEAN DEFAULT FALSE;
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                  WHERE table_name='research_documents' AND column_name='doc_type') THEN
+                        ALTER TABLE research_documents ADD COLUMN doc_type VARCHAR(50) DEFAULT 'other';
+                    END IF;
+                END $$;
+            ''')
+
+            # Research Document Files (stored PDFs/files for re-analysis)
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS research_document_files (
+                    id SERIAL PRIMARY KEY,
+                    document_id VARCHAR(100) REFERENCES research_documents(id) ON DELETE CASCADE,
+                    filename VARCHAR(500) NOT NULL,
+                    file_type VARCHAR(100),
+                    file_data TEXT,
+                    file_size INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+            # Summary Files (stored PDFs/files for summaries)
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS summary_files (
+                    id SERIAL PRIMARY KEY,
+                    summary_id VARCHAR(100) REFERENCES meeting_summaries(id) ON DELETE CASCADE,
+                    filename VARCHAR(500) NOT NULL,
+                    file_type VARCHAR(100),
+                    file_data TEXT,
+                    file_size INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+            # Migration: Add has_stored_files to meeting_summaries if not exists
+            cur.execute('''
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                  WHERE table_name='meeting_summaries' AND column_name='has_stored_files') THEN
+                        ALTER TABLE meeting_summaries ADD COLUMN has_stored_files BOOLEAN DEFAULT FALSE;
+                    END IF;
+                END $$;
+            ''')
+
+            # Research Analyses (framework results under documents)
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS research_analyses (
+                    id VARCHAR(100) PRIMARY KEY,
+                    document_id VARCHAR(100) REFERENCES research_documents(id) ON DELETE CASCADE,
+                    prompt_id VARCHAR(100),
+                    prompt_name VARCHAR(255),
+                    prompt_icon VARCHAR(10),
+                    result TEXT,
+                    usage JSONB DEFAULT '{}',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+            # Create index for faster lookups
+            cur.execute('''
+                CREATE INDEX IF NOT EXISTS idx_document_files_ticker
+                ON document_files(ticker)
+            ''')
+
+            # ============================================
+            # MEETING PREP TABLES
+            # ============================================
+
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS mp_companies (
+                    id SERIAL PRIMARY KEY,
+                    ticker VARCHAR(20) UNIQUE NOT NULL,
+                    name VARCHAR(255),
+                    sector VARCHAR(100),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS mp_meetings (
+                    id SERIAL PRIMARY KEY,
+                    company_id INTEGER REFERENCES mp_companies(id),
+                    meeting_date DATE,
+                    meeting_type VARCHAR(50) DEFAULT 'other',
+                    status VARCHAR(20) DEFAULT 'draft',
+                    notes TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_mp_meetings_company ON mp_meetings(company_id)')
+
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS mp_documents (
+                    id SERIAL PRIMARY KEY,
+                    meeting_id INTEGER REFERENCES mp_meetings(id) ON DELETE CASCADE,
+                    filename VARCHAR(500) NOT NULL,
+                    file_data TEXT,
+                    doc_type VARCHAR(50) DEFAULT 'other',
+                    doc_date VARCHAR(20),
+                    page_count INTEGER,
+                    token_estimate INTEGER,
+                    extracted_text TEXT,
+                    upload_order INTEGER,
+                    file_size INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_mp_documents_meeting ON mp_documents(meeting_id)')
+
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS mp_question_sets (
+                    id SERIAL PRIMARY KEY,
+                    meeting_id INTEGER REFERENCES mp_meetings(id) ON DELETE CASCADE,
+                    version INTEGER DEFAULT 1,
+                    status VARCHAR(20) DEFAULT 'ready',
+                    topics_json TEXT,
+                    synthesis_json TEXT,
+                    generation_model VARCHAR(100),
+                    generation_tokens INTEGER,
+                    error_message TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_mp_question_sets_meeting ON mp_question_sets(meeting_id)')
+
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS mp_past_questions (
+                    id SERIAL PRIMARY KEY,
+                    company_id INTEGER REFERENCES mp_companies(id),
+                    meeting_id INTEGER REFERENCES mp_meetings(id) ON DELETE SET NULL,
+                    question TEXT NOT NULL,
+                    topic VARCHAR(255),
+                    response_notes TEXT,
+                    status VARCHAR(20) DEFAULT 'asked',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_mp_past_questions_company ON mp_past_questions(company_id)')
+
         print("Database tables initialized")
     except Exception as e:
         print(f"Database init error (may be normal on first run): {e}")
@@ -364,17 +383,14 @@ except:
 def get_analyses():
     """Get all saved portfolio analyses"""
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('''
-            SELECT ticker, company, analysis, updated_at 
-            FROM portfolio_analyses 
-            ORDER BY ticker ASC
-        ''')
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
-        
+        with get_db() as (conn, cur):
+            cur.execute('''
+                SELECT ticker, company, analysis, updated_at
+                FROM portfolio_analyses
+                ORDER BY ticker ASC
+            ''')
+            rows = cur.fetchall()
+
         result = []
         for row in rows:
             result.append({
@@ -383,7 +399,7 @@ def get_analyses():
                 'analysis': row['analysis'],
                 'updated': row['updated_at'].isoformat() if row['updated_at'] else None
             })
-        
+
         return jsonify(result)
     except Exception as e:
         print(f"Error getting analyses: {e}")
@@ -393,20 +409,17 @@ def get_analyses():
 def get_analysis(ticker):
     """Get a specific portfolio analysis by ticker"""
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('''
-            SELECT ticker, company, analysis, updated_at 
-            FROM portfolio_analyses 
-            WHERE ticker = %s
-        ''', (ticker.upper(),))
-        row = cur.fetchone()
-        cur.close()
-        conn.close()
-        
+        with get_db() as (conn, cur):
+            cur.execute('''
+                SELECT ticker, company, analysis, updated_at
+                FROM portfolio_analyses
+                WHERE ticker = %s
+            ''', (ticker.upper(),))
+            row = cur.fetchone()
+
         if not row:
             return jsonify({'error': 'Analysis not found'}), 404
-        
+
         return jsonify({
             'ticker': row['ticker'],
             'company': row['company'],
@@ -428,27 +441,22 @@ def save_analysis():
         
         if not ticker:
             return jsonify({'error': 'Ticker is required'}), 400
-        
-        conn = get_db_connection()
-        cur = conn.cursor()
-        
-        # Upsert - insert or update
-        cur.execute('''
-            INSERT INTO portfolio_analyses (ticker, company, analysis, updated_at)
-            VALUES (%s, %s, %s, %s)
-            ON CONFLICT (ticker) 
-            DO UPDATE SET 
-                company = EXCLUDED.company,
-                analysis = EXCLUDED.analysis,
-                updated_at = EXCLUDED.updated_at
-            RETURNING ticker
-        ''', (ticker, company, json.dumps(analysis), datetime.utcnow()))
-        
-        result = cur.fetchone()
-        conn.commit()
-        cur.close()
-        conn.close()
-        
+
+        with get_db(commit=True) as (conn, cur):
+            # Upsert - insert or update
+            cur.execute('''
+                INSERT INTO portfolio_analyses (ticker, company, analysis, updated_at)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (ticker)
+                DO UPDATE SET
+                    company = EXCLUDED.company,
+                    analysis = EXCLUDED.analysis,
+                    updated_at = EXCLUDED.updated_at
+                RETURNING ticker
+            ''', (ticker, company, json.dumps(analysis), datetime.utcnow()))
+
+            result = cur.fetchone()
+
         return jsonify({'success': True, 'ticker': result['ticker']})
     except Exception as e:
         print(f"Error saving analysis: {e}")
@@ -463,14 +471,10 @@ def delete_analysis():
         
         if not ticker:
             return jsonify({'error': 'Ticker is required'}), 400
-        
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('DELETE FROM portfolio_analyses WHERE ticker = %s', (ticker,))
-        conn.commit()
-        cur.close()
-        conn.close()
-        
+
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('DELETE FROM portfolio_analyses WHERE ticker = %s', (ticker,))
+
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error deleting analysis: {e}")
@@ -485,18 +489,15 @@ def delete_analysis():
 def get_overviews():
     """Get all saved stock overviews"""
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('''
-            SELECT ticker, company_name, company_overview, business_model, business_mix,
-                   opportunities, risks, conclusion, raw_content, history, updated_at 
-            FROM stock_overviews 
-            ORDER BY ticker ASC
-        ''')
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
-        
+        with get_db() as (conn, cur):
+            cur.execute('''
+                SELECT ticker, company_name, company_overview, business_model, business_mix,
+                       opportunities, risks, conclusion, raw_content, history, updated_at
+                FROM stock_overviews
+                ORDER BY ticker ASC
+            ''')
+            rows = cur.fetchall()
+
         result = []
         for row in rows:
             result.append({
@@ -512,7 +513,7 @@ def get_overviews():
                 'history': row['history'] or [],
                 'updatedAt': row['updated_at'].isoformat() if row['updated_at'] else None
             })
-        
+
         return jsonify(result)
     except Exception as e:
         print(f"Error getting overviews: {e}")
@@ -527,49 +528,44 @@ def save_overview():
         
         if not ticker:
             return jsonify({'error': 'Ticker is required'}), 400
-        
-        conn = get_db_connection()
-        cur = conn.cursor()
-        
-        # Upsert
-        cur.execute('''
-            INSERT INTO stock_overviews (
-                ticker, company_name, company_overview, business_model, business_mix,
-                opportunities, risks, conclusion, raw_content, history, updated_at
-            )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (ticker) 
-            DO UPDATE SET 
-                company_name = EXCLUDED.company_name,
-                company_overview = EXCLUDED.company_overview,
-                business_model = EXCLUDED.business_model,
-                business_mix = EXCLUDED.business_mix,
-                opportunities = EXCLUDED.opportunities,
-                risks = EXCLUDED.risks,
-                conclusion = EXCLUDED.conclusion,
-                raw_content = EXCLUDED.raw_content,
-                history = EXCLUDED.history,
-                updated_at = EXCLUDED.updated_at
-            RETURNING ticker
-        ''', (
-            ticker,
-            data.get('companyName', ''),
-            data.get('companyOverview', ''),
-            data.get('businessModel', ''),
-            data.get('businessMix', ''),
-            data.get('opportunities', ''),
-            data.get('risks', ''),
-            data.get('conclusion', ''),
-            data.get('rawContent', ''),
-            json.dumps(data.get('history', [])),
-            datetime.utcnow()
-        ))
-        
-        result = cur.fetchone()
-        conn.commit()
-        cur.close()
-        conn.close()
-        
+
+        with get_db(commit=True) as (conn, cur):
+            # Upsert
+            cur.execute('''
+                INSERT INTO stock_overviews (
+                    ticker, company_name, company_overview, business_model, business_mix,
+                    opportunities, risks, conclusion, raw_content, history, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (ticker)
+                DO UPDATE SET
+                    company_name = EXCLUDED.company_name,
+                    company_overview = EXCLUDED.company_overview,
+                    business_model = EXCLUDED.business_model,
+                    business_mix = EXCLUDED.business_mix,
+                    opportunities = EXCLUDED.opportunities,
+                    risks = EXCLUDED.risks,
+                    conclusion = EXCLUDED.conclusion,
+                    raw_content = EXCLUDED.raw_content,
+                    history = EXCLUDED.history,
+                    updated_at = EXCLUDED.updated_at
+                RETURNING ticker
+            ''', (
+                ticker,
+                data.get('companyName', ''),
+                data.get('companyOverview', ''),
+                data.get('businessModel', ''),
+                data.get('businessMix', ''),
+                data.get('opportunities', ''),
+                data.get('risks', ''),
+                data.get('conclusion', ''),
+                data.get('rawContent', ''),
+                json.dumps(data.get('history', [])),
+                datetime.utcnow()
+            ))
+
+            result = cur.fetchone()
+
         return jsonify({'success': True, 'ticker': result['ticker']})
     except Exception as e:
         print(f"Error saving overview: {e}")
@@ -584,14 +580,10 @@ def delete_overview():
         
         if not ticker:
             return jsonify({'error': 'Ticker is required'}), 400
-        
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('DELETE FROM stock_overviews WHERE ticker = %s', (ticker,))
-        conn.commit()
-        cur.close()
-        conn.close()
-        
+
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('DELETE FROM stock_overviews WHERE ticker = %s', (ticker,))
+
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error deleting overview: {e}")
@@ -606,17 +598,14 @@ def delete_overview():
 def get_chats():
     """Get all chat histories"""
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('''
-            SELECT id, title, messages, updated_at 
-            FROM chat_histories 
-            ORDER BY updated_at DESC
-        ''')
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
-        
+        with get_db() as (conn, cur):
+            cur.execute('''
+                SELECT id, title, messages, updated_at
+                FROM chat_histories
+                ORDER BY updated_at DESC
+            ''')
+            rows = cur.fetchall()
+
         result = []
         for row in rows:
             result.append({
@@ -625,7 +614,7 @@ def get_chats():
                 'messages': row['messages'] or [],
                 'updatedAt': row['updated_at'].isoformat() if row['updated_at'] else None
             })
-        
+
         return jsonify(result)
     except Exception as e:
         print(f"Error getting chats: {e}")
@@ -640,31 +629,26 @@ def save_chat():
         
         if not chat_id:
             return jsonify({'error': 'Chat ID is required'}), 400
-        
-        conn = get_db_connection()
-        cur = conn.cursor()
-        
-        cur.execute('''
-            INSERT INTO chat_histories (id, title, messages, updated_at)
-            VALUES (%s, %s, %s, %s)
-            ON CONFLICT (id) 
-            DO UPDATE SET 
-                title = EXCLUDED.title,
-                messages = EXCLUDED.messages,
-                updated_at = EXCLUDED.updated_at
-            RETURNING id
-        ''', (
-            chat_id,
-            data.get('title', 'New Chat'),
-            json.dumps(data.get('messages', [])),
-            datetime.utcnow()
-        ))
-        
-        result = cur.fetchone()
-        conn.commit()
-        cur.close()
-        conn.close()
-        
+
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('''
+                INSERT INTO chat_histories (id, title, messages, updated_at)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (id)
+                DO UPDATE SET
+                    title = EXCLUDED.title,
+                    messages = EXCLUDED.messages,
+                    updated_at = EXCLUDED.updated_at
+                RETURNING id
+            ''', (
+                chat_id,
+                data.get('title', 'New Chat'),
+                json.dumps(data.get('messages', [])),
+                datetime.utcnow()
+            ))
+
+            result = cur.fetchone()
+
         return jsonify({'success': True, 'id': result['id']})
     except Exception as e:
         print(f"Error saving chat: {e}")
@@ -679,14 +663,10 @@ def delete_chat():
         
         if not chat_id:
             return jsonify({'error': 'Chat ID is required'}), 400
-        
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('DELETE FROM chat_histories WHERE id = %s', (chat_id,))
-        conn.commit()
-        cur.close()
-        conn.close()
-        
+
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('DELETE FROM chat_histories WHERE id = %s', (chat_id,))
+
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error deleting chat: {e}")
@@ -701,17 +681,14 @@ def delete_chat():
 def get_summaries():
     """Get all meeting summaries"""
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('''
-            SELECT id, title, raw_notes, summary, questions, topic, topic_type, source_type, source_files, doc_type, has_stored_files, created_at 
-            FROM meeting_summaries 
-            ORDER BY created_at DESC
-        ''')
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
-        
+        with get_db() as (conn, cur):
+            cur.execute('''
+                SELECT id, title, raw_notes, summary, questions, topic, topic_type, source_type, source_files, doc_type, has_stored_files, created_at
+                FROM meeting_summaries
+                ORDER BY created_at DESC
+            ''')
+            rows = cur.fetchall()
+
         result = []
         for row in rows:
             result.append({
@@ -728,7 +705,7 @@ def get_summaries():
                 'hasStoredFiles': row.get('has_stored_files') or False,
                 'createdAt': row['created_at'].isoformat() if row['created_at'] else None
             })
-        
+
         return jsonify(result)
     except Exception as e:
         print(f"Error getting summaries: {e}")
@@ -748,44 +725,39 @@ def save_summary():
         source_files = data.get('sourceFiles', [])
         if isinstance(source_files, list):
             source_files = json.dumps(source_files)
-        
-        conn = get_db_connection()
-        cur = conn.cursor()
-        
-        cur.execute('''
-            INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, topic, topic_type, source_type, source_files, doc_type, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (id) 
-            DO UPDATE SET 
-                title = EXCLUDED.title,
-                raw_notes = EXCLUDED.raw_notes,
-                summary = EXCLUDED.summary,
-                questions = EXCLUDED.questions,
-                topic = EXCLUDED.topic,
-                topic_type = EXCLUDED.topic_type,
-                source_type = EXCLUDED.source_type,
-                source_files = EXCLUDED.source_files,
-                doc_type = EXCLUDED.doc_type
-            RETURNING id
-        ''', (
-            summary_id,
-            data.get('title', 'Meeting Summary'),
-            data.get('rawNotes', ''),
-            data.get('summary', ''),
-            data.get('questions', ''),
-            data.get('topic', 'General'),
-            data.get('topicType', 'other'),
-            data.get('sourceType', 'paste'),
-            source_files,
-            data.get('docType', 'other'),
-            data.get('createdAt', datetime.utcnow().isoformat())
-        ))
-        
-        result = cur.fetchone()
-        conn.commit()
-        cur.close()
-        conn.close()
-        
+
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('''
+                INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, topic, topic_type, source_type, source_files, doc_type, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (id)
+                DO UPDATE SET
+                    title = EXCLUDED.title,
+                    raw_notes = EXCLUDED.raw_notes,
+                    summary = EXCLUDED.summary,
+                    questions = EXCLUDED.questions,
+                    topic = EXCLUDED.topic,
+                    topic_type = EXCLUDED.topic_type,
+                    source_type = EXCLUDED.source_type,
+                    source_files = EXCLUDED.source_files,
+                    doc_type = EXCLUDED.doc_type
+                RETURNING id
+            ''', (
+                summary_id,
+                data.get('title', 'Meeting Summary'),
+                data.get('rawNotes', ''),
+                data.get('summary', ''),
+                data.get('questions', ''),
+                data.get('topic', 'General'),
+                data.get('topicType', 'other'),
+                data.get('sourceType', 'paste'),
+                source_files,
+                data.get('docType', 'other'),
+                data.get('createdAt', datetime.utcnow().isoformat())
+            ))
+
+            result = cur.fetchone()
+
         return jsonify({'success': True, 'id': result['id']})
     except Exception as e:
         print(f"Error saving summary: {e}")
@@ -800,16 +772,12 @@ def delete_summary():
         
         if not summary_id:
             return jsonify({'error': 'Summary ID is required'}), 400
-        
-        conn = get_db_connection()
-        cur = conn.cursor()
-        # Delete associated files first (CASCADE should handle this, but being explicit)
-        cur.execute('DELETE FROM summary_files WHERE summary_id = %s', (summary_id,))
-        cur.execute('DELETE FROM meeting_summaries WHERE id = %s', (summary_id,))
-        conn.commit()
-        cur.close()
-        conn.close()
-        
+
+        with get_db(commit=True) as (conn, cur):
+            # Delete associated files first (CASCADE should handle this, but being explicit)
+            cur.execute('DELETE FROM summary_files WHERE summary_id = %s', (summary_id,))
+            cur.execute('DELETE FROM meeting_summaries WHERE id = %s', (summary_id,))
+
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error deleting summary: {e}")
@@ -824,30 +792,25 @@ def delete_summary():
 def get_summary_files(summary_id):
     """Get stored files for a summary"""
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        
-        cur.execute('''
-            SELECT id, filename, file_type, file_data, file_size, created_at
-            FROM summary_files
-            WHERE summary_id = %s
-            ORDER BY created_at ASC
-        ''', (summary_id,))
-        
-        files = []
-        for row in cur.fetchall():
-            files.append({
-                'id': row['id'],
-                'filename': row['filename'],
-                'fileType': row['file_type'],
-                'fileData': row['file_data'],
-                'fileSize': row['file_size'],
-                'createdAt': row['created_at'].isoformat() if row['created_at'] else None
-            })
-        
-        cur.close()
-        conn.close()
-        
+        with get_db() as (conn, cur):
+            cur.execute('''
+                SELECT id, filename, file_type, file_data, file_size, created_at
+                FROM summary_files
+                WHERE summary_id = %s
+                ORDER BY created_at ASC
+            ''', (summary_id,))
+
+            files = []
+            for row in cur.fetchall():
+                files.append({
+                    'id': row['id'],
+                    'filename': row['filename'],
+                    'fileType': row['file_type'],
+                    'fileData': row['file_data'],
+                    'fileSize': row['file_size'],
+                    'createdAt': row['created_at'].isoformat() if row['created_at'] else None
+                })
+
         return jsonify(files)
     except Exception as e:
         print(f"Error getting summary files: {e}")
@@ -863,35 +826,29 @@ def save_summary_files(summary_id):
         
         if not files:
             return jsonify({'error': 'No files provided'}), 400
-        
-        conn = get_db_connection()
-        cur = conn.cursor()
-        
-        saved_count = 0
-        for file_data in files:
+
+        with get_db(commit=True) as (conn, cur):
+            saved_count = 0
+            for file_data in files:
+                cur.execute('''
+                    INSERT INTO summary_files (summary_id, filename, file_type, file_data, file_size)
+                    VALUES (%s, %s, %s, %s, %s)
+                ''', (
+                    summary_id,
+                    file_data.get('filename', 'document.pdf'),
+                    file_data.get('fileType', 'application/pdf'),
+                    file_data.get('fileData', ''),
+                    file_data.get('fileSize', 0)
+                ))
+                saved_count += 1
+
+            # Update has_stored_files flag on the summary
             cur.execute('''
-                INSERT INTO summary_files (summary_id, filename, file_type, file_data, file_size)
-                VALUES (%s, %s, %s, %s, %s)
-            ''', (
-                summary_id,
-                file_data.get('filename', 'document.pdf'),
-                file_data.get('fileType', 'application/pdf'),
-                file_data.get('fileData', ''),
-                file_data.get('fileSize', 0)
-            ))
-            saved_count += 1
-        
-        # Update has_stored_files flag on the summary
-        cur.execute('''
-            UPDATE meeting_summaries 
-            SET has_stored_files = TRUE 
-            WHERE id = %s
-        ''', (summary_id,))
-        
-        conn.commit()
-        cur.close()
-        conn.close()
-        
+                UPDATE meeting_summaries
+                SET has_stored_files = TRUE
+                WHERE id = %s
+            ''', (summary_id,))
+
         return jsonify({'success': True, 'savedCount': saved_count})
     except Exception as e:
         print(f"Error saving summary files: {e}")
@@ -902,22 +859,16 @@ def save_summary_files(summary_id):
 def delete_summary_files(summary_id):
     """Delete all stored files for a summary"""
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        
-        cur.execute('DELETE FROM summary_files WHERE summary_id = %s', (summary_id,))
-        
-        # Update has_stored_files flag
-        cur.execute('''
-            UPDATE meeting_summaries 
-            SET has_stored_files = FALSE 
-            WHERE id = %s
-        ''', (summary_id,))
-        
-        conn.commit()
-        cur.close()
-        conn.close()
-        
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('DELETE FROM summary_files WHERE summary_id = %s', (summary_id,))
+
+            # Update has_stored_files flag
+            cur.execute('''
+                UPDATE meeting_summaries
+                SET has_stored_files = FALSE
+                WHERE id = %s
+            ''', (summary_id,))
+
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error deleting summary files: {e}")
@@ -1451,18 +1402,15 @@ def text_to_docx():
 def get_documents(ticker):
     """Get all stored documents for a ticker"""
     try:
-        conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute('''
-            SELECT filename, file_type, mime_type, metadata, file_size, created_at
-            FROM document_files 
-            WHERE ticker = %s
-            ORDER BY created_at DESC
-        ''', (ticker.upper(),))
-        docs = cur.fetchall()
-        cur.close()
-        conn.close()
-        
+        with get_db() as (_, cur):
+            cur.execute('''
+                SELECT filename, file_type, mime_type, metadata, file_size, created_at
+                FROM document_files
+                WHERE ticker = %s
+                ORDER BY created_at DESC
+            ''', (ticker.upper(),))
+            docs = cur.fetchall()
+
         return jsonify({
             'documents': [{
                 'filename': d['filename'],
@@ -1483,17 +1431,14 @@ def get_documents(ticker):
 def get_documents_with_content(ticker):
     """Get all stored documents with file content for re-analysis"""
     try:
-        conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute('''
-            SELECT filename, file_data, file_type, mime_type, metadata
-            FROM document_files 
-            WHERE ticker = %s
-        ''', (ticker.upper(),))
-        docs = cur.fetchall()
-        cur.close()
-        conn.close()
-        
+        with get_db() as (_, cur):
+            cur.execute('''
+                SELECT filename, file_data, file_type, mime_type, metadata
+                FROM document_files
+                WHERE ticker = %s
+            ''', (ticker.upper(),))
+            docs = cur.fetchall()
+
         return jsonify({
             'documents': [{
                 'filename': d['filename'],
@@ -1522,41 +1467,35 @@ def save_documents():
         
         if not documents:
             return jsonify({'error': 'No documents provided'}), 400
-        
-        conn = get_db_connection()
-        cur = conn.cursor()
-        
-        saved_count = 0
-        for doc in documents:
-            filename = doc.get('filename')
-            file_data = doc.get('fileData')
-            file_type = doc.get('fileType', 'pdf')
-            mime_type = doc.get('mimeType', 'application/pdf')
-            metadata = doc.get('metadata', {})
-            
-            if not filename or not file_data:
-                continue
-            
-            # Calculate approximate file size (base64 is ~1.33x original)
-            file_size = len(file_data) * 3 // 4
-            
-            cur.execute('''
-                INSERT INTO document_files (ticker, filename, file_data, file_type, mime_type, metadata, file_size)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (ticker, filename) 
-                DO UPDATE SET 
-                    file_data = EXCLUDED.file_data,
-                    file_type = EXCLUDED.file_type,
-                    mime_type = EXCLUDED.mime_type,
-                    metadata = EXCLUDED.metadata,
-                    file_size = EXCLUDED.file_size
-            ''', (ticker, filename, file_data, file_type, mime_type, json.dumps(metadata), file_size))
-            saved_count += 1
-        
-        conn.commit()
-        cur.close()
-        conn.close()
-        
+
+        with get_db(commit=True) as (_, cur):
+            saved_count = 0
+            for doc in documents:
+                filename = doc.get('filename')
+                file_data = doc.get('fileData')
+                file_type = doc.get('fileType', 'pdf')
+                mime_type = doc.get('mimeType', 'application/pdf')
+                metadata = doc.get('metadata', {})
+
+                if not filename or not file_data:
+                    continue
+
+                # Calculate approximate file size (base64 is ~1.33x original)
+                file_size = len(file_data) * 3 // 4
+
+                cur.execute('''
+                    INSERT INTO document_files (ticker, filename, file_data, file_type, mime_type, metadata, file_size)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (ticker, filename)
+                    DO UPDATE SET
+                        file_data = EXCLUDED.file_data,
+                        file_type = EXCLUDED.file_type,
+                        mime_type = EXCLUDED.mime_type,
+                        metadata = EXCLUDED.metadata,
+                        file_size = EXCLUDED.file_size
+                ''', (ticker, filename, file_data, file_type, mime_type, json.dumps(metadata), file_size))
+                saved_count += 1
+
         return jsonify({'success': True, 'savedCount': saved_count})
     except Exception as e:
         print(f"Error saving documents: {e}")
@@ -1573,18 +1512,14 @@ def delete_document():
         
         if not ticker or not filename:
             return jsonify({'error': 'Ticker and filename are required'}), 400
-        
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('''
-            DELETE FROM document_files 
-            WHERE ticker = %s AND filename = %s
-        ''', (ticker, filename))
-        deleted = cur.rowcount > 0
-        conn.commit()
-        cur.close()
-        conn.close()
-        
+
+        with get_db(commit=True) as (_, cur):
+            cur.execute('''
+                DELETE FROM document_files
+                WHERE ticker = %s AND filename = %s
+            ''', (ticker, filename))
+            deleted = cur.rowcount > 0
+
         return jsonify({'success': True, 'deleted': deleted})
     except Exception as e:
         print(f"Error deleting document: {e}")
@@ -1600,15 +1535,11 @@ def delete_all_documents():
         
         if not ticker:
             return jsonify({'error': 'Ticker is required'}), 400
-        
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('DELETE FROM document_files WHERE ticker = %s', (ticker,))
-        deleted_count = cur.rowcount
-        conn.commit()
-        cur.close()
-        conn.close()
-        
+
+        with get_db(commit=True) as (_, cur):
+            cur.execute('DELETE FROM document_files WHERE ticker = %s', (ticker,))
+            deleted_count = cur.rowcount
+
         return jsonify({'success': True, 'deletedCount': deleted_count})
     except Exception as e:
         print(f"Error deleting all documents: {e}")
@@ -1619,25 +1550,21 @@ def delete_all_documents():
 def get_storage_stats():
     """Get storage statistics"""
     try:
-        conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute('''
-            SELECT 
-                ticker,
-                COUNT(*) as doc_count,
-                SUM(file_size) as total_size
-            FROM document_files 
-            GROUP BY ticker
-            ORDER BY total_size DESC
-        ''')
-        stats = cur.fetchall()
-        
-        cur.execute('SELECT SUM(file_size) as total FROM document_files')
-        total = cur.fetchone()
-        
-        cur.close()
-        conn.close()
-        
+        with get_db() as (_, cur):
+            cur.execute('''
+                SELECT
+                    ticker,
+                    COUNT(*) as doc_count,
+                    SUM(file_size) as total_size
+                FROM document_files
+                GROUP BY ticker
+                ORDER BY total_size DESC
+            ''')
+            stats = cur.fetchall()
+
+            cur.execute('SELECT SUM(file_size) as total FROM document_files')
+            total = cur.fetchone()
+
         return jsonify({
             'byTicker': [{
                 'ticker': s['ticker'],
@@ -2544,13 +2471,10 @@ def research_analyze():
 def get_research_categories():
     """Get all research categories"""
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('SELECT id, name, type, created_at FROM research_categories ORDER BY created_at DESC')
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
-        
+        with get_db() as (_, cur):
+            cur.execute('SELECT id, name, type, created_at FROM research_categories ORDER BY created_at DESC')
+            rows = cur.fetchall()
+
         return jsonify([{
             'id': row['id'],
             'name': row['name'],
@@ -2572,20 +2496,14 @@ def save_research_category():
         if not cat_id:
             return jsonify({'error': 'Category ID is required'}), 400
         
-        conn = get_db_connection()
-        cur = conn.cursor()
-        
-        cur.execute('''
-            INSERT INTO research_categories (id, name, type)
-            VALUES (%s, %s, %s)
-            ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, type = EXCLUDED.type
-            RETURNING id
-        ''', (cat_id, data.get('name', ''), data.get('type', 'ticker')))
-        
-        conn.commit()
-        cur.close()
-        conn.close()
-        
+        with get_db(commit=True) as (_, cur):
+            cur.execute('''
+                INSERT INTO research_categories (id, name, type)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, type = EXCLUDED.type
+                RETURNING id
+            ''', (cat_id, data.get('name', ''), data.get('type', 'ticker')))
+
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error saving research category: {e}")
@@ -2602,14 +2520,10 @@ def delete_research_category():
         if not cat_id:
             return jsonify({'error': 'Category ID is required'}), 400
         
-        conn = get_db_connection()
-        cur = conn.cursor()
-        # CASCADE will delete documents and analyses
-        cur.execute('DELETE FROM research_categories WHERE id = %s', (cat_id,))
-        conn.commit()
-        cur.close()
-        conn.close()
-        
+        with get_db(commit=True) as (_, cur):
+            # CASCADE will delete documents and analyses
+            cur.execute('DELETE FROM research_categories WHERE id = %s', (cat_id,))
+
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error deleting research category: {e}")
@@ -2621,13 +2535,10 @@ def delete_research_category():
 def get_research_documents():
     """Get all research documents"""
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('SELECT id, category_id, name, content, file_names, smart_name, original_filename, published_date, doc_type, has_stored_files, created_at FROM research_documents ORDER BY created_at DESC')
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
-        
+        with get_db() as (_, cur):
+            cur.execute('SELECT id, category_id, name, content, file_names, smart_name, original_filename, published_date, doc_type, has_stored_files, created_at FROM research_documents ORDER BY created_at DESC')
+            rows = cur.fetchall()
+
         return jsonify([{
             'id': row['id'],
             'categoryId': row['category_id'],
@@ -2658,39 +2569,33 @@ def save_research_document():
         if not doc_id:
             return jsonify({'error': 'Document ID is required'}), 400
         
-        conn = get_db_connection()
-        cur = conn.cursor()
-        
-        cur.execute('''
-            INSERT INTO research_documents (id, category_id, name, content, file_names, smart_name, original_filename, published_date, doc_type, has_stored_files)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (id) DO UPDATE SET 
-                name = EXCLUDED.name,
-                content = EXCLUDED.content,
-                file_names = EXCLUDED.file_names,
-                smart_name = EXCLUDED.smart_name,
-                original_filename = EXCLUDED.original_filename,
-                published_date = EXCLUDED.published_date,
-                doc_type = EXCLUDED.doc_type,
-                has_stored_files = EXCLUDED.has_stored_files
-            RETURNING id
-        ''', (
-            doc_id,
-            data.get('categoryId', ''),
-            data.get('name', ''),
-            data.get('content', ''),
-            json.dumps(data.get('fileNames', [])),
-            data.get('smartName'),
-            data.get('originalFilename'),
-            data.get('publishedDate'),
-            data.get('docType', 'other'),
-            data.get('hasStoredFiles', False)
-        ))
-        
-        conn.commit()
-        cur.close()
-        conn.close()
-        
+        with get_db(commit=True) as (_, cur):
+            cur.execute('''
+                INSERT INTO research_documents (id, category_id, name, content, file_names, smart_name, original_filename, published_date, doc_type, has_stored_files)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    content = EXCLUDED.content,
+                    file_names = EXCLUDED.file_names,
+                    smart_name = EXCLUDED.smart_name,
+                    original_filename = EXCLUDED.original_filename,
+                    published_date = EXCLUDED.published_date,
+                    doc_type = EXCLUDED.doc_type,
+                    has_stored_files = EXCLUDED.has_stored_files
+                RETURNING id
+            ''', (
+                doc_id,
+                data.get('categoryId', ''),
+                data.get('name', ''),
+                data.get('content', ''),
+                json.dumps(data.get('fileNames', [])),
+                data.get('smartName'),
+                data.get('originalFilename'),
+                data.get('publishedDate'),
+                data.get('docType', 'other'),
+                data.get('hasStoredFiles', False)
+            ))
+
         print(f"✅ Document saved: {doc_id}")
         return jsonify({'success': True})
     except Exception as e:
@@ -2703,80 +2608,58 @@ def save_research_document():
 @app.route('/api/save-research-file', methods=['POST'])
 def save_research_file():
     """Save a file for a research document"""
-    conn = None
-    cur = None
     try:
         data = request.json
         if not data:
             print("❌ No JSON data received")
             return jsonify({'error': 'No JSON data received'}), 400
-            
+
         document_id = data.get('documentId', '')
         filename = data.get('filename', '')
         file_type = data.get('fileType', '')
         file_data = data.get('fileData', '')
         file_size = data.get('fileSize', 0)
-        
+
         print(f"📁 save_research_file: docId={document_id}, filename={filename}, fileType={file_type}, dataLen={len(file_data) if file_data else 0}, fileSize={file_size}")
-        
+
         if not document_id or not filename:
             print(f"❌ Missing required fields: docId={document_id}, filename={filename}")
             return jsonify({'error': 'Document ID and filename are required'}), 400
-        
+
         if not file_data:
             print(f"❌ No file data provided for {filename}")
             return jsonify({'error': 'No file data provided'}), 400
-        
-        # Check if document exists first
-        conn = get_db_connection()
-        cur = conn.cursor()
-        
-        cur.execute('SELECT id FROM research_documents WHERE id = %s', (document_id,))
-        doc_exists = cur.fetchone()
-        if not doc_exists:
-            print(f"❌ Document {document_id} does not exist in research_documents table")
-            cur.close()
-            conn.close()
-            return jsonify({'error': f'Document {document_id} not found - must save document first'}), 400
-        
-        print(f"✅ Document {document_id} exists, proceeding with file save")
-        
-        cur.execute('''
-            INSERT INTO research_document_files (document_id, filename, file_type, file_data, file_size)
-            VALUES (%s, %s, %s, %s, %s)
-            RETURNING id
-        ''', (document_id, filename, file_type, file_data, file_size))
-        
-        result = cur.fetchone()
-        if result is None:
-            print(f"❌ INSERT did not return an id")
-            conn.rollback()
-            cur.close()
-            conn.close()
-            return jsonify({'error': 'Insert failed - no id returned'}), 500
-            
-        inserted_id = result['id']  # Access by column name since RealDictCursor is default
-        conn.commit()
-        cur.close()
-        conn.close()
-        
+
+        with get_db(commit=True) as (conn, cur):
+            # Check if document exists first
+            cur.execute('SELECT id FROM research_documents WHERE id = %s', (document_id,))
+            doc_exists = cur.fetchone()
+            if not doc_exists:
+                print(f"❌ Document {document_id} does not exist in research_documents table")
+                return jsonify({'error': f'Document {document_id} not found - must save document first'}), 400
+
+            print(f"✅ Document {document_id} exists, proceeding with file save")
+
+            cur.execute('''
+                INSERT INTO research_document_files (document_id, filename, file_type, file_data, file_size)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id
+            ''', (document_id, filename, file_type, file_data, file_size))
+
+            result = cur.fetchone()
+            if result is None:
+                print(f"❌ INSERT did not return an id")
+                conn.rollback()
+                return jsonify({'error': 'Insert failed - no id returned'}), 500
+
+            inserted_id = result['id']
+
         print(f"✅ File saved successfully: id={inserted_id}, filename={filename}")
         return jsonify({'success': True, 'id': inserted_id})
     except Exception as e:
         print(f"❌ Error saving research file: {type(e).__name__}: {e}")
         import traceback
         traceback.print_exc()
-        if cur:
-            try:
-                cur.close()
-            except:
-                pass
-        if conn:
-            try:
-                conn.rollback()
-                conn.close()
-            except:
-                pass
         return jsonify({'error': f'{type(e).__name__}: {str(e)}'}), 500
 
 
@@ -2784,18 +2667,15 @@ def save_research_file():
 def get_research_document_files(document_id):
     """Get stored files for a research document"""
     try:
-        conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute('''
-            SELECT id, filename, file_type, file_data, file_size, created_at 
-            FROM research_document_files 
-            WHERE document_id = %s
-            ORDER BY created_at
-        ''', (document_id,))
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
-        
+        with get_db() as (_, cur):
+            cur.execute('''
+                SELECT id, filename, file_type, file_data, file_size, created_at
+                FROM research_document_files
+                WHERE document_id = %s
+                ORDER BY created_at
+            ''', (document_id,))
+            rows = cur.fetchall()
+
         return jsonify([{
             'id': row['id'],
             'filename': row['filename'],
@@ -2813,13 +2693,9 @@ def get_research_document_files(document_id):
 def delete_research_file(file_id):
     """Delete a stored research file"""
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('DELETE FROM research_document_files WHERE id = %s', (file_id,))
-        conn.commit()
-        cur.close()
-        conn.close()
-        
+        with get_db(commit=True) as (_, cur):
+            cur.execute('DELETE FROM research_document_files WHERE id = %s', (file_id,))
+
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error deleting research file: {e}")
@@ -2836,14 +2712,10 @@ def delete_research_document():
         if not doc_id:
             return jsonify({'error': 'Document ID is required'}), 400
         
-        conn = get_db_connection()
-        cur = conn.cursor()
-        # CASCADE will delete analyses
-        cur.execute('DELETE FROM research_documents WHERE id = %s', (doc_id,))
-        conn.commit()
-        cur.close()
-        conn.close()
-        
+        with get_db(commit=True) as (_, cur):
+            # CASCADE will delete analyses
+            cur.execute('DELETE FROM research_documents WHERE id = %s', (doc_id,))
+
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error deleting research document: {e}")
@@ -2855,13 +2727,10 @@ def delete_research_document():
 def get_research_analyses():
     """Get all research analyses"""
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('SELECT id, document_id, prompt_id, prompt_name, prompt_icon, result, usage, created_at FROM research_analyses ORDER BY created_at DESC')
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
-        
+        with get_db() as (_, cur):
+            cur.execute('SELECT id, document_id, prompt_id, prompt_name, prompt_icon, result, usage, created_at FROM research_analyses ORDER BY created_at DESC')
+            rows = cur.fetchall()
+
         return jsonify([{
             'id': row['id'],
             'documentId': row['document_id'],
@@ -2887,30 +2756,24 @@ def save_research_analysis():
         if not analysis_id:
             return jsonify({'error': 'Analysis ID is required'}), 400
         
-        conn = get_db_connection()
-        cur = conn.cursor()
-        
-        cur.execute('''
-            INSERT INTO research_analyses (id, document_id, prompt_id, prompt_name, prompt_icon, result, usage)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (id) DO UPDATE SET 
-                result = EXCLUDED.result,
-                usage = EXCLUDED.usage
-            RETURNING id
-        ''', (
-            analysis_id,
-            data.get('documentId', ''),
-            data.get('promptId', ''),
-            data.get('promptName', ''),
-            data.get('promptIcon', ''),
-            data.get('result', ''),
-            json.dumps(data.get('usage', {}))
-        ))
-        
-        conn.commit()
-        cur.close()
-        conn.close()
-        
+        with get_db(commit=True) as (_, cur):
+            cur.execute('''
+                INSERT INTO research_analyses (id, document_id, prompt_id, prompt_name, prompt_icon, result, usage)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE SET
+                    result = EXCLUDED.result,
+                    usage = EXCLUDED.usage
+                RETURNING id
+            ''', (
+                analysis_id,
+                data.get('documentId', ''),
+                data.get('promptId', ''),
+                data.get('promptName', ''),
+                data.get('promptIcon', ''),
+                data.get('result', ''),
+                json.dumps(data.get('usage', {}))
+            ))
+
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error saving research analysis: {e}")
@@ -2927,13 +2790,9 @@ def delete_research_analysis():
         if not analysis_id:
             return jsonify({'error': 'Analysis ID is required'}), 400
         
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('DELETE FROM research_analyses WHERE id = %s', (analysis_id,))
-        conn.commit()
-        cur.close()
-        conn.close()
-        
+        with get_db(commit=True) as (_, cur):
+            cur.execute('DELETE FROM research_analyses WHERE id = %s', (analysis_id,))
+
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error deleting research analysis: {e}")
@@ -3282,34 +3141,28 @@ def mp_create_meeting():
         if not ticker:
             return jsonify({'error': 'Ticker is required'}), 400
 
-        conn = get_db_connection()
-        cur = conn.cursor()
+        with get_db(commit=True) as (_, cur):
+            # Upsert company
+            cur.execute('''
+                INSERT INTO mp_companies (ticker, name, sector)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (ticker) DO UPDATE SET
+                    name = COALESCE(NULLIF(EXCLUDED.name, ''), mp_companies.name),
+                    sector = COALESCE(NULLIF(EXCLUDED.sector, ''), mp_companies.sector)
+                RETURNING id, ticker, name, sector
+            ''', (ticker, company_name, sector))
+            company = dict(cur.fetchone())
 
-        # Upsert company
-        cur.execute('''
-            INSERT INTO mp_companies (ticker, name, sector)
-            VALUES (%s, %s, %s)
-            ON CONFLICT (ticker) DO UPDATE SET
-                name = COALESCE(NULLIF(EXCLUDED.name, ''), mp_companies.name),
-                sector = COALESCE(NULLIF(EXCLUDED.sector, ''), mp_companies.sector)
-            RETURNING id, ticker, name, sector
-        ''', (ticker, company_name, sector))
-        company = dict(cur.fetchone())
-
-        # Create meeting
-        cur.execute('''
-            INSERT INTO mp_meetings (company_id, meeting_date, meeting_type, notes)
-            VALUES (%s, %s, %s, %s)
-            RETURNING id, company_id, meeting_date, meeting_type, status, notes, created_at, updated_at
-        ''', (company['id'], meeting_date, meeting_type, notes))
-        meeting = dict(cur.fetchone())
-        meeting['ticker'] = company['ticker']
-        meeting['company_name'] = company['name']
-        meeting['sector'] = company['sector']
-
-        conn.commit()
-        cur.close()
-        conn.close()
+            # Create meeting
+            cur.execute('''
+                INSERT INTO mp_meetings (company_id, meeting_date, meeting_type, notes)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id, company_id, meeting_date, meeting_type, status, notes, created_at, updated_at
+            ''', (company['id'], meeting_date, meeting_type, notes))
+            meeting = dict(cur.fetchone())
+            meeting['ticker'] = company['ticker']
+            meeting['company_name'] = company['name']
+            meeting['sector'] = company['sector']
 
         return jsonify(meeting)
     except Exception as e:
@@ -3321,19 +3174,16 @@ def mp_create_meeting():
 def mp_list_meetings():
     """List all meeting prep sessions."""
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('''
-            SELECT m.*, c.ticker, c.name as company_name, c.sector,
-                   (SELECT COUNT(*) FROM mp_documents WHERE meeting_id = m.id) as doc_count,
-                   (SELECT COUNT(*) FROM mp_question_sets WHERE meeting_id = m.id AND status = 'ready') as qs_count
-            FROM mp_meetings m
-            JOIN mp_companies c ON m.company_id = c.id
-            ORDER BY m.created_at DESC
-        ''')
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
+        with get_db() as (_, cur):
+            cur.execute('''
+                SELECT m.*, c.ticker, c.name as company_name, c.sector,
+                       (SELECT COUNT(*) FROM mp_documents WHERE meeting_id = m.id) as doc_count,
+                       (SELECT COUNT(*) FROM mp_question_sets WHERE meeting_id = m.id AND status = 'ready') as qs_count
+                FROM mp_meetings m
+                JOIN mp_companies c ON m.company_id = c.id
+                ORDER BY m.created_at DESC
+            ''')
+            rows = cur.fetchall()
 
         result = []
         for r in rows:
@@ -3362,56 +3212,49 @@ def mp_list_meetings():
 def mp_get_meeting(meeting_id):
     """Get a meeting with its documents and latest question set."""
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
+        with get_db() as (_, cur):
+            # Get meeting
+            cur.execute('''
+                SELECT m.*, c.ticker, c.name as company_name, c.sector
+                FROM mp_meetings m
+                JOIN mp_companies c ON m.company_id = c.id
+                WHERE m.id = %s
+            ''', (meeting_id,))
+            row = cur.fetchone()
+            if not row:
+                return jsonify({'error': 'Meeting not found'}), 404
 
-        # Get meeting
-        cur.execute('''
-            SELECT m.*, c.ticker, c.name as company_name, c.sector
-            FROM mp_meetings m
-            JOIN mp_companies c ON m.company_id = c.id
-            WHERE m.id = %s
-        ''', (meeting_id,))
-        row = cur.fetchone()
-        if not row:
-            cur.close()
-            conn.close()
-            return jsonify({'error': 'Meeting not found'}), 404
+            meeting = dict(row)
+            meeting['meeting_date'] = str(meeting['meeting_date']) if meeting['meeting_date'] else None
+            meeting['created_at'] = meeting['created_at'].isoformat() if meeting['created_at'] else None
+            meeting['updated_at'] = meeting['updated_at'].isoformat() if meeting['updated_at'] else None
 
-        meeting = dict(row)
-        meeting['meeting_date'] = str(meeting['meeting_date']) if meeting['meeting_date'] else None
-        meeting['created_at'] = meeting['created_at'].isoformat() if meeting['created_at'] else None
-        meeting['updated_at'] = meeting['updated_at'].isoformat() if meeting['updated_at'] else None
+            # Get documents (without file_data to keep response small)
+            cur.execute('''
+                SELECT id, meeting_id, filename, doc_type, doc_date, page_count, token_estimate,
+                       upload_order, file_size, created_at
+                FROM mp_documents WHERE meeting_id = %s ORDER BY upload_order
+            ''', (meeting_id,))
+            docs = []
+            for d in cur.fetchall():
+                dd = dict(d)
+                dd['created_at'] = dd['created_at'].isoformat() if dd['created_at'] else None
+                docs.append(dd)
 
-        # Get documents (without file_data to keep response small)
-        cur.execute('''
-            SELECT id, meeting_id, filename, doc_type, doc_date, page_count, token_estimate,
-                   upload_order, file_size, created_at
-            FROM mp_documents WHERE meeting_id = %s ORDER BY upload_order
-        ''', (meeting_id,))
-        docs = []
-        for d in cur.fetchall():
-            dd = dict(d)
-            dd['created_at'] = dd['created_at'].isoformat() if dd['created_at'] else None
-            docs.append(dd)
-
-        # Get latest question set
-        cur.execute('''
-            SELECT * FROM mp_question_sets
-            WHERE meeting_id = %s ORDER BY version DESC LIMIT 1
-        ''', (meeting_id,))
-        qs_row = cur.fetchone()
-        question_set = None
-        if qs_row:
-            question_set = dict(qs_row)
-            if question_set['topics_json']:
-                question_set['topics'] = json.loads(question_set['topics_json'])
-            else:
-                question_set['topics'] = []
-            question_set['created_at'] = question_set['created_at'].isoformat() if question_set['created_at'] else None
-
-        cur.close()
-        conn.close()
+            # Get latest question set
+            cur.execute('''
+                SELECT * FROM mp_question_sets
+                WHERE meeting_id = %s ORDER BY version DESC LIMIT 1
+            ''', (meeting_id,))
+            qs_row = cur.fetchone()
+            question_set = None
+            if qs_row:
+                question_set = dict(qs_row)
+                if question_set['topics_json']:
+                    question_set['topics'] = json.loads(question_set['topics_json'])
+                else:
+                    question_set['topics'] = []
+                question_set['created_at'] = question_set['created_at'].isoformat() if question_set['created_at'] else None
 
         return jsonify({
             'meeting': meeting,
@@ -3427,12 +3270,9 @@ def mp_get_meeting(meeting_id):
 def mp_delete_meeting(meeting_id):
     """Delete a meeting and all related data."""
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('DELETE FROM mp_meetings WHERE id = %s', (meeting_id,))
-        conn.commit()
-        cur.close()
-        conn.close()
+        with get_db(commit=True) as (_, cur):
+            cur.execute('DELETE FROM mp_meetings WHERE id = %s', (meeting_id,))
+
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error deleting meeting: {e}")
@@ -3456,63 +3296,55 @@ def mp_upload_documents(meeting_id):
         if not documents:
             return jsonify({'error': 'No documents provided'}), 400
 
-        conn = get_db_connection()
-        cur = conn.cursor()
+        with get_db(commit=True) as (_, cur):
+            # Verify meeting exists
+            cur.execute('SELECT id FROM mp_meetings WHERE id = %s', (meeting_id,))
+            if not cur.fetchone():
+                return jsonify({'error': 'Meeting not found'}), 404
 
-        # Verify meeting exists
-        cur.execute('SELECT id FROM mp_meetings WHERE id = %s', (meeting_id,))
-        if not cur.fetchone():
-            cur.close()
-            conn.close()
-            return jsonify({'error': 'Meeting not found'}), 404
+            # Get current max upload_order
+            cur.execute('SELECT COALESCE(MAX(upload_order), 0) AS max_order FROM mp_documents WHERE meeting_id = %s', (meeting_id,))
+            order = cur.fetchone()['max_order']
 
-        # Get current max upload_order
-        cur.execute('SELECT COALESCE(MAX(upload_order), 0) AS max_order FROM mp_documents WHERE meeting_id = %s', (meeting_id,))
-        order = cur.fetchone()['max_order']
+            results = []
+            for doc in documents:
+                order += 1
+                filename = doc.get('filename', 'unknown.pdf')
+                file_data = doc.get('fileData', '')
+                extracted_text = doc.get('extractedText', '')
+                page_count = doc.get('pageCount')
 
-        results = []
-        for doc in documents:
-            order += 1
-            filename = doc.get('filename', 'unknown.pdf')
-            file_data = doc.get('fileData', '')
-            extracted_text = doc.get('extractedText', '')
-            page_count = doc.get('pageCount')
+                # If no extracted text provided, try extracting from base64 PDF
+                if not extracted_text and file_data:
+                    try:
+                        pdf_bytes = base64.b64decode(file_data)
+                        reader = PdfReader(io.BytesIO(pdf_bytes))
+                        pages = []
+                        for page in reader.pages:
+                            t = page.extract_text()
+                            if t:
+                                pages.append(t)
+                        extracted_text = '\n\n'.join(pages)
+                        if page_count is None:
+                            page_count = len(reader.pages)
+                    except Exception as ex:
+                        print(f"PDF extraction error for {filename}: {ex}")
 
-            # If no extracted text provided, try extracting from base64 PDF
-            if not extracted_text and file_data:
-                try:
-                    pdf_bytes = base64.b64decode(file_data)
-                    reader = PdfReader(io.BytesIO(pdf_bytes))
-                    pages = []
-                    for page in reader.pages:
-                        t = page.extract_text()
-                        if t:
-                            pages.append(t)
-                    extracted_text = '\n\n'.join(pages)
-                    if page_count is None:
-                        page_count = len(reader.pages)
-                except Exception as ex:
-                    print(f"PDF extraction error for {filename}: {ex}")
+                # Classify and estimate tokens
+                doc_type = classify_mp_document(filename, extracted_text)
+                token_estimate = len(extracted_text) // 4 if extracted_text else 0
+                file_size = len(file_data) * 3 // 4 if file_data else 0
 
-            # Classify and estimate tokens
-            doc_type = classify_mp_document(filename, extracted_text)
-            token_estimate = len(extracted_text) // 4 if extracted_text else 0
-            file_size = len(file_data) * 3 // 4 if file_data else 0
-
-            cur.execute('''
-                INSERT INTO mp_documents (meeting_id, filename, file_data, doc_type, doc_date,
-                    page_count, token_estimate, extracted_text, upload_order, file_size)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id, filename, doc_type, doc_date, page_count, token_estimate, upload_order, file_size, created_at
-            ''', (meeting_id, filename, file_data, doc_type, doc.get('docDate'),
-                  page_count, token_estimate, extracted_text, order, file_size))
-            row = dict(cur.fetchone())
-            row['created_at'] = row['created_at'].isoformat() if row['created_at'] else None
-            results.append(row)
-
-        conn.commit()
-        cur.close()
-        conn.close()
+                cur.execute('''
+                    INSERT INTO mp_documents (meeting_id, filename, file_data, doc_type, doc_date,
+                        page_count, token_estimate, extracted_text, upload_order, file_size)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id, filename, doc_type, doc_date, page_count, token_estimate, upload_order, file_size, created_at
+                ''', (meeting_id, filename, file_data, doc_type, doc.get('docDate'),
+                      page_count, token_estimate, extracted_text, order, file_size))
+                row = dict(cur.fetchone())
+                row['created_at'] = row['created_at'].isoformat() if row['created_at'] else None
+                results.append(row)
 
         return jsonify(results)
     except Exception as e:
@@ -3524,12 +3356,9 @@ def mp_upload_documents(meeting_id):
 def mp_delete_document(meeting_id, doc_id):
     """Delete a document from a meeting."""
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('DELETE FROM mp_documents WHERE id = %s AND meeting_id = %s', (doc_id, meeting_id))
-        conn.commit()
-        cur.close()
-        conn.close()
+        with get_db(commit=True) as (_, cur):
+            cur.execute('DELETE FROM mp_documents WHERE id = %s AND meeting_id = %s', (doc_id, meeting_id))
+
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error deleting document: {e}")
@@ -3748,43 +3577,37 @@ def mp_save_results():
         if not meeting_id:
             return jsonify({'error': 'meetingId is required'}), 400
 
-        conn = get_db_connection()
-        cur = conn.cursor()
+        with get_db(commit=True) as (_, cur):
+            # Get next version
+            cur.execute('SELECT COALESCE(MAX(version), 0) + 1 AS next_ver FROM mp_question_sets WHERE meeting_id = %s', (meeting_id,))
+            version = cur.fetchone()['next_ver']
 
-        # Get next version
-        cur.execute('SELECT COALESCE(MAX(version), 0) + 1 AS next_ver FROM mp_question_sets WHERE meeting_id = %s', (meeting_id,))
-        version = cur.fetchone()['next_ver']
+            # Insert question set
+            cur.execute('''
+                INSERT INTO mp_question_sets (meeting_id, version, status, topics_json, synthesis_json, generation_model, generation_tokens)
+                VALUES (%s, %s, 'ready', %s, %s, %s, %s)
+                RETURNING id, version
+            ''', (meeting_id, version, json.dumps(topics), json.dumps(synthesis_json) if synthesis_json else None, model, total_tokens))
+            qs = dict(cur.fetchone())
 
-        # Insert question set
-        cur.execute('''
-            INSERT INTO mp_question_sets (meeting_id, version, status, topics_json, synthesis_json, generation_model, generation_tokens)
-            VALUES (%s, %s, 'ready', %s, %s, %s, %s)
-            RETURNING id, version
-        ''', (meeting_id, version, json.dumps(topics), json.dumps(synthesis_json) if synthesis_json else None, model, total_tokens))
-        qs = dict(cur.fetchone())
+            # Update meeting status
+            cur.execute("UPDATE mp_meetings SET status = 'ready', updated_at = CURRENT_TIMESTAMP WHERE id = %s", (meeting_id,))
 
-        # Update meeting status
-        cur.execute("UPDATE mp_meetings SET status = 'ready', updated_at = CURRENT_TIMESTAMP WHERE id = %s", (meeting_id,))
-
-        # Save questions to past_questions
-        cur.execute('SELECT company_id FROM mp_meetings WHERE id = %s', (meeting_id,))
-        company_row = cur.fetchone()
-        if company_row:
-            company_id = company_row['company_id']
-            for topic in (topics if isinstance(topics, list) else []):
-                topic_name = topic.get('topic', '') if isinstance(topic, dict) else ''
-                questions = topic.get('questions', []) if isinstance(topic, dict) else []
-                for q in questions:
-                    q_text = q.get('question', '') if isinstance(q, dict) else ''
-                    if q_text:
-                        cur.execute('''
-                            INSERT INTO mp_past_questions (company_id, meeting_id, question, topic, status)
-                            VALUES (%s, %s, %s, %s, 'asked')
-                        ''', (company_id, meeting_id, q_text, topic_name))
-
-        conn.commit()
-        cur.close()
-        conn.close()
+            # Save questions to past_questions
+            cur.execute('SELECT company_id FROM mp_meetings WHERE id = %s', (meeting_id,))
+            company_row = cur.fetchone()
+            if company_row:
+                company_id = company_row['company_id']
+                for topic in (topics if isinstance(topics, list) else []):
+                    topic_name = topic.get('topic', '') if isinstance(topic, dict) else ''
+                    questions = topic.get('questions', []) if isinstance(topic, dict) else []
+                    for q in questions:
+                        q_text = q.get('question', '') if isinstance(q, dict) else ''
+                        if q_text:
+                            cur.execute('''
+                                INSERT INTO mp_past_questions (company_id, meeting_id, question, topic, status)
+                                VALUES (%s, %s, %s, %s, 'asked')
+                            ''', (company_id, meeting_id, q_text, topic_name))
 
         return jsonify({'questionSetId': qs['id'], 'version': qs['version']})
     except Exception as e:
@@ -3800,26 +3623,21 @@ def mp_save_results():
 def mp_get_past_questions(ticker):
     """Get past questions for a company."""
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('SELECT * FROM mp_companies WHERE ticker = %s', (ticker.upper(),))
-        company = cur.fetchone()
-        if not company:
-            cur.close()
-            conn.close()
-            return jsonify({'company': None, 'pastQuestions': []})
+        with get_db() as (_, cur):
+            cur.execute('SELECT * FROM mp_companies WHERE ticker = %s', (ticker.upper(),))
+            company = cur.fetchone()
+            if not company:
+                return jsonify({'company': None, 'pastQuestions': []})
 
-        cur.execute('''
-            SELECT pq.*, m.meeting_date, m.meeting_type
-            FROM mp_past_questions pq
-            LEFT JOIN mp_meetings m ON pq.meeting_id = m.id
-            WHERE pq.company_id = %s
-            ORDER BY pq.created_at DESC
-            LIMIT 100
-        ''', (company['id'],))
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
+            cur.execute('''
+                SELECT pq.*, m.meeting_date, m.meeting_type
+                FROM mp_past_questions pq
+                LEFT JOIN mp_meetings m ON pq.meeting_id = m.id
+                WHERE pq.company_id = %s
+                ORDER BY pq.created_at DESC
+                LIMIT 100
+            ''', (company['id'],))
+            rows = cur.fetchall()
 
         pqs = []
         for r in rows:
@@ -3839,8 +3657,6 @@ def mp_update_past_question(pq_id):
     """Update notes/status on a past question."""
     try:
         data = request.json
-        conn = get_db_connection()
-        cur = conn.cursor()
 
         updates = []
         params = []
@@ -3853,11 +3669,9 @@ def mp_update_past_question(pq_id):
 
         if updates:
             params.append(pq_id)
-            cur.execute(f"UPDATE mp_past_questions SET {', '.join(updates)} WHERE id = %s", params)
-            conn.commit()
+            with get_db(commit=True) as (_, cur):
+                cur.execute(f"UPDATE mp_past_questions SET {', '.join(updates)} WHERE id = %s", params)
 
-        cur.close()
-        conn.close()
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error updating past question: {e}")
@@ -3868,15 +3682,12 @@ def mp_update_past_question(pq_id):
 def mp_get_document_text(meeting_id, doc_id):
     """Get extracted text for a document (needed by frontend pipeline)."""
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('''
-            SELECT id, filename, doc_type, extracted_text
-            FROM mp_documents WHERE id = %s AND meeting_id = %s
-        ''', (doc_id, meeting_id))
-        row = cur.fetchone()
-        cur.close()
-        conn.close()
+        with get_db() as (_, cur):
+            cur.execute('''
+                SELECT id, filename, doc_type, extracted_text
+                FROM mp_documents WHERE id = %s AND meeting_id = %s
+            ''', (doc_id, meeting_id))
+            row = cur.fetchone()
 
         if not row:
             return jsonify({'error': 'Document not found'}), 404
@@ -4032,104 +3843,96 @@ def mp_import_drive_files():
         headers = {'Authorization': f'Bearer {access_token}'}
         drive_api = 'https://www.googleapis.com/drive/v3/files'
 
-        conn = get_db_connection()
-        cur = conn.cursor()
+        with get_db(commit=True) as (_, cur):
+            # Verify meeting exists
+            cur.execute('SELECT id FROM mp_meetings WHERE id = %s', (meeting_id,))
+            if not cur.fetchone():
+                return jsonify({'error': 'Meeting not found'}), 404
 
-        # Verify meeting exists
-        cur.execute('SELECT id FROM mp_meetings WHERE id = %s', (meeting_id,))
-        if not cur.fetchone():
-            cur.close()
-            conn.close()
-            return jsonify({'error': 'Meeting not found'}), 404
+            cur.execute('SELECT COALESCE(MAX(upload_order), 0) AS max_order FROM mp_documents WHERE meeting_id = %s', (meeting_id,))
+            order = cur.fetchone()['max_order']
 
-        cur.execute('SELECT COALESCE(MAX(upload_order), 0) AS max_order FROM mp_documents WHERE meeting_id = %s', (meeting_id,))
-        order = cur.fetchone()['max_order']
+            def import_pdf(pdf_bytes, filename, doc_date, cur, meeting_id, order):
+                """Extract text from PDF bytes and insert into mp_documents."""
+                extracted_text = ''
+                page_count = None
+                try:
+                    reader = PdfReader(io.BytesIO(pdf_bytes))
+                    pages = []
+                    for page in reader.pages:
+                        t = page.extract_text()
+                        if t:
+                            pages.append(t)
+                    extracted_text = '\n\n'.join(pages)
+                    page_count = len(reader.pages)
+                except Exception as ex:
+                    print(f"PDF extraction error for {filename}: {ex}")
 
-        def import_pdf(pdf_bytes, filename, doc_date, cur, meeting_id, order):
-            """Extract text from PDF bytes and insert into mp_documents."""
-            extracted_text = ''
-            page_count = None
-            try:
-                reader = PdfReader(io.BytesIO(pdf_bytes))
-                pages = []
-                for page in reader.pages:
-                    t = page.extract_text()
-                    if t:
-                        pages.append(t)
-                extracted_text = '\n\n'.join(pages)
-                page_count = len(reader.pages)
-            except Exception as ex:
-                print(f"PDF extraction error for {filename}: {ex}")
+                doc_type = classify_mp_document(filename, extracted_text)
+                token_estimate = len(extracted_text) // 4 if extracted_text else 0
+                file_size = len(pdf_bytes)
 
-            doc_type = classify_mp_document(filename, extracted_text)
-            token_estimate = len(extracted_text) // 4 if extracted_text else 0
-            file_size = len(pdf_bytes)
+                cur.execute('''
+                    INSERT INTO mp_documents (meeting_id, filename, file_data, doc_type, doc_date,
+                        page_count, token_estimate, extracted_text, upload_order, file_size)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id, filename, doc_type, doc_date, page_count, token_estimate, upload_order, file_size, created_at
+                ''', (meeting_id, filename, '', doc_type, doc_date,
+                      page_count, token_estimate, extracted_text, order, file_size))
+                row = dict(cur.fetchone())
+                row['created_at'] = row['created_at'].isoformat() if row['created_at'] else None
+                return row
 
-            cur.execute('''
-                INSERT INTO mp_documents (meeting_id, filename, file_data, doc_type, doc_date,
-                    page_count, token_estimate, extracted_text, upload_order, file_size)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id, filename, doc_type, doc_date, page_count, token_estimate, upload_order, file_size, created_at
-            ''', (meeting_id, filename, '', doc_type, doc_date,
-                  page_count, token_estimate, extracted_text, order, file_size))
-            row = dict(cur.fetchone())
-            row['created_at'] = row['created_at'].isoformat() if row['created_at'] else None
-            return row
+            results = []
+            for file_info in files_to_import:
+                file_id = file_info.get('id')
+                filename = file_info.get('name', 'unknown')
+                mime_type = file_info.get('mimeType', '')
+                doc_date = file_info.get('modifiedTime', '')[:10] if file_info.get('modifiedTime') else None
 
-        results = []
-        for file_info in files_to_import:
-            file_id = file_info.get('id')
-            filename = file_info.get('name', 'unknown')
-            mime_type = file_info.get('mimeType', '')
-            doc_date = file_info.get('modifiedTime', '')[:10] if file_info.get('modifiedTime') else None
+                try:
+                    # Download file content via REST API
+                    if mime_type in ('application/vnd.google-apps.document', 'application/vnd.google-apps.spreadsheet'):
+                        dl_resp = http_requests.get(f'{drive_api}/{file_id}/export', headers=headers, params={'mimeType': 'application/pdf'})
+                    else:
+                        dl_resp = http_requests.get(f'{drive_api}/{file_id}', headers=headers, params={'alt': 'media'})
+                    dl_resp.raise_for_status()
+                    file_content = dl_resp.content
 
-            try:
-                # Download file content via REST API
-                if mime_type in ('application/vnd.google-apps.document', 'application/vnd.google-apps.spreadsheet'):
-                    dl_resp = http_requests.get(f'{drive_api}/{file_id}/export', headers=headers, params={'mimeType': 'application/pdf'})
-                else:
-                    dl_resp = http_requests.get(f'{drive_api}/{file_id}', headers=headers, params={'alt': 'media'})
-                dl_resp.raise_for_status()
-                file_content = dl_resp.content
+                    is_zip = (mime_type == 'application/zip' or
+                              mime_type == 'application/x-zip-compressed' or
+                              filename.lower().endswith('.zip'))
 
-                is_zip = (mime_type == 'application/zip' or
-                          mime_type == 'application/x-zip-compressed' or
-                          filename.lower().endswith('.zip'))
+                    if is_zip:
+                        # Extract selected (or all) PDFs from the zip file
+                        selected_pdfs = set(file_info.get('selectedPdfs', []))
+                        try:
+                            with zipfile.ZipFile(io.BytesIO(file_content)) as zf:
+                                pdf_names = [n for n in zf.namelist()
+                                             if n.lower().endswith('.pdf') and not n.startswith('__MACOSX')]
+                                if selected_pdfs:
+                                    pdf_names = [n for n in pdf_names if n in selected_pdfs]
+                                if not pdf_names:
+                                    results.append({'filename': filename, 'error': 'No matching PDF files found inside zip'})
+                                    continue
+                                for pdf_name in pdf_names:
+                                    order += 1
+                                    pdf_bytes = zf.read(pdf_name)
+                                    pdf_filename = pdf_name.split('/')[-1] if '/' in pdf_name else pdf_name
+                                    row = import_pdf(pdf_bytes, pdf_filename, doc_date, cur, meeting_id, order)
+                                    row['fromZip'] = filename
+                                    results.append(row)
+                        except zipfile.BadZipFile:
+                            results.append({'filename': filename, 'error': 'Invalid or corrupted zip file'})
+                    else:
+                        # Regular PDF file
+                        order += 1
+                        row = import_pdf(file_content, filename, doc_date, cur, meeting_id, order)
+                        results.append(row)
 
-                if is_zip:
-                    # Extract selected (or all) PDFs from the zip file
-                    selected_pdfs = set(file_info.get('selectedPdfs', []))
-                    try:
-                        with zipfile.ZipFile(io.BytesIO(file_content)) as zf:
-                            pdf_names = [n for n in zf.namelist()
-                                         if n.lower().endswith('.pdf') and not n.startswith('__MACOSX')]
-                            if selected_pdfs:
-                                pdf_names = [n for n in pdf_names if n in selected_pdfs]
-                            if not pdf_names:
-                                results.append({'filename': filename, 'error': 'No matching PDF files found inside zip'})
-                                continue
-                            for pdf_name in pdf_names:
-                                order += 1
-                                pdf_bytes = zf.read(pdf_name)
-                                pdf_filename = pdf_name.split('/')[-1] if '/' in pdf_name else pdf_name
-                                row = import_pdf(pdf_bytes, pdf_filename, doc_date, cur, meeting_id, order)
-                                row['fromZip'] = filename
-                                results.append(row)
-                    except zipfile.BadZipFile:
-                        results.append({'filename': filename, 'error': 'Invalid or corrupted zip file'})
-                else:
-                    # Regular PDF file
-                    order += 1
-                    row = import_pdf(file_content, filename, doc_date, cur, meeting_id, order)
-                    results.append(row)
-
-            except Exception as ex:
-                print(f"Error importing {filename}: {ex}")
-                results.append({'filename': filename, 'error': str(ex)})
-
-        conn.commit()
-        cur.close()
-        conn.close()
+                except Exception as ex:
+                    print(f"Error importing {filename}: {ex}")
+                    results.append({'filename': filename, 'error': str(ex)})
 
         return jsonify(results)
 
