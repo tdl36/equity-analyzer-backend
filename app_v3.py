@@ -11,6 +11,7 @@ import json
 import base64
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from psycopg2.pool import ThreadedConnectionPool
 from datetime import datetime
 import anthropic
 
@@ -30,25 +31,42 @@ ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
 # DATABASE CONNECTION
 # ============================================
 
-def get_db_connection():
-    """Get PostgreSQL database connection"""
+from contextlib import contextmanager
+
+# Connection pool — initialized lazily, one per Gunicorn worker process
+_pool = None
+
+def _get_database_url():
     database_url = os.environ.get('DATABASE_URL')
     if not database_url:
         raise Exception('DATABASE_URL environment variable not set')
-    
     # Render uses postgres:// but psycopg2 needs postgresql://
     if database_url.startswith('postgres://'):
         database_url = database_url.replace('postgres://', 'postgresql://', 1)
-    
-    conn = psycopg2.connect(database_url, cursor_factory=RealDictCursor)
-    return conn
+    return database_url
 
-from contextlib import contextmanager
+def _get_pool():
+    """Get or create the connection pool (thread-safe, lazy init)."""
+    global _pool
+    if _pool is None or _pool.closed:
+        # 3 workers × 2 threads = 6 handlers; pool up to 10 per worker
+        _pool = ThreadedConnectionPool(
+            minconn=2, maxconn=10,
+            dsn=_get_database_url(),
+            cursor_factory=RealDictCursor
+        )
+        print(f"DB connection pool created (min=2, max=10)")
+    return _pool
+
+def get_db_connection():
+    """Get a connection from the pool."""
+    return _get_pool().getconn()
 
 @contextmanager
 def get_db(commit=False):
-    """Context manager for database connections. Auto-closes on exit, optionally commits."""
-    conn = get_db_connection()
+    """Context manager for pooled database connections. Returns connection to pool on exit."""
+    pool = _get_pool()
+    conn = pool.getconn()
     cur = conn.cursor()
     try:
         yield conn, cur
@@ -59,7 +77,18 @@ def get_db(commit=False):
         raise
     finally:
         cur.close()
-        conn.close()
+        # Roll back any implicit transaction from reads before returning to pool
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        try:
+            if conn.closed:
+                pool.putconn(conn, close=True)
+            else:
+                pool.putconn(conn)
+        except Exception:
+            pass
 
 def init_db():
     """Initialize database tables"""
