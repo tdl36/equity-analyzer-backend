@@ -5064,7 +5064,37 @@ Regulatory, execution, or macro risks that could derail the thesis:
             };
 
             const generateSlideOutline = async () => {
-                // Open the source modal instead of generating directly
+                if (!slideSelectedProject || !slideSelectedProject.ticker) {
+                    alert('Project must have a ticker to generate outline from existing data.');
+                    return;
+                }
+                setSlideOutlineGenerating(true);
+                try {
+                    const res = await fetch(`${API_URL}/api/slides/generate-outline`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ticker: slideSelectedProject.ticker, source_type: 'ticker', apiKey: loadApiKeyFromStorage() || '' }),
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        const popRes = await fetch(`${API_URL}/api/slides/projects/${slideSelectedProject.id}/populate`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ slides: data.slides }),
+                        });
+                        if (popRes.ok) {
+                            loadSlideProject(slideSelectedProject.id);
+                            loadSlideProjects();
+                        }
+                    } else {
+                        const err = await res.json();
+                        alert(`Outline generation failed: ${err.error || 'Unknown error'}`);
+                    }
+                } catch (err) { console.error('Failed to generate outline:', err); alert('Outline generation failed'); }
+                setSlideOutlineGenerating(false);
+            };
+
+            const openOutlineSourceModal = () => {
                 if (!slideSelectedProject) return;
                 setOutlineSourceType(slideSelectedProject.ticker ? 'ticker' : 'custom');
                 setOutlineSelectedIds(new Set());
@@ -12452,10 +12482,17 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                         )}
                                         {slideSelectedProject && (
                                             <div className="flex gap-2 items-center flex-wrap">
-                                                {/* Generate Outline button - always available */}
-                                                <button onClick={generateSlideOutline} disabled={slideOutlineGenerating}
-                                                    className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 rounded-lg text-xs font-medium">
-                                                    {slideOutlineGenerating ? 'Generating Outline...' : 'Generate Outline'}
+                                                {/* Auto-Generate Outline from ticker data (original behavior) */}
+                                                {slideSelectedProject.ticker && (
+                                                    <button onClick={generateSlideOutline} disabled={slideOutlineGenerating}
+                                                        className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 rounded-lg text-xs font-medium">
+                                                        {slideOutlineGenerating ? 'Generating...' : 'Auto-Generate Outline'}
+                                                    </button>
+                                                )}
+                                                {/* Generate Outline from custom sources (modal) */}
+                                                <button onClick={openOutlineSourceModal} disabled={slideOutlineGenerating}
+                                                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg text-xs font-medium">
+                                                    Outline from Sources...
                                                 </button>
                                                 {/* Progress indicator during generation */}
                                                 {slideGenerating && slideGenProgress && (
@@ -12492,7 +12529,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setShowOutlineSourceModal(false)}>
                                             <div className="bg-slate-800 rounded-2xl border border-white/10 w-full max-w-2xl max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
                                                 <div className="p-4 border-b border-white/10 flex justify-between items-center">
-                                                    <h2 className="text-lg font-semibold">Generate Outline</h2>
+                                                    <h2 className="text-lg font-semibold">Generate Outline from Sources</h2>
                                                     <button onClick={() => setShowOutlineSourceModal(false)} className="text-slate-400 hover:text-white text-xl">&times;</button>
                                                 </div>
                                                 {/* Source Type Tabs */}
