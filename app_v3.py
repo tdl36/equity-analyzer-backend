@@ -4781,10 +4781,11 @@ def generate_one_slide(project_id, slide_num):
 
 @app.route('/api/slides/projects/<int:project_id>/generate', methods=['POST'])
 def generate_slides(project_id):
-    """Generate images for all changed slides (runs in background thread)."""
+    """Generate images for slides (all, changed-only, or specific slide_numbers)."""
     try:
         data = request.json or {}
         changed_only = data.get('changed_only', True)
+        slide_numbers = data.get('slide_numbers', None)  # optional list of specific slide numbers
         gemini_key = data.get('geminiApiKey', '') or os.environ.get('GEMINI_API_KEY', '') or os.environ.get('GOOGLE_API_KEY', '')
         if not gemini_key:
             return jsonify({'error': 'Gemini API key not configured. Add it in Settings.'}), 400
@@ -4797,14 +4798,22 @@ def generate_slides(project_id):
                         ('generating', datetime.utcnow(), project_id))
             conn.commit()
         import threading
-        def _generate_all(pid, theme, title, only_changed, api_key):
+        def _generate_all(pid, theme, title, only_changed, api_key, target_slides=None):
             import time
             try:
                 with get_db() as (conn, cur):
-                    cur.execute('SELECT * FROM slide_items WHERE project_id = %s ORDER BY slide_number', (pid,))
+                    if target_slides:
+                        placeholders = ','.join(['%s'] * len(target_slides))
+                        cur.execute(f'SELECT * FROM slide_items WHERE project_id = %s AND slide_number IN ({placeholders}) ORDER BY slide_number',
+                                    [pid] + list(target_slides))
+                    else:
+                        cur.execute('SELECT * FROM slide_items WHERE project_id = %s ORDER BY slide_number', (pid,))
                     slides = cur.fetchall()
-                    total = len(slides)
-                generated_count = 0
+                    # Get total slides in project for slide numbering
+                    cur.execute('SELECT COUNT(*) as cnt FROM slide_items WHERE project_id = %s', (pid,))
+                    total = cur.fetchone()['cnt']
+                # Build list of slides that actually need generation
+                to_generate = []
                 for slide in slides:
                     slide_data = {
                         'slide_number': slide['slide_number'],
@@ -4815,8 +4824,20 @@ def generate_slides(project_id):
                         'no_header': slide['no_header'],
                     }
                     current_hash = _compute_content_hash(slide_data)
-                    if only_changed and slide['content_hash'] == current_hash and slide['image_data']:
+                    if target_slides:
+                        # When specific slides requested, always generate them
+                        to_generate.append((slide, slide_data, current_hash))
+                    elif only_changed and slide['content_hash'] == current_hash and slide['image_data']:
                         continue
+                    else:
+                        to_generate.append((slide, slide_data, current_hash))
+                generated_count = 0
+                for idx, (slide, slide_data, current_hash) in enumerate(to_generate):
+                    # Update progress: store in project status as "generating:current:total"
+                    with get_db(commit=True) as (conn2, cur2):
+                        progress_status = f"generating:{idx+1}:{len(to_generate)}"
+                        cur2.execute('UPDATE slide_projects SET status = %s, updated_at = %s WHERE id = %s',
+                                    (progress_status, datetime.utcnow(), pid))
                     prompt = _build_slide_prompt(slide_data, theme, title, total)
                     image_b64 = _generate_slide_image(prompt, api_key=api_key)
                     if image_b64:
@@ -4838,7 +4859,7 @@ def generate_slides(project_id):
                                 ('error', datetime.utcnow(), pid))
         thread = threading.Thread(
             target=_generate_all,
-            args=(project_id, project['theme'], project['title'], changed_only, gemini_key),
+            args=(project_id, project['theme'], project['title'], changed_only, gemini_key, slide_numbers),
             daemon=True,
         )
         thread.start()
@@ -4899,85 +4920,157 @@ def export_slide_pdf(project_id):
 
 @app.route('/api/slides/generate-outline', methods=['POST'])
 def generate_slide_outline():
-    """Generate a slide outline from ticker data using LLM."""
+    """Generate a slide outline from various sources using LLM."""
     try:
         data = request.json
+        source_type = data.get('source_type', 'ticker')  # ticker | research | summary | meetingprep | custom
+        source_ids = data.get('source_ids', [])
+        custom_text = data.get('custom_text', '')
         ticker = data.get('ticker', '').upper()
-        if not ticker:
-            return jsonify({'error': 'Ticker is required'}), 400
-        # Pull existing data from stock_overviews and portfolio_analyses
-        overview_data = None
-        analysis_data = None
-        with get_db() as (conn, cur):
-            cur.execute('SELECT * FROM stock_overviews WHERE ticker = %s', (ticker,))
-            overview_row = cur.fetchone()
-            if overview_row:
-                overview_data = {
-                    'company_name': overview_row['company_name'],
-                    'company_overview': overview_row['company_overview'],
-                    'business_model': overview_row['business_model'],
-                    'business_mix': overview_row.get('business_mix', ''),
-                    'opportunities': overview_row['opportunities'],
-                    'risks': overview_row['risks'],
-                    'conclusion': overview_row['conclusion'],
-                }
-            cur.execute('SELECT * FROM portfolio_analyses WHERE ticker = %s', (ticker,))
-            analysis_row = cur.fetchone()
-            if analysis_row:
-                analysis_data = {
-                    'company': analysis_row['company'],
-                    'analysis': analysis_row['analysis'],
-                }
-        if not overview_data and not analysis_data:
-            return jsonify({'error': f'No existing data found for {ticker}. Create an overview or analysis first.'}), 404
-        company_name = (overview_data or {}).get('company_name', '') or (analysis_data or {}).get('company', ticker)
-        # Auto-detect theme from sector
-        sector = None
-        if analysis_data and analysis_data.get('analysis'):
-            a = analysis_data['analysis']
-            if isinstance(a, str):
-                try:
-                    a = json.loads(a)
-                except Exception:
-                    a = {}
-            sector = a.get('sector', '')
-        theme = SECTOR_THEME_MAP.get(sector, 'sketchnote')
-        # Build LLM prompt
-        context_parts = [f"Ticker: {ticker}", f"Company: {company_name}"]
-        if overview_data:
-            if overview_data.get('company_overview'):
-                context_parts.append(f"Company Overview:\n{overview_data['company_overview']}")
-            if overview_data.get('business_model'):
-                context_parts.append(f"Business Model:\n{overview_data['business_model']}")
-            if overview_data.get('business_mix'):
-                context_parts.append(f"Business Mix:\n{overview_data['business_mix']}")
-            if overview_data.get('opportunities'):
-                context_parts.append(f"Opportunities:\n{overview_data['opportunities']}")
-            if overview_data.get('risks'):
-                context_parts.append(f"Risks:\n{overview_data['risks']}")
-            if overview_data.get('conclusion'):
-                context_parts.append(f"Conclusion:\n{overview_data['conclusion']}")
-        if analysis_data and analysis_data.get('analysis'):
-            a = analysis_data['analysis']
-            if isinstance(a, dict):
-                context_parts.append(f"Investment Analysis:\n{json.dumps(a, indent=2)[:3000]}")
-        llm_prompt = f"""You are creating slide content for an equity research presentation about {ticker} ({company_name}).
 
-Based on this research data:
+        context_parts = []
+        company_name = ''
+        theme = 'sketchnote'
+        presentation_subject = ''
+
+        if source_type == 'ticker':
+            # Original behavior: pull from stock_overviews + portfolio_analyses
+            if not ticker:
+                return jsonify({'error': 'Ticker is required for ticker-based generation'}), 400
+            overview_data = None
+            analysis_data = None
+            with get_db() as (conn, cur):
+                cur.execute('SELECT * FROM stock_overviews WHERE ticker = %s', (ticker,))
+                overview_row = cur.fetchone()
+                if overview_row:
+                    overview_data = {
+                        'company_name': overview_row['company_name'],
+                        'company_overview': overview_row['company_overview'],
+                        'business_model': overview_row['business_model'],
+                        'business_mix': overview_row.get('business_mix', ''),
+                        'opportunities': overview_row['opportunities'],
+                        'risks': overview_row['risks'],
+                        'conclusion': overview_row['conclusion'],
+                    }
+                cur.execute('SELECT * FROM portfolio_analyses WHERE ticker = %s', (ticker,))
+                analysis_row = cur.fetchone()
+                if analysis_row:
+                    analysis_data = {
+                        'company': analysis_row['company'],
+                        'analysis': analysis_row['analysis'],
+                    }
+            if not overview_data and not analysis_data:
+                return jsonify({'error': f'No existing data found for {ticker}. Create an overview or analysis first.'}), 404
+            company_name = (overview_data or {}).get('company_name', '') or (analysis_data or {}).get('company', ticker)
+            presentation_subject = f"an equity research presentation about {ticker} ({company_name})"
+            # Auto-detect theme from sector
+            sector = None
+            if analysis_data and analysis_data.get('analysis'):
+                a = analysis_data['analysis']
+                if isinstance(a, str):
+                    try:
+                        a = json.loads(a)
+                    except Exception:
+                        a = {}
+                sector = a.get('sector', '')
+            theme = SECTOR_THEME_MAP.get(sector, 'sketchnote')
+            context_parts = [f"Ticker: {ticker}", f"Company: {company_name}"]
+            if overview_data:
+                for field in ['company_overview', 'business_model', 'business_mix', 'opportunities', 'risks', 'conclusion']:
+                    if overview_data.get(field):
+                        label = field.replace('_', ' ').title()
+                        context_parts.append(f"{label}:\n{overview_data[field]}")
+            if analysis_data and analysis_data.get('analysis'):
+                a = analysis_data['analysis']
+                if isinstance(a, dict):
+                    context_parts.append(f"Investment Analysis:\n{json.dumps(a, indent=2)[:3000]}")
+
+        elif source_type == 'research':
+            if not source_ids:
+                return jsonify({'error': 'Select at least one research document'}), 400
+            with get_db() as (conn, cur):
+                placeholders = ','.join(['%s'] * len(source_ids))
+                cur.execute(f'SELECT id, name, smart_name, content FROM research_documents WHERE id IN ({placeholders})', source_ids)
+                rows = cur.fetchall()
+            if not rows:
+                return jsonify({'error': 'No research documents found for the selected IDs'}), 404
+            presentation_subject = "a presentation based on the following research documents"
+            for row in rows:
+                doc_name = row['smart_name'] or row['name'] or f"Document {row['id']}"
+                content = (row['content'] or '')[:5000]
+                context_parts.append(f"Document: {doc_name}\n{content}")
+
+        elif source_type == 'summary':
+            if not source_ids:
+                return jsonify({'error': 'Select at least one meeting summary'}), 400
+            with get_db() as (conn, cur):
+                placeholders = ','.join(['%s'] * len(source_ids))
+                cur.execute(f'SELECT id, title, topic, raw_notes, summary FROM meeting_summaries WHERE id IN ({placeholders})', source_ids)
+                rows = cur.fetchall()
+            if not rows:
+                return jsonify({'error': 'No meeting summaries found for the selected IDs'}), 404
+            presentation_subject = "a presentation based on the following meeting notes and summaries"
+            for row in rows:
+                title = row['title'] or f"Summary {row['id']}"
+                context_parts.append(f"Meeting: {title}")
+                if row.get('topic'):
+                    context_parts.append(f"Topic: {row['topic']}")
+                if row.get('raw_notes'):
+                    context_parts.append(f"Notes:\n{row['raw_notes'][:3000]}")
+                if row.get('summary'):
+                    context_parts.append(f"Summary:\n{row['summary'][:3000]}")
+
+        elif source_type == 'meetingprep':
+            if not source_ids:
+                return jsonify({'error': 'Select at least one meeting prep session'}), 400
+            with get_db() as (conn, cur):
+                placeholders = ','.join(['%s'] * len(source_ids))
+                cur.execute(f'''SELECT m.id, m.notes, c.ticker, c.name as company_name, c.sector
+                               FROM mp_meetings m JOIN mp_companies c ON m.company_id = c.id
+                               WHERE m.id IN ({placeholders})''', source_ids)
+                meetings = cur.fetchall()
+                if not meetings:
+                    return jsonify({'error': 'No meeting prep sessions found for the selected IDs'}), 404
+                # Fetch documents for these meetings
+                cur.execute(f'SELECT meeting_id, filename, extracted_text FROM mp_documents WHERE meeting_id IN ({placeholders}) ORDER BY upload_order', source_ids)
+                docs = cur.fetchall()
+            presentation_subject = "a presentation based on meeting prep materials"
+            for meeting in meetings:
+                context_parts.append(f"Meeting Prep: {meeting['company_name']} ({meeting['ticker']})")
+                if meeting.get('notes'):
+                    context_parts.append(f"Meeting Notes:\n{meeting['notes'][:2000]}")
+                if meeting.get('sector'):
+                    theme = SECTOR_THEME_MAP.get(meeting['sector'], 'sketchnote')
+            for doc in docs:
+                if doc.get('extracted_text'):
+                    context_parts.append(f"Document ({doc['filename']}):\n{doc['extracted_text'][:3000]}")
+
+        elif source_type == 'custom':
+            if not custom_text.strip():
+                return jsonify({'error': 'Please provide text content'}), 400
+            presentation_subject = "a presentation based on the following content"
+            context_parts.append(custom_text[:10000])
+
+        else:
+            return jsonify({'error': f'Unknown source_type: {source_type}'}), 400
+
+        llm_prompt = f"""You are creating slide content for {presentation_subject}.
+
+Based on this source material:
 
 {chr(10).join(context_parts)}
 
-Generate a JSON array of slides for a comprehensive investment presentation. Each slide should have:
+Generate a JSON array of slides for a comprehensive presentation. Each slide should have:
 - slide_number (integer starting at 1)
 - title (string)
 - type (one of: title, toc, section_divider, content, closing)
-- content (detailed text describing what should appear on the slide - include specific data, numbers, quotes from the research)
+- content (detailed text describing what should appear on the slide - include specific data, numbers, quotes from the source material)
 - illustration_hints (array of strings like "company", "growth", "money", "risk", "data", "leader", "opportunity")
 - no_header (boolean - true only for title, section_divider, and closing slides)
 
-Structure: title slide, table of contents, then 5-7 sections covering company overview, business segments, financial performance, recent news/issues, competitive landscape, industry outlook, and investment conclusion. Each section should have a section divider slide followed by 2-4 content slides. End with a closing slide. Target 30-40 slides total.
+Structure: title slide, table of contents, then 5-7 sections covering the key themes from the source material. Each section should have a section divider slide followed by 2-4 content slides. End with a closing slide. Target 30-40 slides total.
 
-IMPORTANT: Fill in actual data, numbers, and specific details from the research. Do NOT use placeholder brackets like [Company Name] - use the real company name and real data.
+IMPORTANT: Fill in actual data, numbers, and specific details from the source material. Do NOT use placeholder brackets like [Company Name] - use real names and real data from the content provided.
 
 Return ONLY valid JSON array, no markdown fencing."""
 
@@ -5039,6 +5132,78 @@ def populate_slides(project_id):
     except Exception as e:
         print(f"Error populating slides: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+# ============================================
+# SLIDE SOURCE LISTING ENDPOINTS
+# ============================================
+
+@app.route('/api/slides/sources/research', methods=['GET'])
+def slide_sources_research():
+    """List research documents for slide outline source selection."""
+    try:
+        with get_db() as (_, cur):
+            cur.execute('SELECT id, name, smart_name, category_id, doc_type, published_date, LEFT(content, 200) as snippet, created_at FROM research_documents ORDER BY created_at DESC')
+            rows = cur.fetchall()
+        return jsonify([{
+            'id': row['id'],
+            'name': row['smart_name'] or row['name'] or f"Document {row['id']}",
+            'category': row['category_id'],
+            'doc_type': row.get('doc_type') or 'other',
+            'date': row['published_date'] or (row['created_at'].isoformat() if row['created_at'] else None),
+            'snippet': (row['snippet'] or '')[:150] + ('...' if row.get('snippet') and len(row['snippet']) > 150 else ''),
+        } for row in rows])
+    except Exception as e:
+        print(f"Error listing research sources: {e}")
+        return jsonify([])
+
+
+@app.route('/api/slides/sources/summaries', methods=['GET'])
+def slide_sources_summaries():
+    """List meeting summaries for slide outline source selection."""
+    try:
+        with get_db() as (_, cur):
+            cur.execute('SELECT id, title, topic, topic_type, LEFT(summary, 200) as snippet, created_at FROM meeting_summaries ORDER BY created_at DESC')
+            rows = cur.fetchall()
+        return jsonify([{
+            'id': row['id'],
+            'name': row['title'] or f"Summary {row['id']}",
+            'topic': row.get('topic') or 'General',
+            'topic_type': row.get('topic_type') or 'other',
+            'date': row['created_at'].isoformat() if row['created_at'] else None,
+            'snippet': (row['snippet'] or '')[:150] + ('...' if row.get('snippet') and len(row['snippet']) > 150 else ''),
+        } for row in rows])
+    except Exception as e:
+        print(f"Error listing summary sources: {e}")
+        return jsonify([])
+
+
+@app.route('/api/slides/sources/meetingprep', methods=['GET'])
+def slide_sources_meetingprep():
+    """List meeting prep sessions for slide outline source selection."""
+    try:
+        with get_db() as (_, cur):
+            cur.execute('''
+                SELECT m.id, m.meeting_date, m.meeting_type, m.status, m.notes,
+                       c.ticker, c.name as company_name, c.sector,
+                       (SELECT COUNT(*) FROM mp_documents WHERE meeting_id = m.id) as doc_count
+                FROM mp_meetings m
+                JOIN mp_companies c ON m.company_id = c.id
+                ORDER BY m.created_at DESC
+            ''')
+            rows = cur.fetchall()
+        return jsonify([{
+            'id': row['id'],
+            'name': f"{row['company_name']} ({row['ticker']})" + (f" - {row['meeting_type']}" if row.get('meeting_type') else ''),
+            'ticker': row['ticker'],
+            'company_name': row['company_name'],
+            'date': str(row['meeting_date']) if row['meeting_date'] else None,
+            'doc_count': row['doc_count'],
+            'snippet': (row['notes'] or '')[:150] + ('...' if row.get('notes') and len(row['notes']) > 150 else ''),
+        } for row in rows])
+    except Exception as e:
+        print(f"Error listing meeting prep sources: {e}")
+        return jsonify([])
 
 
 # ============================================
