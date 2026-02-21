@@ -4975,9 +4975,9 @@ IMPORTANT: Fill in actual data, numbers, and specific details from the research.
 Return ONLY valid JSON array, no markdown fencing."""
 
         # Call Claude for outline generation
-        api_key = os.environ.get('ANTHROPIC_API_KEY', '')
+        api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('apiKey', '') or data.get('api_key', '')
         if not api_key:
-            return jsonify({'error': 'ANTHROPIC_API_KEY not configured'}), 500
+            return jsonify({'error': 'Anthropic API key not configured. Add it in Settings.'}), 500
         client_ai = anthropic.Anthropic(api_key=api_key)
         response = client_ai.messages.create(
             model="claude-sonnet-4-20250514",

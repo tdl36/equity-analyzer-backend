@@ -5027,7 +5027,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     const res = await fetch(`${API_URL}/api/slides/generate-outline`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ ticker: slideSelectedProject.ticker }),
+                        body: JSON.stringify({ ticker: slideSelectedProject.ticker, apiKey: loadApiKeyFromStorage() || '' }),
                     });
                     if (res.ok) {
                         const data = await res.json();

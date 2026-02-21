@@ -1,0 +1,9 @@
+{
+  "name": "equity-analyzer",
+  "compatibility_date": "2026-02-21",
+  "main": "worker.js",
+  "assets": {
+    "directory": ".",
+    "exclude": [".git", ".claude", ".wrangler", "EXAMPLE", "*.py", "*.sh", "*.txt", "Procfile", "wrangler.jsonc", "worker.js", "*_backup*"]
+  }
+}
