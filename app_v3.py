@@ -4741,6 +4741,10 @@ def delete_slide_item(project_id, slide_num):
 def generate_one_slide(project_id, slide_num):
     """Generate image for a single slide."""
     try:
+        data = request.json or {}
+        gemini_key = data.get('geminiApiKey', '') or os.environ.get('GEMINI_API_KEY', '') or os.environ.get('GOOGLE_API_KEY', '')
+        if not gemini_key:
+            return jsonify({'error': 'Gemini API key not configured. Add it in Settings.'}), 400
         with get_db() as (conn, cur):
             cur.execute('SELECT * FROM slide_projects WHERE id = %s', (project_id,))
             project = cur.fetchone()
@@ -4760,7 +4764,7 @@ def generate_one_slide(project_id, slide_num):
             'no_header': slide['no_header'],
         }
         prompt = _build_slide_prompt(slide_data, project['theme'], project['title'], total)
-        image_b64 = _generate_slide_image(prompt)
+        image_b64 = _generate_slide_image(prompt, api_key=gemini_key)
         if not image_b64:
             return jsonify({'error': 'Failed to generate image'}), 500
         content_hash = _compute_content_hash(slide_data)
@@ -4781,6 +4785,9 @@ def generate_slides(project_id):
     try:
         data = request.json or {}
         changed_only = data.get('changed_only', True)
+        gemini_key = data.get('geminiApiKey', '') or os.environ.get('GEMINI_API_KEY', '') or os.environ.get('GOOGLE_API_KEY', '')
+        if not gemini_key:
+            return jsonify({'error': 'Gemini API key not configured. Add it in Settings.'}), 400
         with get_db() as (conn, cur):
             cur.execute('SELECT * FROM slide_projects WHERE id = %s', (project_id,))
             project = cur.fetchone()
@@ -4790,7 +4797,7 @@ def generate_slides(project_id):
                         ('generating', datetime.utcnow(), project_id))
             conn.commit()
         import threading
-        def _generate_all(pid, theme, title, only_changed):
+        def _generate_all(pid, theme, title, only_changed, api_key):
             import time
             try:
                 with get_db() as (conn, cur):
@@ -4811,7 +4818,7 @@ def generate_slides(project_id):
                     if only_changed and slide['content_hash'] == current_hash and slide['image_data']:
                         continue
                     prompt = _build_slide_prompt(slide_data, theme, title, total)
-                    image_b64 = _generate_slide_image(prompt)
+                    image_b64 = _generate_slide_image(prompt, api_key=api_key)
                     if image_b64:
                         with get_db(commit=True) as (conn2, cur2):
                             cur2.execute('''
@@ -4831,7 +4838,7 @@ def generate_slides(project_id):
                                 ('error', datetime.utcnow(), pid))
         thread = threading.Thread(
             target=_generate_all,
-            args=(project_id, project['theme'], project['title'], changed_only),
+            args=(project_id, project['theme'], project['title'], changed_only, gemini_key),
             daemon=True,
         )
         thread.start()

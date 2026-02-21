@@ -4958,7 +4958,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 if (!slideSelectedProject) return;
                 setSlideGeneratingNum(slideNum);
                 try {
-                    const res = await fetch(`${API_URL}/api/slides/projects/${slideSelectedProject.id}/generate/${slideNum}`, { method: 'POST' });
+                    const res = await fetch(`${API_URL}/api/slides/projects/${slideSelectedProject.id}/generate/${slideNum}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ geminiApiKey: loadGeminiKeyFromStorage() || '' }),
+                    });
                     if (res.ok) {
                         loadSlideProject(slideSelectedProject.id);
                         if (slideSelectedSlide && slideSelectedSlide.slide_number === slideNum) {
@@ -4979,7 +4983,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     const res = await fetch(`${API_URL}/api/slides/projects/${slideSelectedProject.id}/generate`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ changed_only: true }),
+                        body: JSON.stringify({ changed_only: true, geminiApiKey: loadGeminiKeyFromStorage() || '' }),
                     });
                     if (res.ok) {
                         // Poll for completion
