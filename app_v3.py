@@ -3,7 +3,7 @@ TDL Equity Analyzer - Backend API with PostgreSQL
 Cross-device sync for portfolio analyses and overviews
 """
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 import requests
 import os
@@ -747,6 +747,64 @@ def init_db():
             ''')
             cur.execute('CREATE INDEX IF NOT EXISTS idx_slide_items_project ON slide_items(project_id)')
             cur.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_slide_items_project_num ON slide_items(project_id, slide_number)')
+
+            # ============================================
+            # STUDIO TABLES
+            # ============================================
+
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS studio_design_themes (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    description TEXT,
+                    style_prompt TEXT NOT NULL,
+                    preview_image TEXT,
+                    is_default BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS studio_outputs (
+                    id SERIAL PRIMARY KEY,
+                    title VARCHAR(500) NOT NULL,
+                    type VARCHAR(30) NOT NULL,
+                    status VARCHAR(50) DEFAULT 'pending',
+                    theme_id INTEGER REFERENCES studio_design_themes(id) ON DELETE SET NULL,
+                    source_config JSONB DEFAULT '{}',
+                    settings JSONB DEFAULT '{}',
+                    content JSONB DEFAULT '{}',
+                    image_data TEXT,
+                    progress_current INTEGER DEFAULT 0,
+                    progress_total INTEGER DEFAULT 0,
+                    error_message TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS studio_slide_images (
+                    id SERIAL PRIMARY KEY,
+                    output_id INTEGER REFERENCES studio_outputs(id) ON DELETE CASCADE,
+                    slide_number INTEGER NOT NULL,
+                    image_data TEXT,
+                    content_hash VARCHAR(64),
+                    status VARCHAR(20) DEFAULT 'new',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_studio_slide_images_output ON studio_slide_images(output_id)')
+
+            # Seed default studio themes from SLIDE_THEMES if table is empty
+            cur.execute('SELECT COUNT(*) as cnt FROM studio_design_themes')
+            if cur.fetchone()['cnt'] == 0:
+                for key, theme in SLIDE_THEMES.items():
+                    cur.execute('''
+                        INSERT INTO studio_design_themes (name, description, style_prompt, is_default)
+                        VALUES (%s, %s, %s, %s)
+                    ''', (theme['name'], theme.get('illustration_guidance', ''), theme['style_prefix'], True))
 
         print("Database tables initialized")
     except Exception as e:
@@ -5204,6 +5262,787 @@ def slide_sources_meetingprep():
     except Exception as e:
         print(f"Error listing meeting prep sources: {e}")
         return jsonify([])
+
+
+# ============================================
+# STUDIO ENDPOINTS
+# ============================================
+
+def _gather_source_content(source_config):
+    """Gather source content for studio generation. Returns (context_text, metadata)."""
+    source_type = source_config.get('source_type', 'custom')
+    source_ids = source_config.get('source_ids', [])
+    custom_text = source_config.get('custom_text', '')
+    context_parts = []
+    metadata = {'source_type': source_type}
+
+    if source_type == 'research':
+        if source_ids:
+            with get_db() as (conn, cur):
+                placeholders = ','.join(['%s'] * len(source_ids))
+                cur.execute(f'SELECT id, name, smart_name, content FROM research_documents WHERE id IN ({placeholders})', source_ids)
+                rows = cur.fetchall()
+            for row in rows:
+                doc_name = row['smart_name'] or row['name'] or f"Document {row['id']}"
+                content = (row['content'] or '')[:5000]
+                context_parts.append(f"Document: {doc_name}\n{content}")
+
+    elif source_type == 'summary':
+        if source_ids:
+            with get_db() as (conn, cur):
+                placeholders = ','.join(['%s'] * len(source_ids))
+                cur.execute(f'SELECT id, title, topic, raw_notes, summary FROM meeting_summaries WHERE id IN ({placeholders})', source_ids)
+                rows = cur.fetchall()
+            for row in rows:
+                title = row['title'] or f"Summary {row['id']}"
+                context_parts.append(f"Meeting: {title}")
+                if row.get('topic'):
+                    context_parts.append(f"Topic: {row['topic']}")
+                if row.get('raw_notes'):
+                    context_parts.append(f"Notes:\n{row['raw_notes'][:3000]}")
+                if row.get('summary'):
+                    context_parts.append(f"Summary:\n{row['summary'][:3000]}")
+
+    elif source_type == 'meetingprep':
+        if source_ids:
+            with get_db() as (conn, cur):
+                placeholders = ','.join(['%s'] * len(source_ids))
+                cur.execute(f'''SELECT m.id, m.notes, c.ticker, c.name as company_name, c.sector
+                               FROM mp_meetings m JOIN mp_companies c ON m.company_id = c.id
+                               WHERE m.id IN ({placeholders})''', source_ids)
+                meetings = cur.fetchall()
+                cur.execute(f'SELECT meeting_id, filename, extracted_text FROM mp_documents WHERE meeting_id IN ({placeholders}) ORDER BY upload_order', source_ids)
+                docs = cur.fetchall()
+            for meeting in meetings:
+                context_parts.append(f"Meeting Prep: {meeting['company_name']} ({meeting['ticker']})")
+                if meeting.get('notes'):
+                    context_parts.append(f"Meeting Notes:\n{meeting['notes'][:2000]}")
+            for doc in docs:
+                if doc.get('extracted_text'):
+                    context_parts.append(f"Document ({doc['filename']}):\n{doc['extracted_text'][:3000]}")
+
+    elif source_type == 'custom':
+        if custom_text.strip():
+            context_parts.append(custom_text[:10000])
+
+    elif source_type == 'ticker':
+        ticker = source_config.get('ticker', '').upper()
+        if ticker:
+            with get_db() as (conn, cur):
+                cur.execute('SELECT * FROM stock_overviews WHERE ticker = %s', (ticker,))
+                overview_row = cur.fetchone()
+                cur.execute('SELECT * FROM portfolio_analyses WHERE ticker = %s', (ticker,))
+                analysis_row = cur.fetchone()
+            if overview_row:
+                for field in ['company_overview', 'business_model', 'business_mix', 'opportunities', 'risks', 'conclusion']:
+                    if overview_row.get(field):
+                        context_parts.append(f"{field.replace('_', ' ').title()}:\n{overview_row[field]}")
+            if analysis_row and analysis_row.get('analysis'):
+                a = analysis_row['analysis']
+                if isinstance(a, str):
+                    try: a = json.loads(a)
+                    except: a = {}
+                if isinstance(a, dict):
+                    context_parts.append(f"Investment Analysis:\n{json.dumps(a, indent=2)[:3000]}")
+
+    return '\n\n'.join(context_parts), metadata
+
+
+# --- Studio Theme CRUD ---
+
+@app.route('/api/studio/themes', methods=['GET'])
+def get_studio_themes():
+    try:
+        with get_db() as (_, cur):
+            cur.execute('SELECT id, name, description, style_prompt, is_default, preview_image IS NOT NULL as has_preview, created_at FROM studio_design_themes ORDER BY is_default DESC, name ASC')
+            rows = cur.fetchall()
+        return jsonify([dict(row) for row in rows])
+    except Exception as e:
+        print(f"Error listing studio themes: {e}")
+        return jsonify([])
+
+
+@app.route('/api/studio/themes', methods=['POST'])
+def create_studio_theme():
+    try:
+        data = request.json
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('''
+                INSERT INTO studio_design_themes (name, description, style_prompt)
+                VALUES (%s, %s, %s) RETURNING id
+            ''', (data['name'], data.get('description', ''), data['style_prompt']))
+            theme_id = cur.fetchone()['id']
+        return jsonify({'id': theme_id, 'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/studio/themes/<int:theme_id>', methods=['PUT'])
+def update_studio_theme(theme_id):
+    try:
+        data = request.json
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('''
+                UPDATE studio_design_themes SET name=%s, description=%s, style_prompt=%s, updated_at=%s
+                WHERE id=%s
+            ''', (data['name'], data.get('description', ''), data['style_prompt'], datetime.utcnow(), theme_id))
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/studio/themes/<int:theme_id>', methods=['DELETE'])
+def delete_studio_theme(theme_id):
+    try:
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('SELECT is_default FROM studio_design_themes WHERE id=%s', (theme_id,))
+            row = cur.fetchone()
+            if row and row['is_default']:
+                return jsonify({'error': 'Cannot delete default themes'}), 400
+            cur.execute('DELETE FROM studio_design_themes WHERE id=%s AND is_default=FALSE', (theme_id,))
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/studio/themes/<int:theme_id>/preview', methods=['POST'])
+def generate_studio_theme_preview(theme_id):
+    try:
+        data = request.json or {}
+        gemini_key = data.get('geminiApiKey') or os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY', '')
+        with get_db() as (_, cur):
+            cur.execute('SELECT style_prompt, name FROM studio_design_themes WHERE id=%s', (theme_id,))
+            theme = cur.fetchone()
+        if not theme:
+            return jsonify({'error': 'Theme not found'}), 404
+        prompt = f"Generate a sample presentation slide preview showcasing this visual style:\n\n{theme['style_prompt']}\n\nCreate a sample slide with the title '{theme['name']} Theme Preview' and some placeholder content demonstrating the visual style."
+        image_data = _generate_slide_image(prompt, api_key=gemini_key)
+        if image_data:
+            with get_db(commit=True) as (conn, cur):
+                cur.execute('UPDATE studio_design_themes SET preview_image=%s, updated_at=%s WHERE id=%s', (image_data, datetime.utcnow(), theme_id))
+            return jsonify({'success': True})
+        return jsonify({'error': 'Failed to generate preview image'}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# --- Studio Output CRUD ---
+
+@app.route('/api/studio/outputs', methods=['GET'])
+def get_studio_outputs():
+    try:
+        type_filter = request.args.get('type')
+        with get_db() as (_, cur):
+            query = 'SELECT id, title, type, status, theme_id, source_config, settings, progress_current, progress_total, error_message, created_at, updated_at FROM studio_outputs'
+            params = []
+            if type_filter:
+                query += ' WHERE type = %s'
+                params.append(type_filter)
+            query += ' ORDER BY created_at DESC'
+            cur.execute(query, params)
+            rows = cur.fetchall()
+        return jsonify([dict(row) for row in rows])
+    except Exception as e:
+        print(f"Error listing studio outputs: {e}")
+        return jsonify([])
+
+
+@app.route('/api/studio/outputs', methods=['POST'])
+def create_studio_output():
+    try:
+        data = request.json
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('''
+                INSERT INTO studio_outputs (title, type, source_config, settings, theme_id)
+                VALUES (%s, %s, %s, %s, %s) RETURNING id
+            ''', (
+                data['title'], data['type'],
+                json.dumps(data.get('source_config', {})),
+                json.dumps(data.get('settings', {})),
+                data.get('theme_id')
+            ))
+            output_id = cur.fetchone()['id']
+        return jsonify({'id': output_id, 'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/studio/outputs/<int:output_id>', methods=['GET'])
+def get_studio_output(output_id):
+    try:
+        with get_db() as (_, cur):
+            cur.execute('SELECT * FROM studio_outputs WHERE id=%s', (output_id,))
+            row = cur.fetchone()
+            if not row:
+                return jsonify({'error': 'Output not found'}), 404
+            result = dict(row)
+            # Don't send image_data in the main response (it's large)
+            result['image_data'] = None
+            result['has_image'] = row['image_data'] is not None
+            # For slides, get slide images metadata
+            if row['type'] == 'slides':
+                cur.execute('SELECT id, slide_number, status, content_hash, image_data IS NOT NULL as has_image FROM studio_slide_images WHERE output_id=%s ORDER BY slide_number', (output_id,))
+                result['slide_images'] = [dict(si) for si in cur.fetchall()]
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/studio/outputs/<int:output_id>/image', methods=['GET'])
+def get_studio_output_image(output_id):
+    try:
+        slide_num = request.args.get('slide', type=int)
+        with get_db() as (_, cur):
+            if slide_num is not None:
+                cur.execute('SELECT image_data FROM studio_slide_images WHERE output_id=%s AND slide_number=%s', (output_id, slide_num))
+            else:
+                cur.execute('SELECT image_data FROM studio_outputs WHERE id=%s', (output_id,))
+            row = cur.fetchone()
+        if row and row['image_data']:
+            return jsonify({'image_data': row['image_data']})
+        return jsonify({'image_data': None}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/studio/outputs/<int:output_id>', methods=['DELETE'])
+def delete_studio_output(output_id):
+    try:
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('DELETE FROM studio_outputs WHERE id=%s', (output_id,))
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# --- Studio Generation ---
+
+def _generate_studio_slides(output_id, source_content, settings, api_keys):
+    """Generate slides (outline + images) in background thread."""
+    import time
+    try:
+        slide_count = settings.get('slide_count', 30)
+        theme_name = settings.get('theme_name', 'sketchnote')
+
+        with get_db(commit=True) as (conn, cur):
+            cur.execute("UPDATE studio_outputs SET status='generating', progress_current=0, progress_total=%s, updated_at=%s WHERE id=%s",
+                        (slide_count, datetime.utcnow(), output_id))
+
+        # Phase 1: Generate outline
+        llm_prompt = f"""You are creating slide content for a presentation.
+
+Based on this source material:
+
+{source_content}
+
+Generate a JSON array of exactly {slide_count} slides for a comprehensive presentation. Each slide should have:
+- slide_number (integer starting at 1)
+- title (string)
+- type (one of: title, toc, section_divider, content, closing)
+- content (detailed text describing what should appear on the slide - include specific data, numbers, quotes from the source material)
+- illustration_hints (array of strings like "company", "growth", "money", "risk", "data", "leader", "opportunity")
+- no_header (boolean - true only for title, section_divider, and closing slides)
+
+Structure: title slide, table of contents, then 5-7 sections covering the key themes. Each section should have a section divider slide followed by 2-4 content slides. End with a closing slide.
+
+IMPORTANT: Fill in actual data and specific details from the source material. Do NOT use placeholder brackets.
+
+Return ONLY valid JSON array, no markdown fencing."""
+
+        result = call_llm(
+            messages=[{"role": "user", "content": llm_prompt}],
+            tier="standard", max_tokens=8192,
+            anthropic_api_key=api_keys.get('anthropic', ''),
+            gemini_api_key=api_keys.get('gemini', ''),
+        )
+        response_text = result['text'].strip()
+        if response_text.startswith('```'):
+            response_text = response_text.split('\n', 1)[1].rsplit('```', 1)[0].strip()
+        slides_data = json.loads(response_text)
+
+        # Store outline in content
+        with get_db(commit=True) as (conn, cur):
+            cur.execute("UPDATE studio_outputs SET content=%s, progress_total=%s, updated_at=%s WHERE id=%s",
+                        (json.dumps({'slides': slides_data, 'theme_name': theme_name}), len(slides_data), datetime.utcnow(), output_id))
+            # Create slide image records
+            for s in slides_data:
+                content_hash = _compute_content_hash(s)
+                cur.execute('''
+                    INSERT INTO studio_slide_images (output_id, slide_number, content_hash, status)
+                    VALUES (%s, %s, %s, 'new')
+                ''', (output_id, s['slide_number'], content_hash))
+
+        # Phase 2: Generate images
+        gemini_key = api_keys.get('gemini', '')
+        for i, slide in enumerate(slides_data):
+            prompt = _build_slide_prompt(slide, theme_name, '', len(slides_data))
+            image_data = _generate_slide_image(prompt, api_key=gemini_key)
+            with get_db(commit=True) as (conn, cur):
+                if image_data:
+                    cur.execute("UPDATE studio_slide_images SET image_data=%s, status='done' WHERE output_id=%s AND slide_number=%s",
+                                (image_data, output_id, slide['slide_number']))
+                else:
+                    cur.execute("UPDATE studio_slide_images SET status='error' WHERE output_id=%s AND slide_number=%s",
+                                (output_id, slide['slide_number']))
+                cur.execute("UPDATE studio_outputs SET progress_current=%s, status=%s, updated_at=%s WHERE id=%s",
+                            (i + 1, f"generating:{i+1}:{len(slides_data)}", datetime.utcnow(), output_id))
+            time.sleep(2)
+
+        with get_db(commit=True) as (conn, cur):
+            cur.execute("UPDATE studio_outputs SET status='ready', updated_at=%s WHERE id=%s", (datetime.utcnow(), output_id))
+
+    except Exception as e:
+        print(f"Studio slides generation error: {e}")
+        with get_db(commit=True) as (conn, cur):
+            cur.execute("UPDATE studio_outputs SET status='error', error_message=%s, updated_at=%s WHERE id=%s",
+                        (str(e), datetime.utcnow(), output_id))
+
+
+def _generate_studio_infographic(output_id, source_content, settings, api_keys):
+    """Generate an infographic image."""
+    try:
+        orientation = settings.get('orientation', 'landscape')
+        aspect_map = {'landscape': '16:9', 'portrait': '9:16', 'square': '1:1'}
+        aspect = aspect_map.get(orientation, '16:9')
+
+        with get_db(commit=True) as (conn, cur):
+            cur.execute("UPDATE studio_outputs SET status='generating', updated_at=%s WHERE id=%s", (datetime.utcnow(), output_id))
+
+        # Get summary points from LLM
+        result = call_llm(
+            messages=[{"role": "user", "content": f"Summarize the following content into key data points, statistics, and insights suitable for an infographic. Format as a clear, visual-friendly summary:\n\n{source_content[:6000]}"}],
+            tier="standard", max_tokens=2048,
+            anthropic_api_key=api_keys.get('anthropic', ''),
+            gemini_api_key=api_keys.get('gemini', ''),
+        )
+        summary = result['text'].strip()
+
+        # Get theme style
+        theme_style = ''
+        with get_db() as (_, cur):
+            cur.execute('SELECT so.theme_id, sdt.style_prompt FROM studio_outputs so LEFT JOIN studio_design_themes sdt ON so.theme_id = sdt.id WHERE so.id=%s', (output_id,))
+            row = cur.fetchone()
+            if row and row.get('style_prompt'):
+                theme_style = row['style_prompt']
+
+        prompt = f"""Create a beautiful, professional infographic image.
+
+{f'VISUAL STYLE: {theme_style}' if theme_style else 'VISUAL STYLE: Clean, modern infographic with vibrant colors, clear hierarchy, and professional typography.'}
+
+Aspect ratio: {aspect}
+
+CONTENT TO VISUALIZE:
+{summary}
+
+Create a visually stunning infographic that presents this information clearly with:
+- A compelling title at the top
+- Key statistics highlighted in large, bold numbers
+- Clear sections with icons and illustrations
+- A logical flow from top to bottom
+- Professional color scheme
+ALL text MUST be in English."""
+
+        gemini_key = api_keys.get('gemini', '')
+        key = gemini_key or os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY', '')
+        client = genai.Client(api_key=key)
+        image_data = None
+        for attempt in range(3):
+            try:
+                response = client.models.generate_content(
+                    model="gemini-3-pro-image-preview",
+                    contents=prompt,
+                    config=genai_types.GenerateContentConfig(
+                        response_modalities=["TEXT", "IMAGE"],
+                        image_config=genai_types.ImageConfig(aspect_ratio=aspect),
+                    ),
+                )
+                for part in response.candidates[0].content.parts:
+                    if hasattr(part, "inline_data") and part.inline_data is not None:
+                        image_data = base64.b64encode(part.inline_data.data).decode('utf-8')
+                        break
+                if image_data:
+                    break
+            except Exception as e:
+                print(f"Infographic attempt {attempt+1} failed: {e}")
+                import time; time.sleep((attempt + 1) * 5)
+
+        with get_db(commit=True) as (conn, cur):
+            if image_data:
+                cur.execute("UPDATE studio_outputs SET status='ready', image_data=%s, content=%s, updated_at=%s WHERE id=%s",
+                            (image_data, json.dumps({'orientation': orientation, 'prompt_used': prompt[:500], 'description': summary[:1000]}), datetime.utcnow(), output_id))
+            else:
+                cur.execute("UPDATE studio_outputs SET status='error', error_message='Failed to generate infographic image', updated_at=%s WHERE id=%s",
+                            (datetime.utcnow(), output_id))
+
+    except Exception as e:
+        print(f"Studio infographic error: {e}")
+        with get_db(commit=True) as (conn, cur):
+            cur.execute("UPDATE studio_outputs SET status='error', error_message=%s, updated_at=%s WHERE id=%s",
+                        (str(e), datetime.utcnow(), output_id))
+
+
+def _generate_studio_mindmap(output_id, source_content, settings, api_keys):
+    """Generate a mind map JSON structure."""
+    try:
+        with get_db(commit=True) as (conn, cur):
+            cur.execute("UPDATE studio_outputs SET status='generating', updated_at=%s WHERE id=%s", (datetime.utcnow(), output_id))
+
+        result = call_llm(
+            messages=[{"role": "user", "content": f"""Analyze the following content and create a hierarchical mind map structure.
+
+Return a JSON object with this exact structure:
+{{
+  "root": {{
+    "label": "Main Topic",
+    "children": [
+      {{
+        "label": "Branch 1",
+        "children": [
+          {{ "label": "Sub-topic 1.1", "children": [] }},
+          {{ "label": "Sub-topic 1.2", "children": [] }}
+        ]
+      }},
+      {{
+        "label": "Branch 2",
+        "children": [...]
+      }}
+    ]
+  }}
+}}
+
+Create 4-7 main branches, each with 2-5 sub-topics. Sub-topics can have their own children (up to 3 levels deep).
+Use concise, descriptive labels (3-8 words each).
+
+SOURCE CONTENT:
+{source_content[:6000]}
+
+Return ONLY valid JSON, no markdown fencing."""}],
+            tier="standard", max_tokens=4096,
+            anthropic_api_key=api_keys.get('anthropic', ''),
+            gemini_api_key=api_keys.get('gemini', ''),
+        )
+        response_text = result['text'].strip()
+        if response_text.startswith('```'):
+            response_text = response_text.split('\n', 1)[1].rsplit('```', 1)[0].strip()
+        mindmap_data = json.loads(response_text)
+
+        with get_db(commit=True) as (conn, cur):
+            cur.execute("UPDATE studio_outputs SET status='ready', content=%s, updated_at=%s WHERE id=%s",
+                        (json.dumps(mindmap_data), datetime.utcnow(), output_id))
+
+    except Exception as e:
+        print(f"Studio mindmap error: {e}")
+        with get_db(commit=True) as (conn, cur):
+            cur.execute("UPDATE studio_outputs SET status='error', error_message=%s, updated_at=%s WHERE id=%s",
+                        (str(e), datetime.utcnow(), output_id))
+
+
+def _generate_studio_report(output_id, source_content, settings, api_keys):
+    """Generate a markdown report."""
+    try:
+        length = settings.get('length', 'standard')
+        length_guidance = {
+            'brief': 'Keep it concise, around 500-800 words. Focus on key takeaways.',
+            'standard': 'Write a thorough report, around 1500-2500 words with detailed analysis.',
+            'detailed': 'Write a comprehensive, in-depth report, around 3000-5000 words with exhaustive coverage.',
+        }
+
+        with get_db(commit=True) as (conn, cur):
+            cur.execute("UPDATE studio_outputs SET status='generating', updated_at=%s WHERE id=%s", (datetime.utcnow(), output_id))
+
+        result = call_llm(
+            messages=[{"role": "user", "content": f"""Write a professional report in Markdown format based on the following source material.
+
+{length_guidance.get(length, length_guidance['standard'])}
+
+Structure the report with:
+- A clear title (# heading)
+- Executive summary
+- Main sections with ## headings
+- Sub-sections with ### headings where needed
+- Key findings, data points, and analysis
+- Conclusion with actionable insights
+
+Use bullet points, bold text, and other markdown formatting for readability.
+Include specific numbers, quotes, and data from the source material.
+
+SOURCE MATERIAL:
+{source_content[:8000]}"""}],
+            tier="standard", max_tokens=8192,
+            anthropic_api_key=api_keys.get('anthropic', ''),
+            gemini_api_key=api_keys.get('gemini', ''),
+        )
+
+        with get_db(commit=True) as (conn, cur):
+            cur.execute("UPDATE studio_outputs SET status='ready', content=%s, updated_at=%s WHERE id=%s",
+                        (json.dumps({'markdown': result['text'].strip()}), datetime.utcnow(), output_id))
+
+    except Exception as e:
+        print(f"Studio report error: {e}")
+        with get_db(commit=True) as (conn, cur):
+            cur.execute("UPDATE studio_outputs SET status='error', error_message=%s, updated_at=%s WHERE id=%s",
+                        (str(e), datetime.utcnow(), output_id))
+
+
+def _generate_studio_quiz(output_id, source_content, settings, api_keys):
+    """Generate quiz questions."""
+    try:
+        question_count = settings.get('question_count', 10)
+        difficulty = settings.get('difficulty', 'medium')
+
+        with get_db(commit=True) as (conn, cur):
+            cur.execute("UPDATE studio_outputs SET status='generating', updated_at=%s WHERE id=%s", (datetime.utcnow(), output_id))
+
+        result = call_llm(
+            messages=[{"role": "user", "content": f"""Create {question_count} multiple-choice quiz questions based on the following content.
+Difficulty level: {difficulty}
+
+Return a JSON object with this structure:
+{{
+  "questions": [
+    {{
+      "id": 1,
+      "question": "What is...",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "correct": 0,
+      "explanation": "The correct answer is A because..."
+    }}
+  ]
+}}
+
+Rules:
+- Each question must have exactly 4 options
+- "correct" is the 0-based index of the correct answer
+- Include a brief explanation for each answer
+- Questions should test understanding, not just recall
+- Vary question types: factual, conceptual, analytical
+- Make incorrect options plausible but clearly wrong
+
+SOURCE CONTENT:
+{source_content[:6000]}
+
+Return ONLY valid JSON, no markdown fencing."""}],
+            tier="standard", max_tokens=4096,
+            anthropic_api_key=api_keys.get('anthropic', ''),
+            gemini_api_key=api_keys.get('gemini', ''),
+        )
+        response_text = result['text'].strip()
+        if response_text.startswith('```'):
+            response_text = response_text.split('\n', 1)[1].rsplit('```', 1)[0].strip()
+        quiz_data = json.loads(response_text)
+
+        with get_db(commit=True) as (conn, cur):
+            cur.execute("UPDATE studio_outputs SET status='ready', content=%s, updated_at=%s WHERE id=%s",
+                        (json.dumps(quiz_data), datetime.utcnow(), output_id))
+
+    except Exception as e:
+        print(f"Studio quiz error: {e}")
+        with get_db(commit=True) as (conn, cur):
+            cur.execute("UPDATE studio_outputs SET status='error', error_message=%s, updated_at=%s WHERE id=%s",
+                        (str(e), datetime.utcnow(), output_id))
+
+
+def _generate_studio_flashcard(output_id, source_content, settings, api_keys):
+    """Generate flashcards."""
+    try:
+        card_count = settings.get('card_count', 20)
+
+        with get_db(commit=True) as (conn, cur):
+            cur.execute("UPDATE studio_outputs SET status='generating', updated_at=%s WHERE id=%s", (datetime.utcnow(), output_id))
+
+        result = call_llm(
+            messages=[{"role": "user", "content": f"""Create {card_count} flashcards based on the following content.
+
+Return a JSON object with this structure:
+{{
+  "cards": [
+    {{
+      "id": 1,
+      "front": "Question or concept to remember",
+      "back": "Answer or explanation",
+      "category": "Topic Category"
+    }}
+  ]
+}}
+
+Rules:
+- Front should be a clear question or key term/concept
+- Back should be a concise but complete answer
+- Category should group related cards together
+- Cover the most important concepts from the material
+- Mix factual recall, definitions, and conceptual questions
+- Keep answers concise but informative
+
+SOURCE CONTENT:
+{source_content[:6000]}
+
+Return ONLY valid JSON, no markdown fencing."""}],
+            tier="standard", max_tokens=4096,
+            anthropic_api_key=api_keys.get('anthropic', ''),
+            gemini_api_key=api_keys.get('gemini', ''),
+        )
+        response_text = result['text'].strip()
+        if response_text.startswith('```'):
+            response_text = response_text.split('\n', 1)[1].rsplit('```', 1)[0].strip()
+        flashcard_data = json.loads(response_text)
+
+        with get_db(commit=True) as (conn, cur):
+            cur.execute("UPDATE studio_outputs SET status='ready', content=%s, updated_at=%s WHERE id=%s",
+                        (json.dumps(flashcard_data), datetime.utcnow(), output_id))
+
+    except Exception as e:
+        print(f"Studio flashcard error: {e}")
+        with get_db(commit=True) as (conn, cur):
+            cur.execute("UPDATE studio_outputs SET status='error', error_message=%s, updated_at=%s WHERE id=%s",
+                        (str(e), datetime.utcnow(), output_id))
+
+
+_STUDIO_GENERATORS = {
+    'slides': _generate_studio_slides,
+    'infographic': _generate_studio_infographic,
+    'mindmap': _generate_studio_mindmap,
+    'report': _generate_studio_report,
+    'quiz': _generate_studio_quiz,
+    'flashcard': _generate_studio_flashcard,
+}
+
+
+@app.route('/api/studio/outputs/<int:output_id>/generate', methods=['POST'])
+def generate_studio_output(output_id):
+    """Universal generation endpoint. Dispatches to type-specific generator in background thread."""
+    try:
+        data = request.json or {}
+        with get_db() as (_, cur):
+            cur.execute('SELECT * FROM studio_outputs WHERE id=%s', (output_id,))
+            output = cur.fetchone()
+        if not output:
+            return jsonify({'error': 'Output not found'}), 404
+
+        output_type = output['type']
+        generator = _STUDIO_GENERATORS.get(output_type)
+        if not generator:
+            return jsonify({'error': f'Unknown output type: {output_type}'}), 400
+
+        source_config = output['source_config'] if isinstance(output['source_config'], dict) else json.loads(output['source_config'] or '{}')
+        settings = output['settings'] if isinstance(output['settings'], dict) else json.loads(output['settings'] or '{}')
+        source_content, _ = _gather_source_content(source_config)
+        if not source_content.strip():
+            return jsonify({'error': 'No source content found. Please check your source selection.'}), 400
+
+        api_keys = {
+            'anthropic': data.get('apiKey', '') or os.environ.get('ANTHROPIC_API_KEY', ''),
+            'gemini': data.get('geminiApiKey', '') or os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY', ''),
+        }
+
+        import threading
+        thread = threading.Thread(target=generator, args=(output_id, source_content, settings, api_keys))
+        thread.daemon = True
+        thread.start()
+
+        return jsonify({'success': True, 'message': f'Generation started for {output_type}'})
+    except Exception as e:
+        print(f"Error starting studio generation: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/studio/outputs/<int:output_id>/regenerate-slide/<int:slide_num>', methods=['POST'])
+def regenerate_studio_slide(output_id, slide_num):
+    """Regenerate a single slide image with optional edit prompt."""
+    try:
+        data = request.json or {}
+        gemini_key = data.get('geminiApiKey', '') or os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY', '')
+        edit_prompt = data.get('edit_prompt', '')
+
+        with get_db() as (_, cur):
+            cur.execute('SELECT content FROM studio_outputs WHERE id=%s', (output_id,))
+            output = cur.fetchone()
+        if not output:
+            return jsonify({'error': 'Output not found'}), 404
+
+        content = output['content'] if isinstance(output['content'], dict) else json.loads(output['content'] or '{}')
+        slides = content.get('slides', [])
+        theme_name = content.get('theme_name', 'sketchnote')
+        slide_data = next((s for s in slides if s['slide_number'] == slide_num), None)
+        if not slide_data:
+            return jsonify({'error': f'Slide {slide_num} not found'}), 404
+
+        prompt = _build_slide_prompt(slide_data, theme_name, '', len(slides))
+        if edit_prompt:
+            prompt += f"\n\nADDITIONAL INSTRUCTIONS: {edit_prompt}"
+
+        image_data = _generate_slide_image(prompt, api_key=gemini_key)
+        if image_data:
+            with get_db(commit=True) as (conn, cur):
+                cur.execute("UPDATE studio_slide_images SET image_data=%s, status='done', content_hash=%s WHERE output_id=%s AND slide_number=%s",
+                            (_compute_content_hash(slide_data), image_data, output_id, slide_num))
+            return jsonify({'success': True, 'image_data': image_data})
+        return jsonify({'error': 'Failed to generate image'}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/studio/outputs/<int:output_id>/export', methods=['POST'])
+def export_studio_output(output_id):
+    """Export studio output as PDF or downloadable file."""
+    try:
+        data = request.json or {}
+        fmt = data.get('format', 'pdf')
+
+        with get_db() as (_, cur):
+            cur.execute('SELECT * FROM studio_outputs WHERE id=%s', (output_id,))
+            output = cur.fetchone()
+        if not output:
+            return jsonify({'error': 'Output not found'}), 404
+
+        content = output['content'] if isinstance(output['content'], dict) else json.loads(output['content'] or '{}')
+
+        if output['type'] == 'slides' and fmt == 'pdf':
+            with get_db() as (_, cur):
+                cur.execute('SELECT image_data FROM studio_slide_images WHERE output_id=%s AND image_data IS NOT NULL ORDER BY slide_number', (output_id,))
+                images = cur.fetchall()
+            if not images:
+                return jsonify({'error': 'No slide images available for export'}), 400
+            import img2pdf
+            from io import BytesIO
+            pdf_images = []
+            for img_row in images:
+                pdf_images.append(base64.b64decode(img_row['image_data']))
+            pdf_bytes = img2pdf.convert(pdf_images)
+            return Response(
+                pdf_bytes,
+                mimetype='application/pdf',
+                headers={'Content-Disposition': f'attachment; filename="{output["title"]}.pdf"'}
+            )
+
+        elif output['type'] == 'report':
+            markdown_text = content.get('markdown', '')
+            return Response(
+                markdown_text,
+                mimetype='text/markdown',
+                headers={'Content-Disposition': f'attachment; filename="{output["title"]}.md"'}
+            )
+
+        elif output['type'] == 'infographic':
+            if output['image_data']:
+                img_bytes = base64.b64decode(output['image_data'])
+                return Response(
+                    img_bytes,
+                    mimetype='image/png',
+                    headers={'Content-Disposition': f'attachment; filename="{output["title"]}.png"'}
+                )
+            return jsonify({'error': 'No image data available'}), 400
+
+        else:
+            # For quiz, flashcard, mindmap — export as JSON
+            return Response(
+                json.dumps(content, indent=2),
+                mimetype='application/json',
+                headers={'Content-Disposition': f'attachment; filename="{output["title"]}.json"'}
+            )
+
+    except Exception as e:
+        print(f"Export error: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 # ============================================

@@ -707,6 +707,12 @@ Regulatory, execution, or macro risks that could derail the thesis:
         const Repeat2 = ({className = "w-4 h-4"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path d="m2 9 3-3 3 3"/><path d="M13 18H7a2 2 0 0 1-2-2V6"/><path d="m22 15-3 3-3-3"/><path d="M11 6h6a2 2 0 0 1 2 2v10"/></svg>;
         const Mic = ({className = "w-5 h-5"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>;
         const Layers = ({className = "w-5 h-5"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>;
+        const Wand = ({className = "w-5 h-5"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path d="m15 4-1.17 2.83L11 8l2.83 1.17L15 12l1.17-2.83L19 8l-2.83-1.17L15 4z"/><path d="m3 21 9-9"/><path d="m12.5 6.5 5 5"/><path d="m6 15 2-2"/><path d="M4.5 12.5 3 14"/><path d="m10 20 2-1.5"/></svg>;
+        const FileText = ({className = "w-5 h-5"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>;
+        const ImageIcon = ({className = "w-5 h-5"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>;
+        const GitBranch = ({className = "w-5 h-5"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>;
+        const CheckCircle2 = ({className = "w-5 h-5"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>;
+        const RotateCw = ({className = "w-5 h-5"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>;
 
         // Helper to detect iOS/iPadOS (including iPadOS 13+ that reports as Mac)
         const isIOSDevice = () => {
@@ -1494,6 +1500,44 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [outlineSelectedIds, setOutlineSelectedIds] = useState(new Set());
             const [outlineCustomText, setOutlineCustomText] = useState('');
             const [outlineSourceLoading, setOutlineSourceLoading] = useState(false);
+
+            // Studio tab state
+            const [studioOutputs, setStudioOutputs] = useState([]);
+            const [studioSelectedOutput, setStudioSelectedOutput] = useState(null);
+            const [studioThemes, setStudioThemes] = useState([]);
+            const [studioDataLoaded, setStudioDataLoaded] = useState(false);
+            const [studioView, setStudioView] = useState('grid');
+            const [studioGenerating, setStudioGenerating] = useState(false);
+            const [studioGenProgress, setStudioGenProgress] = useState(null);
+            // Studio creation modal
+            const [showStudioCreateModal, setShowStudioCreateModal] = useState(false);
+            const [studioCreateType, setStudioCreateType] = useState('report');
+            const [studioCreateTitle, setStudioCreateTitle] = useState('');
+            const [studioCreateTheme, setStudioCreateTheme] = useState(null);
+            const [studioSourceType, setStudioSourceType] = useState('research');
+            const [studioSourceItems, setStudioSourceItems] = useState([]);
+            const [studioSelectedSourceIds, setStudioSelectedSourceIds] = useState(new Set());
+            const [studioCustomText, setStudioCustomText] = useState('');
+            const [studioSourceLoading, setStudioSourceLoading] = useState(false);
+            // Studio type-specific options
+            const [studioSlideCount, setStudioSlideCount] = useState(30);
+            const [studioInfographicOrientation, setStudioInfographicOrientation] = useState('landscape');
+            const [studioQuizCount, setStudioQuizCount] = useState(10);
+            const [studioFlashcardCount, setStudioFlashcardCount] = useState(20);
+            const [studioReportLength, setStudioReportLength] = useState('standard');
+            // Studio interactive viewers
+            const [studioQuizAnswers, setStudioQuizAnswers] = useState({});
+            const [studioQuizSubmitted, setStudioQuizSubmitted] = useState(false);
+            const [studioQuizScore, setStudioQuizScore] = useState(null);
+            const [studioFlashcardIndex, setStudioFlashcardIndex] = useState(0);
+            const [studioFlashcardFlipped, setStudioFlashcardFlipped] = useState(false);
+            const [studioSlidePreviewImage, setStudioSlidePreviewImage] = useState(null);
+            const [studioSelectedSlideNum, setStudioSelectedSlideNum] = useState(null);
+            // Studio theme management
+            const [showStudioThemeModal, setShowStudioThemeModal] = useState(false);
+            const [studioThemeName, setStudioThemeName] = useState('');
+            const [studioThemePrompt, setStudioThemePrompt] = useState('');
+            const [editingStudioTheme, setEditingStudioTheme] = useState(null);
 
             // Google Drive state (shared across tabs)
             const [driveToken, setDriveToken] = useState(null);
@@ -4820,6 +4864,12 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     loadSlideThemes();
                     setSlideDataLoaded(true);
                 }
+                // Lazy load Studio data
+                if (newTab === 'studio' && !studioDataLoaded) {
+                    loadStudioOutputs();
+                    loadStudioThemes();
+                    setStudioDataLoaded(true);
+                }
             };
 
             // ============================================
@@ -5168,6 +5218,260 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     }
                 } catch (err) { console.error('Failed to generate outline:', err); alert('Outline generation failed'); }
                 setSlideOutlineGenerating(false);
+            };
+
+            // ============================================
+            // STUDIO FUNCTIONS
+            // ============================================
+
+            const loadStudioOutputs = async () => {
+                try {
+                    const res = await fetch(`${API_URL}/api/studio/outputs`);
+                    if (res.ok) setStudioOutputs(await res.json());
+                } catch (err) { console.error('Failed to load studio outputs:', err); }
+            };
+
+            const loadStudioOutput = async (id) => {
+                try {
+                    const res = await fetch(`${API_URL}/api/studio/outputs/${id}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        setStudioSelectedOutput(data);
+                        setStudioView('detail');
+                        // Reset viewer state
+                        setStudioQuizAnswers({});
+                        setStudioQuizSubmitted(false);
+                        setStudioQuizScore(null);
+                        setStudioFlashcardIndex(0);
+                        setStudioFlashcardFlipped(false);
+                        setStudioSlidePreviewImage(null);
+                        setStudioSelectedSlideNum(null);
+                    }
+                } catch (err) { console.error('Failed to load studio output:', err); }
+            };
+
+            const loadStudioThemes = async () => {
+                try {
+                    const res = await fetch(`${API_URL}/api/studio/themes`);
+                    if (res.ok) setStudioThemes(await res.json());
+                } catch (err) { console.error('Failed to load studio themes:', err); }
+            };
+
+            const loadStudioSources = async (sourceType) => {
+                setStudioSourceLoading(true);
+                setStudioSourceItems([]);
+                setStudioSelectedSourceIds(new Set());
+                try {
+                    let url = '';
+                    if (sourceType === 'research') url = `${API_URL}/api/slides/sources/research`;
+                    else if (sourceType === 'summary') url = `${API_URL}/api/slides/sources/summaries`;
+                    else if (sourceType === 'meetingprep') url = `${API_URL}/api/slides/sources/meetingprep`;
+                    if (url) {
+                        const res = await fetch(url);
+                        if (res.ok) setStudioSourceItems(await res.json());
+                    }
+                } catch (err) { console.error('Failed to load studio sources:', err); }
+                setStudioSourceLoading(false);
+            };
+
+            const toggleStudioSource = (id) => {
+                setStudioSelectedSourceIds(prev => {
+                    const next = new Set(prev);
+                    if (next.has(id)) next.delete(id); else next.add(id);
+                    return next;
+                });
+            };
+
+            const createAndGenerateStudioOutput = async () => {
+                if (!studioCreateTitle.trim()) { alert('Please enter a title'); return; }
+                const sourceConfig = { source_type: studioSourceType };
+                if (studioSourceType === 'custom') {
+                    if (!studioCustomText.trim()) { alert('Please enter some text content'); return; }
+                    sourceConfig.custom_text = studioCustomText;
+                } else {
+                    const ids = Array.from(studioSelectedSourceIds);
+                    if (ids.length === 0) { alert('Please select at least one source'); return; }
+                    sourceConfig.source_ids = ids;
+                }
+                const settings = {};
+                if (studioCreateType === 'slides') { settings.slide_count = studioSlideCount; settings.theme_name = 'sketchnote'; }
+                if (studioCreateType === 'infographic') { settings.orientation = studioInfographicOrientation; }
+                if (studioCreateType === 'quiz') { settings.question_count = studioQuizCount; settings.difficulty = 'medium'; }
+                if (studioCreateType === 'flashcard') { settings.card_count = studioFlashcardCount; }
+                if (studioCreateType === 'report') { settings.length = studioReportLength; }
+
+                setStudioGenerating(true);
+                try {
+                    const createRes = await fetch(`${API_URL}/api/studio/outputs`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ title: studioCreateTitle, type: studioCreateType, source_config: sourceConfig, settings, theme_id: studioCreateTheme }),
+                    });
+                    if (!createRes.ok) { const e = await createRes.json(); alert(e.error || 'Failed to create'); setStudioGenerating(false); return; }
+                    const { id } = await createRes.json();
+                    setShowStudioCreateModal(false);
+
+                    // Start generation
+                    const apiKey = localStorage.getItem('anthropic_api_key') || '';
+                    const geminiApiKey = localStorage.getItem('gemini_api_key') || '';
+                    await fetch(`${API_URL}/api/studio/outputs/${id}/generate`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ apiKey, geminiApiKey }),
+                    });
+
+                    // Poll for completion
+                    pollStudioProgress(id);
+                } catch (err) { console.error('Studio creation error:', err); alert('Failed to create output'); setStudioGenerating(false); }
+            };
+
+            const pollStudioProgress = (id) => {
+                setStudioGenerating(true);
+                const interval = setInterval(async () => {
+                    try {
+                        const res = await fetch(`${API_URL}/api/studio/outputs/${id}`);
+                        if (!res.ok) { clearInterval(interval); setStudioGenerating(false); return; }
+                        const data = await res.json();
+                        // Parse progress from status like "generating:3:10"
+                        if (data.status && data.status.startsWith('generating:')) {
+                            const parts = data.status.split(':');
+                            setStudioGenProgress({ current: parseInt(parts[1]), total: parseInt(parts[2]) });
+                        } else if (data.status === 'generating') {
+                            setStudioGenProgress({ current: 0, total: 0 });
+                        }
+                        if (data.status === 'ready' || data.status === 'error') {
+                            clearInterval(interval);
+                            setStudioGenerating(false);
+                            setStudioGenProgress(null);
+                            loadStudioOutputs();
+                            loadStudioOutput(id);
+                        }
+                    } catch (err) { console.error('Poll error:', err); }
+                }, 3000);
+            };
+
+            const deleteStudioOutput = async (id) => {
+                if (!confirm('Delete this output?')) return;
+                try {
+                    await fetch(`${API_URL}/api/studio/outputs/${id}`, { method: 'DELETE' });
+                    loadStudioOutputs();
+                    if (studioSelectedOutput && studioSelectedOutput.id === id) {
+                        setStudioSelectedOutput(null);
+                        setStudioView('grid');
+                    }
+                } catch (err) { console.error('Delete error:', err); }
+            };
+
+            const loadStudioImage = async (outputId, slideNum) => {
+                try {
+                    const url = slideNum != null
+                        ? `${API_URL}/api/studio/outputs/${outputId}/image?slide=${slideNum}`
+                        : `${API_URL}/api/studio/outputs/${outputId}/image`;
+                    const res = await fetch(url);
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.image_data) {
+                            setStudioSlidePreviewImage(data.image_data);
+                        }
+                    }
+                } catch (err) { console.error('Failed to load image:', err); }
+            };
+
+            const regenerateStudioSlide = async (outputId, slideNum, editPrompt) => {
+                setStudioGenerating(true);
+                try {
+                    const geminiApiKey = localStorage.getItem('gemini_api_key') || '';
+                    const res = await fetch(`${API_URL}/api/studio/outputs/${outputId}/regenerate-slide/${slideNum}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ geminiApiKey, edit_prompt: editPrompt }),
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        setStudioSlidePreviewImage(data.image_data);
+                        loadStudioOutput(outputId);
+                    }
+                } catch (err) { console.error('Regenerate slide error:', err); }
+                setStudioGenerating(false);
+            };
+
+            const exportStudioOutput = async (id, format) => {
+                try {
+                    const res = await fetch(`${API_URL}/api/studio/outputs/${id}/export`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ format }),
+                    });
+                    if (res.ok) {
+                        const blob = await res.blob();
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        const ext = format === 'pdf' ? 'pdf' : (studioSelectedOutput?.type === 'report' ? 'md' : 'png');
+                        a.download = `${studioSelectedOutput?.title || 'export'}.${ext}`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                    }
+                } catch (err) { console.error('Export error:', err); }
+            };
+
+            // Quiz interactivity
+            const selectQuizAnswer = (questionId, optionIndex) => {
+                if (studioQuizSubmitted) return;
+                setStudioQuizAnswers(prev => ({ ...prev, [questionId]: optionIndex }));
+            };
+            const submitQuiz = () => {
+                const questions = studioSelectedOutput?.content?.questions || [];
+                let correct = 0;
+                questions.forEach(q => {
+                    if (studioQuizAnswers[q.id] === q.correct) correct++;
+                });
+                setStudioQuizScore({ correct, total: questions.length });
+                setStudioQuizSubmitted(true);
+            };
+            const resetQuiz = () => {
+                setStudioQuizAnswers({});
+                setStudioQuizSubmitted(false);
+                setStudioQuizScore(null);
+            };
+
+            // Flashcard interactivity
+            const nextFlashcard = () => {
+                const cards = studioSelectedOutput?.content?.cards || [];
+                setStudioFlashcardFlipped(false);
+                setStudioFlashcardIndex(prev => Math.min(prev + 1, cards.length - 1));
+            };
+            const prevFlashcard = () => {
+                setStudioFlashcardFlipped(false);
+                setStudioFlashcardIndex(prev => Math.max(prev - 1, 0));
+            };
+            const flipFlashcard = () => setStudioFlashcardFlipped(prev => !prev);
+
+            // Studio theme management
+            const createStudioTheme = async () => {
+                if (!studioThemeName.trim() || !studioThemePrompt.trim()) { alert('Name and style prompt required'); return; }
+                try {
+                    const res = await fetch(`${API_URL}/api/studio/themes`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: studioThemeName, description: '', style_prompt: studioThemePrompt }),
+                    });
+                    if (res.ok) {
+                        loadStudioThemes();
+                        setShowStudioThemeModal(false);
+                        setStudioThemeName('');
+                        setStudioThemePrompt('');
+                    }
+                } catch (err) { console.error('Create theme error:', err); }
+            };
+
+            const deleteStudioTheme = async (id) => {
+                if (!confirm('Delete this theme?')) return;
+                try {
+                    const res = await fetch(`${API_URL}/api/studio/themes/${id}`, { method: 'DELETE' });
+                    if (res.ok) loadStudioThemes();
+                    else { const e = await res.json(); alert(e.error || 'Cannot delete'); }
+                } catch (err) { console.error('Delete theme error:', err); }
             };
 
             // ============================================
@@ -12819,6 +13123,521 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             </div>
                         )}
 
+                        {/* STUDIO TAB */}
+                        {activeTab === 'studio' && (
+                            <div className="flex-1 flex flex-col bg-white/[0.02] overflow-y-auto pb-24 md:pb-0" onScroll={(e) => { setShowScrollTop(e.target.scrollTop > 300); scrollContainerRef.current = e.target; }}>
+                                {studioView === 'grid' ? (
+                                    <div className="p-4 md:p-6">
+                                        {/* Header */}
+                                        <div className="flex items-center justify-between mb-6">
+                                            <div className="flex items-center gap-3">
+                                                <Wand className="w-6 h-6 text-purple-400" />
+                                                <h1 className="text-xl font-bold">Studio</h1>
+                                            </div>
+                                            <button onClick={() => { setStudioCreateType('report'); setStudioCreateTitle(''); setStudioSourceType('research'); setStudioSelectedSourceIds(new Set()); setStudioCustomText(''); setShowStudioCreateModal(true); }}
+                                                className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded-xl text-sm font-medium transition-all">
+                                                <Plus className="w-4 h-4" /> Create
+                                            </button>
+                                        </div>
+
+                                        {/* Type Tiles Grid */}
+                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-8">
+                                            {[
+                                                { type: 'slides', label: 'Slides', icon: <Layers className="w-6 h-6" />, gradient: 'from-purple-600 to-purple-800', desc: 'Presentation decks' },
+                                                { type: 'infographic', label: 'Infographic', icon: <ImageIcon className="w-6 h-6" />, gradient: 'from-blue-600 to-blue-800', desc: 'Visual summaries' },
+                                                { type: 'mindmap', label: 'Mind Map', icon: <GitBranch className="w-6 h-6" />, gradient: 'from-green-600 to-green-800', desc: 'Topic mapping' },
+                                                { type: 'report', label: 'Report', icon: <FileText className="w-6 h-6" />, gradient: 'from-orange-600 to-orange-800', desc: 'Written analysis' },
+                                                { type: 'quiz', label: 'Quiz', icon: <CheckCircle2 className="w-6 h-6" />, gradient: 'from-red-600 to-red-800', desc: 'Test knowledge' },
+                                                { type: 'flashcard', label: 'Flashcards', icon: <RotateCw className="w-6 h-6" />, gradient: 'from-teal-600 to-teal-800', desc: 'Study cards' },
+                                            ].map(tile => (
+                                                <button key={tile.type} onClick={() => { setStudioCreateType(tile.type); setStudioCreateTitle(''); setStudioSourceType('research'); setStudioSelectedSourceIds(new Set()); setStudioCustomText(''); setShowStudioCreateModal(true); }}
+                                                    className={`bg-gradient-to-br ${tile.gradient} rounded-2xl p-4 text-left hover:scale-[1.02] transition-all shadow-lg`}>
+                                                    <div className="mb-2 opacity-80">{tile.icon}</div>
+                                                    <div className="font-semibold text-sm">{tile.label}</div>
+                                                    <div className="text-xs opacity-60 mt-0.5">{tile.desc}</div>
+                                                </button>
+                                            ))}
+                                        </div>
+
+                                        {/* Generating indicator */}
+                                        {studioGenerating && (
+                                            <div className="mb-4 bg-purple-900/30 border border-purple-500/30 rounded-xl p-4 flex items-center gap-3">
+                                                <div className="animate-spin rounded-full h-5 w-5 border-2 border-purple-400 border-t-transparent" />
+                                                <span className="text-sm">Generating{studioGenProgress ? ` (${studioGenProgress.current}/${studioGenProgress.total})` : '...'}</span>
+                                            </div>
+                                        )}
+
+                                        {/* Recent Outputs */}
+                                        <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Recent Outputs</h2>
+                                        {studioOutputs.length === 0 ? (
+                                            <div className="text-center py-12 text-slate-500">
+                                                <Wand className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                                                <p>No outputs yet. Click a tile above to create your first one!</p>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-2">
+                                                {studioOutputs.map(output => {
+                                                    const typeBadgeColors = { slides: 'bg-purple-500/20 text-purple-300', infographic: 'bg-blue-500/20 text-blue-300', mindmap: 'bg-green-500/20 text-green-300', report: 'bg-orange-500/20 text-orange-300', quiz: 'bg-red-500/20 text-red-300', flashcard: 'bg-teal-500/20 text-teal-300' };
+                                                    const statusColors = { pending: 'text-slate-400', generating: 'text-yellow-400', ready: 'text-green-400', error: 'text-red-400' };
+                                                    const statusLabel = output.status?.startsWith('generating:') ? `Generating ${output.status.split(':')[1]}/${output.status.split(':')[2]}` : output.status;
+                                                    return (
+                                                        <div key={output.id} className="bg-white/[0.05] hover:bg-white/[0.08] rounded-xl p-4 border border-white/10 cursor-pointer transition-all flex items-center gap-3"
+                                                            onClick={() => { if (output.status === 'ready') loadStudioOutput(output.id); else if (output.status?.startsWith('generating')) pollStudioProgress(output.id); }}>
+                                                            <div className="flex-1 min-w-0">
+                                                                <div className="font-medium text-sm truncate">{output.title}</div>
+                                                                <div className="flex items-center gap-2 mt-1">
+                                                                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${typeBadgeColors[output.type] || 'bg-slate-500/20 text-slate-300'}`}>{output.type}</span>
+                                                                    <span className={`text-[10px] font-medium ${statusColors[output.status?.split(':')[0]] || 'text-slate-400'}`}>{statusLabel}</span>
+                                                                    <span className="text-[10px] text-slate-500">{output.created_at ? new Date(output.created_at).toLocaleDateString() : ''}</span>
+                                                                </div>
+                                                            </div>
+                                                            <button onClick={(e) => { e.stopPropagation(); deleteStudioOutput(output.id); }} className="text-slate-500 hover:text-red-400 p-1 transition-colors">
+                                                                <Trash className="w-4 h-4" />
+                                                            </button>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    /* DETAIL VIEW */
+                                    <div className="flex-1 flex flex-col">
+                                        {/* Detail Header */}
+                                        <div className="p-4 border-b border-white/10 flex items-center gap-3">
+                                            <button onClick={() => { setStudioView('grid'); setStudioSelectedOutput(null); }} className="text-slate-400 hover:text-white p-1">
+                                                <ChevronLeft className="w-5 h-5" />
+                                            </button>
+                                            <div className="flex-1 min-w-0">
+                                                <h2 className="font-semibold text-sm truncate">{studioSelectedOutput?.title}</h2>
+                                                <span className="text-xs text-slate-400 capitalize">{studioSelectedOutput?.type}</span>
+                                            </div>
+                                            {studioSelectedOutput?.type === 'slides' && (
+                                                <button onClick={() => exportStudioOutput(studioSelectedOutput.id, 'pdf')} className="text-xs bg-purple-600 hover:bg-purple-500 px-3 py-1.5 rounded-lg">Export PDF</button>
+                                            )}
+                                            {studioSelectedOutput?.type === 'report' && (
+                                                <button onClick={() => exportStudioOutput(studioSelectedOutput.id, 'md')} className="text-xs bg-orange-600 hover:bg-orange-500 px-3 py-1.5 rounded-lg">Download</button>
+                                            )}
+                                            {studioSelectedOutput?.type === 'infographic' && (
+                                                <button onClick={() => { if(studioSelectedOutput.has_image) { loadStudioImage(studioSelectedOutput.id).then(() => { const img = studioSlidePreviewImage; if(img){const a=document.createElement('a');a.href='data:image/png;base64,'+img;a.download=studioSelectedOutput.title+'.png';a.click();}}); }}} className="text-xs bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded-lg">Download</button>
+                                            )}
+                                        </div>
+
+                                        {/* Content Viewers */}
+                                        <div className="flex-1 overflow-y-auto p-4">
+                                            {/* SLIDES VIEWER */}
+                                            {studioSelectedOutput?.type === 'slides' && (() => {
+                                                const slides = studioSelectedOutput?.content?.slides || [];
+                                                const slideImages = studioSelectedOutput?.slide_images || [];
+                                                return (
+                                                    <div className="flex gap-4 h-full">
+                                                        {/* Slide list */}
+                                                        <div className="w-48 shrink-0 overflow-y-auto space-y-1">
+                                                            {slides.map(s => {
+                                                                const imgInfo = slideImages.find(si => si.slide_number === s.slide_number);
+                                                                return (
+                                                                    <button key={s.slide_number} onClick={() => { setStudioSelectedSlideNum(s.slide_number); loadStudioImage(studioSelectedOutput.id, s.slide_number); }}
+                                                                        className={`w-full text-left p-2 rounded-lg text-xs transition-all flex items-center gap-2 ${studioSelectedSlideNum === s.slide_number ? 'bg-purple-600/30 border border-purple-500/50' : 'bg-white/5 hover:bg-white/10 border border-transparent'}`}>
+                                                                        <span className={`w-2 h-2 rounded-full shrink-0 ${imgInfo?.has_image ? 'bg-green-400' : 'bg-slate-500'}`} />
+                                                                        <span className="truncate">{s.slide_number}. {s.title}</span>
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                        {/* Slide preview */}
+                                                        <div className="flex-1">
+                                                            {studioSelectedSlideNum ? (
+                                                                <div>
+                                                                    {studioSlidePreviewImage ? (
+                                                                        <img src={`data:image/png;base64,${studioSlidePreviewImage}`} className="w-full rounded-xl shadow-lg mb-4" alt="Slide preview" />
+                                                                    ) : (
+                                                                        <div className="aspect-video bg-slate-800 rounded-xl flex items-center justify-center text-slate-500 mb-4">
+                                                                            <span>No image generated yet</span>
+                                                                        </div>
+                                                                    )}
+                                                                    <div className="flex gap-2">
+                                                                        <button onClick={() => regenerateStudioSlide(studioSelectedOutput.id, studioSelectedSlideNum)}
+                                                                            className="text-xs bg-purple-600 hover:bg-purple-500 px-3 py-1.5 rounded-lg flex items-center gap-1" disabled={studioGenerating}>
+                                                                            <RotateCw className="w-3 h-3" /> Regenerate
+                                                                        </button>
+                                                                    </div>
+                                                                    {(() => {
+                                                                        const s = slides.find(sl => sl.slide_number === studioSelectedSlideNum);
+                                                                        return s ? (
+                                                                            <div className="mt-4 bg-white/5 rounded-xl p-3 text-xs space-y-2">
+                                                                                <div><span className="text-slate-400">Title:</span> {s.title}</div>
+                                                                                <div><span className="text-slate-400">Content:</span> <span className="text-slate-300">{s.content}</span></div>
+                                                                            </div>
+                                                                        ) : null;
+                                                                    })()}
+                                                                </div>
+                                                            ) : (
+                                                                <div className="flex items-center justify-center h-full text-slate-500">
+                                                                    <div className="text-center">
+                                                                        <Layers className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                                                                        <p>Select a slide from the list</p>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
+
+                                            {/* INFOGRAPHIC VIEWER */}
+                                            {studioSelectedOutput?.type === 'infographic' && (
+                                                <div className="text-center">
+                                                    {studioSelectedOutput.has_image ? (
+                                                        <div>
+                                                            {studioSlidePreviewImage ? (
+                                                                <img src={`data:image/png;base64,${studioSlidePreviewImage}`} className="max-w-full mx-auto rounded-xl shadow-lg" alt="Infographic" />
+                                                            ) : (
+                                                                <button onClick={() => loadStudioImage(studioSelectedOutput.id)} className="bg-blue-600 hover:bg-blue-500 px-6 py-3 rounded-xl font-medium">
+                                                                    Load Infographic Image
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="py-12 text-slate-500">
+                                                            <ImageIcon className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                                                            <p>No infographic image available</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* MIND MAP VIEWER */}
+                                            {studioSelectedOutput?.type === 'mindmap' && (() => {
+                                                const depthColors = ['text-teal-400 border-teal-500/50 bg-teal-900/30', 'text-purple-400 border-purple-500/50 bg-purple-900/30', 'text-blue-400 border-blue-500/50 bg-blue-900/30', 'text-green-400 border-green-500/50 bg-green-900/30', 'text-orange-400 border-orange-500/50 bg-orange-900/30'];
+                                                const renderNode = (node, depth = 0) => {
+                                                    if (!node) return null;
+                                                    const colorClass = depthColors[depth % depthColors.length];
+                                                    return (
+                                                        <div key={node.label} className={`${depth > 0 ? 'ml-6 border-l-2 border-white/10 pl-4' : ''}`}>
+                                                            <div className={`inline-block px-3 py-1.5 rounded-full border text-sm font-medium my-1 ${colorClass}`}>
+                                                                {node.label}
+                                                            </div>
+                                                            {node.children && node.children.length > 0 && (
+                                                                <div className="mt-1">
+                                                                    {node.children.map((child, i) => (
+                                                                        <div key={i}>{renderNode(child, depth + 1)}</div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                };
+                                                const root = studioSelectedOutput?.content?.root;
+                                                return root ? renderNode(root) : <div className="text-slate-500 text-center py-12">No mind map data</div>;
+                                            })()}
+
+                                            {/* REPORT VIEWER */}
+                                            {studioSelectedOutput?.type === 'report' && (() => {
+                                                const markdown = studioSelectedOutput?.content?.markdown || '';
+                                                // Simple markdown to HTML conversion
+                                                const renderMarkdown = (md) => {
+                                                    let html = md
+                                                        .replace(/^### (.+)$/gm, '<h3 class="text-base font-semibold mt-4 mb-2 text-purple-300">$1</h3>')
+                                                        .replace(/^## (.+)$/gm, '<h2 class="text-lg font-bold mt-6 mb-3 text-teal-300">$1</h2>')
+                                                        .replace(/^# (.+)$/gm, '<h1 class="text-xl font-bold mt-6 mb-4 text-white">$1</h1>')
+                                                        .replace(/\*\*(.+?)\*\*/g, '<strong class="text-white">$1</strong>')
+                                                        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+                                                        .replace(/^- (.+)$/gm, '<li class="ml-4 list-disc text-slate-300">$1</li>')
+                                                        .replace(/^(\d+)\. (.+)$/gm, '<li class="ml-4 list-decimal text-slate-300">$2</li>')
+                                                        .replace(/\n\n/g, '<br/><br/>');
+                                                    return html;
+                                                };
+                                                return (
+                                                    <div>
+                                                        <div className="flex gap-2 mb-4">
+                                                            <button onClick={() => { navigator.clipboard.writeText(markdown); }} className="text-xs bg-white/10 hover:bg-white/15 px-3 py-1.5 rounded-lg">Copy to Clipboard</button>
+                                                        </div>
+                                                        <div className="bg-white/[0.03] rounded-xl p-6 border border-white/10 prose prose-invert max-w-none text-sm text-slate-300 leading-relaxed"
+                                                            dangerouslySetInnerHTML={{ __html: renderMarkdown(markdown) }} />
+                                                    </div>
+                                                );
+                                            })()}
+
+                                            {/* QUIZ VIEWER */}
+                                            {studioSelectedOutput?.type === 'quiz' && (() => {
+                                                const questions = studioSelectedOutput?.content?.questions || [];
+                                                const answered = Object.keys(studioQuizAnswers).length;
+                                                return (
+                                                    <div>
+                                                        {/* Score banner */}
+                                                        {studioQuizSubmitted && studioQuizScore && (
+                                                            <div className={`mb-4 p-4 rounded-xl text-center font-bold ${studioQuizScore.correct / studioQuizScore.total >= 0.7 ? 'bg-green-900/30 border border-green-500/50 text-green-300' : 'bg-red-900/30 border border-red-500/50 text-red-300'}`}>
+                                                                Score: {studioQuizScore.correct}/{studioQuizScore.total} ({Math.round(studioQuizScore.correct / studioQuizScore.total * 100)}%)
+                                                                <button onClick={resetQuiz} className="ml-4 text-xs bg-white/10 hover:bg-white/20 px-3 py-1 rounded-lg font-normal">Retake</button>
+                                                            </div>
+                                                        )}
+                                                        {/* Progress */}
+                                                        {!studioQuizSubmitted && (
+                                                            <div className="mb-4 flex items-center gap-3">
+                                                                <div className="flex-1 bg-white/10 rounded-full h-2">
+                                                                    <div className="bg-purple-500 h-2 rounded-full transition-all" style={{ width: `${questions.length ? (answered / questions.length) * 100 : 0}%` }} />
+                                                                </div>
+                                                                <span className="text-xs text-slate-400">{answered} of {questions.length} answered</span>
+                                                            </div>
+                                                        )}
+                                                        {/* Questions */}
+                                                        <div className="space-y-4">
+                                                            {questions.map((q, qi) => (
+                                                                <div key={q.id} className="bg-white/[0.05] rounded-xl p-4 border border-white/10">
+                                                                    <div className="font-medium text-sm mb-3">{qi + 1}. {q.question}</div>
+                                                                    <div className="space-y-2">
+                                                                        {(q.options || []).map((opt, oi) => {
+                                                                            const selected = studioQuizAnswers[q.id] === oi;
+                                                                            const isCorrect = q.correct === oi;
+                                                                            let optClass = 'bg-white/5 hover:bg-white/10 border-transparent';
+                                                                            if (studioQuizSubmitted) {
+                                                                                if (isCorrect) optClass = 'bg-green-900/30 border-green-500/50 text-green-300';
+                                                                                else if (selected && !isCorrect) optClass = 'bg-red-900/30 border-red-500/50 text-red-300';
+                                                                            } else if (selected) {
+                                                                                optClass = 'bg-purple-900/30 border-purple-500/50';
+                                                                            }
+                                                                            return (
+                                                                                <button key={oi} onClick={() => selectQuizAnswer(q.id, oi)}
+                                                                                    className={`w-full text-left p-2.5 rounded-lg text-xs border transition-all ${optClass}`}>
+                                                                                    <span className="font-medium mr-2">{String.fromCharCode(65 + oi)}.</span>{opt}
+                                                                                </button>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                    {studioQuizSubmitted && q.explanation && (
+                                                                        <div className="mt-2 text-xs text-slate-400 bg-white/5 rounded-lg p-2">{q.explanation}</div>
+                                                                    )}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                        {!studioQuizSubmitted && questions.length > 0 && (
+                                                            <button onClick={submitQuiz} className="w-full mt-4 bg-purple-600 hover:bg-purple-500 py-3 rounded-xl font-medium" disabled={answered < questions.length}>
+                                                                Submit Quiz ({answered}/{questions.length})
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })()}
+
+                                            {/* FLASHCARD VIEWER */}
+                                            {studioSelectedOutput?.type === 'flashcard' && (() => {
+                                                const cards = studioSelectedOutput?.content?.cards || [];
+                                                const card = cards[studioFlashcardIndex];
+                                                if (!card) return <div className="text-slate-500 text-center py-12">No flashcards</div>;
+                                                return (
+                                                    <div className="max-w-lg mx-auto">
+                                                        <div className="text-center text-xs text-slate-400 mb-4">{studioFlashcardIndex + 1} / {cards.length}</div>
+                                                        {/* Card with flip animation */}
+                                                        <div className="cursor-pointer" onClick={flipFlashcard} style={{ perspective: '1000px' }}>
+                                                            <div className="relative w-full transition-transform duration-500" style={{ transformStyle: 'preserve-3d', transform: studioFlashcardFlipped ? 'rotateY(180deg)' : '' }}>
+                                                                {/* Front */}
+                                                                <div className="bg-gradient-to-br from-purple-900/50 to-slate-800 rounded-2xl p-8 border border-purple-500/30 min-h-[200px] flex flex-col items-center justify-center text-center"
+                                                                    style={{ backfaceVisibility: 'hidden' }}>
+                                                                    <div className="text-lg font-medium mb-2">{card.front}</div>
+                                                                    <div className="text-xs text-slate-400 mt-4">Tap to flip</div>
+                                                                </div>
+                                                                {/* Back */}
+                                                                <div className="absolute inset-0 bg-gradient-to-br from-teal-900/50 to-slate-800 rounded-2xl p-8 border border-teal-500/30 min-h-[200px] flex flex-col items-center justify-center text-center"
+                                                                    style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}>
+                                                                    <div className="text-sm text-slate-200 mb-3">{card.back}</div>
+                                                                    {card.category && <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-500/20 text-teal-300">{card.category}</span>}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        {/* Navigation */}
+                                                        <div className="flex items-center justify-center gap-4 mt-6">
+                                                            <button onClick={prevFlashcard} disabled={studioFlashcardIndex === 0}
+                                                                className="p-2 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30 transition-all">
+                                                                <ChevronLeft className="w-5 h-5" />
+                                                            </button>
+                                                            <button onClick={flipFlashcard} className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-medium">
+                                                                Space to Flip
+                                                            </button>
+                                                            <button onClick={nextFlashcard} disabled={studioFlashcardIndex >= cards.length - 1}
+                                                                className="p-2 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30 transition-all">
+                                                                <ChevronRight className="w-5 h-5" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* CREATION MODAL */}
+                                {showStudioCreateModal && (
+                                    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setShowStudioCreateModal(false)}>
+                                        <div className="bg-slate-800 rounded-2xl border border-white/10 w-full max-w-2xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                                            <div className="p-4 border-b border-white/10 flex justify-between items-center">
+                                                <h2 className="text-lg font-semibold flex items-center gap-2">
+                                                    <Wand className="w-5 h-5 text-purple-400" />
+                                                    Create {studioCreateType.charAt(0).toUpperCase() + studioCreateType.slice(1)}
+                                                </h2>
+                                                <button onClick={() => setShowStudioCreateModal(false)} className="text-slate-400 hover:text-white text-xl">&times;</button>
+                                            </div>
+
+                                            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                                                {/* Output type selector */}
+                                                <div>
+                                                    <label className="text-xs font-medium text-slate-400 mb-1 block">Output Type</label>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {['slides', 'infographic', 'mindmap', 'report', 'quiz', 'flashcard'].map(t => (
+                                                            <button key={t} onClick={() => setStudioCreateType(t)}
+                                                                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${studioCreateType === t ? 'bg-purple-600 text-white' : 'bg-white/10 text-slate-300 hover:bg-white/15'}`}>
+                                                                {t === 'mindmap' ? 'Mind Map' : t.charAt(0).toUpperCase() + t.slice(1)}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                {/* Title */}
+                                                <div>
+                                                    <label className="text-xs font-medium text-slate-400 mb-1 block">Title</label>
+                                                    <input type="text" value={studioCreateTitle} onChange={e => setStudioCreateTitle(e.target.value)}
+                                                        placeholder="Enter a title for your output..."
+                                                        className="w-full bg-white/10 border border-white/10 rounded-xl px-3 py-2.5 text-sm placeholder-slate-500 focus:outline-none focus:border-purple-500" />
+                                                </div>
+
+                                                {/* Source selection tabs */}
+                                                <div>
+                                                    <label className="text-xs font-medium text-slate-400 mb-1 block">Source Content</label>
+                                                    <div className="flex border-b border-white/10">
+                                                        {[
+                                                            { key: 'research', label: 'Research Docs' },
+                                                            { key: 'summary', label: 'Meeting Notes' },
+                                                            { key: 'meetingprep', label: 'Meeting Prep' },
+                                                            { key: 'custom', label: 'Custom Text' },
+                                                        ].map(tab => (
+                                                            <button key={tab.key}
+                                                                onClick={() => { setStudioSourceType(tab.key); if (['research','summary','meetingprep'].includes(tab.key)) loadStudioSources(tab.key); }}
+                                                                className={`px-3 py-2 text-xs font-medium border-b-2 transition-all ${
+                                                                    studioSourceType === tab.key ? 'border-purple-500 text-purple-400' : 'border-transparent text-slate-400 hover:text-white'
+                                                                }`}>
+                                                                {tab.label}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                    {/* Source content area */}
+                                                    <div className="mt-3" style={{ minHeight: '150px', maxHeight: '200px', overflowY: 'auto' }}>
+                                                        {studioSourceType === 'custom' ? (
+                                                            <textarea value={studioCustomText} onChange={e => setStudioCustomText(e.target.value)}
+                                                                placeholder="Paste your content here..."
+                                                                className="w-full h-40 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm placeholder-slate-500 focus:outline-none focus:border-purple-500 resize-none" />
+                                                        ) : studioSourceLoading ? (
+                                                            <div className="flex items-center justify-center py-8 text-slate-400 text-sm">Loading sources...</div>
+                                                        ) : studioSourceItems.length === 0 ? (
+                                                            <div className="text-center py-8 text-slate-500 text-xs">
+                                                                {studioSourceType === 'research' ? 'No research documents found. Upload some in the Research tab.' :
+                                                                 studioSourceType === 'summary' ? 'No meeting summaries found.' : 'No meeting prep sessions found.'}
+                                                            </div>
+                                                        ) : (
+                                                            <div className="space-y-1">
+                                                                {studioSourceItems.map(item => (
+                                                                    <button key={item.id} onClick={() => toggleStudioSource(item.id)}
+                                                                        className={`w-full text-left p-2.5 rounded-lg text-xs transition-all border ${
+                                                                            studioSelectedSourceIds.has(item.id) ? 'bg-purple-900/30 border-purple-500/50' : 'bg-white/5 hover:bg-white/10 border-transparent'
+                                                                        }`}>
+                                                                        <div className="flex items-center gap-2">
+                                                                            <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 ${studioSelectedSourceIds.has(item.id) ? 'bg-purple-500 border-purple-500' : 'border-slate-500'}`}>
+                                                                                {studioSelectedSourceIds.has(item.id) && <Check className="w-3 h-3" />}
+                                                                            </div>
+                                                                            <div className="flex-1 min-w-0">
+                                                                                <div className="font-medium truncate">{item.name}</div>
+                                                                                {item.snippet && <div className="text-slate-500 truncate mt-0.5">{item.snippet}</div>}
+                                                                            </div>
+                                                                        </div>
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* Type-specific options */}
+                                                <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+                                                    <label className="text-xs font-medium text-slate-400 mb-2 block">Options</label>
+                                                    {studioCreateType === 'slides' && (
+                                                        <div>
+                                                            <label className="text-xs text-slate-300">Slide Count: {studioSlideCount}</label>
+                                                            <input type="range" min="10" max="50" value={studioSlideCount} onChange={e => setStudioSlideCount(parseInt(e.target.value))}
+                                                                className="w-full mt-1 accent-purple-500" />
+                                                        </div>
+                                                    )}
+                                                    {studioCreateType === 'infographic' && (
+                                                        <div className="flex gap-2">
+                                                            {['landscape', 'portrait', 'square'].map(o => (
+                                                                <button key={o} onClick={() => setStudioInfographicOrientation(o)}
+                                                                    className={`px-3 py-1.5 rounded-lg text-xs ${studioInfographicOrientation === o ? 'bg-blue-600' : 'bg-white/10 hover:bg-white/15'}`}>
+                                                                    {o.charAt(0).toUpperCase() + o.slice(1)}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                    {studioCreateType === 'report' && (
+                                                        <div className="flex gap-2">
+                                                            {['brief', 'standard', 'detailed'].map(l => (
+                                                                <button key={l} onClick={() => setStudioReportLength(l)}
+                                                                    className={`px-3 py-1.5 rounded-lg text-xs ${studioReportLength === l ? 'bg-orange-600' : 'bg-white/10 hover:bg-white/15'}`}>
+                                                                    {l.charAt(0).toUpperCase() + l.slice(1)}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                    {studioCreateType === 'quiz' && (
+                                                        <div>
+                                                            <label className="text-xs text-slate-300">Questions: {studioQuizCount}</label>
+                                                            <input type="range" min="5" max="30" value={studioQuizCount} onChange={e => setStudioQuizCount(parseInt(e.target.value))}
+                                                                className="w-full mt-1 accent-red-500" />
+                                                        </div>
+                                                    )}
+                                                    {studioCreateType === 'flashcard' && (
+                                                        <div>
+                                                            <label className="text-xs text-slate-300">Cards: {studioFlashcardCount}</label>
+                                                            <input type="range" min="10" max="50" value={studioFlashcardCount} onChange={e => setStudioFlashcardCount(parseInt(e.target.value))}
+                                                                className="w-full mt-1 accent-teal-500" />
+                                                        </div>
+                                                    )}
+                                                    {studioCreateType === 'mindmap' && (
+                                                        <div className="text-xs text-slate-400">Mind maps are generated automatically from your source content.</div>
+                                                    )}
+                                                </div>
+
+                                                {/* Theme selection */}
+                                                {(studioCreateType === 'slides' || studioCreateType === 'infographic') && studioThemes.length > 0 && (
+                                                    <div>
+                                                        <label className="text-xs font-medium text-slate-400 mb-1 block">Theme (optional)</label>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            <button onClick={() => setStudioCreateTheme(null)}
+                                                                className={`px-3 py-1.5 rounded-lg text-xs ${!studioCreateTheme ? 'bg-purple-600' : 'bg-white/10 hover:bg-white/15'}`}>Auto</button>
+                                                            {studioThemes.map(t => (
+                                                                <button key={t.id} onClick={() => setStudioCreateTheme(t.id)}
+                                                                    className={`px-3 py-1.5 rounded-lg text-xs ${studioCreateTheme === t.id ? 'bg-purple-600' : 'bg-white/10 hover:bg-white/15'}`}>
+                                                                    {t.name}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Generate button */}
+                                            <div className="p-4 border-t border-white/10">
+                                                <button onClick={createAndGenerateStudioOutput} disabled={studioGenerating}
+                                                    className="w-full bg-purple-600 hover:bg-purple-500 disabled:bg-slate-700 py-3 rounded-xl font-medium flex items-center justify-center gap-2 transition-all">
+                                                    {studioGenerating ? (
+                                                        <><div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" /> Generating...</>
+                                                    ) : (
+                                                        <><Wand className="w-4 h-4" /> Generate</>
+                                                    )}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         {/* SETTINGS TAB */}
                         {activeTab === 'settings' && (
                             <div className="flex-1 flex flex-col bg-white/[0.02] overflow-y-auto pb-24 md:pb-0" onScroll={(e) => { setShowScrollTop(e.target.scrollTop > 300); scrollContainerRef.current = e.target; }}>
@@ -13176,13 +13995,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 <button 
                                     onClick={() => setShowMoreMenu(true)}
                                     className={`flex flex-col items-center justify-center gap-1 min-w-[56px] py-2 rounded-xl transition-all ${
-                                        activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides'
+                                        activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio'
                                             ? 'text-teal-400'
                                             : 'text-slate-400 active:text-slate-200'
                                     }`}
                                 >
-                                    <MoreHorizontal className={`w-5 h-5 ${activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' ? 'stroke-[2.5]' : 'stroke-[1.5]'}`} />
-                                    <span className={`text-[9px] ${activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' ? 'font-semibold' : 'font-medium'}`}>More</span>
+                                    <MoreHorizontal className={`w-5 h-5 ${activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' ? 'stroke-[2.5]' : 'stroke-[1.5]'}`} />
+                                    <span className={`text-[9px] ${activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' ? 'font-semibold' : 'font-medium'}`}>More</span>
                                 </button>
                             </div>
                         </div>
@@ -13259,6 +14078,27 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             <div className="text-left">
                                                 <div className="font-semibold">Slides</div>
                                                 <div className="text-xs text-slate-400">AI-generated sketchnote presentations</div>
+                                            </div>
+                                            <ChevronRight className="w-5 h-5 text-slate-500 ml-auto" />
+                                        </button>
+
+                                        <button
+                                            onClick={() => {
+                                                setShowMoreMenu(false);
+                                                switchTab('studio');
+                                            }}
+                                            className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
+                                                activeTab === 'studio'
+                                                    ? 'bg-purple-600/20 border border-purple-500/50'
+                                                    : 'bg-white/5 hover:bg-white/10 border border-transparent'
+                                            }`}
+                                        >
+                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${activeTab === 'studio' ? 'bg-purple-600' : 'bg-white/10'}`}>
+                                                <Wand className="w-5 h-5" />
+                                            </div>
+                                            <div className="text-left">
+                                                <div className="font-semibold">Studio</div>
+                                                <div className="text-xs text-slate-400">AI content generation suite</div>
                                             </div>
                                             <ChevronRight className="w-5 h-5 text-slate-500 ml-auto" />
                                         </button>
