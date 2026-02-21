@@ -13,3 +13,5 @@ google-api-python-client>=2.150,<3
 google-auth>=2.40,<3
 markdown>=3.7,<4
 gunicorn>=23.0,<24
+openai>=1.60,<2
+img2pdf>=0.5,<1

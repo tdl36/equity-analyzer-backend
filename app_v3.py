@@ -14,6 +14,9 @@ from psycopg2.extras import RealDictCursor
 from psycopg2.pool import ThreadedConnectionPool
 from datetime import datetime
 import anthropic
+import openai
+from google import genai
+from google.genai import types as genai_types
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max upload size
@@ -25,7 +28,6 @@ CORS(app, origins=[
     "http://127.0.0.1:5000",
 ])
 
-ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
 
 # ============================================
 # IN-MEMORY CACHE
@@ -58,6 +60,290 @@ class SimpleCache:
                 self._data.pop(key, None)
 
 cache = SimpleCache()
+
+# ============================================
+# MULTI-MODEL LLM FALLBACK
+# ============================================
+
+class LLMError(Exception):
+    """Raised when all LLM providers fail."""
+    def __init__(self, errors):
+        self.errors = errors  # list of (provider, model, exception)
+        messages = [f"{p}/{m}: {e}" for p, m, e in errors]
+        super().__init__(f"All LLM providers failed: {'; '.join(messages)}")
+
+MODEL_TIERS = {
+    "fast": [
+        ("anthropic", "claude-haiku-4-5-20251001"),
+        ("gemini",    "gemini-2.0-flash"),
+        ("openai",    "gpt-4o-mini"),
+    ],
+    "standard": [
+        ("anthropic", "claude-sonnet-4-5-20250929"),
+        ("gemini",    "gemini-2.0-flash"),
+        ("openai",    "gpt-4o"),
+    ],
+    "advanced": [
+        ("anthropic", "claude-opus-4-6"),
+        ("gemini",    "gemini-2.0-pro"),
+        ("openai",    "gpt-4o"),
+    ],
+}
+
+def _get_api_keys(anthropic_api_key="", gemini_api_key="", openai_api_key=""):
+    """Resolve API keys from explicit params or environment variables."""
+    return {
+        "anthropic": anthropic_api_key or os.environ.get("ANTHROPIC_API_KEY", ""),
+        "gemini":    gemini_api_key or os.environ.get("GEMINI_API_KEY", ""),
+        "openai":    openai_api_key or os.environ.get("OPENAI_API_KEY", ""),
+    }
+
+def _is_retryable(provider, error):
+    """Determine if an error should trigger fallback to next provider."""
+    if provider == "anthropic":
+        if isinstance(error, anthropic.AuthenticationError):
+            return False
+        if isinstance(error, (anthropic.RateLimitError, anthropic.APIConnectionError)):
+            return True
+        if isinstance(error, anthropic.APIStatusError):
+            return error.status_code in (429, 500, 502, 503, 529)
+        if isinstance(error, requests.Timeout):
+            return True
+        return True  # Network errors etc.
+    elif provider == "gemini":
+        err_str = str(error)
+        return "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "500" in err_str or "503" in err_str or isinstance(error, (ConnectionError, TimeoutError))
+    elif provider == "openai":
+        if isinstance(error, openai.AuthenticationError):
+            return False
+        if isinstance(error, (openai.RateLimitError, openai.APIConnectionError)):
+            return True
+        if isinstance(error, openai.APIStatusError):
+            return error.status_code in (429, 500, 502, 503)
+        return True
+    return True
+
+def _call_anthropic(*, messages, system, model, max_tokens, timeout, api_key):
+    """Call Anthropic API using the SDK. Returns normalized response dict."""
+    client = anthropic.Anthropic(api_key=api_key, timeout=timeout)
+    kwargs = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "messages": messages,
+    }
+    if system:
+        kwargs["system"] = system
+    response = client.messages.create(**kwargs)
+    text = ""
+    for block in response.content:
+        if hasattr(block, "text"):
+            text += block.text
+    return {
+        "text": text,
+        "usage": {
+            "input_tokens": response.usage.input_tokens,
+            "output_tokens": response.usage.output_tokens,
+        },
+        "provider": "anthropic",
+        "model": model,
+    }
+
+def _call_gemini(*, messages, system, model, max_tokens, timeout, api_key):
+    """Call Google Gemini API. Returns normalized response dict."""
+    client = genai.Client(api_key=api_key)
+    contents = []
+    for msg in messages:
+        role = "user" if msg["role"] == "user" else "model"
+        if isinstance(msg["content"], list):
+            parts = []
+            for block in msg["content"]:
+                if block.get("type") == "text":
+                    parts.append(genai_types.Part.from_text(text=block["text"]))
+                elif block.get("type") == "image":
+                    source = block["source"]
+                    parts.append(genai_types.Part.from_bytes(
+                        data=base64.b64decode(source["data"]),
+                        mime_type=source["media_type"],
+                    ))
+                elif block.get("type") == "document":
+                    source = block["source"]
+                    parts.append(genai_types.Part.from_bytes(
+                        data=base64.b64decode(source["data"]),
+                        mime_type=source.get("media_type", "application/pdf"),
+                    ))
+            contents.append(genai_types.Content(role=role, parts=parts))
+        else:
+            contents.append(genai_types.Content(
+                role=role,
+                parts=[genai_types.Part.from_text(text=msg["content"])]
+            ))
+    config = genai_types.GenerateContentConfig(max_output_tokens=max_tokens)
+    if system:
+        config.system_instruction = system
+    response = client.models.generate_content(
+        model=model,
+        contents=contents,
+        config=config,
+    )
+    text = response.text or ""
+    usage = {"input_tokens": 0, "output_tokens": 0}
+    if hasattr(response, "usage_metadata") and response.usage_metadata:
+        usage["input_tokens"] = getattr(response.usage_metadata, "prompt_token_count", 0) or 0
+        usage["output_tokens"] = getattr(response.usage_metadata, "candidates_token_count", 0) or 0
+    return {
+        "text": text,
+        "usage": usage,
+        "provider": "gemini",
+        "model": model,
+    }
+
+def _call_openai(*, messages, system, model, max_tokens, timeout, api_key):
+    """Call OpenAI API. Returns normalized response dict."""
+    client = openai.OpenAI(api_key=api_key, timeout=timeout)
+    oai_messages = []
+    if system:
+        oai_messages.append({"role": "system", "content": system})
+    for msg in messages:
+        role = msg["role"]
+        if isinstance(msg["content"], list):
+            oai_content = []
+            for block in msg["content"]:
+                if block.get("type") == "text":
+                    oai_content.append({"type": "text", "text": block["text"]})
+                elif block.get("type") == "image":
+                    source = block["source"]
+                    data_uri = f"data:{source['media_type']};base64,{source['data']}"
+                    oai_content.append({
+                        "type": "image_url",
+                        "image_url": {"url": data_uri}
+                    })
+                elif block.get("type") == "document":
+                    # OpenAI chat completions don't support inline PDFs — skip
+                    oai_content.append({"type": "text", "text": "[PDF document — content not available for this provider]"})
+            oai_messages.append({"role": role, "content": oai_content})
+        else:
+            oai_messages.append({"role": role, "content": msg["content"]})
+    response = client.chat.completions.create(
+        model=model,
+        messages=oai_messages,
+        max_tokens=max_tokens,
+    )
+    text = response.choices[0].message.content or ""
+    return {
+        "text": text,
+        "usage": {
+            "input_tokens": response.usage.prompt_tokens if response.usage else 0,
+            "output_tokens": response.usage.completion_tokens if response.usage else 0,
+        },
+        "provider": "openai",
+        "model": model,
+    }
+
+_LLM_ADAPTERS = {
+    "anthropic": _call_anthropic,
+    "gemini":    _call_gemini,
+    "openai":    _call_openai,
+}
+
+def call_llm(*, messages, system="", tier="standard", max_tokens=4096,
+             timeout=120, anthropic_api_key="", gemini_api_key="", openai_api_key=""):
+    """Call LLM with automatic multi-provider fallback.
+
+    Returns dict with keys: text, usage, provider, model.
+    Raises LLMError if all providers fail.
+    """
+    api_keys = _get_api_keys(anthropic_api_key, gemini_api_key, openai_api_key)
+    chain = MODEL_TIERS.get(tier, MODEL_TIERS["standard"])
+    errors = []
+    for provider, model in chain:
+        key = api_keys.get(provider, "")
+        if not key:
+            continue
+        try:
+            print(f"[LLM Fallback] Trying {provider}/{model}...")
+            result = _LLM_ADAPTERS[provider](
+                messages=messages, system=system, model=model,
+                max_tokens=max_tokens, timeout=timeout, api_key=key,
+            )
+            print(f"[LLM Fallback] Success with {provider}/{model}")
+            return result
+        except Exception as e:
+            print(f"[LLM Fallback] {provider}/{model} failed: {type(e).__name__}: {e}")
+            errors.append((provider, model, e))
+            if not _is_retryable(provider, e):
+                break
+    raise LLMError(errors)
+
+def call_llm_stream(*, messages, system="", tier="standard", max_tokens=16384,
+                    anthropic_api_key="", gemini_api_key="", openai_api_key=""):
+    """Generator: yields keep-alive spaces, then final result dict.
+
+    Usage:
+        for chunk in call_llm_stream(...):
+            if isinstance(chunk, dict):
+                llm_result = chunk  # final result
+            else:
+                yield chunk  # keep-alive space
+    """
+    api_keys = _get_api_keys(anthropic_api_key, gemini_api_key, openai_api_key)
+    chain = MODEL_TIERS.get(tier, MODEL_TIERS["standard"])
+    errors = []
+    for provider, model in chain:
+        key = api_keys.get(provider, "")
+        if not key:
+            continue
+        try:
+            print(f"[LLM Stream Fallback] Trying {provider}/{model}...")
+            if provider == "anthropic":
+                client = anthropic.Anthropic(api_key=key)
+                result_text = ""
+                kwargs = {"model": model, "max_tokens": max_tokens, "messages": messages}
+                if system:
+                    kwargs["system"] = system
+                with client.messages.stream(**kwargs) as stream:
+                    for text in stream.text_stream:
+                        result_text += text
+                        yield " "
+                    response = stream.get_final_message()
+                print(f"[LLM Stream Fallback] Success with {provider}/{model}")
+                yield {
+                    "text": result_text,
+                    "usage": {
+                        "input_tokens": response.usage.input_tokens,
+                        "output_tokens": response.usage.output_tokens,
+                    },
+                    "provider": provider,
+                    "model": model,
+                }
+                return
+            else:
+                # Gemini/OpenAI: run non-streaming in background thread, yield keep-alive
+                future_result = {}
+                future_error = {}
+                def _run_call(p=provider, m=model, k=key):
+                    try:
+                        future_result["data"] = _LLM_ADAPTERS[p](
+                            messages=messages, system=system, model=m,
+                            max_tokens=max_tokens, timeout=300, api_key=k,
+                        )
+                    except Exception as exc:
+                        future_error["err"] = exc
+                thread = threading.Thread(target=_run_call)
+                thread.start()
+                while thread.is_alive():
+                    yield " "
+                    thread.join(timeout=2.0)
+                if "err" in future_error:
+                    raise future_error["err"]
+                print(f"[LLM Stream Fallback] Success with {provider}/{model}")
+                yield future_result["data"]
+                return
+        except Exception as e:
+            print(f"[LLM Stream Fallback] {provider}/{model} failed: {type(e).__name__}: {e}")
+            errors.append((provider, model, e))
+            if not _is_retryable(provider, e):
+                break
+    raise LLMError(errors)
 
 # ============================================
 # DATABASE CONNECTION
@@ -424,6 +710,43 @@ def init_db():
                 )
             ''')
             cur.execute('CREATE INDEX IF NOT EXISTS idx_mp_past_questions_company ON mp_past_questions(company_id)')
+
+            # ============================================
+            # SLIDE GENERATOR TABLES
+            # ============================================
+
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS slide_projects (
+                    id SERIAL PRIMARY KEY,
+                    ticker VARCHAR(20),
+                    title VARCHAR(255) NOT NULL,
+                    theme VARCHAR(50) DEFAULT 'sketchnote',
+                    status VARCHAR(20) DEFAULT 'draft',
+                    total_slides INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS slide_items (
+                    id SERIAL PRIMARY KEY,
+                    project_id INTEGER REFERENCES slide_projects(id) ON DELETE CASCADE,
+                    slide_number INTEGER NOT NULL,
+                    title VARCHAR(255) NOT NULL,
+                    type VARCHAR(30) DEFAULT 'content',
+                    content TEXT,
+                    illustration_hints JSONB DEFAULT '[]',
+                    no_header BOOLEAN DEFAULT FALSE,
+                    image_data TEXT,
+                    content_hash VARCHAR(64),
+                    status VARCHAR(20) DEFAULT 'new',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_slide_items_project ON slide_items(project_id)')
+            cur.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_slide_items_project_num ON slide_items(project_id, slide_number)')
 
         print("Database tables initialized")
     except Exception as e:
@@ -1193,25 +1516,13 @@ def extract_summary_text():
                     # Use API key from form data or environment
                     if api_key:
                         try:
-                            # Determine media type
                             ext = filename.split('.')[-1].lower()
                             media_types = {'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'gif': 'image/gif', 'bmp': 'image/bmp', 'webp': 'image/webp'}
                             media_type = media_types.get(ext, 'image/jpeg')
-                            
-                            # Encode image to base64
                             image_base64 = base64.b64encode(file_content).decode('utf-8')
-                            
-                            # Call Claude Vision API for OCR
-                            headers = {
-                                'x-api-key': api_key,
-                                'Content-Type': 'application/json',
-                                'anthropic-version': '2023-06-01'
-                            }
-                            
-                            ocr_payload = {
-                                'model': 'claude-haiku-4-5-20251001',
-                                'max_tokens': 8000,
-                                'messages': [{
+
+                            ocr_result = call_llm(
+                                messages=[{
                                     'role': 'user',
                                     'content': [
                                         {
@@ -1227,29 +1538,21 @@ def extract_summary_text():
                                             'text': 'Please extract ALL text from this image exactly as it appears. Preserve the original formatting, paragraphs, and structure. Output ONLY the extracted text, nothing else. If this is a screenshot of an article, extract the full article text.'
                                         }
                                     ]
-                                }]
-                            }
-                            
-                            ocr_response = requests.post(
-                                'https://api.anthropic.com/v1/messages',
-                                headers=headers,
-                                json=ocr_payload,
-                                timeout=60
+                                }],
+                                tier="fast",
+                                max_tokens=8000,
+                                timeout=60,
+                                anthropic_api_key=api_key,
                             )
-                            
-                            if ocr_response.status_code == 200:
-                                ocr_result = ocr_response.json()
-                                if ocr_result.get('content') and len(ocr_result['content']) > 0:
-                                    extracted_text = ocr_result['content'][0].get('text', '')
-                                    print(f"Claude Vision OCR extracted {len(extracted_text)} chars from {orig_filename}")
-                            else:
-                                err_detail = ocr_response.text[:200]
-                                print(f"Claude Vision OCR failed: {ocr_response.status_code} - {err_detail}")
-                                extracted_text = f"[Image file: {orig_filename} - OCR failed ({ocr_response.status_code}): {err_detail}]"
+                            extracted_text = ocr_result["text"]
+                            print(f"OCR extracted {len(extracted_text)} chars from {orig_filename} via {ocr_result['provider']}/{ocr_result['model']}")
 
-                        except Exception as claude_error:
-                            print(f"Claude Vision OCR error: {claude_error}")
-                            extracted_text = f"[Image file: {orig_filename} - OCR error: {str(claude_error)[:150]}]"
+                        except LLMError as llm_err:
+                            print(f"OCR failed across all providers: {llm_err}")
+                            extracted_text = f"[Image file: {orig_filename} - OCR failed: {str(llm_err)[:150]}]"
+                        except Exception as ocr_error:
+                            print(f"OCR error: {ocr_error}")
+                            extracted_text = f"[Image file: {orig_filename} - OCR error: {str(ocr_error)[:150]}]"
                     else:
                         # Fallback to pytesseract if no API key
                         try:
@@ -1315,8 +1618,6 @@ def extract_summary_text():
 def transcribe_audio():
     """Transcribe audio file using Google Gemini API"""
     try:
-        from google import genai
-
         if 'file' not in request.files:
             return jsonify({'error': 'No audio file provided'}), 400
 
@@ -1689,38 +1990,23 @@ def chat():
 
         if not api_key:
             return jsonify({'error': 'No API key provided. Please add your API key in Settings.'}), 400
-        
-        headers = {
-            'Content-Type': 'application/json',
-            'x-api-key': api_key,
-            'anthropic-version': '2023-06-01'
-        }
-        
-        payload = {
-            'model': 'claude-sonnet-4-20250514',
-            'max_tokens': 4096,
-            'messages': messages
-        }
-        
-        if system:
-            payload['system'] = system
-        
-        response = requests.post(ANTHROPIC_API_URL, headers=headers, json=payload, timeout=120)
 
-        if response.status_code != 200:
-            error_data = response.json()
-            return jsonify({'error': error_data.get('error', {}).get('message', 'API request failed')}), response.status_code
-
-        result = response.json()
-        assistant_content = result.get('content', [{}])[0].get('text', '')
+        result = call_llm(
+            messages=messages,
+            system=system,
+            tier="standard",
+            max_tokens=4096,
+            timeout=120,
+            anthropic_api_key=api_key,
+        )
 
         return jsonify({
-            'response': assistant_content,
-            'usage': result.get('usage', {})
+            'response': result["text"],
+            'usage': result["usage"]
         })
 
-    except requests.Timeout:
-        return jsonify({'error': 'Request timed out. Please try again.'}), 504
+    except LLMError as e:
+        return jsonify({'error': str(e)}), 502
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -2094,30 +2380,15 @@ Return ONLY valid JSON, no markdown, no explanation."""
             "text": analysis_prompt
         })
         
-        headers = {
-            'Content-Type': 'application/json',
-            'x-api-key': api_key,
-            'anthropic-version': '2023-06-01'
-        }
-        
-        payload = {
-            'model': 'claude-sonnet-4-20250514',
-            'max_tokens': 8192,
-            'messages': [
-                {'role': 'user', 'content': content}
-            ],
-            'system': 'You are an expert equity research analyst. Analyze documents thoroughly and provide institutional-quality investment analysis. Always respond with valid JSON only.'
-        }
-        
-        response = requests.post(ANTHROPIC_API_URL, headers=headers, json=payload, timeout=180)
-        
-        if response.status_code != 200:
-            error_data = response.json()
-            error_msg = error_data.get('error', {}).get('message', 'API request failed')
-            return jsonify({'error': error_msg}), response.status_code
-        
-        result = response.json()
-        assistant_content = result.get('content', [{}])[0].get('text', '')
+        result = call_llm(
+            messages=[{'role': 'user', 'content': content}],
+            system='You are an expert equity research analyst. Analyze documents thoroughly and provide institutional-quality investment analysis. Always respond with valid JSON only.',
+            tier="standard",
+            max_tokens=8192,
+            timeout=180,
+            anthropic_api_key=api_key,
+        )
+        assistant_content = result["text"]
         
         # Parse the JSON response
         try:
@@ -2137,17 +2408,17 @@ Return ONLY valid JSON, no markdown, no explanation."""
                 'analysis': analysis,
                 'changes': changes,
                 'documentMetadata': document_metadata,
-                'usage': result.get('usage', {})
+                'usage': result["usage"]
             })
-            
+
         except json.JSONDecodeError as e:
             return jsonify({
                 'error': f'Failed to parse analysis: {str(e)}',
                 'raw_response': assistant_content
             }), 500
-        
-    except requests.Timeout:
-        return jsonify({'error': 'Request timed out. Try with fewer or smaller documents.'}), 504
+
+    except LLMError as e:
+        return jsonify({'error': str(e)}), 502
     except Exception as e:
         import traceback
         print(f"Error in analyze-multi: {str(e)}")
@@ -2165,38 +2436,23 @@ def parse():
 
         if not api_key:
             return jsonify({'error': 'No API key provided. Please add your API key in Settings.'}), 400
-        
-        headers = {
-            'Content-Type': 'application/json',
-            'x-api-key': api_key,
-            'anthropic-version': '2023-06-01'
-        }
-        
-        payload = {
-            'model': 'claude-haiku-4-5-20251001',
-            'max_tokens': 4096,
-            'messages': [
-                {'role': 'user', 'content': content}
-            ],
-            'system': 'You are a precise JSON extractor. Extract content into the exact JSON format requested. Return ONLY valid JSON with no markdown formatting, no code blocks, no explanation - just the raw JSON object.'
-        }
-        
-        response = requests.post(ANTHROPIC_API_URL, headers=headers, json=payload, timeout=120)
 
-        if response.status_code != 200:
-            error_data = response.json()
-            return jsonify({'error': error_data.get('error', {}).get('message', 'API request failed')}), response.status_code
-
-        result = response.json()
-        assistant_content = result.get('content', [{}])[0].get('text', '')
+        result = call_llm(
+            messages=[{'role': 'user', 'content': content}],
+            system='You are a precise JSON extractor. Extract content into the exact JSON format requested. Return ONLY valid JSON with no markdown formatting, no code blocks, no explanation - just the raw JSON object.',
+            tier="fast",
+            max_tokens=4096,
+            timeout=120,
+            anthropic_api_key=api_key,
+        )
 
         return jsonify({
-            'response': assistant_content,
-            'usage': result.get('usage', {})
+            'response': result["text"],
+            'usage': result["usage"]
         })
 
-    except requests.Timeout:
-        return jsonify({'error': 'Request timed out. Please try again.'}), 504
+    except LLMError as e:
+        return jsonify({'error': str(e)}), 502
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -2509,50 +2765,24 @@ def research_analyze():
 
         if not api_key:
             return jsonify({'error': 'No API key provided. Please add your API key in Settings.'}), 400
-        
-        # Initialize Anthropic client
-        client = anthropic.Anthropic(api_key=api_key)
-        
-        # Call Claude API
-        message = client.messages.create(
-            model="claude-sonnet-4-20250514",
+
+        result = call_llm(
+            messages=[{"role": "user", "content": text}],
+            tier="standard",
             max_tokens=4096,
-            messages=[
-                {
-                    "role": "user",
-                    "content": text
-                }
-            ]
+            anthropic_api_key=api_key,
         )
-        
-        # Extract response text
-        result_text = ""
-        for block in message.content:
-            if hasattr(block, 'text'):
-                result_text += block.text
-        
+
         return jsonify({
-            'result': result_text,
+            'result': result["text"],
             'promptId': prompt_id,
             'promptName': prompt_name,
-            'usage': {
-                'input_tokens': message.usage.input_tokens,
-                'output_tokens': message.usage.output_tokens
-            }
+            'usage': result["usage"]
         })
-        
-    except anthropic.APIConnectionError as e:
-        print(f"API Connection Error: {e}")
-        return jsonify({'error': 'Failed to connect to Anthropic API. Check your internet connection.'}), 503
-    except anthropic.RateLimitError as e:
-        print(f"Rate Limit Error: {e}")
-        return jsonify({'error': 'Rate limit exceeded. Please wait a moment and try again.'}), 429
-    except anthropic.AuthenticationError as e:
-        print(f"Auth Error: {e}")
-        return jsonify({'error': 'Invalid API key. Please check your API key in Settings.'}), 401
-    except anthropic.APIStatusError as e:
-        print(f"API Status Error: {e}")
-        return jsonify({'error': f'API error: {e.message}'}), e.status_code
+
+    except LLMError as e:
+        print(f"Research analysis LLM error: {e}")
+        return jsonify({'error': str(e)}), 502
     except Exception as e:
         print(f"Research analysis error: {e}")
         return jsonify({'error': str(e)}), 500
@@ -3498,34 +3728,36 @@ def mp_analyze_document():
         )
         user_msg = f"Document: {filename}\n\n{extracted_text}"
 
-        client = anthropic.Anthropic(api_key=api_key)
-
         def generate():
             try:
-                result_text = ""
-                tokens_used = 0
-                with client.messages.stream(
-                    model="claude-sonnet-4-20250514",
-                    max_tokens=16384,
+                llm_result = None
+                for chunk in call_llm_stream(
+                    messages=[{"role": "user", "content": user_msg}],
                     system=prompt,
-                    messages=[{"role": "user", "content": user_msg}]
-                ) as stream:
-                    for text in stream.text_stream:
-                        result_text += text
-                        yield " "
-                    response = stream.get_final_message()
-                    tokens_used = response.usage.input_tokens + response.usage.output_tokens
+                    tier="standard",
+                    max_tokens=16384,
+                    anthropic_api_key=api_key,
+                ):
+                    if isinstance(chunk, dict):
+                        llm_result = chunk
+                    else:
+                        yield chunk
 
-                analysis = parse_mp_json(result_text)
+                if llm_result is None:
+                    raise Exception("No result from LLM")
+
+                analysis = parse_mp_json(llm_result["text"])
+                tokens_used = llm_result["usage"]["input_tokens"] + llm_result["usage"]["output_tokens"]
                 yield "\n" + json.dumps({'analysis': analysis, 'tokensUsed': tokens_used, 'filename': filename})
+            except LLMError as e:
+                print(f"MP analyze LLM error: {e}")
+                yield "\n" + json.dumps({'error': str(e)})
             except Exception as e:
                 print(f"MP analyze stream error: {e}")
                 yield "\n" + json.dumps({'error': str(e)})
 
         return app.response_class(generate(), mimetype='text/plain')
 
-    except anthropic.AuthenticationError:
-        return jsonify({'error': 'Invalid API key.'}), 401
     except Exception as e:
         print(f"MP analyze error: {e}")
         return jsonify({'error': str(e)}), 500
@@ -3570,34 +3802,36 @@ def mp_synthesize():
             analyses_text=analyses_text, past_questions_text=past_q_text,
         )
 
-        client = anthropic.Anthropic(api_key=api_key)
-
         def generate():
             try:
-                result_text = ""
-                tokens_used = 0
-                with client.messages.stream(
-                    model="claude-sonnet-4-20250514",
-                    max_tokens=16384,
+                llm_result = None
+                for chunk in call_llm_stream(
+                    messages=[{"role": "user", "content": "Synthesize the above document analyses."}],
                     system=prompt,
-                    messages=[{"role": "user", "content": "Synthesize the above document analyses."}]
-                ) as stream:
-                    for text in stream.text_stream:
-                        result_text += text
-                        yield " "
-                    response = stream.get_final_message()
-                    tokens_used = response.usage.input_tokens + response.usage.output_tokens
+                    tier="standard",
+                    max_tokens=16384,
+                    anthropic_api_key=api_key,
+                ):
+                    if isinstance(chunk, dict):
+                        llm_result = chunk
+                    else:
+                        yield chunk
 
-                synthesis = parse_mp_json(result_text)
+                if llm_result is None:
+                    raise Exception("No result from LLM")
+
+                synthesis = parse_mp_json(llm_result["text"])
+                tokens_used = llm_result["usage"]["input_tokens"] + llm_result["usage"]["output_tokens"]
                 yield "\n" + json.dumps({'synthesis': synthesis, 'tokensUsed': tokens_used})
+            except LLMError as e:
+                print(f"MP synthesize LLM error: {e}")
+                yield "\n" + json.dumps({'error': str(e)})
             except Exception as e:
                 print(f"MP synthesize stream error: {e}")
                 yield "\n" + json.dumps({'error': str(e)})
 
         return app.response_class(generate(), mimetype='text/plain')
 
-    except anthropic.AuthenticationError:
-        return jsonify({'error': 'Invalid API key.'}), 401
     except Exception as e:
         print(f"MP synthesize error: {e}")
         return jsonify({'error': str(e)}), 500
@@ -3633,34 +3867,36 @@ def mp_generate_questions():
             synthesis_text=synthesis_text, unresolved_text=unresolved_text,
         )
 
-        client = anthropic.Anthropic(api_key=api_key)
-
         def generate():
             try:
-                result_text = ""
-                tokens_used = 0
-                with client.messages.stream(
-                    model="claude-sonnet-4-20250514",
-                    max_tokens=16384,
+                llm_result = None
+                for chunk in call_llm_stream(
+                    messages=[{"role": "user", "content": "Generate the meeting preparation questions."}],
                     system=prompt,
-                    messages=[{"role": "user", "content": "Generate the meeting preparation questions."}]
-                ) as stream:
-                    for text in stream.text_stream:
-                        result_text += text
-                        yield " "
-                    response = stream.get_final_message()
-                    tokens_used = response.usage.input_tokens + response.usage.output_tokens
+                    tier="standard",
+                    max_tokens=16384,
+                    anthropic_api_key=api_key,
+                ):
+                    if isinstance(chunk, dict):
+                        llm_result = chunk
+                    else:
+                        yield chunk
 
-                topics = parse_mp_json(result_text)
+                if llm_result is None:
+                    raise Exception("No result from LLM")
+
+                topics = parse_mp_json(llm_result["text"])
+                tokens_used = llm_result["usage"]["input_tokens"] + llm_result["usage"]["output_tokens"]
                 yield "\n" + json.dumps({'topics': topics, 'tokensUsed': tokens_used})
+            except LLMError as e:
+                print(f"MP generate questions LLM error: {e}")
+                yield "\n" + json.dumps({'error': str(e)})
             except Exception as e:
                 print(f"MP generate questions stream error: {e}")
                 yield "\n" + json.dumps({'error': str(e)})
 
         return app.response_class(generate(), mimetype='text/plain')
 
-    except anthropic.AuthenticationError:
-        return jsonify({'error': 'Invalid API key.'}), 401
     except Exception as e:
         print(f"MP generate questions error: {e}")
         return jsonify({'error': str(e)}), 500
@@ -3675,7 +3911,7 @@ def mp_save_results():
         topics = data.get('topics', [])
         synthesis_json = data.get('synthesisJson')
         total_tokens = data.get('totalTokens', 0)
-        model = data.get('model', 'claude-sonnet-4-20250514')
+        model = data.get('model', 'claude-sonnet-4-5-20250929')
 
         if not meeting_id:
             return jsonify({'error': 'meetingId is required'}), 400
@@ -4157,6 +4393,645 @@ def drive_download_files():
         if 'invalid_grant' in error_msg.lower() or '401' in error_msg:
             return jsonify({'error': 'Google authentication expired. Please re-authenticate.'}), 401
         return jsonify({'error': error_msg}), 500
+
+
+# ============================================
+# SLIDE GENERATOR ENDPOINTS
+# ============================================
+
+# --- Theme constants ---
+SLIDE_THEMES = {
+    'sketchnote': {
+        'name': 'Sketchnote',
+        'style_prefix': 'Background: Warm beige/cream colored textured paper (like aged notebook paper)\nIllustrations: Cute hand-drawn cartoon style with colorful doodles\nTitle text: Large, colorful, hand-lettered style typography (rounded, playful, multicolor gradients)\nBody text: Clean, readable text in dark gray/brown\nDecorations: Small stars, sparkles, arrows, dots, swirls scattered around\nLayout: Professional yet friendly, like a designer\'s sketchnote\nAspect ratio: 16:9 widescreen slide\nResolution: High quality, crisp text\nALL text MUST be in English\nDO NOT include any watermarks or AI generation notices',
+        'illustration_guidance': 'Use topic-appropriate icons and characters. DO NOT include robots unless topic is AI/robotics.',
+        'negative_guidance': 'DO NOT include robots or bot characters unless the topic is specifically about AI/robotics.',
+    },
+    'healthcare': {
+        'name': 'Healthcare',
+        'style_prefix': 'Background: Warm beige/cream colored textured paper\nIllustrations: Cute hand-drawn cartoon style with medical-themed doodles\nTitle text: Large, colorful, hand-lettered typography (soft blues, greens, whites)\nBody text: Clean, readable text in dark gray/brown\nDecorations: Stars, sparkles, medical icons scattered around\nLayout: Professional yet friendly sketchnote style\nAspect ratio: 16:9 widescreen\nResolution: High quality, crisp text\nALL text MUST be in English\nDO NOT include any watermarks',
+        'illustration_guidance': 'Use medical icons: stethoscopes, hearts, hospitals, pill capsules, doctors, nurses, medical charts, DNA helixes.',
+        'negative_guidance': 'DO NOT include robots unless topic is health AI. DO NOT include violent or graphic medical imagery.',
+    },
+    'technology': {
+        'name': 'Technology',
+        'style_prefix': 'Background: Warm beige/cream colored textured paper\nIllustrations: Cute hand-drawn cartoon style with tech-themed doodles\nTitle text: Large, colorful, hand-lettered typography (electric blues, purples, neon greens)\nBody text: Clean, readable text in dark gray/brown\nDecorations: Stars, sparkles, circuit-like arrows, dots\nLayout: Professional yet friendly sketchnote style\nAspect ratio: 16:9 widescreen\nResolution: High quality, crisp text\nALL text MUST be in English\nDO NOT include any watermarks',
+        'illustration_guidance': 'Use tech icons: laptops, smartphones, cloud symbols, servers, code brackets, AI brain icons. Robot/AI characters are appropriate.',
+        'negative_guidance': 'DO NOT include medical or finance-specific imagery unless warranted.',
+    },
+    'finance': {
+        'name': 'Finance',
+        'style_prefix': 'Background: Warm beige/cream colored textured paper\nIllustrations: Cute hand-drawn cartoon style with finance-themed doodles\nTitle text: Large, colorful, hand-lettered typography (deep blues, golds, greens)\nBody text: Clean, readable text in dark gray/brown\nDecorations: Stars, sparkles, dollar signs scattered around\nLayout: Professional yet friendly sketchnote style\nAspect ratio: 16:9 widescreen\nResolution: High quality, crisp text\nALL text MUST be in English\nDO NOT include any watermarks',
+        'illustration_guidance': 'Use finance icons: stock charts, bank buildings, money bags, bull/bear characters, trading terminals.',
+        'negative_guidance': 'DO NOT include robots unless discussing fintech/algo trading.',
+    },
+    'general': {
+        'name': 'General',
+        'style_prefix': 'Background: Warm beige/cream colored textured paper\nIllustrations: Cute hand-drawn cartoon style with colorful doodles\nTitle text: Large, colorful, hand-lettered typography\nBody text: Clean, readable text in dark gray/brown\nDecorations: Stars, sparkles, arrows scattered around\nLayout: Professional yet friendly sketchnote style\nAspect ratio: 16:9 widescreen\nResolution: High quality, crisp text\nALL text MUST be in English\nDO NOT include any watermarks',
+        'illustration_guidance': 'Use topic-appropriate icons and characters.',
+        'negative_guidance': 'DO NOT include robots unless topic is about AI/robotics.',
+    },
+}
+
+SECTOR_THEME_MAP = {
+    'Healthcare': 'healthcare',
+    'Health Care': 'healthcare',
+    'Technology': 'technology',
+    'Information Technology': 'technology',
+    'Communication Services': 'technology',
+    'Financials': 'finance',
+    'Financial Services': 'finance',
+    'Energy': 'general',
+    'Consumer Discretionary': 'general',
+    'Consumer Staples': 'general',
+    'Industrials': 'general',
+    'Materials': 'general',
+    'Real Estate': 'finance',
+    'Utilities': 'general',
+}
+
+
+def _build_slide_prompt(slide_data, theme_name, project_title, total_slides):
+    """Build the complete Gemini prompt for a single slide."""
+    theme = SLIDE_THEMES.get(theme_name, SLIDE_THEMES['sketchnote'])
+    parts = ["You are generating a presentation slide image.\n"]
+    parts.append("VISUAL STYLE (MUST follow exactly):")
+    parts.append(theme['style_prefix'])
+    if theme.get('illustration_guidance'):
+        parts.append("\nILLUSTRATION GUIDANCE:")
+        parts.append(theme['illustration_guidance'])
+    if theme.get('negative_guidance'):
+        parts.append("\nIMPORTANT RESTRICTIONS:")
+        parts.append(theme['negative_guidance'])
+    if not slide_data.get('no_header', False):
+        parts.append(f'\nAt the top-left corner, show small header text: "{project_title}"')
+        parts.append(f'At the top-right corner, show: "Slide {slide_data["slide_number"]} / {total_slides}"')
+    else:
+        parts.append("\nDo NOT include any header or slide number on this slide.")
+    parts.append(f"\nSLIDE CONTENT:\n{slide_data['content'].strip()}")
+    hints = slide_data.get('illustration_hints', [])
+    if hints:
+        parts.append("\nILLUSTRATIONS TO INCLUDE:")
+        for h in hints:
+            parts.append(f"- {h}")
+    return "\n".join(parts)
+
+
+def _generate_slide_image(prompt, api_key=None):
+    """Generate a slide image via Gemini API. Returns base64 PNG string or None."""
+    key = api_key or os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY', '')
+    if not key:
+        return None
+    client = genai.Client(api_key=key)
+    model = "gemini-3-pro-image-preview"
+    for attempt in range(3):
+        try:
+            response = client.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=genai_types.GenerateContentConfig(
+                    response_modalities=["TEXT", "IMAGE"],
+                    image_config=genai_types.ImageConfig(aspect_ratio="16:9"),
+                ),
+            )
+            for part in response.candidates[0].content.parts:
+                if hasattr(part, "inline_data") and part.inline_data is not None:
+                    return base64.b64encode(part.inline_data.data).decode('utf-8')
+            import time; time.sleep(2)
+        except Exception as e:
+            print(f"Slide generation attempt {attempt+1} failed: {e}")
+            if attempt < 2:
+                import time; time.sleep((attempt + 1) * 5)
+    return None
+
+
+def _compute_content_hash(slide_data):
+    """Compute SHA-256 hash of slide content for change detection."""
+    import hashlib
+    hints = ','.join(slide_data.get('illustration_hints', []))
+    payload = f"{slide_data.get('title','')}|{slide_data.get('type','')}|{slide_data.get('content','')}|{hints}|{slide_data.get('no_header', False)}"
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+@app.route('/api/slides/themes', methods=['GET'])
+def get_slide_themes():
+    """List available slide themes."""
+    result = []
+    for key, theme in SLIDE_THEMES.items():
+        result.append({'id': key, 'name': theme['name']})
+    return jsonify(result)
+
+
+@app.route('/api/slides/projects', methods=['GET'])
+def get_slide_projects():
+    """List all slide projects."""
+    try:
+        with get_db() as (conn, cur):
+            cur.execute('''
+                SELECT id, ticker, title, theme, status, total_slides, created_at, updated_at
+                FROM slide_projects ORDER BY updated_at DESC
+            ''')
+            rows = cur.fetchall()
+        result = []
+        for row in rows:
+            result.append({
+                'id': row['id'],
+                'ticker': row['ticker'],
+                'title': row['title'],
+                'theme': row['theme'],
+                'status': row['status'],
+                'total_slides': row['total_slides'],
+                'created_at': row['created_at'].isoformat() if row['created_at'] else None,
+                'updated_at': row['updated_at'].isoformat() if row['updated_at'] else None,
+            })
+        return jsonify(result)
+    except Exception as e:
+        print(f"Error getting slide projects: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/slides/projects', methods=['POST'])
+def create_slide_project():
+    """Create a new slide project."""
+    try:
+        data = request.json
+        title = data.get('title', '')
+        ticker = data.get('ticker', '').upper() if data.get('ticker') else None
+        theme = data.get('theme', 'sketchnote')
+        if not title:
+            return jsonify({'error': 'Title is required'}), 400
+        if theme not in SLIDE_THEMES:
+            theme = 'sketchnote'
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('''
+                INSERT INTO slide_projects (ticker, title, theme, status, total_slides)
+                VALUES (%s, %s, %s, 'draft', 0)
+                RETURNING id
+            ''', (ticker, title, theme))
+            project_id = cur.fetchone()['id']
+        return jsonify({'success': True, 'id': project_id})
+    except Exception as e:
+        print(f"Error creating slide project: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/slides/projects/<int:project_id>', methods=['GET'])
+def get_slide_project(project_id):
+    """Get a slide project with all its slides."""
+    try:
+        with get_db() as (conn, cur):
+            cur.execute('SELECT * FROM slide_projects WHERE id = %s', (project_id,))
+            project = cur.fetchone()
+            if not project:
+                return jsonify({'error': 'Project not found'}), 404
+            cur.execute('''
+                SELECT id, slide_number, title, type, content, illustration_hints,
+                       no_header, image_data, content_hash, status
+                FROM slide_items WHERE project_id = %s ORDER BY slide_number
+            ''', (project_id,))
+            slides = cur.fetchall()
+        result = {
+            'id': project['id'],
+            'ticker': project['ticker'],
+            'title': project['title'],
+            'theme': project['theme'],
+            'status': project['status'],
+            'total_slides': project['total_slides'],
+            'created_at': project['created_at'].isoformat() if project['created_at'] else None,
+            'updated_at': project['updated_at'].isoformat() if project['updated_at'] else None,
+            'slides': [],
+        }
+        for s in slides:
+            result['slides'].append({
+                'id': s['id'],
+                'slide_number': s['slide_number'],
+                'title': s['title'],
+                'type': s['type'],
+                'content': s['content'],
+                'illustration_hints': s['illustration_hints'] or [],
+                'no_header': s['no_header'],
+                'has_image': bool(s['image_data']),
+                'status': s['status'],
+            })
+        return jsonify(result)
+    except Exception as e:
+        print(f"Error getting slide project: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/slides/projects/<int:project_id>', methods=['DELETE'])
+def delete_slide_project(project_id):
+    """Delete a slide project and all its slides."""
+    try:
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('DELETE FROM slide_projects WHERE id = %s', (project_id,))
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error deleting slide project: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/slides/projects/<int:project_id>/slides/<int:slide_num>', methods=['PUT'])
+def update_slide(project_id, slide_num):
+    """Update a slide's content."""
+    try:
+        data = request.json
+        with get_db(commit=True) as (conn, cur):
+            updates = []
+            params = []
+            for field in ['title', 'content', 'type', 'no_header']:
+                if field in data:
+                    updates.append(f"{field} = %s")
+                    params.append(data[field])
+            if 'illustration_hints' in data:
+                updates.append("illustration_hints = %s")
+                params.append(json.dumps(data['illustration_hints']))
+            if not updates:
+                return jsonify({'error': 'No fields to update'}), 400
+            # Recompute hash and mark as edited
+            new_hash = _compute_content_hash({
+                'title': data.get('title', ''),
+                'type': data.get('type', 'content'),
+                'content': data.get('content', ''),
+                'illustration_hints': data.get('illustration_hints', []),
+                'no_header': data.get('no_header', False),
+            })
+            updates.append("content_hash = %s")
+            params.append(new_hash)
+            updates.append("status = 'edited'")
+            updates.append("updated_at = %s")
+            params.append(datetime.utcnow())
+            params.extend([project_id, slide_num])
+            cur.execute(f'''
+                UPDATE slide_items SET {', '.join(updates)}
+                WHERE project_id = %s AND slide_number = %s
+            ''', params)
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error updating slide: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/slides/projects/<int:project_id>/slides', methods=['POST'])
+def add_slide(project_id):
+    """Add a new slide to a project."""
+    try:
+        data = request.json
+        title = data.get('title', 'New Slide')
+        after = data.get('after')  # insert after this slide number
+        content = data.get('content', f'[Edit content for: {title}]')
+        slide_type = data.get('type', 'content')
+        hints = data.get('illustration_hints', [])
+        no_header = data.get('no_header', False)
+        with get_db(commit=True) as (conn, cur):
+            if after is not None:
+                new_num = after + 1
+                # Shift existing slides up
+                cur.execute('''
+                    UPDATE slide_items SET slide_number = slide_number + 1, updated_at = %s
+                    WHERE project_id = %s AND slide_number >= %s
+                ''', (datetime.utcnow(), project_id, new_num))
+            else:
+                cur.execute('SELECT COALESCE(MAX(slide_number), 0) + 1 as next_num FROM slide_items WHERE project_id = %s', (project_id,))
+                new_num = cur.fetchone()['next_num']
+            content_hash = _compute_content_hash({
+                'title': title, 'type': slide_type, 'content': content,
+                'illustration_hints': hints, 'no_header': no_header,
+            })
+            cur.execute('''
+                INSERT INTO slide_items (project_id, slide_number, title, type, content, illustration_hints, no_header, content_hash, status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'new')
+                RETURNING id
+            ''', (project_id, new_num, title, slide_type, content, json.dumps(hints), no_header, content_hash))
+            slide_id = cur.fetchone()['id']
+            # Update project total
+            cur.execute('SELECT COUNT(*) as cnt FROM slide_items WHERE project_id = %s', (project_id,))
+            total = cur.fetchone()['cnt']
+            cur.execute('UPDATE slide_projects SET total_slides = %s, updated_at = %s WHERE id = %s',
+                        (total, datetime.utcnow(), project_id))
+        return jsonify({'success': True, 'id': slide_id, 'slide_number': new_num})
+    except Exception as e:
+        print(f"Error adding slide: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/slides/projects/<int:project_id>/slides/<int:slide_num>', methods=['DELETE'])
+def delete_slide_item(project_id, slide_num):
+    """Delete a slide and renumber the rest."""
+    try:
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('DELETE FROM slide_items WHERE project_id = %s AND slide_number = %s', (project_id, slide_num))
+            # Renumber slides after the deleted one
+            cur.execute('''
+                UPDATE slide_items SET slide_number = slide_number - 1, updated_at = %s
+                WHERE project_id = %s AND slide_number > %s
+            ''', (datetime.utcnow(), project_id, slide_num))
+            # Update project total
+            cur.execute('SELECT COUNT(*) as cnt FROM slide_items WHERE project_id = %s', (project_id,))
+            total = cur.fetchone()['cnt']
+            cur.execute('UPDATE slide_projects SET total_slides = %s, updated_at = %s WHERE id = %s',
+                        (total, datetime.utcnow(), project_id))
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error deleting slide: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/slides/projects/<int:project_id>/generate/<int:slide_num>', methods=['POST'])
+def generate_one_slide(project_id, slide_num):
+    """Generate image for a single slide."""
+    try:
+        with get_db() as (conn, cur):
+            cur.execute('SELECT * FROM slide_projects WHERE id = %s', (project_id,))
+            project = cur.fetchone()
+            if not project:
+                return jsonify({'error': 'Project not found'}), 404
+            cur.execute('SELECT * FROM slide_items WHERE project_id = %s AND slide_number = %s', (project_id, slide_num))
+            slide = cur.fetchone()
+            if not slide:
+                return jsonify({'error': 'Slide not found'}), 404
+            total = project['total_slides']
+        slide_data = {
+            'slide_number': slide['slide_number'],
+            'title': slide['title'],
+            'type': slide['type'],
+            'content': slide['content'] or '',
+            'illustration_hints': slide['illustration_hints'] or [],
+            'no_header': slide['no_header'],
+        }
+        prompt = _build_slide_prompt(slide_data, project['theme'], project['title'], total)
+        image_b64 = _generate_slide_image(prompt)
+        if not image_b64:
+            return jsonify({'error': 'Failed to generate image'}), 500
+        content_hash = _compute_content_hash(slide_data)
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('''
+                UPDATE slide_items SET image_data = %s, content_hash = %s, status = 'generated', updated_at = %s
+                WHERE project_id = %s AND slide_number = %s
+            ''', (image_b64, content_hash, datetime.utcnow(), project_id, slide_num))
+        return jsonify({'success': True, 'has_image': True})
+    except Exception as e:
+        print(f"Error generating slide: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/slides/projects/<int:project_id>/generate', methods=['POST'])
+def generate_slides(project_id):
+    """Generate images for all changed slides (runs in background thread)."""
+    try:
+        data = request.json or {}
+        changed_only = data.get('changed_only', True)
+        with get_db() as (conn, cur):
+            cur.execute('SELECT * FROM slide_projects WHERE id = %s', (project_id,))
+            project = cur.fetchone()
+            if not project:
+                return jsonify({'error': 'Project not found'}), 404
+            cur.execute('UPDATE slide_projects SET status = %s, updated_at = %s WHERE id = %s',
+                        ('generating', datetime.utcnow(), project_id))
+            conn.commit()
+        import threading
+        def _generate_all(pid, theme, title, only_changed):
+            import time
+            try:
+                with get_db() as (conn, cur):
+                    cur.execute('SELECT * FROM slide_items WHERE project_id = %s ORDER BY slide_number', (pid,))
+                    slides = cur.fetchall()
+                    total = len(slides)
+                generated_count = 0
+                for slide in slides:
+                    slide_data = {
+                        'slide_number': slide['slide_number'],
+                        'title': slide['title'],
+                        'type': slide['type'],
+                        'content': slide['content'] or '',
+                        'illustration_hints': slide['illustration_hints'] or [],
+                        'no_header': slide['no_header'],
+                    }
+                    current_hash = _compute_content_hash(slide_data)
+                    if only_changed and slide['content_hash'] == current_hash and slide['image_data']:
+                        continue
+                    prompt = _build_slide_prompt(slide_data, theme, title, total)
+                    image_b64 = _generate_slide_image(prompt)
+                    if image_b64:
+                        with get_db(commit=True) as (conn2, cur2):
+                            cur2.execute('''
+                                UPDATE slide_items SET image_data = %s, content_hash = %s, status = 'generated', updated_at = %s
+                                WHERE id = %s
+                            ''', (image_b64, current_hash, datetime.utcnow(), slide['id']))
+                        generated_count += 1
+                    time.sleep(2)
+                with get_db(commit=True) as (conn, cur):
+                    cur.execute('UPDATE slide_projects SET status = %s, updated_at = %s WHERE id = %s',
+                                ('ready', datetime.utcnow(), pid))
+                print(f"Slide generation complete: {generated_count} slides for project {pid}")
+            except Exception as e:
+                print(f"Slide generation error: {e}")
+                with get_db(commit=True) as (conn, cur):
+                    cur.execute('UPDATE slide_projects SET status = %s, updated_at = %s WHERE id = %s',
+                                ('error', datetime.utcnow(), pid))
+        thread = threading.Thread(
+            target=_generate_all,
+            args=(project_id, project['theme'], project['title'], changed_only),
+            daemon=True,
+        )
+        thread.start()
+        return jsonify({'success': True, 'status': 'generating'})
+    except Exception as e:
+        print(f"Error starting slide generation: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/slides/projects/<int:project_id>/slides/<int:slide_num>/image', methods=['GET'])
+def get_slide_image(project_id, slide_num):
+    """Get the generated image for a slide."""
+    try:
+        with get_db() as (conn, cur):
+            cur.execute('SELECT image_data FROM slide_items WHERE project_id = %s AND slide_number = %s', (project_id, slide_num))
+            row = cur.fetchone()
+            if not row or not row['image_data']:
+                return jsonify({'error': 'No image available'}), 404
+        return jsonify({'image_data': row['image_data']})
+    except Exception as e:
+        print(f"Error getting slide image: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/slides/projects/<int:project_id>/export/pdf', methods=['POST'])
+def export_slide_pdf(project_id):
+    """Export all slides as a PDF. Returns base64-encoded PDF."""
+    try:
+        import img2pdf
+        with get_db() as (conn, cur):
+            cur.execute('SELECT title FROM slide_projects WHERE id = %s', (project_id,))
+            project = cur.fetchone()
+            if not project:
+                return jsonify({'error': 'Project not found'}), 404
+            cur.execute('''
+                SELECT image_data FROM slide_items
+                WHERE project_id = %s AND image_data IS NOT NULL
+                ORDER BY slide_number
+            ''', (project_id,))
+            slides = cur.fetchall()
+        if not slides:
+            return jsonify({'error': 'No generated slides to export'}), 400
+        img_bytes_list = []
+        for s in slides:
+            img_bytes_list.append(base64.b64decode(s['image_data']))
+        pdf_bytes = img2pdf.convert(img_bytes_list)
+        pdf_b64 = base64.b64encode(pdf_bytes).decode('utf-8')
+        return jsonify({
+            'success': True,
+            'pdf_data': pdf_b64,
+            'filename': f"{project['title'].replace(' ', '_')}.pdf",
+            'slide_count': len(slides),
+        })
+    except Exception as e:
+        print(f"Error exporting PDF: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/slides/generate-outline', methods=['POST'])
+def generate_slide_outline():
+    """Generate a slide outline from ticker data using LLM."""
+    try:
+        data = request.json
+        ticker = data.get('ticker', '').upper()
+        if not ticker:
+            return jsonify({'error': 'Ticker is required'}), 400
+        # Pull existing data from stock_overviews and portfolio_analyses
+        overview_data = None
+        analysis_data = None
+        with get_db() as (conn, cur):
+            cur.execute('SELECT * FROM stock_overviews WHERE ticker = %s', (ticker,))
+            overview_row = cur.fetchone()
+            if overview_row:
+                overview_data = {
+                    'company_name': overview_row['company_name'],
+                    'company_overview': overview_row['company_overview'],
+                    'business_model': overview_row['business_model'],
+                    'business_mix': overview_row.get('business_mix', ''),
+                    'opportunities': overview_row['opportunities'],
+                    'risks': overview_row['risks'],
+                    'conclusion': overview_row['conclusion'],
+                }
+            cur.execute('SELECT * FROM portfolio_analyses WHERE ticker = %s', (ticker,))
+            analysis_row = cur.fetchone()
+            if analysis_row:
+                analysis_data = {
+                    'company': analysis_row['company'],
+                    'analysis': analysis_row['analysis'],
+                }
+        if not overview_data and not analysis_data:
+            return jsonify({'error': f'No existing data found for {ticker}. Create an overview or analysis first.'}), 404
+        company_name = (overview_data or {}).get('company_name', '') or (analysis_data or {}).get('company', ticker)
+        # Auto-detect theme from sector
+        sector = None
+        if analysis_data and analysis_data.get('analysis'):
+            a = analysis_data['analysis']
+            if isinstance(a, str):
+                try:
+                    a = json.loads(a)
+                except Exception:
+                    a = {}
+            sector = a.get('sector', '')
+        theme = SECTOR_THEME_MAP.get(sector, 'sketchnote')
+        # Build LLM prompt
+        context_parts = [f"Ticker: {ticker}", f"Company: {company_name}"]
+        if overview_data:
+            if overview_data.get('company_overview'):
+                context_parts.append(f"Company Overview:\n{overview_data['company_overview']}")
+            if overview_data.get('business_model'):
+                context_parts.append(f"Business Model:\n{overview_data['business_model']}")
+            if overview_data.get('business_mix'):
+                context_parts.append(f"Business Mix:\n{overview_data['business_mix']}")
+            if overview_data.get('opportunities'):
+                context_parts.append(f"Opportunities:\n{overview_data['opportunities']}")
+            if overview_data.get('risks'):
+                context_parts.append(f"Risks:\n{overview_data['risks']}")
+            if overview_data.get('conclusion'):
+                context_parts.append(f"Conclusion:\n{overview_data['conclusion']}")
+        if analysis_data and analysis_data.get('analysis'):
+            a = analysis_data['analysis']
+            if isinstance(a, dict):
+                context_parts.append(f"Investment Analysis:\n{json.dumps(a, indent=2)[:3000]}")
+        llm_prompt = f"""You are creating slide content for an equity research presentation about {ticker} ({company_name}).
+
+Based on this research data:
+
+{chr(10).join(context_parts)}
+
+Generate a JSON array of slides for a comprehensive investment presentation. Each slide should have:
+- slide_number (integer starting at 1)
+- title (string)
+- type (one of: title, toc, section_divider, content, closing)
+- content (detailed text describing what should appear on the slide - include specific data, numbers, quotes from the research)
+- illustration_hints (array of strings like "company", "growth", "money", "risk", "data", "leader", "opportunity")
+- no_header (boolean - true only for title, section_divider, and closing slides)
+
+Structure: title slide, table of contents, then 5-7 sections covering company overview, business segments, financial performance, recent news/issues, competitive landscape, industry outlook, and investment conclusion. Each section should have a section divider slide followed by 2-4 content slides. End with a closing slide. Target 30-40 slides total.
+
+IMPORTANT: Fill in actual data, numbers, and specific details from the research. Do NOT use placeholder brackets like [Company Name] - use the real company name and real data.
+
+Return ONLY valid JSON array, no markdown fencing."""
+
+        # Call Claude for outline generation
+        api_key = os.environ.get('ANTHROPIC_API_KEY', '')
+        if not api_key:
+            return jsonify({'error': 'ANTHROPIC_API_KEY not configured'}), 500
+        client_ai = anthropic.Anthropic(api_key=api_key)
+        response = client_ai.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=8192,
+            messages=[{"role": "user", "content": llm_prompt}],
+        )
+        response_text = response.content[0].text.strip()
+        # Parse JSON from response
+        if response_text.startswith('```'):
+            response_text = response_text.split('\n', 1)[1].rsplit('```', 1)[0].strip()
+        slides_data = json.loads(response_text)
+        return jsonify({
+            'success': True,
+            'ticker': ticker,
+            'company_name': company_name,
+            'theme': theme,
+            'slides': slides_data,
+        })
+    except json.JSONDecodeError as e:
+        print(f"Error parsing slide outline JSON: {e}")
+        return jsonify({'error': 'Failed to parse LLM response as JSON'}), 500
+    except Exception as e:
+        print(f"Error generating slide outline: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/slides/projects/<int:project_id>/populate', methods=['POST'])
+def populate_slides(project_id):
+    """Populate a project with slides from generated outline data."""
+    try:
+        data = request.json
+        slides_data = data.get('slides', [])
+        if not slides_data:
+            return jsonify({'error': 'No slides data provided'}), 400
+        with get_db(commit=True) as (conn, cur):
+            # Clear existing slides
+            cur.execute('DELETE FROM slide_items WHERE project_id = %s', (project_id,))
+            for s in slides_data:
+                content_hash = _compute_content_hash(s)
+                cur.execute('''
+                    INSERT INTO slide_items (project_id, slide_number, title, type, content, illustration_hints, no_header, content_hash, status)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'new')
+                ''', (
+                    project_id, s['slide_number'], s['title'], s.get('type', 'content'),
+                    s.get('content', ''), json.dumps(s.get('illustration_hints', [])),
+                    s.get('no_header', False), content_hash,
+                ))
+            total = len(slides_data)
+            cur.execute('UPDATE slide_projects SET total_slides = %s, updated_at = %s WHERE id = %s',
+                        (total, datetime.utcnow(), project_id))
+        return jsonify({'success': True, 'total_slides': total})
+    except Exception as e:
+        print(f"Error populating slides: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 # ============================================

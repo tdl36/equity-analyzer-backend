@@ -266,8 +266,10 @@
             return true;
         };
 
-        // Backend API URL - UPDATE THIS WITH YOUR RENDER URL
-        const API_URL = 'https://equity-analyzer-backend.onrender.com';
+        // Backend API URL — use same-origin proxy in production, direct URL for local dev
+        const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+            ? 'https://equity-analyzer-backend.onrender.com'
+            : '';
 
         // Helper function to format UTC timestamp to New York time
         const formatNYTime = (timestamp) => {
@@ -704,6 +706,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
         const Info = ({className = "w-4 h-4"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>;
         const Repeat2 = ({className = "w-4 h-4"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path d="m2 9 3-3 3 3"/><path d="M13 18H7a2 2 0 0 1-2-2V6"/><path d="m22 15-3 3-3-3"/><path d="M11 6h6a2 2 0 0 1 2 2v10"/></svg>;
         const Mic = ({className = "w-5 h-5"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>;
+        const Layers = ({className = "w-5 h-5"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>;
 
         // Helper to detect iOS/iPadOS (including iPadOS 13+ that reports as Mac)
         const isIOSDevice = () => {
@@ -1465,6 +1468,25 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [mpPastQuestions, setMpPastQuestions] = useState([]);
             const [mpUploading, setMpUploading] = useState(false);
 
+            // Slides tab state
+            const [slideProjects, setSlideProjects] = useState([]);
+            const [slideSelectedProject, setSlideSelectedProject] = useState(null);
+            const [slideSelectedSlide, setSlideSelectedSlide] = useState(null);
+            const [slideEditContent, setSlideEditContent] = useState('');
+            const [slideEditTitle, setSlideEditTitle] = useState('');
+            const [slideEditHints, setSlideEditHints] = useState('');
+            const [slideEditNoHeader, setSlideEditNoHeader] = useState(false);
+            const [slideThemes, setSlideThemes] = useState([]);
+            const [slideNewTitle, setSlideNewTitle] = useState('');
+            const [slideNewTicker, setSlideNewTicker] = useState('');
+            const [slideNewTheme, setSlideNewTheme] = useState('sketchnote');
+            const [showSlideCreateForm, setShowSlideCreateForm] = useState(false);
+            const [slideGenerating, setSlideGenerating] = useState(false);
+            const [slideGeneratingNum, setSlideGeneratingNum] = useState(null);
+            const [slideDataLoaded, setSlideDataLoaded] = useState(false);
+            const [slideOutlineGenerating, setSlideOutlineGenerating] = useState(false);
+            const [slidePreviewImage, setSlidePreviewImage] = useState(null);
+
             // Google Drive state (shared across tabs)
             const [driveToken, setDriveToken] = useState(null);
             const [driveResults, setDriveResults] = useState([]);
@@ -1505,15 +1527,15 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         const localChats = localSaved ? JSON.parse(localSaved) : [];
                         
                         if (localChats.length > 0 && dbChats.length === 0) {
-                            // Migrate localStorage to database
+                            // Migrate localStorage to database (parallel for speed)
                             console.log('Migrating localStorage chat histories to database...');
-                            for (const chat of localChats) {
-                                await fetch(`${API_URL}/api/save-chat`, {
+                            await Promise.all(localChats.map(chat =>
+                                fetch(`${API_URL}/api/save-chat`, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify(chat)
-                                });
-                            }
+                                }).catch(() => {})
+                            ));
                             setChatHistories(localChats);
                         } else {
                             setChatHistories(dbChats);
@@ -2099,81 +2121,107 @@ Regulatory, execution, or macro risks that could derail the thesis:
             // Process uploaded files and generate summary
             const processUploadedFiles = async () => {
                 if (summaryFiles.length === 0) return;
-                
+
                 setSummaryFileUploading(true);
                 setSummaryUploadProgress('Preparing files...');
-                
+
                 try {
-                    // Read files as base64 for storage
-                    const fileDataPromises = summaryFiles.map(file => {
+                    // Read files as base64
+                    setSummaryUploadProgress('Reading files...');
+                    const filesBase64 = await Promise.all(summaryFiles.map(file => {
                         return new Promise((resolve, reject) => {
                             const reader = new FileReader();
                             reader.onload = () => {
-                                const base64 = reader.result.split(',')[1];
                                 resolve({
                                     filename: file.name,
-                                    fileType: file.type || 'application/pdf',
-                                    fileData: base64,
+                                    fileType: file.type || 'application/octet-stream',
+                                    fileData: reader.result.split(',')[1],
                                     fileSize: file.size
                                 });
                             };
                             reader.onerror = reject;
                             reader.readAsDataURL(file);
                         });
-                    });
-                    
-                    const fileDataArray = await Promise.all(fileDataPromises);
-                    
-                    // Create FormData with files
-                    const formData = new FormData();
-                    summaryFiles.forEach((file, index) => {
-                        formData.append('files', file);
-                    });
-                    formData.append('topic', newTopicName || currentSummaryTopic || 'General');
-                    formData.append('topicType', newTopicType || 'other');
-                    
-                    // Pass API key for Claude Vision OCR on images
+                    }));
+
                     const apiKey = loadApiKeyFromStorage();
-                    if (apiKey) {
-                        formData.append('apiKey', apiKey);
+
+                    // Process files in parallel batches of 4 for speed
+                    const BATCH_SIZE = 4;
+                    const allExtractedTexts = new Array(filesBase64.length).fill(null);
+                    let firstError = null;
+                    let completed = 0;
+
+                    const extractOne = async (idx) => {
+                        try {
+                            const resp = await fetch(`${API_URL}/api/extract-summary-text`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    files: [filesBase64[idx]],
+                                    topic: newTopicName || currentSummaryTopic || 'General',
+                                    topicType: newTopicType || 'other',
+                                    apiKey: apiKey || ''
+                                })
+                            });
+                            if (resp.ok) {
+                                const data = await resp.json();
+                                allExtractedTexts[idx] = data.text || '';
+                            } else {
+                                let errMsg = '';
+                                try { errMsg = (await resp.json()).error || ''; } catch(e) {}
+                                if (!firstError) firstError = errMsg;
+                                allExtractedTexts[idx] = `[Could not extract: ${filesBase64[idx].filename}]`;
+                            }
+                        } catch (err) {
+                            allExtractedTexts[idx] = `[Failed to process: ${filesBase64[idx].filename}]`;
+                        }
+                        completed++;
+                        setSummaryUploadProgress(`Extracting text (${completed}/${filesBase64.length})...`);
+                    };
+
+                    // Process in batches
+                    for (let i = 0; i < filesBase64.length; i += BATCH_SIZE) {
+                        const batch = [];
+                        for (let j = i; j < Math.min(i + BATCH_SIZE, filesBase64.length); j++) {
+                            batch.push(extractOne(j));
+                        }
+                        await Promise.all(batch);
                     }
-                    
-                    setSummaryUploadProgress('Extracting text from files...');
-                    
-                    // Send to backend for text extraction
-                    const extractResponse = await fetch(`${API_URL}/api/extract-summary-text`, {
-                        method: 'POST',
-                        body: formData
-                    });
-                    
-                    if (!extractResponse.ok) {
-                        const err = await extractResponse.json();
-                        throw new Error(err.error || 'Failed to extract text');
+
+                    const validTexts = allExtractedTexts.filter(t => t && !t.startsWith('['));
+                    const extractedText = allExtractedTexts.filter(Boolean).join('\n\n');
+                    const filename = summaryFiles[0].name;
+
+                    if (!validTexts.length) {
+                        throw new Error(firstError || 'Could not extract text from any files. Please ensure your API key is set in Settings for screenshot OCR.');
                     }
-                    
-                    const extractedData = await extractResponse.json();
-                    const extractedText = extractedData.text;
-                    const filename = extractedData.filename || summaryFiles[0].name;
-                    
+
                     setSummaryUploadProgress('Generating summary...');
-                    
-                    // Send extracted text to webhook
-                    const webhookResponse = await fetch(SUMMARY_WEBHOOK_URL, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ notes: extractedText })
-                    });
-                    
+
+                    // Send combined extracted text to webhook
+                    let webhookResponse;
+                    try {
+                        webhookResponse = await fetch(SUMMARY_WEBHOOK_URL, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ notes: extractedText })
+                        });
+                    } catch (webhookErr) {
+                        console.error('Webhook fetch failed:', webhookErr);
+                        throw new Error('Summary generation service is unavailable. Please try again later.');
+                    }
+
                     if (!webhookResponse.ok) throw new Error('Webhook request failed');
-                    
+
                     const data = await webhookResponse.json();
-                    
+
                     // Use custom title if provided, otherwise use filename
                     let title = summaryTitleInput.trim();
                     if (!title) {
                         title = filename.replace(/\.[^/.]+$/, '').substring(0, 100) || 'Uploaded Document';
                     }
-                    
+
                     // Create new summary object
                     const newSummary = {
                         id: 'summary-' + Date.now(),
@@ -2189,29 +2237,29 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         hasStoredFiles: false, // Will update after saving files
                         createdAt: new Date().toISOString()
                     };
-                    
+
                     // Save summary to database
                     await saveSummaryToDb(newSummary);
-                    
-                    // Save files for View PDF functionality
+
+                    // Store files for View PDF (reuse filesBase64 already read above)
                     setSummaryUploadProgress('Storing files...');
                     try {
                         const saveFilesResponse = await fetch(`${API_URL}/api/summary-files/${newSummary.id}`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ files: fileDataArray })
+                            body: JSON.stringify({ files: filesBase64 })
                         });
-                        
+
                         if (saveFilesResponse.ok) {
                             newSummary.hasStoredFiles = true;
-                            console.log('📁 Files stored successfully for summary');
+                            console.log('Files stored successfully for summary');
                         } else {
                             console.warn('Failed to store files, but summary was created');
                         }
                     } catch (fileErr) {
                         console.warn('File storage error (summary still created):', fileErr);
                     }
-                    
+
                     // Update local state
                     setSavedSummaries(prev => [newSummary, ...prev]);
                     setCurrentSummary(newSummary);
@@ -2221,10 +2269,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     setSummaryDocType('');
                     setShowSummaryInputModal(false);
                     setSummaryViewMode('detail');
-                    
+
                     setSummaryUploadProgress('');
                     alert('Summary generated successfully!');
-                    
+
                 } catch (err) {
                     console.error('Failed to process files:', err);
                     alert('Failed to process files: ' + err.message);
@@ -4758,6 +4806,247 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     loadMpMeetings();
                     setMpDataLoaded(true);
                 }
+                // Lazy load Slides data
+                if (newTab === 'slides' && !slideDataLoaded) {
+                    loadSlideProjects();
+                    loadSlideThemes();
+                    setSlideDataLoaded(true);
+                }
+            };
+
+            // ============================================
+            // MEETING PREP FUNCTIONS
+            // ============================================
+
+            // ============================================
+            // SLIDE GENERATOR FUNCTIONS
+            // ============================================
+
+            const loadSlideProjects = async () => {
+                try {
+                    const res = await fetch(`${API_URL}/api/slides/projects`);
+                    if (res.ok) setSlideProjects(await res.json());
+                } catch (err) { console.error('Failed to load slide projects:', err); }
+            };
+
+            const loadSlideThemes = async () => {
+                try {
+                    const res = await fetch(`${API_URL}/api/slides/themes`);
+                    if (res.ok) setSlideThemes(await res.json());
+                } catch (err) { console.error('Failed to load themes:', err); }
+            };
+
+            const loadSlideProject = async (projectId) => {
+                try {
+                    const res = await fetch(`${API_URL}/api/slides/projects/${projectId}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        setSlideSelectedProject(data);
+                        if (data.slides && data.slides.length > 0 && !slideSelectedSlide) {
+                            selectSlide(data.slides[0]);
+                        }
+                    }
+                } catch (err) { console.error('Failed to load slide project:', err); }
+            };
+
+            const selectSlide = (slide) => {
+                setSlideSelectedSlide(slide);
+                setSlideEditContent(slide.content || '');
+                setSlideEditTitle(slide.title || '');
+                setSlideEditHints((slide.illustration_hints || []).join(', '));
+                setSlideEditNoHeader(slide.no_header || false);
+                setSlidePreviewImage(null);
+                // Load image if available
+                if (slide.has_image) {
+                    loadSlideImage(slide.slide_number);
+                }
+            };
+
+            const loadSlideImage = async (slideNum) => {
+                if (!slideSelectedProject) return;
+                try {
+                    const res = await fetch(`${API_URL}/api/slides/projects/${slideSelectedProject.id}/slides/${slideNum}/image`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        setSlidePreviewImage(data.image_data);
+                    }
+                } catch (err) { console.error('Failed to load slide image:', err); }
+            };
+
+            const createSlideProject = async () => {
+                if (!slideNewTitle.trim()) return;
+                try {
+                    const res = await fetch(`${API_URL}/api/slides/projects`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            title: slideNewTitle,
+                            ticker: slideNewTicker.toUpperCase() || null,
+                            theme: slideNewTheme,
+                        }),
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        setSlideNewTitle('');
+                        setSlideNewTicker('');
+                        setSlideNewTheme('sketchnote');
+                        setShowSlideCreateForm(false);
+                        loadSlideProjects();
+                        loadSlideProject(data.id);
+                    }
+                } catch (err) { console.error('Failed to create slide project:', err); }
+            };
+
+            const deleteSlideProject = async (projectId) => {
+                if (!confirm('Delete this slide project and all its slides?')) return;
+                try {
+                    await fetch(`${API_URL}/api/slides/projects/${projectId}`, { method: 'DELETE' });
+                    setSlideSelectedProject(null);
+                    setSlideSelectedSlide(null);
+                    loadSlideProjects();
+                } catch (err) { console.error('Failed to delete project:', err); }
+            };
+
+            const saveSlideEdit = async () => {
+                if (!slideSelectedProject || !slideSelectedSlide) return;
+                const hints = slideEditHints.split(',').map(h => h.trim()).filter(Boolean);
+                try {
+                    const res = await fetch(`${API_URL}/api/slides/projects/${slideSelectedProject.id}/slides/${slideSelectedSlide.slide_number}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            title: slideEditTitle,
+                            content: slideEditContent,
+                            illustration_hints: hints,
+                            no_header: slideEditNoHeader,
+                            type: slideSelectedSlide.type,
+                        }),
+                    });
+                    if (res.ok) {
+                        loadSlideProject(slideSelectedProject.id);
+                    }
+                } catch (err) { console.error('Failed to save slide:', err); }
+            };
+
+            const addSlide = async (afterNum) => {
+                if (!slideSelectedProject) return;
+                const title = prompt('Slide title:');
+                if (!title) return;
+                try {
+                    const res = await fetch(`${API_URL}/api/slides/projects/${slideSelectedProject.id}/slides`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ title, after: afterNum }),
+                    });
+                    if (res.ok) loadSlideProject(slideSelectedProject.id);
+                } catch (err) { console.error('Failed to add slide:', err); }
+            };
+
+            const deleteSlide = async (slideNum) => {
+                if (!slideSelectedProject) return;
+                if (!confirm(`Delete slide ${slideNum}?`)) return;
+                try {
+                    await fetch(`${API_URL}/api/slides/projects/${slideSelectedProject.id}/slides/${slideNum}`, { method: 'DELETE' });
+                    if (slideSelectedSlide && slideSelectedSlide.slide_number === slideNum) {
+                        setSlideSelectedSlide(null);
+                    }
+                    loadSlideProject(slideSelectedProject.id);
+                } catch (err) { console.error('Failed to delete slide:', err); }
+            };
+
+            const generateOneSlide = async (slideNum) => {
+                if (!slideSelectedProject) return;
+                setSlideGeneratingNum(slideNum);
+                try {
+                    const res = await fetch(`${API_URL}/api/slides/projects/${slideSelectedProject.id}/generate/${slideNum}`, { method: 'POST' });
+                    if (res.ok) {
+                        loadSlideProject(slideSelectedProject.id);
+                        if (slideSelectedSlide && slideSelectedSlide.slide_number === slideNum) {
+                            loadSlideImage(slideNum);
+                        }
+                    } else {
+                        const err = await res.json();
+                        alert(`Generation failed: ${err.error || 'Unknown error'}`);
+                    }
+                } catch (err) { console.error('Failed to generate slide:', err); alert('Generation failed'); }
+                setSlideGeneratingNum(null);
+            };
+
+            const generateAllSlides = async () => {
+                if (!slideSelectedProject) return;
+                setSlideGenerating(true);
+                try {
+                    const res = await fetch(`${API_URL}/api/slides/projects/${slideSelectedProject.id}/generate`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ changed_only: true }),
+                    });
+                    if (res.ok) {
+                        // Poll for completion
+                        const pollInterval = setInterval(async () => {
+                            const projRes = await fetch(`${API_URL}/api/slides/projects/${slideSelectedProject.id}`);
+                            if (projRes.ok) {
+                                const projData = await projRes.json();
+                                setSlideSelectedProject(projData);
+                                if (projData.status !== 'generating') {
+                                    clearInterval(pollInterval);
+                                    setSlideGenerating(false);
+                                    loadSlideProjects();
+                                }
+                            }
+                        }, 5000);
+                    }
+                } catch (err) { console.error('Failed to start generation:', err); setSlideGenerating(false); }
+            };
+
+            const exportSlidePdf = async () => {
+                if (!slideSelectedProject) return;
+                try {
+                    const res = await fetch(`${API_URL}/api/slides/projects/${slideSelectedProject.id}/export/pdf`, { method: 'POST' });
+                    if (res.ok) {
+                        const data = await res.json();
+                        // Download PDF
+                        const link = document.createElement('a');
+                        link.href = `data:application/pdf;base64,${data.pdf_data}`;
+                        link.download = data.filename;
+                        link.click();
+                    } else {
+                        const err = await res.json();
+                        alert(`Export failed: ${err.error || 'Unknown error'}`);
+                    }
+                } catch (err) { console.error('Failed to export PDF:', err); }
+            };
+
+            const generateSlideOutline = async () => {
+                if (!slideSelectedProject || !slideSelectedProject.ticker) {
+                    alert('Project must have a ticker to generate outline from existing data.');
+                    return;
+                }
+                setSlideOutlineGenerating(true);
+                try {
+                    const res = await fetch(`${API_URL}/api/slides/generate-outline`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ticker: slideSelectedProject.ticker }),
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        // Populate slides into project
+                        const popRes = await fetch(`${API_URL}/api/slides/projects/${slideSelectedProject.id}/populate`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ slides: data.slides }),
+                        });
+                        if (popRes.ok) {
+                            loadSlideProject(slideSelectedProject.id);
+                            loadSlideProjects();
+                        }
+                    } else {
+                        const err = await res.json();
+                        alert(`Outline generation failed: ${err.error || 'Unknown error'}`);
+                    }
+                } catch (err) { console.error('Failed to generate outline:', err); alert('Outline generation failed'); }
+                setSlideOutlineGenerating(false);
             };
 
             // ============================================
@@ -7116,9 +7405,22 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 </span>
                             </button>
                             <button
+                                onClick={() => switchTab('slides')}
+                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                                    activeTab === 'slides'
+                                        ? 'bg-teal-600 text-white shadow-lg glow-teal'
+                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
+                                }`}
+                            >
+                                <span className="flex items-center gap-2">
+                                    <Layers className="w-4 h-4" />
+                                    Slides
+                                </span>
+                            </button>
+                            <button
                                 onClick={() => switchTab('settings')}
                                 className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                                    activeTab === 'settings' 
+                                    activeTab === 'settings'
                                         ? 'bg-teal-600 text-white shadow-lg glow-teal'
                                         : 'text-slate-400 hover:text-white hover:bg-white/10'
                                 }`}
@@ -12030,6 +12332,213 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             </div>
                         )}
 
+                        {/* SLIDES TAB */}
+                        {activeTab === 'slides' && (
+                            <div className="flex-1 flex flex-col bg-white/[0.02] overflow-y-auto pb-24 md:pb-0" onScroll={(e) => { setShowScrollTop(e.target.scrollTop > 300); scrollContainerRef.current = e.target; }}>
+                                <div className="p-4 pb-8">
+                                    {/* Header */}
+                                    <div className="flex items-center justify-between mb-6">
+                                        <div className="flex items-center gap-3">
+                                            {slideSelectedProject && (
+                                                <button onClick={() => { setSlideSelectedProject(null); setSlideSelectedSlide(null); }} className="p-2 hover:bg-white/10 rounded-lg">
+                                                    <ChevronLeft className="w-5 h-5" />
+                                                </button>
+                                            )}
+                                            <Layers className="w-6 h-6 text-teal-400" />
+                                            <h1 className="text-xl font-bold">{slideSelectedProject ? slideSelectedProject.title : 'Slide Projects'}</h1>
+                                            {slideSelectedProject && (
+                                                <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                                    slideSelectedProject.status === 'ready' ? 'bg-green-600/30 text-green-300' :
+                                                    slideSelectedProject.status === 'generating' ? 'bg-yellow-600/30 text-yellow-300' :
+                                                    'bg-slate-600/30 text-slate-300'
+                                                }`}>{slideSelectedProject.status}</span>
+                                            )}
+                                        </div>
+                                        {!slideSelectedProject && (
+                                            <button onClick={() => setShowSlideCreateForm(!showSlideCreateForm)} className="px-4 py-2 bg-teal-600 hover:bg-teal-500 rounded-lg text-sm font-medium">
+                                                + New Project
+                                            </button>
+                                        )}
+                                        {slideSelectedProject && (
+                                            <div className="flex gap-2">
+                                                {slideSelectedProject.ticker && slideSelectedProject.slides && slideSelectedProject.slides.length === 0 && (
+                                                    <button onClick={generateSlideOutline} disabled={slideOutlineGenerating}
+                                                        className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 rounded-lg text-xs font-medium">
+                                                        {slideOutlineGenerating ? 'Generating...' : 'Auto-Generate Outline'}
+                                                    </button>
+                                                )}
+                                                <button onClick={generateAllSlides} disabled={slideGenerating}
+                                                    className="px-3 py-1.5 bg-teal-600 hover:bg-teal-500 disabled:opacity-50 rounded-lg text-xs font-medium">
+                                                    {slideGenerating ? 'Generating...' : 'Generate All Changed'}
+                                                </button>
+                                                <button onClick={exportSlidePdf} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-medium">
+                                                    Export PDF
+                                                </button>
+                                                <button onClick={() => deleteSlideProject(slideSelectedProject.id)} className="px-3 py-1.5 bg-red-600/30 hover:bg-red-600/50 rounded-lg text-xs font-medium text-red-300">
+                                                    Delete
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Create Project Form */}
+                                    {showSlideCreateForm && !slideSelectedProject && (
+                                        <div className="bg-white/5 rounded-xl p-4 mb-6 border border-white/10">
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                                                <input value={slideNewTitle} onChange={e => setSlideNewTitle(e.target.value)}
+                                                    placeholder="Project title (e.g. AAPL Analysis)"
+                                                    className="bg-white/10 rounded-lg px-3 py-2 text-sm border border-white/10 focus:border-teal-500 focus:outline-none" />
+                                                <input value={slideNewTicker} onChange={e => setSlideNewTicker(e.target.value)}
+                                                    placeholder="Ticker (optional, e.g. AAPL)"
+                                                    className="bg-white/10 rounded-lg px-3 py-2 text-sm border border-white/10 focus:border-teal-500 focus:outline-none" />
+                                                <select value={slideNewTheme} onChange={e => setSlideNewTheme(e.target.value)}
+                                                    className="bg-white/10 rounded-lg px-3 py-2 text-sm border border-white/10 focus:border-teal-500 focus:outline-none">
+                                                    {slideThemes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                                    {slideThemes.length === 0 && <option value="sketchnote">Sketchnote</option>}
+                                                </select>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button onClick={createSlideProject} className="px-4 py-2 bg-teal-600 hover:bg-teal-500 rounded-lg text-sm font-medium">Create</button>
+                                                <button onClick={() => setShowSlideCreateForm(false)} className="px-4 py-2 bg-white/10 hover:bg-white/15 rounded-lg text-sm">Cancel</button>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Project List */}
+                                    {!slideSelectedProject && (
+                                        <div className="space-y-2">
+                                            {slideProjects.map(proj => (
+                                                <button key={proj.id} onClick={() => loadSlideProject(proj.id)}
+                                                    className="w-full flex items-center gap-4 p-4 bg-white/5 hover:bg-white/10 rounded-xl border border-white/5 transition-all text-left">
+                                                    <div className="w-10 h-10 rounded-lg bg-teal-600/20 flex items-center justify-center">
+                                                        <Layers className="w-5 h-5 text-teal-400" />
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="font-semibold truncate">{proj.title}</div>
+                                                        <div className="text-xs text-slate-400">
+                                                            {proj.ticker && <span className="text-teal-400 mr-2">{proj.ticker}</span>}
+                                                            {proj.total_slides} slides &middot; {proj.theme} theme
+                                                        </div>
+                                                    </div>
+                                                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                                        proj.status === 'ready' ? 'bg-green-600/30 text-green-300' :
+                                                        proj.status === 'generating' ? 'bg-yellow-600/30 text-yellow-300' :
+                                                        'bg-slate-600/30 text-slate-300'
+                                                    }`}>{proj.status}</span>
+                                                    <ChevronRight className="w-5 h-5 text-slate-500" />
+                                                </button>
+                                            ))}
+                                            {slideProjects.length === 0 && (
+                                                <div className="text-center text-slate-400 py-12">
+                                                    <Layers className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                                                    <p>No slide projects yet. Create one to get started.</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Slide Editor (Two-Panel) */}
+                                    {slideSelectedProject && (
+                                        <div className="flex flex-col md:flex-row gap-4" style={{minHeight: '70vh'}}>
+                                            {/* Left Panel: Slide List */}
+                                            <div className="w-full md:w-72 flex-shrink-0 bg-white/5 rounded-xl border border-white/10 overflow-y-auto" style={{maxHeight: '70vh'}}>
+                                                <div className="p-3 border-b border-white/10 flex justify-between items-center">
+                                                    <span className="text-sm font-medium text-slate-300">{slideSelectedProject.slides ? slideSelectedProject.slides.length : 0} slides</span>
+                                                    <button onClick={() => addSlide(slideSelectedProject.slides ? slideSelectedProject.slides.length : 0)}
+                                                        className="text-xs px-2 py-1 bg-teal-600/30 hover:bg-teal-600/50 rounded text-teal-300">+ Add</button>
+                                                </div>
+                                                <div className="divide-y divide-white/5">
+                                                    {(slideSelectedProject.slides || []).map(s => (
+                                                        <button key={s.slide_number} onClick={() => selectSlide(s)}
+                                                            className={`w-full text-left p-3 hover:bg-white/5 transition-all ${
+                                                                slideSelectedSlide && slideSelectedSlide.slide_number === s.slide_number ? 'bg-teal-600/20 border-l-2 border-teal-500' : ''
+                                                            }`}>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-xs text-slate-500 w-6 text-right">{s.slide_number}</span>
+                                                                <span className={`w-2 h-2 rounded-full ${
+                                                                    s.status === 'generated' ? 'bg-green-500' :
+                                                                    s.status === 'edited' ? 'bg-yellow-500' : 'bg-slate-500'
+                                                                }`} />
+                                                                <span className="text-sm truncate flex-1">{s.title}</span>
+                                                            </div>
+                                                            <div className="text-xs text-slate-500 ml-8">{s.type}</div>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {/* Right Panel: Editor + Preview */}
+                                            <div className="flex-1 flex flex-col gap-4">
+                                                {slideSelectedSlide ? (
+                                                    <>
+                                                        {/* Editor Section */}
+                                                        <div className="bg-white/5 rounded-xl border border-white/10 p-4">
+                                                            <div className="flex items-center justify-between mb-3">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-xs bg-white/10 px-2 py-0.5 rounded">#{slideSelectedSlide.slide_number}</span>
+                                                                    <span className="text-xs bg-white/10 px-2 py-0.5 rounded">{slideSelectedSlide.type}</span>
+                                                                </div>
+                                                                <div className="flex gap-2">
+                                                                    <button onClick={() => addSlide(slideSelectedSlide.slide_number)}
+                                                                        className="text-xs px-2 py-1 bg-white/10 hover:bg-white/15 rounded">+ After</button>
+                                                                    <button onClick={() => deleteSlide(slideSelectedSlide.slide_number)}
+                                                                        className="text-xs px-2 py-1 bg-red-600/20 hover:bg-red-600/30 rounded text-red-300">Delete</button>
+                                                                </div>
+                                                            </div>
+                                                            <input value={slideEditTitle} onChange={e => setSlideEditTitle(e.target.value)}
+                                                                placeholder="Slide title"
+                                                                className="w-full bg-white/10 rounded-lg px-3 py-2 text-sm mb-2 border border-white/10 focus:border-teal-500 focus:outline-none font-semibold" />
+                                                            <textarea value={slideEditContent} onChange={e => setSlideEditContent(e.target.value)}
+                                                                placeholder="Slide content - describe what should appear on this slide..."
+                                                                className="w-full bg-white/10 rounded-lg px-3 py-2 text-sm mb-2 border border-white/10 focus:border-teal-500 focus:outline-none font-mono"
+                                                                rows={10} />
+                                                            <div className="flex gap-2 mb-3">
+                                                                <input value={slideEditHints} onChange={e => setSlideEditHints(e.target.value)}
+                                                                    placeholder="Illustration hints (comma-separated, e.g. company, growth, money)"
+                                                                    className="flex-1 bg-white/10 rounded-lg px-3 py-2 text-sm border border-white/10 focus:border-teal-500 focus:outline-none" />
+                                                                <label className="flex items-center gap-2 text-xs text-slate-400">
+                                                                    <input type="checkbox" checked={slideEditNoHeader} onChange={e => setSlideEditNoHeader(e.target.checked)} />
+                                                                    No header
+                                                                </label>
+                                                            </div>
+                                                            <div className="flex gap-2">
+                                                                <button onClick={saveSlideEdit} className="px-4 py-2 bg-teal-600 hover:bg-teal-500 rounded-lg text-sm font-medium">Save</button>
+                                                                <button onClick={() => generateOneSlide(slideSelectedSlide.slide_number)}
+                                                                    disabled={slideGeneratingNum === slideSelectedSlide.slide_number}
+                                                                    className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 rounded-lg text-sm font-medium">
+                                                                    {slideGeneratingNum === slideSelectedSlide.slide_number ? 'Generating...' : 'Generate Image'}
+                                                                </button>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Preview Section */}
+                                                        <div className="bg-white/5 rounded-xl border border-white/10 p-4 flex-1">
+                                                            <div className="text-xs text-slate-400 mb-2">Preview</div>
+                                                            {slidePreviewImage ? (
+                                                                <img src={`data:image/png;base64,${slidePreviewImage}`} alt={`Slide ${slideSelectedSlide.slide_number}`}
+                                                                    className="w-full rounded-lg shadow-lg" />
+                                                            ) : (
+                                                                <div className="flex items-center justify-center h-48 text-slate-500 text-sm">
+                                                                    {slideSelectedSlide.has_image ? 'Loading preview...' : 'No image generated yet. Click "Generate Image" to create one.'}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <div className="flex-1 flex items-center justify-center text-slate-500">
+                                                        <div className="text-center">
+                                                            <Layers className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                                                            <p>Select a slide from the list to edit</p>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
                         {/* SETTINGS TAB */}
                         {activeTab === 'settings' && (
                             <div className="flex-1 flex flex-col bg-white/[0.02] overflow-y-auto pb-24 md:pb-0" onScroll={(e) => { setShowScrollTop(e.target.scrollTop > 300); scrollContainerRef.current = e.target; }}>
@@ -12387,13 +12896,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 <button 
                                     onClick={() => setShowMoreMenu(true)}
                                     className={`flex flex-col items-center justify-center gap-1 min-w-[56px] py-2 rounded-xl transition-all ${
-                                        activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep'
+                                        activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides'
                                             ? 'text-teal-400'
                                             : 'text-slate-400 active:text-slate-200'
                                     }`}
                                 >
-                                    <MoreHorizontal className={`w-5 h-5 ${activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' ? 'stroke-[2.5]' : 'stroke-[1.5]'}`} />
-                                    <span className={`text-[9px] ${activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' ? 'font-semibold' : 'font-medium'}`}>More</span>
+                                    <MoreHorizontal className={`w-5 h-5 ${activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' ? 'stroke-[2.5]' : 'stroke-[1.5]'}`} />
+                                    <span className={`text-[9px] ${activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' ? 'font-semibold' : 'font-medium'}`}>More</span>
                                 </button>
                             </div>
                         </div>
@@ -12456,11 +12965,32 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                         <button
                                             onClick={() => {
                                                 setShowMoreMenu(false);
+                                                switchTab('slides');
+                                            }}
+                                            className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
+                                                activeTab === 'slides'
+                                                    ? 'bg-teal-600/20 border border-teal-500/50'
+                                                    : 'bg-white/5 hover:bg-white/10 border border-transparent'
+                                            }`}
+                                        >
+                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${activeTab === 'slides' ? 'bg-teal-600' : 'bg-white/10'}`}>
+                                                <Layers className="w-5 h-5" />
+                                            </div>
+                                            <div className="text-left">
+                                                <div className="font-semibold">Slides</div>
+                                                <div className="text-xs text-slate-400">AI-generated sketchnote presentations</div>
+                                            </div>
+                                            <ChevronRight className="w-5 h-5 text-slate-500 ml-auto" />
+                                        </button>
+
+                                        <button
+                                            onClick={() => {
+                                                setShowMoreMenu(false);
                                                 switchTab('settings');
                                             }}
                                             className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
-                                                activeTab === 'settings' 
-                                                    ? 'bg-teal-600/20 border border-teal-500/50' 
+                                                activeTab === 'settings'
+                                                    ? 'bg-teal-600/20 border border-teal-500/50'
                                                     : 'bg-white/5 hover:bg-white/10 border border-transparent'
                                             }`}
                                         >
