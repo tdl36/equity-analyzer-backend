@@ -5622,9 +5622,10 @@ Return ONLY valid JSON array, no markdown fencing."""
         slides_data = json.loads(response_text)
 
         # Store outline in content
+        style_instructions = settings.get('style_instructions', '')
         with get_db(commit=True) as (conn, cur):
             cur.execute("UPDATE studio_outputs SET content=%s, progress_total=%s, updated_at=%s WHERE id=%s",
-                        (json.dumps({'slides': slides_data, 'theme_name': theme_name}), len(slides_data), datetime.utcnow(), output_id))
+                        (json.dumps({'slides': slides_data, 'theme_name': theme_name, 'style_instructions': style_instructions}), len(slides_data), datetime.utcnow(), output_id))
             # Create slide image records
             for s in slides_data:
                 content_hash = _compute_content_hash(s)
@@ -5637,6 +5638,8 @@ Return ONLY valid JSON array, no markdown fencing."""
         gemini_key = api_keys.get('gemini', '')
         for i, slide in enumerate(slides_data):
             prompt = _build_slide_prompt(slide, theme_name, '', len(slides_data))
+            if style_instructions:
+                prompt += f"\n\nADDITIONAL STYLE INSTRUCTIONS (follow these closely):\n{style_instructions}"
             image_data = _generate_slide_image(prompt, api_key=gemini_key)
             with get_db(commit=True) as (conn, cur):
                 if image_data:
@@ -5702,6 +5705,10 @@ Create a visually stunning infographic that presents this information clearly wi
 - A logical flow from top to bottom
 - Professional color scheme
 ALL text MUST be in English."""
+
+        style_instructions = settings.get('style_instructions', '')
+        if style_instructions:
+            prompt += f"\n\nADDITIONAL STYLE INSTRUCTIONS (follow these closely):\n{style_instructions}"
 
         gemini_key = api_keys.get('gemini', '')
         key = gemini_key or os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY', '')
@@ -6061,6 +6068,9 @@ def regenerate_studio_slide(output_id, slide_num):
             return jsonify({'error': f'Slide {slide_num} not found'}), 404
 
         prompt = _build_slide_prompt(slide_data, theme_name, '', len(slides))
+        style_instructions = content.get('style_instructions', '')
+        if style_instructions:
+            prompt += f"\n\nADDITIONAL STYLE INSTRUCTIONS (follow these closely):\n{style_instructions}"
         if edit_prompt:
             prompt += f"\n\nADDITIONAL INSTRUCTIONS: {edit_prompt}"
 

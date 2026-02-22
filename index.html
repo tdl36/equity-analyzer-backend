@@ -1524,6 +1524,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [studioQuizCount, setStudioQuizCount] = useState(10);
             const [studioFlashcardCount, setStudioFlashcardCount] = useState(20);
             const [studioReportLength, setStudioReportLength] = useState('standard');
+            const [studioStyleInstructions, setStudioStyleInstructions] = useState('');
             // Studio interactive viewers
             const [studioQuizAnswers, setStudioQuizAnswers] = useState({});
             const [studioQuizSubmitted, setStudioQuizSubmitted] = useState(false);
@@ -5296,6 +5297,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     sourceConfig.source_ids = ids;
                 }
                 const settings = {};
+                if (studioStyleInstructions.trim()) settings.style_instructions = studioStyleInstructions.trim();
                 if (studioCreateType === 'slides') { settings.slide_count = studioSlideCount; settings.theme_name = 'sketchnote'; }
                 if (studioCreateType === 'infographic') { settings.orientation = studioInfographicOrientation; }
                 if (studioCreateType === 'quiz') { settings.question_count = studioQuizCount; settings.difficulty = 'medium'; }
@@ -13651,6 +13653,17 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 </button>
                                                             ))}
                                                         </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Style Instructions */}
+                                                {(studioCreateType === 'slides' || studioCreateType === 'infographic') && (
+                                                    <div>
+                                                        <label className="text-xs font-medium text-slate-400 mb-1 block">Style Instructions (optional)</label>
+                                                        <textarea value={studioStyleInstructions} onChange={e => setStudioStyleInstructions(e.target.value)}
+                                                            placeholder="e.g. Use blue and white color palette, include emojis, modern clean style, dark background, hand-drawn illustrations..."
+                                                            rows={2}
+                                                            className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm placeholder-slate-500 focus:outline-none focus:border-purple-500 resize-none" />
                                                     </div>
                                                 )}
                                             </div>
