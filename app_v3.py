@@ -5348,6 +5348,67 @@ def _gather_source_content(source_config):
     return '\n\n'.join(context_parts), metadata
 
 
+@app.route('/api/studio/init', methods=['POST'])
+def init_studio_tables():
+    """Manually create studio tables if they don't exist."""
+    try:
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS studio_design_themes (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    description TEXT,
+                    style_prompt TEXT NOT NULL,
+                    preview_image TEXT,
+                    is_default BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS studio_outputs (
+                    id SERIAL PRIMARY KEY,
+                    title VARCHAR(500) NOT NULL,
+                    type VARCHAR(30) NOT NULL,
+                    status VARCHAR(50) DEFAULT 'pending',
+                    theme_id INTEGER REFERENCES studio_design_themes(id) ON DELETE SET NULL,
+                    source_config JSONB DEFAULT '{}',
+                    settings JSONB DEFAULT '{}',
+                    content JSONB DEFAULT '{}',
+                    image_data TEXT,
+                    progress_current INTEGER DEFAULT 0,
+                    progress_total INTEGER DEFAULT 0,
+                    error_message TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS studio_slide_images (
+                    id SERIAL PRIMARY KEY,
+                    output_id INTEGER REFERENCES studio_outputs(id) ON DELETE CASCADE,
+                    slide_number INTEGER NOT NULL,
+                    image_data TEXT,
+                    content_hash VARCHAR(64),
+                    status VARCHAR(20) DEFAULT 'new',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_studio_slide_images_output ON studio_slide_images(output_id)')
+            # Seed default themes
+            cur.execute('SELECT COUNT(*) as cnt FROM studio_design_themes')
+            if cur.fetchone()['cnt'] == 0:
+                for key, theme in SLIDE_THEMES.items():
+                    cur.execute('''
+                        INSERT INTO studio_design_themes (name, description, style_prompt, is_default)
+                        VALUES (%s, %s, %s, %s)
+                    ''', (theme['name'], theme.get('illustration_guidance', ''), theme['style_prefix'], True))
+        return jsonify({'success': True, 'message': 'Studio tables created'})
+    except Exception as e:
+        print(f"Studio init error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 # --- Studio Theme CRUD ---
 
 @app.route('/api/studio/themes', methods=['GET'])
