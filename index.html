@@ -5311,8 +5311,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     setShowStudioCreateModal(false);
 
                     // Start generation
-                    const apiKey = localStorage.getItem('anthropic_api_key') || '';
-                    const geminiApiKey = localStorage.getItem('gemini_api_key') || '';
+                    const apiKey = loadApiKeyFromStorage() || '';
+                    const geminiApiKey = loadGeminiKeyFromStorage() || '';
                     await fetch(`${API_URL}/api/studio/outputs/${id}/generate`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -5379,7 +5379,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const regenerateStudioSlide = async (outputId, slideNum, editPrompt) => {
                 setStudioGenerating(true);
                 try {
-                    const geminiApiKey = localStorage.getItem('gemini_api_key') || '';
+                    const geminiApiKey = loadGeminiKeyFromStorage() || '';
                     const res = await fetch(`${API_URL}/api/studio/outputs/${outputId}/regenerate-slide/${slideNum}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
