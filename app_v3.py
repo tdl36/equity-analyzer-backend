@@ -6006,6 +6006,39 @@ def generate_studio_output(output_id):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/studio/outputs/<int:output_id>/update-slide/<int:slide_num>', methods=['PUT'])
+def update_studio_slide(output_id, slide_num):
+    """Update a single slide's content (title, content, illustration_hints)."""
+    try:
+        data = request.json or {}
+        with get_db() as (_, cur):
+            cur.execute('SELECT content FROM studio_outputs WHERE id=%s', (output_id,))
+            output = cur.fetchone()
+        if not output:
+            return jsonify({'error': 'Output not found'}), 404
+        content = output['content'] if isinstance(output['content'], dict) else json.loads(output['content'] or '{}')
+        slides = content.get('slides', [])
+        updated = False
+        for s in slides:
+            if s['slide_number'] == slide_num:
+                if 'title' in data:
+                    s['title'] = data['title']
+                if 'content' in data:
+                    s['content'] = data['content']
+                if 'illustration_hints' in data:
+                    s['illustration_hints'] = data['illustration_hints']
+                updated = True
+                break
+        if not updated:
+            return jsonify({'error': f'Slide {slide_num} not found'}), 404
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('UPDATE studio_outputs SET content=%s, updated_at=%s WHERE id=%s',
+                        (json.dumps(content), datetime.utcnow(), output_id))
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/studio/outputs/<int:output_id>/regenerate-slide/<int:slide_num>', methods=['POST'])
 def regenerate_studio_slide(output_id, slide_num):
     """Regenerate a single slide image with optional edit prompt."""
