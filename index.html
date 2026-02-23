@@ -13642,16 +13642,30 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 {/* Theme selection */}
                                                 {(studioCreateType === 'slides' || studioCreateType === 'infographic') && studioThemes.length > 0 && (
                                                     <div>
-                                                        <label className="text-xs font-medium text-slate-400 mb-1 block">Theme (optional)</label>
-                                                        <div className="flex flex-wrap gap-2">
+                                                        <label className="text-xs font-medium text-slate-400 mb-2 block">Theme (optional)</label>
+                                                        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-64 overflow-y-auto pr-1" style={{scrollbarWidth:'thin'}}>
+                                                            {/* Auto option */}
                                                             <button onClick={() => setStudioCreateTheme(null)}
-                                                                className={`px-3 py-1.5 rounded-lg text-xs ${!studioCreateTheme ? 'bg-purple-600' : 'bg-white/10 hover:bg-white/15'}`}>Auto</button>
-                                                            {studioThemes.map(t => (
-                                                                <button key={t.id} onClick={() => setStudioCreateTheme(t.id)}
-                                                                    className={`px-3 py-1.5 rounded-lg text-xs ${studioCreateTheme === t.id ? 'bg-purple-600' : 'bg-white/10 hover:bg-white/15'}`}>
-                                                                    {t.name}
-                                                                </button>
-                                                            ))}
+                                                                className={`relative rounded-xl p-2 text-center transition-all ${!studioCreateTheme ? 'ring-2 ring-purple-500 bg-white/10' : 'bg-white/5 hover:bg-white/10'}`}>
+                                                                <div className="w-full h-8 rounded-lg mb-1.5 flex items-center justify-center" style={{background:'linear-gradient(135deg, #8b5cf6, #06b6d4, #f59e0b)'}}>
+                                                                    <Wand className="w-4 h-4 text-white" />
+                                                                </div>
+                                                                <span className="text-[10px] font-medium text-slate-300 leading-tight block">Auto</span>
+                                                            </button>
+                                                            {/* Theme tiles */}
+                                                            {studioThemes.map(t => {
+                                                                const colors = (t.colors || '').split(',').map(c => c.trim()).filter(Boolean);
+                                                                const bg = colors.length >= 2
+                                                                    ? `linear-gradient(135deg, ${colors.join(', ')})`
+                                                                    : colors.length === 1 ? colors[0] : '#6366f1';
+                                                                return (
+                                                                    <button key={t.id} onClick={() => setStudioCreateTheme(t.id)}
+                                                                        className={`relative rounded-xl p-2 text-center transition-all ${studioCreateTheme === t.id ? 'ring-2 ring-purple-500 bg-white/10' : 'bg-white/5 hover:bg-white/10'}`}>
+                                                                        <div className="w-full h-8 rounded-lg mb-1.5" style={{background: bg}} />
+                                                                        <span className="text-[10px] font-medium text-slate-300 leading-tight block truncate">{t.name}</span>
+                                                                    </button>
+                                                                );
+                                                            })}
                                                         </div>
                                                     </div>
                                                 )}

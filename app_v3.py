@@ -5409,7 +5409,46 @@ def init_studio_tables():
         return jsonify({'error': str(e)}), 500
 
 
+STUDIO_DESIGN_THEMES = [
+    {'name': 'Sketchnote', 'category': 'classic', 'colors': '#F5E6D3,#FF6B6B,#4ECDC4', 'style_prompt': "Background: Warm beige/cream colored textured paper (like aged notebook paper)\nIllustrations: Cute hand-drawn cartoon style with colorful doodles\nTitle text: Large, colorful, hand-lettered style typography (rounded, playful, multicolor gradients)\nBody text: Clean, readable text in dark gray/brown\nDecorations: Small stars, sparkles, arrows, dots, swirls scattered around\nLayout: Professional yet friendly, like a designer's sketchnote\nAspect ratio: 16:9 widescreen slide\nResolution: High quality, crisp text\nALL text MUST be in English\nDO NOT include any watermarks or AI generation notices"},
+    {'name': 'Frosted Glass', 'category': 'corporate', 'colors': '#0F172A,#38BDF8,#2DD4BF', 'style_prompt': "Background: Dark navy (#0F172A) with soft gradient orbs of blue and purple floating behind frosted-glass panels\nLayout: Content inside semi-transparent white glass cards with backdrop blur and subtle 1px white/10% borders, rounded corners 16px\nTitle text: Clean white sans-serif typography (like Inter or SF Pro), bold weight\nBody text: Light gray (#CBD5E1) sans-serif\nAccent colors: Cool blue (#38BDF8) and teal (#2DD4BF) for highlights and decorative elements\nDecorations: Subtle glassmorphism layers, thin divider lines at 20% white opacity\nAspect ratio: 16:9 widescreen\nALL text MUST be in English\nDO NOT include watermarks"},
+    {'name': 'Bold Editorial', 'category': 'creative', 'colors': '#FFFFFF,#1A1A1A,#DC2626', 'style_prompt': "Background: Stark white or off-white\nTitle text: Dramatic oversized serif typography (like Playfair Display) at 80-120pt in solid black, occupying 50-60% of slide area\nBody text: Light-weight sans-serif in dark gray\nAccent color: Single bold vermillion red (#DC2626) used sparingly for underlines, pull quotes, thin rules\nLayout: Strong asymmetric grid, text at unexpected positions, generous whitespace\nDecorations: Thin horizontal rules, high-contrast black-and-white elements\nPhotography style: High-contrast with tight crops\nAspect ratio: 16:9 widescreen\nALL text MUST be in English"},
+    {'name': 'Aurora Gradient', 'category': 'creative', 'colors': '#7C3AED,#EC4899,#14B8A6', 'style_prompt': "Background: Rich flowing mesh gradients blending deep violet (#7C3AED), magenta (#EC4899), teal (#14B8A6), and warm coral -- reminiscent of northern lights, with soft organic blobs of color\nTitle text: Clean white sans-serif bold typography with subtle text shadow for legibility\nBody text: White or very light gray sans-serif\nContent cards: Semi-transparent dark overlays (rgba black 30-40%) with soft rounded corners\nDecorations: Thin white accent lines, minimal iconography, optional subtle grain texture\nAspect ratio: 16:9 widescreen\nALL text MUST be in English\nDO NOT include watermarks"},
+    {'name': 'Zen Minimal', 'category': 'minimalist', 'colors': '#F5F0EB,#8B9467,#6B7280', 'style_prompt': "Background: Warm off-white or soft cream (#F5F0EB) with subtle paper or linen texture, 60-70% intentionally blank\nTitle text: Elegant thin-weight serif typography (like Cormorant Garamond) in dark charcoal, never pure black\nBody text: Humanist sans-serif in warm gray\nPalette: Muted earth tones -- warm stone gray, soft clay, sage green (#8B9467), pale sand\nDecorations: Single carefully placed visual element per slide -- delicate ink-wash illustration or minimal line drawing, thin hairline rules\nLayout: Generous margins, radical restraint, Japanese wabi-sabi inspired\nAspect ratio: 16:9 widescreen\nALL text MUST be in English"},
+    {'name': 'Cyberpunk Neon', 'category': 'dark', 'colors': '#0A0A0A,#00F0FF,#FF006E', 'style_prompt': "Background: True black (#0A0A0A) or very dark blue-black (#0D1117) with subtle grid/dot matrix pattern at 5-8% opacity\nTitle text: Geometric sans-serif or monospace typography (like Space Grotesk) in neon cyan (#00F0FF) or white, with glow effects\nBody text: White or light gray monospace\nAccent colors: Electric cyan (#00F0FF), hot magenta (#FF006E), acid green (#39FF14)\nDecorations: Glowing neon line effects (box shadows with color spread), angular sharp-cornered containers\nData viz: Neon colors against dark canvas\nAspect ratio: 16:9 widescreen\nALL text MUST be in English\nDO NOT include watermarks"},
+    {'name': 'Marble Luxe', 'category': 'luxury', 'colors': '#1A1A1A,#C9A96E,#FFFFFF', 'style_prompt': "Background: Dark charcoal or black marble texture with sophisticated gray and gold veining\nTitle text: Elegant high-contrast serif typography (like Didot or Bodoni) in metallic gold (#C9A96E) or white\nBody text: Light serif in white or soft gold\nAccent: Metallic gold for borders, thin decorative lines, icons, and flourishes\nDecorations: Thin gold line dividers and frame borders, generous margins, centered layouts\nContent areas: Subtle drop shadows, premium luxury feel\nAspect ratio: 16:9 widescreen\nALL text MUST be in English\nDO NOT include watermarks"},
+    {'name': 'Neobrutalist', 'category': 'playful', 'colors': '#FFE600,#FF5CBE,#3B82F6', 'style_prompt': "Background: Bright saturated colors -- primary yellow (#FFE600), hot pink, electric blue -- changing per slide section\nTitle text: Bold chunky sans-serif (like Space Grotesk Black) in black or white\nBody text: Clean sans-serif in black\nBorders: Thick 3-4px black borders around ALL elements\nShadows: Hard-edge solid drop shadows offset 4-6px in black behind content cards\nDecorations: Geometric shapes (circles, rectangles, zigzag lines), NO gradients, NO blur -- everything flat and intentional\nLayout: Raw, unpolished, high contrast, generous padding\nAspect ratio: 16:9 widescreen\nALL text MUST be in English"},
+    {'name': 'Botanical', 'category': 'organic', 'colors': '#B7C4A0,#FAF7F2,#C2622D', 'style_prompt': "Background: Warm linen white or very pale sage (#FAF7F2)\nTitle text: Elegant serif (like Lora or DM Serif Display) in dark forest green or charcoal\nBody text: Clean humanist sans-serif in warm gray\nPalette: Soft sage green (#B7C4A0), warm cream, muted forest tones, terracotta accents (#C2622D)\nDecorations: Delicate botanical line illustrations -- leaves, ferns, eucalyptus branches, wildflowers as frames and corner accents. Occasional watercolor-wash texture in pale green or blush\nLayout: Open and airy with organic, slightly asymmetric placement, soft rounded containers\nAspect ratio: 16:9 widescreen\nALL text MUST be in English"},
+    {'name': 'Data Dashboard', 'category': 'analytical', 'colors': '#F8F9FA,#2563EB,#F59E0B', 'style_prompt': "Background: Clean white or very light gray (#F8F9FA) with structured multi-panel grid layout\nTitle text: Technical sans-serif (like IBM Plex Sans or Inter) bold in dark gray\nBody text: Clean sans-serif, data labels in monospace\nPrimary accent: Confident blue (#2563EB) with secondary teal, amber (#F59E0B), and coral for data differentiation\nLayout: Slide divided into 2-4 content zones separated by thin gray lines or subtle card boundaries\nDecorations: Prominent donut charts, bar graphs, sparklines, key metric callouts with large numbers, subtle gray icons, cards with very light 2px shadows\nAspect ratio: 16:9 widescreen\nALL text MUST be in English"},
+    {'name': 'Retro Analog', 'category': 'retro', 'colors': '#CC6B2C,#D4A843,#6B7F3E', 'style_prompt': "Background: Slightly textured surface mimicking aged paper or cardboard, warm cream (#FFF3E0)\nTitle text: Retro slab-serif typography (like Rockwell or Cooper) with rounded, friendly letterforms in burnt orange or brown\nBody text: Warm sans-serif in dark brown\nPalette: Burnt orange (#CC6B2C), mustard yellow (#D4A843), avocado green (#6B7F3E), warm brown, cream\nDecorations: Halftone dot patterns, subtle noise overlays for vintage texture, rounded rectangles and circles, hand-drawn or screen-printed illustration style\nPhotography: Warm, slightly faded vintage color grading\nAspect ratio: 16:9 widescreen\nALL text MUST be in English"},
+    {'name': 'Tech Futurist', 'category': 'tech', 'colors': '#0F172A,#3B82F6,#E2E8F0', 'style_prompt': "Background: Deep space navy (#0F172A) with ultra-thin geometric line art: wireframe grids, concentric circles, angular connector lines, node-network patterns in low-opacity cyan or silver\nTitle text: Clean geometric sans-serif in white, tracking slightly wider than normal\nBody text: Light sans-serif in silver/light gray (#E2E8F0)\nAccent: Electric blue (#3B82F6) and white\nDecorations: Thin line borders, micro-detail decorative elements (small crosses, dots at intersections, coordinate markers), subtle blue glow on key elements\nLayout: Mathematically precise alignment, clean structured blocks\nAspect ratio: 16:9 widescreen\nALL text MUST be in English"},
+    {'name': 'Pastel Cloud', 'category': 'soft', 'colors': '#E8DEFF,#DBEAFE,#FDE8EF', 'style_prompt': "Background: Soft diffused gradient blending pastel lavender (#E8DEFF), baby blue (#DBEAFE), blush pink (#FDE8EF), mint (#D1FAE5) -- gentle and cloudlike\nTitle text: Clean rounded sans-serif (like Nunito or Quicksand) medium-weight in dark gray or soft navy\nBody text: Regular weight sans-serif in medium gray\nContent cards: White or frosted-white with 16-20px border radius and very soft shadows\nDecorations: Rounded pill-shaped buttons and tags, simple friendly line icons with rounded caps\nLayout: Soft, accessible, modern, generous spacing\nAspect ratio: 16:9 widescreen\nALL text MUST be in English"},
+    {'name': 'Swiss Mono', 'category': 'minimalist', 'colors': '#000000,#FFFFFF,#6B7280', 'style_prompt': "Background: Pure white\nTitle text: Bold sans-serif (like Helvetica Neue Bold or Archivo Black) in pure black, large and confident\nBody text: Light-weight sans-serif in dark gray\nPalette: STRICTLY black, white, and 3-4 shades of gray -- NO color whatsoever\nLayout: Strong Swiss/International typographic grid with precise 12-column alignment, heavy whitespace\nDecorations: Thick horizontal rules, bold section dividers, large slide numbers as typographic elements\nPhotography: True black and white, high contrast\nAspect ratio: 16:9 widescreen\nALL text MUST be in English"},
+    {'name': 'Warm Terracotta', 'category': 'warm', 'colors': '#C2622D,#FAF7F2,#8B4513', 'style_prompt': "Background: Soft white (#FAF7F2) or light sand with subtle linen or canvas texture\nTitle text: Rounded approachable serif (like Fraunces) in rich terracotta (#C2622D) or deep clay\nBody text: Modern geometric sans-serif in warm charcoal (#3D3024)\nPalette: Terracotta/burnt sienna, deep clay (#8B4513), warm charcoal, dusty rose, sage green\nDecorations: Organic soft shapes -- irregular blobs, arched frames, rounded containers. Thin terracotta accent lines and dots\nPhotography: Warm sun-kissed color grading\nLayout: Balanced but relaxed, generous breathing room\nAspect ratio: 16:9 widescreen\nALL text MUST be in English"},
+    {'name': 'Holographic', 'category': 'futuristic', 'colors': '#E0E7FF,#F0ABFC,#67E8F9', 'style_prompt': "Background: Light silver-white or soft gray base with holographic/iridescent color shifts -- rainbow refractions of pink (#F0ABFC), blue, green, purple shimmering like holographic foil\nTitle text: Clean modern sans-serif in dark charcoal or black for contrast, bold weight\nBody text: Medium sans-serif in dark gray\nAccent: Metallic silver and chrome for borders and decorative lines\nContent cards: Iridescent gradient borders or holographic background fills at low opacity\nDecorations: Subtle light-leak or lens-flare effects, minimalist centered layout with ample whitespace\nAspect ratio: 16:9 widescreen\nALL text MUST be in English\nDO NOT include watermarks"},
+]
+
+
+@app.route('/api/studio/seed-themes', methods=['POST'])
+def seed_studio_themes():
+    """Seed the expanded studio design themes."""
+    try:
+        with get_db(commit=True) as (conn, cur):
+            # Clear existing themes
+            cur.execute('DELETE FROM studio_design_themes')
+            for t in STUDIO_DESIGN_THEMES:
+                cur.execute('''
+                    INSERT INTO studio_design_themes (name, description, style_prompt, is_default)
+                    VALUES (%s, %s, %s, TRUE)
+                ''', (t['name'], t.get('category', ''), t['style_prompt']))
+        return jsonify({'success': True, 'count': len(STUDIO_DESIGN_THEMES)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 # --- Studio Theme CRUD ---
+
+_THEME_COLORS = {t['name']: t['colors'] for t in STUDIO_DESIGN_THEMES}
 
 @app.route('/api/studio/themes', methods=['GET'])
 def get_studio_themes():
@@ -5417,7 +5456,12 @@ def get_studio_themes():
         with get_db() as (_, cur):
             cur.execute('SELECT id, name, description, style_prompt, is_default, preview_image IS NOT NULL as has_preview, created_at FROM studio_design_themes ORDER BY is_default DESC, name ASC')
             rows = cur.fetchall()
-        return jsonify([dict(row) for row in rows])
+        result = []
+        for row in rows:
+            d = dict(row)
+            d['colors'] = _THEME_COLORS.get(row['name'], '')
+            result.append(d)
+        return jsonify(result)
     except Exception as e:
         print(f"Error listing studio themes: {e}")
         return jsonify([])
@@ -5585,7 +5629,17 @@ def _generate_studio_slides(output_id, source_content, settings, api_keys):
         slide_count = settings.get('slide_count', 30)
         theme_name = settings.get('theme_name', 'sketchnote')
 
+        # Look up studio design theme if one is set
+        custom_theme_prompt = ''
         with get_db(commit=True) as (conn, cur):
+            cur.execute("SELECT theme_id FROM studio_outputs WHERE id=%s", (output_id,))
+            out_row = cur.fetchone()
+            if out_row and out_row.get('theme_id'):
+                cur.execute("SELECT name, style_prompt FROM studio_design_themes WHERE id=%s", (out_row['theme_id'],))
+                theme_row = cur.fetchone()
+                if theme_row:
+                    theme_name = theme_row['name'].lower().replace(' ', '')
+                    custom_theme_prompt = theme_row['style_prompt']
             cur.execute("UPDATE studio_outputs SET status='generating', progress_current=0, progress_total=%s, updated_at=%s WHERE id=%s",
                         (slide_count, datetime.utcnow(), output_id))
 
@@ -5625,7 +5679,7 @@ Return ONLY valid JSON array, no markdown fencing."""
         style_instructions = settings.get('style_instructions', '')
         with get_db(commit=True) as (conn, cur):
             cur.execute("UPDATE studio_outputs SET content=%s, progress_total=%s, updated_at=%s WHERE id=%s",
-                        (json.dumps({'slides': slides_data, 'theme_name': theme_name, 'style_instructions': style_instructions}), len(slides_data), datetime.utcnow(), output_id))
+                        (json.dumps({'slides': slides_data, 'theme_name': theme_name, 'style_instructions': style_instructions, 'custom_theme_prompt': custom_theme_prompt}), len(slides_data), datetime.utcnow(), output_id))
             # Create slide image records
             for s in slides_data:
                 content_hash = _compute_content_hash(s)
@@ -5637,7 +5691,14 @@ Return ONLY valid JSON array, no markdown fencing."""
         # Phase 2: Generate images
         gemini_key = api_keys.get('gemini', '')
         for i, slide in enumerate(slides_data):
-            prompt = _build_slide_prompt(slide, theme_name, '', len(slides_data))
+            if custom_theme_prompt:
+                # Use the studio design theme directly instead of built-in SLIDE_THEMES
+                prompt = f"You are generating a presentation slide image.\n\nVISUAL STYLE (MUST follow exactly):\n{custom_theme_prompt}\n\nSLIDE CONTENT:\n{slide.get('content', '').strip()}"
+                hints = slide.get('illustration_hints', [])
+                if hints:
+                    prompt += "\n\nILLUSTRATIONS TO INCLUDE:\n" + "\n".join(f"- {h}" for h in hints)
+            else:
+                prompt = _build_slide_prompt(slide, theme_name, '', len(slides_data))
             if style_instructions:
                 prompt += f"\n\nADDITIONAL STYLE INSTRUCTIONS (follow these closely):\n{style_instructions}"
             image_data = _generate_slide_image(prompt, api_key=gemini_key)
@@ -6063,11 +6124,18 @@ def regenerate_studio_slide(output_id, slide_num):
         content = output['content'] if isinstance(output['content'], dict) else json.loads(output['content'] or '{}')
         slides = content.get('slides', [])
         theme_name = content.get('theme_name', 'sketchnote')
+        custom_theme_prompt = content.get('custom_theme_prompt', '')
         slide_data = next((s for s in slides if s['slide_number'] == slide_num), None)
         if not slide_data:
             return jsonify({'error': f'Slide {slide_num} not found'}), 404
 
-        prompt = _build_slide_prompt(slide_data, theme_name, '', len(slides))
+        if custom_theme_prompt:
+            prompt = f"You are generating a presentation slide image.\n\nVISUAL STYLE (MUST follow exactly):\n{custom_theme_prompt}\n\nSLIDE CONTENT:\n{slide_data.get('content', '').strip()}"
+            hints = slide_data.get('illustration_hints', [])
+            if hints:
+                prompt += "\n\nILLUSTRATIONS TO INCLUDE:\n" + "\n".join(f"- {h}" for h in hints)
+        else:
+            prompt = _build_slide_prompt(slide_data, theme_name, '', len(slides))
         style_instructions = content.get('style_instructions', '')
         if style_instructions:
             prompt += f"\n\nADDITIONAL STYLE INSTRUCTIONS (follow these closely):\n{style_instructions}"
