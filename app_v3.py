@@ -1714,12 +1714,16 @@ def transcribe_audio():
 
         # Upload file to Gemini
         import io
-        uploaded_file = client.files.upload(
-            file=io.BytesIO(file_content),
-            config={'mime_type': mime_type, 'display_name': file.filename}
-        )
-
-        print(f"File uploaded to Gemini: {uploaded_file.name}")
+        try:
+            uploaded_file = client.files.upload(
+                file=io.BytesIO(file_content),
+                config={'mime_type': mime_type, 'display_name': file.filename}
+            )
+            print(f"File uploaded to Gemini: {uploaded_file.name}")
+        except Exception as upload_err:
+            print(f"Gemini file upload failed: {upload_err}")
+            # Try inline base64 approach as fallback
+            uploaded_file = None
 
         # Transcribe with Gemini (with retry for rate limits)
         transcription_prompt = """Please provide a complete, word-for-word professional transcription of this audio recording.
@@ -1734,9 +1738,18 @@ Requirements:
 - Do NOT add any commentary, headers, timestamps, or notes - just the pure transcription"""
 
         import time
-        models_to_try = ['gemini-3-flash-preview', 'gemini-2.0-flash', 'gemini-2.0-flash-lite']
+        import base64
+        models_to_try = ['gemini-2.0-flash', 'gemini-2.0-flash-lite']
         transcript_text = None
         last_error = None
+
+        # Build content: either uploaded file reference or inline base64 data
+        if uploaded_file:
+            audio_content = uploaded_file
+        else:
+            # Inline base64 fallback when file upload fails
+            audio_b64 = base64.b64encode(file_content).decode('utf-8')
+            audio_content = {'inline_data': {'mime_type': mime_type, 'data': audio_b64}}
 
         for model_name in models_to_try:
             max_retries = 2
@@ -1745,7 +1758,7 @@ Requirements:
                     print(f"Trying {model_name} (attempt {attempt + 1}/{max_retries})...")
                     response = client.models.generate_content(
                         model=model_name,
-                        contents=[uploaded_file, transcription_prompt]
+                        contents=[audio_content, transcription_prompt]
                     )
                     # Safely extract text - response.text can raise ValueError
                     # if the response was blocked or has no valid candidates
@@ -1775,6 +1788,7 @@ Requirements:
                 except Exception as retry_err:
                     last_error = retry_err
                     err_str = str(retry_err)
+                    print(f"{model_name} attempt {attempt + 1} error: {err_str}")
                     if '429' in err_str or 'RESOURCE_EXHAUSTED' in err_str:
                         if attempt < max_retries - 1:
                             wait_time = (attempt + 1) * 10
@@ -1783,20 +1797,17 @@ Requirements:
                         else:
                             print(f"{model_name} exhausted, falling back to next model...")
                             break
-                    elif 'did not match' in err_str or 'expected' in err_str.lower():
-                        # Gemini SDK response parsing error - try next model
-                        print(f"{model_name} response parsing error: {err_str}, trying next model...")
-                        break
                     else:
-                        raise
+                        # Any other error (parsing, model not found, etc.) - try next model
+                        print(f"{model_name} failed: {err_str}, trying next model...")
+                        break
             if transcript_text:
                 break
 
         if transcript_text is None:
             err_msg = str(last_error) if last_error else "Unknown error"
-            if 'did not match' in err_msg or 'expected' in err_msg.lower():
-                raise Exception("Gemini could not process this audio file. The audio may be too short, corrupted, or in an unsupported format. Try converting to MP3 and re-uploading.")
-            raise last_error or Exception("Transcription failed across all models")
+            print(f"All transcription models failed. Last error: {err_msg}")
+            raise Exception("Gemini could not transcribe this audio. Try converting to MP3 format or using a shorter clip.")
 
         # Clean up the uploaded file
         try:
@@ -1819,9 +1830,13 @@ Requirements:
 
     except Exception as e:
         print(f"Error transcribing audio: {e}")
+        import traceback
+        traceback.print_exc()
         err_str = str(e)
         if '429' in err_str or 'RESOURCE_EXHAUSTED' in err_str:
             return jsonify({'error': 'Gemini API rate limit reached. Please wait 1-2 minutes and try again. If this persists, check your API quota at console.cloud.google.com.'}), 429
+        if 'did not match' in err_str or 'expected pattern' in err_str.lower():
+            return jsonify({'error': 'Gemini could not process this audio file. Try converting to MP3 format or using a shorter clip.'}), 500
         return jsonify({'error': f'Transcription failed: {err_str}'}), 500
 
 
