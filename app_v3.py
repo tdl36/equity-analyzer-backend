@@ -1747,9 +1747,31 @@ Requirements:
                         model=model_name,
                         contents=[uploaded_file, transcription_prompt]
                     )
-                    transcript_text = response.text
-                    print(f"Success with {model_name}")
-                    break
+                    # Safely extract text - response.text can raise ValueError
+                    # if the response was blocked or has no valid candidates
+                    try:
+                        transcript_text = response.text
+                    except (ValueError, AttributeError) as text_err:
+                        # Try extracting from candidates directly
+                        extracted = None
+                        if hasattr(response, 'candidates') and response.candidates:
+                            for candidate in response.candidates:
+                                if hasattr(candidate, 'content') and candidate.content and hasattr(candidate.content, 'parts'):
+                                    for part in candidate.content.parts:
+                                        if hasattr(part, 'text') and part.text:
+                                            extracted = part.text
+                                            break
+                                if extracted:
+                                    break
+                        if extracted:
+                            transcript_text = extracted
+                        else:
+                            print(f"{model_name} returned no text: {text_err}, trying next model...")
+                            last_error = text_err
+                            break  # Try next model
+                    if transcript_text:
+                        print(f"Success with {model_name}")
+                        break
                 except Exception as retry_err:
                     last_error = retry_err
                     err_str = str(retry_err)
@@ -1761,12 +1783,19 @@ Requirements:
                         else:
                             print(f"{model_name} exhausted, falling back to next model...")
                             break
+                    elif 'did not match' in err_str or 'expected' in err_str.lower():
+                        # Gemini SDK response parsing error - try next model
+                        print(f"{model_name} response parsing error: {err_str}, trying next model...")
+                        break
                     else:
                         raise
             if transcript_text:
                 break
 
         if transcript_text is None:
+            err_msg = str(last_error) if last_error else "Unknown error"
+            if 'did not match' in err_msg or 'expected' in err_msg.lower():
+                raise Exception("Gemini could not process this audio file. The audio may be too short, corrupted, or in an unsupported format. Try converting to MP3 and re-uploading.")
             raise last_error or Exception("Transcription failed across all models")
 
         # Clean up the uploaded file
