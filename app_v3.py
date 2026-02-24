@@ -6056,7 +6056,8 @@ def generate_studio_output(output_id):
         settings = output['settings'] if isinstance(output['settings'], dict) else json.loads(output['settings'] or '{}')
         source_content, _ = _gather_source_content(source_config)
         if not source_content.strip():
-            return jsonify({'error': 'No source content found. Please check your source selection.'}), 400
+            # Auto-generate from title alone when no source content provided
+            source_content = f"Generate content about: {output['title']}"
 
         api_keys = {
             'anthropic': data.get('apiKey', '') or os.environ.get('ANTHROPIC_API_KEY', ''),
