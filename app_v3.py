@@ -1739,7 +1739,7 @@ Requirements:
 
         import time
         import base64
-        models_to_try = ['gemini-2.0-flash', 'gemini-2.0-flash-lite']
+        models_to_try = ['gemini-2.5-flash', 'gemini-2.0-flash']
         transcript_text = None
         last_error = None
 
