@@ -2153,11 +2153,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 const files = Array.from(e.target.files || []);
                 if (files.length > 0) {
                     if (summaryInputType === 'audio') {
-                        setSummaryFiles([files[0]]);
+                        setSummaryFiles(prev => [...prev, ...files]);
                     } else {
                         setSummaryFiles(files);
                     }
                 }
+                // Reset input so same file can be re-selected
+                if (e.target) e.target.value = '';
             };
 
             // Handle drag and drop for summary files
@@ -2167,7 +2169,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 const files = Array.from(e.dataTransfer.files || []);
                 if (files.length > 0) {
                     if (summaryInputType === 'audio') {
-                        setSummaryFiles([files[0]]);
+                        setSummaryFiles(prev => [...prev, ...files]);
                     } else {
                         setSummaryFiles(files);
                     }
@@ -2404,8 +2406,6 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const processAudioFile = async () => {
                 if (summaryFiles.length === 0) return;
 
-                const audioFile = summaryFiles[0];
-
                 const geminiKey = loadGeminiKeyFromStorage();
                 if (!geminiKey) {
                     alert('Please add your Gemini API key in Settings first.');
@@ -2413,30 +2413,43 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 }
 
                 setSummaryFileUploading(true);
-                setSummaryUploadProgress('Transcribing audio with Gemini (this may take a few minutes)...');
 
                 try {
-                    // Step 1: Transcribe audio via backend Gemini endpoint
-                    const formData = new FormData();
-                    formData.append('file', audioFile);
-                    formData.append('geminiApiKey', geminiKey);
+                    // Step 1: Transcribe each audio file sequentially
+                    const allTranscripts = [];
+                    for (let i = 0; i < summaryFiles.length; i++) {
+                        const audioFile = summaryFiles[i];
+                        const label = summaryFiles.length > 1
+                            ? `Transcribing file ${i + 1} of ${summaryFiles.length}: ${audioFile.name}...`
+                            : 'Transcribing audio with Gemini (this may take a few minutes)...';
+                        setSummaryUploadProgress(label);
 
-                    const transcribeResponse = await fetch(`${API_URL}/api/transcribe-audio`, {
-                        method: 'POST',
-                        body: formData
-                    });
+                        const formData = new FormData();
+                        formData.append('file', audioFile);
+                        formData.append('geminiApiKey', geminiKey);
 
-                    if (!transcribeResponse.ok) {
-                        const err = await transcribeResponse.json();
-                        throw new Error(err.error || 'Transcription failed');
+                        const transcribeResponse = await fetch(`${API_URL}/api/transcribe-audio`, {
+                            method: 'POST',
+                            body: formData
+                        });
+
+                        if (!transcribeResponse.ok) {
+                            const err = await transcribeResponse.json();
+                            throw new Error(`Failed to transcribe ${audioFile.name}: ${err.error || 'Unknown error'}`);
+                        }
+
+                        const transcribeData = await transcribeResponse.json();
+                        allTranscripts.push({ filename: audioFile.name, text: transcribeData.text });
                     }
 
-                    const transcribeData = await transcribeResponse.json();
-                    const transcriptText = transcribeData.text;
+                    // Combine transcripts (add part headers only for multi-file)
+                    const transcriptText = allTranscripts.length === 1
+                        ? allTranscripts[0].text
+                        : allTranscripts.map((t, i) => `--- Part ${i + 1}: ${t.filename} ---\n\n${t.text}`).join('\n\n\n');
 
                     setSummaryUploadProgress('Generating takeaways and questions...');
 
-                    // Step 2: Send transcript to n8n webhook for takeaways/questions
+                    // Step 2: Send combined transcript to n8n webhook for takeaways/questions
                     const webhookResponse = await fetch(SUMMARY_WEBHOOK_URL, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -2450,7 +2463,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     // Step 3: Build title
                     let title = summaryTitleInput.trim();
                     if (!title) {
-                        title = audioFile.name.replace(/\.[^/.]+$/, '').substring(0, 100) || 'Audio Transcription';
+                        if (summaryFiles.length > 1) {
+                            title = `Audio Transcription (${summaryFiles.length} files)`;
+                        } else {
+                            title = summaryFiles[0].name.replace(/\.[^/.]+$/, '').substring(0, 100) || 'Audio Transcription';
+                        }
                     }
 
                     // Step 4: Create summary object with full transcript in rawNotes
@@ -2464,7 +2481,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         topicType: newTopicType || 'other',
                         docType: summaryDocType || 'audio_recording',
                         sourceType: 'audio',
-                        sourceFiles: [audioFile.name],
+                        sourceFiles: summaryFiles.map(f => f.name),
                         hasStoredFiles: false,
                         createdAt: new Date().toISOString()
                     };
@@ -2486,7 +2503,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
                         if (docxResponse.ok) {
                             const docxData = await docxResponse.json();
-                            const transcriptFilename = audioFile.name.replace(/\.[^/.]+$/, '') + '_transcript.docx';
+                            const transcriptFilename = (summaryFiles.length === 1
+                                ? summaryFiles[0].name.replace(/\.[^/.]+$/, '')
+                                : 'combined_audio') + '_transcript.docx';
 
                             const saveFilesResponse = await fetch(`${API_URL}/api/summary-files/${newSummary.id}`, {
                                 method: 'POST',
@@ -11282,6 +11301,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             ref={summaryFileInputRef}
                                                             onChange={handleSummaryFileSelect}
                                                             accept=".mp3,.mp4,.mpeg,.mpga,.m4a,.wav,.webm"
+                                                            multiple
                                                             className="hidden"
                                                         />
                                                         <div
@@ -11292,13 +11312,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         >
                                                             <Mic className="w-12 h-12 text-purple-400 mx-auto mb-4" />
                                                             <p className="text-slate-300 font-medium mb-2">
-                                                                Drop audio file here or click to browse
+                                                                Drop audio file(s) here or click to browse
                                                             </p>
                                                             <p className="text-sm text-slate-500 mb-2">
                                                                 Supports: MP3, M4A, WAV, MP4, MPEG, WebM
                                                             </p>
                                                             <p className="text-xs text-purple-400">
-                                                                Audio will be transcribed using Google Gemini
+                                                                Multiple files will be combined into one transcript
                                                             </p>
                                                         </div>
 
@@ -11307,25 +11327,27 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 {summaryFiles.map((file, index) => (
                                                                     <div key={index} className="flex items-center justify-between bg-white/5 backdrop-blur-lg rounded-lg px-3 py-2">
                                                                         <div className="flex items-center gap-2">
-                                                                            <Mic className="w-4 h-4 text-purple-400" />
+                                                                            <span className="text-xs text-slate-500 w-5 text-center shrink-0">{index + 1}.</span>
+                                                                            <Mic className="w-4 h-4 text-purple-400 shrink-0" />
                                                                             <span className="text-sm truncate">{file.name}</span>
-                                                                            <span className="text-xs text-slate-500">
+                                                                            <span className="text-xs text-slate-500 shrink-0">
                                                                                 ({(file.size / (1024 * 1024)).toFixed(1)} MB)
                                                                             </span>
-                                                                            {file.size > 25 * 1024 * 1024 && (
-                                                                                <span className="text-xs text-amber-400 font-medium">
-                                                                                    Large file — will be auto-compressed
-                                                                                </span>
-                                                                            )}
                                                                         </div>
                                                                         <button
                                                                             onClick={() => setSummaryFiles(prev => prev.filter((_, i) => i !== index))}
-                                                                            className="p-1 text-slate-400 hover:text-red-400"
+                                                                            className="p-1 text-slate-400 hover:text-red-400 shrink-0"
                                                                         >
                                                                             <X className="w-4 h-4" />
                                                                         </button>
                                                                     </div>
                                                                 ))}
+                                                                <button
+                                                                    onClick={() => summaryFileInputRef.current?.click()}
+                                                                    className="w-full py-2 border border-dashed border-purple-500/30 rounded-lg text-xs text-purple-400 hover:bg-purple-500/10 transition-all"
+                                                                >
+                                                                    + Add more audio files
+                                                                </button>
                                                             </div>
                                                         )}
 
