@@ -270,6 +270,8 @@
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
             ? 'https://equity-analyzer-backend.onrender.com'
             : '';
+        // Direct backend URL for long-running requests (bypasses Cloudflare 100s timeout)
+        const DIRECT_API_URL = 'https://equity-analyzer-backend.onrender.com';
 
         // Helper function to format UTC timestamp to New York time
         const formatNYTime = (timestamp) => {
@@ -2428,7 +2430,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         formData.append('file', audioFile);
                         formData.append('geminiApiKey', geminiKey);
 
-                        const transcribeResponse = await fetch(`${API_URL}/api/transcribe-audio`, {
+                        // Use DIRECT_API_URL to bypass Cloudflare 100s timeout
+                        const transcribeResponse = await fetch(`${DIRECT_API_URL}/api/transcribe-audio`, {
                             method: 'POST',
                             body: formData
                         });
