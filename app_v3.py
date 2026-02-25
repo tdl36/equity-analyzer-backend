@@ -1712,20 +1712,30 @@ def transcribe_audio():
         # Initialize Gemini client
         client = genai.Client(api_key=gemini_api_key)
 
-        # Upload file to Gemini
-        import io
-        try:
-            uploaded_file = client.files.upload(
-                file=io.BytesIO(file_content),
-                config={'mime_type': mime_type, 'display_name': file.filename}
-            )
-            print(f"File uploaded to Gemini: {uploaded_file.name}")
-        except Exception as upload_err:
-            print(f"Gemini file upload failed: {upload_err}")
-            # Try inline base64 approach as fallback
-            uploaded_file = None
+        # Build audio content using Part.from_bytes (inline, no upload step)
+        # For large files (>20MB), use file upload API instead
+        import io, time
+        audio_content = None
+        uploaded_file = None
 
-        # Transcribe with Gemini (with retry for rate limits)
+        if file_size_mb > 20:
+            # Large file: use file upload API
+            try:
+                uploaded_file = client.files.upload(
+                    file=io.BytesIO(file_content),
+                    config=genai_types.UploadFileConfig(mime_type=mime_type, display_name=file.filename)
+                )
+                audio_content = uploaded_file
+                print(f"Large file uploaded to Gemini: {uploaded_file.name}")
+            except Exception as upload_err:
+                print(f"Gemini file upload failed: {upload_err}, falling back to inline bytes")
+
+        if audio_content is None:
+            # Inline bytes (works for files up to ~20MB, no upload step needed)
+            audio_content = genai_types.Part.from_bytes(data=file_content, mime_type=mime_type)
+            print(f"Using inline bytes for audio ({file_size_mb:.1f}MB)")
+
+        # Transcribe with Gemini
         transcription_prompt = """Please provide a complete, word-for-word professional transcription of this audio recording.
 
 Requirements:
@@ -1737,51 +1747,39 @@ Requirements:
 - Start each speaker's turn on a new line with their label
 - Do NOT add any commentary, headers, timestamps, or notes - just the pure transcription"""
 
-        import time
-        import base64
         models_to_try = ['gemini-2.5-flash', 'gemini-2.0-flash']
         transcript_text = None
         last_error = None
 
-        # Build content: either uploaded file reference or inline base64 data
-        if uploaded_file:
-            audio_content = uploaded_file
-        else:
-            # Inline base64 fallback when file upload fails
-            audio_b64 = base64.b64encode(file_content).decode('utf-8')
-            audio_content = {'inline_data': {'mime_type': mime_type, 'data': audio_b64}}
-
         for model_name in models_to_try:
-            max_retries = 2
-            for attempt in range(max_retries):
+            for attempt in range(2):
                 try:
-                    print(f"Trying {model_name} (attempt {attempt + 1}/{max_retries})...")
+                    print(f"Trying {model_name} (attempt {attempt + 1}/2)...")
                     response = client.models.generate_content(
                         model=model_name,
                         contents=[audio_content, transcription_prompt]
                     )
-                    # Safely extract text - response.text can raise ValueError
-                    # if the response was blocked or has no valid candidates
+                    # Safely extract text
                     try:
                         transcript_text = response.text
                     except (ValueError, AttributeError) as text_err:
                         # Try extracting from candidates directly
                         extracted = None
                         if hasattr(response, 'candidates') and response.candidates:
-                            for candidate in response.candidates:
-                                if hasattr(candidate, 'content') and candidate.content and hasattr(candidate.content, 'parts'):
-                                    for part in candidate.content.parts:
-                                        if hasattr(part, 'text') and part.text:
-                                            extracted = part.text
+                            for c in response.candidates:
+                                if hasattr(c, 'content') and c.content and hasattr(c.content, 'parts'):
+                                    for p in c.content.parts:
+                                        if hasattr(p, 'text') and p.text:
+                                            extracted = p.text
                                             break
                                 if extracted:
                                     break
                         if extracted:
                             transcript_text = extracted
                         else:
-                            print(f"{model_name} returned no text: {text_err}, trying next model...")
+                            print(f"{model_name} returned no text: {text_err}")
                             last_error = text_err
-                            break  # Try next model
+                            break
                     if transcript_text:
                         print(f"Success with {model_name}")
                         break
@@ -1790,17 +1788,13 @@ Requirements:
                     err_str = str(retry_err)
                     print(f"{model_name} attempt {attempt + 1} error: {err_str}")
                     if '429' in err_str or 'RESOURCE_EXHAUSTED' in err_str:
-                        if attempt < max_retries - 1:
-                            wait_time = (attempt + 1) * 10
-                            print(f"Rate limited on {model_name}, retrying in {wait_time}s...")
-                            time.sleep(wait_time)
+                        if attempt == 0:
+                            print(f"Rate limited, retrying in 10s...")
+                            time.sleep(10)
                         else:
-                            print(f"{model_name} exhausted, falling back to next model...")
                             break
                     else:
-                        # Any other error (parsing, model not found, etc.) - try next model
-                        print(f"{model_name} failed: {err_str}, trying next model...")
-                        break
+                        break  # Non-rate-limit error, try next model
             if transcript_text:
                 break
 
@@ -1809,11 +1803,12 @@ Requirements:
             print(f"All transcription models failed. Last error: {err_msg}")
             raise Exception("Gemini could not transcribe this audio. Try converting to MP3 format or using a shorter clip.")
 
-        # Clean up the uploaded file
-        try:
-            client.files.delete(name=uploaded_file.name)
-        except Exception:
-            pass  # Non-critical if cleanup fails
+        # Clean up uploaded file if used
+        if uploaded_file:
+            try:
+                client.files.delete(name=uploaded_file.name)
+            except Exception:
+                pass
 
         if not transcript_text or not transcript_text.strip():
             return jsonify({'error': 'Transcription returned empty result. The audio may be silent or unrecognizable.'}), 400
