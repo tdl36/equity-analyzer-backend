@@ -2433,14 +2433,14 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             body: formData
                         });
 
-                        // Safely parse response (Safari throws on .json() if response is HTML)
+                        // Read as text first, then parse (avoids Safari .json() error on non-JSON responses)
+                        const responseText = await transcribeResponse.text();
                         let transcribeData;
                         try {
-                            transcribeData = await transcribeResponse.json();
+                            transcribeData = JSON.parse(responseText);
                         } catch (parseErr) {
-                            const text = await transcribeResponse.clone().text().catch(() => '');
-                            console.error('Transcribe response parse error:', parseErr, 'Body:', text.substring(0, 500));
-                            throw new Error(`Failed to transcribe ${audioFile.name}: Server returned an invalid response. Please try again.`);
+                            console.error('Transcribe response not JSON:', responseText.substring(0, 500));
+                            throw new Error(`Failed to transcribe ${audioFile.name}: Server error (status ${transcribeResponse.status}). Please try again.`);
                         }
 
                         if (!transcribeResponse.ok) {
@@ -2464,11 +2464,12 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         body: JSON.stringify({ notes: transcriptText })
                     });
 
+                    const webhookText = await webhookResponse.text();
                     let data;
                     try {
-                        data = await webhookResponse.json();
+                        data = JSON.parse(webhookText);
                     } catch (parseErr) {
-                        console.error('Webhook response parse error:', parseErr);
+                        console.error('Webhook response not JSON:', webhookText.substring(0, 500));
                         throw new Error('Summary generation failed: server returned an invalid response.');
                     }
                     if (!webhookResponse.ok) throw new Error('Summary generation failed');
