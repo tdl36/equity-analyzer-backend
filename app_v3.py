@@ -1672,70 +1672,39 @@ def extract_summary_text():
 # AUDIO TRANSCRIPTION ENDPOINT
 # ============================================
 
-@app.route('/api/transcribe-audio', methods=['POST'])
-def transcribe_audio():
-    """Transcribe audio file using Google Gemini API"""
+# In-memory store for async transcription jobs
+_transcription_jobs = {}
+
+
+def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key):
+    """Background worker for audio transcription."""
+    import time
     try:
-        if 'file' not in request.files:
-            return jsonify({'error': 'No audio file provided'}), 400
-
-        file = request.files['file']
-        if file.filename == '':
-            return jsonify({'error': 'No file selected'}), 400
-
-        # Get Gemini API key (prefer env var, fallback to frontend)
-        gemini_api_key = os.environ.get('GEMINI_API_KEY', '') or request.form.get('geminiApiKey', '')
-        if not gemini_api_key:
-            return jsonify({'error': 'Gemini API key is required for audio transcription. Please add it in Settings.'}), 400
-
-        # Validate file extension
-        allowed_extensions = ('.mp3', '.mp4', '.mpeg', '.mpga', '.m4a', '.wav', '.webm', '.ogg', '.flac')
-        filename_lower = file.filename.lower()
-        if not filename_lower.endswith(allowed_extensions):
-            return jsonify({'error': f'Unsupported audio format. Supported: {", ".join(allowed_extensions)}'}), 400
-
-        # Map extensions to MIME types
-        mime_map = {
-            '.mp3': 'audio/mpeg', '.mp4': 'audio/mp4', '.mpeg': 'audio/mpeg',
-            '.mpga': 'audio/mpeg', '.m4a': 'audio/mp4', '.wav': 'audio/wav',
-            '.webm': 'audio/webm', '.ogg': 'audio/ogg', '.flac': 'audio/flac'
-        }
-        file_ext = '.' + filename_lower.rsplit('.', 1)[-1]
-        mime_type = mime_map.get(file_ext, 'audio/mpeg')
-
-        # Read file content
-        file_content = file.read()
         file_size_mb = len(file_content) / (1024 * 1024)
+        _transcription_jobs[job_id]['status'] = 'transcribing'
+        print(f"[Job {job_id}] Starting transcription: {filename} ({file_size_mb:.1f}MB)")
 
-        print(f"Transcribing audio with Gemini: {file.filename} ({file_size_mb:.1f}MB)")
-
-        # Initialize Gemini client
         client = genai.Client(api_key=gemini_api_key)
 
-        # Build audio content using Part.from_bytes (inline, no upload step)
-        # For large files (>20MB), use file upload API instead
-        import io, time
+        # Build audio content
+        import io
         audio_content = None
         uploaded_file = None
 
         if file_size_mb > 20:
-            # Large file: use file upload API
             try:
                 uploaded_file = client.files.upload(
                     file=io.BytesIO(file_content),
-                    config=genai_types.UploadFileConfig(mime_type=mime_type, display_name=file.filename)
+                    config=genai_types.UploadFileConfig(mime_type=mime_type, display_name=filename)
                 )
                 audio_content = uploaded_file
-                print(f"Large file uploaded to Gemini: {uploaded_file.name}")
+                print(f"[Job {job_id}] Large file uploaded to Gemini: {uploaded_file.name}")
             except Exception as upload_err:
-                print(f"Gemini file upload failed: {upload_err}, falling back to inline bytes")
+                print(f"[Job {job_id}] File upload failed: {upload_err}, using inline bytes")
 
         if audio_content is None:
-            # Inline bytes (works for files up to ~20MB, no upload step needed)
             audio_content = genai_types.Part.from_bytes(data=file_content, mime_type=mime_type)
-            print(f"Using inline bytes for audio ({file_size_mb:.1f}MB)")
 
-        # Transcribe with Gemini
         transcription_prompt = """Please provide a complete, word-for-word professional transcription of this audio recording.
 
 Requirements:
@@ -1754,16 +1723,14 @@ Requirements:
         for model_name in models_to_try:
             for attempt in range(2):
                 try:
-                    print(f"Trying {model_name} (attempt {attempt + 1}/2)...")
+                    print(f"[Job {job_id}] Trying {model_name} (attempt {attempt + 1}/2)...")
                     response = client.models.generate_content(
                         model=model_name,
                         contents=[audio_content, transcription_prompt]
                     )
-                    # Safely extract text
                     try:
                         transcript_text = response.text
                     except (ValueError, AttributeError) as text_err:
-                        # Try extracting from candidates directly
                         extracted = None
                         if hasattr(response, 'candidates') and response.candidates:
                             for c in response.candidates:
@@ -1777,33 +1744,26 @@ Requirements:
                         if extracted:
                             transcript_text = extracted
                         else:
-                            print(f"{model_name} returned no text: {text_err}")
                             last_error = text_err
                             break
                     if transcript_text:
-                        print(f"Success with {model_name}")
+                        print(f"[Job {job_id}] Success with {model_name}")
                         break
                 except Exception as retry_err:
                     last_error = retry_err
                     err_str = str(retry_err)
-                    print(f"{model_name} attempt {attempt + 1} error: {err_str}")
+                    print(f"[Job {job_id}] {model_name} attempt {attempt + 1} error: {err_str}")
                     if '429' in err_str or 'RESOURCE_EXHAUSTED' in err_str:
                         if attempt == 0:
-                            print(f"Rate limited, retrying in 10s...")
                             time.sleep(10)
                         else:
                             break
                     else:
-                        break  # Non-rate-limit error, try next model
+                        break
             if transcript_text:
                 break
 
-        if transcript_text is None:
-            err_msg = str(last_error) if last_error else "Unknown error"
-            print(f"All transcription models failed. Last error: {err_msg}")
-            raise Exception("Gemini could not transcribe this audio. Try converting to MP3 format or using a shorter clip.")
-
-        # Clean up uploaded file if used
+        # Clean up uploaded file
         if uploaded_file:
             try:
                 client.files.delete(name=uploaded_file.name)
@@ -1811,28 +1771,91 @@ Requirements:
                 pass
 
         if not transcript_text or not transcript_text.strip():
-            return jsonify({'error': 'Transcription returned empty result. The audio may be silent or unrecognizable.'}), 400
+            _transcription_jobs[job_id] = {
+                'status': 'error',
+                'error': str(last_error) if last_error else 'Gemini could not transcribe this audio. Try converting to MP3 or using a shorter clip.'
+            }
+            return
 
-        print(f"Transcription complete: {len(transcript_text)} characters from {file.filename}")
-
-        return jsonify({
-            'success': True,
+        print(f"[Job {job_id}] Transcription complete: {len(transcript_text)} chars")
+        _transcription_jobs[job_id] = {
+            'status': 'done',
             'text': transcript_text,
-            'filename': file.filename,
+            'filename': filename,
             'fileSizeMb': round(file_size_mb, 1),
-            'charCount': len(transcript_text)
-        })
-
+            'charCount': len(transcript_text),
+        }
     except Exception as e:
-        print(f"Error transcribing audio: {e}")
         import traceback
         traceback.print_exc()
-        err_str = str(e)
-        if '429' in err_str or 'RESOURCE_EXHAUSTED' in err_str:
-            return jsonify({'error': 'Gemini API rate limit reached. Please wait 1-2 minutes and try again. If this persists, check your API quota at console.cloud.google.com.'}), 429
-        if 'did not match' in err_str or 'expected pattern' in err_str.lower():
-            return jsonify({'error': 'Gemini could not process this audio file. Try converting to MP3 format or using a shorter clip.'}), 500
-        return jsonify({'error': f'Transcription failed: {err_str}'}), 500
+        print(f"[Job {job_id}] Transcription failed: {e}")
+        _transcription_jobs[job_id] = {'status': 'error', 'error': str(e)}
+
+
+@app.route('/api/transcribe-audio', methods=['POST'])
+def transcribe_audio():
+    """Start async audio transcription. Returns job_id immediately, poll /api/transcribe-audio/<job_id> for result."""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No audio file provided'}), 400
+
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+
+        gemini_api_key = os.environ.get('GEMINI_API_KEY', '') or request.form.get('geminiApiKey', '')
+        if not gemini_api_key:
+            return jsonify({'error': 'Gemini API key is required for audio transcription. Please add it in Settings.'}), 400
+
+        allowed_extensions = ('.mp3', '.mp4', '.mpeg', '.mpga', '.m4a', '.wav', '.webm', '.ogg', '.flac')
+        filename_lower = file.filename.lower()
+        if not filename_lower.endswith(allowed_extensions):
+            return jsonify({'error': f'Unsupported audio format. Supported: {", ".join(allowed_extensions)}'}), 400
+
+        mime_map = {
+            '.mp3': 'audio/mpeg', '.mp4': 'audio/mp4', '.mpeg': 'audio/mpeg',
+            '.mpga': 'audio/mpeg', '.m4a': 'audio/mp4', '.wav': 'audio/wav',
+            '.webm': 'audio/webm', '.ogg': 'audio/ogg', '.flac': 'audio/flac'
+        }
+        file_ext = '.' + filename_lower.rsplit('.', 1)[-1]
+        mime_type = mime_map.get(file_ext, 'audio/mpeg')
+
+        file_content = file.read()
+        file_size_mb = len(file_content) / (1024 * 1024)
+
+        # Create job and start background thread
+        import uuid, threading
+        job_id = str(uuid.uuid4())[:8]
+        _transcription_jobs[job_id] = {'status': 'starting', 'filename': file.filename}
+
+        thread = threading.Thread(target=_run_transcription, args=(job_id, file_content, file.filename, mime_type, gemini_api_key))
+        thread.daemon = True
+        thread.start()
+
+        print(f"[Job {job_id}] Started transcription for {file.filename} ({file_size_mb:.1f}MB)")
+        return jsonify({'success': True, 'job_id': job_id, 'filename': file.filename})
+
+    except Exception as e:
+        print(f"Error starting transcription: {e}")
+        return jsonify({'error': f'Failed to start transcription: {str(e)}'}), 500
+
+
+@app.route('/api/transcribe-audio/<job_id>', methods=['GET'])
+def transcribe_audio_status(job_id):
+    """Poll for transcription job status."""
+    job = _transcription_jobs.get(job_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+    if job['status'] == 'done':
+        # Clean up job from memory after retrieval
+        result = dict(job)
+        del _transcription_jobs[job_id]
+        return jsonify(result)
+    if job['status'] == 'error':
+        error = job.get('error', 'Unknown error')
+        del _transcription_jobs[job_id]
+        return jsonify({'status': 'error', 'error': error})
+    return jsonify({'status': job['status']})
 
 
 @app.route('/api/text-to-docx', methods=['POST'])

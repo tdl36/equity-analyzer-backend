@@ -2417,40 +2417,74 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 setSummaryFileUploading(true);
 
                 try {
-                    // Step 1: Transcribe each audio file sequentially
+                    // Step 1: Transcribe each audio file sequentially (async with polling)
                     const allTranscripts = [];
                     for (let i = 0; i < summaryFiles.length; i++) {
                         const audioFile = summaryFiles[i];
-                        const label = summaryFiles.length > 1
-                            ? `Transcribing file ${i + 1} of ${summaryFiles.length}: ${audioFile.name}...`
-                            : 'Transcribing audio with Gemini (this may take a few minutes)...';
-                        setSummaryUploadProgress(label);
+                        const fileLabel = summaryFiles.length > 1 ? ` (file ${i + 1}/${summaryFiles.length})` : '';
+                        setSummaryUploadProgress(`Uploading ${audioFile.name}${fileLabel}...`);
 
+                        // Start async transcription job
                         const formData = new FormData();
                         formData.append('file', audioFile);
                         formData.append('geminiApiKey', geminiKey);
 
-                        // Use DIRECT_API_URL to bypass Cloudflare 100s timeout
-                        const transcribeResponse = await fetch(`${DIRECT_API_URL}/api/transcribe-audio`, {
+                        const startRes = await fetch(`${DIRECT_API_URL}/api/transcribe-audio`, {
                             method: 'POST',
                             body: formData
                         });
-
-                        // Read as text first, then parse (avoids Safari .json() error on non-JSON responses)
-                        const responseText = await transcribeResponse.text();
-                        let transcribeData;
-                        try {
-                            transcribeData = JSON.parse(responseText);
-                        } catch (parseErr) {
-                            console.error('Transcribe response not JSON:', responseText.substring(0, 500));
-                            throw new Error(`Failed to transcribe ${audioFile.name}: Server error (status ${transcribeResponse.status}). Please try again.`);
+                        const startText = await startRes.text();
+                        let startData;
+                        try { startData = JSON.parse(startText); } catch (e) {
+                            throw new Error(`Failed to start transcription for ${audioFile.name}: Server error (status ${startRes.status}).`);
+                        }
+                        if (!startRes.ok) {
+                            throw new Error(`Failed to transcribe ${audioFile.name}: ${startData.error || 'Unknown error'}`);
                         }
 
-                        if (!transcribeResponse.ok) {
-                            throw new Error(`Failed to transcribe ${audioFile.name}: ${transcribeData.error || 'Unknown error'}`);
-                        }
+                        const jobId = startData.job_id;
+                        setSummaryUploadProgress(`Transcribing ${audioFile.name}${fileLabel}...`);
 
-                        allTranscripts.push({ filename: audioFile.name, text: transcribeData.text });
+                        // Poll for completion
+                        const transcript = await new Promise((resolve, reject) => {
+                            let elapsed = 0;
+                            const poll = setInterval(async () => {
+                                try {
+                                    const pollRes = await fetch(`${DIRECT_API_URL}/api/transcribe-audio/${jobId}`);
+                                    const pollText = await pollRes.text();
+                                    let pollData;
+                                    try { pollData = JSON.parse(pollText); } catch (e) {
+                                        console.error('Poll parse error:', pollText.substring(0, 200));
+                                        return; // Retry on next poll
+                                    }
+
+                                    if (pollData.status === 'done') {
+                                        clearInterval(poll);
+                                        resolve(pollData.text);
+                                    } else if (pollData.status === 'error') {
+                                        clearInterval(poll);
+                                        reject(new Error(pollData.error || 'Transcription failed'));
+                                    } else {
+                                        elapsed += 3;
+                                        const mins = Math.floor(elapsed / 60);
+                                        const secs = elapsed % 60;
+                                        const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+                                        setSummaryUploadProgress(`Transcribing ${audioFile.name}${fileLabel}... (${timeStr})`);
+                                    }
+                                } catch (pollErr) {
+                                    console.error('Poll error:', pollErr);
+                                    // Don't reject on transient poll errors, just retry
+                                }
+                            }, 3000);
+
+                            // Timeout after 10 minutes
+                            setTimeout(() => {
+                                clearInterval(poll);
+                                reject(new Error(`Transcription timed out for ${audioFile.name} after 10 minutes.`));
+                            }, 600000);
+                        });
+
+                        allTranscripts.push({ filename: audioFile.name, text: transcript });
                     }
 
                     // Combine transcripts (add part headers only for multi-file)
