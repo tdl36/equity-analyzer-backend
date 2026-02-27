@@ -4392,21 +4392,44 @@ def mp_search_drive():
 
         folder_id = folders[0]['id']
 
-        # Search for files matching ticker (and optional keyword) in that folder
-        search_term = keyword if keyword else ticker
-        file_query = (
-            f"'{folder_id}' in parents and trashed = false "
-            f"and modifiedTime > '{cutoff}' "
-            f"and (name contains '{search_term}' or fullText contains '{search_term}')"
-        )
-        file_resp = http_requests.get(drive_api, headers=headers, params={
-            'q': file_query,
-            'fields': 'files(id, name, mimeType, modifiedTime, size)',
-            'pageSize': 50,
-            'orderBy': 'modifiedTime desc'
+        # Find all subfolders inside "Research Reports Char" (e.g. ticker-named folders)
+        subfolder_resp = http_requests.get(drive_api, headers=headers, params={
+            'q': f"'{folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+            'fields': 'files(id, name)',
+            'pageSize': 200
         }, timeout=15)
-        file_resp.raise_for_status()
-        files = file_resp.json().get('files', [])
+        subfolder_resp.raise_for_status()
+        subfolders = subfolder_resp.json().get('files', [])
+
+        # Build list of folder IDs to search: root + all subfolders
+        folder_ids = [folder_id] + [sf['id'] for sf in subfolders]
+
+        # Search for files matching ticker (and optional keyword) across all folders
+        search_term = keyword if keyword else ticker
+        all_files = []
+        # Search in batches (Drive API only supports one parent per query)
+        for fid in folder_ids:
+            file_query = (
+                f"'{fid}' in parents and trashed = false "
+                f"and modifiedTime > '{cutoff}' "
+                f"and (name contains '{search_term}' or fullText contains '{search_term}')"
+            )
+            file_resp = http_requests.get(drive_api, headers=headers, params={
+                'q': file_query,
+                'fields': 'files(id, name, mimeType, modifiedTime, size)',
+                'pageSize': 50,
+                'orderBy': 'modifiedTime desc'
+            }, timeout=15)
+            file_resp.raise_for_status()
+            all_files.extend(file_resp.json().get('files', []))
+
+        # Deduplicate by file ID and sort by modifiedTime desc
+        seen = set()
+        files = []
+        for f in sorted(all_files, key=lambda x: x.get('modifiedTime', ''), reverse=True):
+            if f['id'] not in seen:
+                seen.add(f['id'])
+                files.append(f)
 
         return jsonify({'files': files, 'folderId': folder_id, 'folderName': folders[0]['name']})
 
