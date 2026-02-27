@@ -1804,7 +1804,7 @@ def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key
             all_texts = []
             for idx, (chunk_bytes, chunk_mime, start_sec, end_sec) in enumerate(chunks):
                 chunk_label = f"Chunk {idx + 1}/{len(chunks)} ({start_sec/60:.1f}-{end_sec/60:.1f}min): "
-                _transcription_jobs[job_id]['progress'] = f"Transcribing chunk {idx + 1} of {len(chunks)} ({start_sec/60:.0f}-{end_sec/60:.0f} min)..."
+                _transcription_jobs[job_id]['progress'] = f"Chunk {idx + 1}/{len(chunks)} ({int(start_sec/60)}-{int(end_sec/60)} min)"
 
                 chunk_size_mb = len(chunk_bytes) / (1024 * 1024)
                 if chunk_size_mb > 20:

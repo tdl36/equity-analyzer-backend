@@ -2574,12 +2574,19 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                             return;
                         }
 
+                        // Handle "Job not found" — server restarted and lost the job
+                        if (pollRes.status === 404 || pollData.error === 'Job not found') {
+                            setBgTranscriptionJob(prev => prev ? { ...prev, progress: 'Job lost (server restarted). Please retry.', error: true } : null);
+                            localStorage.removeItem('charlie_bg_transcription');
+                            return;
+                        }
+
                         if (pollData.status === 'done') {
                             allTranscripts.push({ filename, text: pollData.text });
                             currentIdx++;
                             const progressMsg = currentIdx < jobMeta.jobs.length
-                                ? `Transcribed ${currentIdx}/${jobMeta.jobs.length} files (${timeStr}). Working on next...`
-                                : `Transcription complete (${timeStr}). Generating summary...`;
+                                ? `File ${currentIdx}/${jobMeta.jobs.length} done — ${timeStr}`
+                                : `Transcribed — generating summary...`;
                             setBgTranscriptionJob(prev => prev ? { ...prev, progress: progressMsg, currentJobIdx: currentIdx } : null);
                             // Immediately poll next job or finalize
                             bgPollRef.current = setTimeout(pollNext, 500);
@@ -2590,9 +2597,16 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                             localStorage.removeItem('charlie_bg_transcription');
                             return;
                         } else {
-                            // Still processing
-                            const progressDetail = pollData.progress || `Transcribing ${filename}${fileLabel}`;
-                            const progressMsg = `${progressDetail} (${timeStr})`;
+                            // Still processing — keep messages short for mobile
+                            let progressMsg;
+                            if (pollData.progress) {
+                                // Backend sends e.g. "Transcribing chunk 2 of 6 (15-30 min)..."
+                                progressMsg = `${pollData.progress} — ${timeStr}`;
+                            } else {
+                                // Shorten filename for display
+                                const shortName = filename.length > 20 ? filename.substring(0, 17) + '...' : filename;
+                                progressMsg = `Transcribing ${shortName}${fileLabel} — ${timeStr}`;
+                            }
                             setBgTranscriptionJob(prev => prev ? { ...prev, progress: progressMsg } : null);
                         }
                     } catch (pollErr) {
@@ -2691,7 +2705,7 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
 
                     const elapsed = Math.floor((Date.now() - jobMeta.startTime) / 1000);
                     const mins = Math.floor(elapsed / 60);
-                    setBgTranscriptionJob(prev => prev ? { ...prev, progress: `Done! Summary ready. (${mins}m total)`, done: true } : null);
+                    setBgTranscriptionJob(prev => prev ? { ...prev, progress: `Summary ready (${mins}m)`, done: true } : null);
                     localStorage.removeItem('charlie_bg_transcription');
 
                     // Auto-dismiss after 8 seconds
@@ -10491,12 +10505,10 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                                             <RefreshCw className="w-4 h-4 animate-spin flex-shrink-0" />
                                         )}
                                         {bgTranscriptionJob.done && <Check className="w-4 h-4 flex-shrink-0" />}
-                                        <span className="flex-1 truncate">{bgTranscriptionJob.progress}</span>
-                                        {(bgTranscriptionJob.done || bgTranscriptionJob.error) && (
-                                            <button onClick={() => { setBgTranscriptionJob(null); localStorage.removeItem('charlie_bg_transcription'); }} className="p-1 hover:bg-white/10 rounded">
-                                                <X className="w-3.5 h-3.5" />
-                                            </button>
-                                        )}
+                                        <span className="flex-1 min-w-0 text-xs sm:text-sm leading-snug">{bgTranscriptionJob.progress}</span>
+                                        <button onClick={() => { setBgTranscriptionJob(null); localStorage.removeItem('charlie_bg_transcription'); if (bgPollRef.current) clearTimeout(bgPollRef.current); }} className="p-1 hover:bg-white/10 rounded flex-shrink-0">
+                                            <X className="w-3.5 h-3.5" />
+                                        </button>
                                     </div>
                                 )}
                                 {/* Horizontal Topic Navigation Bar */}
