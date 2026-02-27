@@ -4392,22 +4392,20 @@ def mp_search_drive():
 
         folder_id = folders[0]['id']
 
-        # Find all subfolders inside "Research Reports Char" (e.g. ticker-named folders)
+        # Find subfolders whose name matches the ticker (e.g. "RTX" folder inside root)
+        search_term = keyword if keyword else ticker
         subfolder_resp = http_requests.get(drive_api, headers=headers, params={
-            'q': f"'{folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+            'q': f"'{folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false and name contains '{ticker}'",
             'fields': 'files(id, name)',
-            'pageSize': 200
+            'pageSize': 50
         }, timeout=15)
         subfolder_resp.raise_for_status()
         subfolders = subfolder_resp.json().get('files', [])
 
-        # Build list of folder IDs to search: root + all subfolders
+        # Search root folder + any matching subfolders
         folder_ids = [folder_id] + [sf['id'] for sf in subfolders]
 
-        # Search for files matching ticker (and optional keyword) across all folders
-        search_term = keyword if keyword else ticker
         all_files = []
-        # Search in batches (Drive API only supports one parent per query)
         for fid in folder_ids:
             file_query = (
                 f"'{fid}' in parents and trashed = false "
