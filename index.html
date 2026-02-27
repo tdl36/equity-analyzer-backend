@@ -1682,6 +1682,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [summaryEmailRecipient, setSummaryEmailRecipient] = useState('');
             const [summaryDocType, setSummaryDocType] = useState(''); // Document type for new summary
             const [summaryDocTypeFilter, setSummaryDocTypeFilter] = useState([]); // Filter by doc types (multi-select)
+            const [topicSearchQuery, setTopicSearchQuery] = useState(''); // Search query for topic assignment
+            const [summaryDetailLevel, setSummaryDetailLevel] = useState('standard'); // 'concise' | 'standard' | 'detailed'
             const summaryFileInputRef = useRef(null);
             const summarySearchRef = useRef(null);
             const [geminiApiKey, setGeminiApiKey] = useState(loadGeminiKeyFromStorage() || '');
@@ -1702,9 +1704,51 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 { id: 'audio_recording', label: 'Audio Recording', icon: '🎙️' },
                 { id: 'other', label: 'Other', icon: '📄' }
             ];
-            
+
+            const SUMMARY_DETAIL_LEVELS = [
+                { id: 'concise', label: 'Concise', desc: '1-2 page summary', icon: '📄' },
+                { id: 'standard', label: 'Standard', desc: 'Default', icon: '📋' },
+                { id: 'detailed', label: 'Detailed', desc: 'Preserves most content', icon: '📚' },
+            ];
+
             const SUMMARY_WEBHOOK_URL = 'https://tdl36.app.n8n.cloud/webhook/summary-notes';
-            
+
+            // Prepend detail level instruction to notes for webhook
+            const applyDetailLevel = (text) => {
+                if (summaryDetailLevel === 'concise') {
+                    return `CRITICAL OUTPUT FORMAT REQUIREMENT — YOU MUST FOLLOW THIS:
+===== CONCISE MODE =====
+Generate a SHORT, CONCISE summary. Maximum 1-2 pages.
+- Only include the most important takeaways and key decisions
+- Omit minor details, examples, and supporting evidence
+- Use bullet points, not paragraphs
+- Be extremely brief and to the point
+- If you would normally write 10 bullet points, write 3-4 instead
+===== END REQUIREMENT =====
+
+${text}
+
+REMINDER: Keep your output SHORT. 1-2 pages maximum. Concise mode.`;
+                } else if (summaryDetailLevel === 'detailed') {
+                    return `CRITICAL OUTPUT FORMAT REQUIREMENT — YOU MUST FOLLOW THIS:
+===== DETAILED VERBATIM MODE =====
+Generate an EXTREMELY DETAILED and COMPREHENSIVE summary.
+- Preserve virtually ALL content from the original near-verbatim
+- Include every specific number, statistic, percentage, and data point
+- Include all names, quotes, and attributions
+- Include all examples, anecdotes, and supporting details
+- Do NOT omit anything — if in doubt, include it
+- Your output should be at least 3-5x longer than a normal summary
+- The goal is that someone reading only your summary would miss almost nothing from the original
+===== END REQUIREMENT =====
+
+${text}
+
+REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all content. Detailed verbatim mode.`;
+                }
+                return text;
+            };
+
             // Load summaries from database
             const loadSummaries = async () => {
                 try {
@@ -1757,13 +1801,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     const response = await fetch(SUMMARY_WEBHOOK_URL, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ notes: summaryInput })
+                        body: JSON.stringify({ notes: applyDetailLevel(summaryInput) })
                     });
-                    
+
                     if (!response.ok) throw new Error('Webhook request failed');
-                    
+
                     const data = await response.json();
-                    
+
                     // Create title from first line of notes
                     const firstLine = summaryInput.split('\n')[0].trim();
                     const title = firstLine.substring(0, 100) || 'Meeting Summary';
@@ -2265,7 +2309,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         webhookResponse = await fetch(SUMMARY_WEBHOOK_URL, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ notes: extractedText })
+                            body: JSON.stringify({ notes: applyDetailLevel(extractedText) })
                         });
                     } catch (webhookErr) {
                         console.error('Webhook fetch failed:', webhookErr);
@@ -2327,6 +2371,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     setSummaryTitleInput('');
                     setNewTopicName('');
                     setSummaryDocType('');
+                    setSummaryDetailLevel('standard');
+                    setTopicSearchQuery('');
                     setShowSummaryInputModal(false);
                     setSummaryViewMode('detail');
 
@@ -2429,12 +2475,38 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         formData.append('file', audioFile);
                         formData.append('geminiApiKey', geminiKey);
 
-                        const startRes = await fetch(`${DIRECT_API_URL}/api/transcribe-audio`, {
-                            method: 'POST',
-                            body: formData
-                        });
-                        const startText = await startRes.text();
-                        let startData;
+                        // Try up to 2 times — first failure may be server cold start
+                        let startRes, startText, startData;
+                        for (let attempt = 0; attempt < 2; attempt++) {
+                            try {
+                                if (attempt > 0) {
+                                    setSummaryUploadProgress(`Server waking up, retrying ${audioFile.name}${fileLabel}...`);
+                                    // Wake server with health check first
+                                    try { await fetch(`${DIRECT_API_URL}/health`); } catch (e) { /* ignore */ }
+                                    await new Promise(r => setTimeout(r, 3000));
+                                    // Rebuild FormData (stream may be consumed)
+                                    const retryFormData = new FormData();
+                                    retryFormData.append('file', audioFile);
+                                    retryFormData.append('geminiApiKey', geminiKey);
+                                    startRes = await fetch(`${DIRECT_API_URL}/api/transcribe-audio`, {
+                                        method: 'POST',
+                                        body: retryFormData
+                                    });
+                                } else {
+                                    startRes = await fetch(`${DIRECT_API_URL}/api/transcribe-audio`, {
+                                        method: 'POST',
+                                        body: formData
+                                    });
+                                }
+                                break; // Success — got a response
+                            } catch (fetchErr) {
+                                if (attempt === 1) {
+                                    throw new Error(`Could not reach the server for ${audioFile.name}. The server may be starting up — please try again in a minute.`);
+                                }
+                                console.warn('Transcription fetch failed, retrying:', fetchErr.message);
+                            }
+                        }
+                        startText = await startRes.text();
                         try { startData = JSON.parse(startText); } catch (e) {
                             throw new Error(`Failed to start transcription for ${audioFile.name}: Server error (status ${startRes.status}).`);
                         }
@@ -2469,7 +2541,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                         const mins = Math.floor(elapsed / 60);
                                         const secs = elapsed % 60;
                                         const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-                                        setSummaryUploadProgress(`Transcribing ${audioFile.name}${fileLabel}... (${timeStr})`);
+                                        const progressDetail = pollData.progress ? ` — ${pollData.progress}` : '';
+                                        setSummaryUploadProgress(`Transcribing ${audioFile.name}${fileLabel}... (${timeStr})${progressDetail}`);
                                     }
                                 } catch (pollErr) {
                                     console.error('Poll error:', pollErr);
@@ -2498,7 +2571,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     const webhookResponse = await fetch(SUMMARY_WEBHOOK_URL, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ notes: transcriptText })
+                        body: JSON.stringify({ notes: applyDetailLevel(transcriptText) })
                     });
 
                     const webhookText = await webhookResponse.text();
@@ -2588,6 +2661,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     setSummaryTitleInput('');
                     setNewTopicName('');
                     setSummaryDocType('');
+                    setSummaryDetailLevel('standard');
+                    setTopicSearchQuery('');
                     setShowSummaryInputModal(false);
                     setSummaryViewMode('detail');
                     setSummaryUploadProgress('');
@@ -2613,9 +2688,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         const response = await fetch(SUMMARY_WEBHOOK_URL, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ notes: summaryInput })
+                            body: JSON.stringify({ notes: applyDetailLevel(summaryInput) })
                         });
-                        
+
                         if (!response.ok) throw new Error('Webhook request failed');
                         
                         const data = await response.json();
@@ -2647,9 +2722,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         setSummaryTitleInput('');
                         setNewTopicName('');
                         setSummaryDocType('');
+                        setSummaryDetailLevel('standard');
+                        setTopicSearchQuery('');
                         setShowSummaryInputModal(false);
                         setSummaryViewMode('detail');
-                        
+
                     } catch (err) {
                         console.error('Failed to generate summary:', err);
                         alert('Failed to generate summary. Please try again.');
@@ -6115,7 +6192,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     const webhookResponse = await fetch(SUMMARY_WEBHOOK_URL, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ notes: combinedText })
+                        body: JSON.stringify({ notes: applyDetailLevel(combinedText) })
                     });
                     if (!webhookResponse.ok) throw new Error('Summary generation failed');
                     const data = await webhookResponse.json();
@@ -6159,6 +6236,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     setSummaryTitleInput('');
                     setNewTopicName('');
                     setSummaryDocType('');
+                    setSummaryDetailLevel('standard');
+                    setTopicSearchQuery('');
                     setShowSummaryInputModal(false);
                     setSummaryViewMode('detail');
                     clearDriveState();
@@ -11140,7 +11219,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
                                 {/* ADD DOCUMENT MODAL - Paste or Upload */}
                                 {showSummaryInputModal && (
-                                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                                    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
                                         <div className="absolute inset-0 bg-black/60" onClick={() => setShowSummaryInputModal(false)} />
                                         <div className="relative bg-slate-900/90 backdrop-blur-2xl rounded-2xl border border-white/15 w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
                                             {/* Modal Header */}
@@ -11158,20 +11237,31 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     <label className="block text-sm font-medium text-slate-300 mb-2">
                                                         Assign to Topic
                                                     </label>
-                                                    <div className="overflow-x-auto scrollbar-hide -mx-1 px-1 pb-1">
-                                                        <div className="flex gap-2">
+                                                    {getSummaryTopics().length > 5 && (
+                                                        <input
+                                                            type="text"
+                                                            value={topicSearchQuery}
+                                                            onChange={(e) => setTopicSearchQuery(e.target.value)}
+                                                            placeholder="Search topics..."
+                                                            className="w-full px-3 py-2 mb-2 bg-white/5 border border-white/10 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                                                        />
+                                                    )}
+                                                    <div className="max-h-32 overflow-y-auto scrollbar-hide -mx-1 px-1 pb-1">
+                                                        <div className="flex gap-2 flex-wrap">
                                                             <button
                                                                 onClick={() => setShowAddTopicModal(true)}
-                                                                className="px-3 py-1.5 rounded-lg text-sm bg-white/[0.07] text-teal-400 hover:bg-white/10 flex items-center gap-1 whitespace-nowrap flex-shrink-0"
+                                                                className="px-3 py-1.5 rounded-lg text-sm bg-white/[0.07] text-teal-400 hover:bg-white/10 flex items-center gap-1 whitespace-nowrap"
                                                             >
                                                                 <Plus className="w-3 h-3" />
                                                                 New
                                                             </button>
-                                                            {getSummaryTopics().map(topic => (
+                                                            {getSummaryTopics()
+                                                                .filter(topic => !topicSearchQuery.trim() || topic.name.toLowerCase().includes(topicSearchQuery.toLowerCase()))
+                                                                .map(topic => (
                                                                 <button
                                                                     key={topic.name}
-                                                                    onClick={() => setNewTopicName(topic.name)}
-                                                                    className={`px-3 py-1.5 rounded-lg text-sm transition-all whitespace-nowrap flex-shrink-0 ${
+                                                                    onClick={() => { setNewTopicName(topic.name); setTopicSearchQuery(''); }}
+                                                                    className={`px-3 py-1.5 rounded-lg text-sm transition-all whitespace-nowrap ${
                                                                         newTopicName === topic.name
                                                                             ? 'bg-teal-600 text-white'
                                                                             : 'bg-white/10 text-slate-300 hover:bg-white/15'
@@ -11224,6 +11314,34 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             ))}
                                                         </div>
                                                     </div>
+                                                </div>
+
+                                                {/* Detail Level */}
+                                                <div>
+                                                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                                                        Detail Level
+                                                    </label>
+                                                    <div className="flex gap-2">
+                                                        {SUMMARY_DETAIL_LEVELS.map(level => (
+                                                            <button
+                                                                key={level.id}
+                                                                onClick={() => setSummaryDetailLevel(level.id)}
+                                                                className={`px-3 py-1.5 rounded-lg text-sm transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                                                                    summaryDetailLevel === level.id
+                                                                        ? 'bg-teal-600 text-white'
+                                                                        : 'bg-white/10 text-slate-300 hover:bg-white/15'
+                                                                }`}
+                                                            >
+                                                                <span>{level.icon}</span>
+                                                                {level.label}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                    <p className="text-xs text-slate-500 mt-1">
+                                                        {summaryDetailLevel === 'concise' ? 'Produces a succinct 1-2 page summary' :
+                                                         summaryDetailLevel === 'detailed' ? 'Preserves virtually all content near-verbatim' :
+                                                         'Balanced summary with key takeaways'}
+                                                    </p>
                                                 </div>
 
                                                 {/* Input Type Toggle */}

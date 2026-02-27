@@ -1676,36 +1676,7 @@ def extract_summary_text():
 _transcription_jobs = {}
 
 
-def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key):
-    """Background worker for audio transcription."""
-    import time
-    try:
-        file_size_mb = len(file_content) / (1024 * 1024)
-        _transcription_jobs[job_id]['status'] = 'transcribing'
-        print(f"[Job {job_id}] Starting transcription: {filename} ({file_size_mb:.1f}MB)")
-
-        client = genai.Client(api_key=gemini_api_key)
-
-        # Build audio content
-        import io
-        audio_content = None
-        uploaded_file = None
-
-        if file_size_mb > 20:
-            try:
-                uploaded_file = client.files.upload(
-                    file=io.BytesIO(file_content),
-                    config=genai_types.UploadFileConfig(mime_type=mime_type, display_name=filename)
-                )
-                audio_content = uploaded_file
-                print(f"[Job {job_id}] Large file uploaded to Gemini: {uploaded_file.name}")
-            except Exception as upload_err:
-                print(f"[Job {job_id}] File upload failed: {upload_err}, using inline bytes")
-
-        if audio_content is None:
-            audio_content = genai_types.Part.from_bytes(data=file_content, mime_type=mime_type)
-
-        transcription_prompt = """You are a professional transcriptionist. Produce an ABSOLUTE VERBATIM, word-for-word transcription of this ENTIRE audio recording from beginning to end. Do NOT omit, skip, summarize, or condense ANY portion.
+TRANSCRIPTION_PROMPT = """You are a professional transcriptionist. Produce an ABSOLUTE VERBATIM, word-for-word transcription of this ENTIRE audio recording from beginning to end. Do NOT omit, skip, summarize, or condense ANY portion.
 
 CRITICAL RULES — YOU MUST FOLLOW ALL OF THESE:
 1. Transcribe EVERY SINGLE WORD spoken in the recording, from the very first word to the very last word
@@ -1719,65 +1690,188 @@ CRITICAL RULES — YOU MUST FOLLOW ALL OF THESE:
 9. If the audio is long, you MUST transcribe the entire thing — do NOT stop early or truncate
 10. Your transcription should capture 100% of the spoken content"""
 
-        models_to_try = ['gemini-2.5-flash', 'gemini-2.0-flash']
-        transcript_text = None
-        last_error = None
+CHUNK_MINUTES = 15  # Transcribe in 15-minute segments for accuracy
+OVERLAP_SECONDS = 30  # 30-second overlap between chunks to avoid missed content
 
-        for model_name in models_to_try:
-            for attempt in range(2):
+
+def _transcribe_audio_content(client, audio_content, job_id, label=""):
+    """Transcribe a single audio content (chunk or full file). Returns text or raises."""
+    import time
+    models_to_try = ['gemini-2.5-flash', 'gemini-2.0-flash']
+    last_error = None
+
+    for model_name in models_to_try:
+        for attempt in range(2):
+            try:
+                print(f"[Job {job_id}] {label}Trying {model_name} (attempt {attempt + 1}/2)...")
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=[audio_content, TRANSCRIPTION_PROMPT],
+                    config=genai_types.GenerateContentConfig(max_output_tokens=65536)
+                )
                 try:
-                    print(f"[Job {job_id}] Trying {model_name} (attempt {attempt + 1}/2)...")
-                    response = client.models.generate_content(
-                        model=model_name,
-                        contents=[audio_content, transcription_prompt],
-                        config=genai_types.GenerateContentConfig(max_output_tokens=65536)
-                    )
-                    try:
-                        transcript_text = response.text
-                    except (ValueError, AttributeError) as text_err:
-                        extracted = None
-                        if hasattr(response, 'candidates') and response.candidates:
-                            for c in response.candidates:
-                                if hasattr(c, 'content') and c.content and hasattr(c.content, 'parts'):
-                                    for p in c.content.parts:
-                                        if hasattr(p, 'text') and p.text:
-                                            extracted = p.text
-                                            break
-                                if extracted:
-                                    break
-                        if extracted:
-                            transcript_text = extracted
-                        else:
-                            last_error = text_err
-                            break
-                    if transcript_text:
-                        print(f"[Job {job_id}] Success with {model_name}")
+                    text = response.text
+                except (ValueError, AttributeError) as text_err:
+                    extracted = None
+                    if hasattr(response, 'candidates') and response.candidates:
+                        for c in response.candidates:
+                            if hasattr(c, 'content') and c.content and hasattr(c.content, 'parts'):
+                                for p in c.content.parts:
+                                    if hasattr(p, 'text') and p.text:
+                                        extracted = p.text
+                                        break
+                            if extracted:
+                                break
+                    if extracted:
+                        text = extracted
+                    else:
+                        last_error = text_err
                         break
-                except Exception as retry_err:
-                    last_error = retry_err
-                    err_str = str(retry_err)
-                    print(f"[Job {job_id}] {model_name} attempt {attempt + 1} error: {err_str}")
-                    if '429' in err_str or 'RESOURCE_EXHAUSTED' in err_str:
-                        if attempt == 0:
-                            time.sleep(10)
-                        else:
-                            break
+                if text and text.strip():
+                    print(f"[Job {job_id}] {label}Success with {model_name}: {len(text)} chars")
+                    return text
+            except Exception as retry_err:
+                last_error = retry_err
+                err_str = str(retry_err)
+                print(f"[Job {job_id}] {label}{model_name} attempt {attempt + 1} error: {err_str}")
+                if '429' in err_str or 'RESOURCE_EXHAUSTED' in err_str:
+                    if attempt == 0:
+                        time.sleep(10)
                     else:
                         break
-            if transcript_text:
-                break
+                else:
+                    break
+    raise Exception(f"All models failed. Last error: {last_error}")
 
-        # Clean up uploaded file
-        if uploaded_file:
+
+def _split_audio_to_chunks(file_content, mime_type, chunk_ms, overlap_ms):
+    """Split audio bytes into overlapping chunks using pydub. Returns list of (chunk_bytes, export_mime, start_sec, end_sec)."""
+    from pydub import AudioSegment
+    import io
+
+    audio = AudioSegment.from_file(io.BytesIO(file_content))
+    duration_ms = len(audio)
+    chunks = []
+    start = 0
+
+    while start < duration_ms:
+        end = min(start + chunk_ms, duration_ms)
+        chunk = audio[start:end]
+        buf = io.BytesIO()
+        chunk.export(buf, format='mp3')
+        chunk_bytes = buf.getvalue()
+        chunks.append((chunk_bytes, 'audio/mpeg', start / 1000, end / 1000))
+        start += chunk_ms - overlap_ms
+
+    return chunks
+
+
+def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key):
+    """Background worker for audio transcription. Chunks long audio for accuracy."""
+    import time
+    import io
+    try:
+        file_size_mb = len(file_content) / (1024 * 1024)
+        _transcription_jobs[job_id]['status'] = 'transcribing'
+        print(f"[Job {job_id}] Starting transcription: {filename} ({file_size_mb:.1f}MB)")
+
+        client = genai.Client(api_key=gemini_api_key)
+
+        # Determine audio duration to decide if chunking is needed
+        chunk_threshold_sec = CHUNK_MINUTES * 60 * 1.5  # Chunk if longer than 22.5 min
+        needs_chunking = False
+        try:
+            from pydub import AudioSegment
+            audio_check = AudioSegment.from_file(io.BytesIO(file_content))
+            duration_sec = len(audio_check) / 1000
+            print(f"[Job {job_id}] Audio duration: {duration_sec:.0f}s ({duration_sec/60:.1f}min)")
+            needs_chunking = duration_sec > chunk_threshold_sec
+        except Exception as dur_err:
+            print(f"[Job {job_id}] Could not detect duration ({dur_err}), using size heuristic")
+            # Rough heuristic: 1 min of audio ~ 1MB for typical compressed formats
+            needs_chunking = file_size_mb > 25
+
+        if needs_chunking:
+            # === CHUNKED TRANSCRIPTION ===
+            chunk_ms = CHUNK_MINUTES * 60 * 1000
+            overlap_ms = OVERLAP_SECONDS * 1000
+            print(f"[Job {job_id}] Long audio — splitting into ~{CHUNK_MINUTES}min chunks with {OVERLAP_SECONDS}s overlap")
+
+            _transcription_jobs[job_id]['status'] = 'transcribing'
+            chunks = _split_audio_to_chunks(file_content, mime_type, chunk_ms, overlap_ms)
+            print(f"[Job {job_id}] Split into {len(chunks)} chunks")
+
+            all_texts = []
+            for idx, (chunk_bytes, chunk_mime, start_sec, end_sec) in enumerate(chunks):
+                chunk_label = f"Chunk {idx + 1}/{len(chunks)} ({start_sec/60:.1f}-{end_sec/60:.1f}min): "
+                _transcription_jobs[job_id]['progress'] = f"Transcribing chunk {idx + 1} of {len(chunks)} ({start_sec/60:.0f}-{end_sec/60:.0f} min)..."
+
+                chunk_size_mb = len(chunk_bytes) / (1024 * 1024)
+                if chunk_size_mb > 20:
+                    uploaded = client.files.upload(
+                        file=io.BytesIO(chunk_bytes),
+                        config=genai_types.UploadFileConfig(mime_type=chunk_mime, display_name=f"{filename}_chunk{idx+1}")
+                    )
+                    audio_content = uploaded
+                else:
+                    audio_content = genai_types.Part.from_bytes(data=chunk_bytes, mime_type=chunk_mime)
+                    uploaded = None
+
+                try:
+                    text = _transcribe_audio_content(client, audio_content, job_id, label=chunk_label)
+                    all_texts.append(text)
+                finally:
+                    if uploaded:
+                        try:
+                            client.files.delete(name=uploaded.name)
+                        except Exception:
+                            pass
+
+                # Small delay between chunks to avoid rate limits
+                if idx < len(chunks) - 1:
+                    time.sleep(2)
+
+            transcript_text = '\n\n'.join(all_texts)
+            print(f"[Job {job_id}] All {len(chunks)} chunks transcribed, total: {len(transcript_text)} chars")
+
+        else:
+            # === SINGLE-PASS TRANSCRIPTION (short audio) ===
+            audio_content = None
+            uploaded_file = None
+
+            if file_size_mb > 20:
+                try:
+                    uploaded_file = client.files.upload(
+                        file=io.BytesIO(file_content),
+                        config=genai_types.UploadFileConfig(mime_type=mime_type, display_name=filename)
+                    )
+                    audio_content = uploaded_file
+                    print(f"[Job {job_id}] Large file uploaded to Gemini: {uploaded_file.name}")
+                except Exception as upload_err:
+                    print(f"[Job {job_id}] File upload failed: {upload_err}, using inline bytes")
+
+            if audio_content is None:
+                audio_content = genai_types.Part.from_bytes(data=file_content, mime_type=mime_type)
+
             try:
-                client.files.delete(name=uploaded_file.name)
-            except Exception:
-                pass
+                transcript_text = _transcribe_audio_content(client, audio_content, job_id)
+            except Exception as e:
+                _transcription_jobs[job_id] = {
+                    'status': 'error',
+                    'error': str(e)
+                }
+                return
+            finally:
+                if uploaded_file:
+                    try:
+                        client.files.delete(name=uploaded_file.name)
+                    except Exception:
+                        pass
 
         if not transcript_text or not transcript_text.strip():
             _transcription_jobs[job_id] = {
                 'status': 'error',
-                'error': str(last_error) if last_error else 'Gemini could not transcribe this audio. Try converting to MP3 or using a shorter clip.'
+                'error': 'Gemini could not transcribe this audio. Try converting to MP3 or using a shorter clip.'
             }
             return
 
@@ -1859,7 +1953,10 @@ def transcribe_audio_status(job_id):
         error = job.get('error', 'Unknown error')
         del _transcription_jobs[job_id]
         return jsonify({'status': 'error', 'error': error})
-    return jsonify({'status': job['status']})
+    result = {'status': job['status']}
+    if 'progress' in job:
+        result['progress'] = job['progress']
+    return jsonify(result)
 
 
 @app.route('/api/text-to-docx', methods=['POST'])
