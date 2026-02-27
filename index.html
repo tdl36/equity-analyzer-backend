@@ -2452,7 +2452,7 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                 }
             };
             
-            // Process audio file: upload to start transcription, then poll in background
+            // Process audio file: upload first file, close modal, then poll + upload remaining in background
             const processAudioFile = async () => {
                 if (summaryFiles.length === 0) return;
 
@@ -2462,66 +2462,69 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                     return;
                 }
 
+                // Clear any stale background job
+                if (bgPollRef.current) clearTimeout(bgPollRef.current);
+                localStorage.removeItem('charlie_bg_transcription');
+                setBgTranscriptionJob(null);
+
                 setSummaryFileUploading(true);
-                setSummaryUploadProgress('Uploading audio file(s) to server...');
+                setSummaryUploadProgress('Uploading audio to server...');
 
                 try {
-                    // Upload all files and collect job IDs
-                    const jobInfos = [];
-                    for (let i = 0; i < summaryFiles.length; i++) {
-                        const audioFile = summaryFiles[i];
-                        const fileLabel = summaryFiles.length > 1 ? ` (file ${i + 1}/${summaryFiles.length})` : '';
-                        setSummaryUploadProgress(`Uploading ${audioFile.name}${fileLabel}...`);
+                    // Upload only the FIRST file before closing modal (fast UX)
+                    const firstFile = summaryFiles[0];
+                    const formData = new FormData();
+                    formData.append('file', firstFile);
+                    formData.append('geminiApiKey', geminiKey);
 
-                        const formData = new FormData();
-                        formData.append('file', audioFile);
-                        formData.append('geminiApiKey', geminiKey);
-
-                        let startRes;
-                        for (let attempt = 0; attempt < 2; attempt++) {
-                            try {
-                                if (attempt > 0) {
-                                    setSummaryUploadProgress(`Server waking up, retrying ${audioFile.name}${fileLabel}...`);
-                                    try { await fetch(`${DIRECT_API_URL}/health`); } catch (e) { /* ignore */ }
-                                    await new Promise(r => setTimeout(r, 3000));
-                                    const retryFormData = new FormData();
-                                    retryFormData.append('file', audioFile);
-                                    retryFormData.append('geminiApiKey', geminiKey);
-                                    startRes = await fetch(`${DIRECT_API_URL}/api/transcribe-audio`, { method: 'POST', body: retryFormData });
-                                } else {
-                                    startRes = await fetch(`${DIRECT_API_URL}/api/transcribe-audio`, { method: 'POST', body: formData });
-                                }
-                                break;
-                            } catch (fetchErr) {
-                                if (attempt === 1) throw new Error(`Could not reach the server. Please try again in a minute.`);
+                    let startRes;
+                    for (let attempt = 0; attempt < 2; attempt++) {
+                        try {
+                            if (attempt > 0) {
+                                setSummaryUploadProgress('Server waking up, retrying...');
+                                try { await fetch(`${DIRECT_API_URL}/health`); } catch (e) { /* ignore */ }
+                                await new Promise(r => setTimeout(r, 3000));
+                                const retryFormData = new FormData();
+                                retryFormData.append('file', firstFile);
+                                retryFormData.append('geminiApiKey', geminiKey);
+                                startRes = await fetch(`${DIRECT_API_URL}/api/transcribe-audio`, { method: 'POST', body: retryFormData });
+                            } else {
+                                startRes = await fetch(`${DIRECT_API_URL}/api/transcribe-audio`, { method: 'POST', body: formData });
                             }
+                            break;
+                        } catch (fetchErr) {
+                            if (attempt === 1) throw new Error('Could not reach the server. Please try again in a minute.');
                         }
-                        const startText = await startRes.text();
-                        let startData;
-                        try { startData = JSON.parse(startText); } catch (e) {
-                            throw new Error(`Server error (status ${startRes.status}).`);
-                        }
-                        if (!startRes.ok) throw new Error(startData.error || 'Unknown error');
-                        jobInfos.push({ jobId: startData.job_id, filename: audioFile.name });
                     }
+                    const startText = await startRes.text();
+                    let startData;
+                    try { startData = JSON.parse(startText); } catch (e) {
+                        throw new Error(`Server error (status ${startRes.status}).`);
+                    }
+                    if (!startRes.ok) throw new Error(startData.error || 'Unknown error');
 
-                    // Save job metadata — capture current modal state before closing
+                    // Save job metadata and close modal immediately
                     const jobMeta = {
-                        jobs: jobInfos,
+                        jobs: [{ jobId: startData.job_id, filename: firstFile.name }],
+                        pendingFiles: summaryFiles.slice(1).map(f => ({ name: f.name, file: null })), // can't serialize File objects
+                        pendingFileObjects: summaryFiles.slice(1), // kept in memory only, not in localStorage
                         fileNames: summaryFiles.map(f => f.name),
+                        geminiKey: geminiKey,
                         title: summaryTitleInput.trim(),
                         topic: newTopicName || currentSummaryTopic || 'General',
                         topicType: newTopicType || 'other',
                         docType: summaryDocType || 'audio_recording',
                         detailLevel: summaryDetailLevel,
                         startTime: Date.now(),
-                        progress: 'Transcription started...',
+                        progress: 'Transcribing...',
                         currentJobIdx: 0,
                     };
                     setBgTranscriptionJob(jobMeta);
-                    localStorage.setItem('charlie_bg_transcription', JSON.stringify(jobMeta));
+                    // Save to localStorage (without File objects)
+                    const saveable = { ...jobMeta, pendingFileObjects: undefined, geminiKey: undefined };
+                    localStorage.setItem('charlie_bg_transcription', JSON.stringify(saveable));
 
-                    // Close modal — transcription continues in background
+                    // Close modal
                     setSummaryFiles([]);
                     setSummaryTitleInput('');
                     setNewTopicName('');
@@ -2549,32 +2552,67 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
 
                 const allTranscripts = [];
                 let currentIdx = 0;
+                const totalFiles = jobMeta.fileNames.length;
 
-                const pollNext = async () => {
-                    if (currentIdx >= jobMeta.jobs.length) {
-                        // All jobs done — run the rest of the pipeline
-                        await finalizeBgTranscription(jobMeta, allTranscripts);
-                        return;
-                    }
-
-                    const { jobId, filename } = jobMeta.jobs[currentIdx];
-                    const fileLabel = jobMeta.jobs.length > 1 ? ` (file ${currentIdx + 1}/${jobMeta.jobs.length})` : '';
+                const getTimeStr = () => {
                     const elapsed = Math.floor((Date.now() - jobMeta.startTime) / 1000);
                     const mins = Math.floor(elapsed / 60);
                     const secs = elapsed % 60;
-                    const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+                    return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+                };
+
+                const uploadNextFile = async () => {
+                    // Upload the next pending file (if multi-file and File objects in memory)
+                    const pendingFiles = jobMeta.pendingFileObjects || [];
+                    if (pendingFiles.length === 0) return false;
+
+                    const nextFile = pendingFiles.shift();
+                    const fileNum = jobMeta.jobs.length + 1;
+                    setBgTranscriptionJob(prev => prev ? { ...prev, progress: `Uploading file ${fileNum}/${totalFiles}...` } : null);
+
+                    const fd = new FormData();
+                    fd.append('file', nextFile);
+                    fd.append('geminiApiKey', jobMeta.geminiKey);
+                    const res = await fetch(`${DIRECT_API_URL}/api/transcribe-audio`, { method: 'POST', body: fd });
+                    const text = await res.text();
+                    const data = JSON.parse(text);
+                    if (!res.ok) throw new Error(data.error || 'Upload failed');
+
+                    jobMeta.jobs.push({ jobId: data.job_id, filename: nextFile.name });
+                    return true;
+                };
+
+                const pollNext = async () => {
+                    // Check if we need to upload next file or finalize
+                    if (currentIdx >= jobMeta.jobs.length) {
+                        try {
+                            const uploaded = await uploadNextFile();
+                            if (!uploaded) {
+                                // No more files — finalize
+                                await finalizeBgTranscription(jobMeta, allTranscripts);
+                                return;
+                            }
+                            // Continue polling the newly uploaded job
+                        } catch (uploadErr) {
+                            setBgTranscriptionJob(prev => prev ? { ...prev, progress: `Upload failed: ${uploadErr.message}`, error: true } : null);
+                            localStorage.removeItem('charlie_bg_transcription');
+                            return;
+                        }
+                    }
+
+                    const { jobId, filename } = jobMeta.jobs[currentIdx];
+                    const fileLabel = totalFiles > 1 ? ` [${currentIdx + 1}/${totalFiles}]` : '';
+                    const timeStr = getTimeStr();
 
                     try {
                         const pollRes = await fetch(`${DIRECT_API_URL}/api/transcribe-audio/${jobId}`);
                         const pollText = await pollRes.text();
                         let pollData;
                         try { pollData = JSON.parse(pollText); } catch (e) {
-                            // Parse error — retry
                             bgPollRef.current = setTimeout(pollNext, 5000);
                             return;
                         }
 
-                        // Handle "Job not found" — server restarted and lost the job
                         if (pollRes.status === 404 || pollData.error === 'Job not found') {
                             setBgTranscriptionJob(prev => prev ? { ...prev, progress: 'Job lost (server restarted). Please retry.', error: true } : null);
                             localStorage.removeItem('charlie_bg_transcription');
@@ -2584,33 +2622,28 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                         if (pollData.status === 'done') {
                             allTranscripts.push({ filename, text: pollData.text });
                             currentIdx++;
-                            const progressMsg = currentIdx < jobMeta.jobs.length
-                                ? `File ${currentIdx}/${jobMeta.jobs.length} done — ${timeStr}`
+                            const remaining = totalFiles - currentIdx;
+                            const progressMsg = remaining > 0
+                                ? `${currentIdx}/${totalFiles} done — ${timeStr}`
                                 : `Transcribed — generating summary...`;
-                            setBgTranscriptionJob(prev => prev ? { ...prev, progress: progressMsg, currentJobIdx: currentIdx } : null);
-                            // Immediately poll next job or finalize
+                            setBgTranscriptionJob(prev => prev ? { ...prev, progress: progressMsg } : null);
                             bgPollRef.current = setTimeout(pollNext, 500);
                             return;
                         } else if (pollData.status === 'error') {
-                            const errMsg = `Transcription failed for ${filename}: ${pollData.error || 'Unknown error'}`;
-                            setBgTranscriptionJob(prev => prev ? { ...prev, progress: errMsg, error: true } : null);
+                            setBgTranscriptionJob(prev => prev ? { ...prev, progress: `Failed: ${pollData.error || 'Unknown'}`, error: true } : null);
                             localStorage.removeItem('charlie_bg_transcription');
                             return;
                         } else {
-                            // Still processing — keep messages short for mobile
                             let progressMsg;
                             if (pollData.progress) {
-                                // Backend sends e.g. "Transcribing chunk 2 of 6 (15-30 min)..."
-                                progressMsg = `${pollData.progress} — ${timeStr}`;
+                                progressMsg = `${pollData.progress}${fileLabel} — ${timeStr}`;
                             } else {
-                                // Shorten filename for display
-                                const shortName = filename.length > 20 ? filename.substring(0, 17) + '...' : filename;
-                                progressMsg = `Transcribing ${shortName}${fileLabel} — ${timeStr}`;
+                                const shortName = filename.length > 15 ? filename.substring(0, 12) + '...' : filename;
+                                progressMsg = `${shortName}${fileLabel} — ${timeStr}`;
                             }
                             setBgTranscriptionJob(prev => prev ? { ...prev, progress: progressMsg } : null);
                         }
                     } catch (pollErr) {
-                        // Network error — retry silently
                         console.warn('Bg poll error:', pollErr);
                     }
 
