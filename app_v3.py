@@ -1705,16 +1705,19 @@ def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key
         if audio_content is None:
             audio_content = genai_types.Part.from_bytes(data=file_content, mime_type=mime_type)
 
-        transcription_prompt = """Please provide a complete, word-for-word professional transcription of this audio recording.
+        transcription_prompt = """You are a professional transcriptionist. Produce an ABSOLUTE VERBATIM, word-for-word transcription of this ENTIRE audio recording from beginning to end. Do NOT omit, skip, summarize, or condense ANY portion.
 
-Requirements:
-- Transcribe EVERY word spoken, do not summarize or skip any content
-- Identify different speakers where possible (e.g., "Speaker 1:", "Speaker 2:", or use names if mentioned)
-- Include filler words like "um", "uh", "you know" for accuracy
-- Use proper punctuation and paragraph breaks for readability
-- If a speaker's name is mentioned or identifiable, use their name as the label
-- Start each speaker's turn on a new line with their label
-- Do NOT add any commentary, headers, timestamps, or notes - just the pure transcription"""
+CRITICAL RULES — YOU MUST FOLLOW ALL OF THESE:
+1. Transcribe EVERY SINGLE WORD spoken in the recording, from the very first word to the very last word
+2. Do NOT skip sections, do NOT summarize, do NOT paraphrase — write exactly what was said
+3. Include ALL filler words: "um", "uh", "like", "you know", "I mean", "so", "right", etc.
+4. Include false starts, repeated words, self-corrections, and stammering exactly as spoken
+5. Identify different speakers (e.g., "Speaker 1:", "Speaker 2:", or use names if mentioned/identifiable)
+6. Start each speaker's turn on a new line with their label
+7. Use proper punctuation and paragraph breaks for readability
+8. Do NOT add any commentary, headers, timestamps, introductions, or notes — output ONLY the transcription
+9. If the audio is long, you MUST transcribe the entire thing — do NOT stop early or truncate
+10. Your transcription should capture 100% of the spoken content"""
 
         models_to_try = ['gemini-2.5-flash', 'gemini-2.0-flash']
         transcript_text = None
@@ -1726,7 +1729,8 @@ Requirements:
                     print(f"[Job {job_id}] Trying {model_name} (attempt {attempt + 1}/2)...")
                     response = client.models.generate_content(
                         model=model_name,
-                        contents=[audio_content, transcription_prompt]
+                        contents=[audio_content, transcription_prompt],
+                        config=genai_types.GenerateContentConfig(max_output_tokens=65536)
                     )
                     try:
                         transcript_text = response.text
