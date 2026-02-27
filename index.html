@@ -1688,6 +1688,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const summarySearchRef = useRef(null);
             const [geminiApiKey, setGeminiApiKey] = useState(loadGeminiKeyFromStorage() || '');
             const [transcriptExpanded, setTranscriptExpanded] = useState(false);
+            const [bgTranscriptionJob, setBgTranscriptionJob] = useState(null); // { jobId, files, title, topic, topicType, docType, detailLevel, startTime, progress }
+            const bgPollRef = useRef(null); // Ref to hold poll timeout ID
             
             // Document types for Summary tab
             const SUMMARY_DOC_TYPES = [
@@ -2450,7 +2452,7 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                 }
             };
             
-            // Process audio file: transcribe via Gemini, then generate summary
+            // Process audio file: upload to start transcription, then poll in background
             const processAudioFile = async () => {
                 if (summaryFiles.length === 0) return;
 
@@ -2461,202 +2463,65 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                 }
 
                 setSummaryFileUploading(true);
+                setSummaryUploadProgress('Uploading audio file(s) to server...');
 
                 try {
-                    // Step 1: Transcribe each audio file sequentially (async with polling)
-                    const allTranscripts = [];
+                    // Upload all files and collect job IDs
+                    const jobInfos = [];
                     for (let i = 0; i < summaryFiles.length; i++) {
                         const audioFile = summaryFiles[i];
                         const fileLabel = summaryFiles.length > 1 ? ` (file ${i + 1}/${summaryFiles.length})` : '';
                         setSummaryUploadProgress(`Uploading ${audioFile.name}${fileLabel}...`);
 
-                        // Start async transcription job
                         const formData = new FormData();
                         formData.append('file', audioFile);
                         formData.append('geminiApiKey', geminiKey);
 
-                        // Try up to 2 times — first failure may be server cold start
-                        let startRes, startText, startData;
+                        let startRes;
                         for (let attempt = 0; attempt < 2; attempt++) {
                             try {
                                 if (attempt > 0) {
                                     setSummaryUploadProgress(`Server waking up, retrying ${audioFile.name}${fileLabel}...`);
-                                    // Wake server with health check first
                                     try { await fetch(`${DIRECT_API_URL}/health`); } catch (e) { /* ignore */ }
                                     await new Promise(r => setTimeout(r, 3000));
-                                    // Rebuild FormData (stream may be consumed)
                                     const retryFormData = new FormData();
                                     retryFormData.append('file', audioFile);
                                     retryFormData.append('geminiApiKey', geminiKey);
-                                    startRes = await fetch(`${DIRECT_API_URL}/api/transcribe-audio`, {
-                                        method: 'POST',
-                                        body: retryFormData
-                                    });
+                                    startRes = await fetch(`${DIRECT_API_URL}/api/transcribe-audio`, { method: 'POST', body: retryFormData });
                                 } else {
-                                    startRes = await fetch(`${DIRECT_API_URL}/api/transcribe-audio`, {
-                                        method: 'POST',
-                                        body: formData
-                                    });
+                                    startRes = await fetch(`${DIRECT_API_URL}/api/transcribe-audio`, { method: 'POST', body: formData });
                                 }
-                                break; // Success — got a response
+                                break;
                             } catch (fetchErr) {
-                                if (attempt === 1) {
-                                    throw new Error(`Could not reach the server for ${audioFile.name}. The server may be starting up — please try again in a minute.`);
-                                }
-                                console.warn('Transcription fetch failed, retrying:', fetchErr.message);
+                                if (attempt === 1) throw new Error(`Could not reach the server. Please try again in a minute.`);
                             }
                         }
-                        startText = await startRes.text();
+                        const startText = await startRes.text();
+                        let startData;
                         try { startData = JSON.parse(startText); } catch (e) {
-                            throw new Error(`Failed to start transcription for ${audioFile.name}: Server error (status ${startRes.status}).`);
+                            throw new Error(`Server error (status ${startRes.status}).`);
                         }
-                        if (!startRes.ok) {
-                            throw new Error(`Failed to transcribe ${audioFile.name}: ${startData.error || 'Unknown error'}`);
-                        }
-
-                        const jobId = startData.job_id;
-                        setSummaryUploadProgress(`Transcribing ${audioFile.name}${fileLabel}...`);
-
-                        // Poll for completion
-                        const transcript = await new Promise((resolve, reject) => {
-                            let elapsed = 0;
-                            const poll = setInterval(async () => {
-                                try {
-                                    const pollRes = await fetch(`${DIRECT_API_URL}/api/transcribe-audio/${jobId}`);
-                                    const pollText = await pollRes.text();
-                                    let pollData;
-                                    try { pollData = JSON.parse(pollText); } catch (e) {
-                                        console.error('Poll parse error:', pollText.substring(0, 200));
-                                        return; // Retry on next poll
-                                    }
-
-                                    if (pollData.status === 'done') {
-                                        clearInterval(poll);
-                                        resolve(pollData.text);
-                                    } else if (pollData.status === 'error') {
-                                        clearInterval(poll);
-                                        reject(new Error(pollData.error || 'Transcription failed'));
-                                    } else {
-                                        elapsed += 3;
-                                        const mins = Math.floor(elapsed / 60);
-                                        const secs = elapsed % 60;
-                                        const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-                                        const progressDetail = pollData.progress ? ` — ${pollData.progress}` : '';
-                                        setSummaryUploadProgress(`Transcribing ${audioFile.name}${fileLabel}... (${timeStr})${progressDetail}`);
-                                    }
-                                } catch (pollErr) {
-                                    console.error('Poll error:', pollErr);
-                                    // Don't reject on transient poll errors, just retry
-                                }
-                            }, 3000);
-
-                            // Timeout after 10 minutes
-                            setTimeout(() => {
-                                clearInterval(poll);
-                                reject(new Error(`Transcription timed out for ${audioFile.name} after 10 minutes.`));
-                            }, 600000);
-                        });
-
-                        allTranscripts.push({ filename: audioFile.name, text: transcript });
+                        if (!startRes.ok) throw new Error(startData.error || 'Unknown error');
+                        jobInfos.push({ jobId: startData.job_id, filename: audioFile.name });
                     }
 
-                    // Combine transcripts (add part headers only for multi-file)
-                    const transcriptText = allTranscripts.length === 1
-                        ? allTranscripts[0].text
-                        : allTranscripts.map((t, i) => `--- Part ${i + 1}: ${t.filename} ---\n\n${t.text}`).join('\n\n\n');
-
-                    setSummaryUploadProgress('Generating takeaways and questions...');
-
-                    // Step 2: Send combined transcript to n8n webhook for takeaways/questions
-                    const webhookResponse = await fetch(SUMMARY_WEBHOOK_URL, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ notes: applyDetailLevel(transcriptText) })
-                    });
-
-                    const webhookText = await webhookResponse.text();
-                    let data;
-                    try {
-                        data = JSON.parse(webhookText);
-                    } catch (parseErr) {
-                        console.error('Webhook response not JSON:', webhookText.substring(0, 500));
-                        throw new Error('Summary generation failed: server returned an invalid response.');
-                    }
-                    if (!webhookResponse.ok) throw new Error('Summary generation failed');
-
-                    // Step 3: Build title
-                    let title = summaryTitleInput.trim();
-                    if (!title) {
-                        if (summaryFiles.length > 1) {
-                            title = `Audio Transcription (${summaryFiles.length} files)`;
-                        } else {
-                            title = summaryFiles[0].name.replace(/\.[^/.]+$/, '').substring(0, 100) || 'Audio Transcription';
-                        }
-                    }
-
-                    // Step 4: Create summary object with full transcript in rawNotes
-                    const newSummary = {
-                        id: 'summary-' + Date.now(),
-                        title: title,
-                        rawNotes: transcriptText,
-                        summary: data.summary,
-                        questions: data.questions,
+                    // Save job metadata — capture current modal state before closing
+                    const jobMeta = {
+                        jobs: jobInfos,
+                        fileNames: summaryFiles.map(f => f.name),
+                        title: summaryTitleInput.trim(),
                         topic: newTopicName || currentSummaryTopic || 'General',
                         topicType: newTopicType || 'other',
                         docType: summaryDocType || 'audio_recording',
-                        sourceType: 'audio',
-                        sourceFiles: summaryFiles.map(f => f.name),
-                        hasStoredFiles: false,
-                        createdAt: new Date().toISOString()
+                        detailLevel: summaryDetailLevel,
+                        startTime: Date.now(),
+                        progress: 'Transcription started...',
+                        currentJobIdx: 0,
                     };
+                    setBgTranscriptionJob(jobMeta);
+                    localStorage.setItem('charlie_bg_transcription', JSON.stringify(jobMeta));
 
-                    // Step 5: Save summary to database
-                    await saveSummaryToDb(newSummary);
-
-                    // Step 6: Save transcript as .docx file in summary_files
-                    setSummaryUploadProgress('Saving transcript document...');
-                    try {
-                        const docxResponse = await fetch(`${API_URL}/api/text-to-docx`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                text: transcriptText,
-                                title: newSummary.title || 'Transcript'
-                            })
-                        });
-
-                        if (docxResponse.ok) {
-                            const docxData = await docxResponse.json();
-                            const transcriptFilename = (summaryFiles.length === 1
-                                ? summaryFiles[0].name.replace(/\.[^/.]+$/, '')
-                                : 'combined_audio') + '_transcript.docx';
-
-                            const saveFilesResponse = await fetch(`${API_URL}/api/summary-files/${newSummary.id}`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    files: [{
-                                        filename: transcriptFilename,
-                                        fileType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                                        fileData: docxData.fileData,
-                                        fileSize: docxData.fileSize
-                                    }]
-                                })
-                            });
-
-                            if (saveFilesResponse.ok) {
-                                newSummary.hasStoredFiles = true;
-                            }
-                        } else {
-                            console.warn('Could not generate docx, skipping file save');
-                        }
-                    } catch (fileErr) {
-                        console.warn('Transcript file storage error (summary still created):', fileErr);
-                    }
-
-                    // Step 7: Update local state
-                    setSavedSummaries(prev => [newSummary, ...prev]);
-                    setCurrentSummary(newSummary);
+                    // Close modal — transcription continues in background
                     setSummaryFiles([]);
                     setSummaryTitleInput('');
                     setNewTopicName('');
@@ -2664,17 +2529,200 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                     setSummaryDetailLevel('standard');
                     setTopicSearchQuery('');
                     setShowSummaryInputModal(false);
-                    setSummaryViewMode('detail');
+                    setSummaryFileUploading(false);
                     setSummaryUploadProgress('');
 
+                    // Start background polling
+                    startBgTranscriptionPoll(jobMeta);
+
                 } catch (err) {
-                    console.error('Failed to process audio:', err);
-                    alert('Failed to process audio: ' + err.message);
-                } finally {
+                    console.error('Failed to start audio transcription:', err);
+                    alert('Failed to start audio transcription: ' + err.message);
                     setSummaryFileUploading(false);
                     setSummaryUploadProgress('');
                 }
             };
+
+            // Background transcription polling — runs even after modal closes
+            const startBgTranscriptionPoll = (jobMeta) => {
+                if (bgPollRef.current) clearTimeout(bgPollRef.current);
+
+                const allTranscripts = [];
+                let currentIdx = 0;
+
+                const pollNext = async () => {
+                    if (currentIdx >= jobMeta.jobs.length) {
+                        // All jobs done — run the rest of the pipeline
+                        await finalizeBgTranscription(jobMeta, allTranscripts);
+                        return;
+                    }
+
+                    const { jobId, filename } = jobMeta.jobs[currentIdx];
+                    const fileLabel = jobMeta.jobs.length > 1 ? ` (file ${currentIdx + 1}/${jobMeta.jobs.length})` : '';
+                    const elapsed = Math.floor((Date.now() - jobMeta.startTime) / 1000);
+                    const mins = Math.floor(elapsed / 60);
+                    const secs = elapsed % 60;
+                    const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+
+                    try {
+                        const pollRes = await fetch(`${DIRECT_API_URL}/api/transcribe-audio/${jobId}`);
+                        const pollText = await pollRes.text();
+                        let pollData;
+                        try { pollData = JSON.parse(pollText); } catch (e) {
+                            // Parse error — retry
+                            bgPollRef.current = setTimeout(pollNext, 5000);
+                            return;
+                        }
+
+                        if (pollData.status === 'done') {
+                            allTranscripts.push({ filename, text: pollData.text });
+                            currentIdx++;
+                            const progressMsg = currentIdx < jobMeta.jobs.length
+                                ? `Transcribed ${currentIdx}/${jobMeta.jobs.length} files (${timeStr}). Working on next...`
+                                : `Transcription complete (${timeStr}). Generating summary...`;
+                            setBgTranscriptionJob(prev => prev ? { ...prev, progress: progressMsg, currentJobIdx: currentIdx } : null);
+                            // Immediately poll next job or finalize
+                            bgPollRef.current = setTimeout(pollNext, 500);
+                            return;
+                        } else if (pollData.status === 'error') {
+                            const errMsg = `Transcription failed for ${filename}: ${pollData.error || 'Unknown error'}`;
+                            setBgTranscriptionJob(prev => prev ? { ...prev, progress: errMsg, error: true } : null);
+                            localStorage.removeItem('charlie_bg_transcription');
+                            return;
+                        } else {
+                            // Still processing
+                            const progressDetail = pollData.progress || `Transcribing ${filename}${fileLabel}`;
+                            const progressMsg = `${progressDetail} (${timeStr})`;
+                            setBgTranscriptionJob(prev => prev ? { ...prev, progress: progressMsg } : null);
+                        }
+                    } catch (pollErr) {
+                        // Network error — retry silently
+                        console.warn('Bg poll error:', pollErr);
+                    }
+
+                    bgPollRef.current = setTimeout(pollNext, 5000);
+                };
+
+                pollNext();
+            };
+
+            // Finalize background transcription — webhook + save + docx
+            const finalizeBgTranscription = async (jobMeta, allTranscripts) => {
+                try {
+                    setBgTranscriptionJob(prev => prev ? { ...prev, progress: 'Generating takeaways and questions...' } : null);
+
+                    const transcriptText = allTranscripts.length === 1
+                        ? allTranscripts[0].text
+                        : allTranscripts.map((t, i) => `--- Part ${i + 1}: ${t.filename} ---\n\n${t.text}`).join('\n\n\n');
+
+                    // Apply detail level
+                    let notesToSend = transcriptText;
+                    if (jobMeta.detailLevel === 'concise') {
+                        notesToSend = `CRITICAL OUTPUT FORMAT REQUIREMENT — YOU MUST FOLLOW THIS:\n===== CONCISE MODE =====\nGenerate a SHORT, CONCISE summary. Maximum 1-2 pages.\n- Only include the most important takeaways and key decisions\n- Omit minor details, examples, and supporting evidence\n- Use bullet points, not paragraphs\n- Be extremely brief and to the point\n===== END REQUIREMENT =====\n\n${transcriptText}\n\nREMINDER: Keep your output SHORT. 1-2 pages maximum. Concise mode.`;
+                    } else if (jobMeta.detailLevel === 'detailed') {
+                        notesToSend = `CRITICAL OUTPUT FORMAT REQUIREMENT — YOU MUST FOLLOW THIS:\n===== DETAILED VERBATIM MODE =====\nGenerate an EXTREMELY DETAILED and COMPREHENSIVE summary.\n- Preserve virtually ALL content from the original near-verbatim\n- Include every specific number, statistic, percentage, and data point\n- Include all names, quotes, and attributions\n- Your output should be at least 3-5x longer than a normal summary\n===== END REQUIREMENT =====\n\n${transcriptText}\n\nREMINDER: Be EXTREMELY detailed and comprehensive. Detailed verbatim mode.`;
+                    }
+
+                    const webhookResponse = await fetch(SUMMARY_WEBHOOK_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ notes: notesToSend })
+                    });
+
+                    const webhookText = await webhookResponse.text();
+                    let data;
+                    try { data = JSON.parse(webhookText); } catch (e) {
+                        throw new Error('Summary generation returned invalid response.');
+                    }
+                    if (!webhookResponse.ok) throw new Error('Summary generation failed');
+
+                    // Build title
+                    let title = jobMeta.title;
+                    if (!title) {
+                        title = jobMeta.fileNames.length > 1
+                            ? `Audio Transcription (${jobMeta.fileNames.length} files)`
+                            : jobMeta.fileNames[0].replace(/\.[^/.]+$/, '').substring(0, 100) || 'Audio Transcription';
+                    }
+
+                    const newSummary = {
+                        id: 'summary-' + Date.now(),
+                        title,
+                        rawNotes: transcriptText,
+                        summary: data.summary,
+                        questions: data.questions,
+                        topic: jobMeta.topic,
+                        topicType: jobMeta.topicType,
+                        docType: jobMeta.docType,
+                        sourceType: 'audio',
+                        sourceFiles: jobMeta.fileNames,
+                        hasStoredFiles: false,
+                        createdAt: new Date().toISOString()
+                    };
+
+                    await saveSummaryToDb(newSummary);
+
+                    // Save transcript as docx
+                    try {
+                        const docxResponse = await fetch(`${API_URL}/api/text-to-docx`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ text: transcriptText, title: newSummary.title || 'Transcript' })
+                        });
+                        if (docxResponse.ok) {
+                            const docxData = await docxResponse.json();
+                            const transcriptFilename = (jobMeta.fileNames.length === 1
+                                ? jobMeta.fileNames[0].replace(/\.[^/.]+$/, '')
+                                : 'combined_audio') + '_transcript.docx';
+                            const saveFilesResponse = await fetch(`${API_URL}/api/summary-files/${newSummary.id}`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ files: [{ filename: transcriptFilename, fileType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', fileData: docxData.fileData, fileSize: docxData.fileSize }] })
+                            });
+                            if (saveFilesResponse.ok) newSummary.hasStoredFiles = true;
+                        }
+                    } catch (fileErr) {
+                        console.warn('Transcript file storage error:', fileErr);
+                    }
+
+                    // Update UI
+                    setSavedSummaries(prev => [newSummary, ...prev]);
+                    setCurrentSummary(newSummary);
+                    setSummaryViewMode('detail');
+
+                    const elapsed = Math.floor((Date.now() - jobMeta.startTime) / 1000);
+                    const mins = Math.floor(elapsed / 60);
+                    setBgTranscriptionJob(prev => prev ? { ...prev, progress: `Done! Summary ready. (${mins}m total)`, done: true } : null);
+                    localStorage.removeItem('charlie_bg_transcription');
+
+                    // Auto-dismiss after 8 seconds
+                    setTimeout(() => setBgTranscriptionJob(null), 8000);
+
+                } catch (err) {
+                    console.error('Failed to finalize transcription:', err);
+                    setBgTranscriptionJob(prev => prev ? { ...prev, progress: `Error: ${err.message}`, error: true } : null);
+                    localStorage.removeItem('charlie_bg_transcription');
+                }
+            };
+
+            // Restore background transcription job from localStorage on mount
+            useEffect(() => {
+                const saved = localStorage.getItem('charlie_bg_transcription');
+                if (saved) {
+                    try {
+                        const jobMeta = JSON.parse(saved);
+                        // Only restore if less than 30 min old
+                        if (Date.now() - jobMeta.startTime < 1800000) {
+                            setBgTranscriptionJob({ ...jobMeta, progress: 'Reconnecting to transcription...' });
+                            startBgTranscriptionPoll(jobMeta);
+                        } else {
+                            localStorage.removeItem('charlie_bg_transcription');
+                        }
+                    } catch (e) {
+                        localStorage.removeItem('charlie_bg_transcription');
+                    }
+                }
+                return () => { if (bgPollRef.current) clearTimeout(bgPollRef.current); };
+            }, []);
 
             // Generate summary from modal (handles paste, upload, and audio)
             const generateSummaryFromModal = async () => {
@@ -10432,6 +10480,25 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                         {/* SUMMARY TAB */}
                         {activeTab === 'summary' && (
                             <div className="flex-1 flex flex-col overflow-hidden pb-24 md:pb-0">
+                                {/* Background Transcription Progress Banner */}
+                                {bgTranscriptionJob && (
+                                    <div className={`flex-shrink-0 px-4 py-3 flex items-center gap-3 text-sm border-b ${
+                                        bgTranscriptionJob.done ? 'bg-teal-900/40 border-teal-500/30 text-teal-300' :
+                                        bgTranscriptionJob.error ? 'bg-red-900/40 border-red-500/30 text-red-300' :
+                                        'bg-purple-900/30 border-purple-500/20 text-purple-200'
+                                    }`}>
+                                        {!bgTranscriptionJob.done && !bgTranscriptionJob.error && (
+                                            <RefreshCw className="w-4 h-4 animate-spin flex-shrink-0" />
+                                        )}
+                                        {bgTranscriptionJob.done && <Check className="w-4 h-4 flex-shrink-0" />}
+                                        <span className="flex-1 truncate">{bgTranscriptionJob.progress}</span>
+                                        {(bgTranscriptionJob.done || bgTranscriptionJob.error) && (
+                                            <button onClick={() => { setBgTranscriptionJob(null); localStorage.removeItem('charlie_bg_transcription'); }} className="p-1 hover:bg-white/10 rounded">
+                                                <X className="w-3.5 h-3.5" />
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
                                 {/* Horizontal Topic Navigation Bar */}
                                 <div className="bg-white/[0.04] backdrop-blur-lg border-b border-white/[0.08] flex-shrink-0">
                                     <div className="flex items-center gap-2 p-3">

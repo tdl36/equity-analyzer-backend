@@ -1945,13 +1945,20 @@ def transcribe_audio_status(job_id):
     if not job:
         return jsonify({'error': 'Job not found'}), 404
     if job['status'] == 'done':
-        # Clean up job from memory after retrieval
         result = dict(job)
-        del _transcription_jobs[job_id]
+        # Keep job for 10 min so user can return from background, then clean up
+        if 'completed_at' not in job:
+            job['completed_at'] = time.time()
+        elif time.time() - job['completed_at'] > 600:
+            del _transcription_jobs[job_id]
         return jsonify(result)
     if job['status'] == 'error':
         error = job.get('error', 'Unknown error')
-        del _transcription_jobs[job_id]
+        # Keep errors for 5 min
+        if 'completed_at' not in job:
+            job['completed_at'] = time.time()
+        elif time.time() - job['completed_at'] > 300:
+            del _transcription_jobs[job_id]
         return jsonify({'status': 'error', 'error': error})
     result = {'status': job['status']}
     if 'progress' in job:
