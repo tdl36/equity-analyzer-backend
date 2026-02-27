@@ -1744,32 +1744,53 @@ def _transcribe_audio_content(client, audio_content, job_id, label=""):
     raise Exception(f"All models failed. Last error: {last_error}")
 
 
-def _split_audio_to_chunks(file_content, mime_type, chunk_ms, overlap_ms):
-    """Split audio bytes into overlapping chunks using pydub. Returns list of (chunk_bytes, export_mime, start_sec, end_sec)."""
-    from pydub import AudioSegment
-    import io
+def _get_audio_duration_ffprobe(filepath):
+    """Get audio duration in seconds using ffprobe (no memory loading)."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ['ffprobe', '-v', 'quiet', '-show_entries', 'format=duration', '-of', 'csv=p=0', filepath],
+            capture_output=True, text=True, timeout=30
+        )
+        return float(result.stdout.strip())
+    except Exception:
+        return None
 
-    audio = AudioSegment.from_file(io.BytesIO(file_content))
-    duration_ms = len(audio)
+
+def _split_audio_ffmpeg(filepath, chunk_sec, overlap_sec, output_dir):
+    """Split audio into chunks using ffmpeg subprocess (disk-based, no memory). Returns list of (chunk_path, start_sec, end_sec)."""
+    import subprocess
+
+    duration = _get_audio_duration_ffprobe(filepath)
+    if not duration:
+        return []  # Can't determine duration, skip chunking
+
     chunks = []
     start = 0
-
-    while start < duration_ms:
-        end = min(start + chunk_ms, duration_ms)
-        chunk = audio[start:end]
-        buf = io.BytesIO()
-        chunk.export(buf, format='mp3')
-        chunk_bytes = buf.getvalue()
-        chunks.append((chunk_bytes, 'audio/mpeg', start / 1000, end / 1000))
-        start += chunk_ms - overlap_ms
+    idx = 0
+    while start < duration:
+        end = min(start + chunk_sec, duration)
+        chunk_path = os.path.join(output_dir, f"chunk_{idx:03d}.mp3")
+        subprocess.run(
+            ['ffmpeg', '-y', '-ss', str(start), '-t', str(chunk_sec), '-i', filepath, '-acodec', 'libmp3lame', '-q:a', '4', chunk_path],
+            capture_output=True, timeout=120
+        )
+        if os.path.exists(chunk_path) and os.path.getsize(chunk_path) > 1000:
+            chunks.append((chunk_path, start, end))
+        idx += 1
+        start += chunk_sec - overlap_sec
 
     return chunks
 
 
 def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key):
-    """Background worker for audio transcription. Chunks long audio for accuracy."""
+    """Background worker for audio transcription. Uses ffmpeg for chunking (disk-based, low memory)."""
     import time
     import io
+    import tempfile
+    import shutil
+
+    tmp_dir = None
     try:
         file_size_mb = len(file_content) / (1024 * 1024)
         _transcription_jobs[job_id]['status'] = 'transcribing'
@@ -1777,89 +1798,112 @@ def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key
 
         client = genai.Client(api_key=gemini_api_key)
 
-        # Determine audio duration to decide if chunking is needed
-        chunk_threshold_sec = CHUNK_MINUTES * 60 * 1.5  # Chunk if longer than 22.5 min
-        needs_chunking = False
-        try:
-            from pydub import AudioSegment
-            audio_check = AudioSegment.from_file(io.BytesIO(file_content))
-            duration_sec = len(audio_check) / 1000
-            print(f"[Job {job_id}] Audio duration: {duration_sec:.0f}s ({duration_sec/60:.1f}min)")
-            needs_chunking = duration_sec > chunk_threshold_sec
-        except Exception as dur_err:
-            print(f"[Job {job_id}] Could not detect duration ({dur_err}), using size heuristic")
-            # Rough heuristic: 1 min of audio ~ 1MB for typical compressed formats
+        # Write file to temp disk to free memory
+        tmp_dir = tempfile.mkdtemp(prefix='transcribe_')
+        ext = os.path.splitext(filename)[1] or '.m4a'
+        input_path = os.path.join(tmp_dir, f"input{ext}")
+        with open(input_path, 'wb') as f:
+            f.write(file_content)
+        del file_content  # Free memory immediately
+
+        # Check duration
+        duration_sec = _get_audio_duration_ffprobe(input_path)
+        chunk_threshold_sec = CHUNK_MINUTES * 60 * 1.5  # 22.5 min
+        needs_chunking = duration_sec and duration_sec > chunk_threshold_sec
+
+        if not duration_sec:
+            # Heuristic fallback
             needs_chunking = file_size_mb > 25
+            duration_sec = file_size_mb * 60  # rough estimate
+
+        print(f"[Job {job_id}] Duration: {duration_sec:.0f}s ({duration_sec/60:.1f}min), chunking: {needs_chunking}")
 
         if needs_chunking:
-            # === CHUNKED TRANSCRIPTION ===
-            chunk_ms = CHUNK_MINUTES * 60 * 1000
-            overlap_ms = OVERLAP_SECONDS * 1000
-            print(f"[Job {job_id}] Long audio — splitting into ~{CHUNK_MINUTES}min chunks with {OVERLAP_SECONDS}s overlap")
+            # === CHUNKED TRANSCRIPTION (disk-based, low memory) ===
+            _transcription_jobs[job_id]['progress'] = 'Splitting audio...'
+            chunks = _split_audio_ffmpeg(input_path, CHUNK_MINUTES * 60, OVERLAP_SECONDS, tmp_dir)
 
-            _transcription_jobs[job_id]['status'] = 'transcribing'
-            chunks = _split_audio_to_chunks(file_content, mime_type, chunk_ms, overlap_ms)
-            print(f"[Job {job_id}] Split into {len(chunks)} chunks")
+            if not chunks:
+                print(f"[Job {job_id}] ffmpeg chunking failed, falling back to single-pass")
+                needs_chunking = False
+            else:
+                print(f"[Job {job_id}] Split into {len(chunks)} chunks")
 
-            all_texts = []
-            for idx, (chunk_bytes, chunk_mime, start_sec, end_sec) in enumerate(chunks):
-                chunk_label = f"Chunk {idx + 1}/{len(chunks)} ({start_sec/60:.1f}-{end_sec/60:.1f}min): "
-                _transcription_jobs[job_id]['progress'] = f"Chunk {idx + 1}/{len(chunks)} ({int(start_sec/60)}-{int(end_sec/60)} min)"
-
-                chunk_size_mb = len(chunk_bytes) / (1024 * 1024)
-                if chunk_size_mb > 20:
-                    uploaded = client.files.upload(
-                        file=io.BytesIO(chunk_bytes),
-                        config=genai_types.UploadFileConfig(mime_type=chunk_mime, display_name=f"{filename}_chunk{idx+1}")
-                    )
-                    audio_content = uploaded
-                else:
-                    audio_content = genai_types.Part.from_bytes(data=chunk_bytes, mime_type=chunk_mime)
-                    uploaded = None
-
+                # Delete input file to save disk space
                 try:
-                    text = _transcribe_audio_content(client, audio_content, job_id, label=chunk_label)
-                    all_texts.append(text)
-                finally:
-                    if uploaded:
-                        try:
-                            client.files.delete(name=uploaded.name)
-                        except Exception:
-                            pass
+                    os.remove(input_path)
+                except Exception:
+                    pass
 
-                # Small delay between chunks to avoid rate limits
-                if idx < len(chunks) - 1:
-                    time.sleep(2)
+                all_texts = []
+                for idx, (chunk_path, start_sec, end_sec) in enumerate(chunks):
+                    chunk_label = f"Chunk {idx + 1}/{len(chunks)}: "
+                    _transcription_jobs[job_id]['progress'] = f"Chunk {idx + 1}/{len(chunks)} ({int(start_sec/60)}-{int(end_sec/60)} min)"
 
-            transcript_text = '\n\n'.join(all_texts)
-            print(f"[Job {job_id}] All {len(chunks)} chunks transcribed, total: {len(transcript_text)} chars")
+                    # Read chunk from disk (small — ~15min of mp3 ≈ 15MB)
+                    with open(chunk_path, 'rb') as cf:
+                        chunk_bytes = cf.read()
+                    os.remove(chunk_path)  # Free disk immediately
 
-        else:
-            # === SINGLE-PASS TRANSCRIPTION (short audio) ===
-            audio_content = None
+                    chunk_size_mb = len(chunk_bytes) / (1024 * 1024)
+                    uploaded = None
+                    if chunk_size_mb > 20:
+                        uploaded = client.files.upload(
+                            file=io.BytesIO(chunk_bytes),
+                            config=genai_types.UploadFileConfig(mime_type='audio/mpeg', display_name=f"{filename}_chunk{idx+1}")
+                        )
+                        audio_content = uploaded
+                        del chunk_bytes
+                    else:
+                        audio_content = genai_types.Part.from_bytes(data=chunk_bytes, mime_type='audio/mpeg')
+                        del chunk_bytes
+
+                    try:
+                        text = _transcribe_audio_content(client, audio_content, job_id, label=chunk_label)
+                        all_texts.append(text)
+                    finally:
+                        if uploaded:
+                            try:
+                                client.files.delete(name=uploaded.name)
+                            except Exception:
+                                pass
+
+                    if idx < len(chunks) - 1:
+                        time.sleep(2)
+
+                transcript_text = '\n\n'.join(all_texts)
+                print(f"[Job {job_id}] All {len(chunks)} chunks done, total: {len(transcript_text)} chars")
+
+        if not needs_chunking:
+            # === SINGLE-PASS TRANSCRIPTION ===
+            # Read from disk
+            with open(input_path, 'rb') as f:
+                audio_bytes = f.read()
+            os.remove(input_path)
+
             uploaded_file = None
-
-            if file_size_mb > 20:
+            audio_size_mb = len(audio_bytes) / (1024 * 1024)
+            if audio_size_mb > 20:
                 try:
                     uploaded_file = client.files.upload(
-                        file=io.BytesIO(file_content),
+                        file=io.BytesIO(audio_bytes),
                         config=genai_types.UploadFileConfig(mime_type=mime_type, display_name=filename)
                     )
                     audio_content = uploaded_file
-                    print(f"[Job {job_id}] Large file uploaded to Gemini: {uploaded_file.name}")
+                    del audio_bytes
+                    print(f"[Job {job_id}] Uploaded to Gemini: {uploaded_file.name}")
                 except Exception as upload_err:
-                    print(f"[Job {job_id}] File upload failed: {upload_err}, using inline bytes")
-
-            if audio_content is None:
-                audio_content = genai_types.Part.from_bytes(data=file_content, mime_type=mime_type)
+                    print(f"[Job {job_id}] Upload failed: {upload_err}, using inline bytes")
+                    audio_content = genai_types.Part.from_bytes(data=audio_bytes, mime_type=mime_type)
+                    del audio_bytes
+            else:
+                audio_content = genai_types.Part.from_bytes(data=audio_bytes, mime_type=mime_type)
+                del audio_bytes
 
             try:
                 transcript_text = _transcribe_audio_content(client, audio_content, job_id)
             except Exception as e:
-                _transcription_jobs[job_id] = {
-                    'status': 'error',
-                    'error': str(e)
-                }
+                _transcription_jobs[job_id] = {'status': 'error', 'error': str(e)}
                 return
             finally:
                 if uploaded_file:
@@ -1871,7 +1915,7 @@ def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key
         if not transcript_text or not transcript_text.strip():
             _transcription_jobs[job_id] = {
                 'status': 'error',
-                'error': 'Gemini could not transcribe this audio. Try converting to MP3 or using a shorter clip.'
+                'error': 'Gemini could not transcribe this audio. Try converting to MP3 or a shorter clip.'
             }
             return
 
@@ -1888,6 +1932,13 @@ def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key
         traceback.print_exc()
         print(f"[Job {job_id}] Transcription failed: {e}")
         _transcription_jobs[job_id] = {'status': 'error', 'error': str(e)}
+    finally:
+        # Clean up temp directory
+        if tmp_dir and os.path.exists(tmp_dir):
+            try:
+                shutil.rmtree(tmp_dir)
+            except Exception:
+                pass
 
 
 @app.route('/api/transcribe-audio', methods=['POST'])
