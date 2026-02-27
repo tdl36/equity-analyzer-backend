@@ -1966,6 +1966,20 @@ def transcribe_audio_status(job_id):
     return jsonify(result)
 
 
+@app.route('/api/transcription-jobs', methods=['GET'])
+def list_transcription_jobs():
+    """Debug: list all active transcription jobs."""
+    jobs = {}
+    for jid, job in _transcription_jobs.items():
+        info = {'status': job.get('status'), 'progress': job.get('progress'), 'filename': job.get('filename')}
+        if job.get('status') == 'done':
+            info['charCount'] = job.get('charCount')
+        if job.get('status') == 'error':
+            info['error'] = job.get('error')
+        jobs[jid] = info
+    return jsonify({'jobs': jobs, 'count': len(jobs)})
+
+
 @app.route('/api/text-to-docx', methods=['POST'])
 def text_to_docx():
     """Convert transcript text to a .docx file and return as base64"""
