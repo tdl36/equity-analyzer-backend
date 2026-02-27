@@ -1496,10 +1496,12 @@ def generate_summary():
         if not notes.strip():
             return jsonify({'error': 'No notes provided'}), 400
 
-        keys = _get_api_keys()
-        api_key = keys.get('gemini') or keys.get('anthropic')
-        if not api_key:
-            return jsonify({'error': 'No API key configured on server'}), 500
+        keys = _get_api_keys(
+            anthropic_api_key=data.get('apiKey', ''),
+            gemini_api_key=data.get('geminiApiKey', '')
+        )
+        if not keys.get('gemini') and not keys.get('anthropic'):
+            return jsonify({'error': 'No API key provided. Check your API keys in Settings.'}), 400
 
         # Build system prompt based on detail level
         if detail_level == 'concise':
