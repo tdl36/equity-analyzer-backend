@@ -1503,24 +1503,24 @@ def generate_summary():
         if not keys.get('gemini') and not keys.get('anthropic'):
             return jsonify({'error': 'No API key provided. Check your API keys in Settings.'}), 400
 
+        import markdown as md_lib
+
         # Build system prompt based on detail level
         if detail_level == 'concise':
-            system_prompt = """You are a meeting notes summarizer. Generate a SHORT, CONCISE summary.
+            summary_instruction = """Generate a SHORT, CONCISE summary of the following notes.
 
 RULES:
-- Maximum 1-2 pages / ~300-500 words
+- Maximum 300-500 words total
 - Only the most critical takeaways, decisions, and action items
 - Use bullet points, not paragraphs
 - If there are 10 points, pick the 3-4 most important
 - Omit minor details, examples, and supporting context
 - Be ruthlessly brief
-
-Return your response in this exact JSON format:
-{"summary": "<your concise bullet-point summary in markdown>", "questions": "<2-3 key follow-up questions in markdown>"}
-
-Return ONLY valid JSON, no other text."""
+- Use markdown formatting (bold with **, bullet points with -)"""
+            questions_instruction = """Based on the notes above, generate 2-3 key follow-up questions.
+Use markdown formatting (numbered list). Be brief."""
         elif detail_level == 'detailed':
-            system_prompt = """You are a meeting notes summarizer. Generate an EXTREMELY DETAILED and COMPREHENSIVE summary.
+            summary_instruction = """Generate an EXTREMELY DETAILED and COMPREHENSIVE summary of the following notes.
 
 RULES:
 - Preserve virtually ALL content from the original
@@ -1528,74 +1528,64 @@ RULES:
 - Include all names, quotes, attributions, and examples
 - Include all anecdotes, supporting details, and context
 - Your summary should be 3-5x longer than a normal summary
-- Someone reading only your summary should miss almost nothing from the original
-- Use markdown formatting with headers and bullet points for readability
-
-Return your response in this exact JSON format:
-{"summary": "<your extremely detailed summary in markdown>", "questions": "<5-8 detailed follow-up questions in markdown>"}
-
-Return ONLY valid JSON, no other text."""
+- Someone reading only your summary should miss almost nothing
+- Use markdown formatting (bold with ** for key terms, headers with ##, bullet points with -)"""
+            questions_instruction = """Based on the notes above, generate 5-8 detailed follow-up questions.
+Use markdown formatting (numbered list). Be thorough."""
         else:
             return jsonify({'error': 'Use the standard webhook for standard mode'}), 400
 
-        user_msg = f"Here are the meeting notes/transcript to summarize:\n\n{notes}"
+        def call_llm(system, user_text):
+            """Call Gemini or Claude and return text response."""
+            if keys.get('gemini'):
+                try:
+                    client = genai.Client(api_key=keys['gemini'])
+                    response = client.models.generate_content(
+                        model='gemini-2.5-flash',
+                        contents=user_text,
+                        config=genai_types.GenerateContentConfig(
+                            system_instruction=system,
+                            max_output_tokens=16384,
+                            temperature=0.3,
+                        )
+                    )
+                    return response.text.strip()
+                except Exception as e:
+                    print(f"Gemini summary failed: {e}")
 
-        # Try Gemini first (faster, higher limits), then Claude
-        if keys.get('gemini'):
-            try:
-                client = genai.Client(api_key=keys['gemini'])
-                response = client.models.generate_content(
-                    model='gemini-2.5-flash',
-                    contents=user_msg,
-                    config=genai_types.GenerateContentConfig(
-                        system_instruction=system_prompt,
-                        max_output_tokens=16384,
+            if keys.get('anthropic'):
+                try:
+                    client = anthropic.Anthropic(api_key=keys['anthropic'], timeout=120)
+                    response = client.messages.create(
+                        model='claude-haiku-4-5-20251001',
+                        max_tokens=8192,
+                        system=system,
+                        messages=[{'role': 'user', 'content': user_text}],
                         temperature=0.3,
                     )
-                )
-                result_text = response.text.strip()
-            except Exception as e:
-                print(f"Gemini summary failed: {e}")
-                result_text = None
-        else:
-            result_text = None
+                    return response.content[0].text.strip()
+                except Exception as e:
+                    print(f"Anthropic summary failed: {e}")
 
-        if not result_text and keys.get('anthropic'):
-            try:
-                client = anthropic.Anthropic(api_key=keys['anthropic'], timeout=120)
-                response = client.messages.create(
-                    model='claude-haiku-4-5-20251001',
-                    max_tokens=8192,
-                    system=system_prompt,
-                    messages=[{'role': 'user', 'content': user_msg}],
-                    temperature=0.3,
-                )
-                result_text = response.content[0].text.strip()
-            except Exception as e:
-                print(f"Anthropic summary failed: {e}")
-                return jsonify({'error': f'Summary generation failed: {str(e)}'}), 500
+            return None
 
-        if not result_text:
-            return jsonify({'error': 'No API key available or all providers failed'}), 500
+        # Generate summary
+        summary_md = call_llm(summary_instruction, notes)
+        if not summary_md:
+            return jsonify({'error': 'All LLM providers failed. Check your API keys.'}), 500
 
-        # Parse JSON from response (handle markdown code blocks)
-        import json as json_mod
-        clean = result_text
-        if clean.startswith('```'):
-            clean = clean.split('\n', 1)[1] if '\n' in clean else clean[3:]
-            if clean.endswith('```'):
-                clean = clean[:-3]
-            clean = clean.strip()
+        # Generate questions
+        questions_md = call_llm(questions_instruction, notes)
+        if not questions_md:
+            questions_md = ''
 
-        try:
-            parsed = json_mod.loads(clean)
-        except json_mod.JSONDecodeError:
-            # If JSON parsing fails, treat the whole thing as summary
-            parsed = {'summary': result_text, 'questions': ''}
+        # Convert markdown to HTML (matching n8n webhook output format)
+        summary_html = md_lib.markdown(summary_md, extensions=['extra', 'nl2br'])
+        questions_html = md_lib.markdown(questions_md, extensions=['extra', 'nl2br']) if questions_md else ''
 
         return jsonify({
-            'summary': parsed.get('summary', result_text),
-            'questions': parsed.get('questions', '')
+            'summary': summary_html,
+            'questions': questions_html
         })
 
     except Exception as e:
