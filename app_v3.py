@@ -1503,24 +1503,31 @@ def generate_summary():
         if not keys.get('gemini') and not keys.get('anthropic'):
             return jsonify({'error': 'No API key provided. Check your API keys in Settings.'}), 400
 
-        import markdown as md_lib
+        # HTML format instructions matching the n8n webhook output that Charlie's CSS expects.
+        # Charlie's .summary-content CSS auto-adds bullet styling to <p><strong>...</strong>...</p>
+        html_format = """OUTPUT FORMAT — You MUST return raw HTML. No markdown. No code fences. No ```html.
+Use EXACTLY this HTML structure:
+- Section headers: <h2>Section Title</h2>
+- Each key point as its own paragraph: <p><strong>Topic:</strong> Description text here.</p>
+- For sub-points under a topic use: <ul><li>Sub-point text</li></ul>
+- Bold key terms with <strong> tags
+- Separate paragraphs with <p> tags. Do NOT use <br> tags.
+- Do NOT wrap in code blocks. Start directly with HTML tags."""
 
-        # Build system prompt based on detail level
         if detail_level == 'concise':
-            summary_instruction = """Generate a SHORT, CONCISE summary of the following notes.
+            summary_instruction = f"""Generate a SHORT, CONCISE summary of the following notes.
 
 RULES:
 - Maximum 300-500 words total
-- Only the most critical takeaways, decisions, and action items
-- Use bullet points, not paragraphs
-- If there are 10 points, pick the 3-4 most important
+- Only the most critical 3-5 takeaways, decisions, and action items
 - Omit minor details, examples, and supporting context
 - Be ruthlessly brief
-- Use markdown formatting (bold with **, bullet points with -)"""
-            questions_instruction = """Based on the notes above, generate 2-3 key follow-up questions.
-Use markdown formatting (numbered list). Be brief."""
+
+{html_format}"""
+            questions_instruction = """Based on the notes, generate 2-3 key follow-up questions. Be brief.
+Return raw HTML only. No markdown. No code fences. Use: <ol><li>Question?</li></ol>"""
         elif detail_level == 'detailed':
-            summary_instruction = """Generate an EXTREMELY DETAILED and COMPREHENSIVE summary of the following notes.
+            summary_instruction = f"""Generate an EXTREMELY DETAILED and COMPREHENSIVE summary of the following notes.
 
 RULES:
 - Preserve virtually ALL content from the original
@@ -1529,14 +1536,15 @@ RULES:
 - Include all anecdotes, supporting details, and context
 - Your summary should be 3-5x longer than a normal summary
 - Someone reading only your summary should miss almost nothing
-- Use markdown formatting (bold with ** for key terms, headers with ##, bullet points with -)"""
-            questions_instruction = """Based on the notes above, generate 5-8 detailed follow-up questions.
-Use markdown formatting (numbered list). Be thorough."""
+
+{html_format}"""
+            questions_instruction = """Based on the notes, generate 5-8 detailed follow-up questions. Be thorough.
+Return raw HTML only. No markdown. No code fences. Use: <ol><li>Question?</li></ol>"""
         else:
             return jsonify({'error': 'Use the standard webhook for standard mode'}), 400
 
         def call_llm(system, user_text):
-            """Call Gemini or Claude and return text response."""
+            """Call Gemini or Claude and return raw text response."""
             if keys.get('gemini'):
                 try:
                     client = genai.Client(api_key=keys['gemini'])
@@ -1569,23 +1577,25 @@ Use markdown formatting (numbered list). Be thorough."""
 
             return None
 
-        # Generate summary
-        summary_md = call_llm(summary_instruction, notes)
-        if not summary_md:
+        # Generate summary and questions
+        summary_html = call_llm(summary_instruction, notes)
+        if not summary_html:
             return jsonify({'error': 'All LLM providers failed. Check your API keys.'}), 500
 
-        # Generate questions
-        questions_md = call_llm(questions_instruction, notes)
-        if not questions_md:
-            questions_md = ''
+        questions_html = call_llm(questions_instruction, notes) or ''
 
-        # Convert markdown to HTML (matching n8n webhook output format)
-        summary_html = md_lib.markdown(summary_md, extensions=['extra', 'nl2br'])
-        questions_html = md_lib.markdown(questions_md, extensions=['extra', 'nl2br']) if questions_md else ''
+        # Strip code fences if LLM wraps output anyway
+        def strip_fences(text):
+            t = text.strip()
+            if t.startswith('```'):
+                t = t.split('\n', 1)[1] if '\n' in t else t[3:]
+            if t.endswith('```'):
+                t = t[:-3]
+            return t.strip()
 
         return jsonify({
-            'summary': summary_html,
-            'questions': questions_html
+            'summary': strip_fences(summary_html),
+            'questions': strip_fences(questions_html)
         })
 
     except Exception as e:
