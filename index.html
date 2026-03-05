@@ -273,6 +273,12 @@
         // Direct backend URL for long-running requests (bypasses Cloudflare 100s timeout)
         const DIRECT_API_URL = 'https://equity-analyzer-backend.onrender.com';
 
+        // Safe helper to extract error message from a non-OK fetch response
+        const getResError = async (res, fallback) => {
+            try { const j = await res.json(); return j.error || j.message || fallback; }
+            catch (e) { return `${fallback} (HTTP ${res.status})`; }
+        };
+
         // Helper function to format UTC timestamp to New York time
         const formatNYTime = (timestamp) => {
             if (!timestamp) return 'N/A';
@@ -1659,7 +1665,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [editingQuestions, setEditingQuestions] = useState(false);
             const [editTakeawaysValue, setEditTakeawaysValue] = useState('');
             const [editQuestionsValue, setEditQuestionsValue] = useState('');
-            const [showSaveConfirmModal, setShowSaveConfirmModal] = useState(null); // 'takeaways' | 'questions' | null
+            const [showSaveConfirmModal, setShowSaveConfirmModal] = useState(null); // 'takeaways' | 'questions' | 'assessment' | null
             const [showAddTopicModal, setShowAddTopicModal] = useState(false);
             const [newTopicName, setNewTopicName] = useState('');
             const [newTopicType, setNewTopicType] = useState('ticker'); // 'ticker' | 'macro' | 'industry' | 'other'
@@ -1688,6 +1694,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const summarySearchRef = useRef(null);
             const [geminiApiKey, setGeminiApiKey] = useState(loadGeminiKeyFromStorage() || '');
             const [transcriptExpanded, setTranscriptExpanded] = useState(false);
+            const [assessmentExpanded, setAssessmentExpanded] = useState(true);
+            const [editingAssessment, setEditingAssessment] = useState(false);
+            const [editAssessmentValue, setEditAssessmentValue] = useState('');
             const [bgTranscriptionJob, setBgTranscriptionJob] = useState(null); // { jobId, files, title, topic, topicType, docType, detailLevel, startTime, progress }
             const bgPollRef = useRef(null); // Ref to hold poll timeout ID
             
@@ -1716,39 +1725,44 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const SUMMARY_WEBHOOK_URL = 'https://tdl36.app.n8n.cloud/webhook/summary-notes';
 
             // Prepend detail level instruction to notes for webhook
-            const applyDetailLevel = (text) => {
-                if (summaryDetailLevel === 'concise') {
-                    return `CRITICAL OUTPUT FORMAT REQUIREMENT — YOU MUST FOLLOW THIS:
-===== CONCISE MODE =====
-Generate a SHORT, CONCISE summary. Maximum 1-2 pages.
-- Only include the most important takeaways and key decisions
-- Omit minor details, examples, and supporting evidence
-- Use bullet points, not paragraphs
-- Be extremely brief and to the point
-- If you would normally write 10 bullet points, write 3-4 instead
-===== END REQUIREMENT =====
-
-${text}
-
-REMINDER: Keep your output SHORT. 1-2 pages maximum. Concise mode.`;
-                } else if (summaryDetailLevel === 'detailed') {
-                    return `CRITICAL OUTPUT FORMAT REQUIREMENT — YOU MUST FOLLOW THIS:
-===== DETAILED VERBATIM MODE =====
-Generate an EXTREMELY DETAILED and COMPREHENSIVE summary.
-- Preserve virtually ALL content from the original near-verbatim
-- Include every specific number, statistic, percentage, and data point
-- Include all names, quotes, and attributions
-- Include all examples, anecdotes, and supporting details
-- Do NOT omit anything — if in doubt, include it
-- Your output should be at least 3-5x longer than a normal summary
-- The goal is that someone reading only your summary would miss almost nothing from the original
-===== END REQUIREMENT =====
-
-${text}
-
-REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all content. Detailed verbatim mode.`;
+            // For concise/detailed: call backend directly with proper system prompts
+            // For standard: use n8n webhook (unchanged behavior)
+            const callSummaryApi = async (text) => {
+                let data;
+                if (summaryDetailLevel === 'standard') {
+                    const res = await fetch(SUMMARY_WEBHOOK_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ notes: text })
+                    });
+                    if (!res.ok) throw new Error(await getResError(res, 'Webhook request failed'));
+                    data = await res.json();
+                } else {
+                    const res = await fetch(`${DIRECT_API_URL}/api/generate-summary`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ notes: text, detailLevel: summaryDetailLevel, geminiApiKey: loadGeminiKeyFromStorage() || '', apiKey: loadApiKeyFromStorage() || '' })
+                    });
+                    if (!res.ok) throw new Error(await getResError(res, 'Summary generation failed'));
+                    data = await res.json();
                 }
-                return text;
+                // Generate assessment if not already present (e.g. standard mode via N8N webhook)
+                if (!data.assessment) {
+                    try {
+                        const assessRes = await fetch(`${DIRECT_API_URL}/api/generate-assessment`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ notes: text, geminiApiKey: loadGeminiKeyFromStorage() || '', apiKey: loadApiKeyFromStorage() || '' })
+                        });
+                        if (assessRes.ok) {
+                            const assessData = await assessRes.json();
+                            data.assessment = assessData.assessment || '';
+                        }
+                    } catch (e) {
+                        console.error('Assessment generation failed:', e);
+                    }
+                }
+                return data;
             };
 
             // Load summaries from database
@@ -1800,15 +1814,7 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                 
                 setSummaryLoading(true);
                 try {
-                    const response = await fetch(SUMMARY_WEBHOOK_URL, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ notes: applyDetailLevel(summaryInput) })
-                    });
-
-                    if (!response.ok) throw new Error('Webhook request failed');
-
-                    const data = await response.json();
+                    const data = await callSummaryApi(summaryInput);
 
                     // Create title from first line of notes
                     const firstLine = summaryInput.split('\n')[0].trim();
@@ -1821,6 +1827,7 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                         rawNotes: summaryInput,
                         summary: data.summary,
                         questions: data.questions,
+                        assessment: data.assessment || '',
                         topic: newTopicName || currentSummaryTopic || 'General',
                         topicType: newTopicType || 'other',
                         createdAt: new Date().toISOString()
@@ -2075,7 +2082,50 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                 navigator.clipboard.writeText(text);
                 alert('Follow-up Questions copied!');
             };
-            
+
+            const copyAssessment = () => {
+                if (!currentSummary) return;
+                const text = (currentSummary.assessment || '').replace(/<[^>]*>/g, '');
+                navigator.clipboard.writeText(text);
+                alert('Assessment copied!');
+            };
+
+            const emailAssessment = async () => {
+                if (!currentSummary) return;
+                const saved = localStorage.getItem('emailCredentials');
+                if (!saved) { alert('Please set your email credentials in Settings first'); return; }
+                const creds = JSON.parse(saved);
+                const subject = `Assessment: ${currentSummary.title || 'Meeting'}`;
+                const htmlContent = currentSummary.assessment || '';
+                try {
+                    const res = await fetch(`${API_URL}/api/send-email`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ...creds, to: creds.defaultRecipient || creds.user, subject, html: htmlContent })
+                    });
+                    if (res.ok) alert('Assessment emailed!');
+                    else alert('Failed to send email');
+                } catch (err) { alert('Failed to send email: ' + err.message); }
+            };
+
+            const startEditingAssessment = () => {
+                setEditAssessmentValue(currentSummary.assessment || '');
+                setEditingAssessment(true);
+            };
+
+            const cancelEditingAssessment = () => {
+                setEditingAssessment(false);
+                setEditAssessmentValue('');
+            };
+
+            const saveAssessmentEdit = async () => {
+                const updated = { ...currentSummary, assessment: editAssessmentValue };
+                setCurrentSummary(updated);
+                setSavedSummaries(prev => prev.map(s => s.id === updated.id ? updated : s));
+                await saveSummaryToDb(updated);
+                setEditingAssessment(false);
+            };
+
             // Start editing takeaways
             const startEditingTakeaways = () => {
                 if (!currentSummary) return;
@@ -2306,21 +2356,13 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                     setSummaryUploadProgress('Generating summary...');
 
                     // Send combined extracted text to webhook
-                    let webhookResponse;
+                    let data;
                     try {
-                        webhookResponse = await fetch(SUMMARY_WEBHOOK_URL, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ notes: applyDetailLevel(extractedText) })
-                        });
+                        data = await callSummaryApi(extractedText);
                     } catch (webhookErr) {
-                        console.error('Webhook fetch failed:', webhookErr);
-                        throw new Error('Summary generation service is unavailable. Please try again later.');
+                        console.error('Summary generation failed:', webhookErr);
+                        throw new Error(webhookErr.message || 'Summary generation service is unavailable. Please try again later.');
                     }
-
-                    if (!webhookResponse.ok) throw new Error('Webhook request failed');
-
-                    const data = await webhookResponse.json();
 
                     // Use custom title if provided, otherwise use filename
                     let title = summaryTitleInput.trim();
@@ -2335,6 +2377,7 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                         rawNotes: extractedText.substring(0, 5000) + (extractedText.length > 5000 ? '...' : ''),
                         summary: data.summary,
                         questions: data.questions,
+                        assessment: data.assessment || '',
                         topic: newTopicName || currentSummaryTopic || 'General',
                         topicType: newTopicType || 'other',
                         docType: summaryDocType || 'other',
@@ -2662,26 +2705,47 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                         ? allTranscripts[0].text
                         : allTranscripts.map((t, i) => `--- Part ${i + 1}: ${t.filename} ---\n\n${t.text}`).join('\n\n\n');
 
-                    // Apply detail level
-                    let notesToSend = transcriptText;
-                    if (jobMeta.detailLevel === 'concise') {
-                        notesToSend = `CRITICAL OUTPUT FORMAT REQUIREMENT — YOU MUST FOLLOW THIS:\n===== CONCISE MODE =====\nGenerate a SHORT, CONCISE summary. Maximum 1-2 pages.\n- Only include the most important takeaways and key decisions\n- Omit minor details, examples, and supporting evidence\n- Use bullet points, not paragraphs\n- Be extremely brief and to the point\n===== END REQUIREMENT =====\n\n${transcriptText}\n\nREMINDER: Keep your output SHORT. 1-2 pages maximum. Concise mode.`;
-                    } else if (jobMeta.detailLevel === 'detailed') {
-                        notesToSend = `CRITICAL OUTPUT FORMAT REQUIREMENT — YOU MUST FOLLOW THIS:\n===== DETAILED VERBATIM MODE =====\nGenerate an EXTREMELY DETAILED and COMPREHENSIVE summary.\n- Preserve virtually ALL content from the original near-verbatim\n- Include every specific number, statistic, percentage, and data point\n- Include all names, quotes, and attributions\n- Your output should be at least 3-5x longer than a normal summary\n===== END REQUIREMENT =====\n\n${transcriptText}\n\nREMINDER: Be EXTREMELY detailed and comprehensive. Detailed verbatim mode.`;
-                    }
-
-                    const webhookResponse = await fetch(SUMMARY_WEBHOOK_URL, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ notes: notesToSend })
-                    });
-
-                    const webhookText = await webhookResponse.text();
+                    // Call summary API (uses backend for concise/detailed, n8n for standard)
+                    const detailLevel = jobMeta.detailLevel || 'standard';
                     let data;
-                    try { data = JSON.parse(webhookText); } catch (e) {
-                        throw new Error('Summary generation returned invalid response.');
+                    if (detailLevel === 'standard') {
+                        const webhookResponse = await fetch(SUMMARY_WEBHOOK_URL, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ notes: transcriptText })
+                        });
+                        const webhookText = await webhookResponse.text();
+                        try { data = JSON.parse(webhookText); } catch (e) {
+                            throw new Error('Summary generation returned invalid response.');
+                        }
+                        if (!webhookResponse.ok) throw new Error('Summary generation failed');
+                    } else {
+                        const res = await fetch(`${DIRECT_API_URL}/api/generate-summary`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ notes: transcriptText, detailLevel, geminiApiKey: loadGeminiKeyFromStorage() || '', apiKey: loadApiKeyFromStorage() || '' })
+                        });
+                        if (!res.ok) throw new Error(await getResError(res, 'Summary generation failed'));
+                        data = await res.json();
                     }
-                    if (!webhookResponse.ok) throw new Error('Summary generation failed');
+
+                    // Generate assessment if not already present (e.g. standard mode via N8N webhook)
+                    if (!data.assessment) {
+                        try {
+                            setBgTranscriptionJob(prev => prev ? { ...prev, progress: 'Generating assessment...' } : null);
+                            const assessRes = await fetch(`${DIRECT_API_URL}/api/generate-assessment`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ notes: transcriptText, geminiApiKey: loadGeminiKeyFromStorage() || '', apiKey: loadApiKeyFromStorage() || '' })
+                            });
+                            if (assessRes.ok) {
+                                const assessData = await assessRes.json();
+                                data.assessment = assessData.assessment || '';
+                            }
+                        } catch (e) {
+                            console.error('Assessment generation failed:', e);
+                        }
+                    }
 
                     // Build title
                     let title = jobMeta.title;
@@ -2697,6 +2761,7 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                         rawNotes: transcriptText,
                         summary: data.summary,
                         questions: data.questions,
+                        assessment: data.assessment || '',
                         topic: jobMeta.topic,
                         topicType: jobMeta.topicType,
                         docType: jobMeta.docType,
@@ -2780,16 +2845,8 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                 } else if (summaryInputType === 'paste' && summaryInput.trim()) {
                     setSummaryLoading(true);
                     try {
-                        const response = await fetch(SUMMARY_WEBHOOK_URL, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ notes: applyDetailLevel(summaryInput) })
-                        });
+                        const data = await callSummaryApi(summaryInput);
 
-                        if (!response.ok) throw new Error('Webhook request failed');
-                        
-                        const data = await response.json();
-                        
                         // Use custom title if provided, otherwise use first line of notes
                         let title = summaryTitleInput.trim();
                         if (!title) {
@@ -2803,13 +2860,14 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                             rawNotes: summaryInput,
                             summary: data.summary,
                             questions: data.questions,
+                            assessment: data.assessment || '',
                             topic: newTopicName || currentSummaryTopic || 'General',
                             topicType: newTopicType || 'other',
                             docType: summaryDocType || 'other',
                             sourceType: 'paste',
                             createdAt: new Date().toISOString()
                         };
-                        
+
                         await saveSummaryToDb(newSummary);
                         setSavedSummaries(prev => [newSummary, ...prev]);
                         setCurrentSummary(newSummary);
@@ -2942,6 +3000,8 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                     defaultSubject = `Key Takeaways: ${currentSummary?.title || 'Summary'}`;
                 } else if (section === 'questions') {
                     defaultSubject = `Follow-up Questions: ${currentSummary?.title || 'Summary'}`;
+                } else if (section === 'assessment') {
+                    defaultSubject = `Claude's Assessment: ${currentSummary?.title || 'Summary'}`;
                 } else if (section === 'transcript') {
                     defaultSubject = `Full Transcript: ${currentSummary?.title || 'Summary'}`;
                 } else {
@@ -2975,10 +3035,15 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                     content = currentSummary.summary;
                 } else if (section === 'questions') {
                     content = currentSummary.questions;
+                } else if (section === 'assessment') {
+                    content = currentSummary.assessment;
                 } else if (section === 'transcript') {
                     content = '<pre style="white-space: pre-wrap; font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 14px; line-height: 1.6;">' + currentSummary.rawNotes + '</pre>';
                 } else {
                     content = currentSummary.summary + '<hr style="margin: 20px 0; border-color: #374151;">' + currentSummary.questions;
+                    if (currentSummary.assessment) {
+                        content += '<hr style="margin: 20px 0; border-color: #374151;">' + currentSummary.assessment;
+                    }
                     section = 'full';
                 }
                 
@@ -5273,8 +5338,8 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                             loadSlideImage(slideNum);
                         }
                     } else {
-                        const err = await res.json();
-                        alert(`Generation failed: ${err.error || 'Unknown error'}`);
+                        const errMsg = await getResError(res, 'Generation failed');
+                        alert(`Generation failed: ${errMsg}`);
                     }
                 } catch (err) { console.error('Failed to generate slide:', err); alert('Generation failed'); }
                 setSlideGeneratingNum(null);
@@ -5353,8 +5418,8 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                         link.download = data.filename;
                         link.click();
                     } else {
-                        const err = await res.json();
-                        alert(`Export failed: ${err.error || 'Unknown error'}`);
+                        const errMsg = await getResError(res, 'Export failed');
+                        alert(`Export failed: ${errMsg}`);
                     }
                 } catch (err) { console.error('Failed to export PDF:', err); }
             };
@@ -5383,8 +5448,8 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                             loadSlideProjects();
                         }
                     } else {
-                        const err = await res.json();
-                        alert(`Outline generation failed: ${err.error || 'Unknown error'}`);
+                        const errMsg = await getResError(res, 'Outline generation failed');
+                        alert(`Outline generation failed: ${errMsg}`);
                     }
                 } catch (err) { console.error('Failed to generate outline:', err); alert('Outline generation failed'); }
                 setSlideOutlineGenerating(false);
@@ -5459,8 +5524,8 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                             loadSlideProjects();
                         }
                     } else {
-                        const err = await res.json();
-                        alert(`Outline generation failed: ${err.error || 'Unknown error'}`);
+                        const errMsg = await getResError(res, 'Outline generation failed');
+                        alert(`Outline generation failed: ${errMsg}`);
                     }
                 } catch (err) { console.error('Failed to generate outline:', err); alert('Outline generation failed'); }
                 setSlideOutlineGenerating(false);
@@ -5637,8 +5702,8 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                     if (res.ok) {
                         loadStudioOutput(outputId);
                     } else {
-                        const err = await res.json();
-                        alert(err.error || 'Save failed');
+                        const errMsg = await getResError(res, 'Save failed');
+                        alert(errMsg);
                     }
                 } catch (err) { console.error('Save slide error:', err); }
             };
@@ -6078,7 +6143,24 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                         return;
                     }
                     if (driveToken) { resolve(driveToken); return; }
-                    try {
+
+                    // Wait for GIS script to load (async defer can be slow)
+                    const waitForGis = () => new Promise((res, rej) => {
+                        if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) { res(); return; }
+                        let waited = 0;
+                        const check = setInterval(() => {
+                            waited += 200;
+                            if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
+                                clearInterval(check);
+                                res();
+                            } else if (waited > 10000) {
+                                clearInterval(check);
+                                rej(new Error('Google Identity Services failed to load. Check your internet connection and try refreshing.'));
+                            }
+                        }, 200);
+                    });
+
+                    waitForGis().then(() => {
                         const tokenClient = google.accounts.oauth2.initTokenClient({
                             client_id: clientId,
                             scope: 'https://www.googleapis.com/auth/drive.readonly',
@@ -6090,9 +6172,7 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                             error_callback: (err) => reject(new Error(err.message || 'Google auth failed')),
                         });
                         tokenClient.requestAccessToken();
-                    } catch (e) {
-                        reject(new Error('Google Identity Services not loaded. Try refreshing the page.'));
-                    }
+                    }).catch(reject);
                 });
             };
 
@@ -6115,8 +6195,7 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                         throw new Error('Google authentication expired. Please try again.');
                     }
                     if (!res.ok) {
-                        const err = await res.json();
-                        throw new Error(err.error || 'Search failed');
+                        throw new Error(await getResError(res, 'Search failed'));
                     }
                     const data = await res.json();
                     setDriveResults(data.files || []);
@@ -6152,7 +6231,7 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                         body: JSON.stringify({ accessToken: token, fileId })
                     });
                     if (res.status === 401) { setDriveToken(null); throw new Error('Auth expired'); }
-                    if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Preview failed'); }
+                    if (!res.ok) { throw new Error(await getResError(res, 'Preview failed')); }
                     const data = await res.json();
                     setDriveZipContents(prev => ({...prev, [fileId]: data.pdfs || []}));
                 } catch (err) {
@@ -6197,7 +6276,7 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                     body: JSON.stringify({ accessToken: token, files: filesToImport })
                 });
                 if (res.status === 401) { setDriveToken(null); throw new Error('Auth expired'); }
-                if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Download failed'); }
+                if (!res.ok) { throw new Error(await getResError(res, 'Download failed')); }
                 const data = await res.json();
                 return data.files || [];
             };
@@ -6225,7 +6304,7 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                         body: JSON.stringify({ accessToken: token, meetingId: mpSelectedMeeting.id, files: filesToImport })
                     });
                     if (res.status === 401) { setDriveToken(null); throw new Error('Auth expired'); }
-                    if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Import failed'); }
+                    if (!res.ok) { throw new Error(await getResError(res, 'Import failed')); }
                     clearDriveState();
                     await loadMpMeeting(mpSelectedMeeting.id);
                 } catch (err) {
@@ -6284,13 +6363,7 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                     setSummaryFileUploading(true);
                     setSummaryUploadProgress('Generating summary from Drive files...');
 
-                    const webhookResponse = await fetch(SUMMARY_WEBHOOK_URL, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ notes: applyDetailLevel(combinedText) })
-                    });
-                    if (!webhookResponse.ok) throw new Error('Summary generation failed');
-                    const data = await webhookResponse.json();
+                    const data = await callSummaryApi(combinedText);
 
                     const title = summaryTitleInput.trim() || filenames[0].replace(/\.[^/.]+$/, '').substring(0, 100) || 'Drive Import';
                     const newSummary = {
@@ -6299,6 +6372,7 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                         rawNotes: combinedText.substring(0, 5000) + (combinedText.length > 5000 ? '...' : ''),
                         summary: data.summary,
                         questions: data.questions,
+                        assessment: data.assessment || '',
                         topic: newTopicName || currentSummaryTopic || 'General',
                         topicType: newTopicType || 'other',
                         docType: summaryDocType || 'other',
@@ -10990,9 +11064,10 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                                                 <div className="flex justify-end">
                                                     <button
                                                         onClick={() => {
-                                                            const allExpanded = takeawaysExpanded && questionsExpanded && (currentSummary.sourceType !== 'audio' || transcriptExpanded);
+                                                            const allExpanded = takeawaysExpanded && questionsExpanded && (!currentSummary.assessment || assessmentExpanded) && (currentSummary.sourceType !== 'audio' || transcriptExpanded);
                                                             setTakeawaysExpanded(!allExpanded);
                                                             setQuestionsExpanded(!allExpanded);
+                                                            setAssessmentExpanded(!allExpanded);
                                                             if (currentSummary.sourceType === 'audio') setTranscriptExpanded(!allExpanded);
                                                         }}
                                                         className="text-xs px-2 py-1 text-slate-400 hover:text-slate-200 hover:bg-white/10 rounded transition-colors flex items-center gap-1"
@@ -11227,6 +11302,116 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                                                     )}
                                                 </div>
 
+                                                {/* CLAUDE'S ASSESSMENT Section - Collapsible */}
+                                                {currentSummary.assessment && (
+                                                <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl border border-white/10 overflow-hidden">
+                                                    <div className="bg-rose-500/15 backdrop-blur-lg border-b border-rose-400/20 px-4 py-3 flex items-center gap-2">
+                                                        <button
+                                                            onClick={() => setAssessmentExpanded(!assessmentExpanded)}
+                                                            className="flex items-center gap-2 hover:opacity-80 transition-opacity flex-1 min-w-0"
+                                                        >
+                                                            <span className="text-lg flex-shrink-0">🔍</span>
+                                                            <h3 className="font-semibold text-rose-400 whitespace-nowrap">Claude's Assessment</h3>
+                                                            <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform flex-shrink-0 ${assessmentExpanded ? 'rotate-180' : ''}`} />
+                                                        </button>
+                                                        <div className="flex items-center gap-1 flex-shrink-0">
+                                                            {!editingAssessment && (
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); startEditingAssessment(); }}
+                                                                    className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-white/10 rounded-lg transition-colors"
+                                                                    title="Edit"
+                                                                >
+                                                                    <Edit2 className="w-4 h-4" />
+                                                                </button>
+                                                            )}
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); copyAssessment(); }}
+                                                                className="p-1.5 bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/10 rounded-lg transition-colors"
+                                                                title="Copy All"
+                                                            >
+                                                                <Copy className="w-4 h-4" />
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); emailAssessment(); }}
+                                                                className="p-1.5 bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 rounded-lg transition-colors shadow-lg shadow-rose-500/20"
+                                                                title="Quick Email"
+                                                            >
+                                                                <Mail className="w-4 h-4" />
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); openSummaryEmailWithOptions('assessment'); }}
+                                                                className="p-1.5 bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-slate-900 rounded-lg transition-colors shadow-lg shadow-yellow-500/20"
+                                                                title="Email with Options"
+                                                            >
+                                                                <Mails className="w-4 h-4" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    {assessmentExpanded && (
+                                                        <>
+                                                            {editingAssessment ? (
+                                                                <div className="p-4">
+                                                                    <textarea
+                                                                        value={editAssessmentValue}
+                                                                        onChange={(e) => setEditAssessmentValue(e.target.value)}
+                                                                        className="w-full min-h-[300px] p-4 bg-white/5 border border-white/10 backdrop-blur-md rounded-lg text-slate-200 text-sm leading-relaxed resize-y focus:outline-none focus:border-rose-500"
+                                                                        style={{ fontSize: '16px' }}
+                                                                        placeholder="Edit assessment..."
+                                                                    />
+                                                                    <div className="flex justify-end gap-2 mt-3">
+                                                                        <button
+                                                                            onClick={cancelEditingAssessment}
+                                                                            className="px-4 py-2 bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/10 rounded-lg text-sm font-medium"
+                                                                        >
+                                                                            Cancel
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => setShowSaveConfirmModal('assessment')}
+                                                                            className="px-4 py-2 bg-rose-600 hover:bg-rose-500 rounded-lg text-sm font-medium flex items-center gap-2"
+                                                                        >
+                                                                            <Save className="w-4 h-4" />
+                                                                            Save Changes
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            ) : (
+                                                                <>
+                                                                    <div
+                                                                        className="p-6 summary-content"
+                                                                        dangerouslySetInnerHTML={{ __html: typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(currentSummary.assessment) : currentSummary.assessment }}
+                                                                    />
+                                                                    <div className="border-t border-white/10 px-4 py-3 flex gap-2">
+                                                                        <button
+                                                                            onClick={copyAssessment}
+                                                                            className="flex-1 px-4 py-2 bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/10 rounded-lg text-sm font-medium flex items-center justify-center gap-2"
+                                                                        >
+                                                                            <Copy className="w-4 h-4" />
+                                                                            Copy All
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={emailAssessment}
+                                                                            className="flex-1 px-4 py-2 bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 rounded-lg text-sm font-medium flex items-center justify-center gap-2 shadow-lg shadow-rose-500/20"
+                                                                            title="Quick Email"
+                                                                        >
+                                                                            <Mail className="w-4 h-4" />
+                                                                            Email
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => openSummaryEmailWithOptions('assessment')}
+                                                                            className="px-4 py-2 bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-slate-900 rounded-lg text-sm font-medium flex items-center justify-center gap-2 shadow-lg shadow-yellow-500/20"
+                                                                            title="Email with Options"
+                                                                        >
+                                                                            <Mails className="w-4 h-4" />
+                                                                        </button>
+                                                                    </div>
+                                                                </>
+                                                            )}
+                                                        </>
+                                                    )}
+                                                </div>
+                                                )}
+
                                                 {/* FULL TRANSCRIPT Section - Only for audio summaries */}
                                                 {currentSummary.sourceType === 'audio' && currentSummary.rawNotes && (
                                                     <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl border border-white/10 overflow-hidden">
@@ -11307,7 +11492,10 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                                                 <div className="flex gap-2">
                                                     <button
                                                         onClick={() => {
-                                                            const text = 'KEY TAKEAWAYS\n\n' + currentSummary.summary.replace(/<[^>]*>/g, '') + '\n\n---\n\nFOLLOW-UP QUESTIONS\n\n' + currentSummary.questions.replace(/<[^>]*>/g, '');
+                                                            let text = 'KEY TAKEAWAYS\n\n' + currentSummary.summary.replace(/<[^>]*>/g, '') + '\n\n---\n\nFOLLOW-UP QUESTIONS\n\n' + currentSummary.questions.replace(/<[^>]*>/g, '');
+                                                            if (currentSummary.assessment) {
+                                                                text += '\n\n---\n\nCLAUDE\'S ASSESSMENT\n\n' + currentSummary.assessment.replace(/<[^>]*>/g, '');
+                                                            }
                                                             navigator.clipboard.writeText(text);
                                                             alert('Full summary copied!');
                                                         }}
@@ -11851,7 +12039,7 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                                                 Save Changes?
                                             </h3>
                                             <p className="text-slate-400 text-sm mb-6">
-                                                Are you sure you want to save changes to {showSaveConfirmModal === 'takeaways' ? 'Key Takeaways' : 'Follow-up Questions'}?
+                                                Are you sure you want to save changes to {showSaveConfirmModal === 'takeaways' ? 'Key Takeaways' : showSaveConfirmModal === 'assessment' ? "Claude's Assessment" : 'Follow-up Questions'}?
                                             </p>
                                             
                                             <div className="flex gap-3">
@@ -11865,6 +12053,8 @@ REMINDER: Be EXTREMELY detailed and comprehensive. Preserve virtually all conten
                                                     onClick={() => {
                                                         if (showSaveConfirmModal === 'takeaways') {
                                                             saveEditedTakeaways();
+                                                        } else if (showSaveConfirmModal === 'assessment') {
+                                                            saveAssessmentEdit();
                                                         } else {
                                                             saveEditedQuestions();
                                                         }

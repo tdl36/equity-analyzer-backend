@@ -506,6 +506,10 @@ def init_db():
                                   WHERE table_name='meeting_summaries' AND column_name='doc_type') THEN
                         ALTER TABLE meeting_summaries ADD COLUMN doc_type VARCHAR(50) DEFAULT 'other';
                     END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                  WHERE table_name='meeting_summaries' AND column_name='assessment') THEN
+                        ALTER TABLE meeting_summaries ADD COLUMN assessment TEXT DEFAULT '';
+                    END IF;
                 END $$;
             ''')
 
@@ -1143,7 +1147,7 @@ def get_summaries():
 
         with get_db() as (conn, cur):
             cur.execute('''
-                SELECT id, title, raw_notes, summary, questions, topic, topic_type, source_type, source_files, doc_type, has_stored_files, created_at
+                SELECT id, title, raw_notes, summary, questions, assessment, topic, topic_type, source_type, source_files, doc_type, has_stored_files, created_at
                 FROM meeting_summaries
                 ORDER BY created_at DESC
             ''')
@@ -1157,6 +1161,7 @@ def get_summaries():
                 'rawNotes': row['raw_notes'],
                 'summary': row['summary'],
                 'questions': row['questions'],
+                'assessment': row.get('assessment') or '',
                 'topic': row.get('topic') or 'General',
                 'topicType': row.get('topic_type') or 'other',
                 'sourceType': row.get('source_type') or 'paste',
@@ -1189,14 +1194,15 @@ def save_summary():
 
         with get_db(commit=True) as (conn, cur):
             cur.execute('''
-                INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, topic, topic_type, source_type, source_files, doc_type, created_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, assessment, topic, topic_type, source_type, source_files, doc_type, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (id)
                 DO UPDATE SET
                     title = EXCLUDED.title,
                     raw_notes = EXCLUDED.raw_notes,
                     summary = EXCLUDED.summary,
                     questions = EXCLUDED.questions,
+                    assessment = EXCLUDED.assessment,
                     topic = EXCLUDED.topic,
                     topic_type = EXCLUDED.topic_type,
                     source_type = EXCLUDED.source_type,
@@ -1209,6 +1215,7 @@ def save_summary():
                 data.get('rawNotes', ''),
                 data.get('summary', ''),
                 data.get('questions', ''),
+                data.get('assessment', ''),
                 data.get('topic', 'General'),
                 data.get('topicType', 'other'),
                 data.get('sourceType', 'paste'),
@@ -1543,6 +1550,25 @@ Return raw HTML only. No markdown. No code fences. Use: <ol><li>Question?</li></
         else:
             return jsonify({'error': 'Use the standard webhook for standard mode'}), 400
 
+        # Assessment instruction — Claude's candid, opinionated analysis
+        assessment_instruction = f"""You are a sharp, experienced advisor giving your CANDID, UNFILTERED assessment of this call, meeting, or conversation.
+
+This is NOT a summary — the summary is generated separately. Your job is to provide your HONEST OPINION on how things went. Be direct, opinionated, and don't sugarcoat.
+
+Cover whichever of these are relevant:
+- **Overall assessment:** How did the call/meeting/conversation go? Was it productive, a waste of time, or somewhere in between?
+- **Quality of answers:** Were the responses substantive and credible, or vague and evasive? Call out specific weak or strong answers.
+- **Red flags / BS detection:** Did anyone dodge questions, give rehearsed non-answers, contradict themselves, or seem disingenuous? Be specific about what raised your suspicion and why.
+- **Meeting flow and dynamics:** Was it well-structured? Did it go off-track? Was there tension or alignment? Who drove the conversation?
+- **What was most effective:** What landed well? What was the strongest point made?
+- **What could have been better:** What questions should have been asked but weren't? What was left on the table?
+- **Credibility assessment:** Do you believe what was said? Rate the overall credibility of the key claims.
+- **Bottom line:** One sentence on your overall take.
+
+Be conversational and direct — write as if you're giving your honest debrief to a colleague after walking out of the meeting. Don't hedge. If something was weak, say it was weak. If someone was impressive, say so.
+
+{html_format}"""
+
         def call_llm(system, user_text):
             """Call Gemini or Claude and return raw text response."""
             if keys.get('gemini'):
@@ -1577,12 +1603,13 @@ Return raw HTML only. No markdown. No code fences. Use: <ol><li>Question?</li></
 
             return None
 
-        # Generate summary and questions
+        # Generate summary, questions, and assessment
         summary_html = call_llm(summary_instruction, notes)
         if not summary_html:
             return jsonify({'error': 'All LLM providers failed. Check your API keys.'}), 500
 
         questions_html = call_llm(questions_instruction, notes) or ''
+        assessment_html = call_llm(assessment_instruction, notes) or ''
 
         # Strip code fences if LLM wraps output anyway
         def strip_fences(text):
@@ -1595,11 +1622,104 @@ Return raw HTML only. No markdown. No code fences. Use: <ol><li>Question?</li></
 
         return jsonify({
             'summary': strip_fences(summary_html),
-            'questions': strip_fences(questions_html)
+            'questions': strip_fences(questions_html),
+            'assessment': strip_fences(assessment_html)
         })
 
     except Exception as e:
         print(f"Generate summary error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/generate-assessment', methods=['POST'])
+def generate_assessment():
+    """Generate only the assessment for notes (used when summary comes from N8N webhook)."""
+    try:
+        data = request.json
+        notes = data.get('notes', '')
+
+        if not notes.strip():
+            return jsonify({'error': 'No notes provided'}), 400
+
+        keys = _get_api_keys(
+            anthropic_api_key=data.get('apiKey', ''),
+            gemini_api_key=data.get('geminiApiKey', '')
+        )
+        if not keys.get('gemini') and not keys.get('anthropic'):
+            return jsonify({'error': 'No API key provided. Check your API keys in Settings.'}), 400
+
+        html_format = """OUTPUT FORMAT — You MUST return raw HTML. No markdown. No code fences. No ```html.
+Use EXACTLY this HTML structure:
+- Section headers: <h2>Section Title</h2>
+- Each key point as its own paragraph: <p><strong>Topic:</strong> Description text here.</p>
+- For sub-points under a topic use: <ul><li>Sub-point text</li></ul>
+- Bold key terms with <strong> tags
+- Separate paragraphs with <p> tags. Do NOT use <br> tags.
+- Do NOT wrap in code blocks. Start directly with HTML tags."""
+
+        assessment_instruction = f"""You are a sharp, experienced advisor giving your CANDID, UNFILTERED assessment of this call, meeting, or conversation.
+
+This is NOT a summary — the summary is generated separately. Your job is to provide your HONEST OPINION on how things went. Be direct, opinionated, and don't sugarcoat.
+
+Cover whichever of these are relevant:
+- **Overall assessment:** How did the call/meeting/conversation go? Was it productive, a waste of time, or somewhere in between?
+- **Quality of answers:** Were the responses substantive and credible, or vague and evasive? Call out specific weak or strong answers.
+- **Red flags / BS detection:** Did anyone dodge questions, give rehearsed non-answers, contradict themselves, or seem disingenuous? Be specific about what raised your suspicion and why.
+- **Meeting flow and dynamics:** Was it well-structured? Did it go off-track? Was there tension or alignment? Who drove the conversation?
+- **What was most effective:** What landed well? What was the strongest point made?
+- **What could have been better:** What questions should have been asked but weren't? What was left on the table?
+- **Credibility assessment:** Do you believe what was said? Rate the overall credibility of the key claims.
+- **Bottom line:** One sentence on your overall take.
+
+Be conversational and direct — write as if you're giving your honest debrief to a colleague after walking out of the meeting. Don't hedge. If something was weak, say it was weak. If someone was impressive, say so.
+
+{html_format}"""
+
+        def call_llm(system, user_text):
+            if keys.get('gemini'):
+                try:
+                    client = genai.Client(api_key=keys['gemini'])
+                    response = client.models.generate_content(
+                        model='gemini-2.5-flash',
+                        contents=user_text,
+                        config=genai_types.GenerateContentConfig(
+                            system_instruction=system,
+                            max_output_tokens=16384,
+                            temperature=0.3,
+                        )
+                    )
+                    return response.text.strip()
+                except Exception as e:
+                    print(f"Gemini assessment failed: {e}")
+            if keys.get('anthropic'):
+                try:
+                    client = anthropic.Anthropic(api_key=keys['anthropic'], timeout=120)
+                    response = client.messages.create(
+                        model='claude-haiku-4-5-20251001',
+                        max_tokens=8192,
+                        system=system,
+                        messages=[{'role': 'user', 'content': user_text}],
+                        temperature=0.3,
+                    )
+                    return response.content[0].text.strip()
+                except Exception as e:
+                    print(f"Anthropic assessment failed: {e}")
+            return None
+
+        assessment_html = call_llm(assessment_instruction, notes) or ''
+
+        def strip_fences(text):
+            t = text.strip()
+            if t.startswith('```'):
+                t = t.split('\n', 1)[1] if '\n' in t else t[3:]
+            if t.endswith('```'):
+                t = t[:-3]
+            return t.strip()
+
+        return jsonify({'assessment': strip_fences(assessment_html)})
+
+    except Exception as e:
+        print(f"Generate assessment error: {e}")
         return jsonify({'error': str(e)}), 500
 
 
