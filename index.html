@@ -7640,7 +7640,12 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     }, 5); // 5 retry attempts for more resilience
 
                     const data = await response.json();
-                    
+
+                    // Check for error in response body (heartbeat streaming returns 200 with error in JSON)
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+
                     // Get extracted document metadata from Claude
                     const extractedMetadata = data.documentMetadata || [];
                     

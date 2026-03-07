@@ -2915,34 +2915,37 @@ Return ONLY valid JSON, no markdown, no explanation."""
             "text": analysis_prompt
         })
         
-        # Use call_llm_stream for heartbeat streaming to prevent Render 502 timeouts.
-        # Yields keep-alive spaces while waiting, then the JSON result.
-        # JSON.parse() ignores leading whitespace, so the frontend parses it normally.
+        # Use Anthropic SDK streaming directly (no fallback chain) to:
+        # 1. Prevent Render 502 timeouts via heartbeat spaces during streaming
+        # 2. Avoid fallback to OpenAI/Gemini which can't properly handle PDF documents
+        # JSON.parse() ignores leading whitespace, so the frontend parses normally.
         def generate():
-            llm_result = None
             try:
-                for chunk in call_llm_stream(
-                    messages=[{'role': 'user', 'content': content}],
-                    system='You are an expert equity research analyst. Analyze documents thoroughly and provide institutional-quality investment analysis. Always respond with valid JSON only.',
-                    tier="standard",
-                    max_tokens=8192,
-                    anthropic_api_key=api_key,
-                ):
-                    if isinstance(chunk, dict):
-                        llm_result = chunk
-                    else:
+                client = anthropic.Anthropic(api_key=api_key)
+                result_text = ""
+                kwargs = {
+                    "model": "claude-sonnet-4-5-20250929",
+                    "max_tokens": 8192,
+                    "messages": [{'role': 'user', 'content': content}],
+                    "system": "You are an expert equity research analyst. Analyze documents thoroughly and provide institutional-quality investment analysis. Always respond with valid JSON only.",
+                }
+                usage_data = {}
+                with client.messages.stream(**kwargs) as stream:
+                    for text in stream.text_stream:
+                        result_text += text
                         yield b' '
-            except LLMError as e:
-                yield json.dumps({'error': str(e)}).encode()
+                    final_msg = stream.get_final_message()
+                    usage_data = {
+                        "input_tokens": final_msg.usage.input_tokens,
+                        "output_tokens": final_msg.usage.output_tokens,
+                    }
+            except Exception as e:
+                print(f"[analyze-multi] Anthropic streaming failed: {type(e).__name__}: {e}")
+                yield json.dumps({'error': f'Analysis failed: {str(e)}'}).encode()
                 return
 
-            if llm_result is None:
-                yield json.dumps({'error': 'No response from LLM'}).encode()
-                return
-
-            assistant_content = llm_result["text"]
             try:
-                cleaned = assistant_content.strip()
+                cleaned = result_text.strip()
                 if cleaned.startswith('```'):
                     cleaned = cleaned.split('\n', 1)[1]
                 if cleaned.endswith('```'):
@@ -2958,12 +2961,12 @@ Return ONLY valid JSON, no markdown, no explanation."""
                     'analysis': analysis,
                     'changes': changes,
                     'documentMetadata': document_metadata,
-                    'usage': llm_result["usage"]
+                    'usage': usage_data
                 }).encode()
             except json.JSONDecodeError as e:
                 yield json.dumps({
                     'error': f'Failed to parse analysis: {str(e)}',
-                    'raw_response': assistant_content
+                    'raw_response': result_text
                 }).encode()
             except Exception as e:
                 yield json.dumps({'error': f'Server error: {str(e)}'}).encode()
