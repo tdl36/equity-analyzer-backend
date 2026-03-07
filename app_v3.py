@@ -9,6 +9,8 @@ import requests
 import os
 import json
 import base64
+import threading
+import queue
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from psycopg2.pool import ThreadedConnectionPool
@@ -2913,45 +2915,60 @@ Return ONLY valid JSON, no markdown, no explanation."""
             "text": analysis_prompt
         })
         
-        result = call_llm(
-            messages=[{'role': 'user', 'content': content}],
-            system='You are an expert equity research analyst. Analyze documents thoroughly and provide institutional-quality investment analysis. Always respond with valid JSON only.',
-            tier="standard",
-            max_tokens=8192,
-            timeout=180,
-            anthropic_api_key=api_key,
-        )
-        assistant_content = result["text"]
-        
-        # Parse the JSON response
-        try:
-            cleaned = assistant_content.strip()
-            if cleaned.startswith('```'):
-                cleaned = cleaned.split('\n', 1)[1]
-            if cleaned.endswith('```'):
-                cleaned = cleaned.rsplit('\n', 1)[0]
-            if cleaned.startswith('json'):
-                cleaned = cleaned[4:].strip()
-            
-            analysis = json.loads(cleaned)
-            changes = analysis.pop('changes', [])
-            document_metadata = analysis.pop('documentMetadata', [])
-            
-            return jsonify({
-                'analysis': analysis,
-                'changes': changes,
-                'documentMetadata': document_metadata,
-                'usage': result["usage"]
-            })
+        # Use call_llm_stream for heartbeat streaming to prevent Render 502 timeouts.
+        # Yields keep-alive spaces while waiting, then the JSON result.
+        # JSON.parse() ignores leading whitespace, so the frontend parses it normally.
+        def generate():
+            llm_result = None
+            try:
+                for chunk in call_llm_stream(
+                    messages=[{'role': 'user', 'content': content}],
+                    system='You are an expert equity research analyst. Analyze documents thoroughly and provide institutional-quality investment analysis. Always respond with valid JSON only.',
+                    tier="standard",
+                    max_tokens=8192,
+                    anthropic_api_key=api_key,
+                ):
+                    if isinstance(chunk, dict):
+                        llm_result = chunk
+                    else:
+                        yield b' '
+            except LLMError as e:
+                yield json.dumps({'error': str(e)}).encode()
+                return
 
-        except json.JSONDecodeError as e:
-            return jsonify({
-                'error': f'Failed to parse analysis: {str(e)}',
-                'raw_response': assistant_content
-            }), 500
+            if llm_result is None:
+                yield json.dumps({'error': 'No response from LLM'}).encode()
+                return
 
-    except LLMError as e:
-        return jsonify({'error': str(e)}), 502
+            assistant_content = llm_result["text"]
+            try:
+                cleaned = assistant_content.strip()
+                if cleaned.startswith('```'):
+                    cleaned = cleaned.split('\n', 1)[1]
+                if cleaned.endswith('```'):
+                    cleaned = cleaned.rsplit('\n', 1)[0]
+                if cleaned.startswith('json'):
+                    cleaned = cleaned[4:].strip()
+
+                analysis = json.loads(cleaned)
+                changes = analysis.pop('changes', [])
+                document_metadata = analysis.pop('documentMetadata', [])
+
+                yield json.dumps({
+                    'analysis': analysis,
+                    'changes': changes,
+                    'documentMetadata': document_metadata,
+                    'usage': llm_result["usage"]
+                }).encode()
+            except json.JSONDecodeError as e:
+                yield json.dumps({
+                    'error': f'Failed to parse analysis: {str(e)}',
+                    'raw_response': assistant_content
+                }).encode()
+            except Exception as e:
+                yield json.dumps({'error': f'Server error: {str(e)}'}).encode()
+
+        return Response(generate(), mimetype='application/json')
     except Exception as e:
         import traceback
         print(f"Error in analyze-multi: {str(e)}")
