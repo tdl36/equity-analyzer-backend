@@ -821,6 +821,38 @@ def init_db():
                 )
             ''')
 
+            # Analysis Jobs table - background analysis processing
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS analysis_jobs (
+                    id VARCHAR(20) PRIMARY KEY,
+                    ticker VARCHAR(20),
+                    status VARCHAR(20) DEFAULT 'pending',
+                    progress TEXT DEFAULT '',
+                    batch_num INTEGER DEFAULT 0,
+                    total_batches INTEGER DEFAULT 0,
+                    chars_received INTEGER DEFAULT 0,
+                    api_key TEXT NOT NULL,
+                    request_payload JSONB NOT NULL,
+                    result JSONB,
+                    error TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+            # Mark stale processing jobs as failed (server restart recovery)
+            cur.execute('''
+                UPDATE analysis_jobs
+                SET status = 'failed', error = 'Server restarted during processing', api_key = ''
+                WHERE status IN ('pending', 'processing') AND updated_at < NOW() - INTERVAL '5 minutes'
+            ''')
+
+            # Clean up old completed/failed jobs
+            cur.execute('''
+                DELETE FROM analysis_jobs
+                WHERE (status IN ('complete', 'failed') AND created_at < NOW() - INTERVAL '24 hours')
+            ''')
+
         print("Database tables initialized")
     except Exception as e:
         print(f"Database init error (may be normal on first run): {e}")
@@ -865,6 +897,372 @@ def save_settings():
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error saving settings: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================
+# BACKGROUND ANALYSIS JOB SYSTEM
+# ============================================
+
+import uuid
+from PyPDF2 import PdfReader
+import io
+
+def _update_job(job_id, **kwargs):
+    """Update analysis_jobs row with provided fields."""
+    if not kwargs:
+        return
+    set_clauses = []
+    values = []
+    for key, value in kwargs.items():
+        set_clauses.append(f"{key} = %s")
+        values.append(value if not isinstance(value, dict) else json.dumps(value))
+    set_clauses.append("updated_at = CURRENT_TIMESTAMP")
+    values.append(job_id)
+    try:
+        with get_db(commit=True) as (conn, cur):
+            cur.execute(f"UPDATE analysis_jobs SET {', '.join(set_clauses)} WHERE id = %s", values)
+    except Exception as e:
+        print(f"[analysis-job {job_id}] Failed to update: {e}")
+
+
+def _count_pdf_pages(base64_data):
+    """Count pages in a base64-encoded PDF."""
+    try:
+        pdf_bytes = base64.b64decode(base64_data)
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        return len(reader.pages)
+    except:
+        return 30
+
+
+def _build_analysis_content(batch_docs, all_docs, existing_analysis, historical_weights, weighting_config, batch_num, total_batches):
+    """Build the Claude content array for analysis (documents + prompt)."""
+    simple_mode = weighting_config.get('mode') == 'simple'
+    existing_weight = weighting_config.get('existingAnalysisWeight', 70)
+    new_docs_weight = weighting_config.get('newDocsWeight', 30)
+    total_weight = sum(d.get('weight', 1) for d in all_docs) + sum(d.get('weight', 1) for d in (historical_weights or []))
+
+    content = []
+
+    # Document blocks
+    for doc in batch_docs:
+        doc_content = doc.get('file_data') or doc.get('fileData', '')
+        doc_name = doc.get('filename', 'document.pdf')
+        doc_type = doc.get('file_type') or doc.get('fileType', 'pdf')
+        mime_type = doc.get('mime_type') or doc.get('mimeType', 'application/pdf')
+        is_new = doc.get('isNew', True)
+
+        if not doc_content:
+            continue
+
+        # Header with weight
+        if simple_mode and existing_analysis and is_new:
+            new_count = len([d for d in all_docs if d.get('isNew', True)])
+            per_new = new_docs_weight / max(new_count, 1)
+            header = f"\n=== NEW DOCUMENT ({round(per_new)}% update weight): {doc_name} ==="
+        elif simple_mode and existing_analysis:
+            header = f"\n=== EXISTING DOCUMENT (Reference): {doc_name} ==="
+        else:
+            doc_w = doc.get('weight', 1)
+            pct = round((doc_w / total_weight) * 100) if total_weight > 0 else 0
+            header = f"\n=== DOCUMENT: {doc_name} (Weight: {pct}%) ==="
+
+        content.append({"type": "text", "text": header})
+
+        if doc_type == 'pdf':
+            content.append({"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": doc_content}})
+        elif doc_type == 'image':
+            content.append({"type": "image", "source": {"type": "base64", "media_type": mime_type or "image/png", "data": doc_content}})
+        else:
+            try:
+                content.append({"type": "text", "text": base64.b64decode(doc_content).decode('utf-8')})
+            except:
+                continue
+
+    if not content:
+        return content
+
+    # Build prompt
+    STYLE_RULES = """IMPORTANT STYLE RULES:
+- Do NOT reference any sellside broker names
+- Do NOT reference specific analyst names
+- Do NOT include specific broker price targets
+- Write as independent analysis without attribution to sources"""
+
+    JSON_SCHEMA = '{"ticker":"TICKER","company":"Name","thesis":{"summary":"...","pillars":[{"title":"...","description":"...","confidence":"High/Medium/Low","sources":[{"filename":"...","excerpt":"..."}]}]},"signposts":[{"metric":"...","target":"...","timeframe":"...","category":"Financial/Operational/Strategic/Market","confidence":"High/Medium/Low","sources":[]}],"threats":[{"threat":"...","likelihood":"...","impact":"...","triggerPoints":"...","sources":[]}],"documentMetadata":[{"filename":"...","docType":"broker_report","source":"...","publishDate":"YYYY-MM-DD","authors":[],"title":"..."}]}'
+
+    if existing_analysis:
+        batch_note = f"\n\nNote: This is batch {batch_num} of {total_batches}. Incorporate these documents into the existing analysis.\n" if total_batches > 1 else ''
+        if simple_mode:
+            weight_instr = f"WEIGHTING: Preserve {existing_weight}% of existing analysis. New documents contribute {new_docs_weight}% changes. Keep most existing content intact, only add minor refinements.\n"
+        else:
+            weight_instr = "Give MORE emphasis to higher-weighted documents.\n"
+        prompt = f"""Update this existing analysis with new information from the documents.{batch_note}
+
+Existing Analysis:
+{json.dumps(existing_analysis, indent=2)}
+
+{weight_instr}
+Review the new documents and:
+1. Update or confirm the investment thesis
+2. Add any new signposts or update existing ones
+3. Add any new threats or update existing ones
+4. Note what changed in the "changes" array
+5. Extract metadata for ALL documents
+
+{STYLE_RULES}
+
+Return the updated analysis as JSON with the same structure plus a "changes" array.
+Return ONLY valid JSON, no markdown, no explanation."""
+    else:
+        batch_note = f"\n\nNote: This is batch {batch_num} of {total_batches}. More documents will follow.\n" if total_batches > 1 else ''
+        prompt = f"""Analyze these documents and create a comprehensive investment analysis.{batch_note}
+
+Return a JSON object with this structure:
+{JSON_SCHEMA}
+
+{STYLE_RULES}
+
+Focus on:
+1. Investment Thesis with confidence and source citations
+2. Signposts - specific KPIs, events, milestones
+3. Threats - bear case scenarios with likelihood, impact, trigger points
+
+Return ONLY valid JSON, no markdown, no explanation."""
+
+    content.append({"type": "text", "text": prompt})
+    return content
+
+
+def _run_analysis_job(job_id):
+    """Background thread: run full analysis pipeline."""
+    try:
+        # Load job
+        with get_db() as (conn, cur):
+            cur.execute('SELECT * FROM analysis_jobs WHERE id = %s', (job_id,))
+            job = cur.fetchone()
+        if not job:
+            return
+
+        api_key = job['api_key']
+        payload = job['request_payload'] if isinstance(job['request_payload'], dict) else json.loads(job['request_payload'])
+        ticker = job['ticker']
+        existing_analysis = payload.get('existingAnalysis')
+        historical_weights = payload.get('historicalWeights', [])
+        weighting_config = payload.get('weightingConfig', {})
+        doc_details = {d['filename']: d for d in payload.get('documentDetails', [])}
+
+        _update_job(job_id, status='processing', progress='Loading documents...')
+
+        # Load documents from DB
+        doc_filenames = payload.get('documentFilenames', [])
+        with get_db() as (conn, cur):
+            placeholders = ','.join(['%s'] * len(doc_filenames))
+            cur.execute(f'SELECT filename, file_data, file_type, mime_type, metadata FROM document_files WHERE ticker = %s AND filename IN ({placeholders})', [ticker] + doc_filenames)
+            docs = cur.fetchall()
+
+        # Also include any inline documents from the request (new uploads not yet in DB)
+        inline_docs = payload.get('inlineDocuments', [])
+
+        all_docs = []
+        for doc in docs:
+            d = dict(doc)
+            detail = doc_details.get(d['filename'], {})
+            d['weight'] = detail.get('weight', 1)
+            d['isNew'] = detail.get('isNew', True)
+            d['_pages'] = _count_pdf_pages(d['file_data']) if d.get('file_type') == 'pdf' else 0
+            all_docs.append(d)
+
+        for doc in inline_docs:
+            doc['_pages'] = _count_pdf_pages(doc.get('fileData', '')) if doc.get('fileType') == 'pdf' else 0
+            doc['file_data'] = doc.get('fileData', '')
+            doc['file_type'] = doc.get('fileType', 'pdf')
+            doc['mime_type'] = doc.get('mimeType', 'application/pdf')
+            all_docs.append(doc)
+
+        total_pages = sum(d['_pages'] for d in all_docs)
+
+        # Split into batches of <=50 pages
+        if total_pages <= 50:
+            batches = [all_docs]
+        else:
+            batches = []
+            batch = []
+            batch_pages = 0
+            for doc in all_docs:
+                if batch_pages + doc['_pages'] > 50 and batch:
+                    batches.append(batch)
+                    batch = []
+                    batch_pages = 0
+                batch.append(doc)
+                batch_pages += doc['_pages']
+            if batch:
+                batches.append(batch)
+
+        _update_job(job_id, total_batches=len(batches), progress=f'{total_pages} pages, {len(batches)} batch(es)')
+
+        # Process batches
+        client = anthropic.Anthropic(api_key=api_key)
+        current_analysis = existing_analysis
+        all_changes = []
+        all_metadata = []
+        total_usage = {'input_tokens': 0, 'output_tokens': 0}
+
+        for i, batch in enumerate(batches):
+            batch_pages = sum(d['_pages'] for d in batch)
+            _update_job(job_id, batch_num=i + 1, chars_received=0,
+                        progress=f'Processing batch {i + 1} of {len(batches)} ({batch_pages} pages)')
+
+            content = _build_analysis_content(batch, all_docs, current_analysis, historical_weights, weighting_config, i + 1, len(batches))
+            if not content:
+                continue
+
+            result_text = ""
+            usage_data = {}
+            with client.messages.stream(
+                model="claude-sonnet-4-5-20250929",
+                max_tokens=16384,
+                messages=[{'role': 'user', 'content': content}],
+                system="You are an expert equity research analyst. Analyze documents thoroughly and provide institutional-quality investment analysis. Always respond with valid JSON only."
+            ) as stream:
+                for text in stream.text_stream:
+                    result_text += text
+                    if len(result_text) % 500 < len(text):
+                        _update_job(job_id, chars_received=len(result_text))
+                final_msg = stream.get_final_message()
+                usage_data = {
+                    'input_tokens': final_msg.usage.input_tokens,
+                    'output_tokens': final_msg.usage.output_tokens
+                }
+
+            # Parse JSON
+            cleaned = result_text.strip()
+            if cleaned.startswith('```'):
+                cleaned = cleaned.split('\n', 1)[1] if '\n' in cleaned else cleaned[3:]
+            if cleaned.endswith('```'):
+                cleaned = cleaned.rsplit('\n', 1)[0]
+            if cleaned.startswith('json'):
+                cleaned = cleaned[4:].strip()
+
+            analysis = json.loads(cleaned)
+            changes = analysis.pop('changes', [])
+            doc_metadata = analysis.pop('documentMetadata', [])
+
+            current_analysis = analysis
+            all_changes.extend(changes)
+            for meta in doc_metadata:
+                if not any(m.get('filename') == meta.get('filename') for m in all_metadata):
+                    all_metadata.append(meta)
+            total_usage['input_tokens'] += usage_data.get('input_tokens', 0)
+            total_usage['output_tokens'] += usage_data.get('output_tokens', 0)
+
+        # Store result
+        result = {
+            'analysis': current_analysis,
+            'changes': all_changes,
+            'documentMetadata': all_metadata,
+            'usage': total_usage
+        }
+        _update_job(job_id, status='complete', result=json.dumps(result), progress='Analysis complete', api_key='')
+        print(f"[analysis-job {job_id}] Complete: {ticker}")
+
+    except Exception as e:
+        print(f"[analysis-job {job_id}] Failed: {e}")
+        import traceback
+        traceback.print_exc()
+        _update_job(job_id, status='failed', error=str(e), api_key='')
+
+
+@app.route('/api/analysis-job', methods=['POST'])
+def create_analysis_job():
+    """Create a background analysis job."""
+    try:
+        data = request.json
+        api_key = data.get('apiKey', '')
+        ticker = data.get('ticker', '').upper()
+        if not api_key:
+            return jsonify({'error': 'API key required'}), 400
+        if not ticker:
+            return jsonify({'error': 'Ticker required'}), 400
+
+        job_id = str(uuid.uuid4())[:12]
+
+        # Save any new inline documents to document_files first
+        new_docs = data.get('newDocuments', [])
+        if new_docs:
+            with get_db(commit=True) as (conn, cur):
+                for doc in new_docs:
+                    cur.execute('''
+                        INSERT INTO document_files (ticker, filename, file_data, file_type, mime_type, metadata, file_size)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (ticker, filename) DO UPDATE SET
+                            file_data = EXCLUDED.file_data,
+                            file_type = EXCLUDED.file_type,
+                            mime_type = EXCLUDED.mime_type,
+                            metadata = EXCLUDED.metadata,
+                            file_size = EXCLUDED.file_size
+                    ''', (ticker, doc['filename'], doc.get('fileData', ''), doc.get('fileType', 'pdf'),
+                          doc.get('mimeType', 'application/pdf'), json.dumps(doc.get('metadata', {})),
+                          len(doc.get('fileData', ''))))
+
+        # Build request payload (without large file data - docs are in DB)
+        payload = {
+            'documentFilenames': data.get('documentFilenames', []),
+            'documentDetails': data.get('documentDetails', []),
+            'existingAnalysis': data.get('existingAnalysis'),
+            'historicalWeights': data.get('historicalWeights', []),
+            'weightingConfig': data.get('weightingConfig', {})
+        }
+
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('''
+                INSERT INTO analysis_jobs (id, ticker, status, api_key, request_payload)
+                VALUES (%s, %s, 'pending', %s, %s)
+            ''', (job_id, ticker, api_key, json.dumps(payload)))
+
+        # Spawn background thread
+        thread = threading.Thread(target=_run_analysis_job, args=(job_id,), daemon=True)
+        thread.start()
+
+        return jsonify({'jobId': job_id})
+    except Exception as e:
+        print(f"Error creating analysis job: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/analysis-job/<job_id>/status', methods=['GET'])
+def get_analysis_job_status(job_id):
+    """Poll for analysis job status."""
+    try:
+        with get_db() as (conn, cur):
+            cur.execute('SELECT id, ticker, status, progress, batch_num, total_batches, chars_received, result, error, created_at FROM analysis_jobs WHERE id = %s', (job_id,))
+            job = cur.fetchone()
+
+        if not job:
+            return jsonify({'error': 'Job not found'}), 404
+
+        resp = {
+            'status': job['status'],
+            'progress': job['progress'],
+            'batchNum': job['batch_num'],
+            'totalBatches': job['total_batches'],
+            'charsReceived': job['chars_received'],
+            'elapsedSeconds': int((datetime.utcnow() - job['created_at']).total_seconds()) if job['created_at'] else 0
+        }
+
+        if job['status'] == 'complete' and job['result']:
+            resp['result'] = job['result'] if isinstance(job['result'], dict) else json.loads(job['result'])
+            # Clear API key now that result is delivered
+            with get_db(commit=True) as (conn, cur):
+                cur.execute("UPDATE analysis_jobs SET api_key = '' WHERE id = %s AND api_key != ''", (job_id,))
+
+        if job['status'] == 'failed':
+            resp['error'] = job['error']
+
+        return jsonify(resp)
+    except Exception as e:
+        print(f"Error getting job status: {e}")
         return jsonify({'error': str(e)}), 500
 
 
