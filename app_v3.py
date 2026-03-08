@@ -812,6 +812,15 @@ def init_db():
                         VALUES (%s, %s, %s, %s)
                     ''', (theme['name'], theme.get('illustration_guidance', ''), theme['style_prefix'], True))
 
+            # App Settings table - persists API keys across PWA reinstalls
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS app_settings (
+                    key VARCHAR(100) PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
         print("Database tables initialized")
     except Exception as e:
         print(f"Database init error (may be normal on first run): {e}")
@@ -821,6 +830,42 @@ try:
     init_db()
 except:
     pass  # Will init when DATABASE_URL is available
+
+
+# ============================================
+# APP SETTINGS ENDPOINTS (API key persistence)
+# ============================================
+
+@app.route('/api/settings', methods=['GET'])
+def get_settings():
+    """Get all app settings"""
+    try:
+        with get_db() as (conn, cur):
+            cur.execute('SELECT key, value FROM app_settings')
+            rows = cur.fetchall()
+        return jsonify({row['key']: row['value'] for row in rows})
+    except Exception as e:
+        print(f"Error getting settings: {e}")
+        return jsonify({})
+
+@app.route('/api/settings', methods=['POST'])
+def save_settings():
+    """Save app settings (upsert)"""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        with get_db(commit=True) as (conn, cur):
+            for key, value in data.items():
+                cur.execute('''
+                    INSERT INTO app_settings (key, value, updated_at)
+                    VALUES (%s, %s, CURRENT_TIMESTAMP)
+                    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP
+                ''', (key, value))
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error saving settings: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 # ============================================
