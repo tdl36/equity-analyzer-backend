@@ -297,7 +297,7 @@ def call_llm_stream(*, messages, system="", tier="standard", max_tokens=16384,
         try:
             print(f"[LLM Stream Fallback] Trying {provider}/{model}...")
             if provider == "anthropic":
-                client = anthropic.Anthropic(api_key=key)
+                client = anthropic.Anthropic(api_key=key, timeout=300)
                 result_text = ""
                 kwargs = {"model": model, "max_tokens": max_tokens, "messages": messages}
                 if system:
