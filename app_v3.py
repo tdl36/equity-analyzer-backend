@@ -3739,14 +3739,16 @@ def extract_pdf():
 def research_analyze():
     """
     Deep analysis of sell-side research using customizable prompt frameworks.
-    Calls Anthropic API directly for better control and reliability.
-    
+    Supports native PDF/image document blocks for full-fidelity analysis
+    (charts, graphs, tables, images — not just extracted text).
+
     Request body:
     {
-        "text": "Full prompt with document content",
+        "text": "Framework prompt text",
         "promptId": "executive-brief",
         "promptName": "Executive Brief",
-        "apiKey": "sk-ant-..." (from user's Settings)
+        "apiKey": "sk-ant-...",
+        "files": [{"data": "base64...", "type": "application/pdf", "name": "report.pdf"}, ...]  (optional)
     }
     """
     try:
@@ -3755,6 +3757,7 @@ def research_analyze():
         prompt_id = data.get('promptId', '')
         prompt_name = data.get('promptName', '')
         api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('apiKey', '')
+        files = data.get('files', [])
 
         if not text:
             return jsonify({'error': 'No text provided'}), 400
@@ -3762,10 +3765,32 @@ def research_analyze():
         if not api_key:
             return jsonify({'error': 'No API key provided. Please add your API key in Settings.'}), 400
 
+        # Build content: if files provided, use native document/image blocks
+        if files:
+            content = []
+            for f in files:
+                f_type = f.get('type', '')
+                f_data = f.get('data', '')
+                f_name = f.get('name', '')
+                if not f_data:
+                    continue
+                if f_type == 'application/pdf':
+                    content.append({"type": "text", "text": f"--- {f_name} ---"})
+                    content.append({"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": f_data}})
+                elif f_type.startswith('image/'):
+                    content.append({"type": "text", "text": f"--- {f_name} ---"})
+                    content.append({"type": "image", "source": {"type": "base64", "media_type": f_type, "data": f_data}})
+            # Append the prompt text at the end
+            content.append({"type": "text", "text": text})
+            user_msg = content
+        else:
+            user_msg = text
+
         result = call_llm(
-            messages=[{"role": "user", "content": text}],
+            messages=[{"role": "user", "content": user_msg}],
             tier="standard",
             max_tokens=4096,
+            timeout=180,
             anthropic_api_key=api_key,
         )
 
@@ -4700,7 +4725,8 @@ def mp_delete_document(meeting_id, doc_id):
 
 @app.route('/api/mp/analyze-document', methods=['POST'])
 def mp_analyze_document():
-    """Step 1: Analyze a single document. Uses streaming to avoid Render timeout."""
+    """Step 1: Analyze a single document. Uses native PDF document blocks when available
+    so Claude can see charts, graphs, tables, and images — not just extracted text."""
     try:
         data = request.json
         api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('apiKey', '')
@@ -4711,24 +4737,55 @@ def mp_analyze_document():
         company_name = data.get('companyName', ticker)
         doc_type = data.get('docType', 'document')
         filename = data.get('filename', '')
+        doc_id = data.get('docId')
         extracted_text = data.get('extractedText', '')
 
-        if not extracted_text:
-            return jsonify({'error': 'No document text provided'}), 400
-
-        if len(extracted_text) > 400000:
-            extracted_text = extracted_text[:400000] + "\n\n[... document truncated for length ...]"
+        # Try to fetch native PDF binary from database for full-fidelity analysis
+        file_data = None
+        if doc_id:
+            try:
+                with get_db() as (_, cur):
+                    cur.execute('SELECT file_data FROM mp_documents WHERE id = %s', (doc_id,))
+                    row = cur.fetchone()
+                    if row and row['file_data']:
+                        file_data = row['file_data']
+            except Exception as e:
+                print(f"Could not fetch file_data for doc {doc_id}: {e}")
 
         prompt = MP_ANALYSIS_PROMPT.format(
             doc_type=doc_type, ticker=ticker, company_name=company_name
         )
-        user_msg = f"Document: {filename}\n\n{extracted_text}"
+
+        # Build content: prefer native document blocks for PDFs/images
+        fname_lower = (filename or '').lower()
+        if file_data and fname_lower.endswith('.pdf'):
+            # Native PDF — Claude can see charts, graphs, tables, images
+            user_content = [
+                {"type": "text", "text": f"Document: {filename}"},
+                {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": file_data}},
+                {"type": "text", "text": "Analyze this document thoroughly, including all charts, graphs, tables, and visual data."}
+            ]
+        elif file_data and any(fname_lower.endswith(ext) for ext in ('.png', '.jpg', '.jpeg', '.gif', '.webp')):
+            ext = fname_lower.rsplit('.', 1)[-1]
+            mime_map = {'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'gif': 'image/gif', 'webp': 'image/webp'}
+            user_content = [
+                {"type": "text", "text": f"Document: {filename}"},
+                {"type": "image", "source": {"type": "base64", "media_type": mime_map.get(ext, 'image/png'), "data": file_data}},
+                {"type": "text", "text": "Analyze this image thoroughly, including all charts, graphs, tables, and visual data."}
+            ]
+        else:
+            # Fallback to extracted text
+            if not extracted_text:
+                return jsonify({'error': 'No document text or file data available'}), 400
+            if len(extracted_text) > 400000:
+                extracted_text = extracted_text[:400000] + "\n\n[... document truncated for length ...]"
+            user_content = f"Document: {filename}\n\n{extracted_text}"
 
         def generate():
             try:
                 llm_result = None
                 for chunk in call_llm_stream(
-                    messages=[{"role": "user", "content": user_msg}],
+                    messages=[{"role": "user", "content": user_content}],
                     system=prompt,
                     tier="standard",
                     max_tokens=16384,
@@ -5019,7 +5076,8 @@ def mp_get_document_text(meeting_id, doc_id):
     try:
         with get_db() as (_, cur):
             cur.execute('''
-                SELECT id, filename, doc_type, extracted_text
+                SELECT id, filename, doc_type, extracted_text,
+                       (file_data IS NOT NULL AND file_data != '') as has_file_data
                 FROM mp_documents WHERE id = %s AND meeting_id = %s
             ''', (doc_id, meeting_id))
             row = cur.fetchone()
@@ -5032,6 +5090,7 @@ def mp_get_document_text(meeting_id, doc_id):
             'filename': row['filename'],
             'docType': row['doc_type'],
             'extractedText': row['extracted_text'] or '',
+            'hasFileData': bool(row['has_file_data']),
         })
     except Exception as e:
         print(f"Error getting document text: {e}")
