@@ -24,6 +24,7 @@ app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max upload size
 CORS(app, origins=[
     "https://equity-analyzer.tonydlee.workers.dev",
+    "https://charlie-deployment.tonydlee.workers.dev",
     "http://localhost:3000",
     "http://localhost:5000",
     "http://127.0.0.1:3000",
