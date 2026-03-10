@@ -2538,8 +2538,15 @@ def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key
                             file=io.BytesIO(chunk_bytes),
                             config=genai_types.UploadFileConfig(mime_type='audio/mpeg', display_name=f"{filename}_chunk{idx+1}")
                         )
-                        audio_content = uploaded
                         del chunk_bytes
+                        # Wait for file to be ready
+                        wait_start = time.time()
+                        while hasattr(uploaded, 'state') and str(uploaded.state) not in ('ACTIVE', 'State.ACTIVE', '2'):
+                            if time.time() - wait_start > 120:
+                                raise Exception('Gemini file processing timed out')
+                            time.sleep(3)
+                            uploaded = client.files.get(name=uploaded.name)
+                        audio_content = uploaded
                     else:
                         audio_content = genai_types.Part.from_bytes(data=chunk_bytes, mime_type='audio/mpeg')
                         del chunk_bytes
@@ -2571,13 +2578,25 @@ def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key
             audio_size_mb = len(audio_bytes) / (1024 * 1024)
             if audio_size_mb > 20:
                 try:
+                    _transcription_jobs[job_id]['progress'] = 'Uploading to Gemini...'
                     uploaded_file = client.files.upload(
                         file=io.BytesIO(audio_bytes),
                         config=genai_types.UploadFileConfig(mime_type=mime_type, display_name=filename)
                     )
-                    audio_content = uploaded_file
                     del audio_bytes
-                    print(f"[Job {job_id}] Uploaded to Gemini: {uploaded_file.name}")
+                    print(f"[Job {job_id}] Uploaded to Gemini: {uploaded_file.name}, state: {uploaded_file.state}")
+                    # Wait for file to be processed and ready
+                    _transcription_jobs[job_id]['progress'] = 'Waiting for Gemini to process file...'
+                    wait_start = time.time()
+                    while hasattr(uploaded_file, 'state') and str(uploaded_file.state) not in ('ACTIVE', 'State.ACTIVE', '2'):
+                        if time.time() - wait_start > 120:
+                            raise Exception('Gemini file processing timed out after 2 minutes')
+                        time.sleep(3)
+                        uploaded_file = client.files.get(name=uploaded_file.name)
+                        print(f"[Job {job_id}] File state: {uploaded_file.state}")
+                    audio_content = uploaded_file
+                    _transcription_jobs[job_id]['progress'] = 'Transcribing...'
+                    print(f"[Job {job_id}] File ready, starting transcription")
                 except Exception as upload_err:
                     print(f"[Job {job_id}] Upload failed: {upload_err}, using inline bytes")
                     audio_content = genai_types.Part.from_bytes(data=audio_bytes, mime_type=mime_type)
