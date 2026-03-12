@@ -68,6 +68,14 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.9.155/pdf.min.mjs" type="module"></script>
+    <script>
+        // Load pdf.js and set worker
+        window.pdfjsReady = import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.9.155/pdf.min.mjs').then(mod => {
+            mod.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.9.155/pdf.worker.min.mjs';
+            window.pdfjsLib = mod;
+        }).catch(() => { window.pdfjsLib = null; });
+    </script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script>
         tailwind.config = {
@@ -265,6 +273,9 @@
             </div>`;
             return true;
         };
+
+        // Build version — auto-update mechanism compares against /version endpoint
+        const BUILD_VERSION = '2026-03-12T01';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -720,11 +731,30 @@ Regulatory, execution, or macro risks that could derail the thesis:
         const GitBranch = ({className = "w-5 h-5"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>;
         const CheckCircle2 = ({className = "w-5 h-5"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>;
         const RotateCw = ({className = "w-5 h-5"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>;
+        const Cloud = ({className = "w-5 h-5"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>;
 
         // Helper to detect iOS/iPadOS (including iPadOS 13+ that reports as Mac)
         const isIOSDevice = () => {
             return /iPad|iPhone|iPod/.test(navigator.userAgent) || 
                    (navigator.userAgent.includes('Mac') && navigator.maxTouchPoints > 1);
+        };
+
+        // Sync all settings to backend for cross-install persistence
+        const syncSettingsToBackend = () => {
+            try {
+                const settings = {};
+                const apiKey = localStorage.getItem('equity_analyzer_api_key');
+                const geminiKey = localStorage.getItem('equity_analyzer_gemini_key');
+                const googleClientId = localStorage.getItem('google_oauth_client_id');
+                const emailCreds = localStorage.getItem('emailCredentials');
+                if (apiKey) settings.apiKey = apiKey;
+                if (geminiKey) settings.geminiApiKey = geminiKey;
+                if (googleClientId) settings.googleClientId = googleClientId;
+                if (emailCreds) settings.emailCredentials = emailCreds;
+                if (Object.keys(settings).length > 0) {
+                    fetch(`${API_URL}/api/settings`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) });
+                }
+            } catch(e) { console.log('Settings sync failed:', e.message); }
         };
 
         // Simple storage helpers - try multiple methods for iOS PWA
@@ -749,11 +779,12 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     tx.objectStore('settings').put({ id: 'apiKey', value: key });
                 };
             } catch(e) { console.log('IndexedDB failed'); }
+            syncSettingsToBackend();
         };
 
         const loadApiKeyFromStorage = () => {
             // Check localStorage first (sync)
-            try { 
+            try {
                 const key = localStorage.getItem(STORAGE_KEY);
                 if (key) return key;
             } catch(e) {}
@@ -779,6 +810,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     tx.objectStore('settings').put({ id: 'geminiApiKey', value: key });
                 };
             } catch(e) { console.log('IndexedDB failed'); }
+            syncSettingsToBackend();
         };
 
         const loadGeminiKeyFromStorage = () => {
@@ -1358,6 +1390,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [changes, setChanges] = useState([]);
             const [loading, setLoading] = useState(false);
             const [error, setError] = useState(null);
+            const [analysisProgress, setAnalysisProgress] = useState(null);
+            const [progressTick, setProgressTick] = useState(0);
+            const [bgAnalysisJob, setBgAnalysisJob] = useState(null);
+            const bgAnalysisPollRef = useRef(null);
             const [expanded, setExpanded] = useState({ thesis: true, signposts: true, threats: true, changes: true });
             const [draggedIndex, setDraggedIndex] = useState(null);
             const [showSaveDialog, setShowSaveDialog] = useState(false);
@@ -1699,6 +1735,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [editAssessmentValue, setEditAssessmentValue] = useState('');
             const [bgTranscriptionJob, setBgTranscriptionJob] = useState(null); // { jobId, files, title, topic, topicType, docType, detailLevel, startTime, progress }
             const bgPollRef = useRef(null); // Ref to hold poll timeout ID
+            const [summarySelectMode, setSummarySelectMode] = useState(false);
+            const [selectedSummaryIds, setSelectedSummaryIds] = useState(new Set());
+            const [bulkExportLoading, setBulkExportLoading] = useState(false);
             
             // Document types for Summary tab
             const SUMMARY_DOC_TYPES = [
@@ -2088,6 +2127,76 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 const text = (currentSummary.assessment || '').replace(/<[^>]*>/g, '');
                 navigator.clipboard.writeText(text);
                 alert('Assessment copied!');
+            };
+
+            // --- Download helpers ---
+            const triggerBase64Download = (base64Data, filename, mimeType) => {
+                const byteChars = atob(base64Data);
+                const byteNumbers = new Array(byteChars.length);
+                for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
+                const blob = new Blob([new Uint8Array(byteNumbers)], { type: mimeType });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            };
+
+            const downloadSummaryDocx = async () => {
+                if (!currentSummary) return;
+                try {
+                    const res = await fetch(`${API_URL}/api/summary-to-docx`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ summaryId: currentSummary.id })
+                    });
+                    if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Export failed'); }
+                    const data = await res.json();
+                    triggerBase64Download(data.fileData, data.filename, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+                } catch (err) { alert('Failed to download Word: ' + err.message); }
+            };
+
+            const downloadSummaryPdf = async () => {
+                if (!currentSummary) return;
+                try {
+                    const res = await fetch(`${API_URL}/api/summary-to-pdf`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ summaryId: currentSummary.id })
+                    });
+                    if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Export failed'); }
+                    const data = await res.json();
+                    triggerBase64Download(data.fileData, data.filename, 'application/pdf');
+                } catch (err) { alert('Failed to download PDF: ' + err.message); }
+            };
+
+            const toggleSummarySelection = (id) => {
+                setSelectedSummaryIds(prev => {
+                    const next = new Set(prev);
+                    if (next.has(id)) next.delete(id); else next.add(id);
+                    return next;
+                });
+            };
+
+            const bulkDownloadSummaries = async (format) => {
+                if (selectedSummaryIds.size === 0) return;
+                setBulkExportLoading(true);
+                try {
+                    const res = await fetch(`${API_URL}/api/summaries-bulk-export`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ summaryIds: Array.from(selectedSummaryIds), format })
+                    });
+                    if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Bulk export failed'); }
+                    const data = await res.json();
+                    triggerBase64Download(data.fileData, data.filename, 'application/zip');
+                    setSummarySelectMode(false);
+                    setSelectedSummaryIds(new Set());
+                } catch (err) { alert('Bulk export failed: ' + err.message); }
+                finally { setBulkExportLoading(false); }
             };
 
             const emailAssessment = async () => {
@@ -3085,21 +3194,20 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 const files = Array.from(e.target.files);
                 if (!files.length) return;
                 
-                for (const file of files) {
+                const processedFiles = await Promise.all(files.map(async (file) => {
                     try {
                         let content = '';
-                        let rawFileData = null;
                         const fileType = file.type;
                         const fileName = file.name;
-                        
+
                         // Read raw file as base64 for storage
-                        rawFileData = await new Promise((resolve, reject) => {
+                        const rawFileData = await new Promise((resolve, reject) => {
                             const reader = new FileReader();
-                            reader.onload = () => resolve(reader.result.split(',')[1]); // Remove data:... prefix
+                            reader.onload = () => resolve(reader.result.split(',')[1]);
                             reader.onerror = reject;
                             reader.readAsDataURL(file);
                         });
-                        
+
                         if (fileType === 'application/pdf') {
                             const formData = new FormData();
                             formData.append('file', file);
@@ -3118,8 +3226,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         } else {
                             content = await file.text();
                         }
-                        
-                        setResearchFiles(prev => [...prev, {
+
+                        return {
                             id: Date.now() + Math.random(),
                             name: fileName,
                             content: content,
@@ -3127,15 +3235,18 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             isImage: fileType.startsWith('image/'),
                             rawFileData: rawFileData,
                             fileSize: file.size
-                        }]);
-                        
-                        // Auto-set document name from first file if empty
-                        if (!newDocumentName) {
-                            setNewDocumentName(fileName.replace(/\.[^/.]+$/, '')); // Remove extension
-                        }
+                        };
                     } catch (err) {
                         console.error('Error processing file:', err);
                         alert(`Failed to process ${file.name}: ${err.message}`);
+                        return null;
+                    }
+                }));
+                const validFiles = processedFiles.filter(Boolean);
+                if (validFiles.length) {
+                    setResearchFiles(prev => [...prev, ...validFiles]);
+                    if (!newDocumentName) {
+                        setNewDocumentName(validFiles[0].name.replace(/\.[^/.]+$/, ''));
                     }
                 }
                 
@@ -3372,39 +3483,38 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 if (storeResearchDocument && researchFiles.length > 0) {
                     console.log('📁 Attempting to store files:', researchFiles.map(f => ({ name: f.name, hasRawData: !!f.rawFileData, size: f.fileSize })));
                     try {
-                        let savedCount = 0;
-                        for (const file of researchFiles) {
-                            if (file.rawFileData) {
-                                console.log(`📤 Saving file: ${file.name} (${file.fileSize} bytes)`);
-                                try {
-                                    const saveResponse = await fetch(`${API_URL}/api/save-research-file`, {
-                                        method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({
-                                            documentId: docId,
-                                            filename: file.name,
-                                            fileType: file.type,
-                                            fileData: file.rawFileData,
-                                            fileSize: file.fileSize
-                                        })
-                                    });
-                                    if (saveResponse.ok) {
-                                        console.log(`✅ File saved: ${file.name}`);
-                                        savedCount++;
-                                    } else {
-                                        const errorText = await saveResponse.text();
-                                        console.error(`❌ Failed to save file: ${file.name}`, saveResponse.status, errorText);
-                                        alert(`❌ File save failed: ${saveResponse.status}\n${errorText.substring(0, 200)}`);
-                                    }
-                                } catch (fetchErr) {
-                                    console.error(`❌ Fetch error for ${file.name}:`, fetchErr);
-                                    alert(`❌ Network error saving file: ${fetchErr.message}`);
-                                }
-                            } else {
-                                console.warn(`⚠️ No rawFileData for: ${file.name}`);
-                                alert(`⚠️ No file data captured for: ${file.name}`);
+                        const saveResults = await Promise.all(researchFiles.map(async (file) => {
+                            if (!file.rawFileData) {
+                                console.warn(`No rawFileData for: ${file.name}`);
+                                return false;
                             }
-                        }
+                            console.log(`Saving file: ${file.name} (${file.fileSize} bytes)`);
+                            try {
+                                const saveResponse = await fetch(`${API_URL}/api/save-research-file`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        documentId: docId,
+                                        filename: file.name,
+                                        fileType: file.type,
+                                        fileData: file.rawFileData,
+                                        fileSize: file.fileSize
+                                    })
+                                });
+                                if (saveResponse.ok) {
+                                    console.log(`File saved: ${file.name}`);
+                                    return true;
+                                } else {
+                                    const errorText = await saveResponse.text();
+                                    console.error(`Failed to save file: ${file.name}`, saveResponse.status, errorText);
+                                    return false;
+                                }
+                            } catch (fetchErr) {
+                                console.error(`Fetch error for ${file.name}:`, fetchErr);
+                                return false;
+                            }
+                        }));
+                        const savedCount = saveResults.filter(Boolean).length;
                         hasStoredFiles = savedCount > 0;
                         console.log(`📊 Files saved: ${savedCount}/${researchFiles.length}, hasStoredFiles: ${hasStoredFiles}`);
                         
@@ -3430,41 +3540,54 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 setShowAddResearchDoc(false);
                 
                 // Run analyses for selected frameworks
-                await runAnalysesForDocument(newDoc.id, combinedContent, selectedFrameworks);
+                await runAnalysesForDocument(newDoc.id, combinedContent, selectedFrameworks, researchFiles);
                 
                 // Expand the new document
                 setExpandedResearchDocs(prev => new Set([...prev, newDoc.id]));
             };
             
             // Run analyses for a document (can be multiple frameworks)
-            const runAnalysesForDocument = async (documentId, content, frameworkIds) => {
+            const runAnalysesForDocument = async (documentId, content, frameworkIds, files) => {
                 const savedApiKey = loadApiKeyFromStorage();
                 if (!savedApiKey) {
                     alert('Please add your Claude API key in Settings first');
                     return;
                 }
-                
+
                 setIsResearchLoading(true);
                 setResearchLoadingDocId(documentId);
                 setResearchLoadingFrameworks(frameworkIds);
-                
+
+                // Build native file blocks for PDFs/images (if available)
+                const nativeFiles = (files || [])
+                    .filter(f => f.rawFileData && (f.type === 'application/pdf' || f.type?.startsWith('image/')))
+                    .map(f => ({ data: f.rawFileData, type: f.type, name: f.name }));
+
                 // Run analyses in parallel
                 const analysisPromises = frameworkIds.map(async (promptId) => {
                     const promptConfig = RESEARCH_PROMPTS.find(p => p.id === promptId);
                     if (!promptConfig) return null;
-                    
+
                     try {
-                        const fullPrompt = `${promptConfig.prompt}\n\n--- DOCUMENT TO ANALYZE ---\n\n${content}`;
-                        
+                        // If we have native files, send them as document blocks;
+                        // the prompt goes separately (backend assembles content array)
+                        const hasNativeFiles = nativeFiles.length > 0;
+                        const promptText = hasNativeFiles
+                            ? `${promptConfig.prompt}\n\nAnalyze the above document(s) thoroughly, including all charts, graphs, tables, and visual data.`
+                            : `${promptConfig.prompt}\n\n--- DOCUMENT TO ANALYZE ---\n\n${content}`;
+
+                        const requestBody = {
+                            text: promptText,
+                            promptId: promptConfig.id,
+                            promptName: promptConfig.name,
+                            apiKey: savedApiKey
+                        };
+                        if (hasNativeFiles) requestBody.files = nativeFiles;
+
                         const response = await fetch(`${API_URL}/api/research-analyze`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                text: fullPrompt,
-                                promptId: promptConfig.id,
-                                promptName: promptConfig.name,
-                                apiKey: savedApiKey
-                            })
+                            body: JSON.stringify(requestBody)
                         });
                         
                         if (!response.ok) {
@@ -3614,12 +3737,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     const response = await fetch(`${API_URL}/api/research-document-files/${docId}`);
                     if (response.ok) {
                         const files = await response.json();
-                        // Delete each file
-                        for (const file of files) {
-                            await fetch(`${API_URL}/api/delete-research-file/${file.id}`, {
-                                method: 'DELETE'
-                            });
-                        }
+                        // Delete all files in parallel
+                        await Promise.all(files.map(file =>
+                            fetch(`${API_URL}/api/delete-research-file/${file.id}`, { method: 'DELETE' })
+                        ));
                     }
                     
                     // Update the document to remove hasStoredFiles flag
@@ -4177,13 +4298,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         if (localOverviews.length > 0 && dbOverviews.length === 0) {
                             // Migrate localStorage to database
                             console.log('Migrating localStorage overviews to database...');
-                            for (const overview of localOverviews) {
-                                await fetch(`${API_URL}/api/save-overview`, {
+                            await Promise.all(localOverviews.map(overview =>
+                                fetch(`${API_URL}/api/save-overview`, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify(overview)
-                                });
-                            }
+                                })
+                            ));
                             setSavedOverviews(localOverviews);
                         } else {
                             setSavedOverviews(dbOverviews);
@@ -4595,7 +4716,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         
                         // Import portfolio analyses to database
                         if (data.savedAnalyses && Array.isArray(data.savedAnalyses)) {
-                            for (const item of data.savedAnalyses) {
+                            const analysisResults = await Promise.all(data.savedAnalyses.map(async (item) => {
                                 try {
                                     await fetch(`${API_URL}/api/save-analysis`, {
                                         method: 'POST',
@@ -4606,29 +4727,32 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             analysis: item.analysis
                                         })
                                     });
-                                    importedCounts.analyses++;
+                                    return true;
                                 } catch (err) {
                                     console.error('Failed to import analysis:', item.ticker, err);
+                                    return false;
                                 }
-                            }
-                            // Reload from database
+                            }));
+                            importedCounts.analyses = analysisResults.filter(Boolean).length;
                             await loadSavedAnalyses();
                         }
-                        
-                        // Import overviews to database
+
+                        // Import overviews to database in parallel
                         if (data.savedOverviews && Array.isArray(data.savedOverviews)) {
-                            for (const item of data.savedOverviews) {
+                            const overviewResults = await Promise.all(data.savedOverviews.map(async (item) => {
                                 try {
                                     await fetch(`${API_URL}/api/save-overview`, {
                                         method: 'POST',
                                         headers: { 'Content-Type': 'application/json' },
                                         body: JSON.stringify(item)
                                     });
-                                    importedCounts.overviews++;
+                                    return true;
                                 } catch (err) {
                                     console.error('Failed to import overview:', item.ticker, err);
+                                    return false;
                                 }
-                            }
+                            }));
+                            importedCounts.overviews = overviewResults.filter(Boolean).length;
                             // Reload overviews from database
                             try {
                                 const response = await fetch(`${API_URL}/api/overviews`);
@@ -4799,7 +4923,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         }
                     }
 
-                    localStorage.setItem('emailCredentials', JSON.stringify(emailData));
+                    localStorage.setItem('emailCredentials', JSON.stringify(emailData)); syncSettingsToBackend();
                     setShowOverviewEmailDialog(false);
                     alert(`Overview sent to ${emailData.email}!`);
                 } catch (err) {
@@ -5053,18 +5177,77 @@ Regulatory, execution, or macro risks that could derail the thesis:
             // Chat URL for n8n chatbot
             const CHAT_URL = 'https://tdl36.app.n8n.cloud/webhook/5f8231fa-9c2d-4db7-8303-2088260bf1bb/chat';
 
+            // Auto-update: check server version on every launch, clear cache if stale
+            useEffect(() => {
+                (async () => {
+                    try {
+                        const res = await fetch('/version', { cache: 'no-store' });
+                        if (res.ok) {
+                            const { version } = await res.json();
+                            if (version && version !== BUILD_VERSION) {
+                                console.log(`Version mismatch: local=${BUILD_VERSION} server=${version}. Updating...`);
+                                // Unregister all service workers
+                                const regs = await navigator.serviceWorker?.getRegistrations() || [];
+                                for (const r of regs) await r.unregister();
+                                // Clear all caches
+                                const keys = await caches?.keys() || [];
+                                for (const k of keys) await caches.delete(k);
+                                // Reload to get fresh content
+                                window.location.reload();
+                                return;
+                            }
+                        }
+                    } catch (e) { console.log('Version check skipped:', e.message); }
+                })();
+            }, []);
+
             useEffect(() => {
                 loadSavedAnalyses();
-                
-                // Check if we already have a saved key
+
+                // Check if we already have a saved key locally
                 const existingKey = loadApiKeyFromStorage();
                 if (existingKey) {
                     setApiKeySaved(existingKey);
                     setApiKeyChecked(true);
                     return;
                 }
-                
-                // Load API key from IndexedDB (async, for iOS PWA)
+
+                // Try IndexedDB first (sync-ish), then fall back to backend
+                const loadFromBackend = async () => {
+                    try {
+                        const res = await fetch(`${API_URL}/api/settings`);
+                        if (res.ok) {
+                            const settings = await res.json();
+                            if (settings.apiKey) {
+                                console.log('Restored API key from backend');
+                                setApiKeySaved(settings.apiKey);
+                                // Save locally without re-syncing to backend
+                                try { localStorage.setItem(STORAGE_KEY, settings.apiKey); } catch(e) {}
+                                try { sessionStorage.setItem(STORAGE_KEY, settings.apiKey); } catch(e) {}
+                            }
+                            if (settings.geminiApiKey) {
+                                console.log('Restored Gemini key from backend');
+                                setGeminiApiKey(settings.geminiApiKey);
+                                try { localStorage.setItem(GEMINI_STORAGE_KEY, settings.geminiApiKey); } catch(e) {}
+                                try { sessionStorage.setItem(GEMINI_STORAGE_KEY, settings.geminiApiKey); } catch(e) {}
+                            }
+                            if (settings.googleClientId) {
+                                console.log('Restored Google Client ID from backend');
+                                setGoogleClientId(settings.googleClientId);
+                                try { localStorage.setItem('google_oauth_client_id', settings.googleClientId); } catch(e) {}
+                            }
+                            if (settings.emailCredentials) {
+                                console.log('Restored email credentials from backend');
+                                try {
+                                    localStorage.setItem('emailCredentials', settings.emailCredentials);
+                                    setEmailData(JSON.parse(settings.emailCredentials));
+                                } catch(e) {}
+                            }
+                        }
+                    } catch(e) { console.log('Backend settings fetch failed:', e.message); }
+                    setApiKeyChecked(true);
+                };
+
                 try {
                     const request = indexedDB.open('EquityAnalyzerDB', 1);
                     request.onupgradeneeded = (e) => {
@@ -5080,27 +5263,53 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             const getReq = tx.objectStore('settings').get('apiKey');
                             getReq.onsuccess = () => {
                                 const idbKey = getReq.result?.value;
-                                if (idbKey && !apiKeySaved) {
+                                if (idbKey) {
                                     console.log('Loaded API key from IndexedDB');
                                     setApiKeySaved(idbKey);
-                                    // Sync to other storage
                                     try { localStorage.setItem(STORAGE_KEY, idbKey); } catch(e) {}
                                     try { sessionStorage.setItem(STORAGE_KEY, idbKey); } catch(e) {}
+                                    setApiKeyChecked(true);
+                                } else {
+                                    // Not in IndexedDB either — try backend
+                                    loadFromBackend();
                                 }
-                                setApiKeyChecked(true);
                             };
                         } else {
-                            setApiKeyChecked(true);
+                            loadFromBackend();
                         }
                     };
                     request.onerror = () => {
-                        setApiKeyChecked(true);
+                        loadFromBackend();
                     };
                 } catch(e) {
-                    setApiKeyChecked(true);
+                    loadFromBackend();
                 }
             }, []);
             
+            // Reconnect to background analysis job on mount
+            useEffect(() => {
+                try {
+                    const saved = localStorage.getItem('charlie_bg_analysis');
+                    if (saved) {
+                        const jobMeta = JSON.parse(saved);
+                        if (Date.now() - jobMeta.startTime < 1800000) {
+                            setBgAnalysisJob({ ...jobMeta, status: 'pending', progress: 'Reconnecting...' });
+                            startBgAnalysisPoll(jobMeta);
+                        } else {
+                            localStorage.removeItem('charlie_bg_analysis');
+                        }
+                    }
+                } catch(e) { localStorage.removeItem('charlie_bg_analysis'); }
+                return () => { if (bgAnalysisPollRef.current) clearTimeout(bgAnalysisPollRef.current); };
+            }, []);
+
+            // Tick every second for elapsed time display during analysis
+            useEffect(() => {
+                if (!analysisProgress) return;
+                const interval = setInterval(() => setProgressTick(t => t + 1), 1000);
+                return () => clearInterval(interval);
+            }, [!!analysisProgress]);
+
             // Scroll detection for scroll-to-top button
             useEffect(() => {
                 const handleGlobalScroll = (e) => {
@@ -5116,15 +5325,21 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 return () => document.removeEventListener('scroll', handleGlobalScroll, true);
             }, []);
 
-            const loadSavedAnalyses = async () => {
+            const loadSavedAnalyses = async (retries = 2) => {
                 try {
                     const response = await fetch(`${API_URL}/api/analyses`);
                     if (response.ok) {
                         const data = await response.json();
                         setSavedAnalyses(data);
+                    } else if (retries > 0) {
+                        // Backend may be cold-starting, retry after delay
+                        setTimeout(() => loadSavedAnalyses(retries - 1), 3000);
                     }
                 } catch (err) {
                     console.error('Failed to load analyses:', err);
+                    if (retries > 0) {
+                        setTimeout(() => loadSavedAnalyses(retries - 1), 3000);
+                    }
                 }
             };
 
@@ -5947,52 +6162,73 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     const meeting = mpSelectedMeeting;
                     const meetingId = meeting.id;
 
-                    // Fetch extracted text for each document
-                    const docsWithText = [];
-                    for (const doc of mpDocuments) {
-                        const textRes = await fetch(`${API_URL}/api/mp/meetings/${meetingId}/documents/${doc.id}/text`);
-                        if (textRes.ok) {
-                            const textData = await textRes.json();
-                            if (textData.extractedText) docsWithText.push(textData);
-                        }
-                    }
-                    if (!docsWithText.length) throw new Error('No documents have extracted text');
+                    // Fetch document info for all documents in parallel
+                    setMpPipelineStep('analyzing');
+                    setMpPipelineProgress('Loading documents...');
+                    const textResults = await Promise.all(
+                        mpDocuments.map(async (doc) => {
+                            try {
+                                const textRes = await fetch(`${API_URL}/api/mp/meetings/${meetingId}/documents/${doc.id}/text`);
+                                if (textRes.ok) {
+                                    const textData = await textRes.json();
+                                    if (textData.extractedText || textData.hasFileData) return textData;
+                                }
+                            } catch (e) { console.warn('Text fetch failed for', doc.filename, e); }
+                            return null;
+                        })
+                    );
+                    const docsWithText = textResults.filter(Boolean);
+                    if (!docsWithText.length) throw new Error('No analyzable documents found');
 
-                    // Step 1: Analyze each document
-                    const analyses = [];
+                    // Step 1: Analyze documents with concurrency limit (2 at a time to avoid backend overload)
                     let totalTokens = 0;
-                    // Helper to parse streaming response (spaces as keepalive, JSON on last line)
                     const parseStreamResponse = async (resp, stepName) => {
                         const text = await resp.text();
                         const trimmed = text.trim();
+                        if (!trimmed) throw new Error(`${stepName}: Empty response from server (possible timeout)`);
                         const lastNewline = trimmed.lastIndexOf('\n');
                         const jsonStr = lastNewline >= 0 ? trimmed.substring(lastNewline + 1) : trimmed;
-                        const data = JSON.parse(jsonStr);
-                        if (data.error) throw new Error(`${stepName}: ${data.error}`);
-                        return data;
+                        try {
+                            const data = JSON.parse(jsonStr);
+                            if (data.error) throw new Error(`${stepName}: ${data.error}`);
+                            return data;
+                        } catch (parseErr) {
+                            throw new Error(`${stepName}: Invalid response (server may have timed out). Got: ${jsonStr.substring(0, 100)}`);
+                        }
                     };
 
-                    for (let i = 0; i < docsWithText.length; i++) {
-                        const d = docsWithText[i];
-                        setMpPipelineStep('analyzing');
-                        setMpPipelineProgress(`Analyzing document ${i + 1} of ${docsWithText.length}: ${d.filename}`);
+                    let completedCount = 0;
+                    setMpPipelineProgress(`Analyzing ${docsWithText.length} documents (0/${docsWithText.length} done)...`);
 
-                        const resp = await fetch(`${API_URL}/api/mp/analyze-document`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                apiKey, ticker: meeting.ticker, companyName: meeting.company_name,
-                                docId: d.id, extractedText: d.extractedText, docType: d.docType, filename: d.filename
-                            })
-                        });
-                        if (!resp.ok) {
-                            const errText = await resp.text().catch(() => '');
-                            throw new Error(`Analysis failed for ${d.filename}: ${errText}`);
+                    // Concurrency-limited parallel execution
+                    const CONCURRENCY = 4;
+                    const analysisResults = [];
+                    const queue = [...docsWithText];
+                    const runOne = async () => {
+                        while (queue.length > 0) {
+                            const d = queue.shift();
+                            const resp = await fetch(`${API_URL}/api/mp/analyze-document`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    apiKey, ticker: meeting.ticker, companyName: meeting.company_name,
+                                    docId: d.id, extractedText: d.extractedText, docType: d.docType, filename: d.filename
+                                })
+                            });
+                            if (!resp.ok) {
+                                const errText = await resp.text().catch(() => '');
+                                throw new Error(`Analysis failed for ${d.filename}: ${errText}`);
+                            }
+                            const data = await parseStreamResponse(resp, `Analysis of ${d.filename}`);
+                            completedCount++;
+                            setMpPipelineProgress(`Analyzing ${docsWithText.length} documents (${completedCount}/${docsWithText.length} done)...`);
+                            analysisResults.push({ ...data.analysis, _source_filename: d.filename, _source_id: d.id, _tokensUsed: data.tokensUsed || 0 });
                         }
-                        const data = await parseStreamResponse(resp, `Analysis of ${d.filename}`);
-                        analyses.push({ ...data.analysis, _source_filename: d.filename, _source_id: d.id });
-                        totalTokens += data.tokensUsed || 0;
-                    }
+                    };
+                    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, docsWithText.length) }, () => runOne()));
+
+                    const analyses = analysisResults;
+                    totalTokens = analysisResults.reduce((sum, a) => sum + (a._tokensUsed || 0), 0);
 
                     // Step 2: Synthesize
                     setMpPipelineStep('synthesizing');
@@ -6137,7 +6373,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
             // Google Drive functions (shared across tabs)
             const authGoogle = () => {
                 return new Promise((resolve, reject) => {
-                    const clientId = googleClientId || localStorage.getItem('google_oauth_client_id') || '';
+                    let clientId = (googleClientId || localStorage.getItem('google_oauth_client_id') || '').trim();
+                    // Auto-clean: strip http(s):// prefix and trailing slashes
+                    clientId = clientId.replace(/^https?:\/\//, '').replace(/\/+$/, '');
                     if (!clientId) {
                         reject(new Error('Please add your Google OAuth Client ID in Settings first'));
                         return;
@@ -7501,6 +7739,197 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 setDraggedIndex(null);
             };
 
+            // Call Claude API directly from browser — bypasses Cloudflare Worker + Render proxy chain
+            // to avoid 502 timeouts on large multi-document analysis requests.
+            const callClaudeDirectly = async (apiKey, allDocuments, existingAnalysis, historicalWeights, weightingConfig) => {
+                const simpleMode = weightingConfig?.mode === 'simple';
+                const existingWeight = weightingConfig?.existingAnalysisWeight || 70;
+                const newDocsWeight = weightingConfig?.newDocsWeight || 30;
+
+                // --- Helper: count PDF pages using pdf.js ---
+                const countPdfPages = async (base64Data) => {
+                    try {
+                        await window.pdfjsReady;
+                        if (!window.pdfjsLib) return 30; // assume 30 if pdf.js unavailable
+                        const data = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+                        const pdf = await window.pdfjsLib.getDocument({ data }).promise;
+                        return pdf.numPages;
+                    } catch { return 30; }
+                };
+
+                // --- Helper: call Claude API for one batch of documents ---
+                const callClaudeBatch = async (batchDocs, currentAnalysis, batchNum, totalBatches, onProgress) => {
+                    const content = [];
+
+                    // Document headers + content blocks
+                    for (const doc of batchDocs) {
+                        if (!doc.fileData) continue;
+                        const totalW = allDocuments.reduce((s, d) => s + (d.weight || 1), 0) + (historicalWeights || []).reduce((s, d) => s + (d.weight || 1), 0);
+                        const pct = totalW > 0 ? Math.round((doc.weight || 1) / totalW * 100) : 0;
+                        let header;
+                        if (simpleMode && currentAnalysis && doc.isNew !== false) {
+                            const perNew = newDocsWeight / allDocuments.filter(d => d.isNew !== false).length || 1;
+                            header = `\n=== NEW DOCUMENT (${Math.round(perNew)}% update weight): ${doc.filename} ===`;
+                        } else if (simpleMode && currentAnalysis) {
+                            header = `\n=== EXISTING DOCUMENT (Reference): ${doc.filename} ===`;
+                        } else {
+                            header = `\n=== DOCUMENT: ${doc.filename} (Weight: ${pct}%) ===`;
+                        }
+                        content.push({ type: 'text', text: header });
+
+                        if (doc.fileType === 'pdf') {
+                            content.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: doc.fileData } });
+                        } else if (doc.fileType === 'image') {
+                            content.push({ type: 'image', source: { type: 'base64', media_type: doc.mimeType || 'image/png', data: doc.fileData } });
+                        } else {
+                            try { content.push({ type: 'text', text: atob(doc.fileData) }); }
+                            catch { content.push({ type: 'text', text: doc.fileData }); }
+                        }
+                    }
+
+                    if (content.length === 0) throw new Error('No valid documents to analyze');
+
+                    // Build prompt
+                    const STYLE_RULES = 'IMPORTANT STYLE RULES:\n- Do NOT reference any sellside broker names in the prose\n- Do NOT reference specific analyst names\n- Do NOT include specific broker price targets\n- Write as independent analysis without attribution to sources\n- Output should read like original independent research';
+
+                    const JSON_SCHEMA = '{"ticker":"TICKER","company":"Name","thesis":{"summary":"...","pillars":[{"title":"...","description":"...","confidence":"High/Medium/Low","sources":[{"filename":"...","excerpt":"..."}]}]},"signposts":[{"metric":"...","target":"...","timeframe":"...","category":"Financial/Operational/Strategic/Market","confidence":"High/Medium/Low","sources":[]}],"threats":[{"threat":"...","likelihood":"...","impact":"...","triggerPoints":"...","sources":[]}],"documentMetadata":[{"filename":"...","docType":"broker_report","source":"...","publishDate":"YYYY-MM-DD","authors":[],"title":"..."}]}';
+
+                    let analysisPrompt;
+                    if (currentAnalysis) {
+                        const batchNote = totalBatches > 1 ? `\n\nNote: This is batch ${batchNum} of ${totalBatches}. Incorporate these documents into the existing analysis.\n` : '';
+                        const weightInstr = simpleMode
+                            ? `WEIGHTING: Preserve ${existingWeight}% of existing analysis. New documents contribute ${newDocsWeight}% changes. Keep most existing content intact, only add minor refinements.\n`
+                            : 'Give MORE emphasis to higher-weighted documents.\n';
+                        analysisPrompt = `Update this existing analysis with new information from the documents.${batchNote}\n\nExisting Analysis:\n${JSON.stringify(currentAnalysis, null, 2)}\n\n${weightInstr}\nReview the new documents and:\n1. Update or confirm the investment thesis\n2. Add any new signposts or update existing ones\n3. Add any new threats or update existing ones\n4. Note what changed in the "changes" array\n5. Extract metadata for ALL documents\n\n${STYLE_RULES}\n\nReturn the updated analysis as JSON with the same structure plus a "changes" array.\nReturn ONLY valid JSON, no markdown, no explanation.`;
+                    } else {
+                        const batchNote = totalBatches > 1 ? `\n\nNote: This is batch ${batchNum} of ${totalBatches}. More documents will follow.\n` : '';
+                        analysisPrompt = `Analyze these documents and create a comprehensive investment analysis.${batchNote}\n\nReturn a JSON object with this structure:\n${JSON_SCHEMA}\n\n${STYLE_RULES}\n\nFocus on:\n1. Investment Thesis with confidence and source citations\n2. Signposts - specific KPIs, events, milestones\n3. Threats - bear case scenarios with likelihood, impact, trigger points\n\nReturn ONLY valid JSON, no markdown, no explanation.`;
+                    }
+                    content.push({ type: 'text', text: analysisPrompt });
+
+                    // Call Anthropic API with streaming
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 300000);
+                    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'x-api-key': apiKey,
+                            'anthropic-version': '2023-06-01',
+                            'anthropic-dangerous-direct-browser-access': 'true'
+                        },
+                        body: JSON.stringify({
+                            model: 'claude-sonnet-4-5-20250929',
+                            max_tokens: 16384,
+                            stream: true,
+                            messages: [{ role: 'user', content }],
+                            system: 'You are an expert equity research analyst. Analyze documents thoroughly and provide institutional-quality investment analysis. Always respond with valid JSON only.'
+                        }),
+                        signal: controller.signal
+                    });
+                    clearTimeout(timeoutId);
+
+                    if (!resp.ok) {
+                        const errData = await resp.json().catch(() => ({}));
+                        throw new Error(errData?.error?.message || `API error: ${resp.status}`);
+                    }
+
+                    // Parse SSE stream
+                    const reader = resp.body.getReader();
+                    const decoder = new TextDecoder();
+                    let fullText = '';
+                    let usageData = {};
+                    let buffer = '';
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        buffer += decoder.decode(value, { stream: true });
+                        const lines = buffer.split('\n');
+                        buffer = lines.pop();
+                        for (const line of lines) {
+                            if (!line.startsWith('data: ') || line === 'data: [DONE]') continue;
+                            try {
+                                const evt = JSON.parse(line.slice(6));
+                                if (evt.type === 'content_block_delta' && evt.delta?.text) {
+                                    fullText += evt.delta.text;
+                                    if (onProgress) onProgress({ charsReceived: fullText.length });
+                                }
+                                else if (evt.type === 'message_delta' && evt.usage) usageData.output_tokens = evt.usage.output_tokens;
+                                else if (evt.type === 'message_start' && evt.message?.usage) usageData.input_tokens = evt.message.usage.input_tokens;
+                            } catch {}
+                        }
+                    }
+
+                    // Parse JSON response
+                    let cleaned = fullText.trim();
+                    if (cleaned.startsWith('```')) cleaned = cleaned.split('\n').slice(1).join('\n');
+                    if (cleaned.endsWith('```')) cleaned = cleaned.split('\n').slice(0, -1).join('\n');
+                    if (cleaned.startsWith('json')) cleaned = cleaned.slice(4).trim();
+
+                    const result = JSON.parse(cleaned);
+                    const changes = result.changes || []; delete result.changes;
+                    const documentMetadata = result.documentMetadata || []; delete result.documentMetadata;
+                    return { analysis: result, changes, documentMetadata, usage: usageData };
+                };
+
+                // --- Count pages and group into batches ---
+                setAnalysisProgress({ phase: 'counting', startTime: Date.now(), batchNum: 0, totalBatches: 0, charsReceived: 0, batchPages: 0, estimatedTotalChars: 10000 });
+                const docsWithPages = [];
+                for (const doc of allDocuments) {
+                    const pages = (doc.fileType === 'pdf' && doc.fileData) ? await countPdfPages(doc.fileData) : 0;
+                    docsWithPages.push({ ...doc, _pages: pages });
+                }
+                const totalPages = docsWithPages.reduce((s, d) => s + d._pages, 0);
+
+                let batches;
+                if (totalPages <= 50) {
+                    // Fits in one batch — send all as native PDFs (full fidelity)
+                    batches = [docsWithPages];
+                } else {
+                    // Split into batches of ≤50 pages (broker PDFs with charts are token-heavy)
+                    batches = [];
+                    let batch = [];
+                    let batchPages = 0;
+                    for (const doc of docsWithPages) {
+                        if (batchPages + doc._pages > 50 && batch.length > 0) {
+                            batches.push(batch);
+                            batch = [];
+                            batchPages = 0;
+                        }
+                        batch.push(doc);
+                        batchPages += doc._pages;
+                    }
+                    if (batch.length > 0) batches.push(batch);
+                }
+
+                console.log(`[callClaudeDirectly] ${totalPages} total pages across ${allDocuments.length} docs → ${batches.length} batch(es)`);
+
+                // --- Process batches sequentially ---
+                let currentAnalysis = existingAnalysis;
+                let allChanges = [];
+                let allMetadata = [];
+                let totalUsage = { input_tokens: 0, output_tokens: 0 };
+
+                for (let i = 0; i < batches.length; i++) {
+                    const batchPages = batches[i].reduce((s,d) => s + d._pages, 0);
+                    setAnalysisProgress(prev => ({ ...prev, phase: 'processing', batchNum: i + 1, totalBatches: batches.length, batchPages, charsReceived: 0, batchStartTime: Date.now(), estimatedTotalChars: 10000 }));
+                    const result = await callClaudeBatch(batches[i], currentAnalysis, i + 1, batches.length, ({ charsReceived }) => {
+                        setAnalysisProgress(prev => prev ? { ...prev, charsReceived } : null);
+                    });
+                    currentAnalysis = result.analysis;
+                    allChanges.push(...result.changes);
+                    // Merge metadata without duplicates
+                    for (const meta of result.documentMetadata) {
+                        if (!allMetadata.find(m => m.filename === meta.filename)) allMetadata.push(meta);
+                    }
+                    totalUsage.input_tokens += result.usage.input_tokens || 0;
+                    totalUsage.output_tokens += result.usage.output_tokens || 0;
+                }
+
+                setAnalysisProgress(prev => prev ? { ...prev, phase: 'saving' } : null);
+                return { analysis: currentAnalysis, changes: allChanges, documentMetadata: allMetadata, usage: totalUsage };
+            };
+
             // Robust retry helper with exponential backoff and longer timeouts
             const fetchWithRetry = async (url, options, maxRetries = 5) => {
                 let lastError;
@@ -7627,24 +8056,14 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         newDocsWeight: weightingMode === 'simple' ? (100 - existingAnalysisWeight) : null
                     };
                     
-                    const response = await fetchWithRetry(`${API_URL}/api/analyze-multi`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                            apiKey: apiKeySaved, 
-                            documents: allDocuments,
-                            existingAnalysis: analysis?.documentHistory?.length > 0 ? analysis : null,
-                            historicalWeights,
-                            weightingConfig
-                        })
-                    }, 5); // 5 retry attempts for more resilience
-
-                    const data = await response.json();
-
-                    // Check for error in response body (heartbeat streaming returns 200 with error in JSON)
-                    if (data.error) {
-                        throw new Error(data.error);
-                    }
+                    // Call Claude API directly from browser (bypasses Cloudflare/Render proxy chain)
+                    const data = await callClaudeDirectly(
+                        apiKeySaved,
+                        allDocuments,
+                        analysis?.documentHistory?.length > 0 ? analysis : null,
+                        historicalWeights,
+                        weightingConfig
+                    );
 
                     // Get extracted document metadata from Claude
                     const extractedMetadata = data.documentMetadata || [];
@@ -7769,6 +8188,142 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     }
                 } catch (err) {
                     setError(`Analysis failed: ${err.message}. Try with fewer or smaller documents.`);
+                } finally {
+                    setLoading(false);
+                    setAnalysisProgress(null);
+                }
+            };
+
+            // Apply analysis result from background job (simplified version of post-analysis logic)
+            const applyAnalysisResult = (data) => {
+                const extractedMetadata = data.documentMetadata || [];
+                const existingDocs = analysis?.documentHistory || [];
+                const mergedDocs = [...existingDocs];
+                for (const meta of extractedMetadata) {
+                    const idx = mergedDocs.findIndex(d => d.filename === meta.filename);
+                    if (idx >= 0) {
+                        mergedDocs[idx] = { ...mergedDocs[idx], docType: meta.docType, source: meta.source, publishDate: meta.publishDate, authors: meta.authors || [], title: meta.title };
+                    } else {
+                        mergedDocs.push({ filename: meta.filename, docType: meta.docType, source: meta.source, publishDate: meta.publishDate, authors: meta.authors || [], title: meta.title, weight: 1, stored: false, addedAt: new Date().toISOString() });
+                    }
+                }
+                const storedFilenames = storedDocuments.map(d => d.filename);
+                const finalDocs = mergedDocs.map(d => ({ ...d, stored: storedFilenames.includes(d.filename) }));
+                const existingHistory = analysis?.history || [];
+                let updatedHistory = [...existingHistory];
+                if (analysis?.thesis || analysis?.signposts || analysis?.threats) {
+                    updatedHistory.push({ timestamp: analysis.updatedAt || new Date().toISOString(), thesis: analysis.thesis, signposts: analysis.signposts, threats: analysis.threats });
+                    updatedHistory = updatedHistory.slice(-20);
+                }
+                setAnalysis({ ...data.analysis, documentHistory: finalDocs, history: updatedHistory });
+                setChanges(data.changes || []);
+                setExpanded({ thesis: true, signposts: true, threats: true, changes: true });
+                setShowSaveDialog(true);
+                setShowDocumentManager(false);
+                setError(null);
+            };
+
+            // Poll for background analysis job status
+            const startBgAnalysisPoll = (jobMeta) => {
+                if (bgAnalysisPollRef.current) clearTimeout(bgAnalysisPollRef.current);
+                const getTimeStr = () => {
+                    const s = Math.floor((Date.now() - jobMeta.startTime) / 1000);
+                    return s >= 60 ? `${Math.floor(s/60)}m ${s%60}s` : `${s}s`;
+                };
+                const poll = async () => {
+                    try {
+                        const res = await fetch(`${API_URL}/api/analysis-job/${jobMeta.jobId}/status`);
+                        if (res.status === 404) {
+                            setBgAnalysisJob(prev => prev ? { ...prev, status: 'failed', progress: 'Job lost (server restarted). Please retry.' } : null);
+                            localStorage.removeItem('charlie_bg_analysis');
+                            return;
+                        }
+                        const data = await res.json();
+                        if (data.status === 'complete') {
+                            applyAnalysisResult(data.result);
+                            setBgAnalysisJob(prev => prev ? { ...prev, status: 'complete', progress: `Analysis complete (${getTimeStr()})` } : null);
+                            localStorage.removeItem('charlie_bg_analysis');
+                            setTimeout(() => setBgAnalysisJob(null), 8000);
+                            return;
+                        }
+                        if (data.status === 'failed') {
+                            setBgAnalysisJob(prev => prev ? { ...prev, status: 'failed', progress: `Failed: ${data.error}` } : null);
+                            localStorage.removeItem('charlie_bg_analysis');
+                            return;
+                        }
+                        setBgAnalysisJob(prev => prev ? { ...prev, status: data.status, progress: `${data.progress || 'Processing...'} — ${getTimeStr()}`, batchNum: data.batchNum, totalBatches: data.totalBatches, charsReceived: data.charsReceived } : null);
+                    } catch (err) {
+                        console.warn('Analysis poll error:', err);
+                    }
+                    bgAnalysisPollRef.current = setTimeout(poll, 3000);
+                };
+                poll();
+            };
+
+            // Start background analysis (sends job to backend)
+            const startBackgroundAnalysis = async () => {
+                if (bgAnalysisJob && bgAnalysisJob.status !== 'complete' && bgAnalysisJob.status !== 'failed') {
+                    setError('A background analysis is already running. Wait for it to finish.');
+                    return;
+                }
+                if (!apiKeySaved) { setError('Please set your API key first'); return; }
+                const enabled = documents.filter(d => d.enabled);
+                if (!enabled.length) { setError('No enabled documents to analyze'); return; }
+
+                setLoading(true);
+                setError(null);
+                try {
+                    const ticker = currentTicker || analysis?.ticker || 'TEMP';
+
+                    // Save documents to backend first
+                    const newDocs = enabled.map(d => ({
+                        filename: d.filename, fileData: d.fileData, fileType: d.fileType,
+                        mimeType: d.mimeType, metadata: d.metadata
+                    }));
+                    await saveDocumentsToStorage(ticker, newDocs);
+
+                    // Prepare doc details
+                    const storedDocsForAnalysis = storedDocuments.filter(d => {
+                        const group = documentGroups.find(g => g.documents?.includes(d.filename));
+                        return !group || group.enabled !== false;
+                    }).filter(d => d.fileData);
+                    const allDocFilenames = [...enabled.map(d => d.filename), ...storedDocsForAnalysis.map(d => d.filename)];
+                    const docDetails = [
+                        ...enabled.map(d => ({ filename: d.filename, weight: d.weight || 1, isNew: true })),
+                        ...storedDocsForAnalysis.map(d => ({ filename: d.filename, weight: d.weight || 1, isNew: false }))
+                    ];
+                    const historicalWeights = (analysis?.documentHistory || [])
+                        .filter(d => d.includeInContext !== false)
+                        .filter(d => !storedDocsForAnalysis.find(sd => sd.filename === d.filename))
+                        .map(d => ({ filename: d.filename, weight: d.weight || 1 }));
+                    const weightingConfig = {
+                        mode: weightingMode,
+                        existingAnalysisWeight: weightingMode === 'simple' ? existingAnalysisWeight : null,
+                        newDocsWeight: weightingMode === 'simple' ? (100 - existingAnalysisWeight) : null
+                    };
+
+                    const response = await fetch(`${API_URL}/api/analysis-job`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            apiKey: apiKeySaved, ticker,
+                            documentFilenames: allDocFilenames,
+                            documentDetails: docDetails,
+                            existingAnalysis: analysis?.documentHistory?.length > 0 ? analysis : null,
+                            historicalWeights, weightingConfig
+                        })
+                    });
+                    if (!response.ok) {
+                        const err = await response.json().catch(() => ({}));
+                        throw new Error(err.error || 'Failed to start analysis');
+                    }
+                    const { jobId } = await response.json();
+                    const jobMeta = { jobId, ticker, startTime: Date.now() };
+                    localStorage.setItem('charlie_bg_analysis', JSON.stringify(jobMeta));
+                    setBgAnalysisJob({ ...jobMeta, status: 'pending', progress: 'Starting analysis...' });
+                    startBgAnalysisPoll(jobMeta);
+                } catch (err) {
+                    setError(`Background analysis failed: ${err.message}`);
                 } finally {
                     setLoading(false);
                 }
@@ -7901,7 +8456,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     }
 
                     // Save credentials to localStorage for next time
-                    localStorage.setItem('emailCredentials', JSON.stringify(emailData));
+                    localStorage.setItem('emailCredentials', JSON.stringify(emailData)); syncSettingsToBackend();
 
                     setShowEmailDialog(false);
                     alert(`Email sent to ${emailData.email}!`);
@@ -9118,10 +9673,75 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     </>
                                                 )}
                                             </button>
-                                            {loading && (
-                                                <p className="text-xs text-slate-500 mt-3 animate-pulse">This may take 1-2 minutes</p>
+                                            {loading && analysisProgress ? (
+                                                <div className="mt-4 bg-white/[0.04] border border-white/10 rounded-xl p-4 space-y-3">
+                                                    <div className="flex justify-between items-center text-sm">
+                                                        <span className="text-slate-300 font-medium">
+                                                            {analysisProgress.phase === 'counting' && 'Counting pages...'}
+                                                            {analysisProgress.phase === 'processing' && `Analyzing batch ${analysisProgress.batchNum} of ${analysisProgress.totalBatches}`}
+                                                            {analysisProgress.phase === 'saving' && 'Saving results...'}
+                                                        </span>
+                                                        <span className="text-slate-500 font-mono text-xs">
+                                                            {(() => { const s = Math.floor((Date.now() - analysisProgress.startTime) / 1000); return s >= 60 ? `${Math.floor(s/60)}m ${s%60}s` : `${s}s`; })()}
+                                                        </span>
+                                                    </div>
+                                                    {analysisProgress.phase === 'processing' && (
+                                                        <>
+                                                            <div className="w-full bg-white/5 rounded-full h-2 overflow-hidden">
+                                                                <div className="h-full bg-gradient-to-r from-teal-500 to-teal-400 rounded-full transition-all duration-300"
+                                                                    style={{ width: `${Math.min(95, Math.max(5, (analysisProgress.charsReceived / analysisProgress.estimatedTotalChars) * 100))}%` }} />
+                                                            </div>
+                                                            <div className="flex justify-between text-xs text-slate-500">
+                                                                <span>{analysisProgress.batchPages} pages | {Math.round(analysisProgress.charsReceived / 1000)}k chars</span>
+                                                                <span>~{Math.min(95, Math.round(analysisProgress.charsReceived / analysisProgress.estimatedTotalChars * 100))}%</span>
+                                                            </div>
+                                                        </>
+                                                    )}
+                                                    {analysisProgress.totalBatches > 1 && (
+                                                        <div className="flex gap-1.5 justify-center pt-1">
+                                                            {Array.from({ length: analysisProgress.totalBatches }, (_, i) =>
+                                                                React.createElement('div', { key: i, className: `w-2 h-2 rounded-full ${i + 1 < analysisProgress.batchNum ? 'bg-teal-400' : i + 1 === analysisProgress.batchNum ? 'bg-teal-400 animate-pulse' : 'bg-white/10'}` })
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : loading && (
+                                                <p className="text-xs text-slate-500 mt-3 animate-pulse">Starting analysis...</p>
+                                            )}
+                                            {!loading && documents.filter(d => d.enabled).length > 0 && (
+                                                <button
+                                                    onClick={startBackgroundAnalysis}
+                                                    disabled={bgAnalysisJob && !['complete','failed'].includes(bgAnalysisJob.status)}
+                                                    className="mt-2 w-full py-2 text-xs text-slate-400 hover:text-teal-300 hover:bg-white/5 rounded-lg transition-colors flex items-center justify-center gap-1.5 disabled:opacity-40"
+                                                >
+                                                    <Cloud className="w-3.5 h-3.5" />
+                                                    <span>Run in Background</span>
+                                                    <span className="text-slate-600 ml-1">(leave app while analyzing)</span>
+                                                </button>
                                             )}
                                         </div>
+
+                                        {bgAnalysisJob && (
+                                            <div className={`mt-4 px-4 py-3 flex items-center gap-3 text-sm border rounded-xl ${
+                                                bgAnalysisJob.status === 'complete' ? 'bg-teal-900/40 border-teal-500/30 text-teal-300' :
+                                                bgAnalysisJob.status === 'failed' ? 'bg-red-900/40 border-red-500/30 text-red-300' :
+                                                'bg-indigo-900/30 border-indigo-500/20 text-indigo-200'
+                                            }`}>
+                                                {!['complete','failed'].includes(bgAnalysisJob.status) && (
+                                                    React.createElement(RefreshCw, { className: "w-4 h-4 animate-spin flex-shrink-0" })
+                                                )}
+                                                {bgAnalysisJob.status === 'complete' && React.createElement(Check, { className: "w-4 h-4 flex-shrink-0" })}
+                                                {bgAnalysisJob.status === 'failed' && React.createElement(AlertTriangle, { className: "w-4 h-4 flex-shrink-0" })}
+                                                <span className="flex-1 min-w-0 text-xs sm:text-sm leading-snug">{bgAnalysisJob.progress}</span>
+                                                <button onClick={() => {
+                                                    setBgAnalysisJob(null);
+                                                    localStorage.removeItem('charlie_bg_analysis');
+                                                    if (bgAnalysisPollRef.current) clearTimeout(bgAnalysisPollRef.current);
+                                                }} className="p-1 hover:bg-white/10 rounded flex-shrink-0">
+                                                    {React.createElement(X, { className: "w-3.5 h-3.5" })}
+                                                </button>
+                                            </div>
+                                        )}
 
                                         {error && (
                                             <div className={`mt-4 p-3 ${error.includes('Retry') ? 'bg-amber-950/30 border-amber-800 text-amber-400' : 'bg-red-950/30 border-red-800 text-red-400'} border rounded-lg text-sm`}>
@@ -10796,13 +11416,24 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     {getFilteredSummaries().length} document{getFilteredSummaries().length !== 1 ? 's' : ''}
                                                 </p>
                                             </div>
-                                            <button
-                                                onClick={openNewSummaryInput}
-                                                className="px-4 py-2 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 rounded-lg text-sm font-medium flex items-center gap-2 shadow-lg shadow-teal-500/30"
-                                            >
-                                                <Plus className="w-4 h-4" />
-                                                Add Document
-                                            </button>
+                                            <div className="flex items-center gap-2">
+                                                {(!currentSummary || summaryViewMode === 'list') && getFilteredSummaries().length > 0 && (
+                                                    <button
+                                                        onClick={() => { setSummarySelectMode(!summarySelectMode); setSelectedSummaryIds(new Set()); }}
+                                                        className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all ${summarySelectMode ? 'bg-blue-600 text-white' : 'bg-white/10 hover:bg-white/15 text-slate-300'}`}
+                                                    >
+                                                        <Check className="w-4 h-4" />
+                                                        {summarySelectMode ? 'Cancel' : 'Select'}
+                                                    </button>
+                                                )}
+                                                <button
+                                                    onClick={openNewSummaryInput}
+                                                    className="px-4 py-2 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 rounded-lg text-sm font-medium flex items-center gap-2 shadow-lg shadow-teal-500/30"
+                                                >
+                                                    <Plus className="w-4 h-4" />
+                                                    Add Document
+                                                </button>
+                                            </div>
                                         </div>
 
                                         {/* LIST VIEW - Show document cards */}
@@ -10831,11 +11462,16 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     getFilteredSummaries().map(summary => (
                                                         <div
                                                             key={summary.id}
-                                                            onClick={() => openSummaryDetail(summary)}
-                                                            className="bg-white/[0.07] backdrop-blur-lg rounded-xl border border-white/10 p-4 hover:bg-white/[0.12] hover:border-white/15 cursor-pointer transition-all group relative"
+                                                            onClick={() => summarySelectMode ? toggleSummarySelection(summary.id) : openSummaryDetail(summary)}
+                                                            className={`bg-white/[0.07] backdrop-blur-lg rounded-xl border p-4 hover:bg-white/[0.12] cursor-pointer transition-all group relative ${selectedSummaryIds.has(summary.id) ? 'border-blue-500 bg-blue-500/10' : 'border-white/10 hover:border-white/15'}`}
                                                         >
                                                             {/* Title row with icon */}
                                                             <div className="flex items-start gap-2 mb-1 pr-8">
+                                                                {summarySelectMode && (
+                                                                    <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-all ${selectedSummaryIds.has(summary.id) ? 'bg-blue-500 border-blue-500' : 'border-slate-500'}`}>
+                                                                        {selectedSummaryIds.has(summary.id) && <Check className="w-3 h-3 text-white" />}
+                                                                    </div>
+                                                                )}
                                                                 {summary.sourceType === 'audio' ? (
                                                                     <Mic className="w-4 h-4 text-purple-400 flex-shrink-0 mt-0.5" />
                                                                 ) : summary.sourceType === 'upload' ? (
@@ -10904,6 +11540,35 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     ))
                                                 )}
                                             </div>
+
+                                            {/* Floating bulk action bar */}
+                                            {summarySelectMode && selectedSummaryIds.size > 0 && (
+                                                <div className="sticky bottom-0 mt-4 p-3 bg-slate-800/95 backdrop-blur-xl rounded-xl border border-white/15 shadow-2xl flex items-center justify-between gap-3">
+                                                    <div className="flex items-center gap-3 text-sm">
+                                                        <span className="font-medium">{selectedSummaryIds.size} selected</span>
+                                                        <button onClick={() => setSelectedSummaryIds(new Set(getFilteredSummaries().map(s => s.id)))} className="text-blue-400 hover:text-blue-300 text-xs">Select All</button>
+                                                        <button onClick={() => setSelectedSummaryIds(new Set())} className="text-slate-400 hover:text-slate-300 text-xs">Deselect All</button>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <button
+                                                            onClick={() => bulkDownloadSummaries('docx')}
+                                                            disabled={bulkExportLoading}
+                                                            className="px-3 py-1.5 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 rounded-lg text-xs font-medium flex items-center gap-1.5 shadow-lg disabled:opacity-50"
+                                                        >
+                                                            <Download className="w-3.5 h-3.5" />
+                                                            {bulkExportLoading ? 'Exporting...' : 'Word (.docx)'}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => bulkDownloadSummaries('pdf')}
+                                                            disabled={bulkExportLoading}
+                                                            className="px-3 py-1.5 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 rounded-lg text-xs font-medium flex items-center gap-1.5 shadow-lg disabled:opacity-50"
+                                                        >
+                                                            <Download className="w-3.5 h-3.5" />
+                                                            {bulkExportLoading ? 'Exporting...' : 'PDF'}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
                                         )}
 
                                         {/* DETAIL VIEW - Show selected summary content */}
@@ -11494,7 +12159,21 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 )}
 
                                                 {/* Overall Actions */}
-                                                <div className="flex gap-2">
+                                                <div className="flex gap-2 flex-wrap">
+                                                    <button
+                                                        onClick={downloadSummaryDocx}
+                                                        className="flex-1 min-w-[120px] px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 rounded-lg text-sm font-medium flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20"
+                                                    >
+                                                        <Download className="w-4 h-4" />
+                                                        Save as Word
+                                                    </button>
+                                                    <button
+                                                        onClick={downloadSummaryPdf}
+                                                        className="flex-1 min-w-[120px] px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 rounded-lg text-sm font-medium flex items-center justify-center gap-2 shadow-lg shadow-red-500/20"
+                                                    >
+                                                        <Download className="w-4 h-4" />
+                                                        Save as PDF
+                                                    </button>
                                                     <button
                                                         onClick={() => {
                                                             let text = 'KEY TAKEAWAYS\n\n' + currentSummary.summary.replace(/<[^>]*>/g, '') + '\n\n---\n\nFOLLOW-UP QUESTIONS\n\n' + currentSummary.questions.replace(/<[^>]*>/g, '');
@@ -11504,10 +12183,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             navigator.clipboard.writeText(text);
                                                             alert('Full summary copied!');
                                                         }}
-                                                        className="flex-1 px-4 py-2 bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/10 rounded-lg text-sm font-medium flex items-center justify-center gap-2"
+                                                        className="flex-1 min-w-[120px] px-4 py-2 bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/10 rounded-lg text-sm font-medium flex items-center justify-center gap-2"
                                                     >
                                                         <Copy className="w-4 h-4" />
-                                                        Copy Full Summary
+                                                        Copy All
                                                     </button>
                                                     <button
                                                         onClick={() => { deleteSummary(currentSummary.id); backToSummaryList(); }}
@@ -14306,6 +14985,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             <button
                                                 onClick={() => {
                                                     localStorage.setItem('google_oauth_client_id', googleClientId);
+                                                    syncSettingsToBackend();
                                                     alert('Google Client ID saved!');
                                                 }}
                                                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-sm font-medium"
@@ -14402,7 +15082,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             return;
                                                         }
                                                         const creds = { ...emailData, useGmail: true };
-                                                        localStorage.setItem('emailCredentials', JSON.stringify(creds));
+                                                        localStorage.setItem('emailCredentials', JSON.stringify(creds)); syncSettingsToBackend();
                                                         setEmailData(creds);
                                                         alert('Email configured successfully!');
                                                     }}
@@ -14738,16 +15418,21 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 navigator.serviceWorker.register('/service-worker.js', { updateViaCache: 'none' })
                     .then(registration => {
                         console.log('✅ ServiceWorker registered:', registration.scope);
-                        
-                        // Check for updates
+
+                        // Force check for updates on every launch (iOS PWAs don't auto-check)
+                        registration.update();
+
+                        // Also check periodically (every 5 minutes while app is open)
+                        setInterval(() => registration.update(), 5 * 60 * 1000);
+
+                        // When a new SW is found, auto-activate and reload
                         registration.addEventListener('updatefound', () => {
                             const newWorker = registration.installing;
                             newWorker.addEventListener('statechange', () => {
                                 if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                                    // New service worker available, prompt user to refresh
-                                    if (confirm('New version available! Reload to update?')) {
-                                        window.location.reload();
-                                    }
+                                    // Skip waiting and reload immediately
+                                    newWorker.postMessage({ type: 'SKIP_WAITING' });
+                                    window.location.reload();
                                 }
                             });
                         });
@@ -14755,6 +15440,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     .catch(err => {
                         console.log('❌ ServiceWorker registration failed:', err);
                     });
+            });
+
+            // Also reload when a new SW takes control (handles edge cases)
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                window.location.reload();
             });
         }
 

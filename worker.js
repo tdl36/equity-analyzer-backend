@@ -46,6 +46,39 @@ export default {
       }
     }
 
+    // Version endpoint for auto-update checks (bypasses SW cache since worker handles it)
+    if (url.pathname === '/version') {
+      return new Response(JSON.stringify({ version: '2026-03-12T01' }), {
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+      });
+    }
+
+    // Cache-clearing utility page (visit /clear in Safari to reset the PWA)
+    if (url.pathname === '/clear') {
+      return new Response(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width"><title>Clear Cache</title></head>
+<body style="font-family:system-ui;padding:40px;text-align:center;background:#111;color:#fff">
+<h2>Clearing Charlie cache...</h2><p id="status">Working...</p>
+<script>
+(async()=>{
+  const s=document.getElementById('status');
+  let steps=[];
+  try{
+    const regs=await navigator.serviceWorker.getRegistrations();
+    for(const r of regs){await r.unregister();}
+    steps.push('Service workers unregistered ('+regs.length+')');
+  }catch(e){steps.push('SW: '+e.message);}
+  try{
+    const keys=await caches.keys();
+    for(const k of keys){await caches.delete(k);}
+    steps.push('Caches cleared ('+keys.length+')');
+  }catch(e){steps.push('Cache: '+e.message);}
+  s.innerHTML=steps.join('<br>')+'<br><br><b style="color:#4ade80">Done! Close this tab, then reopen Charlie from your home screen.</b>';
+})();
+</script></body></html>`, {
+        headers: { 'Content-Type': 'text/html', 'Cache-Control': 'no-store' },
+      });
+    }
+
     // Serve static assets via the assets binding
     return env.ASSETS.fetch(request);
   },

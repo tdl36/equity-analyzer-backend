@@ -2790,6 +2790,316 @@ def text_to_docx():
 
 
 # ============================================
+# SUMMARY EXPORT ENDPOINTS (Word / PDF / Bulk)
+# ============================================
+
+def _html_to_docx_elements(doc, html_content):
+    """Parse HTML content and add formatted elements to a python-docx Document."""
+    from html.parser import HTMLParser
+    from docx.shared import Pt, RGBColor
+
+    class DocxHTMLParser(HTMLParser):
+        def __init__(self, document):
+            super().__init__()
+            self.doc = document
+            self.current_paragraph = None
+            self.bold = False
+            self.italic = False
+            self.in_list = False
+            self.list_type = 'ul'
+            self.heading_level = 0
+
+        def handle_starttag(self, tag, attrs):
+            tag = tag.lower()
+            if tag in ('h1', 'h2', 'h3', 'h4'):
+                self.heading_level = int(tag[1])
+                self.current_paragraph = self.doc.add_heading('', level=self.heading_level)
+            elif tag == 'p':
+                if self.in_list:
+                    self.current_paragraph = self.doc.add_paragraph('', style='List Bullet' if self.list_type == 'ul' else 'List Number')
+                else:
+                    self.current_paragraph = self.doc.add_paragraph('')
+            elif tag == 'ul':
+                self.in_list = True
+                self.list_type = 'ul'
+            elif tag == 'ol':
+                self.in_list = True
+                self.list_type = 'ol'
+            elif tag == 'li':
+                style = 'List Bullet' if self.list_type == 'ul' else 'List Number'
+                self.current_paragraph = self.doc.add_paragraph('', style=style)
+            elif tag in ('strong', 'b'):
+                self.bold = True
+            elif tag in ('em', 'i'):
+                self.italic = True
+            elif tag == 'br':
+                if self.current_paragraph:
+                    self.current_paragraph.add_run('\n')
+
+        def handle_endtag(self, tag):
+            tag = tag.lower()
+            if tag in ('h1', 'h2', 'h3', 'h4'):
+                self.heading_level = 0
+            elif tag in ('ul', 'ol'):
+                self.in_list = False
+            elif tag in ('strong', 'b'):
+                self.bold = False
+            elif tag in ('em', 'i'):
+                self.italic = False
+
+        def handle_data(self, data):
+            text = data
+            if not text.strip():
+                return
+            if self.current_paragraph is None:
+                self.current_paragraph = self.doc.add_paragraph('')
+            run = self.current_paragraph.add_run(text)
+            run.font.name = 'Calibri'
+            run.font.size = Pt(11)
+            run.font.color.rgb = RGBColor(0, 0, 0)
+            run.bold = self.bold
+            run.italic = self.italic
+
+        def handle_entityref(self, name):
+            import html as html_mod
+            self.handle_data(html_mod.unescape(f'&{name};'))
+
+        def handle_charref(self, name):
+            import html as html_mod
+            self.handle_data(html_mod.unescape(f'&#{name};'))
+
+    parser = DocxHTMLParser(doc)
+    parser.feed(html_content)
+
+
+def _generate_summary_docx_bytes(row):
+    """Generate docx bytes from a summary DB row dict."""
+    from docx import Document
+    from docx.shared import Pt, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    doc = Document()
+    style = doc.styles['Normal']
+    style.font.name = 'Calibri'
+    style.font.size = Pt(11)
+    style.font.color.rgb = RGBColor(0, 0, 0)
+
+    title = row.get('title') or 'Summary'
+    heading = doc.add_heading(title, level=1)
+    heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    for run in heading.runs:
+        run.font.name = 'Calibri'
+        run.font.color.rgb = RGBColor(0, 0, 0)
+
+    created = row.get('created_at')
+    if created:
+        p = doc.add_paragraph(str(created)[:10])
+        p.runs[0].font.size = Pt(9)
+        p.runs[0].font.color.rgb = RGBColor(128, 128, 128)
+
+    summary_html = row.get('summary') or ''
+    questions_html = row.get('questions') or ''
+    assessment_html = row.get('assessment') or ''
+    raw_notes = row.get('raw_notes') or ''
+    source_type = row.get('source_type') or ''
+
+    if summary_html:
+        h = doc.add_heading('Key Takeaways', level=2)
+        for r in h.runs:
+            r.font.name = 'Calibri'
+            r.font.color.rgb = RGBColor(0, 0, 0)
+        _html_to_docx_elements(doc, summary_html)
+
+    if questions_html:
+        h = doc.add_heading('Follow-up Questions', level=2)
+        for r in h.runs:
+            r.font.name = 'Calibri'
+            r.font.color.rgb = RGBColor(0, 0, 0)
+        _html_to_docx_elements(doc, questions_html)
+
+    if assessment_html:
+        h = doc.add_heading('Assessment', level=2)
+        for r in h.runs:
+            r.font.name = 'Calibri'
+            r.font.color.rgb = RGBColor(0, 0, 0)
+        _html_to_docx_elements(doc, assessment_html)
+
+    if source_type == 'audio' and raw_notes:
+        h = doc.add_heading('Full Transcript', level=2)
+        for r in h.runs:
+            r.font.name = 'Calibri'
+            r.font.color.rgb = RGBColor(0, 0, 0)
+        for line in raw_notes.split('\n'):
+            p = doc.add_paragraph(line)
+            for r in p.runs:
+                r.font.name = 'Calibri'
+                r.font.size = Pt(10)
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
+def _generate_summary_pdf_bytes(row):
+    """Generate PDF bytes from a summary DB row dict."""
+    from xhtml2pdf import pisa
+
+    title = row.get('title') or 'Summary'
+    created = row.get('created_at')
+    date_str = str(created)[:10] if created else ''
+    summary_html = row.get('summary') or ''
+    questions_html = row.get('questions') or ''
+    assessment_html = row.get('assessment') or ''
+    raw_notes = row.get('raw_notes') or ''
+    source_type = row.get('source_type') or ''
+
+    sections = ''
+    if summary_html:
+        sections += f'<h2>Key Takeaways</h2>{summary_html}'
+    if questions_html:
+        sections += f'<h2>Follow-up Questions</h2>{questions_html}'
+    if assessment_html:
+        sections += f'<h2>Assessment</h2>{assessment_html}'
+    if source_type == 'audio' and raw_notes:
+        escaped = raw_notes.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('\n', '<br/>')
+        sections += f'<h2>Full Transcript</h2><p style="font-size:10pt;">{escaped}</p>'
+
+    full_html = f"""<html><head><style>
+        @page {{ margin: 1in; }}
+        body {{ font-family: Calibri, Arial, Helvetica, sans-serif; font-size: 11pt; color: #000; line-height: 1.5; }}
+        h1 {{ font-size: 18pt; margin-bottom: 4pt; }}
+        h2 {{ font-size: 14pt; border-bottom: 1px solid #ccc; padding-bottom: 4pt; margin-top: 20pt; }}
+        h3 {{ font-size: 12pt; }}
+        ul, ol {{ padding-left: 20pt; }}
+        li {{ margin-bottom: 6pt; }}
+        p {{ margin-bottom: 8pt; }}
+        .date {{ font-size: 9pt; color: #888; margin-bottom: 16pt; }}
+    </style></head><body>
+        <h1>{title}</h1>
+        <p class="date">{date_str}</p>
+        {sections}
+    </body></html>"""
+
+    buf = io.BytesIO()
+    pisa.CreatePDF(full_html, dest=buf)
+    return buf.getvalue()
+
+
+@app.route('/api/summary-to-docx', methods=['POST'])
+def summary_to_docx():
+    """Export a summary as a formatted Word document."""
+    try:
+        data = request.get_json()
+        summary_id = data.get('summaryId')
+        if not summary_id:
+            return jsonify({'error': 'No summary ID provided'}), 400
+
+        with get_db() as (_, cur):
+            cur.execute('SELECT * FROM meeting_summaries WHERE id = %s', (summary_id,))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'error': 'Summary not found'}), 404
+
+        docx_bytes = _generate_summary_docx_bytes(dict(row))
+        docx_b64 = base64.b64encode(docx_bytes).decode('utf-8')
+        safe_title = re.sub(r'[^\w\s-]', '', row['title'] or 'Summary')[:50].strip().replace(' ', '_')
+
+        return jsonify({
+            'success': True,
+            'fileData': docx_b64,
+            'filename': f"{safe_title}.docx",
+            'fileSize': len(docx_bytes)
+        })
+    except Exception as e:
+        print(f"Error creating summary docx: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/summary-to-pdf', methods=['POST'])
+def summary_to_pdf():
+    """Export a summary as a styled PDF document."""
+    try:
+        data = request.get_json()
+        summary_id = data.get('summaryId')
+        if not summary_id:
+            return jsonify({'error': 'No summary ID provided'}), 400
+
+        with get_db() as (_, cur):
+            cur.execute('SELECT * FROM meeting_summaries WHERE id = %s', (summary_id,))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'error': 'Summary not found'}), 404
+
+        pdf_bytes = _generate_summary_pdf_bytes(dict(row))
+        pdf_b64 = base64.b64encode(pdf_bytes).decode('utf-8')
+        safe_title = re.sub(r'[^\w\s-]', '', row['title'] or 'Summary')[:50].strip().replace(' ', '_')
+
+        return jsonify({
+            'success': True,
+            'fileData': pdf_b64,
+            'filename': f"{safe_title}.pdf",
+            'fileSize': len(pdf_bytes)
+        })
+    except Exception as e:
+        print(f"Error creating summary PDF: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/summaries-bulk-export', methods=['POST'])
+def summaries_bulk_export():
+    """Export multiple summaries as a zip of Word or PDF files."""
+    try:
+        import zipfile
+
+        data = request.get_json()
+        summary_ids = data.get('summaryIds', [])
+        export_format = data.get('format', 'docx')
+
+        if not summary_ids:
+            return jsonify({'error': 'No summary IDs provided'}), 400
+
+        with get_db() as (_, cur):
+            placeholders = ','.join(['%s'] * len(summary_ids))
+            cur.execute(f'SELECT * FROM meeting_summaries WHERE id IN ({placeholders})', summary_ids)
+            rows = cur.fetchall()
+
+        if not rows:
+            return jsonify({'error': 'No summaries found'}), 404
+
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+            used_names = set()
+            for row in rows:
+                row_dict = dict(row)
+                safe_title = re.sub(r'[^\w\s-]', '', row_dict.get('title') or 'Summary')[:50].strip().replace(' ', '_')
+                filename = f"{safe_title}.{export_format}"
+                # Deduplicate
+                while filename in used_names:
+                    filename = f"{safe_title}_{len(used_names)}.{export_format}"
+                used_names.add(filename)
+
+                if export_format == 'pdf':
+                    file_bytes = _generate_summary_pdf_bytes(row_dict)
+                else:
+                    file_bytes = _generate_summary_docx_bytes(row_dict)
+                zf.writestr(filename, file_bytes)
+
+        zip_bytes = zip_buf.getvalue()
+        zip_b64 = base64.b64encode(zip_bytes).decode('utf-8')
+
+        return jsonify({
+            'success': True,
+            'fileData': zip_b64,
+            'filename': f"summaries-{len(rows)}-files.zip",
+            'fileSize': len(zip_bytes),
+            'fileCount': len(rows)
+        })
+    except Exception as e:
+        print(f"Error bulk exporting summaries: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================
 # DOCUMENT STORAGE ENDPOINTS
 # ============================================
 
