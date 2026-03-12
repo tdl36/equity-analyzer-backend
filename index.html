@@ -2635,9 +2635,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 try {
                     // Upload only the FIRST file before closing modal (fast UX)
                     const firstFile = summaryFiles[0];
+                    const topicForCleanup = newTopicName || summaryTitleInput || '';
+                    const claudeKey = loadApiKeyFromStorage() || '';
                     const formData = new FormData();
                     formData.append('file', firstFile);
                     formData.append('geminiApiKey', geminiKey);
+                    formData.append('topic', topicForCleanup);
+                    formData.append('apiKey', claudeKey);
 
                     let startRes;
                     for (let attempt = 0; attempt < 2; attempt++) {
@@ -2649,6 +2653,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 const retryFormData = new FormData();
                                 retryFormData.append('file', firstFile);
                                 retryFormData.append('geminiApiKey', geminiKey);
+                                retryFormData.append('topic', topicForCleanup);
+                                retryFormData.append('apiKey', claudeKey);
                                 startRes = await fetch(`${DIRECT_API_URL}/api/transcribe-audio`, { method: 'POST', body: retryFormData });
                             } else {
                                 startRes = await fetch(`${DIRECT_API_URL}/api/transcribe-audio`, { method: 'POST', body: formData });
@@ -2672,6 +2678,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         pendingFileObjects: summaryFiles.slice(1), // kept in memory only, not in localStorage
                         fileNames: summaryFiles.map(f => f.name),
                         geminiKey: geminiKey,
+                        claudeKey: claudeKey,
                         title: summaryTitleInput.trim(),
                         topic: newTopicName || currentSummaryTopic || 'General',
                         topicType: newTopicType || 'other',
@@ -2683,7 +2690,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     };
                     setBgTranscriptionJob(jobMeta);
                     // Save to localStorage (without File objects)
-                    const saveable = { ...jobMeta, pendingFileObjects: undefined, geminiKey: undefined };
+                    const saveable = { ...jobMeta, pendingFileObjects: undefined, geminiKey: undefined, claudeKey: undefined };
                     localStorage.setItem('charlie_bg_transcription', JSON.stringify(saveable));
 
                     // Close modal
@@ -2735,6 +2742,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     const fd = new FormData();
                     fd.append('file', nextFile);
                     fd.append('geminiApiKey', jobMeta.geminiKey);
+                    fd.append('topic', jobMeta.topic || '');
+                    fd.append('apiKey', jobMeta.claudeKey || '');
                     const res = await fetch(`${DIRECT_API_URL}/api/transcribe-audio`, { method: 'POST', body: fd });
                     const text = await res.text();
                     const data = JSON.parse(text);

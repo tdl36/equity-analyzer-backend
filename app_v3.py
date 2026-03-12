@@ -2470,7 +2470,7 @@ def _split_audio_ffmpeg(filepath, chunk_sec, overlap_sec, output_dir):
     return chunks
 
 
-def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key):
+def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key, topic='', anthropic_api_key=''):
     """Background worker for audio transcription. Uses ffmpeg for chunking (disk-based, low memory)."""
     import time
     import io
@@ -2626,6 +2626,38 @@ def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key
             return
 
         print(f"[Job {job_id}] Transcription complete: {len(transcript_text)} chars")
+
+        # --- Transcript cleanup pass using Claude ---
+        cleanup_key = anthropic_api_key or os.environ.get('ANTHROPIC_API_KEY', '')
+        if cleanup_key:
+            try:
+                import anthropic as _anthropic_mod
+                _transcription_jobs[job_id]['progress'] = 'Cleaning up transcript...'
+                topic_hint = f' about "{topic}"' if topic else ''
+                cleanup_prompt = (
+                    f"You are a transcript editor. This is an audio transcription{topic_hint}. "
+                    "The speech-to-text model made errors on specialized terms: company names, drug names, "
+                    "ticker symbols, medical/scientific terms, people's names, acronyms, and financial jargon. "
+                    "Fix ONLY the mistranscribed specialized terms based on context. Do NOT change sentence "
+                    "structure, paraphrase, summarize, or add content. Return the full corrected transcript only, "
+                    "with no commentary."
+                )
+                _client = _anthropic_mod.Anthropic(api_key=cleanup_key, timeout=300)
+                cleanup_resp = _client.messages.create(
+                    model='claude-sonnet-4-20250514',
+                    max_tokens=16384,
+                    system=cleanup_prompt,
+                    messages=[{'role': 'user', 'content': transcript_text}],
+                )
+                cleaned = cleanup_resp.content[0].text.strip()
+                if cleaned and len(cleaned) > len(transcript_text) * 0.5:
+                    print(f"[Job {job_id}] Transcript cleaned: {len(transcript_text)} -> {len(cleaned)} chars")
+                    transcript_text = cleaned
+                else:
+                    print(f"[Job {job_id}] Cleanup returned suspiciously short result, keeping original")
+            except Exception as cleanup_err:
+                print(f"[Job {job_id}] Transcript cleanup failed (keeping original): {cleanup_err}")
+
         _transcription_jobs[job_id] = {
             'status': 'done',
             'text': transcript_text,
@@ -2683,7 +2715,9 @@ def transcribe_audio():
         job_id = str(uuid.uuid4())[:8]
         _transcription_jobs[job_id] = {'status': 'starting', 'filename': file.filename}
 
-        thread = threading.Thread(target=_run_transcription, args=(job_id, file_content, file.filename, mime_type, gemini_api_key))
+        topic = request.form.get('topic', '')
+        anthropic_api_key = request.form.get('apiKey', '')
+        thread = threading.Thread(target=_run_transcription, args=(job_id, file_content, file.filename, mime_type, gemini_api_key, topic, anthropic_api_key))
         thread.daemon = True
         thread.start()
 
