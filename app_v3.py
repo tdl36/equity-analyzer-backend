@@ -6,6 +6,7 @@ Cross-device sync for portfolio analyses and overviews
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 import requests
+import re
 import os
 import json
 import base64
