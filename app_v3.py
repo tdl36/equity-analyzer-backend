@@ -2633,21 +2633,46 @@ def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key
             try:
                 import anthropic as _anthropic_mod
                 _transcription_jobs[job_id]['progress'] = 'Cleaning up transcript...'
-                topic_hint = f' about "{topic}"' if topic else ''
+
+                topic_context = ''
+                if topic:
+                    topic_context = (
+                        f'\n\nMEETING CONTEXT: This transcript is from a meeting about "{topic}". '
+                        f'Use your knowledge of this company/topic to identify and correct all misspelled '
+                        f'product names, pipeline drugs, competitors, partners, subsidiaries, executives, '
+                        f'and related industry terms. For example, if the topic is a pharma company, '
+                        f'look up its actual drug names, pipeline assets, therapeutic areas, and competitors.'
+                    )
+
                 cleanup_prompt = (
-                    f"You are a transcript editor. This is an audio transcription{topic_hint}. "
-                    "The speech-to-text model made errors on specialized terms: company names, drug names, "
-                    "ticker symbols, medical/scientific terms, people's names, acronyms, and financial jargon. "
-                    "Fix ONLY the mistranscribed specialized terms based on context. Do NOT change sentence "
-                    "structure, paraphrase, summarize, or add content. Return the full corrected transcript only, "
-                    "with no commentary."
+                    "You are an expert transcript corrector for investment/finance meetings. "
+                    "Speech-to-text models produce phonetic approximations of specialized terms. "
+                    "Your job is to fix EVERY mistranscribed term in this transcript.\n\n"
+                    "WHAT TO FIX:\n"
+                    "- Drug/product names: The STT model gets these wrong almost every time. "
+                    "Look up the REAL names of products, pipeline drugs, and competitors for this company. "
+                    "(e.g., 'Kitruda'→'Keytruda', 'Sedera'→'Cidara', 'Elusitide'→'Elicitide')\n"
+                    "- Company names and subsidiaries: Verify correct spellings\n"
+                    "- Ticker symbols and acronyms: Must be UPPERCASE "
+                    "(e.g., 'trp 2 ADC'→'TROP-2 ADC', 'pd l1'→'PD-L1', 'her 2'→'HER2')\n"
+                    "- Scientific/medical terms: Correct drug mechanisms, biomarkers, disease names, "
+                    "clinical trial phases\n"
+                    "- People's names: CEO, CFO, executives mentioned in context\n"
+                    "- Financial terms and metrics\n\n"
+                    "RULES:\n"
+                    "1. Fix ALL instances of each misspelled term consistently throughout the entire transcript\n"
+                    "2. Do NOT change sentence structure, paraphrase, summarize, or remove any content\n"
+                    "3. Do NOT add commentary, notes, or explanations — return ONLY the corrected transcript\n"
+                    "4. Preserve all line breaks and formatting exactly as-is\n"
+                    "5. When genuinely unsure about a term, keep the original"
+                    f"{topic_context}"
                 )
-                _client = _anthropic_mod.Anthropic(api_key=cleanup_key, timeout=300)
+                _client = _anthropic_mod.Anthropic(api_key=cleanup_key, timeout=600)
                 cleanup_resp = _client.messages.create(
                     model='claude-sonnet-4-20250514',
-                    max_tokens=16384,
+                    max_tokens=64000,
                     system=cleanup_prompt,
-                    messages=[{'role': 'user', 'content': transcript_text}],
+                    messages=[{'role': 'user', 'content': f"Please correct the specialized terms in this transcript:\n\n{transcript_text}"}],
                 )
                 cleaned = cleanup_resp.content[0].text.strip()
                 if cleaned and len(cleaned) > len(transcript_text) * 0.5:
