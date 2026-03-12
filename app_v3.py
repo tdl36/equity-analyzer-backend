@@ -2873,11 +2873,17 @@ def _html_to_docx_elements(doc, html_content):
     parser.feed(html_content)
 
 
-def _generate_summary_docx_bytes(row):
-    """Generate docx bytes from a summary DB row dict."""
+def _generate_summary_docx_bytes(row, sections=None):
+    """Generate docx bytes from a summary DB row dict.
+    sections: list of section keys to include, e.g. ['takeaways','questions','assessment'].
+              None means include all sections.
+    """
     from docx import Document
     from docx.shared import Pt, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    include_all = sections is None
+    sect_set = set(sections) if sections else set()
 
     doc = Document()
     style = doc.styles['Normal']
@@ -2904,28 +2910,28 @@ def _generate_summary_docx_bytes(row):
     raw_notes = row.get('raw_notes') or ''
     source_type = row.get('source_type') or ''
 
-    if summary_html:
+    if summary_html and (include_all or 'takeaways' in sect_set):
         h = doc.add_heading('Key Takeaways', level=2)
         for r in h.runs:
             r.font.name = 'Calibri'
             r.font.color.rgb = RGBColor(0, 0, 0)
         _html_to_docx_elements(doc, summary_html)
 
-    if questions_html:
+    if questions_html and (include_all or 'questions' in sect_set):
         h = doc.add_heading('Follow-up Questions', level=2)
         for r in h.runs:
             r.font.name = 'Calibri'
             r.font.color.rgb = RGBColor(0, 0, 0)
         _html_to_docx_elements(doc, questions_html)
 
-    if assessment_html:
+    if assessment_html and (include_all or 'assessment' in sect_set):
         h = doc.add_heading('Assessment', level=2)
         for r in h.runs:
             r.font.name = 'Calibri'
             r.font.color.rgb = RGBColor(0, 0, 0)
         _html_to_docx_elements(doc, assessment_html)
 
-    if source_type == 'audio' and raw_notes:
+    if source_type == 'audio' and raw_notes and include_all:
         h = doc.add_heading('Full Transcript', level=2)
         for r in h.runs:
             r.font.name = 'Calibri'
@@ -2941,9 +2947,15 @@ def _generate_summary_docx_bytes(row):
     return buf.getvalue()
 
 
-def _generate_summary_pdf_bytes(row):
-    """Generate PDF bytes from a summary DB row dict."""
+def _generate_summary_pdf_bytes(row, sections_filter=None):
+    """Generate PDF bytes from a summary DB row dict.
+    sections_filter: list of section keys to include, e.g. ['takeaways','questions','assessment'].
+                     None means include all sections.
+    """
     from xhtml2pdf import pisa
+
+    include_all = sections_filter is None
+    sect_set = set(sections_filter) if sections_filter else set()
 
     title = row.get('title') or 'Summary'
     created = row.get('created_at')
@@ -2955,13 +2967,13 @@ def _generate_summary_pdf_bytes(row):
     source_type = row.get('source_type') or ''
 
     sections = ''
-    if summary_html:
+    if summary_html and (include_all or 'takeaways' in sect_set):
         sections += f'<h2>Key Takeaways</h2>{summary_html}'
-    if questions_html:
+    if questions_html and (include_all or 'questions' in sect_set):
         sections += f'<h2>Follow-up Questions</h2>{questions_html}'
-    if assessment_html:
+    if assessment_html and (include_all or 'assessment' in sect_set):
         sections += f'<h2>Assessment</h2>{assessment_html}'
-    if source_type == 'audio' and raw_notes:
+    if source_type == 'audio' and raw_notes and include_all:
         escaped = raw_notes.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('\n', '<br/>')
         sections += f'<h2>Full Transcript</h2><p style="font-size:10pt;">{escaped}</p>'
 
@@ -3055,6 +3067,7 @@ def summaries_bulk_export():
         data = request.get_json()
         summary_ids = data.get('summaryIds', [])
         export_format = data.get('format', 'docx')
+        export_sections = data.get('sections')  # e.g. ['takeaways','questions','assessment'] or None for all
 
         if not summary_ids:
             return jsonify({'error': 'No summary IDs provided'}), 400
@@ -3080,9 +3093,9 @@ def summaries_bulk_export():
                 used_names.add(filename)
 
                 if export_format == 'pdf':
-                    file_bytes = _generate_summary_pdf_bytes(row_dict)
+                    file_bytes = _generate_summary_pdf_bytes(row_dict, sections_filter=export_sections)
                 else:
-                    file_bytes = _generate_summary_docx_bytes(row_dict)
+                    file_bytes = _generate_summary_docx_bytes(row_dict, sections=export_sections)
                 zf.writestr(filename, file_bytes)
 
         zip_bytes = zip_buf.getvalue()

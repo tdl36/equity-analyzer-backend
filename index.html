@@ -1738,6 +1738,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [summarySelectMode, setSummarySelectMode] = useState(false);
             const [selectedSummaryIds, setSelectedSummaryIds] = useState(new Set());
             const [bulkExportLoading, setBulkExportLoading] = useState(false);
+            const [bulkExportSections, setBulkExportSections] = useState(new Set(['takeaways']));
             
             // Document types for Summary tab
             const SUMMARY_DOC_TYPES = [
@@ -2181,6 +2182,15 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 });
             };
 
+            const toggleBulkExportSection = (key) => {
+                setBulkExportSections(prev => {
+                    const next = new Set(prev);
+                    if (next.has(key)) { if (next.size > 1) next.delete(key); } // must keep at least 1
+                    else next.add(key);
+                    return next;
+                });
+            };
+
             const bulkDownloadSummaries = async (format) => {
                 if (selectedSummaryIds.size === 0) return;
                 setBulkExportLoading(true);
@@ -2188,7 +2198,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     const res = await fetch(`${API_URL}/api/summaries-bulk-export`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ summaryIds: Array.from(selectedSummaryIds), format })
+                        body: JSON.stringify({ summaryIds: Array.from(selectedSummaryIds), format, sections: Array.from(bulkExportSections) })
                     });
                     if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Bulk export failed'); }
                     const data = await res.json();
@@ -11437,7 +11447,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                         </div>
 
                                         {/* LIST VIEW - Show document cards */}
-                                        {(!currentSummary || summaryViewMode === 'list') && (
+                                        {(!currentSummary || summaryViewMode === 'list') && (<>
                                             <div className="space-y-3">
                                                 {getFilteredSummaries().length === 0 ? (
                                                     <div className="text-center py-16">
@@ -11543,33 +11553,53 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
                                             {/* Floating bulk action bar */}
                                             {summarySelectMode && selectedSummaryIds.size > 0 && (
-                                                <div className="sticky bottom-0 mt-4 p-3 bg-slate-800/95 backdrop-blur-xl rounded-xl border border-white/15 shadow-2xl flex items-center justify-between gap-3">
-                                                    <div className="flex items-center gap-3 text-sm">
-                                                        <span className="font-medium">{selectedSummaryIds.size} selected</span>
-                                                        <button onClick={() => setSelectedSummaryIds(new Set(getFilteredSummaries().map(s => s.id)))} className="text-blue-400 hover:text-blue-300 text-xs">Select All</button>
-                                                        <button onClick={() => setSelectedSummaryIds(new Set())} className="text-slate-400 hover:text-slate-300 text-xs">Deselect All</button>
+                                                <div className="sticky bottom-0 mt-4 p-3 bg-slate-800/95 backdrop-blur-xl rounded-xl border border-white/15 shadow-2xl space-y-2">
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <div className="flex items-center gap-3 text-sm">
+                                                            <span className="font-medium">{selectedSummaryIds.size} selected</span>
+                                                            <button onClick={() => setSelectedSummaryIds(new Set(getFilteredSummaries().map(s => s.id)))} className="text-blue-400 hover:text-blue-300 text-xs">Select All</button>
+                                                            <button onClick={() => setSelectedSummaryIds(new Set())} className="text-slate-400 hover:text-slate-300 text-xs">Deselect All</button>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <button
+                                                                onClick={() => bulkDownloadSummaries('docx')}
+                                                                disabled={bulkExportLoading}
+                                                                className="px-3 py-1.5 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 rounded-lg text-xs font-medium flex items-center gap-1.5 shadow-lg disabled:opacity-50"
+                                                            >
+                                                                <Download className="w-3.5 h-3.5" />
+                                                                {bulkExportLoading ? 'Exporting...' : 'Word (.docx)'}
+                                                            </button>
+                                                            <button
+                                                                onClick={() => bulkDownloadSummaries('pdf')}
+                                                                disabled={bulkExportLoading}
+                                                                className="px-3 py-1.5 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 rounded-lg text-xs font-medium flex items-center gap-1.5 shadow-lg disabled:opacity-50"
+                                                            >
+                                                                <Download className="w-3.5 h-3.5" />
+                                                                {bulkExportLoading ? 'Exporting...' : 'PDF'}
+                                                            </button>
+                                                        </div>
                                                     </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <button
-                                                            onClick={() => bulkDownloadSummaries('docx')}
-                                                            disabled={bulkExportLoading}
-                                                            className="px-3 py-1.5 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 rounded-lg text-xs font-medium flex items-center gap-1.5 shadow-lg disabled:opacity-50"
-                                                        >
-                                                            <Download className="w-3.5 h-3.5" />
-                                                            {bulkExportLoading ? 'Exporting...' : 'Word (.docx)'}
-                                                        </button>
-                                                        <button
-                                                            onClick={() => bulkDownloadSummaries('pdf')}
-                                                            disabled={bulkExportLoading}
-                                                            className="px-3 py-1.5 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 rounded-lg text-xs font-medium flex items-center gap-1.5 shadow-lg disabled:opacity-50"
-                                                        >
-                                                            <Download className="w-3.5 h-3.5" />
-                                                            {bulkExportLoading ? 'Exporting...' : 'PDF'}
-                                                        </button>
+                                                    {/* Section toggles */}
+                                                    <div className="flex items-center gap-2 text-xs">
+                                                        <span className="text-slate-400">Include:</span>
+                                                        {[
+                                                            { key: 'takeaways', label: 'Key Takeaways' },
+                                                            { key: 'questions', label: 'Follow-up Questions' },
+                                                            { key: 'assessment', label: 'Assessment' },
+                                                        ].map(s => (
+                                                            <button
+                                                                key={s.key}
+                                                                onClick={() => toggleBulkExportSection(s.key)}
+                                                                className={`px-2 py-1 rounded-lg transition-all ${bulkExportSections.has(s.key) ? 'bg-teal-600 text-white' : 'bg-white/10 text-slate-400 hover:bg-white/15'}`}
+                                                            >
+                                                                {bulkExportSections.has(s.key) && <span className="mr-1">&#10003;</span>}
+                                                                {s.label}
+                                                            </button>
+                                                        ))}
                                                     </div>
                                                 </div>
                                             )}
-                                        )}
+                                        </>)}
 
                                         {/* DETAIL VIEW - Show selected summary content */}
                                         {currentSummary && summaryViewMode === 'detail' && (
