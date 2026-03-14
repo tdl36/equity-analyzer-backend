@@ -868,6 +868,21 @@ def init_db():
             ''')
             cur.execute('CREATE INDEX IF NOT EXISTS idx_infographic_history_ticker ON thesis_infographic_history(ticker)')
 
+            # Thesis format history (versioned PDF/DOCX storage)
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS thesis_format_history (
+                    id SERIAL PRIMARY KEY,
+                    ticker VARCHAR(20) NOT NULL,
+                    format_type VARCHAR(50) NOT NULL DEFAULT 'executive',
+                    output_type VARCHAR(10) NOT NULL DEFAULT 'pdf',
+                    file_data TEXT NOT NULL,
+                    filename VARCHAR(255),
+                    file_size INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_format_history_ticker ON thesis_format_history(ticker)')
+
             # Mark stale processing jobs as failed (server restart recovery)
             cur.execute('''
                 UPDATE analysis_jobs
@@ -4511,9 +4526,137 @@ def generate_thesis_format():
             mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
         b64 = base64.b64encode(file_bytes).decode('utf-8')
-        return jsonify({'success': True, 'fileData': b64, 'filename': filename, 'fileSize': len(file_bytes)})
+
+        # Auto-save to history
+        saved_id = None
+        try:
+            with get_db(commit=True) as (conn, cur):
+                cur.execute('''
+                    INSERT INTO thesis_format_history (ticker, format_type, output_type, file_data, filename, file_size)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                ''', (ticker, fmt, output_type, b64, filename, len(file_bytes)))
+                saved_id = cur.fetchone()['id']
+        except Exception as save_err:
+            print(f"Failed to save format to history: {save_err}")
+
+        return jsonify({'success': True, 'fileData': b64, 'filename': filename, 'fileSize': len(file_bytes), 'savedId': saved_id})
     except Exception as e:
         print(f"Error generating thesis format: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/thesis-format/history/<ticker>', methods=['GET'])
+def get_format_history(ticker):
+    """List all format versions for a ticker (metadata only)."""
+    try:
+        with get_db() as (_, cur):
+            cur.execute('''
+                SELECT id, ticker, format_type, output_type, filename, file_size, created_at
+                FROM thesis_format_history
+                WHERE ticker = %s
+                ORDER BY created_at DESC
+            ''', (ticker.upper(),))
+            rows = cur.fetchall()
+        return jsonify([{
+            'id': r['id'],
+            'ticker': r['ticker'],
+            'formatType': r['format_type'],
+            'outputType': r['output_type'],
+            'filename': r['filename'],
+            'fileSize': r['file_size'],
+            'createdAt': r['created_at'].isoformat() if r['created_at'] else None,
+        } for r in rows])
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/thesis-format/history/<int:history_id>/download', methods=['GET'])
+def download_format_history(history_id):
+    """Get file data for a specific format version."""
+    try:
+        with get_db() as (_, cur):
+            cur.execute('SELECT file_data, filename, output_type FROM thesis_format_history WHERE id = %s', (history_id,))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'error': 'Not found'}), 404
+        mime = 'application/pdf' if row['output_type'] == 'pdf' else 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        return jsonify({'fileData': row['file_data'], 'filename': row['filename'], 'mimeType': mime})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/thesis-format/history/<int:history_id>', methods=['DELETE'])
+def delete_format_history(history_id):
+    """Delete a specific format version."""
+    try:
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('DELETE FROM thesis_format_history WHERE id = %s', (history_id,))
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/email-format', methods=['POST'])
+def email_format():
+    """Email a thesis format document as attachment."""
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.base import MIMEBase
+    from email import encoders
+
+    try:
+        data = request.get_json()
+        file_data = data.get('fileData', '')
+        filename = data.get('filename', 'document.pdf')
+        ticker = data.get('ticker', '')
+        output_type = data.get('outputType', 'pdf')
+        recipient = data.get('email', '')
+        subject = data.get('customSubject', f'{ticker} — Thesis Format')
+        smtp_config = data.get('smtpConfig', {})
+
+        if not recipient:
+            return jsonify({'error': 'Recipient email is required'}), 400
+        if not file_data:
+            return jsonify({'error': 'No file data'}), 400
+
+        use_gmail = smtp_config.get('use_gmail', True)
+        gmail_user = smtp_config.get('gmail_user', '')
+        gmail_password = smtp_config.get('gmail_app_password', '')
+        from_email = smtp_config.get('from_email', gmail_user)
+
+        if use_gmail and (not gmail_user or not gmail_password):
+            return jsonify({'error': 'Gmail credentials required'}), 400
+
+        msg = MIMEMultipart()
+        msg['From'] = from_email
+        msg['To'] = recipient
+        msg['Subject'] = subject
+
+        body = f"Please find the attached {ticker} thesis format document."
+        msg.attach(MIMEText(body, 'plain'))
+
+        mime_type = 'application/pdf' if output_type == 'pdf' else 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        attachment = MIMEBase(*mime_type.split('/'))
+        attachment.set_payload(base64.b64decode(file_data))
+        encoders.encode_base64(attachment)
+        attachment.add_header('Content-Disposition', f'attachment; filename="{filename}"')
+        msg.attach(attachment)
+
+        if use_gmail:
+            with smtplib.SMTP('smtp.gmail.com', 587) as server:
+                server.starttls()
+                server.login(gmail_user, gmail_password)
+                server.send_message(msg)
+
+        return jsonify({'success': True, 'message': f'Format emailed to {recipient}'})
+
+    except smtplib.SMTPAuthenticationError:
+        return jsonify({'error': 'Gmail authentication failed.'}), 401
+    except smtplib.SMTPException as e:
+        return jsonify({'error': f'SMTP error: {str(e)}'}), 500
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
