@@ -48,7 +48,7 @@ export default {
 
     // Version endpoint for auto-update checks (bypasses SW cache since worker handles it)
     if (url.pathname === '/version') {
-      return new Response(JSON.stringify({ version: '2026-03-14T01' }), {
+      return new Response(JSON.stringify({ version: '2026-03-14T02' }), {
         headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
       });
     }

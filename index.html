@@ -275,7 +275,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-03-14T01';
+        const BUILD_VERSION = '2026-03-14T02';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -15809,12 +15809,14 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     {/* Format Template Gallery */}
                                     <div className="mb-8">
                                         <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Choose Template</h2>
-                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                                             {[
-                                                { id: 'executive', name: 'Executive Brief', desc: 'Clean navy theme with professional tables', color: 'from-blue-900 to-slate-900', accent: 'border-blue-500', icon: '1' },
-                                                { id: 'scorecard', name: 'Scorecard', desc: 'Traffic-light tables with green banners', color: 'from-green-900 to-slate-900', accent: 'border-green-500', icon: '2' },
-                                                { id: 'onepager', name: 'One-Pager', desc: 'Condensed two-column layout', color: 'from-slate-800 to-slate-900', accent: 'border-slate-400', icon: '3' },
-                                                { id: 'board', name: 'Conviction Card', desc: 'Bold with conviction gauge & status cards', color: 'from-slate-900 to-black', accent: 'border-amber-500', icon: '4' },
+                                                { id: 'executive', name: 'Executive Brief', desc: 'Navy headers, numbered pillars, threshold tables', color: 'from-blue-900 to-slate-900', accent: 'border-blue-500' },
+                                                { id: 'scorecard', name: 'Scorecard', desc: 'Green banners, colored G/Y/R threshold columns', color: 'from-green-900 to-slate-900', accent: 'border-green-500' },
+                                                { id: 'onepager', name: 'One-Pager', desc: 'Compact two-column layout on a single page', color: 'from-slate-800 to-slate-900', accent: 'border-slate-400' },
+                                                { id: 'board', name: 'Conviction Card', desc: 'Conviction gauge with color-coded pillar cards', color: 'from-slate-900 to-black', accent: 'border-amber-500' },
+                                                { id: 'ic_memo', name: 'IC Memo', desc: 'Formal numbered sections for investment committee', color: 'from-indigo-900 to-slate-900', accent: 'border-indigo-500' },
+                                                { id: 'risk_focus', name: 'Risk Monitor', desc: 'Risk-first layout with status overview bar', color: 'from-red-900 to-slate-900', accent: 'border-red-500' },
                                             ].map(tmpl => (
                                                 <button
                                                     key={tmpl.id}
@@ -15827,23 +15829,54 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 >
                                                     {/* Mini preview card */}
                                                     <div className={`bg-gradient-to-br ${tmpl.color} p-4 h-32 flex flex-col justify-between`}>
-                                                        {/* Mini template preview */}
                                                         <div className="space-y-1.5">
-                                                            <div className={`h-2 rounded ${tmpl.id === 'executive' ? 'bg-blue-800 w-3/4' : tmpl.id === 'scorecard' ? 'bg-green-700 w-full' : tmpl.id === 'onepager' ? 'bg-slate-600 w-2/3' : 'bg-slate-700 w-1/2'}`} />
-                                                            <div className="flex gap-1">
-                                                                <div className={`h-1.5 rounded ${tmpl.id === 'scorecard' ? 'bg-green-800' : 'bg-white/10'} w-1/3`} />
-                                                                <div className={`h-1.5 rounded ${tmpl.id === 'scorecard' ? 'bg-yellow-800' : 'bg-white/10'} w-1/4`} />
-                                                                {tmpl.id === 'scorecard' && <div className="h-1.5 rounded bg-red-800 w-1/4" />}
-                                                            </div>
-                                                            <div className="h-1 rounded bg-white/5 w-full" />
-                                                            <div className="h-1 rounded bg-white/5 w-5/6" />
-                                                            {tmpl.id === 'board' && (
+                                                            {/* Executive: navy bar + rows */}
+                                                            {tmpl.id === 'executive' && <>
+                                                                <div className="h-2 rounded bg-blue-800 w-3/4" />
+                                                                <div className="flex gap-1"><div className="h-1.5 rounded bg-white/10 w-1/3" /><div className="h-1.5 rounded bg-white/10 w-1/4" /></div>
+                                                                <div className="h-1 rounded bg-white/5 w-full" /><div className="h-1 rounded bg-white/5 w-5/6" />
+                                                            </>}
+                                                            {/* Scorecard: green bar + G/Y/R columns */}
+                                                            {tmpl.id === 'scorecard' && <>
+                                                                <div className="h-2 rounded bg-green-700 w-full" />
+                                                                <div className="flex gap-1"><div className="h-1.5 rounded bg-green-800 w-1/3" /><div className="h-1.5 rounded bg-yellow-800 w-1/4" /><div className="h-1.5 rounded bg-red-800 w-1/4" /></div>
+                                                                <div className="h-1 rounded bg-white/5 w-full" /><div className="h-1 rounded bg-white/5 w-5/6" />
+                                                            </>}
+                                                            {/* One-pager: two columns */}
+                                                            {tmpl.id === 'onepager' && <>
+                                                                <div className="h-2 rounded bg-slate-600 w-2/3" />
+                                                                <div className="flex gap-2">
+                                                                    <div className="flex-1 space-y-1"><div className="h-1 rounded bg-white/10 w-full" /><div className="h-1 rounded bg-white/10 w-3/4" /><div className="h-1 rounded bg-white/10 w-5/6" /></div>
+                                                                    <div className="flex-1 space-y-1"><div className="h-1 rounded bg-white/10 w-full" /><div className="h-1 rounded bg-white/10 w-2/3" /><div className="h-1 rounded bg-white/10 w-4/5" /></div>
+                                                                </div>
+                                                            </>}
+                                                            {/* Board: gauge + G/Y/R cards */}
+                                                            {tmpl.id === 'board' && <>
+                                                                <div className="h-2 rounded bg-slate-700 w-1/2" />
+                                                                <div className="flex gap-1"><div className="h-1.5 rounded bg-white/10 w-1/3" /><div className="h-1.5 rounded bg-white/10 w-1/4" /></div>
                                                                 <div className="flex gap-2 mt-1">
                                                                     <div className="w-6 h-6 rounded bg-green-900/50 flex items-center justify-center text-[8px] text-green-400 font-bold">G</div>
                                                                     <div className="w-6 h-6 rounded bg-yellow-900/50 flex items-center justify-center text-[8px] text-yellow-400 font-bold">Y</div>
                                                                     <div className="w-6 h-6 rounded bg-red-900/50 flex items-center justify-center text-[8px] text-red-400 font-bold">R</div>
                                                                 </div>
-                                                            )}
+                                                            </>}
+                                                            {/* IC Memo: numbered sections */}
+                                                            {tmpl.id === 'ic_memo' && <>
+                                                                <div className="h-2 rounded bg-indigo-700 w-full" />
+                                                                <div className="space-y-1 mt-0.5">
+                                                                    <div className="flex items-center gap-1.5"><span className="text-[7px] text-indigo-400 font-bold">I.</span><div className="h-1 rounded bg-white/10 flex-1" /></div>
+                                                                    <div className="flex items-center gap-1.5"><span className="text-[7px] text-indigo-400 font-bold">II.</span><div className="h-1 rounded bg-white/10 flex-1" /></div>
+                                                                    <div className="flex items-center gap-1.5"><span className="text-[7px] text-indigo-400 font-bold">III.</span><div className="h-1 rounded bg-white/10 flex-1" /></div>
+                                                                </div>
+                                                            </>}
+                                                            {/* Risk Monitor: risk bars + status */}
+                                                            {tmpl.id === 'risk_focus' && <>
+                                                                <div className="h-2 rounded bg-red-700 w-2/3" />
+                                                                <div className="space-y-1 mt-0.5">
+                                                                    <div className="flex gap-1"><div className="h-1.5 rounded bg-red-900/60 w-2/5" /><div className="h-1.5 rounded bg-green-900/40 w-1/6" /><div className="h-1.5 rounded bg-yellow-900/40 w-1/6" /><div className="h-1.5 rounded bg-red-900/40 w-1/6" /></div>
+                                                                    <div className="flex gap-1"><div className="h-1.5 rounded bg-red-900/60 w-1/3" /><div className="h-1.5 rounded bg-green-900/40 w-1/6" /><div className="h-1.5 rounded bg-yellow-900/40 w-1/6" /><div className="h-1.5 rounded bg-red-900/40 w-1/6" /></div>
+                                                                </div>
+                                                            </>}
                                                         </div>
                                                         {fmtSelectedFormat === tmpl.id && (
                                                             <div className="absolute top-2 right-2 w-5 h-5 bg-teal-500 rounded-full flex items-center justify-center">
