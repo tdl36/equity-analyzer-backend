@@ -3173,6 +3173,564 @@ def summaries_bulk_export():
 
 
 # ============================================
+# ANALYSIS (THESIS) EXPORT ENDPOINTS
+# ============================================
+
+def _generate_analysis_docx_bytes(row):
+    """Generate docx bytes from a portfolio_analyses row."""
+    from docx import Document
+    from docx.shared import Pt, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    doc = Document()
+    style = doc.styles['Normal']
+    style.font.name = 'Calibri'
+    style.font.size = Pt(11)
+    style.font.color.rgb = RGBColor(0, 0, 0)
+
+    ticker = row.get('ticker', 'Stock')
+    company = row.get('company', '')
+    analysis = row.get('analysis') or {}
+    if isinstance(analysis, str):
+        import json as _json
+        try: analysis = _json.loads(analysis)
+        except: analysis = {}
+
+    title_text = f"{ticker} — {company}" if company else ticker
+    heading = doc.add_heading(title_text, level=1)
+    heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    for run in heading.runs:
+        run.font.name = 'Calibri'
+        run.font.color.rgb = RGBColor(0, 0, 0)
+
+    updated = row.get('updated_at')
+    if updated:
+        p = doc.add_paragraph(str(updated)[:10])
+        p.runs[0].font.size = Pt(9)
+        p.runs[0].font.color.rgb = RGBColor(128, 128, 128)
+
+    thesis = analysis.get('thesis', {})
+    signposts = analysis.get('signposts', [])
+    threats = analysis.get('threats', [])
+    conclusion = analysis.get('conclusion', '')
+
+    # Thesis section
+    if thesis:
+        h = doc.add_heading('Investment Thesis', level=2)
+        for r in h.runs: r.font.name = 'Calibri'; r.font.color.rgb = RGBColor(0, 0, 0)
+        if thesis.get('summary'):
+            p = doc.add_paragraph(thesis['summary'])
+            for r in p.runs: r.font.name = 'Calibri'
+        for pillar in thesis.get('pillars', []):
+            title = pillar.get('pillar', pillar.get('title', ''))
+            desc = pillar.get('detail', pillar.get('description', ''))
+            p = doc.add_paragraph(style='List Bullet')
+            run = p.add_run(f"{title}: ")
+            run.bold = True
+            run.font.name = 'Calibri'
+            run2 = p.add_run(desc)
+            run2.font.name = 'Calibri'
+
+    # Signposts section
+    if signposts:
+        h = doc.add_heading('Signposts (What We\'re Watching)', level=2)
+        for r in h.runs: r.font.name = 'Calibri'; r.font.color.rgb = RGBColor(0, 0, 0)
+        for sp in signposts:
+            metric = sp.get('metric', sp.get('signpost', ''))
+            target = sp.get('target', '')
+            timeframe = sp.get('timeframe', '')
+            text = f"{metric}: {target}"
+            if timeframe:
+                text += f" ({timeframe})"
+            p = doc.add_paragraph(text, style='List Bullet')
+            for r in p.runs: r.font.name = 'Calibri'
+
+    # Threats section
+    if threats:
+        h = doc.add_heading('Thesis Threats', level=2)
+        for r in h.runs: r.font.name = 'Calibri'; r.font.color.rgb = RGBColor(0, 0, 0)
+        for threat in threats:
+            threat_desc = threat.get('threat', '')
+            likelihood = threat.get('likelihood', '')
+            impact = threat.get('impact', '')
+            triggers = threat.get('triggerPoints', '')
+            p = doc.add_paragraph(style='List Bullet')
+            run = p.add_run(threat_desc)
+            run.bold = True
+            run.font.name = 'Calibri'
+            details = []
+            if likelihood: details.append(f"Likelihood: {likelihood}")
+            if impact: details.append(f"Impact: {impact}")
+            if triggers: details.append(f"Watch for: {triggers}")
+            if details:
+                run2 = p.add_run(f"\n{' | '.join(details)}")
+                run2.font.name = 'Calibri'
+                run2.font.size = Pt(10)
+                run2.font.color.rgb = RGBColor(100, 100, 100)
+
+    # Conclusion
+    if conclusion:
+        h = doc.add_heading('Conclusion', level=2)
+        for r in h.runs: r.font.name = 'Calibri'; r.font.color.rgb = RGBColor(0, 0, 0)
+        p = doc.add_paragraph(conclusion)
+        for r in p.runs: r.font.name = 'Calibri'
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
+def _generate_analysis_pdf_bytes(row):
+    """Generate PDF bytes from a portfolio_analyses row."""
+    from xhtml2pdf import pisa
+
+    ticker = row.get('ticker', 'Stock')
+    company = row.get('company', '')
+    analysis = row.get('analysis') or {}
+    if isinstance(analysis, str):
+        import json as _json
+        try: analysis = _json.loads(analysis)
+        except: analysis = {}
+    updated = row.get('updated_at')
+    date_str = str(updated)[:10] if updated else ''
+
+    thesis = analysis.get('thesis', {})
+    signposts = analysis.get('signposts', [])
+    threats = analysis.get('threats', [])
+    conclusion = analysis.get('conclusion', '')
+
+    sections = ''
+    if thesis:
+        sections += '<h2>Investment Thesis</h2>'
+        if thesis.get('summary'):
+            sections += f'<p>{thesis["summary"]}</p>'
+        for pillar in thesis.get('pillars', []):
+            t = pillar.get('pillar', pillar.get('title', ''))
+            d = pillar.get('detail', pillar.get('description', ''))
+            sections += f'<li><strong>{t}:</strong> {d}</li>'
+        if thesis.get('pillars'):
+            sections = sections  # already has <li> items
+
+    if signposts:
+        sections += '<h2>Signposts (What We\'re Watching)</h2><ul>'
+        for sp in signposts:
+            m = sp.get('metric', sp.get('signpost', ''))
+            t = sp.get('target', '')
+            tf = sp.get('timeframe', '')
+            sections += f'<li><strong>{m}:</strong> {t}'
+            if tf: sections += f' <em>({tf})</em>'
+            sections += '</li>'
+        sections += '</ul>'
+
+    if threats:
+        sections += '<h2>Thesis Threats</h2><ul>'
+        for threat in threats:
+            td = threat.get('threat', '')
+            lk = threat.get('likelihood', '')
+            imp = threat.get('impact', '')
+            tr = threat.get('triggerPoints', '')
+            sections += f'<li><strong>{td}</strong>'
+            if lk or imp: sections += f'<br/><span style="color:#666;font-size:0.9em;">Likelihood: {lk} | Impact: {imp}</span>'
+            if tr: sections += f'<br/><span style="color:#666;font-size:0.9em;">Watch for: {tr}</span>'
+            sections += '</li>'
+        sections += '</ul>'
+
+    if conclusion:
+        esc = conclusion.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('\n', '<br/>')
+        sections += f'<h2>Conclusion</h2><p>{esc}</p>'
+
+    title_text = f"{ticker} — {company}" if company else ticker
+    full_html = f"""<html><head><style>
+        @page {{ margin: 1in; }}
+        body {{ font-family: Calibri, Arial, Helvetica, sans-serif; font-size: 11pt; color: #000; line-height: 1.5; }}
+        h1 {{ font-size: 18pt; margin-bottom: 4pt; color: #1a365d; border-bottom: 2px solid #2c5282; padding-bottom: 10px; }}
+        h2 {{ font-size: 14pt; color: #2c5282; margin-top: 20pt; }}
+        ul {{ padding-left: 20pt; }}
+        li {{ margin-bottom: 6pt; }}
+        p {{ margin-bottom: 8pt; }}
+        .date {{ font-size: 9pt; color: #888; margin-bottom: 16pt; }}
+    </style></head><body>
+        <h1>{title_text}</h1>
+        <p class="date">{date_str}</p>
+        {sections}
+    </body></html>"""
+
+    buf = io.BytesIO()
+    pisa.CreatePDF(full_html, dest=buf)
+    return buf.getvalue()
+
+
+@app.route('/api/analysis-to-docx', methods=['POST'])
+def analysis_to_docx():
+    """Export a portfolio analysis as a Word document."""
+    try:
+        data = request.get_json()
+        ticker = data.get('ticker')
+        if not ticker:
+            return jsonify({'error': 'No ticker provided'}), 400
+        with get_db() as (_, cur):
+            cur.execute('SELECT * FROM portfolio_analyses WHERE ticker = %s', (ticker,))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'error': 'Analysis not found'}), 404
+        docx_bytes = _generate_analysis_docx_bytes(dict(row))
+        docx_b64 = base64.b64encode(docx_bytes).decode('utf-8')
+        return jsonify({'success': True, 'fileData': docx_b64, 'filename': f"{ticker}_Thesis.docx", 'fileSize': len(docx_bytes)})
+    except Exception as e:
+        print(f"Error creating analysis docx: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/analysis-to-pdf', methods=['POST'])
+def analysis_to_pdf():
+    """Export a portfolio analysis as a PDF."""
+    try:
+        data = request.get_json()
+        ticker = data.get('ticker')
+        if not ticker:
+            return jsonify({'error': 'No ticker provided'}), 400
+        with get_db() as (_, cur):
+            cur.execute('SELECT * FROM portfolio_analyses WHERE ticker = %s', (ticker,))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'error': 'Analysis not found'}), 404
+        pdf_bytes = _generate_analysis_pdf_bytes(dict(row))
+        pdf_b64 = base64.b64encode(pdf_bytes).decode('utf-8')
+        return jsonify({'success': True, 'fileData': pdf_b64, 'filename': f"{ticker}_Thesis.pdf", 'fileSize': len(pdf_bytes)})
+    except Exception as e:
+        print(f"Error creating analysis pdf: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/analyses-bulk-export', methods=['POST'])
+def analyses_bulk_export():
+    """Export multiple analyses as a zip of Word or PDF files."""
+    try:
+        import zipfile
+        data = request.get_json()
+        tickers = data.get('tickers', [])
+        export_format = data.get('format', 'docx')
+        if not tickers:
+            return jsonify({'error': 'No tickers provided'}), 400
+        with get_db() as (_, cur):
+            placeholders = ','.join(['%s'] * len(tickers))
+            cur.execute(f'SELECT * FROM portfolio_analyses WHERE ticker IN ({placeholders})', tickers)
+            rows = cur.fetchall()
+        if not rows:
+            return jsonify({'error': 'No analyses found'}), 404
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for row in rows:
+                row_dict = dict(row)
+                t = row_dict.get('ticker', 'Stock')
+                fn = f"{t}_Thesis.{export_format}"
+                if export_format == 'pdf':
+                    zf.writestr(fn, _generate_analysis_pdf_bytes(row_dict))
+                else:
+                    zf.writestr(fn, _generate_analysis_docx_bytes(row_dict))
+        zip_bytes = zip_buf.getvalue()
+        return jsonify({'success': True, 'fileData': base64.b64encode(zip_bytes).decode('utf-8'), 'filename': f"theses-{len(rows)}-files.zip", 'fileSize': len(zip_bytes), 'fileCount': len(rows)})
+    except Exception as e:
+        print(f"Error bulk exporting analyses: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/email-analyses-bulk', methods=['POST'])
+def email_analyses_bulk():
+    """Email multiple analyses in one combined email."""
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    try:
+        data = request.get_json()
+        tickers = data.get('tickers', [])
+        recipient = data.get('email')
+        smtp_config = data.get('smtpConfig', {})
+        if not tickers or not recipient:
+            return jsonify({'error': 'Tickers and email required'}), 400
+
+        with get_db() as (_, cur):
+            placeholders = ','.join(['%s'] * len(tickers))
+            cur.execute(f'SELECT * FROM portfolio_analyses WHERE ticker IN ({placeholders})', tickers)
+            rows = cur.fetchall()
+        if not rows:
+            return jsonify({'error': 'No analyses found'}), 404
+
+        # Sort by ticker for consistency
+        rows = sorted(rows, key=lambda r: r['ticker'])
+        ticker_list = ', '.join(r['ticker'] for r in rows)
+        subject = f"Investment Theses: {ticker_list}"
+
+        html_body = '<html><body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 700px;">'
+        plain_text = ''
+        for idx, row in enumerate(rows):
+            row_dict = dict(row)
+            ticker = row_dict.get('ticker', 'Stock')
+            company = row_dict.get('company', '')
+            analysis = row_dict.get('analysis') or {}
+            if isinstance(analysis, str):
+                import json as _json
+                try: analysis = _json.loads(analysis)
+                except: analysis = {}
+
+            thesis = analysis.get('thesis', {})
+            signposts = analysis.get('signposts', [])
+            threats = analysis.get('threats', [])
+
+            if idx > 0:
+                html_body += '<hr style="border:none;border-top:2px solid #ccc;margin:30px 0;"/>'
+                plain_text += '\n' + '='*60 + '\n\n'
+
+            html_body += f'<h1 style="color:#1a365d;border-bottom:2px solid #2c5282;padding-bottom:10px;">{ticker} — {company}</h1>'
+            plain_text += f"{ticker} — {company}\n{'='*40}\n\n"
+
+            if thesis:
+                html_body += '<h2 style="color:#2c5282;margin-top:25px;">Investment Thesis</h2>'
+                html_body += f'<p style="margin-left:20px;">{thesis.get("summary","")}</p>'
+                plain_text += f"INVESTMENT THESIS\n{thesis.get('summary','')}\n\n"
+                if thesis.get('pillars'):
+                    html_body += '<ul style="margin-left:20px;">'
+                    for pillar in thesis['pillars']:
+                        t = pillar.get('pillar', pillar.get('title', ''))
+                        d = pillar.get('detail', pillar.get('description', ''))
+                        html_body += f'<li style="margin-bottom:8px;"><strong>{t}:</strong> {d}</li>'
+                        plain_text += f"  - {t}: {d}\n"
+                    html_body += '</ul>'
+                    plain_text += '\n'
+
+            if signposts:
+                html_body += '<h2 style="color:#2c5282;margin-top:25px;">Signposts</h2><ul style="margin-left:20px;">'
+                plain_text += "SIGNPOSTS\n"
+                for sp in signposts:
+                    m = sp.get('metric', sp.get('signpost', ''))
+                    tgt = sp.get('target', '')
+                    tf = sp.get('timeframe', '')
+                    line = f"{m}: {tgt}"
+                    if tf: line += f" ({tf})"
+                    html_body += f'<li style="margin-bottom:8px;"><strong>{m}:</strong> {tgt}'
+                    if tf: html_body += f' <em>({tf})</em>'
+                    html_body += '</li>'
+                    plain_text += f"  - {line}\n"
+                html_body += '</ul>'
+                plain_text += '\n'
+
+            if threats:
+                html_body += '<h2 style="color:#2c5282;margin-top:25px;">Thesis Threats</h2><ul style="margin-left:20px;">'
+                plain_text += "THESIS THREATS\n"
+                for threat in threats:
+                    td = threat.get('threat', '')
+                    html_body += f'<li style="margin-bottom:10px;"><strong>{td}</strong></li>'
+                    plain_text += f"  - {td}\n"
+                html_body += '</ul>'
+                plain_text += '\n'
+
+        html_body += '</body></html>'
+
+        use_gmail = smtp_config.get('use_gmail', True)
+        gmail_user = smtp_config.get('gmail_user', '')
+        gmail_password = smtp_config.get('gmail_app_password', '')
+        from_email = smtp_config.get('from_email', gmail_user)
+
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = subject
+        msg['From'] = from_email
+        msg['To'] = recipient
+        msg.attach(MIMEText(plain_text, 'plain'))
+        msg.attach(MIMEText(html_body, 'html'))
+
+        if use_gmail:
+            with smtplib.SMTP('smtp.gmail.com', 587) as server:
+                server.starttls()
+                server.login(gmail_user, gmail_password)
+                server.send_message(msg)
+        else:
+            smtp_server = smtp_config.get('smtp_server', 'smtp.gmail.com')
+            smtp_port = smtp_config.get('smtp_port', 587)
+            with smtplib.SMTP(smtp_server, smtp_port) as server:
+                server.starttls()
+                server.login(from_email, smtp_config.get('password', ''))
+                server.send_message(msg)
+
+        return jsonify({'success': True, 'message': f'Emailed {len(rows)} theses to {recipient}'})
+    except Exception as e:
+        print(f"Error bulk emailing analyses: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================
+# OVERVIEW EXPORT ENDPOINTS
+# ============================================
+
+def _generate_overview_docx_bytes(row):
+    """Generate docx bytes from a stock_overviews row."""
+    from docx import Document
+    from docx.shared import Pt, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    doc = Document()
+    style = doc.styles['Normal']
+    style.font.name = 'Calibri'
+    style.font.size = Pt(11)
+    style.font.color.rgb = RGBColor(0, 0, 0)
+
+    ticker = row.get('ticker', 'Stock')
+    company_name = row.get('company_name', '')
+    title_text = f"{ticker} — {company_name}" if company_name else ticker
+    heading = doc.add_heading(title_text, level=1)
+    heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    for run in heading.runs:
+        run.font.name = 'Calibri'
+        run.font.color.rgb = RGBColor(0, 0, 0)
+
+    updated = row.get('updated_at')
+    if updated:
+        p = doc.add_paragraph(str(updated)[:10])
+        p.runs[0].font.size = Pt(9)
+        p.runs[0].font.color.rgb = RGBColor(128, 128, 128)
+
+    overview_sections = [
+        ('Company Overview', row.get('company_overview', '')),
+        ('Business Model', row.get('business_model', '')),
+        ('Business Mix', row.get('business_mix', '')),
+        ('Opportunities', row.get('opportunities', '')),
+        ('Risks', row.get('risks', '')),
+        ('Conclusion', row.get('conclusion', '')),
+    ]
+
+    for section_title, content in overview_sections:
+        if not content:
+            continue
+        h = doc.add_heading(section_title, level=2)
+        for r in h.runs: r.font.name = 'Calibri'; r.font.color.rgb = RGBColor(0, 0, 0)
+        for line in content.split('\n'):
+            p = doc.add_paragraph(line)
+            for r in p.runs: r.font.name = 'Calibri'
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
+def _generate_overview_pdf_bytes(row):
+    """Generate PDF bytes from a stock_overviews row."""
+    from xhtml2pdf import pisa
+
+    ticker = row.get('ticker', 'Stock')
+    company_name = row.get('company_name', '')
+    title_text = f"{ticker} — {company_name}" if company_name else ticker
+    updated = row.get('updated_at')
+    date_str = str(updated)[:10] if updated else ''
+
+    overview_sections = [
+        ('Company Overview', row.get('company_overview', '')),
+        ('Business Model', row.get('business_model', '')),
+        ('Business Mix', row.get('business_mix', '')),
+        ('Opportunities', row.get('opportunities', '')),
+        ('Risks', row.get('risks', '')),
+        ('Conclusion', row.get('conclusion', '')),
+    ]
+
+    sections = ''
+    for section_title, content in overview_sections:
+        if not content:
+            continue
+        esc = content.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('\n', '<br/>')
+        sections += f'<h2>{section_title}</h2><p>{esc}</p>'
+
+    full_html = f"""<html><head><style>
+        @page {{ margin: 1in; }}
+        body {{ font-family: Calibri, Arial, Helvetica, sans-serif; font-size: 11pt; color: #000; line-height: 1.5; }}
+        h1 {{ font-size: 18pt; margin-bottom: 4pt; color: #1a365d; border-bottom: 2px solid #2c5282; padding-bottom: 10px; }}
+        h2 {{ font-size: 14pt; color: #2c5282; margin-top: 20pt; }}
+        p {{ margin-bottom: 8pt; }}
+        .date {{ font-size: 9pt; color: #888; margin-bottom: 16pt; }}
+    </style></head><body>
+        <h1>{title_text}</h1>
+        <p class="date">{date_str}</p>
+        {sections}
+    </body></html>"""
+
+    buf = io.BytesIO()
+    pisa.CreatePDF(full_html, dest=buf)
+    return buf.getvalue()
+
+
+@app.route('/api/overview-to-docx', methods=['POST'])
+def overview_to_docx():
+    """Export a stock overview as a Word document."""
+    try:
+        data = request.get_json()
+        ticker = data.get('ticker')
+        if not ticker:
+            return jsonify({'error': 'No ticker provided'}), 400
+        with get_db() as (_, cur):
+            cur.execute('SELECT * FROM stock_overviews WHERE ticker = %s', (ticker,))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'error': 'Overview not found'}), 404
+        docx_bytes = _generate_overview_docx_bytes(dict(row))
+        docx_b64 = base64.b64encode(docx_bytes).decode('utf-8')
+        return jsonify({'success': True, 'fileData': docx_b64, 'filename': f"{ticker}_Overview.docx", 'fileSize': len(docx_bytes)})
+    except Exception as e:
+        print(f"Error creating overview docx: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/overview-to-pdf', methods=['POST'])
+def overview_to_pdf():
+    """Export a stock overview as a PDF."""
+    try:
+        data = request.get_json()
+        ticker = data.get('ticker')
+        if not ticker:
+            return jsonify({'error': 'No ticker provided'}), 400
+        with get_db() as (_, cur):
+            cur.execute('SELECT * FROM stock_overviews WHERE ticker = %s', (ticker,))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'error': 'Overview not found'}), 404
+        pdf_bytes = _generate_overview_pdf_bytes(dict(row))
+        pdf_b64 = base64.b64encode(pdf_bytes).decode('utf-8')
+        return jsonify({'success': True, 'fileData': pdf_b64, 'filename': f"{ticker}_Overview.pdf", 'fileSize': len(pdf_bytes)})
+    except Exception as e:
+        print(f"Error creating overview pdf: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/overviews-bulk-export', methods=['POST'])
+def overviews_bulk_export():
+    """Export multiple overviews as a zip of Word or PDF files."""
+    try:
+        import zipfile
+        data = request.get_json()
+        tickers = data.get('tickers', [])
+        export_format = data.get('format', 'docx')
+        if not tickers:
+            return jsonify({'error': 'No tickers provided'}), 400
+        with get_db() as (_, cur):
+            placeholders = ','.join(['%s'] * len(tickers))
+            cur.execute(f'SELECT * FROM stock_overviews WHERE ticker IN ({placeholders})', tickers)
+            rows = cur.fetchall()
+        if not rows:
+            return jsonify({'error': 'No overviews found'}), 404
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for row in rows:
+                row_dict = dict(row)
+                t = row_dict.get('ticker', 'Stock')
+                fn = f"{t}_Overview.{export_format}"
+                if export_format == 'pdf':
+                    zf.writestr(fn, _generate_overview_pdf_bytes(row_dict))
+                else:
+                    zf.writestr(fn, _generate_overview_docx_bytes(row_dict))
+        zip_bytes = zip_buf.getvalue()
+        return jsonify({'success': True, 'fileData': base64.b64encode(zip_bytes).decode('utf-8'), 'filename': f"overviews-{len(rows)}-files.zip", 'fileSize': len(zip_bytes), 'fileCount': len(rows)})
+    except Exception as e:
+        print(f"Error bulk exporting overviews: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================
 # DOCUMENT STORAGE ENDPOINTS
 # ============================================
 
