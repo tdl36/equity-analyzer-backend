@@ -842,6 +842,16 @@ def init_db():
                 )
             ''')
 
+            # Thesis scorecard data (traffic-light thresholds for formatted exports)
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS thesis_scorecard_data (
+                    id SERIAL PRIMARY KEY,
+                    ticker VARCHAR(20) UNIQUE NOT NULL,
+                    scorecard_data JSONB,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
             # Mark stale processing jobs as failed (server restart recovery)
             cur.execute('''
                 UPDATE analysis_jobs
@@ -3727,6 +3737,655 @@ def overviews_bulk_export():
         return jsonify({'success': True, 'fileData': base64.b64encode(zip_bytes).decode('utf-8'), 'filename': f"overviews-{len(rows)}-files.zip", 'fileSize': len(zip_bytes), 'fileCount': len(rows)})
     except Exception as e:
         print(f"Error bulk exporting overviews: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================
+# THESIS FORMAT STUDIO ENDPOINTS
+# ============================================
+
+@app.route('/api/thesis-format/scorecard-data/<ticker>', methods=['GET'])
+def get_scorecard_data(ticker):
+    """Get saved scorecard data for a ticker."""
+    try:
+        with get_db() as (_, cur):
+            cur.execute('SELECT scorecard_data FROM thesis_scorecard_data WHERE ticker = %s', (ticker.upper(),))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'scorecard_data': None})
+        return jsonify({'scorecard_data': row['scorecard_data']})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/thesis-format/scorecard-data', methods=['POST'])
+def save_scorecard_data():
+    """Save scorecard data (traffic-light thresholds) for a ticker."""
+    try:
+        data = request.get_json()
+        ticker = data.get('ticker', '').upper()
+        scorecard_data = data.get('scorecard_data', {})
+        if not ticker:
+            return jsonify({'error': 'No ticker provided'}), 400
+        with get_db() as (conn, cur):
+            cur.execute('''
+                INSERT INTO thesis_scorecard_data (ticker, scorecard_data, updated_at)
+                VALUES (%s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (ticker) DO UPDATE SET scorecard_data = %s, updated_at = CURRENT_TIMESTAMP
+            ''', (ticker, json.dumps(scorecard_data), json.dumps(scorecard_data)))
+            conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+def _fmt_escape(text):
+    """HTML-escape text for format templates."""
+    if not text:
+        return ''
+    return str(text).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+
+def _status_color(status):
+    """Return CSS color for a traffic-light status."""
+    s = (status or '').lower()
+    if s == 'green':
+        return '#16a34a'
+    elif s == 'yellow':
+        return '#ca8a04'
+    elif s == 'red':
+        return '#dc2626'
+    return '#94a3b8'
+
+
+def _status_bg(status):
+    """Return CSS background for a traffic-light status."""
+    s = (status or '').lower()
+    if s == 'green':
+        return '#dcfce7'
+    elif s == 'yellow':
+        return '#fef9c3'
+    elif s == 'red':
+        return '#fee2e2'
+    return '#f1f5f9'
+
+
+def _status_dot(status):
+    """Return a colored circle HTML for status."""
+    color = _status_color(status)
+    return f'<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:{color};margin-right:4px;vertical-align:middle;"></span>'
+
+
+def _parse_analysis_data(row):
+    """Extract and parse analysis data from a portfolio_analyses row."""
+    analysis = row.get('analysis') or {}
+    if isinstance(analysis, str):
+        try:
+            analysis = json.loads(analysis)
+        except:
+            analysis = {}
+    ticker = row.get('ticker', 'Stock')
+    company = row.get('company', '')
+    updated = row.get('updated_at')
+    date_str = str(updated)[:10] if updated else ''
+    thesis = analysis.get('thesis', {})
+    signposts = analysis.get('signposts', [])
+    threats = analysis.get('threats', [])
+    conclusion = analysis.get('conclusion', '')
+    return {
+        'ticker': ticker, 'company': company, 'date_str': date_str,
+        'thesis': thesis, 'signposts': signposts, 'threats': threats,
+        'conclusion': conclusion, 'analysis': analysis
+    }
+
+
+def _generate_executive_brief_pdf(row, scorecard_data=None):
+    """Format 1: Executive Brief — clean navy theme, professional layout."""
+    from xhtml2pdf import pisa
+    d = _parse_analysis_data(row)
+    ticker, company, date_str = d['ticker'], d['company'], d['date_str']
+    thesis, signposts, threats, conclusion = d['thesis'], d['signposts'], d['threats'], d['conclusion']
+    title = f"{ticker} — {company}" if company else ticker
+
+    # Thesis pillars
+    pillars_html = ''
+    for i, p in enumerate(thesis.get('pillars', []), 1):
+        t = _fmt_escape(p.get('pillar', p.get('title', '')))
+        desc = _fmt_escape(p.get('detail', p.get('description', '')))
+        conf = p.get('confidence', '')
+        conf_badge = ''
+        if conf:
+            conf_color = '#16a34a' if conf.lower() == 'high' else '#ca8a04' if conf.lower() == 'medium' else '#dc2626'
+            conf_badge = f' <span style="background:{conf_color};color:#fff;padding:1px 8px;border-radius:10px;font-size:8pt;margin-left:6px;">{_fmt_escape(conf)}</span>'
+        pillars_html += f'''
+        <tr>
+            <td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;vertical-align:top;width:30px;color:#1e3a5f;font-weight:bold;font-size:13pt;">{i}</td>
+            <td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;">
+                <strong style="color:#1e3a5f;">{t}</strong>{conf_badge}<br/>
+                <span style="color:#475569;font-size:10pt;">{desc}</span>
+            </td>
+        </tr>'''
+
+    # Signposts table
+    signposts_html = ''
+    sc_signposts = {}
+    if scorecard_data and scorecard_data.get('signposts'):
+        for sp in scorecard_data['signposts']:
+            sc_signposts[sp.get('metric', '')] = sp
+    for sp in signposts:
+        metric = _fmt_escape(sp.get('metric', sp.get('signpost', '')))
+        target = _fmt_escape(sp.get('target', ''))
+        tf = _fmt_escape(sp.get('timeframe', ''))
+        sc = sc_signposts.get(sp.get('metric', sp.get('signpost', '')), {})
+        latest = _fmt_escape(sc.get('latest', '—'))
+        status = sc.get('status', '')
+        status_cell = f'<td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;background:{_status_bg(status)};font-weight:bold;color:{_status_color(status)};">{_fmt_escape(status.upper()) if status else "—"}</td>'
+        signposts_html += f'''
+        <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#1e3a5f;">{metric}</td>
+            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#475569;">{target}</td>
+            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#475569;">{tf}</td>
+            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;">{latest}</td>
+            {status_cell}
+        </tr>'''
+
+    # Threats table
+    threats_html = ''
+    sc_risks = {}
+    if scorecard_data and scorecard_data.get('risks'):
+        for r in scorecard_data['risks']:
+            sc_risks[r.get('riskFactor', '')] = r
+    for threat in threats:
+        td = _fmt_escape(threat.get('threat', ''))
+        lk = _fmt_escape(threat.get('likelihood', ''))
+        imp = _fmt_escape(threat.get('impact', ''))
+        triggers = _fmt_escape(threat.get('triggerPoints', ''))
+        sc = sc_risks.get(threat.get('threat', ''), {})
+        status = sc.get('status', '')
+        status_cell = f'<td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;background:{_status_bg(status)};font-weight:bold;color:{_status_color(status)};">{_fmt_escape(status.upper()) if status else "—"}</td>'
+        threats_html += f'''
+        <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#1e3a5f;">{td}</td>
+            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;">{lk}</td>
+            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;">{imp}</td>
+            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#475569;font-size:9pt;">{triggers}</td>
+            {status_cell}
+        </tr>'''
+
+    conclusion_html = ''
+    if conclusion:
+        conclusion_html = f'''
+        <div style="margin-top:20px;padding:16px 20px;background:#f0f4ff;border-left:4px solid #1e3a5f;border-radius:0 8px 8px 0;">
+            <h3 style="margin:0 0 8px 0;color:#1e3a5f;font-size:12pt;">Conclusion</h3>
+            <p style="margin:0;color:#334155;font-size:10pt;line-height:1.6;">{_fmt_escape(conclusion)}</p>
+        </div>'''
+
+    html = f"""<html><head><style>
+        @page {{ margin: 0.6in 0.7in; size: letter; }}
+        body {{ font-family: Calibri, Arial, Helvetica, sans-serif; font-size: 10pt; color: #1e293b; line-height: 1.5; margin: 0; }}
+        table {{ border-collapse: collapse; width: 100%; }}
+    </style></head><body>
+        <!-- Header -->
+        <div style="background:#1e3a5f;color:#fff;padding:20px 28px;margin:-0.6in -0.7in 24px -0.7in;width:calc(100% + 1.4in);">
+            <div style="font-size:22pt;font-weight:bold;letter-spacing:0.5px;">{_fmt_escape(title)}</div>
+            <div style="font-size:10pt;color:#94b8d8;margin-top:4px;">Investment Thesis | {date_str}</div>
+        </div>
+
+        <!-- Thesis Summary -->
+        <div style="margin-bottom:20px;">
+            <h2 style="font-size:14pt;color:#1e3a5f;border-bottom:2px solid #1e3a5f;padding-bottom:6px;margin-bottom:12px;">Investment Thesis</h2>
+            <p style="color:#334155;font-size:10.5pt;line-height:1.7;margin:0 0 16px 0;text-align:justify;">{_fmt_escape(thesis.get('summary', ''))}</p>
+            <table style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+                <thead><tr style="background:#f1f5f9;">
+                    <th style="padding:8px 14px;text-align:left;color:#64748b;font-size:9pt;font-weight:600;border-bottom:2px solid #cbd5e1;">#</th>
+                    <th style="padding:8px 14px;text-align:left;color:#64748b;font-size:9pt;font-weight:600;border-bottom:2px solid #cbd5e1;">THESIS PILLAR</th>
+                </tr></thead>
+                <tbody>{pillars_html}</tbody>
+            </table>
+        </div>
+
+        <!-- Signposts -->
+        {'<div style="margin-bottom:20px;"><h2 style="font-size:14pt;color:#1e3a5f;border-bottom:2px solid #1e3a5f;padding-bottom:6px;margin-bottom:12px;">Signposts — What We Are Watching</h2><table style="border:1px solid #e2e8f0;"><thead><tr style="background:#f1f5f9;"><th style="padding:8px 12px;text-align:left;color:#64748b;font-size:9pt;font-weight:600;border-bottom:2px solid #cbd5e1;">METRIC</th><th style="padding:8px 12px;text-align:left;color:#64748b;font-size:9pt;font-weight:600;border-bottom:2px solid #cbd5e1;">TARGET</th><th style="padding:8px 12px;text-align:left;color:#64748b;font-size:9pt;font-weight:600;border-bottom:2px solid #cbd5e1;">TIMEFRAME</th><th style="padding:8px 12px;text-align:center;color:#64748b;font-size:9pt;font-weight:600;border-bottom:2px solid #cbd5e1;">LATEST</th><th style="padding:8px 12px;text-align:center;color:#64748b;font-size:9pt;font-weight:600;border-bottom:2px solid #cbd5e1;">STATUS</th></tr></thead><tbody>' + signposts_html + '</tbody></table></div>' if signposts else ''}
+
+        <!-- Threats -->
+        {'<div style="margin-bottom:20px;"><h2 style="font-size:14pt;color:#1e3a5f;border-bottom:2px solid #1e3a5f;padding-bottom:6px;margin-bottom:12px;">Risks to Thesis</h2><table style="border:1px solid #e2e8f0;"><thead><tr style="background:#f1f5f9;"><th style="padding:8px 12px;text-align:left;color:#64748b;font-size:9pt;font-weight:600;border-bottom:2px solid #cbd5e1;">RISK FACTOR</th><th style="padding:8px 12px;text-align:center;color:#64748b;font-size:9pt;font-weight:600;border-bottom:2px solid #cbd5e1;">LIKELIHOOD</th><th style="padding:8px 12px;text-align:center;color:#64748b;font-size:9pt;font-weight:600;border-bottom:2px solid #cbd5e1;">IMPACT</th><th style="padding:8px 12px;text-align:left;color:#64748b;font-size:9pt;font-weight:600;border-bottom:2px solid #cbd5e1;">TRIGGER POINTS</th><th style="padding:8px 12px;text-align:center;color:#64748b;font-size:9pt;font-weight:600;border-bottom:2px solid #cbd5e1;">STATUS</th></tr></thead><tbody>' + threats_html + '</tbody></table></div>' if threats else ''}
+
+        {conclusion_html}
+    </body></html>"""
+
+    buf = io.BytesIO()
+    pisa.CreatePDF(html, dest=buf)
+    return buf.getvalue()
+
+
+def _generate_scorecard_pdf(row, scorecard_data=None):
+    """Format 2: Scorecard Dashboard — traffic-light tables with green banners."""
+    from xhtml2pdf import pisa
+    d = _parse_analysis_data(row)
+    ticker, company, date_str = d['ticker'], d['company'], d['date_str']
+    thesis, signposts, threats, conclusion = d['thesis'], d['signposts'], d['threats'], d['conclusion']
+    title = f"{ticker} — {company}" if company else ticker
+
+    # Build pillar cards
+    pillars_html = ''
+    for p in thesis.get('pillars', []):
+        t = _fmt_escape(p.get('pillar', p.get('title', '')))
+        desc = _fmt_escape(p.get('detail', p.get('description', '')))
+        conf = p.get('confidence', '')
+        conf_html = ''
+        if conf:
+            conf_color = '#16a34a' if conf.lower() == 'high' else '#ca8a04' if conf.lower() == 'medium' else '#dc2626'
+            conf_html = f'<span style="float:right;background:{conf_color};color:#fff;padding:2px 10px;border-radius:12px;font-size:8pt;">{_fmt_escape(conf)}</span>'
+        pillars_html += f'''
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #166534;border-radius:0 6px 6px 0;padding:10px 14px;margin-bottom:8px;">
+            <div style="font-weight:bold;color:#166534;font-size:10.5pt;">{t}{conf_html}</div>
+            <div style="color:#475569;font-size:9.5pt;margin-top:4px;line-height:1.5;">{desc}</div>
+        </div>'''
+
+    # Signposts traffic-light table
+    signposts_rows = ''
+    sc_signposts = {}
+    if scorecard_data and scorecard_data.get('signposts'):
+        for sp in scorecard_data['signposts']:
+            sc_signposts[sp.get('metric', '')] = sp
+    for sp in signposts:
+        metric = _fmt_escape(sp.get('metric', sp.get('signpost', '')))
+        target = _fmt_escape(sp.get('target', ''))
+        sc = sc_signposts.get(sp.get('metric', sp.get('signpost', '')), {})
+        lt_goal = _fmt_escape(sc.get('ltGoal', target))
+        latest = _fmt_escape(sc.get('latest', '—'))
+        status = sc.get('status', '')
+        green_desc = _fmt_escape(sc.get('greenThreshold', ''))
+        yellow_desc = _fmt_escape(sc.get('yellowThreshold', ''))
+        red_desc = _fmt_escape(sc.get('redThreshold', ''))
+
+        def _cell(s, desc, current):
+            is_active = current.lower() == s if current else False
+            bg = _status_bg(s) if is_active else '#fff'
+            border = f'2px solid {_status_color(s)}' if is_active else '1px solid #e2e8f0'
+            weight = 'bold' if is_active else 'normal'
+            return f'<td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;border:{border};background:{bg};text-align:center;font-size:8pt;font-weight:{weight};color:{_status_color(s) if is_active else "#94a3b8"};">{desc if desc else s.upper()}</td>'
+
+        signposts_rows += f'''
+        <tr>
+            <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#166534;font-size:9.5pt;">{metric}</td>
+            <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;color:#475569;font-size:9.5pt;text-align:center;">{lt_goal}</td>
+            <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;color:#1e3a5f;font-size:9.5pt;text-align:center;font-weight:bold;">{latest}</td>
+            {_cell('green', green_desc, status)}
+            {_cell('yellow', yellow_desc, status)}
+            {_cell('red', red_desc, status)}
+        </tr>'''
+
+    # Risks traffic-light table
+    risks_rows = ''
+    sc_risks = {}
+    if scorecard_data and scorecard_data.get('risks'):
+        for r in scorecard_data['risks']:
+            sc_risks[r.get('riskFactor', '')] = r
+    for threat in threats:
+        td = _fmt_escape(threat.get('threat', ''))
+        sc = sc_risks.get(threat.get('threat', ''), {})
+        status = sc.get('status', '')
+        green_desc = _fmt_escape(sc.get('greenDescription', ''))
+        yellow_desc = _fmt_escape(sc.get('yellowDescription', ''))
+        red_desc = _fmt_escape(sc.get('redDescription', ''))
+
+        def _rcell(s, desc, current):
+            is_active = current.lower() == s if current else False
+            bg = _status_bg(s) if is_active else '#fff'
+            border = f'2px solid {_status_color(s)}' if is_active else '1px solid #e2e8f0'
+            weight = 'bold' if is_active else 'normal'
+            return f'<td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;border:{border};background:{bg};text-align:center;font-size:8pt;font-weight:{weight};color:{_status_color(s) if is_active else "#94a3b8"};">{desc if desc else s.upper()}</td>'
+
+        status_label = _fmt_escape(sc.get('statusNote', ''))
+        risks_rows += f'''
+        <tr>
+            <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#166534;font-size:9.5pt;">{td}</td>
+            <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;color:#475569;font-size:9pt;text-align:center;">{status_label if status_label else "—"}</td>
+            {_rcell('green', green_desc, status)}
+            {_rcell('yellow', yellow_desc, status)}
+            {_rcell('red', red_desc, status)}
+        </tr>'''
+
+    html = f"""<html><head><style>
+        @page {{ margin: 0.5in 0.6in; size: letter; }}
+        body {{ font-family: Calibri, Arial, Helvetica, sans-serif; font-size: 10pt; color: #1e293b; line-height: 1.4; margin: 0; }}
+        table {{ border-collapse: collapse; width: 100%; }}
+        .section-banner {{ background: #166534; color: #fff; padding: 10px 18px; font-size: 13pt; font-weight: bold; letter-spacing: 0.5px; margin: 18px -0.6in 14px -0.6in; padding-left: 0.6in; width: calc(100% + 1.2in); }}
+    </style></head><body>
+        <!-- Header -->
+        <div style="background:#166534;color:#fff;padding:22px 28px;margin:-0.5in -0.6in 0 -0.6in;width:calc(100% + 1.2in);">
+            <div style="font-size:24pt;font-weight:bold;">{_fmt_escape(ticker)}</div>
+            <div style="font-size:12pt;color:#bbf7d0;margin-top:2px;">{_fmt_escape(company)}</div>
+            <div style="font-size:9pt;color:#86efac;margin-top:6px;">Investment Thesis Scorecard | {date_str}</div>
+        </div>
+
+        <!-- Investment Thesis -->
+        <div class="section-banner">INVESTMENT THESIS</div>
+        <p style="color:#334155;font-size:10.5pt;line-height:1.7;margin:0 0 14px 0;text-align:justify;">{_fmt_escape(thesis.get('summary', ''))}</p>
+        {pillars_html}
+
+        <!-- Signposts -->
+        {'<div class="section-banner">SIGNPOSTS — WHAT WE ARE WATCHING</div><table style="border:1px solid #e2e8f0;margin-bottom:6px;"><thead><tr style="background:#f1f5f9;"><th style="padding:8px 10px;text-align:left;color:#166534;font-size:8pt;font-weight:700;border-bottom:2px solid #16a34a;text-transform:uppercase;">Measure</th><th style="padding:8px 10px;text-align:center;color:#166534;font-size:8pt;font-weight:700;border-bottom:2px solid #16a34a;text-transform:uppercase;">LT Goal</th><th style="padding:8px 10px;text-align:center;color:#166534;font-size:8pt;font-weight:700;border-bottom:2px solid #16a34a;text-transform:uppercase;">Latest</th><th style="padding:8px 10px;text-align:center;color:#166534;font-size:8pt;font-weight:700;border-bottom:2px solid #16a34a;text-transform:uppercase;">Green</th><th style="padding:8px 10px;text-align:center;color:#166534;font-size:8pt;font-weight:700;border-bottom:2px solid #16a34a;text-transform:uppercase;">Yellow</th><th style="padding:8px 10px;text-align:center;color:#166534;font-size:8pt;font-weight:700;border-bottom:2px solid #16a34a;text-transform:uppercase;">Red</th></tr></thead><tbody>' + signposts_rows + '</tbody></table>' if signposts else ''}
+
+        <!-- Risks -->
+        {'<div class="section-banner">RISKS TO THESIS</div><table style="border:1px solid #e2e8f0;margin-bottom:6px;"><thead><tr style="background:#f1f5f9;"><th style="padding:8px 10px;text-align:left;color:#166534;font-size:8pt;font-weight:700;border-bottom:2px solid #16a34a;text-transform:uppercase;">Risk Factor</th><th style="padding:8px 10px;text-align:center;color:#166534;font-size:8pt;font-weight:700;border-bottom:2px solid #16a34a;text-transform:uppercase;">Status</th><th style="padding:8px 10px;text-align:center;color:#166534;font-size:8pt;font-weight:700;border-bottom:2px solid #16a34a;text-transform:uppercase;">Green</th><th style="padding:8px 10px;text-align:center;color:#166534;font-size:8pt;font-weight:700;border-bottom:2px solid #16a34a;text-transform:uppercase;">Yellow</th><th style="padding:8px 10px;text-align:center;color:#166534;font-size:8pt;font-weight:700;border-bottom:2px solid #16a34a;text-transform:uppercase;">Red</th></tr></thead><tbody>' + risks_rows + '</tbody></table>' if threats else ''}
+    </body></html>"""
+
+    buf = io.BytesIO()
+    pisa.CreatePDF(html, dest=buf)
+    return buf.getvalue()
+
+
+def _generate_onepager_pdf(row, scorecard_data=None):
+    """Format 3: Institutional One-Pager — condensed, high-density single page."""
+    from xhtml2pdf import pisa
+    d = _parse_analysis_data(row)
+    ticker, company, date_str = d['ticker'], d['company'], d['date_str']
+    thesis, signposts, threats, conclusion = d['thesis'], d['signposts'], d['threats'], d['conclusion']
+
+    # Pillars
+    pillars_html = ''
+    for p in thesis.get('pillars', []):
+        t = _fmt_escape(p.get('pillar', p.get('title', '')))
+        desc = _fmt_escape(p.get('detail', p.get('description', '')))
+        pillars_html += f'<div style="margin-bottom:6px;"><span style="font-weight:bold;color:#1e3a5f;">{t}:</span> <span style="color:#475569;">{desc}</span></div>'
+
+    # Signpost bullets
+    sc_signposts = {}
+    if scorecard_data and scorecard_data.get('signposts'):
+        for sp in scorecard_data['signposts']:
+            sc_signposts[sp.get('metric', '')] = sp
+    signpost_items = ''
+    for sp in signposts:
+        metric = _fmt_escape(sp.get('metric', sp.get('signpost', '')))
+        target = _fmt_escape(sp.get('target', ''))
+        sc = sc_signposts.get(sp.get('metric', sp.get('signpost', '')), {})
+        status = sc.get('status', '')
+        dot = f'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:{_status_color(status)};margin-right:5px;vertical-align:middle;"></span>' if status else ''
+        signpost_items += f'<div style="margin-bottom:4px;font-size:9pt;">{dot}<strong>{metric}:</strong> {target}</div>'
+
+    # Risk bullets
+    sc_risks = {}
+    if scorecard_data and scorecard_data.get('risks'):
+        for r in scorecard_data['risks']:
+            sc_risks[r.get('riskFactor', '')] = r
+    risk_items = ''
+    for threat in threats:
+        td = _fmt_escape(threat.get('threat', ''))
+        lk = threat.get('likelihood', '')
+        imp = threat.get('impact', '')
+        sc = sc_risks.get(threat.get('threat', ''), {})
+        status = sc.get('status', '')
+        dot = f'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:{_status_color(status)};margin-right:5px;vertical-align:middle;"></span>' if status else ''
+        detail = f' (L: {_fmt_escape(lk)}, I: {_fmt_escape(imp)})' if lk and imp else ''
+        risk_items += f'<div style="margin-bottom:4px;font-size:9pt;">{dot}<strong>{td}</strong>{detail}</div>'
+
+    html = f"""<html><head><style>
+        @page {{ margin: 0.45in 0.5in; size: letter; }}
+        body {{ font-family: Calibri, Arial, Helvetica, sans-serif; font-size: 9pt; color: #1e293b; line-height: 1.35; margin: 0; }}
+        table {{ border-collapse: collapse; width: 100%; }}
+    </style></head><body>
+        <!-- Compact Header -->
+        <table style="margin:-0.45in -0.5in 10px -0.5in;width:calc(100% + 1in);">
+            <tr>
+                <td style="background:#0f172a;padding:14px 20px;width:65%;">
+                    <div style="color:#fff;font-size:20pt;font-weight:bold;">{_fmt_escape(ticker)}</div>
+                    <div style="color:#94a3b8;font-size:10pt;">{_fmt_escape(company)}</div>
+                </td>
+                <td style="background:#1e293b;padding:14px 20px;text-align:right;">
+                    <div style="color:#64748b;font-size:8pt;">INVESTMENT THESIS</div>
+                    <div style="color:#94a3b8;font-size:9pt;">{date_str}</div>
+                </td>
+            </tr>
+        </table>
+
+        <!-- Thesis Summary -->
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin-bottom:12px;">
+            <div style="font-weight:bold;color:#0f172a;font-size:10pt;margin-bottom:4px;">WHY WE OWN IT</div>
+            <div style="color:#334155;font-size:9.5pt;line-height:1.5;">{_fmt_escape(thesis.get('summary', ''))}</div>
+        </div>
+
+        <!-- Two-column layout -->
+        <table>
+            <tr>
+                <td style="vertical-align:top;width:55%;padding-right:10px;">
+                    <div style="background:#1e3a5f;color:#fff;padding:6px 12px;font-weight:bold;font-size:9pt;margin-bottom:8px;">KEY PILLARS</div>
+                    {pillars_html}
+                    {'<div style="background:#1e3a5f;color:#fff;padding:6px 12px;font-weight:bold;font-size:9pt;margin:12px 0 8px 0;">SIGNPOSTS</div>' + signpost_items if signposts else ''}
+                </td>
+                <td style="vertical-align:top;width:45%;padding-left:10px;border-left:2px solid #e2e8f0;">
+                    <div style="background:#7f1d1d;color:#fff;padding:6px 12px;font-weight:bold;font-size:9pt;margin-bottom:8px;">RISKS TO THESIS</div>
+                    {risk_items}
+                    {'<div style="background:#0f172a;color:#fff;padding:6px 12px;font-weight:bold;font-size:9pt;margin:12px 0 8px 0;">CONCLUSION</div><div style="color:#475569;font-size:9pt;line-height:1.5;">' + _fmt_escape(conclusion) + '</div>' if conclusion else ''}
+                </td>
+            </tr>
+        </table>
+    </body></html>"""
+
+    buf = io.BytesIO()
+    pisa.CreatePDF(html, dest=buf)
+    return buf.getvalue()
+
+
+def _generate_board_pdf(row, scorecard_data=None):
+    """Format 4: Conviction Card — bold, high-impact presentation format."""
+    from xhtml2pdf import pisa
+    d = _parse_analysis_data(row)
+    ticker, company, date_str = d['ticker'], d['company'], d['date_str']
+    thesis, signposts, threats, conclusion = d['thesis'], d['signposts'], d['threats'], d['conclusion']
+
+    # Count green/yellow/red from scorecard
+    green_count = yellow_count = red_count = 0
+    if scorecard_data:
+        for sp in scorecard_data.get('signposts', []):
+            s = (sp.get('status', '') or '').lower()
+            if s == 'green': green_count += 1
+            elif s == 'yellow': yellow_count += 1
+            elif s == 'red': red_count += 1
+        for r in scorecard_data.get('risks', []):
+            s = (r.get('status', '') or '').lower()
+            if s == 'green': green_count += 1
+            elif s == 'yellow': yellow_count += 1
+            elif s == 'red': red_count += 1
+    total = green_count + yellow_count + red_count
+
+    # Conviction gauge
+    conviction_pct = round(green_count / total * 100) if total > 0 else 0
+    conviction_color = '#16a34a' if conviction_pct >= 70 else '#ca8a04' if conviction_pct >= 40 else '#dc2626'
+    conviction_label = 'HIGH' if conviction_pct >= 70 else 'MEDIUM' if conviction_pct >= 40 else 'LOW'
+
+    gauge_html = ''
+    if total > 0:
+        gauge_html = f'''
+        <table style="margin:0 auto;"><tr>
+            <td style="text-align:center;padding:0 20px;">
+                <div style="font-size:42pt;font-weight:bold;color:{conviction_color};">{conviction_pct}%</div>
+                <div style="font-size:10pt;color:#64748b;font-weight:600;letter-spacing:2px;">{conviction_label} CONVICTION</div>
+            </td>
+            <td style="padding:0 12px;text-align:center;">
+                <div style="background:#dcfce7;border-radius:8px;padding:8px 14px;margin-bottom:4px;">
+                    <div style="font-size:18pt;font-weight:bold;color:#16a34a;">{green_count}</div>
+                    <div style="font-size:7pt;color:#166534;font-weight:600;">GREEN</div>
+                </div>
+            </td>
+            <td style="padding:0 12px;text-align:center;">
+                <div style="background:#fef9c3;border-radius:8px;padding:8px 14px;margin-bottom:4px;">
+                    <div style="font-size:18pt;font-weight:bold;color:#ca8a04;">{yellow_count}</div>
+                    <div style="font-size:7pt;color:#854d0e;font-weight:600;">YELLOW</div>
+                </div>
+            </td>
+            <td style="padding:0 12px;text-align:center;">
+                <div style="background:#fee2e2;border-radius:8px;padding:8px 14px;margin-bottom:4px;">
+                    <div style="font-size:18pt;font-weight:bold;color:#dc2626;">{red_count}</div>
+                    <div style="font-size:7pt;color:#991b1b;font-weight:600;">RED</div>
+                </div>
+            </td>
+        </tr></table>'''
+
+    # Pillar cards
+    pillars_html = ''
+    for i, p in enumerate(thesis.get('pillars', []), 1):
+        t = _fmt_escape(p.get('pillar', p.get('title', '')))
+        desc = _fmt_escape(p.get('detail', p.get('description', '')))
+        conf = p.get('confidence', '')
+        conf_color = '#16a34a' if conf and conf.lower() == 'high' else '#ca8a04' if conf and conf.lower() == 'medium' else '#dc2626' if conf else '#64748b'
+        pillars_html += f'''
+        <div style="background:#fff;border:1px solid #e2e8f0;border-top:3px solid {conf_color};border-radius:0 0 8px 8px;padding:12px 16px;margin-bottom:10px;">
+            <div style="font-weight:bold;color:#0f172a;font-size:11pt;">{t}</div>
+            <div style="color:#475569;font-size:9.5pt;margin-top:4px;line-height:1.5;">{desc}</div>
+        </div>'''
+
+    # Signposts with status dots
+    sc_signposts = {}
+    if scorecard_data and scorecard_data.get('signposts'):
+        for sp in scorecard_data['signposts']:
+            sc_signposts[sp.get('metric', '')] = sp
+    signpost_rows = ''
+    for sp in signposts:
+        metric = _fmt_escape(sp.get('metric', sp.get('signpost', '')))
+        target = _fmt_escape(sp.get('target', ''))
+        sc = sc_signposts.get(sp.get('metric', sp.get('signpost', '')), {})
+        latest = _fmt_escape(sc.get('latest', ''))
+        status = sc.get('status', '')
+        bg = _status_bg(status) if status else '#fff'
+        border_color = _status_color(status) if status else '#e2e8f0'
+        signpost_rows += f'''
+        <tr style="background:{bg};">
+            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;border-left:3px solid {border_color};font-weight:600;color:#0f172a;">{metric}</td>
+            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;">{target}</td>
+            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#0f172a;text-align:center;font-weight:bold;">{latest if latest else "—"}</td>
+            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;font-weight:bold;color:{_status_color(status)};">{_fmt_escape(status.upper()) if status else "—"}</td>
+        </tr>'''
+
+    # Risks with status
+    sc_risks = {}
+    if scorecard_data and scorecard_data.get('risks'):
+        for r in scorecard_data['risks']:
+            sc_risks[r.get('riskFactor', '')] = r
+    risk_rows = ''
+    for threat in threats:
+        td = _fmt_escape(threat.get('threat', ''))
+        sc = sc_risks.get(threat.get('threat', ''), {})
+        status = sc.get('status', '')
+        bg = _status_bg(status) if status else '#fff'
+        border_color = _status_color(status) if status else '#e2e8f0'
+        lk = _fmt_escape(threat.get('likelihood', ''))
+        imp = _fmt_escape(threat.get('impact', ''))
+        risk_rows += f'''
+        <tr style="background:{bg};">
+            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;border-left:3px solid {border_color};font-weight:600;color:#0f172a;">{td}</td>
+            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;">{lk}</td>
+            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;">{imp}</td>
+            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;font-weight:bold;color:{_status_color(status)};">{_fmt_escape(status.upper()) if status else "—"}</td>
+        </tr>'''
+
+    html = f"""<html><head><style>
+        @page {{ margin: 0.5in 0.6in; size: letter; }}
+        body {{ font-family: Calibri, Arial, Helvetica, sans-serif; font-size: 10pt; color: #1e293b; line-height: 1.4; margin: 0; background: #f8fafc; }}
+        table {{ border-collapse: collapse; width: 100%; }}
+    </style></head><body>
+        <!-- Hero Header -->
+        <table style="margin:-0.5in -0.6in 0 -0.6in;width:calc(100% + 1.2in);">
+            <tr>
+                <td style="background:#0f172a;padding:24px 30px;">
+                    <div style="font-size:32pt;font-weight:bold;color:#fff;letter-spacing:1px;">{_fmt_escape(ticker)}</div>
+                    <div style="font-size:13pt;color:#94a3b8;margin-top:2px;">{_fmt_escape(company)}</div>
+                </td>
+                <td style="background:#0f172a;padding:24px 30px;text-align:right;vertical-align:bottom;">
+                    <div style="color:#475569;font-size:8pt;text-transform:uppercase;letter-spacing:2px;">Investment Thesis</div>
+                    <div style="color:#64748b;font-size:10pt;margin-top:2px;">{date_str}</div>
+                </td>
+            </tr>
+        </table>
+
+        <!-- Conviction Gauge -->
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin:16px 0;text-align:center;">
+            {gauge_html if gauge_html else '<div style="color:#64748b;font-size:10pt;">Add scorecard data to see conviction gauge</div>'}
+        </div>
+
+        <!-- Thesis -->
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px 20px;margin-bottom:14px;">
+            <div style="font-size:12pt;font-weight:bold;color:#0f172a;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;border-bottom:2px solid #0f172a;padding-bottom:6px;">Investment Thesis</div>
+            <p style="color:#334155;font-size:10.5pt;line-height:1.7;margin:0 0 14px 0;">{_fmt_escape(thesis.get('summary', ''))}</p>
+            {pillars_html}
+        </div>
+
+        <!-- Signposts -->
+        {'<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px 20px;margin-bottom:14px;"><div style="font-size:12pt;font-weight:bold;color:#0f172a;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;border-bottom:2px solid #0f172a;padding-bottom:6px;">Signposts</div><table><thead><tr style="background:#f1f5f9;"><th style="padding:8px 12px;text-align:left;font-size:8pt;color:#64748b;font-weight:700;text-transform:uppercase;">Metric</th><th style="padding:8px 12px;text-align:center;font-size:8pt;color:#64748b;font-weight:700;text-transform:uppercase;">Target</th><th style="padding:8px 12px;text-align:center;font-size:8pt;color:#64748b;font-weight:700;text-transform:uppercase;">Latest</th><th style="padding:8px 12px;text-align:center;font-size:8pt;color:#64748b;font-weight:700;text-transform:uppercase;">Status</th></tr></thead><tbody>' + signpost_rows + '</tbody></table></div>' if signposts else ''}
+
+        <!-- Risks -->
+        {'<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px 20px;margin-bottom:14px;"><div style="font-size:12pt;font-weight:bold;color:#0f172a;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;border-bottom:2px solid #0f172a;padding-bottom:6px;">Risks to Thesis</div><table><thead><tr style="background:#f1f5f9;"><th style="padding:8px 12px;text-align:left;font-size:8pt;color:#64748b;font-weight:700;text-transform:uppercase;">Risk Factor</th><th style="padding:8px 12px;text-align:center;font-size:8pt;color:#64748b;font-weight:700;text-transform:uppercase;">Likelihood</th><th style="padding:8px 12px;text-align:center;font-size:8pt;color:#64748b;font-weight:700;text-transform:uppercase;">Impact</th><th style="padding:8px 12px;text-align:center;font-size:8pt;color:#64748b;font-weight:700;text-transform:uppercase;">Status</th></tr></thead><tbody>' + risk_rows + '</tbody></table></div>' if threats else ''}
+    </body></html>"""
+
+    buf = io.BytesIO()
+    pisa.CreatePDF(html, dest=buf)
+    return buf.getvalue()
+
+
+@app.route('/api/thesis-format/generate', methods=['POST'])
+def generate_thesis_format():
+    """Generate a formatted thesis document in a specific template."""
+    try:
+        data = request.get_json()
+        ticker = data.get('ticker', '').upper()
+        fmt = data.get('format', 'executive')  # executive, scorecard, onepager, board
+        output_type = data.get('outputType', 'pdf')  # pdf or docx
+        if not ticker:
+            return jsonify({'error': 'No ticker provided'}), 400
+
+        # Fetch analysis
+        with get_db() as (_, cur):
+            cur.execute('SELECT * FROM portfolio_analyses WHERE ticker = %s', (ticker,))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'error': 'No analysis found for this ticker'}), 404
+
+        # Fetch scorecard data
+        scorecard_data = None
+        with get_db() as (_, cur):
+            cur.execute('SELECT scorecard_data FROM thesis_scorecard_data WHERE ticker = %s', (ticker,))
+            sc_row = cur.fetchone()
+        if sc_row:
+            scorecard_data = sc_row['scorecard_data']
+            if isinstance(scorecard_data, str):
+                try:
+                    scorecard_data = json.loads(scorecard_data)
+                except:
+                    scorecard_data = None
+
+        row_dict = dict(row)
+
+        # Generate based on format
+        format_names = {
+            'executive': 'Executive_Brief',
+            'scorecard': 'Scorecard',
+            'onepager': 'One_Pager',
+            'board': 'Conviction_Card'
+        }
+        format_name = format_names.get(fmt, 'Formatted')
+
+        if output_type == 'pdf':
+            generators = {
+                'executive': _generate_executive_brief_pdf,
+                'scorecard': _generate_scorecard_pdf,
+                'onepager': _generate_onepager_pdf,
+                'board': _generate_board_pdf,
+            }
+            gen_func = generators.get(fmt, _generate_executive_brief_pdf)
+            file_bytes = gen_func(row_dict, scorecard_data)
+            filename = f"{ticker}_{format_name}.pdf"
+            mime = 'application/pdf'
+        else:
+            # For Word, use the existing analysis docx generator as base
+            file_bytes = _generate_analysis_docx_bytes(row_dict)
+            filename = f"{ticker}_{format_name}.docx"
+            mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+
+        b64 = base64.b64encode(file_bytes).decode('utf-8')
+        return jsonify({'success': True, 'fileData': b64, 'filename': filename, 'fileSize': len(file_bytes)})
+    except Exception as e:
+        print(f"Error generating thesis format: {e}")
         return jsonify({'error': str(e)}), 500
 
 
