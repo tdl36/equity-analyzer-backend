@@ -275,7 +275,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-03-14T04';
+        const BUILD_VERSION = '2026-03-14T05';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -1608,6 +1608,15 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [fmtScorecardLoading, setFmtScorecardLoading] = useState(false);
             const [fmtAnalysisData, setFmtAnalysisData] = useState(null);
             const [fmtScorecardDirty, setFmtScorecardDirty] = useState(false);
+
+            // Thesis Infographic state
+            const [fmtInfographicMode, setFmtInfographicMode] = useState('1');
+            const [fmtInfographicStyle, setFmtInfographicStyle] = useState('professional');
+            const [fmtInfographicJobId, setFmtInfographicJobId] = useState(null);
+            const [fmtInfographicGenerating, setFmtInfographicGenerating] = useState(false);
+            const [fmtInfographicProgress, setFmtInfographicProgress] = useState(0);
+            const [fmtInfographicImages, setFmtInfographicImages] = useState([]);
+            const [fmtInfographicError, setFmtInfographicError] = useState('');
 
             // Google Drive state (shared across tabs)
             const [driveToken, setDriveToken] = useState(null);
@@ -8971,6 +8980,80 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 finally { setFmtGenerating(false); }
             };
 
+            // --- Thesis Infographic ---
+            const INFOGRAPHIC_STYLES = [
+                { id: 'professional', name: 'Professional', desc: 'Corporate boardroom', gradient: 'from-slate-800 to-slate-950' },
+                { id: 'whiteboard', name: 'Whiteboard', desc: 'Hand-drawn markers', gradient: 'from-gray-100 to-white' },
+                { id: 'sketchnote', name: 'Sketchnote', desc: 'Notebook doodles', gradient: 'from-amber-100 to-orange-50' },
+                { id: 'blueprint', name: 'Blueprint', desc: 'Technical schematic', gradient: 'from-blue-950 to-cyan-900' },
+                { id: 'dashboard', name: 'Dashboard', desc: 'Data widgets & KPIs', gradient: 'from-gray-50 to-blue-50' },
+                { id: 'editorial', name: 'Editorial', desc: 'Magazine layout', gradient: 'from-stone-100 to-stone-50' },
+            ];
+
+            const generateThesisInfographic = async () => {
+                if (!fmtTicker) { alert('Please select a ticker first'); return; }
+                const geminiKey = localStorage.getItem('gemini_api_key') || '';
+                if (!geminiKey) { alert('Gemini API key required. Set it in Settings.'); return; }
+
+                setFmtInfographicGenerating(true);
+                setFmtInfographicProgress(0);
+                setFmtInfographicImages([]);
+                setFmtInfographicError('');
+
+                try {
+                    const res = await fetch(`${API_URL}/api/thesis-format/infographic`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ticker: fmtTicker, mode: fmtInfographicMode, style: fmtInfographicStyle, geminiApiKey: geminiKey })
+                    });
+                    if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Failed to start generation'); }
+                    const data = await res.json();
+                    setFmtInfographicJobId(data.jobId);
+                    pollInfographicJob(data.jobId);
+                } catch (err) {
+                    setFmtInfographicError(err.message);
+                    setFmtInfographicGenerating(false);
+                }
+            };
+
+            const pollInfographicJob = (jobId) => {
+                const interval = setInterval(async () => {
+                    try {
+                        const res = await fetch(`${API_URL}/api/thesis-format/infographic/${jobId}`);
+                        if (!res.ok) { clearInterval(interval); setFmtInfographicGenerating(false); setFmtInfographicError('Job not found'); return; }
+                        const data = await res.json();
+                        setFmtInfographicProgress(data.progress || 0);
+
+                        if (data.status === 'done') {
+                            clearInterval(interval);
+                            setFmtInfographicImages(data.images || []);
+                            setFmtInfographicGenerating(false);
+                        } else if (data.status === 'error') {
+                            clearInterval(interval);
+                            setFmtInfographicError(data.error || 'Generation failed');
+                            setFmtInfographicGenerating(false);
+                        }
+                    } catch (e) {
+                        clearInterval(interval);
+                        setFmtInfographicError('Polling failed: ' + e.message);
+                        setFmtInfographicGenerating(false);
+                    }
+                }, 3000);
+            };
+
+            const downloadInfographicImage = (base64Data, index) => {
+                if (!base64Data) return;
+                const slideLabels = ['Thesis', 'Signposts', 'Threats'];
+                const suffix = fmtInfographicMode === '3' ? `_${slideLabels[index] || index + 1}` : '';
+                triggerBase64Download(base64Data, `${fmtTicker}_Infographic${suffix}.png`, 'image/png');
+            };
+
+            const downloadAllInfographicImages = () => {
+                const validImages = fmtInfographicImages.filter(img => img != null);
+                validImages.forEach((img, i) => {
+                    setTimeout(() => downloadInfographicImage(img, i), i * 500);
+                });
+            };
+
             const quickSendPortfolioEmail = async () => {
                 if (!analysis) {
                     alert('No analysis to email');
@@ -15892,6 +15975,112 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             ))}
                                         </div>
                                     </div>
+
+                                    {/* Thesis Infographic Generator */}
+                                    {fmtTicker && (
+                                        <div className="mb-8 bg-white/[0.03] border border-white/10 rounded-xl p-5">
+                                            <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                                                <ImageIcon className="w-4 h-4" /> Thesis Infographic
+                                            </h2>
+
+                                            {/* Mode Toggle */}
+                                            <div className="mb-4">
+                                                <label className="text-xs text-slate-500 mb-2 block">Slides</label>
+                                                <div className="inline-flex bg-white/[0.06] rounded-lg p-0.5">
+                                                    {[{ v: '1', label: '1 Slide' }, { v: '3', label: '3 Slides' }].map(m => (
+                                                        <button key={m.v} onClick={() => setFmtInfographicMode(m.v)}
+                                                            className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all ${
+                                                                fmtInfographicMode === m.v ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'
+                                                            }`}>{m.label}</button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {/* Style Picker */}
+                                            <div className="mb-4">
+                                                <label className="text-xs text-slate-500 mb-2 block">Visual Style</label>
+                                                <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+                                                    {INFOGRAPHIC_STYLES.map(st => (
+                                                        <button key={st.id} onClick={() => setFmtInfographicStyle(st.id)}
+                                                            className={`rounded-lg overflow-hidden transition-all ${
+                                                                fmtInfographicStyle === st.id ? 'ring-2 ring-purple-400 scale-[1.03]' : 'border border-white/10 hover:border-white/20'
+                                                            }`}>
+                                                            <div className={`bg-gradient-to-br ${st.gradient} h-10`} />
+                                                            <div className="px-2 py-1.5 bg-white/[0.03]">
+                                                                <div className="text-[11px] font-medium truncate">{st.name}</div>
+                                                                <div className="text-[9px] text-slate-500 truncate">{st.desc}</div>
+                                                            </div>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {/* Generate Button */}
+                                            <button
+                                                onClick={generateThesisInfographic}
+                                                disabled={fmtInfographicGenerating}
+                                                className="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-sm rounded-xl font-medium flex items-center gap-2 transition-colors"
+                                            >
+                                                {fmtInfographicGenerating ? (
+                                                    <><Loader2 className="w-4 h-4 animate-spin" /> Generating... {fmtInfographicProgress}%</>
+                                                ) : (
+                                                    <><Wand className="w-4 h-4" /> Generate Infographic</>
+                                                )}
+                                            </button>
+
+                                            {/* Progress Bar */}
+                                            {fmtInfographicGenerating && (
+                                                <div className="mt-3 w-full bg-white/[0.06] rounded-full h-2">
+                                                    <div className="bg-purple-500 h-2 rounded-full transition-all duration-500" style={{width: `${fmtInfographicProgress}%`}} />
+                                                </div>
+                                            )}
+
+                                            {/* Error */}
+                                            {fmtInfographicError && (
+                                                <div className="mt-3 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-2">
+                                                    {fmtInfographicError}
+                                                </div>
+                                            )}
+
+                                            {/* Results Gallery */}
+                                            {fmtInfographicImages.length > 0 && (
+                                                <div className="mt-5">
+                                                    <div className="flex items-center justify-between mb-3">
+                                                        <span className="text-xs text-slate-500">{fmtInfographicImages.filter(x => x).length} image{fmtInfographicImages.filter(x => x).length !== 1 ? 's' : ''} generated</span>
+                                                        {fmtInfographicImages.filter(x => x).length > 1 && (
+                                                            <button onClick={downloadAllInfographicImages}
+                                                                className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1">
+                                                                <Download className="w-3 h-3" /> Download All
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                    <div className={`grid gap-4 ${fmtInfographicMode === '3' ? 'grid-cols-1 md:grid-cols-3' : 'grid-cols-1'}`}>
+                                                        {fmtInfographicImages.map((img, idx) => img && (
+                                                            <div key={idx} className="relative group">
+                                                                {fmtInfographicMode === '3' && (
+                                                                    <div className="text-xs text-slate-500 mb-1 font-medium">
+                                                                        {['Thesis', 'Signposts', 'Threats'][idx]}
+                                                                    </div>
+                                                                )}
+                                                                <img src={`data:image/png;base64,${img}`}
+                                                                    alt={`Infographic ${idx + 1}`}
+                                                                    className="w-full rounded-lg border border-white/10 cursor-pointer"
+                                                                    onClick={() => {
+                                                                        const w = window.open();
+                                                                        w.document.write(`<img src="data:image/png;base64,${img}" style="max-width:100%;background:#000">`);
+                                                                    }}
+                                                                />
+                                                                <button onClick={() => downloadInfographicImage(img, idx)}
+                                                                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-black/70 text-white p-1.5 rounded-lg">
+                                                                    <Download className="w-4 h-4" />
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
 
                                     {/* Scorecard Data Editor */}
                                     {fmtTicker && fmtScorecardData && (

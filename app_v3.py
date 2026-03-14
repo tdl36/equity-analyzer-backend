@@ -2496,6 +2496,9 @@ def extract_summary_text():
 # In-memory store for async transcription jobs
 _transcription_jobs = {}
 
+# In-memory store for async infographic generation jobs
+_infographic_jobs = {}
+
 
 TRANSCRIPTION_PROMPT = """You are a professional transcriptionist. Produce an ABSOLUTE VERBATIM, word-for-word transcription of this ENTIRE audio recording from beginning to end. Do NOT omit, skip, summarize, or condense ANY portion.
 
@@ -4496,6 +4499,238 @@ def generate_thesis_format():
     except Exception as e:
         print(f"Error generating thesis format: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+# ============================================
+# THESIS INFOGRAPHIC GENERATION
+# ============================================
+
+def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slide_num=None):
+    """Build a Gemini image-generation prompt for a thesis infographic slide."""
+    ticker = d['ticker']
+    company = d['company']
+    thesis = d['thesis']
+    signposts = d['signposts']
+    threats = d['threats']
+    conclusion = d['conclusion']
+    sp_data = _build_signpost_data(signposts, scorecard_data)
+    rk_data = _build_risk_data(threats, scorecard_data)
+
+    header = f"INVESTMENT THESIS INFOGRAPHIC — {ticker}" + (f" ({company})" if company else "")
+
+    # Build thesis section text
+    summary = thesis.get('summary', '')
+    pillars_text = ""
+    for i, p in enumerate(thesis.get('pillars', []), 1):
+        title = p.get('pillar', p.get('title', ''))
+        detail = p.get('detail', p.get('description', ''))
+        pillars_text += f"\n  {i}. {title}: {detail}"
+
+    # Build signpost section text
+    signpost_text = ""
+    for s in sp_data:
+        line = f"  - {s['metric']}: Target = {s['ltGoal']}"
+        if s['latest']:
+            line += f", Latest = {s['latest']}"
+        if s['status']:
+            line += f" [{s['status'].upper()}]"
+        signpost_text += line + "\n"
+
+    # Build threats section text
+    threats_text = ""
+    for r in rk_data:
+        line = f"  - {r['threat']}: Likelihood = {r['likelihood']}, Impact = {r['impact']}"
+        if r['status']:
+            line += f" [{r['status'].upper()}]"
+        threats_text += line + "\n"
+
+    conclusion_text = conclusion if isinstance(conclusion, str) else str(conclusion)
+
+    parts = []
+    parts.append(f"Generate a visually compelling 16:9 LANDSCAPE infographic image.\n")
+    parts.append(f"VISUAL STYLE (follow exactly):\n{style_prompt}")
+    parts.append("CRITICAL RULES:\n- ALL text MUST be in English\n- DO NOT include any watermarks or AI generation notices\n- Make all text readable and properly sized\n- Use 16:9 widescreen aspect ratio\n- Include the ticker symbol prominently")
+
+    if mode == '1':
+        # All content in one slide
+        parts.append(f"\nINFOGRAPHIC TITLE: {header}\n")
+        parts.append(f"INVESTMENT THESIS:\n{summary}")
+        if pillars_text:
+            parts.append(f"\nKEY PILLARS:{pillars_text}")
+        if signpost_text:
+            parts.append(f"\nSIGNPOSTS TO MONITOR:\n{signpost_text}")
+        if threats_text:
+            parts.append(f"\nKEY RISKS:\n{threats_text}")
+        if conclusion_text:
+            parts.append(f"\nCONCLUSION: {conclusion_text}")
+        parts.append("\nLayout this as a dense but readable infographic with all sections visible. Use visual hierarchy: large thesis header, medium section headers, compact data tables/lists for signposts and risks.")
+    elif mode == '3':
+        if slide_num == 1:
+            parts.append(f"\nINFOGRAPHIC TITLE: {header} — Investment Thesis\n")
+            parts.append(f"THESIS SUMMARY:\n{summary}")
+            if pillars_text:
+                parts.append(f"\nKEY PILLARS:{pillars_text}")
+            if conclusion_text:
+                parts.append(f"\nCONCLUSION: {conclusion_text}")
+            parts.append("\nFocus this slide on the investment thesis narrative. Make the summary prominent, pillars clearly numbered, conclusion at bottom. Slide 1 of 3.")
+        elif slide_num == 2:
+            parts.append(f"\nINFOGRAPHIC TITLE: {header} — Key Signposts\n")
+            parts.append(f"SIGNPOSTS TO MONITOR:\n{signpost_text}")
+            parts.append("\nPresent each signpost as a monitoring dashboard item showing the metric name, target value, latest reading, and traffic-light status (green/yellow/red). Use visual indicators like gauges, progress bars, or status dots. Slide 2 of 3.")
+        elif slide_num == 3:
+            parts.append(f"\nINFOGRAPHIC TITLE: {header} — Risk Assessment\n")
+            parts.append(f"KEY RISKS:\n{threats_text}")
+            parts.append("\nPresent each risk as a threat card showing the risk name, likelihood, impact level, and current status. Use visual weight to show severity — larger/darker for higher impact risks. Slide 3 of 3.")
+
+    return "\n".join(parts)
+
+
+def _run_thesis_infographic(job_id, d, scorecard_data, style_key, mode, gemini_key):
+    """Background worker to generate thesis infographic images via Gemini."""
+    import time
+    job = _infographic_jobs[job_id]
+    style_prompt = THESIS_INFOGRAPHIC_STYLES.get(style_key, THESIS_INFOGRAPHIC_STYLES['professional'])['prompt']
+
+    try:
+        if mode == '1':
+            job['current'] = 1
+            prompt = _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, '1')
+            img = _generate_slide_image(prompt, gemini_key)
+            if img:
+                job['images'].append(img)
+                job['progress'] = 100
+            else:
+                job['error'] = 'Image generation failed after retries'
+                job['status'] = 'error'
+                return
+        else:
+            # 3-slide mode
+            slide_labels = ['Thesis', 'Signposts', 'Threats']
+            for i in range(1, 4):
+                job['current'] = i
+                job['progress'] = int((i - 1) / 3 * 100)
+                prompt = _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, '3', slide_num=i)
+                img = _generate_slide_image(prompt, gemini_key)
+                if img:
+                    job['images'].append(img)
+                else:
+                    job['images'].append(None)  # partial failure
+                job['progress'] = int(i / 3 * 100)
+                if i < 3:
+                    time.sleep(1)  # small delay between slides
+
+            # Check if all failed
+            if all(x is None for x in job['images']):
+                job['error'] = 'All image generations failed'
+                job['status'] = 'error'
+                return
+
+        job['status'] = 'done'
+        job['progress'] = 100
+    except Exception as e:
+        print(f"Infographic generation error for job {job_id}: {e}")
+        job['error'] = str(e)
+        job['status'] = 'error'
+
+
+@app.route('/api/thesis-format/infographic', methods=['POST'])
+def start_thesis_infographic():
+    """Start async thesis infographic generation."""
+    try:
+        data = request.get_json()
+        ticker = data.get('ticker', '').upper()
+        mode = data.get('mode', '1')  # '1' or '3'
+        style = data.get('style', 'professional')
+        gemini_key = data.get('geminiApiKey', '')
+
+        if not ticker:
+            return jsonify({'error': 'No ticker provided'}), 400
+        if not gemini_key:
+            return jsonify({'error': 'Gemini API key required for infographic generation'}), 400
+        if style not in THESIS_INFOGRAPHIC_STYLES:
+            return jsonify({'error': f'Unknown style: {style}'}), 400
+
+        # Fetch analysis
+        with get_db() as (_, cur):
+            cur.execute('SELECT * FROM portfolio_analyses WHERE ticker = %s', (ticker,))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'error': 'No analysis found for this ticker'}), 404
+
+        # Fetch scorecard data
+        scorecard_data = None
+        with get_db() as (_, cur):
+            cur.execute('SELECT scorecard_data FROM thesis_scorecard_data WHERE ticker = %s', (ticker,))
+            sc_row = cur.fetchone()
+        if sc_row:
+            scorecard_data = sc_row['scorecard_data']
+            if isinstance(scorecard_data, str):
+                try:
+                    scorecard_data = json.loads(scorecard_data)
+                except:
+                    scorecard_data = None
+
+        d = _parse_analysis_data(dict(row))
+        total = 1 if mode == '1' else 3
+        job_id = f"infog_{ticker}_{int(time.time()*1000)}"
+
+        _infographic_jobs[job_id] = {
+            'status': 'running',
+            'ticker': ticker,
+            'mode': mode,
+            'style': style,
+            'progress': 0,
+            'current': 0,
+            'total': total,
+            'images': [],
+            'error': None,
+            'created_at': time.time(),
+        }
+
+        # Spawn background thread
+        import threading
+        t = threading.Thread(
+            target=_run_thesis_infographic,
+            args=(job_id, d, scorecard_data, style, mode, gemini_key),
+            daemon=True
+        )
+        t.start()
+
+        return jsonify({'jobId': job_id, 'total': total})
+    except Exception as e:
+        print(f"Error starting infographic: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/thesis-format/infographic/<job_id>', methods=['GET'])
+def poll_thesis_infographic(job_id):
+    """Poll status of an infographic generation job."""
+    # Auto-cleanup old jobs
+    now = time.time()
+    stale = [k for k, v in _infographic_jobs.items()
+             if (v['status'] == 'done' and now - v['created_at'] > 600)
+             or (v['status'] == 'error' and now - v['created_at'] > 300)]
+    for k in stale:
+        del _infographic_jobs[k]
+
+    job = _infographic_jobs.get(job_id)
+    if not job:
+        return jsonify({'error': 'Job not found or expired'}), 404
+
+    result = {
+        'status': job['status'],
+        'progress': job['progress'],
+        'current': job['current'],
+        'total': job['total'],
+        'ticker': job['ticker'],
+        'mode': job['mode'],
+    }
+    if job['status'] == 'done':
+        result['images'] = job['images']
+    if job['status'] == 'error':
+        result['error'] = job['error']
+
+    return jsonify(result)
 
 
 # ============================================
@@ -7241,6 +7476,34 @@ SLIDE_THEMES = {
         'style_prefix': 'Background: Warm beige/cream colored textured paper\nIllustrations: Cute hand-drawn cartoon style with colorful doodles\nTitle text: Large, colorful, hand-lettered typography\nBody text: Clean, readable text in dark gray/brown\nDecorations: Stars, sparkles, arrows scattered around\nLayout: Professional yet friendly sketchnote style\nAspect ratio: 16:9 widescreen\nResolution: High quality, crisp text\nALL text MUST be in English\nDO NOT include any watermarks',
         'illustration_guidance': 'Use topic-appropriate icons and characters.',
         'negative_guidance': 'DO NOT include robots unless topic is about AI/robotics.',
+    },
+}
+
+# --- Thesis Infographic Styles ---
+THESIS_INFOGRAPHIC_STYLES = {
+    'professional': {
+        'name': 'Professional',
+        'prompt': 'Create a PROFESSIONAL CORPORATE INFOGRAPHIC with the following visual style:\n- Background: Deep navy (#1e293b) with subtle geometric patterns\n- Layout: Structured grid with clear sections separated by thin lines\n- Colors: Navy, white, slate blue accents, gold highlights for key numbers\n- Typography: Clean sans-serif, large bold headers, readable body text\n- Icons: Simple line icons (not filled) in white/gold\n- Data visualization: Clean bar charts, progress indicators, status badges\n- Overall feel: Fortune 500 boardroom presentation\n',
+    },
+    'whiteboard': {
+        'name': 'Whiteboard',
+        'prompt': 'Create a WHITEBOARD STYLE INFOGRAPHIC with the following visual style:\n- Background: Clean white/very light gray like a dry-erase whiteboard\n- Layout: Hand-drawn boxes, arrows connecting ideas, mind-map feel\n- Colors: Blue, red, green, black markers on white background\n- Typography: Hand-written marker style text, messy but readable\n- Icons: Simple hand-drawn sketches, stick figures, basic shapes\n- Data visualization: Hand-drawn charts, circled numbers, underlined text\n- Decorations: Marker smudges, doodle arrows, exclamation marks, stars\n- Overall feel: Strategy session on a conference room whiteboard\n',
+    },
+    'sketchnote': {
+        'name': 'Sketchnote',
+        'prompt': 'Create a SKETCHNOTE STYLE INFOGRAPHIC with the following visual style:\n- Background: Warm beige/cream textured paper like a Moleskine notebook\n- Layout: Organic flow with hand-lettered headers, doodle borders\n- Colors: Warm palette - brown, orange, teal, mustard yellow, coral\n- Typography: Hand-lettered headers (large, playful), neat handwriting for body\n- Icons: Cute cartoon doodles, tiny illustrations, emoji-like drawings\n- Data visualization: Doodle charts, numbered lists with fun bullets\n- Decorations: Stars, sparkles, arrows, sticky notes, washi tape borders\n- Overall feel: Designer sketchnote from a TED talk\n',
+    },
+    'blueprint': {
+        'name': 'Blueprint',
+        'prompt': 'Create a BLUEPRINT STYLE INFOGRAPHIC with the following visual style:\n- Background: Deep navy/dark blue (#0f172a) with subtle grid lines\n- Layout: Technical drawing style with measurement marks and grid\n- Colors: Cyan/electric blue lines on dark navy, white text, neon accents\n- Typography: Monospaced/technical font, all-caps headers, clean body text\n- Icons: Wireframe/outline style icons, technical diagrams, schematic symbols\n- Data visualization: Technical gauges, radar charts, status indicators with glow\n- Decorations: Grid dots, coordinate markers, dimension lines, crosshairs\n- Overall feel: Engineering blueprint or technical schematic\n',
+    },
+    'dashboard': {
+        'name': 'Dashboard',
+        'prompt': 'Create a DATA DASHBOARD STYLE INFOGRAPHIC with the following visual style:\n- Background: White/very light gray with subtle card shadows\n- Layout: Multi-panel grid of cards/widgets, clean modern UI\n- Colors: White cards, dark text, green/yellow/red traffic lights, blue charts\n- Typography: Modern sans-serif, bold metric numbers, small labels\n- Icons: Material design style, filled, inside colored circles\n- Data visualization: Donut charts, sparklines, KPI cards with big numbers, traffic light dots\n- Decorations: Card shadows, thin borders, rounded corners, status pills\n- Overall feel: Bloomberg terminal meets modern SaaS dashboard\n',
+    },
+    'editorial': {
+        'name': 'Editorial',
+        'prompt': 'Create an EDITORIAL MAGAZINE STYLE INFOGRAPHIC with the following visual style:\n- Background: Off-white/cream paper with slight texture\n- Layout: Magazine editorial layout with columns, pull quotes, sidebar boxes\n- Colors: High-contrast black and white with ONE accent color (red #dc2626)\n- Typography: Large bold serif headers (like The Economist), clean sans-serif body\n- Icons: Minimal, line-art style, used sparingly\n- Data visualization: Clean minimal charts with red accent, large oversized numbers\n- Decorations: Thin black rules/dividers, drop caps, red accent bars\n- Overall feel: The Economist or Barron\'s magazine feature article\n',
     },
 }
 
