@@ -4810,7 +4810,15 @@ Do NOT rewrite or fundamentally change the existing analysis.
             return jsonify({'error': 'No valid documents to analyze'}), 400
         
         # Add the analysis prompt
-        analysis_prompt = """Analyze these broker research documents and create a comprehensive investment analysis.
+        analysis_prompt = """Analyze these broker research documents and create a concise, high-conviction investment analysis.
+
+CONCISENESS RULES (the final output MUST fit in 2-3 printed pages):
+- thesis.summary: 2-3 sentences MAX. One crisp paragraph capturing WHY we own it.
+- pillars: 3-5 pillars ONLY. Each description is 1-2 sentences — punchy, not exhaustive.
+- signposts: 4-6 signposts MAX. Combine related metrics rather than listing every variant.
+- threats: 3-5 threats MAX. Each threat is one sentence. triggerPoints is one sentence.
+- Prioritize the MOST important and differentiated insights. Omit generic/obvious points.
+- Do NOT pad with boilerplate or repeat the same point across pillars.
 
 Return a JSON object with this exact structure:
 {
@@ -4819,17 +4827,14 @@ Return a JSON object with this exact structure:
     "thesis": {
         "summary": "2-3 sentence investment thesis summary",
         "pillars": [
-            {"title": "Pillar 1 Title", "description": "Detailed explanation", "confidence": "High/Medium/Low", "sources": [{"filename": "Document name", "excerpt": "Brief supporting quote"}]},
-            {"title": "Pillar 2 Title", "description": "Detailed explanation", "confidence": "High/Medium/Low", "sources": [{"filename": "Document name", "excerpt": "Brief supporting quote"}]}
+            {"title": "Pillar Title", "description": "1-2 sentence explanation", "confidence": "High/Medium/Low", "sources": [{"filename": "Document name", "excerpt": "Brief supporting quote"}]}
         ]
     },
     "signposts": [
-        {"metric": "Key metric or KPI name", "target": "Target value or outcome", "timeframe": "When to expect", "category": "Financial/Operational/Strategic/Market", "confidence": "High/Medium/Low", "sources": [{"filename": "Document name", "excerpt": "Brief supporting quote"}]},
-        {"metric": "Another metric name", "target": "Target", "timeframe": "Timeframe", "category": "Financial/Operational/Strategic/Market", "confidence": "High/Medium/Low", "sources": [{"filename": "Document name", "excerpt": "Brief supporting quote"}]}
+        {"metric": "Key metric name", "target": "Target value", "timeframe": "When to expect", "category": "Financial/Operational/Strategic/Market", "confidence": "High/Medium/Low", "sources": [{"filename": "Document name", "excerpt": "Brief supporting quote"}]}
     ],
     "threats": [
-        {"threat": "Risk factor description", "likelihood": "High/Medium/Low", "impact": "High/Medium/Low", "triggerPoints": "What to watch for - early warning signs", "sources": [{"filename": "Document name", "excerpt": "Brief supporting quote"}]},
-        {"threat": "Another risk", "likelihood": "Medium", "impact": "High", "triggerPoints": "Monitoring triggers", "sources": [{"filename": "Document name", "excerpt": "Brief supporting quote"}]}
+        {"threat": "Risk factor in one sentence", "likelihood": "High/Medium/Low", "impact": "High/Medium/Low", "triggerPoints": "One sentence on what to watch for", "sources": [{"filename": "Document name", "excerpt": "Brief supporting quote"}]}
     ],
     "documentMetadata": [
         {"filename": "exact_filename.pdf", "docType": "broker_report", "source": "Citi", "publishDate": "YYYY-MM-DD", "authors": ["Analyst Name"], "title": "Report Title"},
@@ -4950,40 +4955,41 @@ Existing Analysis:
 
 {weighting_instruction}
 
+CONCISENESS RULES (the final output MUST fit in 2-3 printed pages):
+- thesis.summary: 2-3 sentences MAX.
+- pillars: 3-5 pillars ONLY. Each description is 1-2 sentences.
+- signposts: 4-6 signposts MAX. Combine related metrics rather than listing every variant.
+- threats: 3-5 threats MAX. Each threat + triggerPoints is one sentence each.
+- If the existing analysis is bloated (too many pillars/signposts/threats), CONSOLIDATE it now.
+  Merge overlapping pillars. Combine related signposts. Drop the least important threats.
+- Prioritize the MOST important insights. Omit generic/obvious points.
+
 Review the new documents and:
 1. Update or confirm the investment thesis (respecting the weighting above)
-2. Add any new signposts or update existing ones
-3. Add any new threats or update existing ones
+2. Add any new signposts or update existing ones — consolidate to 4-6 total
+3. Add any new threats or update existing ones — consolidate to 3-5 total
 4. Note what has changed in the "changes" array
 5. Update sources for each point based on all documents analyzed
 6. Extract metadata for ALL documents (both new and from existing analysis)
 
-DOCUMENT METADATA EXTRACTION (CRITICAL):
-For EACH document (new AND previously analyzed), identify the document type and extract appropriate metadata:
-
-**For Broker Reports:** docType="broker_report", source=Broker name, publishDate, authors=Analyst names, title
-**For Earnings Calls:** docType="earnings_call", source=Company name, publishDate, quarter, title
-**For SEC Filings:** docType="sec_filing", source=Company, publishDate, filingType, title
-**For Emails:** docType="email", source=Sender, publishDate, title=Subject
-**For Presentations:** docType="presentation", source=Company/Org, publishDate, title
-**For News:** docType="news", source=Publication, publishDate, authors, title
-**For Screenshots:** docType="screenshot", source=Inferred source, publishDate=if visible, title=description
-
-For previously analyzed documents in the existing analysis, use the filenames from documentHistory and extract what metadata you can infer from the existing analysis context.
+DOCUMENT METADATA EXTRACTION:
+For EACH document (new AND previously analyzed), extract metadata:
+**Broker Reports:** docType="broker_report", source=Broker name, publishDate, authors, title
+**Earnings Calls:** docType="earnings_call", source=Company, publishDate, quarter, title
+**SEC Filings:** docType="sec_filing", source=Company, publishDate, filingType, title
+**Emails:** docType="email", source=Sender, publishDate, title=Subject
+**Presentations:** docType="presentation", source=Company/Org, publishDate, title
+**News:** docType="news", source=Publication, publishDate, authors, title
+**Screenshots:** docType="screenshot", source=Inferred, publishDate=if visible, title=description
 
 IMPORTANT STYLE RULES:
-- Do NOT reference any sellside broker names (e.g., "Goldman Sachs believes...", "According to Morgan Stanley...")
-- Do NOT reference specific analyst names
+- Do NOT reference any sellside broker names or specific analyst names
 - Do NOT include specific broker price targets
-- Write as independent analysis that synthesizes the information without attribution to sources in the prose
-- The output should read like original independent research, not a summary of broker views
+- Write as independent analysis without attribution to sources in the prose
 
-For each pillar, signpost, and threat, include:
-- "sources": Array of source documents that support this point, with filename and a brief excerpt
-- "confidence": High/Medium/Low for pillars and signposts
-- Use the actual document filenames provided
+For each pillar, signpost, and threat, include "sources" and "confidence".
 
-Return the updated analysis as JSON with the same structure (including "documentMetadata" array), plus a "changes" array describing what minor updates were made.
+Return the updated analysis as JSON with the same structure (including "documentMetadata" array), plus a "changes" array.
 
 Return ONLY valid JSON, no markdown, no explanation."""
 
@@ -5004,7 +5010,7 @@ Return ONLY valid JSON, no markdown, no explanation."""
                     "model": "claude-sonnet-4-5-20250929",
                     "max_tokens": 8192,
                     "messages": [{'role': 'user', 'content': content}],
-                    "system": "You are an expert equity research analyst. Analyze documents thoroughly and provide institutional-quality investment analysis. Always respond with valid JSON only.",
+                    "system": "You are an expert equity research analyst. Provide institutional-quality investment analysis that is CONCISE: 2-3 printed pages max. Limit to 3-5 pillars, 4-6 signposts, 3-5 threats, each described in 1-2 sentences. Prioritize the most important insights and consolidate related points. Always respond with valid JSON only.",
                 }
                 usage_data = {}
                 with client.messages.stream(**kwargs) as stream:
