@@ -3926,7 +3926,7 @@ def _generate_executive_brief_pdf(row, scorecard_data=None):
         table {{ border-collapse: collapse; width: 100%; }}
     </style></head><body>
         <!-- Header -->
-        <div style="background:#1e3a5f;color:#fff;padding:20px 28px;margin:-0.6in -0.7in 24px -0.7in;width:calc(100% + 1.4in);">
+        <div style="background:#1e3a5f;color:#fff;padding:20px 28px;margin:0 0 24px 0;width:100%;">
             <div style="font-size:22pt;font-weight:bold;letter-spacing:0.5px;">{_fmt_escape(title)}</div>
             <div style="font-size:10pt;color:#94b8d8;margin-top:4px;">Investment Thesis | {date_str}</div>
         </div>
@@ -4051,10 +4051,10 @@ def _generate_scorecard_pdf(row, scorecard_data=None):
         @page {{ margin: 0.5in 0.6in; size: letter; }}
         body {{ font-family: Calibri, Arial, Helvetica, sans-serif; font-size: 10pt; color: #1e293b; line-height: 1.4; margin: 0; }}
         table {{ border-collapse: collapse; width: 100%; }}
-        .section-banner {{ background: #166534; color: #fff; padding: 10px 18px; font-size: 13pt; font-weight: bold; letter-spacing: 0.5px; margin: 18px -0.6in 14px -0.6in; padding-left: 0.6in; width: calc(100% + 1.2in); }}
+        .section-banner {{ background: #166534; color: #fff; padding: 10px 18px; font-size: 13pt; font-weight: bold; letter-spacing: 0.5px; margin: 18px 0 14px 0; width: 100%; }}
     </style></head><body>
         <!-- Header -->
-        <div style="background:#166534;color:#fff;padding:22px 28px;margin:-0.5in -0.6in 0 -0.6in;width:calc(100% + 1.2in);">
+        <div style="background:#166534;color:#fff;padding:22px 28px;margin:0 0 0 0;width:100%;">
             <div style="font-size:24pt;font-weight:bold;">{_fmt_escape(ticker)}</div>
             <div style="font-size:12pt;color:#bbf7d0;margin-top:2px;">{_fmt_escape(company)}</div>
             <div style="font-size:9pt;color:#86efac;margin-top:6px;">Investment Thesis Scorecard | {date_str}</div>
@@ -4127,7 +4127,7 @@ def _generate_onepager_pdf(row, scorecard_data=None):
         table {{ border-collapse: collapse; width: 100%; }}
     </style></head><body>
         <!-- Compact Header -->
-        <table style="margin:-0.45in -0.5in 10px -0.5in;width:calc(100% + 1in);">
+        <table style="margin:0 0 10px 0;width:100%;">
             <tr>
                 <td style="background:#0f172a;padding:14px 20px;width:65%;">
                     <div style="color:#fff;font-size:20pt;font-weight:bold;">{_fmt_escape(ticker)}</div>
@@ -4286,7 +4286,7 @@ def _generate_board_pdf(row, scorecard_data=None):
         table {{ border-collapse: collapse; width: 100%; }}
     </style></head><body>
         <!-- Hero Header -->
-        <table style="margin:-0.5in -0.6in 0 -0.6in;width:calc(100% + 1.2in);">
+        <table style="margin:0 0 0 0;width:100%;">
             <tr>
                 <td style="background:#0f172a;padding:24px 30px;">
                     <div style="font-size:32pt;font-weight:bold;color:#fff;letter-spacing:1px;">{_fmt_escape(ticker)}</div>
