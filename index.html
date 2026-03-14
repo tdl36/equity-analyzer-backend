@@ -275,7 +275,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-03-14T06';
+        const BUILD_VERSION = '2026-03-14T07';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -9103,6 +9103,48 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 } catch (e) { alert('Delete failed: ' + e.message); }
             };
 
+            const exportInfographicPdf = async (images) => {
+                const imgs = images || fmtInfographicImages;
+                if (!imgs || imgs.filter(x => x).length === 0) { alert('No images to export'); return; }
+                try {
+                    const res = await fetch(`${API_URL}/api/thesis-format/infographic/export-pdf`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ images: imgs, ticker: fmtTicker })
+                    });
+                    if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'PDF export failed'); }
+                    const data = await res.json();
+                    triggerBase64Download(data.fileData, data.filename, 'application/pdf');
+                } catch (err) { alert('PDF export failed: ' + err.message); }
+            };
+
+            const emailInfographic = async (images, mode, detail, style) => {
+                const imgs = images || fmtInfographicImages;
+                if (!imgs || imgs.filter(x => x).length === 0) { alert('No images to email'); return; }
+                const saved = localStorage.getItem('emailCredentials');
+                if (!saved) { alert('Please set up email credentials first using Email Options in the Thesis tab.'); return; }
+                let creds;
+                try { creds = JSON.parse(saved); } catch(e) { alert('Invalid email credentials.'); return; }
+                if (!creds.email) { alert('No recipient email saved.'); return; }
+                try {
+                    const res = await fetch(`${API_URL}/api/email-infographic`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            images: imgs,
+                            ticker: fmtTicker,
+                            mode: mode || fmtInfographicMode,
+                            detail: detail || fmtInfographicDetail,
+                            style: style || fmtInfographicStyle,
+                            email: creds.email,
+                            customSubject: `${fmtTicker} — Thesis Infographic`,
+                            smtpConfig: { use_gmail: creds.useGmail !== false, gmail_user: creds.gmailUser, gmail_app_password: creds.gmailPassword, from_email: creds.gmailUser }
+                        })
+                    });
+                    if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Email failed'); }
+                    const data = await res.json();
+                    alert(data.message || 'Email sent!');
+                } catch (err) { alert('Email failed: ' + err.message); }
+            };
+
             const editInfographicVersion = async (versionId) => {
                 if (!fmtInfographicEditPrompt.trim()) { alert('Please enter edit instructions'); return; }
                 const geminiKey = loadGeminiKeyFromStorage() || '';
@@ -16134,12 +16176,20 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 <div className="mt-5">
                                                     <div className="flex items-center justify-between mb-3">
                                                         <span className="text-xs text-slate-500">{fmtInfographicImages.filter(x => x).length} image{fmtInfographicImages.filter(x => x).length !== 1 ? 's' : ''} generated</span>
-                                                        {fmtInfographicImages.filter(x => x).length > 1 && (
+                                                        <div className="flex items-center gap-3">
                                                             <button onClick={() => downloadAllInfographicImages()}
                                                                 className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1">
-                                                                <Download className="w-3 h-3" /> Download All
+                                                                <Download className="w-3 h-3" /> PNG
                                                             </button>
-                                                        )}
+                                                            <button onClick={() => exportInfographicPdf()}
+                                                                className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1">
+                                                                <Download className="w-3 h-3" /> PDF
+                                                            </button>
+                                                            <button onClick={() => emailInfographic()}
+                                                                className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1">
+                                                                <Send className="w-3 h-3" /> Email
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                     <div className={`grid gap-4 ${fmtInfographicMode === '3' ? 'grid-cols-1 md:grid-cols-3' : 'grid-cols-1'}`}>
                                                         {fmtInfographicImages.map((img, idx) => img && (
@@ -16213,13 +16263,19 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                         <span className="ml-2 text-slate-500">Edit: "{fmtInfographicViewingVersion.editPrompt}"</span>
                                                                     )}
                                                                 </span>
-                                                                <div className="flex items-center gap-2">
-                                                                    {fmtInfographicViewingImages.filter(x => x).length > 1 && (
-                                                                        <button onClick={() => downloadAllInfographicImages(fmtInfographicViewingImages, fmtInfographicViewingVersion.mode)}
-                                                                            className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1">
-                                                                            <Download className="w-3 h-3" /> Download All
-                                                                        </button>
-                                                                    )}
+                                                                <div className="flex items-center gap-3">
+                                                                    <button onClick={() => downloadAllInfographicImages(fmtInfographicViewingImages, fmtInfographicViewingVersion.mode)}
+                                                                        className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1">
+                                                                        <Download className="w-3 h-3" /> PNG
+                                                                    </button>
+                                                                    <button onClick={() => exportInfographicPdf(fmtInfographicViewingImages)}
+                                                                        className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1">
+                                                                        <Download className="w-3 h-3" /> PDF
+                                                                    </button>
+                                                                    <button onClick={() => emailInfographic(fmtInfographicViewingImages, fmtInfographicViewingVersion.mode, fmtInfographicViewingVersion.detail, fmtInfographicViewingVersion.style)}
+                                                                        className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1">
+                                                                        <Send className="w-3 h-3" /> Email
+                                                                    </button>
                                                                     <button onClick={() => { setFmtInfographicViewingVersion(null); setFmtInfographicViewingImages([]); }}
                                                                         className="text-xs text-slate-500 hover:text-white">Close</button>
                                                                 </div>

@@ -4972,6 +4972,116 @@ def edit_thesis_infographic():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/thesis-format/infographic/export-pdf', methods=['POST'])
+def export_infographic_pdf():
+    """Combine infographic images into a single PDF."""
+    try:
+        import img2pdf
+        data = request.get_json()
+        images = data.get('images', [])
+        ticker = data.get('ticker', 'Infographic')
+        if not images or all(x is None for x in images):
+            return jsonify({'error': 'No images provided'}), 400
+        img_bytes_list = []
+        for img in images:
+            if img:
+                img_bytes_list.append(base64.b64decode(img))
+        if not img_bytes_list:
+            return jsonify({'error': 'No valid images'}), 400
+        pdf_bytes = img2pdf.convert(img_bytes_list)
+        pdf_b64 = base64.b64encode(pdf_bytes).decode('utf-8')
+        return jsonify({'success': True, 'fileData': pdf_b64, 'filename': f'{ticker}_Thesis_Infographic.pdf'})
+    except Exception as e:
+        print(f"Error exporting infographic PDF: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/email-infographic', methods=['POST'])
+def email_infographic():
+    """Email infographic images as inline attachments."""
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.image import MIMEImage
+
+    try:
+        data = request.get_json()
+        images = data.get('images', [])
+        ticker = data.get('ticker', '')
+        mode = data.get('mode', '1')
+        detail = data.get('detail', 'full')
+        style = data.get('style', '')
+        recipient = data.get('email', '')
+        subject = data.get('customSubject', f'{ticker} — Thesis Infographic')
+        smtp_config = data.get('smtpConfig', {})
+
+        if not recipient:
+            return jsonify({'error': 'Recipient email is required'}), 400
+        if not images or all(x is None for x in images):
+            return jsonify({'error': 'No images to send'}), 400
+
+        use_gmail = smtp_config.get('use_gmail', True)
+        gmail_user = smtp_config.get('gmail_user', '')
+        gmail_password = smtp_config.get('gmail_app_password', '')
+        from_email = smtp_config.get('from_email', gmail_user)
+
+        if use_gmail and (not gmail_user or not gmail_password):
+            return jsonify({'error': 'Gmail credentials required'}), 400
+
+        # Build HTML with inline CID images
+        slide_labels = ['Investment Thesis', 'Key Signposts', 'Risk Assessment']
+        detail_label = 'Summary' if detail == 'summary' else 'Full Detail'
+        html_parts = [
+            f'<div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">',
+            f'<h2 style="color:#1e293b;border-bottom:2px solid #6366f1;padding-bottom:8px;">{ticker} — Thesis Infographic</h2>',
+            f'<p style="color:#64748b;font-size:13px;">{mode}-slide &middot; {detail_label} &middot; {style}</p>',
+        ]
+        cid_images = []
+        for idx, img in enumerate(images):
+            if not img:
+                continue
+            cid = f'infographic_{idx}'
+            cid_images.append((cid, img))
+            label = slide_labels[idx] if mode == '3' and idx < len(slide_labels) else ''
+            if label:
+                html_parts.append(f'<h3 style="color:#475569;margin-top:20px;">{label}</h3>')
+            html_parts.append(f'<img src="cid:{cid}" style="max-width:100%;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:16px;" />')
+
+        html_parts.append('</div>')
+        html_body = '\n'.join(html_parts)
+
+        msg = MIMEMultipart('related')
+        msg['From'] = from_email
+        msg['To'] = recipient
+        msg['Subject'] = subject
+
+        html_part = MIMEText(html_body, 'html')
+        msg.attach(html_part)
+
+        for cid, img_b64 in cid_images:
+            img_data = base64.b64decode(img_b64)
+            mime_img = MIMEImage(img_data, _subtype='png')
+            mime_img.add_header('Content-ID', f'<{cid}>')
+            mime_img.add_header('Content-Disposition', 'inline', filename=f'{ticker}_{cid}.png')
+            msg.attach(mime_img)
+
+        if use_gmail:
+            with smtplib.SMTP('smtp.gmail.com', 587) as server:
+                server.starttls()
+                server.login(gmail_user, gmail_password)
+                server.send_message(msg)
+
+        return jsonify({'success': True, 'message': f'Infographic emailed to {recipient}'})
+
+    except smtplib.SMTPAuthenticationError:
+        return jsonify({'error': 'Gmail authentication failed. Check your email and app password.'}), 401
+    except smtplib.SMTPException as e:
+        return jsonify({'error': f'SMTP error: {str(e)}'}), 500
+    except Exception as e:
+        print(f"Error emailing infographic: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 # ============================================
 # DOCUMENT STORAGE ENDPOINTS
 # ============================================
