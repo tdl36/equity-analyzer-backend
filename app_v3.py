@@ -1292,6 +1292,116 @@ def get_analysis_job_status(job_id):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/analysis-jobs-batch', methods=['POST'])
+def create_analysis_jobs_batch():
+    """Create multiple independent background analysis jobs in one request."""
+    try:
+        data = request.json
+        api_key = data.get('apiKey', '')
+        if not api_key:
+            return jsonify({'error': 'API key required'}), 400
+        jobs_input = data.get('jobs', [])
+        if not jobs_input:
+            return jsonify({'error': 'No jobs provided'}), 400
+
+        job_ids = {}
+        for job_data in jobs_input:
+            ticker = job_data.get('ticker', '').upper()
+            if not ticker:
+                continue
+
+            job_id = str(uuid.uuid4())[:12]
+
+            # Save any new documents to document_files
+            new_docs = job_data.get('newDocuments', [])
+            if new_docs:
+                with get_db(commit=True) as (conn, cur):
+                    for doc in new_docs:
+                        cur.execute('''
+                            INSERT INTO document_files (ticker, filename, file_data, file_type, mime_type, metadata, file_size)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (ticker, filename) DO UPDATE SET
+                                file_data = EXCLUDED.file_data,
+                                file_type = EXCLUDED.file_type,
+                                mime_type = EXCLUDED.mime_type,
+                                metadata = EXCLUDED.metadata,
+                                file_size = EXCLUDED.file_size
+                        ''', (ticker, doc['filename'], doc.get('fileData', ''), doc.get('fileType', 'pdf'),
+                              doc.get('mimeType', 'application/pdf'), json.dumps(doc.get('metadata', {})),
+                              len(doc.get('fileData', ''))))
+
+            # Build request payload (without large file data)
+            payload = {
+                'documentFilenames': job_data.get('documentFilenames', []),
+                'documentDetails': job_data.get('documentDetails', []),
+                'existingAnalysis': job_data.get('existingAnalysis'),
+                'historicalWeights': job_data.get('historicalWeights', []),
+                'weightingConfig': job_data.get('weightingConfig', {})
+            }
+
+            with get_db(commit=True) as (conn, cur):
+                cur.execute('''
+                    INSERT INTO analysis_jobs (id, ticker, status, api_key, request_payload)
+                    VALUES (%s, %s, 'pending', %s, %s)
+                ''', (job_id, ticker, api_key, json.dumps(payload)))
+
+            # Spawn background thread
+            thread = threading.Thread(target=_run_analysis_job, args=(job_id,), daemon=True)
+            thread.start()
+            job_ids[ticker] = job_id
+            print(f"[batch-job] Started {ticker} → {job_id}")
+
+        return jsonify({'jobIds': job_ids})
+    except Exception as e:
+        print(f"Error creating batch analysis jobs: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/analysis-jobs-batch-status', methods=['POST'])
+def get_analysis_jobs_batch_status():
+    """Poll multiple analysis job statuses in one request."""
+    try:
+        data = request.json
+        job_ids = data.get('jobIds', [])
+        if not job_ids:
+            return jsonify({'jobs': {}})
+
+        placeholders = ','.join(['%s'] * len(job_ids))
+        with get_db() as (conn, cur):
+            cur.execute(f'SELECT id, ticker, status, progress, batch_num, total_batches, chars_received, result, error, created_at FROM analysis_jobs WHERE id IN ({placeholders})', job_ids)
+            rows = cur.fetchall()
+
+        jobs = {}
+        clear_ids = []
+        for job in rows:
+            resp = {
+                'ticker': job['ticker'],
+                'status': job['status'],
+                'progress': job['progress'],
+                'batchNum': job['batch_num'],
+                'totalBatches': job['total_batches'],
+                'charsReceived': job['chars_received'],
+                'elapsedSeconds': int((datetime.utcnow() - job['created_at']).total_seconds()) if job['created_at'] else 0
+            }
+            if job['status'] == 'complete' and job['result']:
+                resp['result'] = job['result'] if isinstance(job['result'], dict) else json.loads(job['result'])
+                clear_ids.append(job['id'])
+            if job['status'] == 'failed':
+                resp['error'] = job['error']
+            jobs[job['id']] = resp
+
+        # Clear API keys for completed jobs
+        if clear_ids:
+            clear_ph = ','.join(['%s'] * len(clear_ids))
+            with get_db(commit=True) as (conn, cur):
+                cur.execute(f"UPDATE analysis_jobs SET api_key = '' WHERE id IN ({clear_ph}) AND api_key != ''", clear_ids)
+
+        return jsonify({'jobs': jobs})
+    except Exception as e:
+        print(f"Error getting batch job status: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 # ============================================
 # PORTFOLIO ANALYSES ENDPOINTS
 # ============================================

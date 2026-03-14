@@ -1,0 +1,11 @@
+.git
+.wrangler
+.claude
+*.py
+*.pyc
+requirements.txt
+build.sh
+wrangler.jsonc
+.gitignore
+.assetsignore
+*_backup.*

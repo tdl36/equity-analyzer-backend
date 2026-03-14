@@ -1,9 +1,15 @@
 {
-  "name": "equity-analyzer",
-  "compatibility_date": "2026-02-21",
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "charlie-deployment",
   "main": "worker.js",
+  "compatibility_date": "2025-09-27",
+  "observability": {
+    "enabled": true
+  },
   "assets": {
-    "directory": ".",
-    "exclude": [".git", ".claude", ".wrangler", "EXAMPLE", "*.py", "*.sh", "*.txt", "Procfile", "wrangler.jsonc", "worker.js", "*_backup*"]
-  }
+    "directory": "."
+  },
+  "compatibility_flags": [
+    "nodejs_compat"
+  ]
 }
