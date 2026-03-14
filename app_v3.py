@@ -1004,6 +1004,15 @@ def _build_analysis_content(batch_docs, all_docs, existing_analysis, historical_
 
     JSON_SCHEMA = '{"ticker":"TICKER","company":"Name","thesis":{"summary":"...","pillars":[{"title":"...","description":"...","confidence":"High/Medium/Low","sources":[{"filename":"...","excerpt":"..."}]}]},"signposts":[{"metric":"...","target":"...","timeframe":"...","category":"Financial/Operational/Strategic/Market","confidence":"High/Medium/Low","sources":[]}],"threats":[{"threat":"...","likelihood":"...","impact":"...","triggerPoints":"...","sources":[]}],"documentMetadata":[{"filename":"...","docType":"broker_report","source":"...","publishDate":"YYYY-MM-DD","authors":[],"title":"..."}]}'
 
+    LENGTH_RULES = """CONCISENESS RULES (the final output must fit in 2-3 printed pages):
+- thesis.summary: 2-3 sentences MAX. One crisp paragraph capturing WHY we own it.
+- pillars: 3-5 pillars. Each description is 1-2 sentences — punchy, not exhaustive.
+- signposts: 4-6 signposts MAX. Combine related metrics rather than listing every variant.
+- threats: 3-5 threats MAX. Each threat description is one sentence. triggerPoints is one sentence.
+- conclusion: 1-2 sentences if included.
+- Prioritize the MOST important and differentiated insights. Omit generic/obvious points.
+- Do NOT pad with boilerplate or repeat the same point across pillars."""
+
     if existing_analysis:
         batch_note = f"\n\nNote: This is batch {batch_num} of {total_batches}. Incorporate these documents into the existing analysis.\n" if total_batches > 1 else ''
         if simple_mode:
@@ -1018,12 +1027,15 @@ Existing Analysis:
 {weight_instr}
 Review the new documents and:
 1. Update or confirm the investment thesis
-2. Add any new signposts or update existing ones
-3. Add any new threats or update existing ones
+2. Add any new signposts or update existing ones — consolidate to 4-6 total
+3. Add any new threats or update existing ones — consolidate to 3-5 total
 4. Note what changed in the "changes" array
 5. Extract metadata for ALL documents
+6. TRIM any bloat: if pillars > 5, merge or drop the weakest; if signposts > 6, combine related ones
 
 {STYLE_RULES}
+
+{LENGTH_RULES}
 
 Return the updated analysis as JSON with the same structure plus a "changes" array.
 Return ONLY valid JSON, no markdown, no explanation."""
@@ -1035,6 +1047,8 @@ Return a JSON object with this structure:
 {JSON_SCHEMA}
 
 {STYLE_RULES}
+
+{LENGTH_RULES}
 
 Focus on:
 1. Investment Thesis with confidence and source citations
@@ -1136,7 +1150,7 @@ def _run_analysis_job(job_id):
                 model="claude-sonnet-4-5-20250929",
                 max_tokens=16384,
                 messages=[{'role': 'user', 'content': content}],
-                system="You are an expert equity research analyst. Analyze documents thoroughly and provide institutional-quality investment analysis. Always respond with valid JSON only."
+                system="You are an expert equity research analyst. Analyze documents thoroughly and provide institutional-quality investment analysis. Be concise: the final thesis should fit 2-3 printed pages (3-5 pillars, 4-6 signposts, 3-5 threats, each described in 1-2 sentences). Prioritize the most important insights. Always respond with valid JSON only."
             ) as stream:
                 for text in stream.text_stream:
                     result_text += text
