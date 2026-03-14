@@ -3854,61 +3854,49 @@ def _parse_analysis_data(row):
 
 
 def _generate_executive_brief_pdf(row, scorecard_data=None):
-    """Format 1: Executive Brief — clean navy theme, professional layout."""
+    """Format 1: Executive Brief — clean navy/white professional layout using only xhtml2pdf-safe CSS."""
     from xhtml2pdf import pisa
     d = _parse_analysis_data(row)
     ticker, company, date_str = d['ticker'], d['company'], d['date_str']
     thesis, signposts, threats, conclusion = d['thesis'], d['signposts'], d['threats'], d['conclusion']
     title = f"{ticker} — {company}" if company else ticker
 
-    # Thesis pillars
+    # Pillars as numbered rows
     pillars_html = ''
     for i, p in enumerate(thesis.get('pillars', []), 1):
         t = _fmt_escape(p.get('pillar', p.get('title', '')))
         desc = _fmt_escape(p.get('detail', p.get('description', '')))
         conf = p.get('confidence', '')
-        conf_badge = ''
-        if conf:
-            conf_color = '#16a34a' if conf.lower() == 'high' else '#ca8a04' if conf.lower() == 'medium' else '#dc2626'
-            conf_badge = f' <span style="background:{conf_color};color:#fff;padding:1px 8px;border-radius:10px;font-size:8pt;margin-left:6px;">{_fmt_escape(conf)}</span>'
-        pillars_html += f'''
-        <tr>
-            <td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;vertical-align:top;width:30px;color:#1e3a5f;font-weight:bold;font-size:13pt;">{i}</td>
-            <td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;">
-                <strong style="color:#1e3a5f;">{t}</strong>{conf_badge}<br/>
-                <span style="color:#475569;font-size:10pt;">{desc}</span>
-            </td>
+        conf_text = f' [{conf}]' if conf else ''
+        pillars_html += f'''<tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #cbd5e1;vertical-align:top;width:28px;color:#1e3a5f;font-weight:bold;font-size:11pt;">{i}</td>
+            <td style="padding:8px 12px;border-bottom:1px solid #cbd5e1;vertical-align:top;"><b style="color:#1e3a5f;">{t}</b><span style="color:#64748b;font-size:9pt;">{conf_text}</span><br/><span style="color:#334155;font-size:9.5pt;">{desc}</span></td>
         </tr>'''
 
     # Signposts table
-    signposts_html = ''
     sc_signposts = {}
     if scorecard_data and scorecard_data.get('signposts'):
         for sp in scorecard_data['signposts']:
             sc_signposts[sp.get('metric', '')] = sp
+    sp_rows = ''
     for sp in signposts:
         metric = _fmt_escape(sp.get('metric', sp.get('signpost', '')))
         target = _fmt_escape(sp.get('target', ''))
         tf = _fmt_escape(sp.get('timeframe', ''))
         sc = sc_signposts.get(sp.get('metric', sp.get('signpost', '')), {})
-        latest = _fmt_escape(sc.get('latest', '—'))
+        latest = _fmt_escape(sc.get('latest', ''))
         status = sc.get('status', '')
-        status_cell = f'<td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;background:{_status_bg(status)};font-weight:bold;color:{_status_color(status)};">{_fmt_escape(status.upper()) if status else "—"}</td>'
-        signposts_html += f'''
-        <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#1e3a5f;">{metric}</td>
-            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#475569;">{target}</td>
-            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#475569;">{tf}</td>
-            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;">{latest}</td>
-            {status_cell}
-        </tr>'''
+        st_bg = _status_bg(status) if status else '#ffffff'
+        st_color = _status_color(status) if status else '#94a3b8'
+        st_text = _fmt_escape(status.upper()) if status else ''
+        sp_rows += f'<tr><td style="padding:7px 10px;border:1px solid #cbd5e1;color:#1e293b;font-weight:600;">{metric}</td><td style="padding:7px 10px;border:1px solid #cbd5e1;color:#334155;">{target}</td><td style="padding:7px 10px;border:1px solid #cbd5e1;color:#64748b;">{tf}</td><td style="padding:7px 10px;border:1px solid #cbd5e1;color:#334155;text-align:center;">{latest if latest else "—"}</td><td style="padding:7px 10px;border:1px solid #cbd5e1;text-align:center;background:{st_bg};color:{st_color};font-weight:bold;">{st_text if st_text else "—"}</td></tr>'
 
     # Threats table
-    threats_html = ''
     sc_risks = {}
     if scorecard_data and scorecard_data.get('risks'):
         for r in scorecard_data['risks']:
             sc_risks[r.get('riskFactor', '')] = r
+    threat_rows = ''
     for threat in threats:
         td = _fmt_escape(threat.get('threat', ''))
         lk = _fmt_escape(threat.get('likelihood', ''))
@@ -3916,53 +3904,34 @@ def _generate_executive_brief_pdf(row, scorecard_data=None):
         triggers = _fmt_escape(threat.get('triggerPoints', ''))
         sc = sc_risks.get(threat.get('threat', ''), {})
         status = sc.get('status', '')
-        status_cell = f'<td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;background:{_status_bg(status)};font-weight:bold;color:{_status_color(status)};">{_fmt_escape(status.upper()) if status else "—"}</td>'
-        threats_html += f'''
-        <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#1e3a5f;">{td}</td>
-            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;">{lk}</td>
-            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;">{imp}</td>
-            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#475569;font-size:9pt;">{triggers}</td>
-            {status_cell}
-        </tr>'''
+        st_bg = _status_bg(status) if status else '#ffffff'
+        st_color = _status_color(status) if status else '#94a3b8'
+        st_text = _fmt_escape(status.upper()) if status else ''
+        threat_rows += f'<tr><td style="padding:7px 10px;border:1px solid #cbd5e1;color:#1e293b;font-weight:600;">{td}</td><td style="padding:7px 10px;border:1px solid #cbd5e1;color:#334155;text-align:center;">{lk}</td><td style="padding:7px 10px;border:1px solid #cbd5e1;color:#334155;text-align:center;">{imp}</td><td style="padding:7px 10px;border:1px solid #cbd5e1;color:#64748b;font-size:9pt;">{triggers}</td><td style="padding:7px 10px;border:1px solid #cbd5e1;text-align:center;background:{st_bg};color:{st_color};font-weight:bold;">{st_text if st_text else "—"}</td></tr>'
 
     conclusion_html = ''
     if conclusion:
-        conclusion_html = f'''
-        <div style="margin-top:20px;padding:16px 20px;background:#f0f4ff;border-left:4px solid #1e3a5f;border-radius:0 8px 8px 0;">
-            <h3 style="margin:0 0 8px 0;color:#1e3a5f;font-size:12pt;">Conclusion</h3>
-            <p style="margin:0;color:#334155;font-size:10pt;line-height:1.6;">{_fmt_escape(conclusion)}</p>
-        </div>'''
+        conclusion_html = f'<h2 style="font-size:12pt;color:#1e3a5f;border-bottom:2px solid #1e3a5f;padding-bottom:4px;margin:18px 0 8px 0;">Conclusion</h2><p style="margin:0;color:#334155;font-size:10pt;line-height:1.6;">{_fmt_escape(conclusion)}</p>'
 
     html = f"""<html><head><style>
-        @page {{ margin: 0.6in 0.7in; size: letter; }}
-        body {{ font-family: Calibri, Arial, Helvetica, sans-serif; font-size: 10pt; color: #1e293b; line-height: 1.5; margin: 0; }}
+        @page {{ margin: 0.75in; size: letter; }}
+        body {{ font-family: Calibri, Arial, sans-serif; font-size: 10pt; color: #1e293b; line-height: 1.5; }}
         table {{ border-collapse: collapse; width: 100%; }}
     </style></head><body>
-        <!-- Header -->
-        <div style="background:#1e3a5f;color:#fff;padding:20px 28px;margin:0 0 24px 0;width:100%;">
-            <div style="font-size:22pt;font-weight:bold;letter-spacing:0.5px;">{_fmt_escape(title)}</div>
-            <div style="font-size:10pt;color:#94b8d8;margin-top:4px;">Investment Thesis | {date_str}</div>
-        </div>
+        <table style="width:100%;margin-bottom:18px;"><tr>
+            <td style="background:#1e3a5f;padding:16px 20px;"><span style="font-size:20pt;font-weight:bold;color:#ffffff;">{_fmt_escape(title)}</span><br/><span style="font-size:9pt;color:#93c5fd;">Investment Thesis  |  {date_str}</span></td>
+        </tr></table>
 
-        <!-- Thesis Summary -->
-        <div style="margin-bottom:20px;">
-            <h2 style="font-size:14pt;color:#1e3a5f;border-bottom:2px solid #1e3a5f;padding-bottom:6px;margin-bottom:12px;">Investment Thesis</h2>
-            <p style="color:#334155;font-size:10.5pt;line-height:1.7;margin:0 0 16px 0;text-align:justify;">{_fmt_escape(thesis.get('summary', ''))}</p>
-            <table style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
-                <thead><tr style="background:#f1f5f9;">
-                    <th style="padding:8px 14px;text-align:left;color:#64748b;font-size:9pt;font-weight:600;border-bottom:2px solid #cbd5e1;">#</th>
-                    <th style="padding:8px 14px;text-align:left;color:#64748b;font-size:9pt;font-weight:600;border-bottom:2px solid #cbd5e1;">THESIS PILLAR</th>
-                </tr></thead>
-                <tbody>{pillars_html}</tbody>
-            </table>
-        </div>
+        <h2 style="font-size:12pt;color:#1e3a5f;border-bottom:2px solid #1e3a5f;padding-bottom:4px;margin:0 0 10px 0;">Investment Thesis</h2>
+        <p style="color:#334155;font-size:10pt;line-height:1.7;margin:0 0 14px 0;">{_fmt_escape(thesis.get('summary', ''))}</p>
+        <table style="border:1px solid #cbd5e1;margin-bottom:18px;">
+            <thead><tr style="background:#1e3a5f;"><th style="padding:7px 12px;text-align:left;color:#ffffff;font-size:9pt;">#</th><th style="padding:7px 12px;text-align:left;color:#ffffff;font-size:9pt;">THESIS PILLAR</th></tr></thead>
+            <tbody>{pillars_html}</tbody>
+        </table>
 
-        <!-- Signposts -->
-        {'<div style="margin-bottom:20px;"><h2 style="font-size:14pt;color:#1e3a5f;border-bottom:2px solid #1e3a5f;padding-bottom:6px;margin-bottom:12px;">Signposts — What We Are Watching</h2><table style="border:1px solid #e2e8f0;"><thead><tr style="background:#f1f5f9;"><th style="padding:8px 12px;text-align:left;color:#64748b;font-size:9pt;font-weight:600;border-bottom:2px solid #cbd5e1;">METRIC</th><th style="padding:8px 12px;text-align:left;color:#64748b;font-size:9pt;font-weight:600;border-bottom:2px solid #cbd5e1;">TARGET</th><th style="padding:8px 12px;text-align:left;color:#64748b;font-size:9pt;font-weight:600;border-bottom:2px solid #cbd5e1;">TIMEFRAME</th><th style="padding:8px 12px;text-align:center;color:#64748b;font-size:9pt;font-weight:600;border-bottom:2px solid #cbd5e1;">LATEST</th><th style="padding:8px 12px;text-align:center;color:#64748b;font-size:9pt;font-weight:600;border-bottom:2px solid #cbd5e1;">STATUS</th></tr></thead><tbody>' + signposts_html + '</tbody></table></div>' if signposts else ''}
+        {'<h2 style="font-size:12pt;color:#1e3a5f;border-bottom:2px solid #1e3a5f;padding-bottom:4px;margin:0 0 10px 0;">Signposts — What We Are Watching</h2><table style="border:1px solid #cbd5e1;margin-bottom:18px;"><thead><tr style="background:#1e3a5f;"><th style="padding:7px 10px;text-align:left;color:#ffffff;font-size:8pt;">METRIC</th><th style="padding:7px 10px;text-align:left;color:#ffffff;font-size:8pt;">TARGET</th><th style="padding:7px 10px;text-align:left;color:#ffffff;font-size:8pt;">TIMEFRAME</th><th style="padding:7px 10px;text-align:center;color:#ffffff;font-size:8pt;">LATEST</th><th style="padding:7px 10px;text-align:center;color:#ffffff;font-size:8pt;">STATUS</th></tr></thead><tbody>' + sp_rows + '</tbody></table>' if signposts else ''}
 
-        <!-- Threats -->
-        {'<div style="margin-bottom:20px;"><h2 style="font-size:14pt;color:#1e3a5f;border-bottom:2px solid #1e3a5f;padding-bottom:6px;margin-bottom:12px;">Risks to Thesis</h2><table style="border:1px solid #e2e8f0;"><thead><tr style="background:#f1f5f9;"><th style="padding:8px 12px;text-align:left;color:#64748b;font-size:9pt;font-weight:600;border-bottom:2px solid #cbd5e1;">RISK FACTOR</th><th style="padding:8px 12px;text-align:center;color:#64748b;font-size:9pt;font-weight:600;border-bottom:2px solid #cbd5e1;">LIKELIHOOD</th><th style="padding:8px 12px;text-align:center;color:#64748b;font-size:9pt;font-weight:600;border-bottom:2px solid #cbd5e1;">IMPACT</th><th style="padding:8px 12px;text-align:left;color:#64748b;font-size:9pt;font-weight:600;border-bottom:2px solid #cbd5e1;">TRIGGER POINTS</th><th style="padding:8px 12px;text-align:center;color:#64748b;font-size:9pt;font-weight:600;border-bottom:2px solid #cbd5e1;">STATUS</th></tr></thead><tbody>' + threats_html + '</tbody></table></div>' if threats else ''}
+        {'<h2 style="font-size:12pt;color:#1e3a5f;border-bottom:2px solid #1e3a5f;padding-bottom:4px;margin:0 0 10px 0;">Risks to Thesis</h2><table style="border:1px solid #cbd5e1;margin-bottom:18px;"><thead><tr style="background:#1e3a5f;"><th style="padding:7px 10px;text-align:left;color:#ffffff;font-size:8pt;">RISK FACTOR</th><th style="padding:7px 10px;text-align:center;color:#ffffff;font-size:8pt;">LIKELIHOOD</th><th style="padding:7px 10px;text-align:center;color:#ffffff;font-size:8pt;">IMPACT</th><th style="padding:7px 10px;text-align:left;color:#ffffff;font-size:8pt;">TRIGGER POINTS</th><th style="padding:7px 10px;text-align:center;color:#ffffff;font-size:8pt;">STATUS</th></tr></thead><tbody>' + threat_rows + '</tbody></table>' if threats else ''}
 
         {conclusion_html}
     </body></html>"""
@@ -3973,117 +3942,89 @@ def _generate_executive_brief_pdf(row, scorecard_data=None):
 
 
 def _generate_scorecard_pdf(row, scorecard_data=None):
-    """Format 2: Scorecard Dashboard — traffic-light tables with green banners."""
+    """Format 2: Scorecard Dashboard — green banner headers, traffic-light tables."""
     from xhtml2pdf import pisa
     d = _parse_analysis_data(row)
     ticker, company, date_str = d['ticker'], d['company'], d['date_str']
     thesis, signposts, threats, conclusion = d['thesis'], d['signposts'], d['threats'], d['conclusion']
-    title = f"{ticker} — {company}" if company else ticker
 
-    # Build pillar cards
+    # Pillars as indented blocks with green left border
     pillars_html = ''
     for p in thesis.get('pillars', []):
         t = _fmt_escape(p.get('pillar', p.get('title', '')))
         desc = _fmt_escape(p.get('detail', p.get('description', '')))
         conf = p.get('confidence', '')
-        conf_html = ''
-        if conf:
-            conf_color = '#16a34a' if conf.lower() == 'high' else '#ca8a04' if conf.lower() == 'medium' else '#dc2626'
-            conf_html = f'<span style="float:right;background:{conf_color};color:#fff;padding:2px 10px;border-radius:12px;font-size:8pt;">{_fmt_escape(conf)}</span>'
-        pillars_html += f'''
-        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #166534;border-radius:0 6px 6px 0;padding:10px 14px;margin-bottom:8px;">
-            <div style="font-weight:bold;color:#166534;font-size:10.5pt;">{t}{conf_html}</div>
-            <div style="color:#475569;font-size:9.5pt;margin-top:4px;line-height:1.5;">{desc}</div>
-        </div>'''
+        conf_text = f'  <span style="color:#64748b;font-size:8pt;">[{_fmt_escape(conf)}]</span>' if conf else ''
+        pillars_html += f'<table style="margin-bottom:6px;"><tr><td style="width:4px;background:#166534;"></td><td style="padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;"><b style="color:#166534;">{t}</b>{conf_text}<br/><span style="color:#334155;font-size:9.5pt;">{desc}</span></td></tr></table>'
 
-    # Signposts traffic-light table
-    signposts_rows = ''
+    # Signposts traffic-light
     sc_signposts = {}
     if scorecard_data and scorecard_data.get('signposts'):
         for sp in scorecard_data['signposts']:
             sc_signposts[sp.get('metric', '')] = sp
+    sp_rows = ''
     for sp in signposts:
         metric = _fmt_escape(sp.get('metric', sp.get('signpost', '')))
         target = _fmt_escape(sp.get('target', ''))
         sc = sc_signposts.get(sp.get('metric', sp.get('signpost', '')), {})
         lt_goal = _fmt_escape(sc.get('ltGoal', target))
-        latest = _fmt_escape(sc.get('latest', '—'))
+        latest = _fmt_escape(sc.get('latest', ''))
         status = sc.get('status', '')
         green_desc = _fmt_escape(sc.get('greenThreshold', ''))
         yellow_desc = _fmt_escape(sc.get('yellowThreshold', ''))
         red_desc = _fmt_escape(sc.get('redThreshold', ''))
 
-        def _cell(s, desc, current):
+        def _tl_cell(s, desc, current):
             is_active = current.lower() == s if current else False
-            bg = _status_bg(s) if is_active else '#fff'
-            border = f'2px solid {_status_color(s)}' if is_active else '1px solid #e2e8f0'
-            weight = 'bold' if is_active else 'normal'
-            return f'<td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;border:{border};background:{bg};text-align:center;font-size:8pt;font-weight:{weight};color:{_status_color(s) if is_active else "#94a3b8"};">{desc if desc else s.upper()}</td>'
+            if is_active:
+                return f'<td style="padding:5px 6px;border:2px solid {_status_color(s)};background:{_status_bg(s)};text-align:center;font-size:8pt;font-weight:bold;color:{_status_color(s)};">{desc if desc else s.upper()}</td>'
+            return f'<td style="padding:5px 6px;border:1px solid #e2e8f0;text-align:center;font-size:7.5pt;color:#94a3b8;">{desc if desc else s.upper()}</td>'
 
-        signposts_rows += f'''
-        <tr>
-            <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#166534;font-size:9.5pt;">{metric}</td>
-            <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;color:#475569;font-size:9.5pt;text-align:center;">{lt_goal}</td>
-            <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;color:#1e3a5f;font-size:9.5pt;text-align:center;font-weight:bold;">{latest}</td>
-            {_cell('green', green_desc, status)}
-            {_cell('yellow', yellow_desc, status)}
-            {_cell('red', red_desc, status)}
-        </tr>'''
+        sp_rows += f'<tr><td style="padding:6px 8px;border:1px solid #d1d5db;font-weight:600;color:#166534;font-size:9pt;">{metric}</td><td style="padding:6px 8px;border:1px solid #d1d5db;color:#334155;font-size:9pt;text-align:center;">{lt_goal}</td><td style="padding:6px 8px;border:1px solid #d1d5db;color:#1e293b;font-size:9pt;text-align:center;font-weight:bold;">{latest if latest else "—"}</td>{_tl_cell("green", green_desc, status)}{_tl_cell("yellow", yellow_desc, status)}{_tl_cell("red", red_desc, status)}</tr>'
 
-    # Risks traffic-light table
-    risks_rows = ''
+    # Risks traffic-light
     sc_risks = {}
     if scorecard_data and scorecard_data.get('risks'):
         for r in scorecard_data['risks']:
             sc_risks[r.get('riskFactor', '')] = r
+    risk_rows = ''
     for threat in threats:
         td = _fmt_escape(threat.get('threat', ''))
         sc = sc_risks.get(threat.get('threat', ''), {})
         status = sc.get('status', '')
+        status_note = _fmt_escape(sc.get('statusNote', ''))
         green_desc = _fmt_escape(sc.get('greenDescription', ''))
         yellow_desc = _fmt_escape(sc.get('yellowDescription', ''))
         red_desc = _fmt_escape(sc.get('redDescription', ''))
 
-        def _rcell(s, desc, current):
+        def _tl_risk(s, desc, current):
             is_active = current.lower() == s if current else False
-            bg = _status_bg(s) if is_active else '#fff'
-            border = f'2px solid {_status_color(s)}' if is_active else '1px solid #e2e8f0'
-            weight = 'bold' if is_active else 'normal'
-            return f'<td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;border:{border};background:{bg};text-align:center;font-size:8pt;font-weight:{weight};color:{_status_color(s) if is_active else "#94a3b8"};">{desc if desc else s.upper()}</td>'
+            if is_active:
+                return f'<td style="padding:5px 6px;border:2px solid {_status_color(s)};background:{_status_bg(s)};text-align:center;font-size:8pt;font-weight:bold;color:{_status_color(s)};">{desc if desc else s.upper()}</td>'
+            return f'<td style="padding:5px 6px;border:1px solid #e2e8f0;text-align:center;font-size:7.5pt;color:#94a3b8;">{desc if desc else s.upper()}</td>'
 
-        status_label = _fmt_escape(sc.get('statusNote', ''))
-        risks_rows += f'''
-        <tr>
-            <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#166534;font-size:9.5pt;">{td}</td>
-            <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;color:#475569;font-size:9pt;text-align:center;">{status_label if status_label else "—"}</td>
-            {_rcell('green', green_desc, status)}
-            {_rcell('yellow', yellow_desc, status)}
-            {_rcell('red', red_desc, status)}
-        </tr>'''
+        risk_rows += f'<tr><td style="padding:6px 8px;border:1px solid #d1d5db;font-weight:600;color:#166534;font-size:9pt;">{td}</td><td style="padding:6px 8px;border:1px solid #d1d5db;color:#475569;font-size:8pt;text-align:center;">{status_note if status_note else "—"}</td>{_tl_risk("green", green_desc, status)}{_tl_risk("yellow", yellow_desc, status)}{_tl_risk("red", red_desc, status)}</tr>'
 
     html = f"""<html><head><style>
-        @page {{ margin: 0.5in 0.6in; size: letter; }}
-        body {{ font-family: Calibri, Arial, Helvetica, sans-serif; font-size: 10pt; color: #1e293b; line-height: 1.4; margin: 0; }}
+        @page {{ margin: 0.6in 0.65in; size: letter; }}
+        body {{ font-family: Calibri, Arial, sans-serif; font-size: 10pt; color: #1e293b; line-height: 1.45; }}
         table {{ border-collapse: collapse; width: 100%; }}
-        .section-banner {{ background: #166534; color: #fff; padding: 10px 18px; font-size: 13pt; font-weight: bold; letter-spacing: 0.5px; margin: 18px 0 14px 0; width: 100%; }}
     </style></head><body>
-        <!-- Header -->
-        <div style="background:#166534;color:#fff;padding:22px 28px;margin:0 0 0 0;width:100%;">
-            <div style="font-size:24pt;font-weight:bold;">{_fmt_escape(ticker)}</div>
-            <div style="font-size:12pt;color:#bbf7d0;margin-top:2px;">{_fmt_escape(company)}</div>
-            <div style="font-size:9pt;color:#86efac;margin-top:6px;">Investment Thesis Scorecard | {date_str}</div>
-        </div>
+        <table style="width:100%;margin-bottom:14px;"><tr>
+            <td style="background:#166534;padding:18px 22px;">
+                <span style="font-size:22pt;font-weight:bold;color:#ffffff;">{_fmt_escape(ticker)}</span><br/>
+                <span style="font-size:11pt;color:#bbf7d0;">{_fmt_escape(company)}</span><br/>
+                <span style="font-size:8pt;color:#86efac;">Investment Thesis Scorecard  |  {date_str}</span>
+            </td>
+        </tr></table>
 
-        <!-- Investment Thesis -->
-        <div class="section-banner">INVESTMENT THESIS</div>
-        <p style="color:#334155;font-size:10.5pt;line-height:1.7;margin:0 0 14px 0;text-align:justify;">{_fmt_escape(thesis.get('summary', ''))}</p>
+        <table style="width:100%;margin-bottom:10px;"><tr><td style="background:#166534;padding:8px 16px;"><b style="color:#ffffff;font-size:11pt;">INVESTMENT THESIS</b></td></tr></table>
+        <p style="color:#334155;font-size:10pt;line-height:1.65;margin:0 0 10px 0;">{_fmt_escape(thesis.get('summary', ''))}</p>
         {pillars_html}
 
-        <!-- Signposts -->
-        {'<div class="section-banner">SIGNPOSTS — WHAT WE ARE WATCHING</div><table style="border:1px solid #e2e8f0;margin-bottom:6px;"><thead><tr style="background:#f1f5f9;"><th style="padding:8px 10px;text-align:left;color:#166534;font-size:8pt;font-weight:700;border-bottom:2px solid #16a34a;text-transform:uppercase;">Measure</th><th style="padding:8px 10px;text-align:center;color:#166534;font-size:8pt;font-weight:700;border-bottom:2px solid #16a34a;text-transform:uppercase;">LT Goal</th><th style="padding:8px 10px;text-align:center;color:#166534;font-size:8pt;font-weight:700;border-bottom:2px solid #16a34a;text-transform:uppercase;">Latest</th><th style="padding:8px 10px;text-align:center;color:#166534;font-size:8pt;font-weight:700;border-bottom:2px solid #16a34a;text-transform:uppercase;">Green</th><th style="padding:8px 10px;text-align:center;color:#166534;font-size:8pt;font-weight:700;border-bottom:2px solid #16a34a;text-transform:uppercase;">Yellow</th><th style="padding:8px 10px;text-align:center;color:#166534;font-size:8pt;font-weight:700;border-bottom:2px solid #16a34a;text-transform:uppercase;">Red</th></tr></thead><tbody>' + signposts_rows + '</tbody></table>' if signposts else ''}
+        {'<table style="width:100%;margin:14px 0 10px 0;"><tr><td style="background:#166534;padding:8px 16px;"><b style="color:#ffffff;font-size:11pt;">SIGNPOSTS — WHAT WE ARE WATCHING</b></td></tr></table><table style="border:1px solid #d1d5db;margin-bottom:10px;"><thead><tr style="background:#f0fdf4;"><th style="padding:6px 8px;text-align:left;color:#166534;font-size:8pt;font-weight:700;border:1px solid #d1d5db;">MEASURE</th><th style="padding:6px 8px;text-align:center;color:#166534;font-size:8pt;font-weight:700;border:1px solid #d1d5db;">LT GOAL</th><th style="padding:6px 8px;text-align:center;color:#166534;font-size:8pt;font-weight:700;border:1px solid #d1d5db;">LATEST</th><th style="padding:6px 8px;text-align:center;color:#166534;font-size:8pt;font-weight:700;border:1px solid #d1d5db;">GREEN</th><th style="padding:6px 8px;text-align:center;color:#166534;font-size:8pt;font-weight:700;border:1px solid #d1d5db;">YELLOW</th><th style="padding:6px 8px;text-align:center;color:#166534;font-size:8pt;font-weight:700;border:1px solid #d1d5db;">RED</th></tr></thead><tbody>' + sp_rows + '</tbody></table>' if signposts else ''}
 
-        <!-- Risks -->
-        {'<div class="section-banner">RISKS TO THESIS</div><table style="border:1px solid #e2e8f0;margin-bottom:6px;"><thead><tr style="background:#f1f5f9;"><th style="padding:8px 10px;text-align:left;color:#166534;font-size:8pt;font-weight:700;border-bottom:2px solid #16a34a;text-transform:uppercase;">Risk Factor</th><th style="padding:8px 10px;text-align:center;color:#166534;font-size:8pt;font-weight:700;border-bottom:2px solid #16a34a;text-transform:uppercase;">Status</th><th style="padding:8px 10px;text-align:center;color:#166534;font-size:8pt;font-weight:700;border-bottom:2px solid #16a34a;text-transform:uppercase;">Green</th><th style="padding:8px 10px;text-align:center;color:#166534;font-size:8pt;font-weight:700;border-bottom:2px solid #16a34a;text-transform:uppercase;">Yellow</th><th style="padding:8px 10px;text-align:center;color:#166534;font-size:8pt;font-weight:700;border-bottom:2px solid #16a34a;text-transform:uppercase;">Red</th></tr></thead><tbody>' + risks_rows + '</tbody></table>' if threats else ''}
+        {'<table style="width:100%;margin:14px 0 10px 0;"><tr><td style="background:#166534;padding:8px 16px;"><b style="color:#ffffff;font-size:11pt;">RISKS TO THESIS</b></td></tr></table><table style="border:1px solid #d1d5db;margin-bottom:10px;"><thead><tr style="background:#f0fdf4;"><th style="padding:6px 8px;text-align:left;color:#166534;font-size:8pt;font-weight:700;border:1px solid #d1d5db;">RISK FACTOR</th><th style="padding:6px 8px;text-align:center;color:#166534;font-size:8pt;font-weight:700;border:1px solid #d1d5db;">STATUS</th><th style="padding:6px 8px;text-align:center;color:#166534;font-size:8pt;font-weight:700;border:1px solid #d1d5db;">GREEN</th><th style="padding:6px 8px;text-align:center;color:#166534;font-size:8pt;font-weight:700;border:1px solid #d1d5db;">YELLOW</th><th style="padding:6px 8px;text-align:center;color:#166534;font-size:8pt;font-weight:700;border:1px solid #d1d5db;">RED</th></tr></thead><tbody>' + risk_rows + '</tbody></table>' if threats else ''}
     </body></html>"""
 
     buf = io.BytesIO()
@@ -4092,34 +4033,35 @@ def _generate_scorecard_pdf(row, scorecard_data=None):
 
 
 def _generate_onepager_pdf(row, scorecard_data=None):
-    """Format 3: Institutional One-Pager — condensed, high-density single page."""
+    """Format 3: Institutional One-Pager — condensed two-column layout."""
     from xhtml2pdf import pisa
     d = _parse_analysis_data(row)
     ticker, company, date_str = d['ticker'], d['company'], d['date_str']
     thesis, signposts, threats, conclusion = d['thesis'], d['signposts'], d['threats'], d['conclusion']
 
-    # Pillars
+    # Pillar bullets
     pillars_html = ''
     for p in thesis.get('pillars', []):
         t = _fmt_escape(p.get('pillar', p.get('title', '')))
         desc = _fmt_escape(p.get('detail', p.get('description', '')))
-        pillars_html += f'<div style="margin-bottom:6px;"><span style="font-weight:bold;color:#1e3a5f;">{t}:</span> <span style="color:#475569;">{desc}</span></div>'
+        pillars_html += f'<tr><td style="padding:4px 0;vertical-align:top;width:8px;color:#1e3a5f;font-weight:bold;">&#x2022;</td><td style="padding:4px 0 4px 6px;"><b style="color:#1e3a5f;font-size:9pt;">{t}:</b> <span style="color:#475569;font-size:8.5pt;">{desc}</span></td></tr>'
 
-    # Signpost bullets
+    # Signpost rows
     sc_signposts = {}
     if scorecard_data and scorecard_data.get('signposts'):
         for sp in scorecard_data['signposts']:
             sc_signposts[sp.get('metric', '')] = sp
-    signpost_items = ''
+    sp_items = ''
     for sp in signposts:
         metric = _fmt_escape(sp.get('metric', sp.get('signpost', '')))
         target = _fmt_escape(sp.get('target', ''))
         sc = sc_signposts.get(sp.get('metric', sp.get('signpost', '')), {})
         status = sc.get('status', '')
-        dot = f'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:{_status_color(status)};margin-right:5px;vertical-align:middle;"></span>' if status else ''
-        signpost_items += f'<div style="margin-bottom:4px;font-size:9pt;">{dot}<strong>{metric}:</strong> {target}</div>'
+        st_color = _status_color(status) if status else '#94a3b8'
+        st_text = status.upper() if status else ''
+        sp_items += f'<tr><td style="padding:3px 6px;border-bottom:1px solid #e2e8f0;font-size:8.5pt;font-weight:600;color:#1e293b;">{metric}</td><td style="padding:3px 6px;border-bottom:1px solid #e2e8f0;font-size:8.5pt;color:#475569;">{target}</td><td style="padding:3px 6px;border-bottom:1px solid #e2e8f0;font-size:8.5pt;text-align:center;font-weight:bold;color:{st_color};">{st_text}</td></tr>'
 
-    # Risk bullets
+    # Risk rows
     sc_risks = {}
     if scorecard_data and scorecard_data.get('risks'):
         for r in scorecard_data['risks']:
@@ -4127,54 +4069,38 @@ def _generate_onepager_pdf(row, scorecard_data=None):
     risk_items = ''
     for threat in threats:
         td = _fmt_escape(threat.get('threat', ''))
-        lk = threat.get('likelihood', '')
-        imp = threat.get('impact', '')
+        lk = _fmt_escape(threat.get('likelihood', ''))
+        imp = _fmt_escape(threat.get('impact', ''))
         sc = sc_risks.get(threat.get('threat', ''), {})
         status = sc.get('status', '')
-        dot = f'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:{_status_color(status)};margin-right:5px;vertical-align:middle;"></span>' if status else ''
-        detail = f' (L: {_fmt_escape(lk)}, I: {_fmt_escape(imp)})' if lk and imp else ''
-        risk_items += f'<div style="margin-bottom:4px;font-size:9pt;">{dot}<strong>{td}</strong>{detail}</div>'
+        st_color = _status_color(status) if status else '#94a3b8'
+        st_text = status.upper() if status else ''
+        risk_items += f'<tr><td style="padding:3px 6px;border-bottom:1px solid #e2e8f0;font-size:8.5pt;font-weight:600;color:#1e293b;">{td}</td><td style="padding:3px 6px;border-bottom:1px solid #e2e8f0;font-size:8pt;color:#64748b;text-align:center;">{lk}/{imp}</td><td style="padding:3px 6px;border-bottom:1px solid #e2e8f0;font-size:8.5pt;text-align:center;font-weight:bold;color:{st_color};">{st_text}</td></tr>'
 
     html = f"""<html><head><style>
-        @page {{ margin: 0.45in 0.5in; size: letter; }}
-        body {{ font-family: Calibri, Arial, Helvetica, sans-serif; font-size: 9pt; color: #1e293b; line-height: 1.35; margin: 0; }}
+        @page {{ margin: 0.5in; size: letter; }}
+        body {{ font-family: Calibri, Arial, sans-serif; font-size: 9pt; color: #1e293b; line-height: 1.35; }}
         table {{ border-collapse: collapse; width: 100%; }}
     </style></head><body>
-        <!-- Compact Header -->
-        <table style="margin:0 0 10px 0;width:100%;">
-            <tr>
-                <td style="background:#0f172a;padding:14px 20px;width:65%;">
-                    <div style="color:#fff;font-size:20pt;font-weight:bold;">{_fmt_escape(ticker)}</div>
-                    <div style="color:#94a3b8;font-size:10pt;">{_fmt_escape(company)}</div>
-                </td>
-                <td style="background:#1e293b;padding:14px 20px;text-align:right;">
-                    <div style="color:#64748b;font-size:8pt;">INVESTMENT THESIS</div>
-                    <div style="color:#94a3b8;font-size:9pt;">{date_str}</div>
-                </td>
-            </tr>
-        </table>
+        <table style="width:100%;margin-bottom:10px;"><tr>
+            <td style="background:#0f172a;padding:12px 18px;width:60%;"><span style="font-size:18pt;font-weight:bold;color:#ffffff;">{_fmt_escape(ticker)}</span><br/><span style="font-size:9pt;color:#94a3b8;">{_fmt_escape(company)}</span></td>
+            <td style="background:#1e293b;padding:12px 18px;text-align:right;"><span style="font-size:7pt;color:#64748b;">INVESTMENT THESIS</span><br/><span style="font-size:9pt;color:#94a3b8;">{date_str}</span></td>
+        </tr></table>
 
-        <!-- Thesis Summary -->
-        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin-bottom:12px;">
-            <div style="font-weight:bold;color:#0f172a;font-size:10pt;margin-bottom:4px;">WHY WE OWN IT</div>
-            <div style="color:#334155;font-size:9.5pt;line-height:1.5;">{_fmt_escape(thesis.get('summary', ''))}</div>
-        </div>
+        <table style="border:1px solid #cbd5e1;margin-bottom:10px;"><tr><td style="padding:8px 12px;background:#f8fafc;"><b style="color:#0f172a;font-size:9pt;">WHY WE OWN IT</b><br/><span style="color:#334155;font-size:9pt;line-height:1.5;">{_fmt_escape(thesis.get('summary', ''))}</span></td></tr></table>
 
-        <!-- Two-column layout -->
-        <table>
-            <tr>
-                <td style="vertical-align:top;width:55%;padding-right:10px;">
-                    <div style="background:#1e3a5f;color:#fff;padding:6px 12px;font-weight:bold;font-size:9pt;margin-bottom:8px;">KEY PILLARS</div>
-                    {pillars_html}
-                    {'<div style="background:#1e3a5f;color:#fff;padding:6px 12px;font-weight:bold;font-size:9pt;margin:12px 0 8px 0;">SIGNPOSTS</div>' + signpost_items if signposts else ''}
-                </td>
-                <td style="vertical-align:top;width:45%;padding-left:10px;border-left:2px solid #e2e8f0;">
-                    <div style="background:#7f1d1d;color:#fff;padding:6px 12px;font-weight:bold;font-size:9pt;margin-bottom:8px;">RISKS TO THESIS</div>
-                    {risk_items}
-                    {'<div style="background:#0f172a;color:#fff;padding:6px 12px;font-weight:bold;font-size:9pt;margin:12px 0 8px 0;">CONCLUSION</div><div style="color:#475569;font-size:9pt;line-height:1.5;">' + _fmt_escape(conclusion) + '</div>' if conclusion else ''}
-                </td>
-            </tr>
-        </table>
+        <table><tr>
+            <td style="vertical-align:top;width:52%;padding-right:8px;">
+                <table style="margin-bottom:6px;"><tr><td style="background:#1e3a5f;padding:5px 10px;"><b style="color:#ffffff;font-size:8pt;">KEY PILLARS</b></td></tr></table>
+                <table>{pillars_html}</table>
+                {'<table style="margin:10px 0 6px 0;"><tr><td style="background:#1e3a5f;padding:5px 10px;"><b style="color:#ffffff;font-size:8pt;">SIGNPOSTS</b></td></tr></table><table style="border:1px solid #e2e8f0;"><thead><tr style="background:#f1f5f9;"><th style="padding:3px 6px;text-align:left;font-size:7pt;color:#64748b;border-bottom:1px solid #cbd5e1;">METRIC</th><th style="padding:3px 6px;text-align:left;font-size:7pt;color:#64748b;border-bottom:1px solid #cbd5e1;">TARGET</th><th style="padding:3px 6px;text-align:center;font-size:7pt;color:#64748b;border-bottom:1px solid #cbd5e1;">STATUS</th></tr></thead><tbody>' + sp_items + '</tbody></table>' if signposts else ''}
+            </td>
+            <td style="vertical-align:top;width:48%;padding-left:8px;border-left:2px solid #cbd5e1;">
+                <table style="margin-bottom:6px;"><tr><td style="background:#991b1b;padding:5px 10px;"><b style="color:#ffffff;font-size:8pt;">RISKS TO THESIS</b></td></tr></table>
+                <table style="border:1px solid #e2e8f0;"><thead><tr style="background:#fef2f2;"><th style="padding:3px 6px;text-align:left;font-size:7pt;color:#991b1b;border-bottom:1px solid #fecaca;">RISK</th><th style="padding:3px 6px;text-align:center;font-size:7pt;color:#991b1b;border-bottom:1px solid #fecaca;">L/I</th><th style="padding:3px 6px;text-align:center;font-size:7pt;color:#991b1b;border-bottom:1px solid #fecaca;">STATUS</th></tr></thead><tbody>{risk_items}</tbody></table>
+                {'<table style="margin:10px 0 6px 0;"><tr><td style="background:#0f172a;padding:5px 10px;"><b style="color:#ffffff;font-size:8pt;">CONCLUSION</b></td></tr></table><p style="color:#475569;font-size:8.5pt;line-height:1.45;margin:0;">' + _fmt_escape(conclusion) + '</p>' if conclusion else ''}
+            </td>
+        </tr></table>
     </body></html>"""
 
     buf = io.BytesIO()
@@ -4183,13 +4109,13 @@ def _generate_onepager_pdf(row, scorecard_data=None):
 
 
 def _generate_board_pdf(row, scorecard_data=None):
-    """Format 4: Conviction Card — bold, high-impact presentation format."""
+    """Format 4: Conviction Card — bold layout with conviction gauge and status tables."""
     from xhtml2pdf import pisa
     d = _parse_analysis_data(row)
     ticker, company, date_str = d['ticker'], d['company'], d['date_str']
     thesis, signposts, threats, conclusion = d['thesis'], d['signposts'], d['threats'], d['conclusion']
 
-    # Count green/yellow/red from scorecard
+    # Tally scorecard statuses
     green_count = yellow_count = red_count = 0
     if scorecard_data:
         for sp in scorecard_data.get('signposts', []):
@@ -4203,76 +4129,46 @@ def _generate_board_pdf(row, scorecard_data=None):
             elif s == 'yellow': yellow_count += 1
             elif s == 'red': red_count += 1
     total = green_count + yellow_count + red_count
-
-    # Conviction gauge
     conviction_pct = round(green_count / total * 100) if total > 0 else 0
-    conviction_color = '#16a34a' if conviction_pct >= 70 else '#ca8a04' if conviction_pct >= 40 else '#dc2626'
-    conviction_label = 'HIGH' if conviction_pct >= 70 else 'MEDIUM' if conviction_pct >= 40 else 'LOW'
+    conv_color = '#16a34a' if conviction_pct >= 70 else '#ca8a04' if conviction_pct >= 40 else '#dc2626'
+    conv_label = 'HIGH CONVICTION' if conviction_pct >= 70 else 'MEDIUM CONVICTION' if conviction_pct >= 40 else 'LOW CONVICTION'
 
     gauge_html = ''
     if total > 0:
-        gauge_html = f'''
-        <table style="margin:0 auto;"><tr>
-            <td style="text-align:center;padding:0 20px;">
-                <div style="font-size:42pt;font-weight:bold;color:{conviction_color};">{conviction_pct}%</div>
-                <div style="font-size:10pt;color:#64748b;font-weight:600;letter-spacing:2px;">{conviction_label} CONVICTION</div>
-            </td>
-            <td style="padding:0 12px;text-align:center;">
-                <div style="background:#dcfce7;border-radius:8px;padding:8px 14px;margin-bottom:4px;">
-                    <div style="font-size:18pt;font-weight:bold;color:#16a34a;">{green_count}</div>
-                    <div style="font-size:7pt;color:#166534;font-weight:600;">GREEN</div>
-                </div>
-            </td>
-            <td style="padding:0 12px;text-align:center;">
-                <div style="background:#fef9c3;border-radius:8px;padding:8px 14px;margin-bottom:4px;">
-                    <div style="font-size:18pt;font-weight:bold;color:#ca8a04;">{yellow_count}</div>
-                    <div style="font-size:7pt;color:#854d0e;font-weight:600;">YELLOW</div>
-                </div>
-            </td>
-            <td style="padding:0 12px;text-align:center;">
-                <div style="background:#fee2e2;border-radius:8px;padding:8px 14px;margin-bottom:4px;">
-                    <div style="font-size:18pt;font-weight:bold;color:#dc2626;">{red_count}</div>
-                    <div style="font-size:7pt;color:#991b1b;font-weight:600;">RED</div>
-                </div>
-            </td>
+        gauge_html = f'''<table style="border:1px solid #e2e8f0;margin-bottom:14px;"><tr>
+            <td style="padding:14px 20px;text-align:center;width:40%;"><span style="font-size:36pt;font-weight:bold;color:{conv_color};">{conviction_pct}%</span><br/><span style="font-size:9pt;color:#64748b;font-weight:600;">{conv_label}</span></td>
+            <td style="padding:14px;text-align:center;background:#dcfce7;width:20%;border-left:1px solid #e2e8f0;"><span style="font-size:20pt;font-weight:bold;color:#16a34a;">{green_count}</span><br/><span style="font-size:7pt;color:#166534;font-weight:700;">GREEN</span></td>
+            <td style="padding:14px;text-align:center;background:#fef9c3;width:20%;border-left:1px solid #e2e8f0;"><span style="font-size:20pt;font-weight:bold;color:#ca8a04;">{yellow_count}</span><br/><span style="font-size:7pt;color:#854d0e;font-weight:700;">YELLOW</span></td>
+            <td style="padding:14px;text-align:center;background:#fee2e2;width:20%;border-left:1px solid #e2e8f0;"><span style="font-size:20pt;font-weight:bold;color:#dc2626;">{red_count}</span><br/><span style="font-size:7pt;color:#991b1b;font-weight:700;">RED</span></td>
         </tr></table>'''
 
-    # Pillar cards
+    # Pillars
     pillars_html = ''
-    for i, p in enumerate(thesis.get('pillars', []), 1):
+    for p in thesis.get('pillars', []):
         t = _fmt_escape(p.get('pillar', p.get('title', '')))
         desc = _fmt_escape(p.get('detail', p.get('description', '')))
         conf = p.get('confidence', '')
-        conf_color = '#16a34a' if conf and conf.lower() == 'high' else '#ca8a04' if conf and conf.lower() == 'medium' else '#dc2626' if conf else '#64748b'
-        pillars_html += f'''
-        <div style="background:#fff;border:1px solid #e2e8f0;border-top:3px solid {conf_color};border-radius:0 0 8px 8px;padding:12px 16px;margin-bottom:10px;">
-            <div style="font-weight:bold;color:#0f172a;font-size:11pt;">{t}</div>
-            <div style="color:#475569;font-size:9.5pt;margin-top:4px;line-height:1.5;">{desc}</div>
-        </div>'''
+        border_color = '#16a34a' if conf and conf.lower() == 'high' else '#ca8a04' if conf and conf.lower() == 'medium' else '#dc2626' if conf else '#cbd5e1'
+        pillars_html += f'<table style="margin-bottom:6px;"><tr><td style="width:4px;background:{border_color};"></td><td style="padding:8px 12px;border:1px solid #e2e8f0;"><b style="color:#0f172a;font-size:10pt;">{t}</b><br/><span style="color:#475569;font-size:9pt;">{desc}</span></td></tr></table>'
 
-    # Signposts with status dots
+    # Signposts
     sc_signposts = {}
     if scorecard_data and scorecard_data.get('signposts'):
         for sp in scorecard_data['signposts']:
             sc_signposts[sp.get('metric', '')] = sp
-    signpost_rows = ''
+    sp_rows = ''
     for sp in signposts:
         metric = _fmt_escape(sp.get('metric', sp.get('signpost', '')))
         target = _fmt_escape(sp.get('target', ''))
         sc = sc_signposts.get(sp.get('metric', sp.get('signpost', '')), {})
         latest = _fmt_escape(sc.get('latest', ''))
         status = sc.get('status', '')
-        bg = _status_bg(status) if status else '#fff'
-        border_color = _status_color(status) if status else '#e2e8f0'
-        signpost_rows += f'''
-        <tr style="background:{bg};">
-            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;border-left:3px solid {border_color};font-weight:600;color:#0f172a;">{metric}</td>
-            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;">{target}</td>
-            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#0f172a;text-align:center;font-weight:bold;">{latest if latest else "—"}</td>
-            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;font-weight:bold;color:{_status_color(status)};">{_fmt_escape(status.upper()) if status else "—"}</td>
-        </tr>'''
+        st_bg = _status_bg(status) if status else '#ffffff'
+        st_color = _status_color(status) if status else '#94a3b8'
+        st_text = status.upper() if status else ''
+        sp_rows += f'<tr style="background:{st_bg};"><td style="padding:6px 10px;border:1px solid #e2e8f0;border-left:3px solid {st_color if status else "#e2e8f0"};font-weight:600;color:#0f172a;font-size:9pt;">{metric}</td><td style="padding:6px 10px;border:1px solid #e2e8f0;color:#475569;font-size:9pt;text-align:center;">{target}</td><td style="padding:6px 10px;border:1px solid #e2e8f0;color:#0f172a;font-size:9pt;text-align:center;font-weight:bold;">{latest if latest else "—"}</td><td style="padding:6px 10px;border:1px solid #e2e8f0;text-align:center;font-weight:bold;color:{st_color};font-size:9pt;">{st_text if st_text else "—"}</td></tr>'
 
-    # Risks with status
+    # Risks
     sc_risks = {}
     if scorecard_data and scorecard_data.get('risks'):
         for r in scorecard_data['risks']:
@@ -4280,56 +4176,34 @@ def _generate_board_pdf(row, scorecard_data=None):
     risk_rows = ''
     for threat in threats:
         td = _fmt_escape(threat.get('threat', ''))
-        sc = sc_risks.get(threat.get('threat', ''), {})
-        status = sc.get('status', '')
-        bg = _status_bg(status) if status else '#fff'
-        border_color = _status_color(status) if status else '#e2e8f0'
         lk = _fmt_escape(threat.get('likelihood', ''))
         imp = _fmt_escape(threat.get('impact', ''))
-        risk_rows += f'''
-        <tr style="background:{bg};">
-            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;border-left:3px solid {border_color};font-weight:600;color:#0f172a;">{td}</td>
-            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;">{lk}</td>
-            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;">{imp}</td>
-            <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;font-weight:bold;color:{_status_color(status)};">{_fmt_escape(status.upper()) if status else "—"}</td>
-        </tr>'''
+        sc = sc_risks.get(threat.get('threat', ''), {})
+        status = sc.get('status', '')
+        st_bg = _status_bg(status) if status else '#ffffff'
+        st_color = _status_color(status) if status else '#94a3b8'
+        st_text = status.upper() if status else ''
+        risk_rows += f'<tr style="background:{st_bg};"><td style="padding:6px 10px;border:1px solid #e2e8f0;border-left:3px solid {st_color if status else "#e2e8f0"};font-weight:600;color:#0f172a;font-size:9pt;">{td}</td><td style="padding:6px 10px;border:1px solid #e2e8f0;color:#475569;font-size:9pt;text-align:center;">{lk}</td><td style="padding:6px 10px;border:1px solid #e2e8f0;color:#475569;font-size:9pt;text-align:center;">{imp}</td><td style="padding:6px 10px;border:1px solid #e2e8f0;text-align:center;font-weight:bold;color:{st_color};font-size:9pt;">{st_text if st_text else "—"}</td></tr>'
 
     html = f"""<html><head><style>
-        @page {{ margin: 0.5in 0.6in; size: letter; }}
-        body {{ font-family: Calibri, Arial, Helvetica, sans-serif; font-size: 10pt; color: #1e293b; line-height: 1.4; margin: 0; background: #f8fafc; }}
+        @page {{ margin: 0.6in 0.7in; size: letter; }}
+        body {{ font-family: Calibri, Arial, sans-serif; font-size: 10pt; color: #1e293b; line-height: 1.45; }}
         table {{ border-collapse: collapse; width: 100%; }}
     </style></head><body>
-        <!-- Hero Header -->
-        <table style="margin:0 0 0 0;width:100%;">
-            <tr>
-                <td style="background:#0f172a;padding:24px 30px;">
-                    <div style="font-size:32pt;font-weight:bold;color:#fff;letter-spacing:1px;">{_fmt_escape(ticker)}</div>
-                    <div style="font-size:13pt;color:#94a3b8;margin-top:2px;">{_fmt_escape(company)}</div>
-                </td>
-                <td style="background:#0f172a;padding:24px 30px;text-align:right;vertical-align:bottom;">
-                    <div style="color:#475569;font-size:8pt;text-transform:uppercase;letter-spacing:2px;">Investment Thesis</div>
-                    <div style="color:#64748b;font-size:10pt;margin-top:2px;">{date_str}</div>
-                </td>
-            </tr>
-        </table>
+        <table style="width:100%;margin-bottom:14px;"><tr>
+            <td style="background:#0f172a;padding:18px 24px;width:60%;"><span style="font-size:28pt;font-weight:bold;color:#ffffff;">{_fmt_escape(ticker)}</span><br/><span style="font-size:11pt;color:#94a3b8;">{_fmt_escape(company)}</span></td>
+            <td style="background:#0f172a;padding:18px 24px;text-align:right;vertical-align:bottom;"><span style="font-size:7pt;color:#475569;">INVESTMENT THESIS</span><br/><span style="font-size:9pt;color:#64748b;">{date_str}</span></td>
+        </tr></table>
 
-        <!-- Conviction Gauge -->
-        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin:16px 0;text-align:center;">
-            {gauge_html if gauge_html else '<div style="color:#64748b;font-size:10pt;">Add scorecard data to see conviction gauge</div>'}
-        </div>
+        {gauge_html}
 
-        <!-- Thesis -->
-        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px 20px;margin-bottom:14px;">
-            <div style="font-size:12pt;font-weight:bold;color:#0f172a;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;border-bottom:2px solid #0f172a;padding-bottom:6px;">Investment Thesis</div>
-            <p style="color:#334155;font-size:10.5pt;line-height:1.7;margin:0 0 14px 0;">{_fmt_escape(thesis.get('summary', ''))}</p>
-            {pillars_html}
-        </div>
+        <h2 style="font-size:11pt;color:#0f172a;border-bottom:2px solid #0f172a;padding-bottom:4px;margin:0 0 10px 0;">INVESTMENT THESIS</h2>
+        <p style="color:#334155;font-size:10pt;line-height:1.65;margin:0 0 12px 0;">{_fmt_escape(thesis.get('summary', ''))}</p>
+        {pillars_html}
 
-        <!-- Signposts -->
-        {'<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px 20px;margin-bottom:14px;"><div style="font-size:12pt;font-weight:bold;color:#0f172a;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;border-bottom:2px solid #0f172a;padding-bottom:6px;">Signposts</div><table><thead><tr style="background:#f1f5f9;"><th style="padding:8px 12px;text-align:left;font-size:8pt;color:#64748b;font-weight:700;text-transform:uppercase;">Metric</th><th style="padding:8px 12px;text-align:center;font-size:8pt;color:#64748b;font-weight:700;text-transform:uppercase;">Target</th><th style="padding:8px 12px;text-align:center;font-size:8pt;color:#64748b;font-weight:700;text-transform:uppercase;">Latest</th><th style="padding:8px 12px;text-align:center;font-size:8pt;color:#64748b;font-weight:700;text-transform:uppercase;">Status</th></tr></thead><tbody>' + signpost_rows + '</tbody></table></div>' if signposts else ''}
+        {'<h2 style="font-size:11pt;color:#0f172a;border-bottom:2px solid #0f172a;padding-bottom:4px;margin:14px 0 10px 0;">SIGNPOSTS</h2><table style="border:1px solid #e2e8f0;margin-bottom:12px;"><thead><tr style="background:#f1f5f9;"><th style="padding:6px 10px;text-align:left;font-size:8pt;color:#64748b;font-weight:700;border:1px solid #e2e8f0;">METRIC</th><th style="padding:6px 10px;text-align:center;font-size:8pt;color:#64748b;font-weight:700;border:1px solid #e2e8f0;">TARGET</th><th style="padding:6px 10px;text-align:center;font-size:8pt;color:#64748b;font-weight:700;border:1px solid #e2e8f0;">LATEST</th><th style="padding:6px 10px;text-align:center;font-size:8pt;color:#64748b;font-weight:700;border:1px solid #e2e8f0;">STATUS</th></tr></thead><tbody>' + sp_rows + '</tbody></table>' if signposts else ''}
 
-        <!-- Risks -->
-        {'<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px 20px;margin-bottom:14px;"><div style="font-size:12pt;font-weight:bold;color:#0f172a;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;border-bottom:2px solid #0f172a;padding-bottom:6px;">Risks to Thesis</div><table><thead><tr style="background:#f1f5f9;"><th style="padding:8px 12px;text-align:left;font-size:8pt;color:#64748b;font-weight:700;text-transform:uppercase;">Risk Factor</th><th style="padding:8px 12px;text-align:center;font-size:8pt;color:#64748b;font-weight:700;text-transform:uppercase;">Likelihood</th><th style="padding:8px 12px;text-align:center;font-size:8pt;color:#64748b;font-weight:700;text-transform:uppercase;">Impact</th><th style="padding:8px 12px;text-align:center;font-size:8pt;color:#64748b;font-weight:700;text-transform:uppercase;">Status</th></tr></thead><tbody>' + risk_rows + '</tbody></table></div>' if threats else ''}
+        {'<h2 style="font-size:11pt;color:#0f172a;border-bottom:2px solid #0f172a;padding-bottom:4px;margin:0 0 10px 0;">RISKS TO THESIS</h2><table style="border:1px solid #e2e8f0;margin-bottom:12px;"><thead><tr style="background:#f1f5f9;"><th style="padding:6px 10px;text-align:left;font-size:8pt;color:#64748b;font-weight:700;border:1px solid #e2e8f0;">RISK FACTOR</th><th style="padding:6px 10px;text-align:center;font-size:8pt;color:#64748b;font-weight:700;border:1px solid #e2e8f0;">LIKELIHOOD</th><th style="padding:6px 10px;text-align:center;font-size:8pt;color:#64748b;font-weight:700;border:1px solid #e2e8f0;">IMPACT</th><th style="padding:6px 10px;text-align:center;font-size:8pt;color:#64748b;font-weight:700;border:1px solid #e2e8f0;">STATUS</th></tr></thead><tbody>' + risk_rows + '</tbody></table>' if threats else ''}
     </body></html>"""
 
     buf = io.BytesIO()
