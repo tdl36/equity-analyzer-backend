@@ -4318,12 +4318,12 @@ def _generate_ic_memo_pdf(row, scorecard_data=None):
         st_color = _status_color(st) if st else '#94a3b8'
         extra = ''
         if has_sc:
-            extra = f'<td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;color:#1e293b;text-align:center;font-weight:bold;width:15%;">{s["latest"] or "—"}</td><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;text-align:center;font-weight:bold;color:{st_color};width:12%;">{st.upper() if st else "—"}</td>'
-        sp_rows += f'<tr><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#1e293b;width:35%;">{s["metric"]}</td><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;color:#475569;width:38%;">{s["ltGoal"]}</td>{extra}</tr>'
+            extra = f'<td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;color:#1e293b;text-align:center;font-weight:bold;width:12%;">{s["latest"] or "—"}</td><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;text-align:center;font-weight:bold;color:{st_color};width:10%;">{st.upper() if st else "—"}</td>'
+        sp_rows += f'<tr><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#1e293b;width:48%;">{s["metric"]}</td><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;color:#475569;width:30%;">{s["ltGoal"]}</td>{extra}</tr>'
 
     sp_hdr_extra = ''
     if has_sc:
-        sp_hdr_extra = '<th style="padding:7px 12px;text-align:center;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:15%;">Latest</th><th style="padding:7px 12px;text-align:center;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:12%;">Status</th>'
+        sp_hdr_extra = '<th style="padding:7px 12px;text-align:center;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:12%;">Latest</th><th style="padding:7px 12px;text-align:center;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:10%;">Status</th>'
 
     risk_rows = ''
     for rk in rk_data:
@@ -4333,19 +4333,18 @@ def _generate_ic_memo_pdf(row, scorecard_data=None):
         status_col = ''
         if has_sc:
             status_col = f'<td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;text-align:center;font-weight:bold;color:{st_color};width:12%;">{st.upper() if st else "—"}</td>'
-        risk_rows += f'<tr><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#1e293b;width:40%;">{rk["threat"]}{trigger_sub}</td><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;width:18%;">{rk["likelihood"]}</td><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;width:18%;">{rk["impact"]}</td>{status_col}</tr>'
+        risk_rows += f'<tr><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#1e293b;width:55%;">{rk["threat"]}{trigger_sub}</td><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;width:15%;">{rk["likelihood"]}</td><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;width:15%;">{rk["impact"]}</td>{status_col}</tr>'
 
     risk_hdr_status = ''
     if has_sc:
-        risk_hdr_status = '<th style="padding:7px 12px;text-align:center;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:12%;">Status</th>'
+        risk_hdr_status = '<th style="padding:7px 12px;text-align:center;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:10%;">Status</th>'
 
     html = f"""<html><head><style>
         @page {{ margin: 0.75in; size: letter; }}
         body {{ font-family: Calibri, Arial, sans-serif; font-size: 10pt; color: #1e293b; line-height: 1.5; }}
         table {{ border-collapse: collapse; width: 100%; }}
     </style></head><body>
-        <table style="margin-bottom:6px;"><tr><td style="border-bottom:3px solid #1e293b;padding-bottom:10px;width:100%;"><span style="font-size:10pt;font-weight:bold;color:#64748b;letter-spacing:2px;">INVESTMENT COMMITTEE MEMO</span></td></tr></table>
-        <table style="margin-bottom:20px;"><tr><td style="padding:8px 0;width:100%;"><span style="font-size:22pt;font-weight:bold;color:#0f172a;">{_fmt_escape(ticker)}</span><span style="font-size:14pt;color:#475569;"> — {_fmt_escape(company)}</span><br/><span style="font-size:9pt;color:#94a3b8;">{date_str}</span></td></tr></table>
+        <table style="margin-bottom:20px;"><tr><td style="padding:0 0 8px 0;border-bottom:3px solid #1e293b;width:100%;"><span style="font-size:22pt;font-weight:bold;color:#0f172a;">{_fmt_escape(ticker)}</span><span style="font-size:14pt;color:#475569;"> — {_fmt_escape(company)}</span><br/><span style="font-size:9pt;color:#94a3b8;">{date_str}</span></td></tr></table>
 
         {status_line}
 
@@ -4353,9 +4352,9 @@ def _generate_ic_memo_pdf(row, scorecard_data=None):
         <p style="color:#334155;font-size:10pt;line-height:1.7;margin:0 0 14px 0;">{_fmt_escape(thesis.get('summary', ''))}</p>
         <table style="margin-bottom:18px;">{pillars_html}</table>
 
-        {'<p style="font-size:11pt;font-weight:bold;color:#1e293b;margin:0 0 6px 0;border-bottom:1px solid #cbd5e1;padding-bottom:4px;">II. KEY SIGNPOSTS</p><table style="margin-bottom:18px;"><thead><tr><th style="padding:7px 12px;text-align:left;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:35%;">Measure</th><th style="padding:7px 12px;text-align:left;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:38%;">LT Goal</th>' + sp_hdr_extra + '</tr></thead><tbody>' + sp_rows + '</tbody></table>' if signposts else ''}
+        {'<p style="font-size:11pt;font-weight:bold;color:#1e293b;margin:0 0 6px 0;border-bottom:1px solid #cbd5e1;padding-bottom:4px;">II. KEY SIGNPOSTS</p><table style="margin-bottom:18px;"><thead><tr><th style="padding:7px 12px;text-align:left;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:48%;">Measure</th><th style="padding:7px 12px;text-align:left;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:30%;">LT Goal</th>' + sp_hdr_extra + '</tr></thead><tbody>' + sp_rows + '</tbody></table>' if signposts else ''}
 
-        {'<p style="font-size:11pt;font-weight:bold;color:#1e293b;margin:0 0 6px 0;border-bottom:1px solid #cbd5e1;padding-bottom:4px;">III. RISK ASSESSMENT</p><table style="margin-bottom:18px;"><thead><tr><th style="padding:7px 12px;text-align:left;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:40%;">Risk Factor</th><th style="padding:7px 12px;text-align:center;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:18%;">Likelihood</th><th style="padding:7px 12px;text-align:center;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:18%;">Impact</th>' + risk_hdr_status + '</tr></thead><tbody>' + risk_rows + '</tbody></table>' if threats else ''}
+        {'<p style="font-size:11pt;font-weight:bold;color:#1e293b;margin:0 0 6px 0;border-bottom:1px solid #cbd5e1;padding-bottom:4px;">III. RISK ASSESSMENT</p><table style="margin-bottom:18px;"><thead><tr><th style="padding:7px 12px;text-align:left;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:55%;">Risk Factor</th><th style="padding:7px 12px;text-align:center;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:15%;">Likelihood</th><th style="padding:7px 12px;text-align:center;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:15%;">Impact</th>' + risk_hdr_status + '</tr></thead><tbody>' + risk_rows + '</tbody></table>' if threats else ''}
 
         {('<p style="font-size:11pt;font-weight:bold;color:#1e293b;margin:0 0 6px 0;border-bottom:1px solid #cbd5e1;padding-bottom:4px;">IV. CONCLUSION</p><p style="color:#334155;font-size:10pt;line-height:1.65;margin:0;">' + _fmt_escape(conclusion) + '</p>') if conclusion else ''}
     </body></html>"""
