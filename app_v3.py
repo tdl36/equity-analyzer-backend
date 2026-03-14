@@ -852,6 +852,22 @@ def init_db():
                 )
             ''')
 
+            # Thesis infographic history (versioned image storage)
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS thesis_infographic_history (
+                    id SERIAL PRIMARY KEY,
+                    ticker VARCHAR(20) NOT NULL,
+                    mode VARCHAR(5) NOT NULL DEFAULT '1',
+                    detail VARCHAR(10) NOT NULL DEFAULT 'full',
+                    style VARCHAR(50) NOT NULL DEFAULT 'professional',
+                    slide_images JSONB NOT NULL DEFAULT '[]',
+                    edit_prompt TEXT,
+                    parent_id INTEGER REFERENCES thesis_infographic_history(id) ON DELETE SET NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_infographic_history_ticker ON thesis_infographic_history(ticker)')
+
             # Mark stale processing jobs as failed (server restart recovery)
             cur.execute('''
                 UPDATE analysis_jobs
@@ -4505,7 +4521,7 @@ def generate_thesis_format():
 # THESIS INFOGRAPHIC GENERATION
 # ============================================
 
-def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slide_num=None):
+def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slide_num=None, detail='full'):
     """Build a Gemini image-generation prompt for a thesis infographic slide."""
     ticker = d['ticker']
     company = d['company']
@@ -4516,22 +4532,28 @@ def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slid
     sp_data = _build_signpost_data(signposts, scorecard_data)
     rk_data = _build_risk_data(threats, scorecard_data)
 
-    header = f"INVESTMENT THESIS INFOGRAPHIC — {ticker}" + (f" ({company})" if company else "")
+    header = ticker + (f" — {company}" if company else "")
 
     # Build thesis section text
     summary = thesis.get('summary', '')
     pillars_text = ""
     for i, p in enumerate(thesis.get('pillars', []), 1):
-        title = p.get('pillar', p.get('title', ''))
-        detail = p.get('detail', p.get('description', ''))
-        pillars_text += f"\n  {i}. {title}: {detail}"
+        ptitle = p.get('pillar', p.get('title', ''))
+        pdesc = p.get('detail', p.get('description', ''))
+        if detail == 'summary':
+            pillars_text += f"\n  {i}. {ptitle}"
+        else:
+            pillars_text += f"\n  {i}. {ptitle}: {pdesc}"
 
     # Build signpost section text
     signpost_text = ""
     for s in sp_data:
-        line = f"  - {s['metric']}: Target = {s['ltGoal']}"
-        if s['latest']:
-            line += f", Latest = {s['latest']}"
+        if detail == 'summary':
+            line = f"  - {s['metric']}: {s['latest'] or s['ltGoal']}"
+        else:
+            line = f"  - {s['metric']}: Target = {s['ltGoal']}"
+            if s['latest']:
+                line += f", Latest = {s['latest']}"
         if s['status']:
             line += f" [{s['status'].upper()}]"
         signpost_text += line + "\n"
@@ -4539,21 +4561,47 @@ def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slid
     # Build threats section text
     threats_text = ""
     for r in rk_data:
-        line = f"  - {r['threat']}: Likelihood = {r['likelihood']}, Impact = {r['impact']}"
+        if detail == 'summary':
+            line = f"  - {r['threat']} (Impact: {r['impact']})"
+        else:
+            line = f"  - {r['threat']}: Likelihood = {r['likelihood']}, Impact = {r['impact']}"
         if r['status']:
             line += f" [{r['status'].upper()}]"
         threats_text += line + "\n"
 
     conclusion_text = conclusion if isinstance(conclusion, str) else str(conclusion)
 
+    # For summary mode, truncate to first sentence
+    if detail == 'summary':
+        if '.' in summary:
+            summary = summary[:summary.index('.') + 1]
+        if '.' in conclusion_text:
+            conclusion_text = conclusion_text[:conclusion_text.index('.') + 1]
+
     parts = []
     parts.append(f"Generate a visually compelling 16:9 LANDSCAPE infographic image.\n")
     parts.append(f"VISUAL STYLE (follow exactly):\n{style_prompt}")
-    parts.append("CRITICAL RULES:\n- ALL text MUST be in English\n- DO NOT include any watermarks or AI generation notices\n- Make all text readable and properly sized\n- Use 16:9 widescreen aspect ratio\n- Include the ticker symbol prominently")
+    parts.append(
+        "CRITICAL RULES:\n"
+        "- ALL text MUST be in English\n"
+        "- DO NOT include any watermarks or AI generation notices\n"
+        "- Use 16:9 widescreen aspect ratio\n"
+        "- Include the ticker symbol prominently\n"
+        "- All text must be perfectly clear, legible, and properly rendered\n"
+        "- Letters must NOT be distorted or artistically modified — B must not look like 8, O must not look like 0\n"
+        "- Use standard clean fonts — no decorative fonts that sacrifice readability\n"
+        "- Ensure sufficient contrast between text and background"
+    )
+
+    summary_layout = (
+        "\nThis is a SUMMARY/PRESENTATION version — use MINIMAL text. "
+        "Use LARGE bold numbers and metrics as focal points. Use short bullet points, NOT paragraphs. "
+        "Emphasize visual hierarchy with oversized key figures, traffic-light status dots, and icon-based sections. "
+        "Think executive presentation — the audience will be viewing from a distance."
+    ) if detail == 'summary' else ""
 
     if mode == '1':
-        # All content in one slide
-        parts.append(f"\nINFOGRAPHIC TITLE: {header}\n")
+        parts.append(f"\nTITLE: {header} — Investment Thesis\n")
         parts.append(f"INVESTMENT THESIS:\n{summary}")
         if pillars_text:
             parts.append(f"\nKEY PILLARS:{pillars_text}")
@@ -4563,38 +4611,52 @@ def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slid
             parts.append(f"\nKEY RISKS:\n{threats_text}")
         if conclusion_text:
             parts.append(f"\nCONCLUSION: {conclusion_text}")
-        parts.append("\nLayout this as a dense but readable infographic with all sections visible. Use visual hierarchy: large thesis header, medium section headers, compact data tables/lists for signposts and risks.")
+        if detail == 'summary':
+            parts.append(summary_layout)
+        else:
+            parts.append("\nLayout this as a dense but readable infographic with all sections visible. Use visual hierarchy: large thesis header, medium section headers, compact data tables/lists for signposts and risks.")
     elif mode == '3':
         if slide_num == 1:
-            parts.append(f"\nINFOGRAPHIC TITLE: {header} — Investment Thesis\n")
+            parts.append(f"\nTITLE: {header} — Investment Thesis\n")
             parts.append(f"THESIS SUMMARY:\n{summary}")
             if pillars_text:
                 parts.append(f"\nKEY PILLARS:{pillars_text}")
             if conclusion_text:
                 parts.append(f"\nCONCLUSION: {conclusion_text}")
-            parts.append("\nFocus this slide on the investment thesis narrative. Make the summary prominent, pillars clearly numbered, conclusion at bottom. Slide 1 of 3.")
+            if detail == 'summary':
+                parts.append(summary_layout + " Slide 1 of 3.")
+            else:
+                parts.append("\nFocus this slide on the investment thesis narrative. Make the summary prominent, pillars clearly numbered, conclusion at bottom. Slide 1 of 3.")
         elif slide_num == 2:
-            parts.append(f"\nINFOGRAPHIC TITLE: {header} — Key Signposts\n")
+            parts.append(f"\nTITLE: {header} — Key Signposts\n")
             parts.append(f"SIGNPOSTS TO MONITOR:\n{signpost_text}")
-            parts.append("\nPresent each signpost as a monitoring dashboard item showing the metric name, target value, latest reading, and traffic-light status (green/yellow/red). Use visual indicators like gauges, progress bars, or status dots. Slide 2 of 3.")
+            if detail == 'summary':
+                parts.append(summary_layout + " Slide 2 of 3.")
+            else:
+                parts.append("\nPresent each signpost as a monitoring dashboard item showing the metric name, target value, latest reading, and traffic-light status (green/yellow/red). Use visual indicators like gauges, progress bars, or status dots. Slide 2 of 3.")
         elif slide_num == 3:
-            parts.append(f"\nINFOGRAPHIC TITLE: {header} — Risk Assessment\n")
+            parts.append(f"\nTITLE: {header} — Risk Assessment\n")
             parts.append(f"KEY RISKS:\n{threats_text}")
-            parts.append("\nPresent each risk as a threat card showing the risk name, likelihood, impact level, and current status. Use visual weight to show severity — larger/darker for higher impact risks. Slide 3 of 3.")
+            if detail == 'summary':
+                parts.append(summary_layout + " Slide 3 of 3.")
+            else:
+                parts.append("\nPresent each risk as a threat card showing the risk name, likelihood, impact level, and current status. Use visual weight to show severity — larger/darker for higher impact risks. Slide 3 of 3.")
 
     return "\n".join(parts)
 
 
-def _run_thesis_infographic(job_id, d, scorecard_data, style_key, mode, gemini_key):
+def _run_thesis_infographic(job_id, d, scorecard_data, style_key, mode, gemini_key, detail='full', edit_prompt=None, parent_id=None):
     """Background worker to generate thesis infographic images via Gemini."""
-    import time
+    import time as _time
     job = _infographic_jobs[job_id]
     style_prompt = THESIS_INFOGRAPHIC_STYLES.get(style_key, THESIS_INFOGRAPHIC_STYLES['professional'])['prompt']
 
     try:
         if mode == '1':
             job['current'] = 1
-            prompt = _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, '1')
+            prompt = _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, '1', detail=detail)
+            if edit_prompt:
+                prompt += f"\n\nADDITIONAL INSTRUCTIONS (edit request): {edit_prompt}"
             img = _generate_slide_image(prompt, gemini_key)
             if img:
                 job['images'].append(img)
@@ -4605,11 +4667,12 @@ def _run_thesis_infographic(job_id, d, scorecard_data, style_key, mode, gemini_k
                 return
         else:
             # 3-slide mode
-            slide_labels = ['Thesis', 'Signposts', 'Threats']
             for i in range(1, 4):
                 job['current'] = i
                 job['progress'] = int((i - 1) / 3 * 100)
-                prompt = _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, '3', slide_num=i)
+                prompt = _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, '3', slide_num=i, detail=detail)
+                if edit_prompt:
+                    prompt += f"\n\nADDITIONAL INSTRUCTIONS (edit request): {edit_prompt}"
                 img = _generate_slide_image(prompt, gemini_key)
                 if img:
                     job['images'].append(img)
@@ -4617,7 +4680,7 @@ def _run_thesis_infographic(job_id, d, scorecard_data, style_key, mode, gemini_k
                     job['images'].append(None)  # partial failure
                 job['progress'] = int(i / 3 * 100)
                 if i < 3:
-                    time.sleep(1)  # small delay between slides
+                    _time.sleep(1)  # small delay between slides
 
             # Check if all failed
             if all(x is None for x in job['images']):
@@ -4627,6 +4690,24 @@ def _run_thesis_infographic(job_id, d, scorecard_data, style_key, mode, gemini_k
 
         job['status'] = 'done'
         job['progress'] = 100
+
+        # Persist to history
+        try:
+            with get_db(commit=True) as (conn, cur):
+                cur.execute('''
+                    INSERT INTO thesis_infographic_history
+                    (ticker, mode, detail, style, slide_images, edit_prompt, parent_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                ''', (
+                    job['ticker'], job['mode'], job.get('detail', 'full'),
+                    job['style'], json.dumps(job['images']),
+                    edit_prompt, parent_id
+                ))
+                job['saved_id'] = cur.fetchone()['id']
+        except Exception as e:
+            print(f"Failed to save infographic to history: {e}")
+
     except Exception as e:
         print(f"Infographic generation error for job {job_id}: {e}")
         job['error'] = str(e)
@@ -4640,6 +4721,7 @@ def start_thesis_infographic():
         data = request.get_json()
         ticker = data.get('ticker', '').upper()
         mode = data.get('mode', '1')  # '1' or '3'
+        detail = data.get('detail', 'full')  # 'full' or 'summary'
         style = data.get('style', 'professional')
         gemini_key = data.get('geminiApiKey', '')
 
@@ -4678,6 +4760,7 @@ def start_thesis_infographic():
             'status': 'running',
             'ticker': ticker,
             'mode': mode,
+            'detail': detail,
             'style': style,
             'progress': 0,
             'current': 0,
@@ -4691,7 +4774,7 @@ def start_thesis_infographic():
         import threading
         t = threading.Thread(
             target=_run_thesis_infographic,
-            args=(job_id, d, scorecard_data, style, mode, gemini_key),
+            args=(job_id, d, scorecard_data, style, mode, gemini_key, detail),
             daemon=True
         )
         t.start()
@@ -4724,13 +4807,169 @@ def poll_thesis_infographic(job_id):
         'total': job['total'],
         'ticker': job['ticker'],
         'mode': job['mode'],
+        'detail': job.get('detail', 'full'),
     }
     if job['status'] == 'done':
         result['images'] = job['images']
+        if job.get('saved_id'):
+            result['savedId'] = job['saved_id']
     if job['status'] == 'error':
         result['error'] = job['error']
 
     return jsonify(result)
+
+
+# ============================================
+# THESIS INFOGRAPHIC HISTORY ENDPOINTS
+# ============================================
+
+@app.route('/api/thesis-format/infographic/history/<ticker>', methods=['GET'])
+def get_infographic_history(ticker):
+    """List all infographic versions for a ticker (metadata only, no images)."""
+    try:
+        with get_db() as (_, cur):
+            cur.execute('''
+                SELECT id, ticker, mode, detail, style, edit_prompt, parent_id, created_at,
+                       jsonb_array_length(slide_images) as image_count
+                FROM thesis_infographic_history
+                WHERE ticker = %s
+                ORDER BY created_at DESC
+            ''', (ticker.upper(),))
+            rows = cur.fetchall()
+        return jsonify([{
+            'id': r['id'],
+            'ticker': r['ticker'],
+            'mode': r['mode'],
+            'detail': r['detail'],
+            'style': r['style'],
+            'editPrompt': r['edit_prompt'],
+            'parentId': r['parent_id'],
+            'imageCount': r['image_count'],
+            'createdAt': r['created_at'].isoformat() if r['created_at'] else None,
+        } for r in rows])
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/thesis-format/infographic/history/<int:history_id>/images', methods=['GET'])
+def get_infographic_history_images(history_id):
+    """Get full image data for a specific infographic version."""
+    try:
+        with get_db() as (_, cur):
+            cur.execute('''
+                SELECT id, ticker, mode, detail, style, slide_images, edit_prompt, parent_id, created_at
+                FROM thesis_infographic_history WHERE id = %s
+            ''', (history_id,))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'error': 'Not found'}), 404
+        images = row['slide_images']
+        if isinstance(images, str):
+            images = json.loads(images)
+        return jsonify({
+            'id': row['id'],
+            'ticker': row['ticker'],
+            'mode': row['mode'],
+            'detail': row['detail'],
+            'style': row['style'],
+            'images': images,
+            'editPrompt': row['edit_prompt'],
+            'parentId': row['parent_id'],
+            'createdAt': row['created_at'].isoformat() if row['created_at'] else None,
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/thesis-format/infographic/history/<int:history_id>', methods=['DELETE'])
+def delete_infographic_history(history_id):
+    """Delete a specific infographic version."""
+    try:
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('UPDATE thesis_infographic_history SET parent_id = NULL WHERE parent_id = %s', (history_id,))
+            cur.execute('DELETE FROM thesis_infographic_history WHERE id = %s', (history_id,))
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/thesis-format/infographic/edit', methods=['POST'])
+def edit_thesis_infographic():
+    """Start async edit of an existing infographic version."""
+    try:
+        data = request.get_json()
+        parent_id = data.get('parentId')
+        edit_prompt = data.get('editPrompt', '')
+        gemini_key = data.get('geminiApiKey', '')
+
+        if not parent_id:
+            return jsonify({'error': 'parentId required'}), 400
+        if not edit_prompt:
+            return jsonify({'error': 'editPrompt required'}), 400
+        if not gemini_key:
+            return jsonify({'error': 'Gemini API key required'}), 400
+
+        # Fetch parent version
+        with get_db() as (_, cur):
+            cur.execute('SELECT * FROM thesis_infographic_history WHERE id = %s', (parent_id,))
+            parent = cur.fetchone()
+        if not parent:
+            return jsonify({'error': 'Parent version not found'}), 404
+
+        ticker = parent['ticker']
+        mode = parent['mode']
+        detail_level = parent['detail']
+        style_key = parent['style']
+
+        # Fetch analysis data
+        with get_db() as (_, cur):
+            cur.execute('SELECT * FROM portfolio_analyses WHERE ticker = %s', (ticker,))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'error': 'No analysis found'}), 404
+
+        scorecard_data = None
+        with get_db() as (_, cur):
+            cur.execute('SELECT scorecard_data FROM thesis_scorecard_data WHERE ticker = %s', (ticker,))
+            sc_row = cur.fetchone()
+        if sc_row:
+            scorecard_data = sc_row['scorecard_data']
+            if isinstance(scorecard_data, str):
+                try:
+                    scorecard_data = json.loads(scorecard_data)
+                except:
+                    scorecard_data = None
+
+        d = _parse_analysis_data(dict(row))
+        total = 1 if mode == '1' else 3
+        job_id = f"infog_edit_{ticker}_{int(time.time()*1000)}"
+
+        _infographic_jobs[job_id] = {
+            'status': 'running',
+            'ticker': ticker,
+            'mode': mode,
+            'detail': detail_level,
+            'style': style_key,
+            'progress': 0,
+            'current': 0,
+            'total': total,
+            'images': [],
+            'error': None,
+            'created_at': time.time(),
+        }
+
+        import threading
+        t = threading.Thread(
+            target=_run_thesis_infographic,
+            args=(job_id, d, scorecard_data, style_key, mode, gemini_key, detail_level, edit_prompt, parent_id),
+            daemon=True
+        )
+        t.start()
+
+        return jsonify({'jobId': job_id, 'total': total})
+    except Exception as e:
+        print(f"Error starting infographic edit: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 # ============================================

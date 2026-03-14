@@ -275,7 +275,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-03-14T05';
+        const BUILD_VERSION = '2026-03-14T06';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -1611,12 +1611,17 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
             // Thesis Infographic state
             const [fmtInfographicMode, setFmtInfographicMode] = useState('1');
+            const [fmtInfographicDetail, setFmtInfographicDetail] = useState('full');
             const [fmtInfographicStyle, setFmtInfographicStyle] = useState('professional');
             const [fmtInfographicJobId, setFmtInfographicJobId] = useState(null);
             const [fmtInfographicGenerating, setFmtInfographicGenerating] = useState(false);
             const [fmtInfographicProgress, setFmtInfographicProgress] = useState(0);
             const [fmtInfographicImages, setFmtInfographicImages] = useState([]);
             const [fmtInfographicError, setFmtInfographicError] = useState('');
+            const [fmtInfographicHistory, setFmtInfographicHistory] = useState([]);
+            const [fmtInfographicViewingVersion, setFmtInfographicViewingVersion] = useState(null);
+            const [fmtInfographicViewingImages, setFmtInfographicViewingImages] = useState([]);
+            const [fmtInfographicEditPrompt, setFmtInfographicEditPrompt] = useState('');
 
             // Google Drive state (shared across tabs)
             const [driveToken, setDriveToken] = useState(null);
@@ -8876,7 +8881,12 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 setFmtTicker(ticker);
                 setFmtScorecardData(null);
                 setFmtAnalysisData(null);
+                setFmtInfographicHistory([]);
+                setFmtInfographicViewingVersion(null);
+                setFmtInfographicViewingImages([]);
+                setFmtInfographicImages([]);
                 if (!ticker) return;
+                loadInfographicHistory(ticker);
                 try {
                     const [analysisRes, scorecardRes] = await Promise.all([
                         fetch(`${API_URL}/api/analysis/${ticker}`),
@@ -8992,7 +9002,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
             const generateThesisInfographic = async () => {
                 if (!fmtTicker) { alert('Please select a ticker first'); return; }
-                const geminiKey = localStorage.getItem('gemini_api_key') || '';
+                const geminiKey = loadGeminiKeyFromStorage() || '';
                 if (!geminiKey) { alert('Gemini API key required. Set it in Settings.'); return; }
 
                 setFmtInfographicGenerating(true);
@@ -9003,7 +9013,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 try {
                     const res = await fetch(`${API_URL}/api/thesis-format/infographic`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ ticker: fmtTicker, mode: fmtInfographicMode, style: fmtInfographicStyle, geminiApiKey: geminiKey })
+                        body: JSON.stringify({ ticker: fmtTicker, mode: fmtInfographicMode, detail: fmtInfographicDetail, style: fmtInfographicStyle, geminiApiKey: geminiKey })
                     });
                     if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Failed to start generation'); }
                     const data = await res.json();
@@ -9027,6 +9037,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             clearInterval(interval);
                             setFmtInfographicImages(data.images || []);
                             setFmtInfographicGenerating(false);
+                            loadInfographicHistory(data.ticker || fmtTicker);
                         } else if (data.status === 'error') {
                             clearInterval(interval);
                             setFmtInfographicError(data.error || 'Generation failed');
@@ -9040,18 +9051,81 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 }, 3000);
             };
 
-            const downloadInfographicImage = (base64Data, index) => {
+            const downloadInfographicImage = (base64Data, index, mode) => {
                 if (!base64Data) return;
                 const slideLabels = ['Thesis', 'Signposts', 'Threats'];
-                const suffix = fmtInfographicMode === '3' ? `_${slideLabels[index] || index + 1}` : '';
-                triggerBase64Download(base64Data, `${fmtTicker}_Infographic${suffix}.png`, 'image/png');
+                const m = mode || fmtInfographicMode;
+                const suffix = m === '3' ? `_${slideLabels[index] || index + 1}` : '';
+                triggerBase64Download(base64Data, `${fmtTicker}_Thesis${suffix}.png`, 'image/png');
             };
 
-            const downloadAllInfographicImages = () => {
-                const validImages = fmtInfographicImages.filter(img => img != null);
+            const downloadAllInfographicImages = (images, mode) => {
+                const imgs = images || fmtInfographicImages;
+                const validImages = imgs.filter(img => img != null);
                 validImages.forEach((img, i) => {
-                    setTimeout(() => downloadInfographicImage(img, i), i * 500);
+                    setTimeout(() => downloadInfographicImage(img, i, mode), i * 500);
                 });
+            };
+
+            const loadInfographicHistory = async (ticker) => {
+                if (!ticker) return;
+                try {
+                    const res = await fetch(`${API_URL}/api/thesis-format/infographic/history/${ticker}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        setFmtInfographicHistory(data);
+                    }
+                } catch (e) { console.error('Failed to load infographic history:', e); }
+            };
+
+            const viewInfographicVersion = async (versionId) => {
+                try {
+                    const res = await fetch(`${API_URL}/api/thesis-format/infographic/history/${versionId}/images`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        setFmtInfographicViewingVersion(data);
+                        setFmtInfographicViewingImages(data.images || []);
+                    }
+                } catch (e) { alert('Failed to load version: ' + e.message); }
+            };
+
+            const deleteInfographicVersion = async (versionId) => {
+                if (!confirm('Delete this infographic version?')) return;
+                try {
+                    const res = await fetch(`${API_URL}/api/thesis-format/infographic/history/${versionId}`, { method: 'DELETE' });
+                    if (res.ok) {
+                        setFmtInfographicHistory(prev => prev.filter(v => v.id !== versionId));
+                        if (fmtInfographicViewingVersion && fmtInfographicViewingVersion.id === versionId) {
+                            setFmtInfographicViewingVersion(null);
+                            setFmtInfographicViewingImages([]);
+                        }
+                    }
+                } catch (e) { alert('Delete failed: ' + e.message); }
+            };
+
+            const editInfographicVersion = async (versionId) => {
+                if (!fmtInfographicEditPrompt.trim()) { alert('Please enter edit instructions'); return; }
+                const geminiKey = loadGeminiKeyFromStorage() || '';
+                if (!geminiKey) { alert('Gemini API key required. Set it in Settings.'); return; }
+
+                setFmtInfographicGenerating(true);
+                setFmtInfographicProgress(0);
+                setFmtInfographicImages([]);
+                setFmtInfographicError('');
+
+                try {
+                    const res = await fetch(`${API_URL}/api/thesis-format/infographic/edit`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ parentId: versionId, editPrompt: fmtInfographicEditPrompt, geminiApiKey: geminiKey })
+                    });
+                    if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Failed to start edit'); }
+                    const data = await res.json();
+                    setFmtInfographicEditPrompt('');
+                    pollInfographicJob(data.jobId);
+                } catch (err) {
+                    setFmtInfographicError(err.message);
+                    setFmtInfographicGenerating(false);
+                }
             };
 
             const quickSendPortfolioEmail = async () => {
@@ -15983,16 +16057,29 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 <ImageIcon className="w-4 h-4" /> Thesis Infographic
                                             </h2>
 
-                                            {/* Mode Toggle */}
-                                            <div className="mb-4">
-                                                <label className="text-xs text-slate-500 mb-2 block">Slides</label>
-                                                <div className="inline-flex bg-white/[0.06] rounded-lg p-0.5">
-                                                    {[{ v: '1', label: '1 Slide' }, { v: '3', label: '3 Slides' }].map(m => (
-                                                        <button key={m.v} onClick={() => setFmtInfographicMode(m.v)}
-                                                            className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all ${
-                                                                fmtInfographicMode === m.v ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'
-                                                            }`}>{m.label}</button>
-                                                    ))}
+                                            {/* Mode + Detail Toggles */}
+                                            <div className="flex flex-wrap gap-4 mb-4">
+                                                <div>
+                                                    <label className="text-xs text-slate-500 mb-2 block">Slides</label>
+                                                    <div className="inline-flex bg-white/[0.06] rounded-lg p-0.5">
+                                                        {[{ v: '1', label: '1 Slide' }, { v: '3', label: '3 Slides' }].map(m => (
+                                                            <button key={m.v} onClick={() => setFmtInfographicMode(m.v)}
+                                                                className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all ${
+                                                                    fmtInfographicMode === m.v ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'
+                                                                }`}>{m.label}</button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label className="text-xs text-slate-500 mb-2 block">Detail Level</label>
+                                                    <div className="inline-flex bg-white/[0.06] rounded-lg p-0.5">
+                                                        {[{ v: 'full', label: 'Full Detail' }, { v: 'summary', label: 'Summary' }].map(dl => (
+                                                            <button key={dl.v} onClick={() => setFmtInfographicDetail(dl.v)}
+                                                                className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all ${
+                                                                    fmtInfographicDetail === dl.v ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'
+                                                                }`}>{dl.label}</button>
+                                                        ))}
+                                                    </div>
                                                 </div>
                                             </div>
 
@@ -16022,9 +16109,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 className="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-sm rounded-xl font-medium flex items-center gap-2 transition-colors"
                                             >
                                                 {fmtInfographicGenerating ? (
-                                                    <><Loader2 className="w-4 h-4 animate-spin" /> Generating... {fmtInfographicProgress}%</>
+                                                    <><Loader className="w-4 h-4 animate-spin" /> Generating... {fmtInfographicProgress}%</>
                                                 ) : (
-                                                    <><Wand className="w-4 h-4" /> Generate Infographic</>
+                                                    <><Wand className="w-4 h-4" /> Generate</>
                                                 )}
                                             </button>
 
@@ -16048,7 +16135,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     <div className="flex items-center justify-between mb-3">
                                                         <span className="text-xs text-slate-500">{fmtInfographicImages.filter(x => x).length} image{fmtInfographicImages.filter(x => x).length !== 1 ? 's' : ''} generated</span>
                                                         {fmtInfographicImages.filter(x => x).length > 1 && (
-                                                            <button onClick={downloadAllInfographicImages}
+                                                            <button onClick={() => downloadAllInfographicImages()}
                                                                 className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1">
                                                                 <Download className="w-3 h-3" /> Download All
                                                             </button>
@@ -16063,7 +16150,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                     </div>
                                                                 )}
                                                                 <img src={`data:image/png;base64,${img}`}
-                                                                    alt={`Infographic ${idx + 1}`}
+                                                                    alt={`Slide ${idx + 1}`}
                                                                     className="w-full rounded-lg border border-white/10 cursor-pointer"
                                                                     onClick={() => {
                                                                         const w = window.open();
@@ -16077,6 +16164,105 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             </div>
                                                         ))}
                                                     </div>
+                                                </div>
+                                            )}
+
+                                            {/* Version History */}
+                                            {fmtInfographicHistory.length > 0 && (
+                                                <div className="mt-6 border-t border-white/10 pt-5">
+                                                    <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+                                                        Version History ({fmtInfographicHistory.length})
+                                                    </h3>
+                                                    <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                                                        {fmtInfographicHistory.map(v => (
+                                                            <div key={v.id}
+                                                                className={`flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer transition-colors ${
+                                                                    fmtInfographicViewingVersion && fmtInfographicViewingVersion.id === v.id
+                                                                        ? 'bg-purple-500/20 border border-purple-500/30'
+                                                                        : 'bg-white/[0.03] border border-white/5 hover:border-white/15'
+                                                                }`}
+                                                                onClick={() => viewInfographicVersion(v.id)}>
+                                                                <div className="flex items-center gap-2 min-w-0 text-xs">
+                                                                    <span className="font-medium">{v.mode === '3' ? '3-slide' : '1-slide'}</span>
+                                                                    <span className="text-slate-600">/</span>
+                                                                    <span className="text-slate-400">{v.detail}</span>
+                                                                    <span className="text-slate-600">/</span>
+                                                                    <span className="text-slate-400">{v.style}</span>
+                                                                    {v.editPrompt && (
+                                                                        <span className="text-amber-400 text-[10px]">(edited)</span>
+                                                                    )}
+                                                                    <span className="text-[10px] text-slate-600 ml-auto">
+                                                                        {v.createdAt ? new Date(v.createdAt).toLocaleString() : ''}
+                                                                    </span>
+                                                                </div>
+                                                                <button onClick={(e) => { e.stopPropagation(); deleteInfographicVersion(v.id); }}
+                                                                    className="text-slate-600 hover:text-red-400 p-1 ml-2 transition-colors flex-shrink-0">
+                                                                    <Trash className="w-3.5 h-3.5" />
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+
+                                                    {/* Viewing a historical version */}
+                                                    {fmtInfographicViewingVersion && (
+                                                        <div className="mt-4">
+                                                            <div className="flex items-center justify-between mb-2">
+                                                                <span className="text-xs text-purple-400 font-medium">
+                                                                    Version #{fmtInfographicViewingVersion.id}
+                                                                    {fmtInfographicViewingVersion.editPrompt && (
+                                                                        <span className="ml-2 text-slate-500">Edit: "{fmtInfographicViewingVersion.editPrompt}"</span>
+                                                                    )}
+                                                                </span>
+                                                                <div className="flex items-center gap-2">
+                                                                    {fmtInfographicViewingImages.filter(x => x).length > 1 && (
+                                                                        <button onClick={() => downloadAllInfographicImages(fmtInfographicViewingImages, fmtInfographicViewingVersion.mode)}
+                                                                            className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1">
+                                                                            <Download className="w-3 h-3" /> Download All
+                                                                        </button>
+                                                                    )}
+                                                                    <button onClick={() => { setFmtInfographicViewingVersion(null); setFmtInfographicViewingImages([]); }}
+                                                                        className="text-xs text-slate-500 hover:text-white">Close</button>
+                                                                </div>
+                                                            </div>
+                                                            <div className={`grid gap-4 ${fmtInfographicViewingVersion.mode === '3' ? 'grid-cols-1 md:grid-cols-3' : 'grid-cols-1'}`}>
+                                                                {fmtInfographicViewingImages.map((img, idx) => img && (
+                                                                    <div key={idx} className="relative group">
+                                                                        {fmtInfographicViewingVersion.mode === '3' && (
+                                                                            <div className="text-xs text-slate-500 mb-1 font-medium">
+                                                                                {['Thesis', 'Signposts', 'Threats'][idx]}
+                                                                            </div>
+                                                                        )}
+                                                                        <img src={`data:image/png;base64,${img}`}
+                                                                            alt={`Version ${fmtInfographicViewingVersion.id} slide ${idx + 1}`}
+                                                                            className="w-full rounded-lg border border-white/10 cursor-pointer"
+                                                                            onClick={() => { const w = window.open(); w.document.write(`<img src="data:image/png;base64,${img}" style="max-width:100%;background:#000">`); }}
+                                                                        />
+                                                                        <button onClick={() => downloadInfographicImage(img, idx, fmtInfographicViewingVersion.mode)}
+                                                                            className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-black/70 text-white p-1.5 rounded-lg">
+                                                                            <Download className="w-4 h-4" />
+                                                                        </button>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+
+                                                            {/* Edit Controls */}
+                                                            <div className="mt-4 flex gap-2">
+                                                                <input type="text"
+                                                                    value={fmtInfographicEditPrompt}
+                                                                    onChange={e => setFmtInfographicEditPrompt(e.target.value)}
+                                                                    placeholder="e.g., Change revenue target to $5B, use darker colors..."
+                                                                    className="flex-1 bg-white/[0.06] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                                                                    onKeyDown={e => { if (e.key === 'Enter' && !fmtInfographicGenerating) editInfographicVersion(fmtInfographicViewingVersion.id); }}
+                                                                />
+                                                                <button onClick={() => editInfographicVersion(fmtInfographicViewingVersion.id)}
+                                                                    disabled={fmtInfographicGenerating || !fmtInfographicEditPrompt.trim()}
+                                                                    className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-sm rounded-lg font-medium flex items-center gap-1.5 transition-colors whitespace-nowrap">
+                                                                    {fmtInfographicGenerating ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Edit2 className="w-3.5 h-3.5" />}
+                                                                    Edit
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
