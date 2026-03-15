@@ -1,5 +1,5 @@
 // Charlie - Equity Analyzer Service Worker
-const CACHE_NAME = 'charlie-v11';
+const CACHE_NAME = 'charlie-v12';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
