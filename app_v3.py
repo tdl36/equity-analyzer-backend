@@ -3828,6 +3828,7 @@ def analysis_to_docx():
     try:
         data = request.get_json()
         ticker = data.get('ticker')
+        use_condensed = data.get('useCondensed', False)
         if not ticker:
             return jsonify({'error': 'No ticker provided'}), 400
         with get_db() as (_, cur):
@@ -3835,9 +3836,28 @@ def analysis_to_docx():
             row = cur.fetchone()
         if not row:
             return jsonify({'error': 'Analysis not found'}), 404
-        docx_bytes = _generate_analysis_docx_bytes(dict(row))
+        row_dict = dict(row)
+        if use_condensed:
+            with get_db() as (_, cur2):
+                cur2.execute('SELECT condensed_analysis FROM thesis_condensed WHERE ticker = %s', (ticker,))
+                cond_row = cur2.fetchone()
+            if cond_row:
+                condensed = cond_row['condensed_analysis']
+                if isinstance(condensed, str):
+                    condensed = json.loads(condensed)
+                orig = row_dict.get('analysis') or {}
+                if isinstance(orig, str):
+                    orig = json.loads(orig)
+                orig['thesis'] = condensed.get('thesis', orig.get('thesis', {}))
+                orig['signposts'] = condensed.get('signposts', orig.get('signposts', []))
+                orig['threats'] = condensed.get('threats', orig.get('threats', []))
+                orig['conclusion'] = condensed.get('conclusion', orig.get('conclusion', ''))
+                orig['_condensed'] = True
+                row_dict['analysis'] = orig
+        docx_bytes = _generate_analysis_docx_bytes(row_dict)
+        suffix = '_Condensed' if use_condensed else ''
         docx_b64 = base64.b64encode(docx_bytes).decode('utf-8')
-        return jsonify({'success': True, 'fileData': docx_b64, 'filename': f"{ticker}_Thesis.docx", 'fileSize': len(docx_bytes)})
+        return jsonify({'success': True, 'fileData': docx_b64, 'filename': f"{ticker}_Thesis{suffix}.docx", 'fileSize': len(docx_bytes)})
     except Exception as e:
         print(f"Error creating analysis docx: {e}")
         return jsonify({'error': str(e)}), 500
@@ -3849,6 +3869,7 @@ def analysis_to_pdf():
     try:
         data = request.get_json()
         ticker = data.get('ticker')
+        use_condensed = data.get('useCondensed', False)
         if not ticker:
             return jsonify({'error': 'No ticker provided'}), 400
         with get_db() as (_, cur):
@@ -3856,9 +3877,28 @@ def analysis_to_pdf():
             row = cur.fetchone()
         if not row:
             return jsonify({'error': 'Analysis not found'}), 404
-        pdf_bytes = _generate_analysis_pdf_bytes(dict(row))
+        row_dict = dict(row)
+        if use_condensed:
+            with get_db() as (_, cur2):
+                cur2.execute('SELECT condensed_analysis FROM thesis_condensed WHERE ticker = %s', (ticker,))
+                cond_row = cur2.fetchone()
+            if cond_row:
+                condensed = cond_row['condensed_analysis']
+                if isinstance(condensed, str):
+                    condensed = json.loads(condensed)
+                orig = row_dict.get('analysis') or {}
+                if isinstance(orig, str):
+                    orig = json.loads(orig)
+                orig['thesis'] = condensed.get('thesis', orig.get('thesis', {}))
+                orig['signposts'] = condensed.get('signposts', orig.get('signposts', []))
+                orig['threats'] = condensed.get('threats', orig.get('threats', []))
+                orig['conclusion'] = condensed.get('conclusion', orig.get('conclusion', ''))
+                orig['_condensed'] = True
+                row_dict['analysis'] = orig
+        pdf_bytes = _generate_analysis_pdf_bytes(row_dict)
+        suffix = '_Condensed' if use_condensed else ''
         pdf_b64 = base64.b64encode(pdf_bytes).decode('utf-8')
-        return jsonify({'success': True, 'fileData': pdf_b64, 'filename': f"{ticker}_Thesis.pdf", 'fileSize': len(pdf_bytes)})
+        return jsonify({'success': True, 'fileData': pdf_b64, 'filename': f"{ticker}_Thesis{suffix}.pdf", 'fileSize': len(pdf_bytes)})
     except Exception as e:
         print(f"Error creating analysis pdf: {e}")
         return jsonify({'error': str(e)}), 500
@@ -4744,18 +4784,32 @@ def _generate_ic_memo_pdf(row, scorecard_data=None):
 
     has_sc = scorecard_data and (scorecard_data.get('signposts') or scorecard_data.get('risks'))
 
+    # Column widths that always sum to 100%
+    sp_measure_w = '43%' if has_sc else '60%'
+    sp_goal_w = '27%' if has_sc else '40%'
+
     sp_rows = ''
     for s in sp_data:
         st = s['status'] or ''
         st_color = _status_color(st) if st else '#94a3b8'
         extra = ''
         if has_sc:
-            extra = f'<td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;color:#1e293b;text-align:center;font-weight:bold;width:12%;">{s["latest"] or "—"}</td><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;text-align:center;font-weight:bold;color:{st_color};width:10%;">{st.upper() if st else "—"}</td>'
-        sp_rows += f'<tr><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#1e293b;width:48%;">{s["metric"]}</td><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;color:#475569;width:30%;">{s["ltGoal"]}</td>{extra}</tr>'
+            extra = f'<td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;color:#1e293b;text-align:center;font-weight:bold;width:15%;">{s["latest"] or "—"}</td><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;text-align:center;font-weight:bold;color:{st_color};width:15%;">{st.upper() if st else "—"}</td>'
+        sp_rows += f'<tr><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#1e293b;width:{sp_measure_w};">{s["metric"]}</td><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;color:#475569;width:{sp_goal_w};">{s["ltGoal"]}</td>{extra}</tr>'
 
     sp_hdr_extra = ''
     if has_sc:
-        sp_hdr_extra = '<th style="padding:7px 12px;text-align:center;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:12%;">Latest</th><th style="padding:7px 12px;text-align:center;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:10%;">Status</th>'
+        sp_hdr_extra = '<th style="padding:7px 12px;text-align:center;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:15%;">Latest</th><th style="padding:7px 12px;text-align:center;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:15%;">Status</th>'
+
+    # Risk column widths — always sum to 100%
+    rk_lk_w = '15%' if has_sc else '20%'
+    rk_imp_w = '15%' if has_sc else '20%'
+    if is_condensed:
+        rk_threat_w = '80%' if has_sc else '100%'
+        rk_status_w = '20%'
+    else:
+        rk_threat_w = '45%' if has_sc else '60%'
+        rk_status_w = '25%'
 
     risk_rows = ''
     for rk in rk_data:
@@ -4764,17 +4818,17 @@ def _generate_ic_memo_pdf(row, scorecard_data=None):
         trigger_sub = f'<br/><span style="font-size:8.5pt;color:#64748b;font-weight:normal;">{rk["triggers"]}</span>' if rk['triggers'] else ''
         status_col = ''
         if has_sc:
-            status_col = f'<td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;text-align:center;font-weight:bold;color:{st_color};width:12%;">{st.upper() if st else "—"}</td>'
+            status_col = f'<td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;text-align:center;font-weight:bold;color:{st_color};width:{rk_status_w};">{st.upper() if st else "—"}</td>'
         if is_condensed:
-            risk_rows += f'<tr><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#1e293b;width:70%;">{rk["threat"]}{trigger_sub}</td>{status_col}</tr>'
+            risk_rows += f'<tr><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#1e293b;width:{rk_threat_w};">{rk["threat"]}{trigger_sub}</td>{status_col}</tr>'
         else:
-            risk_rows += f'<tr><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#1e293b;width:55%;">{rk["threat"]}{trigger_sub}</td><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;width:15%;">{rk["likelihood"]}</td><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;width:15%;">{rk["impact"]}</td>{status_col}</tr>'
+            risk_rows += f'<tr><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#1e293b;width:{rk_threat_w};">{rk["threat"]}{trigger_sub}</td><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;width:{rk_lk_w};">{rk["likelihood"]}</td><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;width:{rk_imp_w};">{rk["impact"]}</td>{status_col}</tr>'
 
     risk_hdr_status = ''
     if has_sc:
-        risk_hdr_status = '<th style="padding:7px 12px;text-align:center;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:10%;">Status</th>'
-    risk_lk_imp_headers_ic = '' if is_condensed else '<th style="padding:7px 12px;text-align:center;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:15%;">Likelihood</th><th style="padding:7px 12px;text-align:center;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:15%;">Impact</th>'
-    risk_threat_width_ic = '70%' if is_condensed else '55%'
+        risk_hdr_status = f'<th style="padding:7px 12px;text-align:center;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:{rk_status_w};">Status</th>'
+    risk_lk_imp_headers_ic = '' if is_condensed else f'<th style="padding:7px 12px;text-align:center;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:{rk_lk_w};">Likelihood</th><th style="padding:7px 12px;text-align:center;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:{rk_imp_w};">Impact</th>'
+    risk_threat_width_ic = rk_threat_w
 
     html = f"""<html><head><style>
         @page {{ margin: 0.75in; size: letter; }}
@@ -4792,7 +4846,7 @@ def _generate_ic_memo_pdf(row, scorecard_data=None):
         <p style="color:#334155;font-size:10pt;line-height:1.7;margin:0 0 14px 0;">{_fmt_escape(thesis.get('summary', ''))}</p>
         <table style="margin-bottom:18px;">{pillars_html}</table>
 
-        {'<p style="font-size:11pt;font-weight:bold;color:#1e293b;margin:0 0 6px 0;border-bottom:1px solid #cbd5e1;padding-bottom:4px;">II. KEY SIGNPOSTS</p><table style="margin-bottom:18px;"><thead><tr><th style="padding:7px 12px;text-align:left;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:48%;">Measure</th><th style="padding:7px 12px;text-align:left;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:30%;">LT Goal</th>' + sp_hdr_extra + '</tr></thead><tbody>' + sp_rows + '</tbody></table>' if signposts else ''}
+        {'<p style="font-size:11pt;font-weight:bold;color:#1e293b;margin:0 0 6px 0;border-bottom:1px solid #cbd5e1;padding-bottom:4px;">II. KEY SIGNPOSTS</p><table style="margin-bottom:18px;"><thead><tr><th style="padding:7px 12px;text-align:left;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:' + sp_measure_w + ';">Measure</th><th style="padding:7px 12px;text-align:left;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:' + sp_goal_w + ';">LT Goal</th>' + sp_hdr_extra + '</tr></thead><tbody>' + sp_rows + '</tbody></table>' if signposts else ''}
 
         {'<p style="font-size:11pt;font-weight:bold;color:#1e293b;margin:0 0 6px 0;border-bottom:1px solid #cbd5e1;padding-bottom:4px;">III. RISK ASSESSMENT</p><table style="margin-bottom:18px;"><thead><tr><th style="padding:7px 12px;text-align:left;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:' + risk_threat_width_ic + ';">Risk Factor</th>' + risk_lk_imp_headers_ic + risk_hdr_status + '</tr></thead><tbody>' + risk_rows + '</tbody></table>' if threats else ''}
 
@@ -5200,6 +5254,28 @@ def delete_condensed_thesis(ticker):
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error deleting condensed thesis: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/thesis-condensed/<ticker>', methods=['PUT'])
+def update_condensed_thesis(ticker):
+    """Save edited condensed thesis."""
+    try:
+        ticker = ticker.upper()
+        data = request.get_json()
+        condensed = data.get('condensed_analysis')
+        if not condensed:
+            return jsonify({'error': 'condensed_analysis required'}), 400
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('''
+                INSERT INTO thesis_condensed (ticker, condensed_analysis, updated_at)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (ticker)
+                DO UPDATE SET condensed_analysis = EXCLUDED.condensed_analysis, updated_at = EXCLUDED.updated_at
+            ''', (ticker, json.dumps(condensed), datetime.utcnow()))
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error saving condensed thesis: {e}")
         return jsonify({'error': str(e)}), 500
 
 

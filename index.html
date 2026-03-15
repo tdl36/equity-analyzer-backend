@@ -1409,6 +1409,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const batchPollRef = useRef(null);
             const batchFileRefs = useRef({});
             const [expanded, setExpanded] = useState({ thesis: true, signposts: true, threats: true, changes: true });
+            const [thesisViewMode, setThesisViewMode] = useState('full');
+            const [condensedAnalysis, setCondensedAnalysis] = useState(null);
+            const [condensedLoading, setCondensedLoading] = useState(false);
             const [draggedIndex, setDraggedIndex] = useState(null);
             const [showSaveDialog, setShowSaveDialog] = useState(false);
             const [showEmailDialog, setShowEmailDialog] = useState(false);
@@ -7055,6 +7058,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         setExpanded({ thesis: true, signposts: true, threats: true, changes: true });
                         setShowDocumentManager(false);
                         setMobileMenuOpen(false);
+                        setThesisViewMode('full');
+                        setCondensedAnalysis(null);
+                        loadThesisCondensed(ticker);
                     } else {
                         const errorText = await response.text();
                         console.error('Failed to load:', errorText);
@@ -7876,9 +7882,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const combinedPercentages = getCombinedPercentages();
 
             const editAnalysisField = (type, index, field, value) => {
-                setAnalysis(prev => {
+                const setter = (thesisViewMode === 'condensed' && condensedAnalysis) ? setCondensedAnalysis : setAnalysis;
+                setter(prev => {
                     const updated = { ...prev };
                     if (type === 'thesis-summary') {
+                        if (!updated.thesis) updated.thesis = {};
                         updated.thesis.summary = value;
                     } else if (type === 'thesis-pillar') {
                         updated.thesis.pillars[index][field] = value;
@@ -7894,7 +7902,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
             const deleteAnalysisItem = (type, index) => {
                 if (!confirm('Delete this item?')) return;
-                setAnalysis(prev => {
+                const setter = (thesisViewMode === 'condensed' && condensedAnalysis) ? setCondensedAnalysis : setAnalysis;
+                setter(prev => {
                     const updated = { ...prev };
                     if (type === 'pillar') {
                         updated.thesis.pillars.splice(index, 1);
@@ -8749,6 +8758,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 setError(null);
 
                 try {
+                    const isCondensed = thesisViewMode === 'condensed' && !!condensedAnalysis;
+                    const eThesis = isCondensed ? condensedAnalysis.thesis : analysis.thesis;
+                    const eSignposts = isCondensed ? condensedAnalysis.signposts : analysis.signposts;
+                    const eThreats = isCondensed ? condensedAnalysis.threats : analysis.threats;
+
                     // Generate clean HTML email with consistent black text and sizing
                     const cleanText = (text) => {
                         if (!text) return '';
@@ -8758,30 +8772,30 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             .replace(/\*([^*]+)\*/g, '<em>$1</em>')
                             .replace(/\n/g, '<br>');
                     };
-                    
+
                     let emailBody = `
 <html>
 <body style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #000000; max-width: 700px; margin: 0 auto;">
-    <p style="font-size: 14px; color: #000000; margin-bottom: 5px;"><strong>${analysis.ticker} - ${analysis.company}</strong></p>
+    <p style="font-size: 14px; color: #000000; margin-bottom: 5px;"><strong>${analysis.ticker} - ${analysis.company}${isCondensed ? ' (Condensed)' : ''}</strong></p>
     <hr style="border: none; border-top: 1px solid #000000; margin: 10px 0 20px 0;">
-    
+
     <p style="font-size: 14px; color: #000000; margin-bottom: 15px;"><strong>1. Investment Thesis</strong></p>
-    <p style="font-size: 14px; color: #000000; margin: 0 0 15px 0;">${cleanText(analysis.thesis?.summary || '')}</p>
-    
+    <p style="font-size: 14px; color: #000000; margin: 0 0 15px 0;">${cleanText(eThesis?.summary || '')}</p>
+
     <ul style="margin: 0 0 20px 20px; padding: 0; color: #000000;">
 `;
                     // Add thesis pillars
-                    safeArray(analysis.thesis?.pillars).forEach(p => {
+                    safeArray(eThesis?.pillars).forEach(p => {
                         emailBody += `<li style="font-size: 14px; color: #000000; margin-bottom: 12px;"><strong>${safeStr(p.title, '')}:</strong> ${cleanText(safeStr(p.description, ''))}</li>\n`;
                     });
-                    
+
                     emailBody += `</ul>
-    
+
     <p style="font-size: 14px; color: #000000; margin-bottom: 15px;"><strong>2. Signposts</strong></p>
     <ul style="margin: 0 0 20px 20px; padding: 0; color: #000000;">
 `;
                     // Add signposts
-                    safeArray(analysis.signposts).forEach(s => {
+                    safeArray(eSignposts).forEach(s => {
                         const metric = safeStr(s.metric || s.signpost, '');
                         const target = safeStr(s.target || s.target_value, '');
                         const timeframe = safeStr(s.timeframe, '');
@@ -8791,43 +8805,45 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         if (s.rationale) signpostText += `<br><span style="color: #000000;">${cleanText(safeStr(s.rationale, ''))}</span>`;
                         emailBody += `<li style="font-size: 14px; color: #000000; margin-bottom: 12px;">${signpostText}</li>\n`;
                     });
-                    
+
                     emailBody += `</ul>
-    
+
     <p style="font-size: 14px; color: #000000; margin-bottom: 15px;"><strong>3. Thesis Threats</strong></p>
     <ul style="margin: 0 0 20px 20px; padding: 0; color: #000000;">
 `;
-                    // Add thesis threats with full details
-                    safeArray(analysis.threats).forEach(t => {
+                    // Add thesis threats
+                    safeArray(eThreats).forEach(t => {
                         const threat = safeStr(t.threat, '');
-                        const likelihood = safeStr(t.likelihood, '');
-                        const impact = safeStr(t.impact, '');
                         const watchFor = safeStr(t.triggerPoints || t.watch_for || '', '');
                         const mitigation = safeStr(t.mitigation, '');
-                        
+
                         let threatText = `<strong>${threat}</strong>`;
-                        
-                        // Add likelihood and impact on same line if available
-                        if (likelihood || impact) {
-                            let metrics = [];
-                            if (likelihood) metrics.push(`Likelihood: ${likelihood}`);
-                            if (impact) metrics.push(`Impact: ${impact}`);
-                            threatText += `<br><span style="color: #000000;">${metrics.join(' &nbsp;|&nbsp; ')}</span>`;
+
+                        // Add likelihood and impact only for full version
+                        if (!isCondensed) {
+                            const likelihood = safeStr(t.likelihood, '');
+                            const impact = safeStr(t.impact, '');
+                            if (likelihood || impact) {
+                                let metrics = [];
+                                if (likelihood) metrics.push(`Likelihood: ${likelihood}`);
+                                if (impact) metrics.push(`Impact: ${impact}`);
+                                threatText += `<br><span style="color: #000000;">${metrics.join(' &nbsp;|&nbsp; ')}</span>`;
+                            }
                         }
-                        
+
                         // Add watch for (trigger points)
                         if (watchFor) {
                             threatText += `<br><span style="color: #000000;">Watch for: ${cleanText(watchFor)}</span>`;
                         }
-                        
+
                         // Add mitigation if different from watchFor
                         if (mitigation && mitigation !== watchFor) {
                             threatText += `<br><span style="color: #000000;">Mitigation: ${cleanText(mitigation)}</span>`;
                         }
-                        
+
                         emailBody += `<li style="font-size: 14px; color: #000000; margin-bottom: 15px;">${threatText}</li>\n`;
                     });
-                    
+
                     emailBody += `</ul>
 </body>
 </html>`;
@@ -8872,8 +8888,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const downloadAnalysisDocx = async (ticker) => {
                 if (!ticker) ticker = currentTicker;
                 if (!ticker) return;
+                const useCondensed = thesisViewMode === 'condensed' && !!condensedAnalysis;
                 try {
-                    const res = await fetch(`${API_URL}/api/analysis-to-docx`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticker }) });
+                    const res = await fetch(`${API_URL}/api/analysis-to-docx`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticker, useCondensed }) });
                     if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Export failed'); }
                     const data = await res.json();
                     triggerBase64Download(data.fileData, data.filename, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
@@ -8883,8 +8900,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const downloadAnalysisPdf = async (ticker) => {
                 if (!ticker) ticker = currentTicker;
                 if (!ticker) return;
+                const useCondensed = thesisViewMode === 'condensed' && !!condensedAnalysis;
                 try {
-                    const res = await fetch(`${API_URL}/api/analysis-to-pdf`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticker }) });
+                    const res = await fetch(`${API_URL}/api/analysis-to-pdf`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticker, useCondensed }) });
                     if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Export failed'); }
                     const data = await res.json();
                     triggerBase64Download(data.fileData, data.filename, 'application/pdf');
@@ -9013,6 +9031,54 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     setFmtCondensedData(null);
                     setFmtThesisVersion('full');
                 } catch (e) { console.error('Failed to delete condensed thesis:', e); }
+            };
+
+            // --- Thesis Tab condensed helpers (separate from Formats tab) ---
+            const loadThesisCondensed = async (ticker) => {
+                try {
+                    const res = await fetch(`${API_URL}/api/thesis-condensed/${ticker}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        setCondensedAnalysis(data.condensed);
+                    } else {
+                        setCondensedAnalysis(null);
+                    }
+                } catch (e) { setCondensedAnalysis(null); }
+            };
+            const generateThesisCondensed = async (ticker) => {
+                setCondensedLoading(true);
+                try {
+                    const res = await fetch(`${API_URL}/api/thesis-condensed/generate`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ticker, apiKey: localStorage.getItem('equity_analyzer_api_key') || '', geminiApiKey: localStorage.getItem('equity_analyzer_gemini_key') || '' })
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        setCondensedAnalysis(data.condensed);
+                        setFmtCondensedData(data.condensed);
+                        setThesisViewMode('condensed');
+                    } else {
+                        const err = await res.json();
+                        alert('Failed to generate condensed thesis: ' + (err.error || 'Unknown error'));
+                    }
+                } catch (e) { alert('Failed to generate condensed thesis: ' + e.message); }
+                finally { setCondensedLoading(false); }
+            };
+            const saveCondensedAnalysis = async () => {
+                if (!condensedAnalysis || !currentTicker) return;
+                try {
+                    const res = await fetch(`${API_URL}/api/thesis-condensed/${currentTicker}`, {
+                        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ condensed_analysis: condensedAnalysis })
+                    });
+                    if (res.ok) {
+                        setFmtCondensedData(condensedAnalysis);
+                        alert('Condensed thesis saved!');
+                    } else {
+                        const err = await res.json();
+                        alert('Save failed: ' + (err.error || 'Unknown error'));
+                    }
+                } catch (e) { alert('Save failed: ' + e.message); }
             };
 
             const loadFmtTicker = async (ticker) => {
@@ -9533,6 +9599,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 }
                 
                 // Generate email body
+                const isCondensed = thesisViewMode === 'condensed' && !!condensedAnalysis;
+                const eThesis = isCondensed ? condensedAnalysis.thesis : analysis.thesis;
+                const eSignposts = isCondensed ? condensedAnalysis.signposts : analysis.signposts;
+                const eThreats = isCondensed ? condensedAnalysis.threats : analysis.threats;
                 const cleanText = (text) => {
                     if (!text) return '';
                     if (typeof text !== 'string') return safeStr(text);
@@ -9541,28 +9611,28 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         .replace(/\*([^*]+)\*/g, '<em>$1</em>')
                         .replace(/\n/g, '<br>');
                 };
-                
+
                 let emailBody = `
 <html>
 <body style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #000000; max-width: 700px; margin: 0 auto;">
-    <p style="font-size: 14px; color: #000000; margin-bottom: 5px;"><strong>${analysis.ticker} - ${analysis.company}</strong></p>
+    <p style="font-size: 14px; color: #000000; margin-bottom: 5px;"><strong>${analysis.ticker} - ${analysis.company}${isCondensed ? ' (Condensed)' : ''}</strong></p>
     <hr style="border: none; border-top: 1px solid #000000; margin: 10px 0 20px 0;">
-    
+
     <p style="font-size: 14px; color: #000000; margin-bottom: 15px;"><strong>1. Investment Thesis</strong></p>
-    <p style="font-size: 14px; color: #000000; margin: 0 0 15px 0;">${cleanText(analysis.thesis?.summary || '')}</p>
-    
+    <p style="font-size: 14px; color: #000000; margin: 0 0 15px 0;">${cleanText(eThesis?.summary || '')}</p>
+
     <ul style="margin: 0 0 20px 20px; padding: 0; color: #000000;">
 `;
-                safeArray(analysis.thesis?.pillars).forEach(p => {
+                safeArray(eThesis?.pillars).forEach(p => {
                     emailBody += `<li style="font-size: 14px; color: #000000; margin-bottom: 12px;"><strong>${safeStr(p.title, '')}:</strong> ${cleanText(safeStr(p.description, ''))}</li>\n`;
                 });
-                
+
                 emailBody += `</ul>
-    
+
     <p style="font-size: 14px; color: #000000; margin-bottom: 15px;"><strong>2. Signposts</strong></p>
     <ul style="margin: 0 0 20px 20px; padding: 0; color: #000000;">
 `;
-                safeArray(analysis.signposts).forEach(s => {
+                safeArray(eSignposts).forEach(s => {
                     const metric = safeStr(s.metric || s.signpost, '');
                     const target = safeStr(s.target || s.target_value, '');
                     const timeframe = safeStr(s.timeframe, '');
@@ -9572,25 +9642,27 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     if (s.rationale) signpostText += `<br><span style="color: #000000;">${cleanText(safeStr(s.rationale, ''))}</span>`;
                     emailBody += `<li style="font-size: 14px; color: #000000; margin-bottom: 12px;">${signpostText}</li>\n`;
                 });
-                
+
                 emailBody += `</ul>
-    
+
     <p style="font-size: 14px; color: #000000; margin-bottom: 15px;"><strong>3. Thesis Threats</strong></p>
     <ul style="margin: 0 0 20px 20px; padding: 0; color: #000000;">
 `;
-                safeArray(analysis.threats).forEach(t => {
+                safeArray(eThreats).forEach(t => {
                     const threat = safeStr(t.threat, '');
-                    const likelihood = safeStr(t.likelihood, '');
-                    const impact = safeStr(t.impact, '');
                     const watchFor = safeStr(t.triggerPoints || t.watch_for || '', '');
                     const mitigation = safeStr(t.mitigation, '');
-                    
+
                     let threatText = `<strong>${threat}</strong>`;
-                    if (likelihood || impact) {
-                        let metrics = [];
-                        if (likelihood) metrics.push(`Likelihood: ${likelihood}`);
-                        if (impact) metrics.push(`Impact: ${impact}`);
-                        threatText += `<br><span style="color: #000000;">${metrics.join(' &nbsp;|&nbsp; ')}</span>`;
+                    if (!isCondensed) {
+                        const likelihood = safeStr(t.likelihood, '');
+                        const impact = safeStr(t.impact, '');
+                        if (likelihood || impact) {
+                            let metrics = [];
+                            if (likelihood) metrics.push(`Likelihood: ${likelihood}`);
+                            if (impact) metrics.push(`Impact: ${impact}`);
+                            threatText += `<br><span style="color: #000000;">${metrics.join(' &nbsp;|&nbsp; ')}</span>`;
+                        }
                     }
                     if (watchFor) {
                         threatText += `<br><span style="color: #000000;">Watch for: ${cleanText(watchFor)}</span>`;
@@ -9600,7 +9672,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     }
                     emailBody += `<li style="font-size: 14px; color: #000000; margin-bottom: 15px;">${threatText}</li>\n`;
                 });
-                
+
                 emailBody += `</ul>
 </body>
 </html>`;
@@ -9998,9 +10070,14 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 )}
                                 {analysis && (
                                     <>
-                                        {!showDocumentManager && (
-                                            <button 
-                                                onClick={() => setShowDocumentManager(true)} 
+                                        {/* Full/Condensed toggle */}
+                                        <div className="flex items-center bg-white/5 border border-white/10 rounded-lg overflow-hidden flex-shrink-0">
+                                            <button onClick={() => setThesisViewMode('full')} className={`px-2 sm:px-3 py-2 text-xs font-medium transition-all ${thesisViewMode === 'full' ? 'bg-teal-500/80 text-white' : 'text-slate-400 hover:text-white'}`}>Full</button>
+                                            <button onClick={() => { setThesisViewMode('condensed'); if (!condensedAnalysis && currentTicker) loadThesisCondensed(currentTicker); }} className={`px-2 sm:px-3 py-2 text-xs font-medium transition-all ${thesisViewMode === 'condensed' ? 'bg-purple-500/80 text-white' : 'text-slate-400 hover:text-white'}`}>Condensed</button>
+                                        </div>
+                                        {!showDocumentManager && thesisViewMode === 'full' && (
+                                            <button
+                                                onClick={() => setShowDocumentManager(true)}
                                                 className="flex items-center gap-1 px-2 sm:px-3 py-2 bg-teal-500/80 hover:bg-teal-500/90 backdrop-blur-sm border border-teal-400/30 shadow-lg shadow-teal-500/20 rounded-lg text-sm font-medium"
                                                 title="Add Documents"
                                             >
@@ -10008,13 +10085,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 <span className="hidden md:inline">Add Docs</span>
                                             </button>
                                         )}
-                                        <button 
-                                            onClick={() => setShowSaveDialog(true)} 
+                                        <button
+                                            onClick={() => thesisViewMode === 'condensed' && condensedAnalysis ? saveCondensedAnalysis() : setShowSaveDialog(true)}
                                             className="flex items-center gap-1 px-2 sm:px-3 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 rounded-lg text-sm font-medium shadow-lg shadow-emerald-500/20"
-                                            title="Save"
+                                            title={thesisViewMode === 'condensed' ? 'Save Condensed' : 'Save'}
                                         >
                                             <Save />
-                                            <span className="hidden md:inline">Save</span>
+                                            <span className="hidden md:inline">{thesisViewMode === 'condensed' ? 'Save' : 'Save'}</span>
                                         </button>
                                         <button 
                                             onClick={quickSendPortfolioEmail} 
@@ -11099,8 +11176,28 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     </div>
                                 )}
 
-                                {!batchUpdateMode && analysis && !showDocumentManager && !showHistory && (
+                                {!batchUpdateMode && analysis && !showDocumentManager && !showHistory && (() => {
+                                    const isCondensedView = thesisViewMode === 'condensed' && !!condensedAnalysis;
+                                    const activeThesis = isCondensedView ? condensedAnalysis.thesis : analysis?.thesis;
+                                    const activeSignposts = isCondensedView ? condensedAnalysis.signposts : analysis?.signposts;
+                                    const activeThreats = isCondensedView ? condensedAnalysis.threats : analysis?.threats;
+                                    return (
                                     <div className="space-y-6">
+                                    {/* Condensed mode banner */}
+                                    {thesisViewMode === 'condensed' && !condensedAnalysis && (
+                                        <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-6 text-center">
+                                            <p className="text-sm text-slate-300 mb-3">No condensed version exists yet for {currentTicker}</p>
+                                            <button onClick={() => generateThesisCondensed(currentTicker)} disabled={condensedLoading} className="px-4 py-2 bg-purple-500 hover:bg-purple-600 rounded-lg text-sm font-medium disabled:opacity-50">
+                                                {condensedLoading ? 'Generating...' : 'Generate Condensed Version'}
+                                            </button>
+                                        </div>
+                                    )}
+                                    {isCondensedView && (
+                                        <div className="flex items-center gap-3 bg-purple-500/10 border border-purple-500/30 rounded-lg px-4 py-2">
+                                            <span className="text-xs text-purple-300 font-medium">Viewing condensed thesis</span>
+                                            <button onClick={() => { setCondensedLoading(true); generateThesisCondensed(currentTicker); }} className="text-xs text-purple-400 hover:text-purple-300 underline">Regenerate</button>
+                                        </div>
+                                    )}
                                         <div className="bg-gradient-to-br from-white/[0.07] to-white/[0.04] backdrop-blur-xl border border-white/10 rounded-xl p-6">
                                             <div className="flex justify-between items-start">
                                                 {editingItem?.type === 'analysisHeader' ? (
@@ -11238,7 +11335,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         {editingItem?.type === 'thesis-summary' ? (
                                                             <div className="space-y-3">
                                                                 <textarea 
-                                                                    defaultValue={analysis.thesis?.summary}
+                                                                    defaultValue={activeThesis?.summary}
                                                                     onBlur={e => editAnalysisField('thesis-summary', null, null, e.target.value)}
                                                                     rows="8"
                                                                     className="w-full text-sm sm:text-base bg-white/[0.04] backdrop-blur-lg border border-white/10 text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 rounded-lg px-3 py-2 resize-none leading-relaxed"
@@ -11254,7 +11351,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             </div>
                                                         ) : (
                                                             <div className="pr-10 sm:pr-0">
-                                                                <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">{safeStr(analysis.thesis?.summary, 'No summary available')}</p>
+                                                                <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">{safeStr(activeThesis?.summary, 'No summary available')}</p>
                                                                 <button 
                                                                     onClick={() => setEditingItem({type: 'thesis-summary'})}
                                                                     className="absolute top-2 right-2 p-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/10 rounded transition"
@@ -11264,7 +11361,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             </div>
                                                         )}
                                                     </div>
-                                                    {safeArray(analysis.thesis?.pillars).map((p, i) => (
+                                                    {safeArray(activeThesis?.pillars).map((p, i) => (
                                                         <div key={i} className="bg-white/[0.07] backdrop-blur-lg rounded-lg p-3 sm:p-4 mb-3 border border-white/10 relative group">
                                                             {/* Absolute positioned edit/delete buttons */}
                                                             {!(editingItem?.type === 'thesis-pillar' && editingItem?.index === i) && (
@@ -11308,7 +11405,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                             <h5 className="font-semibold mb-1 sm:mb-2 text-sm sm:text-base">{safeStr(p.title, 'Untitled Pillar')}</h5>
                                                                             <p className="text-xs sm:text-sm text-slate-300 mb-2 sm:mb-3 leading-relaxed">{safeStr(p.description)}</p>
                                                                             <div className="flex flex-wrap gap-2 text-xs">
-                                                                                {p.confidence && <span className="px-2 py-0.5 bg-white/[0.04] rounded">Confidence: <span className={safeStr(p.confidence) === 'High' ? 'text-teal-400' : safeStr(p.confidence) === 'Medium' ? 'text-amber-400' : 'text-slate-400'}>{safeStr(p.confidence)}</span></span>}
+                                                                                {!isCondensedView && p.confidence && <span className="px-2 py-0.5 bg-white/[0.04] rounded">Confidence: <span className={safeStr(p.confidence) === 'High' ? 'text-teal-400' : safeStr(p.confidence) === 'Medium' ? 'text-amber-400' : 'text-slate-400'}>{safeStr(p.confidence)}</span></span>}
                                                                                 <button 
                                                                                     onClick={() => setShowSourcesPopup({type: 'pillar', index: i, sources: p.sources || [], title: p.title})}
                                                                                     className="px-2 py-0.5 bg-white/[0.04] hover:bg-white/10 rounded cursor-pointer transition"
@@ -11336,7 +11433,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             </button>
                                             {expanded.signposts && (
                                                 <div className="px-4 sm:px-6 pb-6">
-                                                    {safeArray(analysis.signposts).map((s, i) => (
+                                                    {safeArray(activeSignposts).map((s, i) => (
                                                         <div key={i} className="bg-white/[0.04] backdrop-blur-lg rounded-lg p-3 sm:p-4 mb-3 border-l-4 border-blue-500 relative group">
                                                             {/* Absolute buttons - only show when not editing */}
                                                             {!(editingItem?.type === 'signpost' && editingItem?.index === i) && (
@@ -11420,7 +11517,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             </button>
                                             {expanded.threats && (
                                                 <div className="px-4 sm:px-6 pb-6">
-                                                    {safeArray(analysis.threats).map((t, i) => (
+                                                    {safeArray(activeThreats).map((t, i) => (
                                                         <div key={i} className="bg-white/[0.04] backdrop-blur-lg rounded-lg p-3 sm:p-4 mb-3 border-l-4 border-red-500 relative group">
                                                             {/* Absolute buttons - only show when not editing */}
                                                             {!(editingItem?.type === 'threat' && editingItem?.index === i) && (
@@ -11442,12 +11539,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                         rows="2"
                                                                         className="w-full text-base sm:text-lg bg-white/[0.04] backdrop-blur-lg border border-white/10 text-slate-200 font-semibold focus:outline-none focus:ring-2 focus:ring-red-500 rounded-lg px-3 py-2 resize-none" 
                                                                     />
+                                                                    {!isCondensedView && (
                                                                     <div className="grid grid-cols-2 gap-3">
                                                                         <div>
                                                                             <div className="text-xs text-slate-400 mb-1">Likelihood:</div>
-                                                                            <select 
-                                                                                defaultValue={t.likelihood} 
-                                                                                onChange={e => editAnalysisField('threat', i, 'likelihood', e.target.value)} 
+                                                                            <select
+                                                                                defaultValue={t.likelihood}
+                                                                                onChange={e => editAnalysisField('threat', i, 'likelihood', e.target.value)}
                                                                                 className="w-full px-3 py-2 text-sm bg-white/[0.04] backdrop-blur-lg border border-white/10 rounded-lg text-slate-200 focus:border-red-500 outline-none"
                                                                             >
                                                                                 <option value="Low">Low</option>
@@ -11457,9 +11555,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                         </div>
                                                                         <div>
                                                                             <div className="text-xs text-slate-400 mb-1">Impact:</div>
-                                                                            <select 
-                                                                                defaultValue={t.impact} 
-                                                                                onChange={e => editAnalysisField('threat', i, 'impact', e.target.value)} 
+                                                                            <select
+                                                                                defaultValue={t.impact}
+                                                                                onChange={e => editAnalysisField('threat', i, 'impact', e.target.value)}
                                                                                 className="w-full px-3 py-2 text-sm bg-white/[0.04] backdrop-blur-lg border border-white/10 rounded-lg text-slate-200 focus:border-red-500 outline-none"
                                                                             >
                                                                                 <option value="Low">Low</option>
@@ -11468,6 +11566,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                             </select>
                                                                         </div>
                                                                     </div>
+                                                                    )}
                                                                     <textarea 
                                                                         defaultValue={t.triggerPoints} 
                                                                         placeholder="What to watch for..." 
@@ -11485,7 +11584,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             ) : (
                                                                 <div className="pr-12 sm:pr-0">
                                                                     <h5 className="font-semibold mb-2 text-sm sm:text-base">{safeStr(t.threat, 'Untitled Threat')}</h5>
-                                                                    {(t.likelihood || t.impact) && (
+                                                                    {!isCondensedView && (t.likelihood || t.impact) && (
                                                                         <div className="flex flex-wrap gap-x-4 gap-y-1 mb-2 text-xs sm:text-sm">
                                                                             {t.likelihood && <div><span className="text-slate-400">Likelihood:</span> <span className={safeStr(t.likelihood) === 'High' ? 'text-red-400' : 'text-amber-400'}>{safeStr(t.likelihood)}</span></div>}
                                                                             {t.impact && <div><span className="text-slate-400">Impact:</span> <span className={safeStr(t.impact) === 'High' ? 'text-red-400' : 'text-amber-400'}>{safeStr(t.impact)}</span></div>}
@@ -11509,7 +11608,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             )}
                                         </div>
                                     </div>
-                                )}
+                                    );
+                                })()}
                             </div>
                         </div>
                     </div>
