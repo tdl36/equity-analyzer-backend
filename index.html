@@ -1414,6 +1414,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [condensedLoading, setCondensedLoading] = useState(false);
             const [fullAnalysis, setFullAnalysis] = useState(null);
             const [fullLoading, setFullLoading] = useState(false);
+            const [generateAllLoading, setGenerateAllLoading] = useState(false);
             const [draggedIndex, setDraggedIndex] = useState(null);
             const [showSaveDialog, setShowSaveDialog] = useState(false);
             const [showEmailDialog, setShowEmailDialog] = useState(false);
@@ -9166,6 +9167,37 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 } catch (e) { alert('Save failed: ' + e.message); }
             };
 
+            const generateAllThesisTiers = async (ticker) => {
+                setGenerateAllLoading(true);
+                try {
+                    const res = await fetch(`${API_URL}/api/thesis-tiers/generate-all`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ticker, apiKey: localStorage.getItem('equity_analyzer_api_key') || '', geminiApiKey: localStorage.getItem('equity_analyzer_gemini_key') || '' })
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        setFullAnalysis(data.full);
+                        setFmtFullData(data.full);
+                        setThesisViewMode('full');
+                        setFmtThesisVersion('full');
+                        if (data.condensed) {
+                            setCondensedAnalysis(data.condensed);
+                            setFmtCondensedData(data.condensed);
+                        } else {
+                            setCondensedAnalysis(null);
+                            setFmtCondensedData(null);
+                        }
+                        if (data.condensedError) {
+                            alert('Full tier generated successfully. Condensed generation failed: ' + data.condensedError + '\n\nYou can retry Condensed separately.');
+                        }
+                    } else {
+                        const err = await res.json();
+                        alert('Failed to generate thesis tiers: ' + (err.error || 'Unknown error'));
+                    }
+                } catch (e) { alert('Failed to generate thesis tiers: ' + e.message); }
+                finally { setGenerateAllLoading(false); }
+            };
+
             const loadFmtTicker = async (ticker) => {
                 setFmtTicker(ticker);
                 setFmtScorecardData(null);
@@ -11280,6 +11312,19 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                         : isFullView ? fullAnalysis.threats : analysis?.threats;
                                     return (
                                     <div className="space-y-6">
+                                    {/* Generate All banner — visible in detailed view */}
+                                    {thesisViewMode === 'detailed' && (
+                                        <div className="flex items-center justify-between bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/20 rounded-lg px-4 py-3">
+                                            <div>
+                                                <span className="text-sm font-medium text-slate-200">Generate All Tiers</span>
+                                                <p className="text-xs text-slate-400 mt-0.5">Creates curated Full + compressed Condensed versions</p>
+                                            </div>
+                                            <button onClick={() => generateAllThesisTiers(currentTicker)} disabled={generateAllLoading}
+                                                className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 rounded-lg text-sm font-medium shadow-lg shadow-blue-500/20 disabled:opacity-50 transition-all whitespace-nowrap">
+                                                {generateAllLoading ? 'Generating...' : 'Generate All'}
+                                            </button>
+                                        </div>
+                                    )}
                                     {/* Full mode banner — generate prompt */}
                                     {thesisViewMode === 'full' && !fullAnalysis && (
                                         <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-6 text-center">

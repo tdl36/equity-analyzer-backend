@@ -5204,9 +5204,76 @@ def _generate_thesis_pptx_bytes(row, scorecard_data=None, fmt='executive'):
 # THESIS CONDENSED ENDPOINTS
 # ============================================
 
+def _build_condensed_tier(source_data, anthropic_key="", gemini_key=""):
+    """Build a condensed thesis tier from source data (Full or Detailed). Returns condensed dict.
+
+    ALL sections go to the LLM for compression — summary, pillars, signposts, threats, conclusion.
+    """
+    thesis = source_data.get('thesis', {})
+    signposts = source_data.get('signposts', [])
+    threats = source_data.get('threats', [])
+    conclusion = source_data.get('conclusion', '')
+
+    source_json = json.dumps({
+        'summary': thesis.get('summary', ''),
+        'pillars': thesis.get('pillars', []),
+        'signposts': signposts,
+        'threats': threats,
+        'conclusion': conclusion,
+    }, indent=2)
+
+    prompt = f"""Compress this investment thesis into a short, punchy version. Rules:
+
+1. Summary: 2-3 tight sentences. Preserve the core WHY.
+2. Pillars: keep 4-5 strongest. 1 sentence description each. Keep title exactly as-is. Drop confidence and sources.
+3. Signposts: keep 3-5 most actionable. 1 sentence each. Drop confidence, sources, and timeframe.
+4. Threats: keep 3-4 highest-impact. 1 sentence each. Drop likelihood and impact entirely.
+5. Conclusion: 1-2 sentences max.
+
+Return ONLY valid JSON:
+{{
+  "thesis": {{
+    "summary": "...",
+    "pillars": [{{"title": "exact original title", "description": "1 sentence"}}]
+  }},
+  "signposts": [{{"signpost": "1 sentence"}}],
+  "threats": [{{"threat": "1 sentence"}}],
+  "conclusion": "1-2 sentences"
+}}
+
+Source data:
+{source_json}"""
+
+    result = call_llm(
+        messages=[{"role": "user", "content": prompt}],
+        system="You are a concise financial analyst. Return only valid JSON, no markdown fences.",
+        tier="fast",
+        max_tokens=3072,
+        anthropic_api_key=anthropic_key,
+        gemini_api_key=gemini_key,
+    )
+
+    response_text = result['text'].strip()
+    if response_text.startswith('```'):
+        response_text = response_text.split('\n', 1)[1].rsplit('```', 1)[0].strip()
+    condensed = json.loads(response_text)
+
+    # Validate structure
+    if 'thesis' not in condensed:
+        condensed = {'thesis': condensed, 'signposts': [], 'threats': [], 'conclusion': conclusion}
+    if 'signposts' not in condensed:
+        condensed['signposts'] = []
+    if 'threats' not in condensed:
+        condensed['threats'] = []
+    if 'conclusion' not in condensed:
+        condensed['conclusion'] = conclusion
+
+    return condensed
+
+
 @app.route('/api/thesis-condensed/generate', methods=['POST'])
 def generate_condensed_thesis():
-    """Generate a condensed version of a thesis using Claude."""
+    """Generate a condensed version of a thesis using LLM."""
     try:
         data = request.get_json()
         ticker = data.get('ticker', '').upper()
@@ -5232,71 +5299,12 @@ def generate_condensed_thesis():
             full_data = full_row['full_analysis']
             if isinstance(full_data, str):
                 full_data = json.loads(full_data)
-            # Overlay full tier data as the source for condensing
             analysis['thesis'] = full_data.get('thesis', analysis.get('thesis', {}))
             analysis['signposts'] = full_data.get('signposts', analysis.get('signposts', []))
             analysis['threats'] = full_data.get('threats', analysis.get('threats', []))
             analysis['conclusion'] = full_data.get('conclusion', analysis.get('conclusion', ''))
 
-        thesis = analysis.get('thesis', {})
-        signposts = analysis.get('signposts', [])
-        threats = analysis.get('threats', [])
-        conclusion = analysis.get('conclusion', '')
-
-        # Build prompt for Claude to condense
-        thesis_text = json.dumps({
-            'summary': thesis.get('summary', ''),
-            'pillars': thesis.get('pillars', []),
-        }, indent=2)
-        threats_text = json.dumps(threats, indent=2)
-
-        prompt = f"""Condense this investment thesis into a shorter version. Rules:
-1. Thesis summary: keep to 2-3 tight, punchy sentences. Preserve the core WHY.
-2. Each pillar: keep the title exactly as-is. Condense the description to 1 sentence max.
-3. Keep confidence levels unchanged.
-4. Remove all source citations from pillars.
-
-Return ONLY valid JSON with this exact structure:
-{{
-  "summary": "condensed summary here",
-  "pillars": [
-    {{"title": "exact original title", "description": "1 sentence", "confidence": "High/Medium/Low"}}
-  ]
-}}
-
-Original thesis:
-{thesis_text}"""
-
-        result = call_llm(
-            messages=[{"role": "user", "content": prompt}],
-            system="You are a concise financial analyst. Return only valid JSON, no markdown fences.",
-            tier="fast",
-            max_tokens=2048,
-            anthropic_api_key=anthropic_key,
-            gemini_api_key=gemini_key,
-        )
-
-        # Parse Claude's response
-        response_text = result['text'].strip()
-        if response_text.startswith('```'):
-            response_text = response_text.split('\n', 1)[1].rsplit('```', 1)[0].strip()
-        condensed_thesis = json.loads(response_text)
-
-        # Build condensed threats (remove likelihood/impact)
-        condensed_threats = []
-        for t in threats:
-            condensed_threats.append({
-                'threat': t.get('threat', ''),
-                'triggerPoints': t.get('triggerPoints', ''),
-            })
-
-        # Assemble full condensed analysis
-        condensed = {
-            'thesis': condensed_thesis,
-            'signposts': signposts,  # unchanged
-            'threats': condensed_threats,
-            'conclusion': conclusion,
-        }
+        condensed = _build_condensed_tier(analysis, anthropic_key, gemini_key)
 
         # Upsert into DB
         with get_db(commit=True) as (conn, cur):
@@ -5376,48 +5384,33 @@ def update_condensed_thesis(ticker):
 
 # --- Thesis Full (curated selection) endpoints ---
 
-@app.route('/api/thesis-full/generate', methods=['POST'])
-def generate_full_thesis():
-    """Generate a curated Full version by selecting top items from detailed analysis."""
-    try:
-        data = request.get_json()
-        ticker = data.get('ticker', '').upper()
-        anthropic_key = data.get('apiKey', '')
-        gemini_key = data.get('geminiApiKey', '')
-        if not ticker:
-            return jsonify({'error': 'No ticker provided'}), 400
+def _build_full_tier(analysis, anthropic_key="", gemini_key=""):
+    """Build a curated Full thesis tier from detailed analysis. Returns full_data dict.
 
-        # Load detailed thesis
-        with get_db() as (_, cur):
-            cur.execute('SELECT * FROM portfolio_analyses WHERE ticker = %s', (ticker,))
-            row = cur.fetchone()
-        if not row:
-            return jsonify({'error': 'No analysis found for this ticker'}), 404
+    Selects top items and allows light prose tightening while preserving all fields.
+    """
+    thesis = analysis.get('thesis', {})
+    signposts = analysis.get('signposts', [])
+    threats = analysis.get('threats', [])
+    conclusion = analysis.get('conclusion', '')
 
-        analysis = row['analysis'] if isinstance(row['analysis'], dict) else json.loads(row['analysis'])
-        thesis = analysis.get('thesis', {})
-        signposts = analysis.get('signposts', [])
-        threats = analysis.get('threats', [])
-        conclusion = analysis.get('conclusion', '')
+    thesis_text = json.dumps(thesis, indent=2)
+    signposts_text = json.dumps(signposts, indent=2)
+    threats_text = json.dumps(threats, indent=2)
 
-        # Build prompt — selection only, not rewriting
-        thesis_text = json.dumps(thesis, indent=2)
-        signposts_text = json.dumps(signposts, indent=2)
-        threats_text = json.dumps(threats, indent=2)
-
-        prompt = f"""You are curating an investment thesis by selecting the most important items. Do NOT rewrite or compress — select verbatim.
+    prompt = f"""You are curating an investment thesis by selecting the most important items. You may lightly tighten prose but do NOT compress or rewrite substantially.
 
 Rules:
-1. Select 4-5 most important pillars (keep all fields verbatim: title, description, confidence, sources)
-2. Select 5-7 most actionable signposts (keep all fields verbatim)
-3. Select 4-5 highest-risk threats (keep all fields verbatim: threat, triggerPoints, likelihood, impact)
-4. Keep the thesis summary exactly as-is
-5. Do NOT change any text, confidence levels, likelihood/impact ratings, or source citations
+1. Select 4-5 most important pillars. Keep title exactly as-is. You may tighten the description to remove filler, but preserve meaning. Keep confidence and sources unchanged.
+2. Select 5-7 most actionable signposts. You may tighten the text slightly. Keep all fields (confidence, sources, timeframe).
+3. Select 4-5 highest-risk threats. Keep likelihood and impact unchanged. You may tighten the threat sentence.
+4. Summary: keep as-is or remove filler only. Do not change meaning.
+5. Conclusion: keep exactly as-is.
 
 Return ONLY valid JSON with this exact structure:
 {{
   "thesis": {{
-    "summary": "exact original summary",
+    "summary": "original or lightly tightened summary",
     "pillars": [selected pillars with ALL original fields]
   }},
   "signposts": [selected signposts with ALL original fields],
@@ -5437,30 +5430,53 @@ Original threats:
 Original conclusion:
 {json.dumps(conclusion)}"""
 
-        result = call_llm(
-            messages=[{"role": "user", "content": prompt}],
-            system="You are a financial analyst selecting the most important items from a thesis. Return only valid JSON, no markdown fences. Preserve all fields verbatim — this is selection, not rewriting.",
-            tier="fast",
-            max_tokens=4096,
-            anthropic_api_key=anthropic_key,
-            gemini_api_key=gemini_key,
-        )
+    result = call_llm(
+        messages=[{"role": "user", "content": prompt}],
+        system="You are a financial analyst curating the most important items from a thesis. Return only valid JSON, no markdown fences. Light tightening is OK; do not compress or rewrite.",
+        tier="fast",
+        max_tokens=4096,
+        anthropic_api_key=anthropic_key,
+        gemini_api_key=gemini_key,
+    )
 
-        # Parse response
-        response_text = result['text'].strip()
-        if response_text.startswith('```'):
-            response_text = response_text.split('\n', 1)[1].rsplit('```', 1)[0].strip()
-        full_data = json.loads(response_text)
+    response_text = result['text'].strip()
+    if response_text.startswith('```'):
+        response_text = response_text.split('\n', 1)[1].rsplit('```', 1)[0].strip()
+    full_data = json.loads(response_text)
 
-        # Validate structure
-        if 'thesis' not in full_data:
-            full_data = {'thesis': full_data, 'signposts': signposts[:7], 'threats': threats[:5], 'conclusion': conclusion}
-        if 'signposts' not in full_data:
-            full_data['signposts'] = signposts[:7]
-        if 'threats' not in full_data:
-            full_data['threats'] = threats[:5]
-        if 'conclusion' not in full_data:
-            full_data['conclusion'] = conclusion
+    # Validate structure
+    if 'thesis' not in full_data:
+        full_data = {'thesis': full_data, 'signposts': signposts[:7], 'threats': threats[:5], 'conclusion': conclusion}
+    if 'signposts' not in full_data:
+        full_data['signposts'] = signposts[:7]
+    if 'threats' not in full_data:
+        full_data['threats'] = threats[:5]
+    if 'conclusion' not in full_data:
+        full_data['conclusion'] = conclusion
+
+    return full_data
+
+
+@app.route('/api/thesis-full/generate', methods=['POST'])
+def generate_full_thesis():
+    """Generate a curated Full version by selecting top items from detailed analysis."""
+    try:
+        data = request.get_json()
+        ticker = data.get('ticker', '').upper()
+        anthropic_key = data.get('apiKey', '')
+        gemini_key = data.get('geminiApiKey', '')
+        if not ticker:
+            return jsonify({'error': 'No ticker provided'}), 400
+
+        with get_db() as (_, cur):
+            cur.execute('SELECT * FROM portfolio_analyses WHERE ticker = %s', (ticker,))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'error': 'No analysis found for this ticker'}), 404
+
+        analysis = row['analysis'] if isinstance(row['analysis'], dict) else json.loads(row['analysis'])
+
+        full_data = _build_full_tier(analysis, anthropic_key, gemini_key)
 
         # Upsert into DB
         with get_db(commit=True) as (conn, cur):
@@ -5541,6 +5557,70 @@ def update_full_thesis(ticker):
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error saving full thesis: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/thesis-tiers/generate-all', methods=['POST'])
+def generate_all_thesis_tiers():
+    """Generate Full then Condensed thesis tiers sequentially."""
+    try:
+        data = request.get_json()
+        ticker = data.get('ticker', '').upper()
+        anthropic_key = data.get('apiKey', '')
+        gemini_key = data.get('geminiApiKey', '')
+        if not ticker:
+            return jsonify({'error': 'No ticker provided'}), 400
+
+        # Load detailed analysis
+        with get_db() as (_, cur):
+            cur.execute('SELECT * FROM portfolio_analyses WHERE ticker = %s', (ticker,))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'error': 'No analysis found for this ticker'}), 404
+
+        analysis = row['analysis'] if isinstance(row['analysis'], dict) else json.loads(row['analysis'])
+
+        # Step 1: Build Full tier
+        full_data = _build_full_tier(analysis, anthropic_key, gemini_key)
+
+        # Upsert Full into DB
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('''
+                INSERT INTO thesis_full (ticker, full_analysis, updated_at)
+                VALUES (%s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (ticker)
+                DO UPDATE SET full_analysis = EXCLUDED.full_analysis, updated_at = CURRENT_TIMESTAMP
+            ''', (ticker, json.dumps(full_data)))
+
+        # Invalidate stale condensed
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('DELETE FROM thesis_condensed WHERE ticker = %s', (ticker,))
+
+        # Step 2: Build Condensed tier from Full
+        result = {'success': True, 'ticker': ticker, 'full': full_data}
+        try:
+            condensed_data = _build_condensed_tier(full_data, anthropic_key, gemini_key)
+
+            with get_db(commit=True) as (conn, cur):
+                cur.execute('''
+                    INSERT INTO thesis_condensed (ticker, condensed_analysis, updated_at)
+                    VALUES (%s, %s, CURRENT_TIMESTAMP)
+                    ON CONFLICT (ticker)
+                    DO UPDATE SET condensed_analysis = EXCLUDED.condensed_analysis, updated_at = CURRENT_TIMESTAMP
+                ''', (ticker, json.dumps(condensed_data)))
+
+            result['condensed'] = condensed_data
+        except Exception as ce:
+            print(f"Condensed generation failed (Full succeeded): {ce}")
+            result['partialSuccess'] = True
+            result['condensedError'] = str(ce)
+
+        return jsonify(result)
+    except json.JSONDecodeError as je:
+        print(f"Error parsing thesis JSON in generate-all: {je}")
+        return jsonify({'error': 'Failed to parse thesis from LLM'}), 500
+    except Exception as e:
+        print(f"Error in generate-all thesis tiers: {e}")
         return jsonify({'error': str(e)}), 500
 
 
