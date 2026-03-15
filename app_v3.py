@@ -5080,7 +5080,7 @@ def email_format():
 # THESIS INFOGRAPHIC GENERATION
 # ============================================
 
-def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slide_num=None, detail='full'):
+def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slide_num=None, detail='full', show_risk_detail=False):
     """Build a Gemini image-generation prompt for a thesis infographic slide."""
     ticker = d['ticker']
     company = d['company']
@@ -5120,10 +5120,13 @@ def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slid
     # Build threats section text
     threats_text = ""
     for r in rk_data:
-        if detail == 'summary':
-            line = f"  - {r['threat']} (Impact: {r['impact']})"
+        if show_risk_detail:
+            if detail == 'summary':
+                line = f"  - {r['threat']} (Impact: {r['impact']})"
+            else:
+                line = f"  - {r['threat']}: Likelihood = {r['likelihood']}, Impact = {r['impact']}"
         else:
-            line = f"  - {r['threat']}: Likelihood = {r['likelihood']}, Impact = {r['impact']}"
+            line = f"  - {r['threat']}"
         if r['status']:
             line += f" [{r['status'].upper()}]"
         threats_text += line + "\n"
@@ -5199,12 +5202,15 @@ def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slid
             if detail == 'summary':
                 parts.append(summary_layout + " Slide 3 of 3.")
             else:
-                parts.append("\nPresent each risk as a threat card showing the risk name, likelihood, impact level, and current status. Use visual weight to show severity — larger/darker for higher impact risks. Slide 3 of 3.")
+                if show_risk_detail:
+                    parts.append("\nPresent each risk as a threat card showing the risk name, likelihood, impact level, and current status. Use visual weight to show severity — larger/darker for higher impact risks. Slide 3 of 3.")
+                else:
+                    parts.append("\nPresent each risk as a threat card showing the risk name and current status. Use visual weight to show severity. Slide 3 of 3.")
 
     return "\n".join(parts)
 
 
-def _run_thesis_infographic(job_id, d, scorecard_data, style_key, mode, gemini_key, detail='full', edit_prompt=None, parent_id=None):
+def _run_thesis_infographic(job_id, d, scorecard_data, style_key, mode, gemini_key, detail='full', edit_prompt=None, parent_id=None, show_risk_detail=False):
     """Background worker to generate thesis infographic images via Gemini or Pillow."""
     import time as _time
     job = _infographic_jobs[job_id]
@@ -5216,12 +5222,12 @@ def _run_thesis_infographic(job_id, d, scorecard_data, style_key, mode, gemini_k
             # Deterministic Pillow rendering — no Gemini API needed
             job['current'] = 1
             job['progress'] = 50
-            images = _generate_precision_infographic(d, scorecard_data, mode, detail)
+            images = _generate_precision_infographic(d, scorecard_data, mode, detail, show_risk_detail=show_risk_detail)
             job['images'] = images
         elif mode == '1':
             style_prompt = style_def['prompt']
             job['current'] = 1
-            prompt = _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, '1', detail=detail)
+            prompt = _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, '1', detail=detail, show_risk_detail=show_risk_detail)
             if edit_prompt:
                 prompt += f"\n\nADDITIONAL INSTRUCTIONS (edit request): {edit_prompt}"
             img = _generate_slide_image(prompt, gemini_key)
@@ -5238,7 +5244,7 @@ def _run_thesis_infographic(job_id, d, scorecard_data, style_key, mode, gemini_k
             for i in range(1, 4):
                 job['current'] = i
                 job['progress'] = int((i - 1) / 3 * 100)
-                prompt = _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, '3', slide_num=i, detail=detail)
+                prompt = _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, '3', slide_num=i, detail=detail, show_risk_detail=show_risk_detail)
                 if edit_prompt:
                     prompt += f"\n\nADDITIONAL INSTRUCTIONS (edit request): {edit_prompt}"
                 img = _generate_slide_image(prompt, gemini_key)
@@ -5292,6 +5298,7 @@ def start_thesis_infographic():
         detail = data.get('detail', 'full')  # 'full' or 'summary'
         style = data.get('style', 'professional')
         gemini_key = data.get('geminiApiKey', '')
+        show_risk_detail = data.get('showRiskDetail', False)
 
         if not ticker:
             return jsonify({'error': 'No ticker provided'}), 400
@@ -5345,6 +5352,7 @@ def start_thesis_infographic():
         t = threading.Thread(
             target=_run_thesis_infographic,
             args=(job_id, d, scorecard_data, style, mode, gemini_key, detail),
+            kwargs={'show_risk_detail': show_risk_detail},
             daemon=True
         )
         t.start()
@@ -8485,7 +8493,7 @@ def _draw_status_dot(draw, x, y, status, size=14):
     c = colors.get((status or '').lower(), (148, 163, 184))
     draw.ellipse([x, y, x + size, y + size], fill=c)
 
-def _generate_precision_infographic(d, scorecard_data, mode, detail='full'):
+def _generate_precision_infographic(d, scorecard_data, mode, detail='full', show_risk_detail=False):
     """Generate deterministic infographic images using Pillow."""
     from PIL import Image, ImageDraw
     sp_data = _build_signpost_data(d['signposts'], scorecard_data)
@@ -8540,8 +8548,12 @@ def _generate_precision_infographic(d, scorecard_data, mode, detail='full'):
         font = fonts['small'] if compact else fonts['regular']
         hdr_font = fonts['bold_sm'] if not compact else fonts['small']
         row_h = 28 if compact else 34
-        col_w = [int(width * 0.35), int(width * 0.2), int(width * 0.2), int(width * 0.25)]
-        headers = ['Risk Factor', 'Likelihood', 'Impact', 'Status']
+        if show_risk_detail:
+            col_w = [int(width * 0.35), int(width * 0.2), int(width * 0.2), int(width * 0.25)]
+            headers = ['Risk Factor', 'Likelihood', 'Impact', 'Status']
+        else:
+            col_w = [int(width * 0.75), int(width * 0.25)]
+            headers = ['Risk Factor', 'Status']
         draw.rectangle([x, y_start, x + width, y_start + row_h], fill=(220, 38, 38, 180))
         cx = x
         for i, h in enumerate(headers):
@@ -8552,13 +8564,15 @@ def _generate_precision_infographic(d, scorecard_data, mode, detail='full'):
             draw.rectangle([x, y, x + width, y + row_h], fill=DARK)
             draw.line([x, y, x + width, y], fill=(255, 255, 255, 30))
             cx = x
-            draw.text((cx + 8, y + 6), (rk.get('threat', '') or '')[:30], font=font, fill=LIGHT)
+            max_chars = 30 if show_risk_detail else 60
+            draw.text((cx + 8, y + 6), (rk.get('threat', '') or '')[:max_chars], font=font, fill=LIGHT)
             cx += col_w[0]
-            draw.text((cx + 8, y + 6), (rk.get('likelihood', '') or '')[:12], font=font, fill=SLATE)
-            cx += col_w[1]
-            draw.text((cx + 8, y + 6), (rk.get('impact', '') or '')[:12], font=font, fill=SLATE)
-            cx += col_w[2]
-            _draw_status_dot(draw, cx + col_w[3]//2 - 7, y + row_h//2 - 7, rk.get('status', ''))
+            if show_risk_detail:
+                draw.text((cx + 8, y + 6), (rk.get('likelihood', '') or '')[:12], font=font, fill=SLATE)
+                cx += col_w[1]
+                draw.text((cx + 8, y + 6), (rk.get('impact', '') or '')[:12], font=font, fill=SLATE)
+                cx += col_w[2]
+            _draw_status_dot(draw, cx + col_w[-1]//2 - 7, y + row_h//2 - 7, rk.get('status', ''))
             y += row_h
         return y
 
