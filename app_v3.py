@@ -868,6 +868,23 @@ def init_db():
             ''')
             cur.execute('CREATE INDEX IF NOT EXISTS idx_infographic_history_ticker ON thesis_infographic_history(ticker)')
 
+            # Infographic templates (saved favorites for reuse across tickers)
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS thesis_infographic_templates (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    mode VARCHAR(5) NOT NULL DEFAULT '1',
+                    detail VARCHAR(10) NOT NULL DEFAULT 'full',
+                    style VARCHAR(50) NOT NULL DEFAULT 'professional',
+                    color_scheme VARCHAR(50) DEFAULT 'default',
+                    show_risk_detail BOOLEAN DEFAULT false,
+                    include_company BOOLEAN DEFAULT false,
+                    reference_image TEXT NOT NULL,
+                    source_ticker VARCHAR(20),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
             # Thesis format history (versioned PDF/DOCX storage)
             cur.execute('''
                 CREATE TABLE IF NOT EXISTS thesis_format_history (
@@ -5319,12 +5336,24 @@ def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slid
     return "\n".join(parts)
 
 
-def _run_thesis_infographic(job_id, d, scorecard_data, style_key, mode, gemini_key, detail='full', edit_prompt=None, parent_id=None, show_risk_detail=False, color_scheme=None, include_company=False):
+def _run_thesis_infographic(job_id, d, scorecard_data, style_key, mode, gemini_key, detail='full', edit_prompt=None, parent_id=None, show_risk_detail=False, color_scheme=None, include_company=False, template_id=None):
     """Background worker to generate thesis infographic images via Gemini or Pillow."""
     import time as _time
     job = _infographic_jobs[job_id]
     style_def = THESIS_INFOGRAPHIC_STYLES.get(style_key, THESIS_INFOGRAPHIC_STYLES['professional'])
     engine = style_def.get('engine', 'gemini')
+
+    # Load template reference image if specified
+    ref_image = None
+    if template_id:
+        try:
+            with get_db() as (conn, cur):
+                cur.execute('SELECT reference_image FROM thesis_infographic_templates WHERE id = %s', (template_id,))
+                tpl = cur.fetchone()
+                if tpl:
+                    ref_image = tpl['reference_image']
+        except Exception as e:
+            print(f"Failed to load template {template_id}: {e}")
 
     try:
         if engine == 'pillow':
@@ -5339,7 +5368,7 @@ def _run_thesis_infographic(job_id, d, scorecard_data, style_key, mode, gemini_k
             prompt = _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, '1', detail=detail, show_risk_detail=show_risk_detail, color_scheme=color_scheme, include_company=include_company, style_key=style_key)
             if edit_prompt:
                 prompt += f"\n\nADDITIONAL INSTRUCTIONS (edit request): {edit_prompt}"
-            img = _generate_slide_image(prompt, gemini_key)
+            img = _generate_slide_image(prompt, gemini_key, reference_image=ref_image)
             if img:
                 job['images'].append(img)
                 job['progress'] = 100
@@ -5356,7 +5385,7 @@ def _run_thesis_infographic(job_id, d, scorecard_data, style_key, mode, gemini_k
                 prompt = _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, '3', slide_num=i, detail=detail, show_risk_detail=show_risk_detail, color_scheme=color_scheme, include_company=include_company, style_key=style_key)
                 if edit_prompt:
                     prompt += f"\n\nADDITIONAL INSTRUCTIONS (edit request): {edit_prompt}"
-                img = _generate_slide_image(prompt, gemini_key)
+                img = _generate_slide_image(prompt, gemini_key, reference_image=ref_image)
                 if img:
                     job['images'].append(img)
                 else:
@@ -5410,6 +5439,23 @@ def start_thesis_infographic():
         show_risk_detail = data.get('showRiskDetail', False)
         color_scheme = data.get('colorScheme', 'default')
         include_company = data.get('includeCompanyName', False)
+        template_id = data.get('templateId')
+
+        # If template specified, load its params as defaults
+        if template_id:
+            try:
+                with get_db() as (_, cur):
+                    cur.execute('SELECT mode, detail, style, color_scheme, show_risk_detail, include_company FROM thesis_infographic_templates WHERE id = %s', (template_id,))
+                    tpl = cur.fetchone()
+                    if tpl:
+                        mode = tpl['mode']
+                        detail = tpl['detail']
+                        style = tpl['style']
+                        color_scheme = tpl['color_scheme'] or 'default'
+                        show_risk_detail = tpl['show_risk_detail'] or False
+                        include_company = tpl['include_company'] or False
+            except Exception as e:
+                print(f"Template load warning: {e}")
 
         if not ticker:
             return jsonify({'error': 'No ticker provided'}), 400
@@ -5463,7 +5509,7 @@ def start_thesis_infographic():
         t = threading.Thread(
             target=_run_thesis_infographic,
             args=(job_id, d, scorecard_data, style, mode, gemini_key, detail),
-            kwargs={'show_risk_detail': show_risk_detail, 'color_scheme': color_scheme, 'include_company': include_company},
+            kwargs={'show_risk_detail': show_risk_detail, 'color_scheme': color_scheme, 'include_company': include_company, 'template_id': template_id},
             daemon=True
         )
         t.start()
@@ -5577,6 +5623,69 @@ def delete_infographic_history(history_id):
         with get_db(commit=True) as (conn, cur):
             cur.execute('UPDATE thesis_infographic_history SET parent_id = NULL WHERE parent_id = %s', (history_id,))
             cur.execute('DELETE FROM thesis_infographic_history WHERE id = %s', (history_id,))
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/thesis-format/infographic/templates', methods=['GET'])
+def list_infographic_templates():
+    """List all saved infographic templates."""
+    try:
+        with get_db() as (conn, cur):
+            cur.execute('''
+                SELECT id, name, mode, detail, style, color_scheme, show_risk_detail,
+                       include_company, reference_image, source_ticker, created_at
+                FROM thesis_infographic_templates ORDER BY created_at DESC
+            ''')
+            rows = cur.fetchall()
+        return jsonify([{
+            'id': r['id'], 'name': r['name'], 'mode': r['mode'], 'detail': r['detail'],
+            'style': r['style'], 'colorScheme': r['color_scheme'],
+            'showRiskDetail': r['show_risk_detail'], 'includeCompany': r['include_company'],
+            'referenceImage': r['reference_image'], 'sourceTicker': r['source_ticker'],
+            'createdAt': r['created_at'].isoformat() if r['created_at'] else None
+        } for r in rows])
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/thesis-format/infographic/templates', methods=['POST'])
+def save_infographic_template():
+    """Save an infographic history version as a reusable template."""
+    data = request.get_json()
+    history_id = data.get('historyId')
+    name = (data.get('name') or '').strip()
+    if not history_id or not name:
+        return jsonify({'error': 'historyId and name are required'}), 400
+    try:
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('SELECT * FROM thesis_infographic_history WHERE id = %s', (history_id,))
+            hist = cur.fetchone()
+            if not hist:
+                return jsonify({'error': 'History version not found'}), 404
+            images = json.loads(hist['slide_images']) if isinstance(hist['slide_images'], str) else hist['slide_images']
+            ref_image = images[0] if images else None
+            if not ref_image:
+                return jsonify({'error': 'No image found in history version'}), 400
+            cur.execute('''
+                INSERT INTO thesis_infographic_templates
+                (name, mode, detail, style, color_scheme, reference_image, source_ticker)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            ''', (name, hist['mode'], hist['detail'], hist['style'], 'default', ref_image, hist['ticker']))
+            new_id = cur.fetchone()['id']
+        return jsonify({'id': new_id, 'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/thesis-format/infographic/templates/<int:template_id>', methods=['DELETE'])
+def delete_infographic_template(template_id):
+    """Delete a saved infographic template."""
+    try:
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('DELETE FROM thesis_infographic_templates WHERE id = %s', (template_id,))
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -8903,18 +9012,32 @@ def _build_slide_prompt(slide_data, theme_name, project_title, total_slides):
     return "\n".join(parts)
 
 
-def _generate_slide_image(prompt, api_key=None):
-    """Generate a slide image via Gemini API. Returns base64 PNG string or None."""
+def _generate_slide_image(prompt, api_key=None, reference_image=None):
+    """Generate a slide image via Gemini API. Returns base64 PNG string or None.
+    If reference_image (base64 PNG) is provided, it's sent as a style reference."""
     key = api_key or os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY', '')
     if not key:
         return None
     client = genai.Client(api_key=key)
     model = "gemini-3-pro-image-preview"
+    # Build contents: either text-only or multimodal with reference image
+    if reference_image:
+        ref_instruction = (
+            "Replicate the EXACT layout, typography, positioning, section arrangement, "
+            "colors, and visual style of this reference image. Only replace the text "
+            "content with the new data below. Keep the same visual structure.\n\n"
+        )
+        contents = [
+            genai_types.Part.from_bytes(data=base64.b64decode(reference_image), mime_type='image/png'),
+            ref_instruction + prompt
+        ]
+    else:
+        contents = prompt
     for attempt in range(3):
         try:
             response = client.models.generate_content(
                 model=model,
-                contents=prompt,
+                contents=contents,
                 config=genai_types.GenerateContentConfig(
                     response_modalities=["TEXT", "IMAGE"],
                     image_config=genai_types.ImageConfig(aspect_ratio="16:9"),

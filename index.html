@@ -689,6 +689,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
         const Upload = ({className = "w-5 h-5"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>;
         const Download = ({className = "w-4 h-4"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>;
         const Send = ({className = "w-4 h-4"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>;
+        const Star = ({className = "w-4 h-4"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>;
         const Copy = ({className = "w-4 h-4"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>;
         const Loader = ({className = "w-5 h-5"}) => <svg className={className + " animate-spin"} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><style>{`@keyframes spin { to { transform: rotate(360deg); }}`}</style><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/></svg>;
         const Key = ({className = "w-4 h-4"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/></svg>;
@@ -1630,6 +1631,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [fmtInfographicEditPrompt, setFmtInfographicEditPrompt] = useState('');
             const [fmtInfographicColorScheme, setFmtInfographicColorScheme] = useState('default');
             const [fmtInfographicShowCompany, setFmtInfographicShowCompany] = useState(false);
+            const [fmtInfographicTemplates, setFmtInfographicTemplates] = useState([]);
+            const [fmtInfographicSelectedTemplate, setFmtInfographicSelectedTemplate] = useState(null);
 
             // Portfolio Dashboard state
             const [dashboardData, setDashboardData] = useState(null);
@@ -8944,6 +8947,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 setFmtInfographicImages([]);
                 if (!ticker) return;
                 loadInfographicHistory(ticker);
+                loadInfographicTemplates();
                 loadFmtHistory(ticker);
                 try {
                     const [analysisRes, scorecardRes] = await Promise.all([
@@ -9218,7 +9222,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 try {
                     const res = await fetch(`${API_URL}/api/thesis-format/infographic`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ ticker: fmtTicker, mode: fmtInfographicMode, detail: fmtInfographicDetail, style: fmtInfographicStyle, geminiApiKey: geminiKey, showRiskDetail: fmtInfographicShowRiskDetail, colorScheme: fmtInfographicColorScheme, includeCompanyName: fmtInfographicShowCompany })
+                        body: JSON.stringify({ ticker: fmtTicker, mode: fmtInfographicMode, detail: fmtInfographicDetail, style: fmtInfographicStyle, geminiApiKey: geminiKey, showRiskDetail: fmtInfographicShowRiskDetail, colorScheme: fmtInfographicColorScheme, includeCompanyName: fmtInfographicShowCompany, templateId: fmtInfographicSelectedTemplate || undefined })
                     });
                     if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Failed to start generation'); }
                     const data = await res.json();
@@ -9281,6 +9285,36 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         setFmtInfographicHistory(data);
                     }
                 } catch (e) { console.error('Failed to load infographic history:', e); }
+            };
+
+            const loadInfographicTemplates = async () => {
+                try {
+                    const res = await fetch(`${API_URL}/api/thesis-format/infographic/templates`);
+                    if (res.ok) setFmtInfographicTemplates(await res.json());
+                } catch (e) { console.error('Failed to load infographic templates:', e); }
+            };
+
+            const saveAsTemplate = async (historyId) => {
+                const name = window.prompt('Name this template:');
+                if (!name || !name.trim()) return;
+                try {
+                    const res = await fetch(`${API_URL}/api/thesis-format/infographic/templates`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ historyId, name: name.trim() })
+                    });
+                    if (res.ok) { loadInfographicTemplates(); alert('Template saved!'); }
+                    else { const d = await res.json(); alert(d.error || 'Failed to save'); }
+                } catch (e) { alert('Failed to save template: ' + e.message); }
+            };
+
+            const deleteInfographicTemplate = async (id, e) => {
+                e.stopPropagation();
+                if (!confirm('Delete this template?')) return;
+                try {
+                    await fetch(`${API_URL}/api/thesis-format/infographic/templates/${id}`, { method: 'DELETE' });
+                    loadInfographicTemplates();
+                    if (fmtInfographicSelectedTemplate === id) setFmtInfographicSelectedTemplate(null);
+                } catch (e) { alert('Failed to delete: ' + e.message); }
             };
 
             const viewInfographicVersion = async (versionId) => {
@@ -16365,9 +16399,53 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 </div>
                                             </div>
 
+                                            {/* Saved Templates */}
+                                            {fmtInfographicTemplates.length > 0 && (
+                                                <div className="mb-4">
+                                                    <label className="text-xs text-slate-500 mb-2 block">Saved Templates</label>
+                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                                        {fmtInfographicTemplates.map(tpl => (
+                                                            <div key={tpl.id}
+                                                                onClick={() => {
+                                                                    if (fmtInfographicSelectedTemplate === tpl.id) {
+                                                                        setFmtInfographicSelectedTemplate(null);
+                                                                    } else {
+                                                                        setFmtInfographicSelectedTemplate(tpl.id);
+                                                                        setFmtInfographicMode(tpl.mode);
+                                                                        setFmtInfographicDetail(tpl.detail);
+                                                                        setFmtInfographicStyle(tpl.style);
+                                                                        setFmtInfographicColorScheme(tpl.colorScheme || 'default');
+                                                                    }
+                                                                }}
+                                                                className={`relative rounded-lg overflow-hidden cursor-pointer transition-all ${
+                                                                    fmtInfographicSelectedTemplate === tpl.id
+                                                                        ? 'ring-2 ring-teal-400 scale-[1.02]'
+                                                                        : 'border border-white/10 hover:border-white/20'
+                                                                }`}>
+                                                                <div className="aspect-video bg-slate-900">
+                                                                    <img src={`data:image/png;base64,${tpl.referenceImage}`} className="w-full h-full object-cover" alt={tpl.name} />
+                                                                </div>
+                                                                <div className="p-1.5 bg-white/[0.04]">
+                                                                    <div className="text-[10px] font-medium text-slate-200 truncate">{tpl.name}</div>
+                                                                    <div className="text-[9px] text-slate-500">{tpl.sourceTicker} / {tpl.style}</div>
+                                                                </div>
+                                                                <button onClick={(e) => deleteInfographicTemplate(tpl.id, e)}
+                                                                    className="absolute top-1 right-1 w-5 h-5 bg-black/60 rounded-full flex items-center justify-center text-slate-400 hover:text-red-400 opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity">
+                                                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    {fmtInfographicSelectedTemplate && (
+                                                        <button onClick={() => setFmtInfographicSelectedTemplate(null)}
+                                                            className="mt-2 text-xs text-slate-400 hover:text-white">Clear template selection</button>
+                                                    )}
+                                                </div>
+                                            )}
+
                                             {/* Style Picker */}
-                                            <div className="mb-4">
-                                                <label className="text-xs text-slate-500 mb-2 block">Visual Style</label>
+                                            <div className={`mb-4 ${fmtInfographicSelectedTemplate ? 'opacity-40 pointer-events-none' : ''}`}>
+                                                <label className="text-xs text-slate-500 mb-2 block">Visual Style {fmtInfographicSelectedTemplate ? '(overridden by template)' : ''}</label>
                                                 <div className="grid grid-cols-3 md:grid-cols-7 gap-2">
                                                     {INFOGRAPHIC_STYLES.map(st => (
                                                         <button key={st.id} onClick={() => { setFmtInfographicStyle(st.id); setFmtInfographicColorScheme('default'); }}
@@ -16411,7 +16489,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 {fmtInfographicGenerating ? (
                                                     <><Loader className="w-4 h-4 animate-spin" /> Generating... {fmtInfographicProgress}%</>
                                                 ) : (
-                                                    <><Wand className="w-4 h-4" /> Generate</>
+                                                    fmtInfographicSelectedTemplate
+                                                        ? <><Star className="w-4 h-4" /> Generate from Template</>
+                                                        : <><Wand className="w-4 h-4" /> Generate</>
                                                 )}
                                             </button>
 
@@ -16533,6 +16613,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                     <button onClick={() => emailInfographic(fmtInfographicViewingImages, fmtInfographicViewingVersion.mode, fmtInfographicViewingVersion.detail, fmtInfographicViewingVersion.style)}
                                                                         className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1">
                                                                         <Send className="w-3 h-3" /> Email
+                                                                    </button>
+                                                                    <button onClick={() => saveAsTemplate(fmtInfographicViewingVersion.id)}
+                                                                        className="text-xs text-teal-400 hover:text-teal-300 flex items-center gap-1">
+                                                                        <Star className="w-3 h-3" /> Save Template
                                                                     </button>
                                                                     <button onClick={() => { setFmtInfographicViewingVersion(null); setFmtInfographicViewingImages([]); }}
                                                                         className="text-xs text-slate-500 hover:text-white">Close</button>
