@@ -94,6 +94,33 @@ MODEL_TIERS = {
     ],
 }
 
+def _extract_json(text):
+    """Extract and parse JSON from LLM response text, handling markdown fences and surrounding prose."""
+    text = text.strip()
+    # Strip markdown code fences (```json ... ``` or ``` ... ```)
+    if '```' in text:
+        # Find the first ``` block
+        start = text.find('```')
+        # Skip optional language tag on the same line
+        first_newline = text.find('\n', start)
+        if first_newline == -1:
+            first_newline = start + 3
+        end = text.find('```', first_newline)
+        if end != -1:
+            text = text[first_newline + 1:end].strip()
+        else:
+            text = text[first_newline + 1:].strip()
+    # If still not starting with { or [, try to find JSON object
+    if not text.startswith('{') and not text.startswith('['):
+        brace = text.find('{')
+        bracket = text.find('[')
+        if brace == -1 and bracket == -1:
+            raise json.JSONDecodeError("No JSON found in response", text, 0)
+        start = min(x for x in (brace, bracket) if x != -1)
+        text = text[start:]
+    return json.loads(text)
+
+
 def _get_api_keys(anthropic_api_key="", gemini_api_key="", openai_api_key=""):
     """Resolve API keys from explicit params or environment variables."""
     return {
@@ -5253,10 +5280,11 @@ Source data:
         gemini_api_key=gemini_key,
     )
 
-    response_text = result['text'].strip()
-    if response_text.startswith('```'):
-        response_text = response_text.split('\n', 1)[1].rsplit('```', 1)[0].strip()
-    condensed = json.loads(response_text)
+    try:
+        condensed = _extract_json(result['text'])
+    except json.JSONDecodeError:
+        print(f"[_build_condensed_tier] Raw LLM response:\n{result['text'][:2000]}")
+        raise
 
     # Validate structure
     if 'thesis' not in condensed:
@@ -5439,10 +5467,11 @@ Original conclusion:
         gemini_api_key=gemini_key,
     )
 
-    response_text = result['text'].strip()
-    if response_text.startswith('```'):
-        response_text = response_text.split('\n', 1)[1].rsplit('```', 1)[0].strip()
-    full_data = json.loads(response_text)
+    try:
+        full_data = _extract_json(result['text'])
+    except json.JSONDecodeError:
+        print(f"[_build_full_tier] Raw LLM response:\n{result['text'][:2000]}")
+        raise
 
     # Validate structure
     if 'thesis' not in full_data:
