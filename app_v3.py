@@ -3668,6 +3668,7 @@ def _generate_analysis_docx_bytes(row):
         p.runs[0].font.size = Pt(9)
         p.runs[0].font.color.rgb = RGBColor(128, 128, 128)
 
+    is_condensed = analysis.get('_condensed', False)
     thesis = analysis.get('thesis', {})
     signposts = analysis.get('signposts', [])
     threats = analysis.get('threats', [])
@@ -3718,8 +3719,9 @@ def _generate_analysis_docx_bytes(row):
             run.bold = True
             run.font.name = 'Calibri'
             details = []
-            if likelihood: details.append(f"Likelihood: {likelihood}")
-            if impact: details.append(f"Impact: {impact}")
+            if not is_condensed:
+                if likelihood: details.append(f"Likelihood: {likelihood}")
+                if impact: details.append(f"Impact: {impact}")
             if triggers: details.append(f"Watch for: {triggers}")
             if details:
                 run2 = p.add_run(f"\n{' | '.join(details)}")
@@ -3753,6 +3755,7 @@ def _generate_analysis_pdf_bytes(row):
     updated = row.get('updated_at')
     date_str = str(updated)[:10] if updated else ''
 
+    is_condensed = analysis.get('_condensed', False)
     thesis = analysis.get('thesis', {})
     signposts = analysis.get('signposts', [])
     threats = analysis.get('threats', [])
@@ -3789,7 +3792,7 @@ def _generate_analysis_pdf_bytes(row):
             imp = threat.get('impact', '')
             tr = threat.get('triggerPoints', '')
             sections += f'<li><strong>{td}</strong>'
-            if lk or imp: sections += f'<br/><span style="color:#666;font-size:0.9em;">Likelihood: {lk} | Impact: {imp}</span>'
+            if not is_condensed and (lk or imp): sections += f'<br/><span style="color:#666;font-size:0.9em;">Likelihood: {lk} | Impact: {imp}</span>'
             if tr: sections += f'<br/><span style="color:#666;font-size:0.9em;">Watch for: {tr}</span>'
             sections += '</li>'
         sections += '</ul>'
@@ -4291,10 +4294,19 @@ def _parse_analysis_data(row):
     signposts = analysis.get('signposts', [])
     threats = analysis.get('threats', [])
     conclusion = analysis.get('conclusion', '')
+    is_condensed = analysis.get('_condensed', False)
+    # Strip confidence from pillars and likelihood/impact from threats when condensed
+    if is_condensed:
+        for p in thesis.get('pillars', []):
+            p.pop('confidence', None)
+        for t in threats:
+            t.pop('likelihood', None)
+            t.pop('impact', None)
     return {
         'ticker': ticker, 'company': company, 'date_str': date_str,
         'thesis': thesis, 'signposts': signposts, 'threats': threats,
-        'conclusion': conclusion, 'analysis': analysis
+        'conclusion': conclusion, 'analysis': analysis,
+        '_condensed': is_condensed,
     }
 
 
@@ -4435,6 +4447,7 @@ def _generate_executive_brief_pdf(row, scorecard_data=None):
     d = _parse_analysis_data(row)
     ticker, company, date_str = d['ticker'], d['company'], d['date_str']
     thesis, signposts, threats, conclusion = d['thesis'], d['signposts'], d['threats'], d['conclusion']
+    is_condensed = d.get('_condensed', False)
     title = f"{ticker} — {company}" if company else ticker
     sp_data = _build_signpost_data(signposts, scorecard_data)
     rk_data = _build_risk_data(threats, scorecard_data)
@@ -4471,16 +4484,25 @@ def _generate_executive_brief_pdf(row, scorecard_data=None):
         status_col = ''
         if has_sc:
             status_col = f'<td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;background:{st_bg};color:{st_color};font-weight:bold;width:10%;">{st.upper() if st else "—"}</td>'
-        risk_rows += f'<tr><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#1e293b;width:50%;">{r["threat"]}{trigger_sub}</td><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;width:20%;">{r["likelihood"]}</td><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;width:20%;">{r["impact"]}</td>{status_col}</tr>'
+        if is_condensed:
+            risk_rows += f'<tr><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#1e293b;width:70%;">{r["threat"]}{trigger_sub}</td>{status_col}</tr>'
+        else:
+            risk_rows += f'<tr><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#1e293b;width:50%;">{r["threat"]}{trigger_sub}</td><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;width:20%;">{r["likelihood"]}</td><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;width:20%;">{r["impact"]}</td>{status_col}</tr>'
 
     risk_header_status = ''
     if has_sc:
         risk_header_status = '<th style="padding:8px 12px;text-align:center;font-size:9pt;color:#1e293b;font-weight:bold;border-bottom:2px solid #1e3a5f;width:10%;">Status</th>'
 
+    risk_lk_imp_headers = '' if is_condensed else '<th style="padding:8px 12px;text-align:center;font-size:9pt;color:#1e293b;font-weight:bold;border-bottom:2px solid #1e3a5f;width:20%;">Likelihood</th><th style="padding:8px 12px;text-align:center;font-size:9pt;color:#1e293b;font-weight:bold;border-bottom:2px solid #1e3a5f;width:20%;">Impact</th>'
+    risk_threat_width = '70%' if is_condensed else '50%'
+
     html = f"""<html><head><style>
         @page {{ margin: 0.75in; size: letter; }}
         body {{ font-family: Calibri, Arial, sans-serif; font-size: 10pt; color: #1e293b; line-height: 1.5; }}
         table {{ border-collapse: collapse; width: 100%; }}
+        h2, h3 {{ page-break-after: avoid; }}
+        table {{ page-break-inside: avoid; }}
+        tr {{ page-break-inside: avoid; }}
     </style></head><body>
         <p style="font-size:22pt;font-weight:bold;color:#1e293b;margin:0 0 2px 0;">{_fmt_escape(title)}</p>
         <table style="margin-bottom:20px;"><tr><td style="border-top:3px solid #1e3a5f;padding-top:6px;"><span style="font-size:9pt;color:#64748b;">Investment Thesis  |  {date_str}</span></td></tr></table>
@@ -4492,7 +4514,7 @@ def _generate_executive_brief_pdf(row, scorecard_data=None):
 
         {'<table style="margin-bottom:6px;"><tr><td style="background:#1e3a5f;padding:8px 16px;"><b style="color:#ffffff;font-size:10pt;letter-spacing:1px;">WHAT ARE WE WATCHING?</b></td></tr></table><table style="margin-bottom:20px;"><thead><tr><th style="padding:8px 12px;text-align:left;font-size:9pt;color:#1e293b;font-weight:bold;border-bottom:2px solid #1e3a5f;width:30%;">Measure</th><th style="padding:8px 12px;text-align:left;font-size:9pt;color:#1e293b;font-weight:bold;border-bottom:2px solid #1e3a5f;width:30%;">Target</th><th style="padding:8px 12px;text-align:left;font-size:9pt;color:#1e293b;font-weight:bold;border-bottom:2px solid #1e3a5f;width:18%;">Timeframe</th>' + sp_header_extra + '</tr></thead><tbody>' + sp_rows + '</tbody></table>' if signposts else ''}
 
-        {'<table style="margin-bottom:6px;"><tr><td style="background:#1e3a5f;padding:8px 16px;"><b style="color:#ffffff;font-size:10pt;letter-spacing:1px;">WHAT ARE THE RISKS?</b></td></tr></table><table style="margin-bottom:20px;"><thead><tr><th style="padding:8px 12px;text-align:left;font-size:9pt;color:#1e293b;font-weight:bold;border-bottom:2px solid #1e3a5f;width:50%;">Risk Factor</th><th style="padding:8px 12px;text-align:center;font-size:9pt;color:#1e293b;font-weight:bold;border-bottom:2px solid #1e3a5f;width:20%;">Likelihood</th><th style="padding:8px 12px;text-align:center;font-size:9pt;color:#1e293b;font-weight:bold;border-bottom:2px solid #1e3a5f;width:20%;">Impact</th>' + risk_header_status + '</tr></thead><tbody>' + risk_rows + '</tbody></table>' if threats else ''}
+        {'<table style="margin-bottom:6px;"><tr><td style="background:#1e3a5f;padding:8px 16px;"><b style="color:#ffffff;font-size:10pt;letter-spacing:1px;">WHAT ARE THE RISKS?</b></td></tr></table><table style="margin-bottom:20px;"><thead><tr><th style="padding:8px 12px;text-align:left;font-size:9pt;color:#1e293b;font-weight:bold;border-bottom:2px solid #1e3a5f;width:' + risk_threat_width + ';">Risk Factor</th>' + risk_lk_imp_headers + risk_header_status + '</tr></thead><tbody>' + risk_rows + '</tbody></table>' if threats else ''}
 
         {('<p style="font-size:10pt;color:#1e3a5f;font-weight:bold;border-bottom:2px solid #1e3a5f;padding-bottom:4px;margin:4px 0 8px 0;">Conclusion</p><p style="margin:0;color:#334155;font-size:10pt;line-height:1.65;">' + _fmt_escape(conclusion) + '</p>') if conclusion else ''}
     </body></html>"""
@@ -4568,6 +4590,7 @@ def _generate_onepager_pdf(row, scorecard_data=None):
     d = _parse_analysis_data(row)
     ticker, company, date_str = d['ticker'], d['company'], d['date_str']
     thesis, signposts, threats, conclusion = d['thesis'], d['signposts'], d['threats'], d['conclusion']
+    is_condensed = d.get('_condensed', False)
     sp_data = _build_signpost_data(signposts, scorecard_data)
     rk_data = _build_risk_data(threats, scorecard_data)
 
@@ -4587,7 +4610,8 @@ def _generate_onepager_pdf(row, scorecard_data=None):
     for r in rk_data:
         st = r['status']
         st_color = _status_color(st) if st else '#94a3b8'
-        risk_rows += f'<tr><td style="padding:3px 6px;border-bottom:1px solid #e2e8f0;font-size:8pt;font-weight:600;color:#1e293b;">{r["threat"]}</td><td style="padding:3px 6px;border-bottom:1px solid #e2e8f0;font-size:8pt;color:#475569;text-align:center;">{r["likelihood"]}/{r["impact"]}</td><td style="padding:3px 6px;border-bottom:1px solid #e2e8f0;font-size:8pt;text-align:center;font-weight:bold;color:{st_color};">{st.upper() if st else "—"}</td></tr>'
+        lk_imp_cell = '' if is_condensed else (f'<td style="padding:3px 6px;border-bottom:1px solid #e2e8f0;font-size:8pt;color:#475569;text-align:center;">{r["likelihood"]}/{r["impact"]}</td>' if (r["likelihood"] or r["impact"]) else '')
+        risk_rows += f'<tr><td style="padding:3px 6px;border-bottom:1px solid #e2e8f0;font-size:8pt;font-weight:600;color:#1e293b;">{r["threat"]}</td>{lk_imp_cell}<td style="padding:3px 6px;border-bottom:1px solid #e2e8f0;font-size:8pt;text-align:center;font-weight:bold;color:{st_color};">{st.upper() if st else "—"}</td></tr>'
 
     html = f"""<html><head><style>
         @page {{ margin: 0.45in; size: letter; }}
@@ -4609,7 +4633,7 @@ def _generate_onepager_pdf(row, scorecard_data=None):
             </td>
             <td style="vertical-align:top;width:50%;padding-left:8px;border-left:1px solid #cbd5e1;">
                 <table style="margin-bottom:4px;"><tr><td style="background:#7f1d1d;padding:5px 10px;"><b style="color:#ffffff;font-size:8pt;letter-spacing:1px;">RISKS TO THESIS</b></td></tr></table>
-                <table style="border:1px solid #e2e8f0;margin-bottom:8px;"><thead><tr style="background:#fef2f2;"><th style="padding:3px 6px;text-align:left;font-size:7pt;color:#7f1d1d;border-bottom:1px solid #fecaca;">RISK</th><th style="padding:3px 6px;text-align:center;font-size:7pt;color:#7f1d1d;border-bottom:1px solid #fecaca;">L/I</th><th style="padding:3px 6px;text-align:center;font-size:7pt;color:#7f1d1d;border-bottom:1px solid #fecaca;">STATUS</th></tr></thead><tbody>{risk_rows}</tbody></table>
+                <table style="border:1px solid #e2e8f0;margin-bottom:8px;"><thead><tr style="background:#fef2f2;"><th style="padding:3px 6px;text-align:left;font-size:7pt;color:#7f1d1d;border-bottom:1px solid #fecaca;">RISK</th>{'<th style="padding:3px 6px;text-align:center;font-size:7pt;color:#7f1d1d;border-bottom:1px solid #fecaca;">L/I</th>' if not is_condensed else ''}<th style="padding:3px 6px;text-align:center;font-size:7pt;color:#7f1d1d;border-bottom:1px solid #fecaca;">STATUS</th></tr></thead><tbody>{risk_rows}</tbody></table>
                 {('<table style="margin-bottom:4px;"><tr><td style="background:#0f172a;padding:5px 10px;"><b style="color:#ffffff;font-size:8pt;letter-spacing:1px;">CONCLUSION</b></td></tr></table><p style="color:#475569;font-size:8.5pt;line-height:1.4;margin:0 0 0 4px;">' + _fmt_escape(conclusion) + '</p>') if conclusion else ''}
             </td>
         </tr></table>
@@ -4638,6 +4662,7 @@ def _generate_board_pdf(row, scorecard_data=None):
         gauge_html = f'<table style="border:2px solid #e2e8f0;margin-bottom:18px;"><tr><td style="padding:16px 24px;text-align:center;width:40%;"><span style="font-size:40pt;font-weight:bold;color:{conv_color};">{pct}%</span><br/><span style="font-size:10pt;color:#475569;font-weight:700;letter-spacing:1px;">{conv_label}</span></td><td style="padding:16px;text-align:center;background:#dcfce7;width:20%;border-left:2px solid #e2e8f0;"><span style="font-size:24pt;font-weight:bold;color:#16a34a;">{g}</span><br/><span style="font-size:8pt;color:#166534;font-weight:700;">GREEN</span></td><td style="padding:16px;text-align:center;background:#fef9c3;width:20%;border-left:2px solid #e2e8f0;"><span style="font-size:24pt;font-weight:bold;color:#ca8a04;">{y}</span><br/><span style="font-size:8pt;color:#854d0e;font-weight:700;">YELLOW</span></td><td style="padding:16px;text-align:center;background:#fee2e2;width:20%;border-left:2px solid #e2e8f0;"><span style="font-size:24pt;font-weight:bold;color:#dc2626;">{r}</span><br/><span style="font-size:8pt;color:#991b1b;font-weight:700;">RED</span></td></tr></table>'
 
     pillars_html = ''
+    is_condensed = d.get('_condensed', False)
     for p in _build_pillar_data(thesis, scorecard_data):
         t = _fmt_escape(p.get('pillar', p.get('title', '')))
         desc = _fmt_escape(p.get('detail', p.get('description', '')))
@@ -4659,12 +4684,18 @@ def _generate_board_pdf(row, scorecard_data=None):
         st_bg = _status_bg(st) if st else '#ffffff'
         st_color = _status_color(st) if st else '#94a3b8'
         left_border = f'border-left:4px solid {st_color};' if st else ''
-        risk_rows += f'<tr style="background:{st_bg};"><td style="padding:7px 12px;border:1px solid #e2e8f0;{left_border}font-weight:600;color:#0f172a;font-size:9pt;width:35%;">{rk["threat"]}</td><td style="padding:7px 12px;border:1px solid #e2e8f0;color:#475569;font-size:9pt;text-align:center;width:20%;">{rk["likelihood"]}</td><td style="padding:7px 12px;border:1px solid #e2e8f0;color:#475569;font-size:9pt;text-align:center;width:20%;">{rk["impact"]}</td><td style="padding:7px 12px;border:1px solid #e2e8f0;text-align:center;font-weight:bold;color:{st_color};font-size:9pt;width:25%;">{st.upper() if st else "—"}</td></tr>'
+        if is_condensed:
+            risk_rows += f'<tr style="background:{st_bg};"><td style="padding:7px 12px;border:1px solid #e2e8f0;{left_border}font-weight:600;color:#0f172a;font-size:9pt;width:75%;">{rk["threat"]}</td><td style="padding:7px 12px;border:1px solid #e2e8f0;text-align:center;font-weight:bold;color:{st_color};font-size:9pt;width:25%;">{st.upper() if st else "—"}</td></tr>'
+        else:
+            risk_rows += f'<tr style="background:{st_bg};"><td style="padding:7px 12px;border:1px solid #e2e8f0;{left_border}font-weight:600;color:#0f172a;font-size:9pt;width:35%;">{rk["threat"]}</td><td style="padding:7px 12px;border:1px solid #e2e8f0;color:#475569;font-size:9pt;text-align:center;width:20%;">{rk["likelihood"]}</td><td style="padding:7px 12px;border:1px solid #e2e8f0;color:#475569;font-size:9pt;text-align:center;width:20%;">{rk["impact"]}</td><td style="padding:7px 12px;border:1px solid #e2e8f0;text-align:center;font-weight:bold;color:{st_color};font-size:9pt;width:25%;">{st.upper() if st else "—"}</td></tr>'
 
     html = f"""<html><head><style>
         @page {{ margin: 0.6in 0.7in; size: letter; }}
         body {{ font-family: Calibri, Arial, sans-serif; font-size: 10pt; color: #1e293b; line-height: 1.45; }}
         table {{ border-collapse: collapse; width: 100%; }}
+        h2, h3 {{ page-break-after: avoid; }}
+        table {{ page-break-inside: avoid; }}
+        tr {{ page-break-inside: avoid; }}
     </style></head><body>
         <table style="margin-bottom:14px;"><tr>
             <td style="background:#0f172a;padding:18px 24px;width:60%;"><span style="font-size:28pt;font-weight:bold;color:#ffffff;">{_fmt_escape(ticker)}</span><br/><span style="font-size:11pt;color:#94a3b8;">{_fmt_escape(company)}</span></td>
@@ -4679,7 +4710,7 @@ def _generate_board_pdf(row, scorecard_data=None):
 
         {'<p style="font-size:11pt;color:#0f172a;font-weight:bold;border-bottom:2px solid #0f172a;padding-bottom:4px;margin:16px 0 8px 0;">SIGNPOSTS</p><table style="border:1px solid #e2e8f0;margin-bottom:14px;"><thead><tr style="background:#f1f5f9;"><th style="padding:7px 12px;text-align:left;font-size:8pt;color:#475569;font-weight:700;border:1px solid #e2e8f0;">METRIC</th><th style="padding:7px 12px;text-align:center;font-size:8pt;color:#475569;font-weight:700;border:1px solid #e2e8f0;">TARGET</th><th style="padding:7px 12px;text-align:center;font-size:8pt;color:#475569;font-weight:700;border:1px solid #e2e8f0;">LATEST</th><th style="padding:7px 12px;text-align:center;font-size:8pt;color:#475569;font-weight:700;border:1px solid #e2e8f0;">STATUS</th></tr></thead><tbody>' + sp_rows + '</tbody></table>' if signposts else ''}
 
-        {'<p style="font-size:11pt;color:#0f172a;font-weight:bold;border-bottom:2px solid #0f172a;padding-bottom:4px;margin:0 0 8px 0;">RISKS TO THESIS</p><table style="border:1px solid #e2e8f0;margin-bottom:14px;"><thead><tr style="background:#f1f5f9;"><th style="padding:7px 12px;text-align:left;font-size:8pt;color:#475569;font-weight:700;border:1px solid #e2e8f0;">RISK FACTOR</th><th style="padding:7px 12px;text-align:center;font-size:8pt;color:#475569;font-weight:700;border:1px solid #e2e8f0;">LIKELIHOOD</th><th style="padding:7px 12px;text-align:center;font-size:8pt;color:#475569;font-weight:700;border:1px solid #e2e8f0;">IMPACT</th><th style="padding:7px 12px;text-align:center;font-size:8pt;color:#475569;font-weight:700;border:1px solid #e2e8f0;">STATUS</th></tr></thead><tbody>' + risk_rows + '</tbody></table>' if threats else ''}
+        {'<p style="font-size:11pt;color:#0f172a;font-weight:bold;border-bottom:2px solid #0f172a;padding-bottom:4px;margin:0 0 8px 0;">RISKS TO THESIS</p><table style="border:1px solid #e2e8f0;margin-bottom:14px;"><thead><tr style="background:#f1f5f9;"><th style="padding:7px 12px;text-align:left;font-size:8pt;color:#475569;font-weight:700;border:1px solid #e2e8f0;">RISK FACTOR</th>' + ('' if is_condensed else '<th style="padding:7px 12px;text-align:center;font-size:8pt;color:#475569;font-weight:700;border:1px solid #e2e8f0;">LIKELIHOOD</th><th style="padding:7px 12px;text-align:center;font-size:8pt;color:#475569;font-weight:700;border:1px solid #e2e8f0;">IMPACT</th>') + '<th style="padding:7px 12px;text-align:center;font-size:8pt;color:#475569;font-weight:700;border:1px solid #e2e8f0;">STATUS</th></tr></thead><tbody>' + risk_rows + '</tbody></table>' if threats else ''}
     </body></html>"""
     buf = io.BytesIO()
     pisa.CreatePDF(html, dest=buf)
@@ -4692,6 +4723,7 @@ def _generate_ic_memo_pdf(row, scorecard_data=None):
     d = _parse_analysis_data(row)
     ticker, company, date_str = d['ticker'], d['company'], d['date_str']
     thesis, signposts, threats, conclusion = d['thesis'], d['signposts'], d['threats'], d['conclusion']
+    is_condensed = d.get('_condensed', False)
     sp_data = _build_signpost_data(signposts, scorecard_data)
     rk_data = _build_risk_data(threats, scorecard_data)
     g, y, r = _tally_statuses(scorecard_data)
@@ -4733,16 +4765,24 @@ def _generate_ic_memo_pdf(row, scorecard_data=None):
         status_col = ''
         if has_sc:
             status_col = f'<td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;text-align:center;font-weight:bold;color:{st_color};width:12%;">{st.upper() if st else "—"}</td>'
-        risk_rows += f'<tr><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#1e293b;width:55%;">{rk["threat"]}{trigger_sub}</td><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;width:15%;">{rk["likelihood"]}</td><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;width:15%;">{rk["impact"]}</td>{status_col}</tr>'
+        if is_condensed:
+            risk_rows += f'<tr><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#1e293b;width:70%;">{rk["threat"]}{trigger_sub}</td>{status_col}</tr>'
+        else:
+            risk_rows += f'<tr><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#1e293b;width:55%;">{rk["threat"]}{trigger_sub}</td><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;width:15%;">{rk["likelihood"]}</td><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;width:15%;">{rk["impact"]}</td>{status_col}</tr>'
 
     risk_hdr_status = ''
     if has_sc:
         risk_hdr_status = '<th style="padding:7px 12px;text-align:center;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:10%;">Status</th>'
+    risk_lk_imp_headers_ic = '' if is_condensed else '<th style="padding:7px 12px;text-align:center;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:15%;">Likelihood</th><th style="padding:7px 12px;text-align:center;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:15%;">Impact</th>'
+    risk_threat_width_ic = '70%' if is_condensed else '55%'
 
     html = f"""<html><head><style>
         @page {{ margin: 0.75in; size: letter; }}
         body {{ font-family: Calibri, Arial, sans-serif; font-size: 10pt; color: #1e293b; line-height: 1.5; }}
         table {{ border-collapse: collapse; width: 100%; }}
+        h2, h3 {{ page-break-after: avoid; }}
+        table {{ page-break-inside: avoid; }}
+        tr {{ page-break-inside: avoid; }}
     </style></head><body>
         <table style="margin-bottom:20px;"><tr><td style="padding:0 0 8px 0;border-bottom:3px solid #1e293b;width:100%;"><span style="font-size:22pt;font-weight:bold;color:#0f172a;">{_fmt_escape(ticker)}</span><span style="font-size:14pt;color:#475569;"> — {_fmt_escape(company)}</span><br/><span style="font-size:9pt;color:#94a3b8;">{date_str}</span></td></tr></table>
 
@@ -4754,7 +4794,7 @@ def _generate_ic_memo_pdf(row, scorecard_data=None):
 
         {'<p style="font-size:11pt;font-weight:bold;color:#1e293b;margin:0 0 6px 0;border-bottom:1px solid #cbd5e1;padding-bottom:4px;">II. KEY SIGNPOSTS</p><table style="margin-bottom:18px;"><thead><tr><th style="padding:7px 12px;text-align:left;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:48%;">Measure</th><th style="padding:7px 12px;text-align:left;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:30%;">LT Goal</th>' + sp_hdr_extra + '</tr></thead><tbody>' + sp_rows + '</tbody></table>' if signposts else ''}
 
-        {'<p style="font-size:11pt;font-weight:bold;color:#1e293b;margin:0 0 6px 0;border-bottom:1px solid #cbd5e1;padding-bottom:4px;">III. RISK ASSESSMENT</p><table style="margin-bottom:18px;"><thead><tr><th style="padding:7px 12px;text-align:left;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:55%;">Risk Factor</th><th style="padding:7px 12px;text-align:center;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:15%;">Likelihood</th><th style="padding:7px 12px;text-align:center;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:15%;">Impact</th>' + risk_hdr_status + '</tr></thead><tbody>' + risk_rows + '</tbody></table>' if threats else ''}
+        {'<p style="font-size:11pt;font-weight:bold;color:#1e293b;margin:0 0 6px 0;border-bottom:1px solid #cbd5e1;padding-bottom:4px;">III. RISK ASSESSMENT</p><table style="margin-bottom:18px;"><thead><tr><th style="padding:7px 12px;text-align:left;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:' + risk_threat_width_ic + ';">Risk Factor</th>' + risk_lk_imp_headers_ic + risk_hdr_status + '</tr></thead><tbody>' + risk_rows + '</tbody></table>' if threats else ''}
 
         {('<p style="font-size:11pt;font-weight:bold;color:#1e293b;margin:0 0 6px 0;border-bottom:1px solid #cbd5e1;padding-bottom:4px;">IV. CONCLUSION</p><p style="color:#334155;font-size:10pt;line-height:1.65;margin:0;">' + _fmt_escape(conclusion) + '</p>') if conclusion else ''}
     </body></html>"""
@@ -4862,6 +4902,7 @@ def _generate_thesis_pptx_bytes(row, scorecard_data=None, fmt='executive'):
     d = _parse_analysis_data(row)
     ticker, company, date_str = d['ticker'], d['company'], d['date_str']
     thesis, signposts, threats, conclusion = d['thesis'], d['signposts'], d['threats'], d['conclusion']
+    is_condensed = d.get('_condensed', False)
     sp_data = _build_signpost_data(signposts, scorecard_data)
     rk_data = _build_risk_data(threats, scorecard_data)
     g, y, r = _tally_statuses(scorecard_data)
@@ -4961,19 +5002,32 @@ def _generate_thesis_pptx_bytes(row, scorecard_data=None, fmt='executive'):
     add_bar(s4, "WHAT COULD GO WRONG?", Inches(0.5), Inches(0.4), Inches(12.333))
     if rk_data:
         rows_n = len(rk_data) + 1
-        tbl = s4.shapes.add_table(rows_n, 4, Inches(0.5), Inches(1.3), Inches(12.333), Inches(min(rows_n * 0.55, 5.5))).table
-        tbl.columns[0].width = Inches(4.5); tbl.columns[1].width = Inches(2.5); tbl.columns[2].width = Inches(2.5); tbl.columns[3].width = Inches(2.833)
-        for j, h in enumerate(['Risk Factor', 'Likelihood', 'Impact', 'Status']):
-            tbl.cell(0, j).text = h; style_cell(tbl.cell(0, j), Pt(12), WHITE, True, TEAL, PP_ALIGN.CENTER if j == 3 else PP_ALIGN.LEFT)
-        for i, rk in enumerate(rk_data):
-            ri = i + 1
-            tbl.cell(ri, 0).text = rk.get('threat', ''); style_cell(tbl.cell(ri, 0), fill_color=DARK)
-            tbl.cell(ri, 1).text = rk.get('likelihood', ''); style_cell(tbl.cell(ri, 1), fill_color=DARK)
-            tbl.cell(ri, 2).text = rk.get('impact', ''); style_cell(tbl.cell(ri, 2), fill_color=DARK)
-            st = (rk.get('status', '') or '').lower()
-            tbl.cell(ri, 3).text = st.upper() if st else '—'
-            sbg = _pptx_status_bg(st)
-            style_cell(tbl.cell(ri, 3), font_color=_pptx_status_color(st) if not sbg else RGBColor(0x0F, 0x17, 0x2A), fill_color=sbg or DARK, align=PP_ALIGN.CENTER, bold=True)
+        if is_condensed:
+            tbl = s4.shapes.add_table(rows_n, 2, Inches(0.5), Inches(1.3), Inches(12.333), Inches(min(rows_n * 0.55, 5.5))).table
+            tbl.columns[0].width = Inches(9.5); tbl.columns[1].width = Inches(2.833)
+            for j, h in enumerate(['Risk Factor', 'Status']):
+                tbl.cell(0, j).text = h; style_cell(tbl.cell(0, j), Pt(12), WHITE, True, TEAL, PP_ALIGN.CENTER if j == 1 else PP_ALIGN.LEFT)
+            for i, rk in enumerate(rk_data):
+                ri = i + 1
+                tbl.cell(ri, 0).text = rk.get('threat', ''); style_cell(tbl.cell(ri, 0), fill_color=DARK)
+                st = (rk.get('status', '') or '').lower()
+                tbl.cell(ri, 1).text = st.upper() if st else '—'
+                sbg = _pptx_status_bg(st)
+                style_cell(tbl.cell(ri, 1), font_color=_pptx_status_color(st) if not sbg else RGBColor(0x0F, 0x17, 0x2A), fill_color=sbg or DARK, align=PP_ALIGN.CENTER, bold=True)
+        else:
+            tbl = s4.shapes.add_table(rows_n, 4, Inches(0.5), Inches(1.3), Inches(12.333), Inches(min(rows_n * 0.55, 5.5))).table
+            tbl.columns[0].width = Inches(4.5); tbl.columns[1].width = Inches(2.5); tbl.columns[2].width = Inches(2.5); tbl.columns[3].width = Inches(2.833)
+            for j, h in enumerate(['Risk Factor', 'Likelihood', 'Impact', 'Status']):
+                tbl.cell(0, j).text = h; style_cell(tbl.cell(0, j), Pt(12), WHITE, True, TEAL, PP_ALIGN.CENTER if j == 3 else PP_ALIGN.LEFT)
+            for i, rk in enumerate(rk_data):
+                ri = i + 1
+                tbl.cell(ri, 0).text = rk.get('threat', ''); style_cell(tbl.cell(ri, 0), fill_color=DARK)
+                tbl.cell(ri, 1).text = rk.get('likelihood', ''); style_cell(tbl.cell(ri, 1), fill_color=DARK)
+                tbl.cell(ri, 2).text = rk.get('impact', ''); style_cell(tbl.cell(ri, 2), fill_color=DARK)
+                st = (rk.get('status', '') or '').lower()
+                tbl.cell(ri, 3).text = st.upper() if st else '—'
+                sbg = _pptx_status_bg(st)
+                style_cell(tbl.cell(ri, 3), font_color=_pptx_status_color(st) if not sbg else RGBColor(0x0F, 0x17, 0x2A), fill_color=sbg or DARK, align=PP_ALIGN.CENTER, bold=True)
 
     # ---- SLIDE 5: Conclusion + Conviction ----
     s5 = prs.slides.add_slide(prs.slide_layouts[6])
@@ -5199,6 +5253,7 @@ def generate_thesis_format():
                 orig_analysis['threats'] = condensed.get('threats', orig_analysis.get('threats', []))
                 if condensed.get('conclusion'):
                     orig_analysis['conclusion'] = condensed['conclusion']
+                orig_analysis['_condensed'] = True
                 row_dict['analysis'] = orig_analysis
 
         # Generate based on format
@@ -5429,10 +5484,14 @@ def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slid
         signpost_text += line + "\n"
 
     # Build threats section text
+    is_condensed = d.get('_condensed', False)
     threats_text = ""
     for r in rk_data:
         if detail == 'simple':
             # Simple: threat name only, no status
+            line = f"  - {r['threat']}"
+        elif is_condensed:
+            # Condensed: threat name only, no likelihood/impact
             line = f"  - {r['threat']}"
         elif show_risk_detail:
             if detail == 'summary':
@@ -5723,6 +5782,7 @@ def start_thesis_infographic():
                     orig_analysis['threats'] = condensed.get('threats', orig_analysis.get('threats', []))
                     if condensed.get('conclusion'):
                         orig_analysis['conclusion'] = condensed['conclusion']
+                    orig_analysis['_condensed'] = True
                     row_dict['analysis'] = orig_analysis
             except Exception as ce:
                 print(f"Condensed thesis overlay warning: {ce}")
@@ -9477,18 +9537,16 @@ def _generate_precision_infographic(d, scorecard_data, mode, detail='full', show
             y += row_h
         return y
 
+    is_condensed = d.get('_condensed', False)
     def draw_risk_table(draw, x, y_start, width, data, compact=False):
         font = fonts['small'] if compact else fonts['regular']
         hdr_font = fonts['bold_sm'] if not compact else fonts['small']
         row_h = 28 if compact else 34
-        if detail == 'simple':
-            # Simple: always 2 columns — Risk Factor, Status (ignore show_risk_detail)
+        if detail == 'simple' or is_condensed:
+            # Simple or condensed: always 2 columns — Risk Factor, Status (no L/I)
             col_w = [int(width * 0.75), int(width * 0.25)]
             headers = ['Risk Factor', 'Status']
         elif show_risk_detail:
-            col_w = [int(width * 0.35), int(width * 0.2), int(width * 0.2), int(width * 0.25)]
-            headers = ['Risk Factor', 'Likelihood', 'Impact', 'Status']
-        else:
             col_w = [int(width * 0.75), int(width * 0.25)]
             headers = ['Risk Factor', 'Status']
         draw.rectangle([x, y_start, x + width, y_start + row_h], fill=(220, 38, 38, 180))
@@ -9501,10 +9559,10 @@ def _generate_precision_infographic(d, scorecard_data, mode, detail='full', show
             draw.rectangle([x, y, x + width, y + row_h], fill=DARK)
             draw.line([x, y, x + width, y], fill=(255, 255, 255, 30))
             cx = x
-            max_chars = 30 if (show_risk_detail and detail != 'simple') else 60
+            max_chars = 30 if (show_risk_detail and detail != 'simple' and not is_condensed) else 60
             draw.text((cx + 8, y + 6), (rk.get('threat', '') or '')[:max_chars], font=font, fill=LIGHT)
             cx += col_w[0]
-            if show_risk_detail and detail != 'simple':
+            if show_risk_detail and detail != 'simple' and not is_condensed:
                 draw.text((cx + 8, y + 6), (rk.get('likelihood', '') or '')[:12], font=font, fill=SLATE)
                 cx += col_w[1]
                 draw.text((cx + 8, y + 6), (rk.get('impact', '') or '')[:12], font=font, fill=SLATE)
