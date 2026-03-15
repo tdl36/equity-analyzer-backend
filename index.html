@@ -1409,9 +1409,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const batchPollRef = useRef(null);
             const batchFileRefs = useRef({});
             const [expanded, setExpanded] = useState({ thesis: true, signposts: true, threats: true, changes: true });
-            const [thesisViewMode, setThesisViewMode] = useState('full');
+            const [thesisViewMode, setThesisViewMode] = useState('detailed');
             const [condensedAnalysis, setCondensedAnalysis] = useState(null);
             const [condensedLoading, setCondensedLoading] = useState(false);
+            const [fullAnalysis, setFullAnalysis] = useState(null);
+            const [fullLoading, setFullLoading] = useState(false);
             const [draggedIndex, setDraggedIndex] = useState(null);
             const [showSaveDialog, setShowSaveDialog] = useState(false);
             const [showEmailDialog, setShowEmailDialog] = useState(false);
@@ -1617,9 +1619,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [fmtLastFileData, setFmtLastFileData] = useState(null);
             const [fmtLastFilename, setFmtLastFilename] = useState('');
             const [fmtLastOutputType, setFmtLastOutputType] = useState('pdf');
-            const [fmtThesisVersion, setFmtThesisVersion] = useState('full');
+            const [fmtThesisVersion, setFmtThesisVersion] = useState('detailed');
             const [fmtCondensedData, setFmtCondensedData] = useState(null);
             const [fmtCondensedLoading, setFmtCondensedLoading] = useState(false);
+            const [fmtFullData, setFmtFullData] = useState(null);
+            const [fmtFullLoading, setFmtFullLoading] = useState(false);
 
             // Thesis Infographic state
             const [fmtInfographicMode, setFmtInfographicMode] = useState('1');
@@ -7058,8 +7062,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         setExpanded({ thesis: true, signposts: true, threats: true, changes: true });
                         setShowDocumentManager(false);
                         setMobileMenuOpen(false);
-                        setThesisViewMode('full');
+                        setThesisViewMode('detailed');
                         setCondensedAnalysis(null);
+                        setFullAnalysis(null);
+                        loadThesisFull(ticker);
                         loadThesisCondensed(ticker);
                     } else {
                         const errorText = await response.text();
@@ -7882,7 +7888,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const combinedPercentages = getCombinedPercentages();
 
             const editAnalysisField = (type, index, field, value) => {
-                const setter = (thesisViewMode === 'condensed' && condensedAnalysis) ? setCondensedAnalysis : setAnalysis;
+                const setter = (thesisViewMode === 'condensed' && condensedAnalysis) ? setCondensedAnalysis
+                    : (thesisViewMode === 'full' && fullAnalysis) ? setFullAnalysis : setAnalysis;
                 setter(prev => {
                     const updated = { ...prev };
                     if (type === 'thesis-summary') {
@@ -7902,7 +7909,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
             const deleteAnalysisItem = (type, index) => {
                 if (!confirm('Delete this item?')) return;
-                const setter = (thesisViewMode === 'condensed' && condensedAnalysis) ? setCondensedAnalysis : setAnalysis;
+                const setter = (thesisViewMode === 'condensed' && condensedAnalysis) ? setCondensedAnalysis
+                    : (thesisViewMode === 'full' && fullAnalysis) ? setFullAnalysis : setAnalysis;
                 setter(prev => {
                     const updated = { ...prev };
                     if (type === 'pillar') {
@@ -8759,9 +8767,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
                 try {
                     const isCondensed = thesisViewMode === 'condensed' && !!condensedAnalysis;
-                    const eThesis = isCondensed ? condensedAnalysis.thesis : analysis.thesis;
-                    const eSignposts = isCondensed ? condensedAnalysis.signposts : analysis.signposts;
-                    const eThreats = isCondensed ? condensedAnalysis.threats : analysis.threats;
+                    const isFull = thesisViewMode === 'full' && !!fullAnalysis;
+                    const eThesis = isCondensed ? condensedAnalysis.thesis : isFull ? fullAnalysis.thesis : analysis.thesis;
+                    const eSignposts = isCondensed ? condensedAnalysis.signposts : isFull ? fullAnalysis.signposts : analysis.signposts;
+                    const eThreats = isCondensed ? condensedAnalysis.threats : isFull ? fullAnalysis.threats : analysis.threats;
 
                     // Generate clean HTML email with consistent black text and sizing
                     const cleanText = (text) => {
@@ -8773,10 +8782,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             .replace(/\n/g, '<br>');
                     };
 
+                    const tierSuffix = isCondensed ? ' (Condensed)' : isFull ? ' (Full)' : '';
                     let emailBody = `
 <html>
 <body style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #000000; max-width: 700px; margin: 0 auto;">
-    <p style="font-size: 14px; color: #000000; margin-bottom: 5px;"><strong>${analysis.ticker} - ${analysis.company}${isCondensed ? ' (Condensed)' : ''}</strong></p>
+    <p style="font-size: 14px; color: #000000; margin-bottom: 5px;"><strong>${analysis.ticker} - ${analysis.company}${tierSuffix}</strong></p>
     <hr style="border: none; border-top: 1px solid #000000; margin: 10px 0 20px 0;">
 
     <p style="font-size: 14px; color: #000000; margin-bottom: 15px;"><strong>1. Investment Thesis</strong></p>
@@ -8885,12 +8895,18 @@ Regulatory, execution, or macro risks that could derail the thesis:
             
             // Quick send email for Portfolio (no dialog)
             // --- Thesis download/bulk handlers ---
+            const _currentThesisTier = () => {
+                if (thesisViewMode === 'condensed' && condensedAnalysis) return 'condensed';
+                if (thesisViewMode === 'full' && fullAnalysis) return 'full';
+                return 'detailed';
+            };
+
             const downloadAnalysisDocx = async (ticker) => {
                 if (!ticker) ticker = currentTicker;
                 if (!ticker) return;
-                const useCondensed = thesisViewMode === 'condensed' && !!condensedAnalysis;
+                const thesisTier = _currentThesisTier();
                 try {
-                    const res = await fetch(`${API_URL}/api/analysis-to-docx`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticker, useCondensed }) });
+                    const res = await fetch(`${API_URL}/api/analysis-to-docx`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticker, thesisTier }) });
                     if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Export failed'); }
                     const data = await res.json();
                     triggerBase64Download(data.fileData, data.filename, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
@@ -8900,9 +8916,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const downloadAnalysisPdf = async (ticker) => {
                 if (!ticker) ticker = currentTicker;
                 if (!ticker) return;
-                const useCondensed = thesisViewMode === 'condensed' && !!condensedAnalysis;
+                const thesisTier = _currentThesisTier();
                 try {
-                    const res = await fetch(`${API_URL}/api/analysis-to-pdf`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticker, useCondensed }) });
+                    const res = await fetch(`${API_URL}/api/analysis-to-pdf`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticker, thesisTier }) });
                     if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Export failed'); }
                     const data = await res.json();
                     triggerBase64Download(data.fileData, data.filename, 'application/pdf');
@@ -8920,9 +8936,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const bulkDownloadTheses = async (format) => {
                 if (selectedThesisTickers.size === 0) return;
                 setThesisBulkLoading(true);
-                const useCondensed = thesisViewMode === 'condensed';
+                const thesisTier = _currentThesisTier();
                 try {
-                    const res = await fetch(`${API_URL}/api/analyses-bulk-export`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tickers: Array.from(selectedThesisTickers), format, useCondensed }) });
+                    const res = await fetch(`${API_URL}/api/analyses-bulk-export`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tickers: Array.from(selectedThesisTickers), format, thesisTier }) });
                     if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Bulk export failed'); }
                     const data = await res.json();
                     triggerBase64Download(data.fileData, data.filename, 'application/zip');
@@ -8940,7 +8956,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 try { creds = JSON.parse(saved); } catch (e) { alert('Invalid email credentials'); return; }
                 if (!creds.email && !creds.defaultRecipient && !creds.gmailUser) { alert('No recipient email configured'); return; }
                 const recipient = creds.defaultRecipient || creds.email || creds.gmailUser;
-                const useCondensed = thesisViewMode === 'condensed';
+                const thesisTier = _currentThesisTier();
                 setThesisBulkLoading(true);
                 try {
                     const res = await fetch(`${API_URL}/api/email-analyses-bulk`, {
@@ -8948,7 +8964,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         body: JSON.stringify({
                             tickers: Array.from(selectedThesisTickers),
                             email: recipient,
-                            useCondensed,
+                            thesisTier,
                             smtpConfig: { use_gmail: creds.useGmail, gmail_user: creds.gmailUser, gmail_app_password: creds.gmailPassword, from_email: creds.gmailUser }
                         })
                     });
@@ -9010,6 +9026,17 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     }
                 } catch (e) { setFmtCondensedData(null); }
             };
+            const loadFullThesis = async (ticker) => {
+                try {
+                    const res = await fetch(`${API_URL}/api/thesis-full/${ticker}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        setFmtFullData(data.full);
+                    } else {
+                        setFmtFullData(null);
+                    }
+                } catch (e) { setFmtFullData(null); }
+            };
             const generateCondensedThesis = async (ticker) => {
                 setFmtCondensedLoading(true);
                 try {
@@ -9032,7 +9059,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 try {
                     await fetch(`${API_URL}/api/thesis-condensed/${ticker}`, { method: 'DELETE' });
                     setFmtCondensedData(null);
-                    setFmtThesisVersion('full');
+                    setFmtThesisVersion('detailed');
                 } catch (e) { console.error('Failed to delete condensed thesis:', e); }
             };
 
@@ -9084,6 +9111,61 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 } catch (e) { alert('Save failed: ' + e.message); }
             };
 
+            const loadThesisFull = async (ticker) => {
+                try {
+                    const res = await fetch(`${API_URL}/api/thesis-full/${ticker}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        setFullAnalysis(data.full);
+                        setFmtFullData(data.full);
+                    } else {
+                        setFullAnalysis(null);
+                        setFmtFullData(null);
+                    }
+                } catch (e) { setFullAnalysis(null); setFmtFullData(null); }
+            };
+
+            const generateThesisFull = async (ticker) => {
+                setFullLoading(true);
+                try {
+                    const res = await fetch(`${API_URL}/api/thesis-full/generate`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ticker, apiKey: localStorage.getItem('equity_analyzer_api_key') || '', geminiApiKey: localStorage.getItem('equity_analyzer_gemini_key') || '' })
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        setFullAnalysis(data.full);
+                        setFmtFullData(data.full);
+                        setThesisViewMode('full');
+                        setFmtThesisVersion('full');
+                        // Invalidate stale condensed (backend already deleted it)
+                        setCondensedAnalysis(null);
+                        setFmtCondensedData(null);
+                    } else {
+                        const err = await res.json();
+                        alert('Failed to generate full thesis: ' + (err.error || 'Unknown error'));
+                    }
+                } catch (e) { alert('Failed to generate full thesis: ' + e.message); }
+                finally { setFullLoading(false); }
+            };
+
+            const saveFullAnalysis = async () => {
+                if (!fullAnalysis || !currentTicker) return;
+                try {
+                    const res = await fetch(`${API_URL}/api/thesis-full/${currentTicker}`, {
+                        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ full_analysis: fullAnalysis })
+                    });
+                    if (res.ok) {
+                        setFmtFullData(fullAnalysis);
+                        alert('Full thesis saved!');
+                    } else {
+                        const err = await res.json();
+                        alert('Save failed: ' + (err.error || 'Unknown error'));
+                    }
+                } catch (e) { alert('Save failed: ' + e.message); }
+            };
+
             const loadFmtTicker = async (ticker) => {
                 setFmtTicker(ticker);
                 setFmtScorecardData(null);
@@ -9097,12 +9179,14 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 setFmtInfographicViewingImages([]);
                 setFmtInfographicImages([]);
                 setFmtCondensedData(null);
-                setFmtThesisVersion('full');
+                setFmtFullData(null);
+                setFmtThesisVersion('detailed');
                 if (!ticker) return;
                 loadInfographicHistory(ticker);
                 loadInfographicTemplates();
                 loadFmtHistory(ticker);
                 loadCondensedThesis(ticker);
+                loadFullThesis(ticker);
                 try {
                     const [analysisRes, scorecardRes] = await Promise.all([
                         fetch(`${API_URL}/api/analysis/${ticker}`),
@@ -9262,8 +9346,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     } catch (e) { /* ignore save error */ }
                 }
                 try {
-                    const fmtPayload = { ticker: fmtTicker, format: fmtSelectedFormat, outputType };
-                    if (fmtThesisVersion === 'condensed' && fmtCondensedData) fmtPayload.useCondensed = true;
+                    const fmtPayload = { ticker: fmtTicker, format: fmtSelectedFormat, outputType, thesisTier: fmtThesisVersion };
                     const res = await fetch(`${API_URL}/api/thesis-format/generate`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(fmtPayload)
@@ -9386,7 +9469,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 try {
                     const res = await fetch(`${API_URL}/api/thesis-format/infographic`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ ticker: fmtTicker, mode: fmtInfographicMode, detail: fmtInfographicDetail, style: fmtInfographicStyle, geminiApiKey: geminiKey, showRiskDetail: fmtInfographicShowRiskDetail, colorScheme: fmtInfographicColorScheme, includeCompanyName: fmtInfographicShowCompany, templateId: fmtInfographicSelectedTemplate || undefined, useCondensed: fmtThesisVersion === 'condensed' && fmtCondensedData ? true : undefined })
+                        body: JSON.stringify({ ticker: fmtTicker, mode: fmtInfographicMode, detail: fmtInfographicDetail, style: fmtInfographicStyle, geminiApiKey: geminiKey, showRiskDetail: fmtInfographicShowRiskDetail, colorScheme: fmtInfographicColorScheme, includeCompanyName: fmtInfographicShowCompany, templateId: fmtInfographicSelectedTemplate || undefined, thesisTier: fmtThesisVersion })
                     });
                     if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Failed to start generation'); }
                     const data = await res.json();
@@ -9603,9 +9686,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 
                 // Generate email body
                 const isCondensed = thesisViewMode === 'condensed' && !!condensedAnalysis;
-                const eThesis = isCondensed ? condensedAnalysis.thesis : analysis.thesis;
-                const eSignposts = isCondensed ? condensedAnalysis.signposts : analysis.signposts;
-                const eThreats = isCondensed ? condensedAnalysis.threats : analysis.threats;
+                const isFull = thesisViewMode === 'full' && !!fullAnalysis;
+                const eThesis = isCondensed ? condensedAnalysis.thesis : isFull ? fullAnalysis.thesis : analysis.thesis;
+                const eSignposts = isCondensed ? condensedAnalysis.signposts : isFull ? fullAnalysis.signposts : analysis.signposts;
+                const eThreats = isCondensed ? condensedAnalysis.threats : isFull ? fullAnalysis.threats : analysis.threats;
                 const cleanText = (text) => {
                     if (!text) return '';
                     if (typeof text !== 'string') return safeStr(text);
@@ -9615,10 +9699,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         .replace(/\n/g, '<br>');
                 };
 
+                const tierSuffix2 = isCondensed ? ' (Condensed)' : isFull ? ' (Full)' : '';
                 let emailBody = `
 <html>
 <body style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #000000; max-width: 700px; margin: 0 auto;">
-    <p style="font-size: 14px; color: #000000; margin-bottom: 5px;"><strong>${analysis.ticker} - ${analysis.company}${isCondensed ? ' (Condensed)' : ''}</strong></p>
+    <p style="font-size: 14px; color: #000000; margin-bottom: 5px;"><strong>${analysis.ticker} - ${analysis.company}${tierSuffix2}</strong></p>
     <hr style="border: none; border-top: 1px solid #000000; margin: 10px 0 20px 0;">
 
     <p style="font-size: 14px; color: #000000; margin-bottom: 15px;"><strong>1. Investment Thesis</strong></p>
@@ -10006,7 +10091,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         {thesisSelectMode && selectedThesisTickers.size > 0 && (
                             <div className="p-3 border-t border-white/15 bg-slate-800/95 space-y-2">
                                 <div className="flex items-center justify-between text-xs">
-                                    <span className="font-medium">{selectedThesisTickers.size} selected{thesisViewMode === 'condensed' ? ' (condensed)' : ''}</span>
+                                    <span className="font-medium">{selectedThesisTickers.size} selected{thesisViewMode === 'full' ? ' (full)' : thesisViewMode === 'condensed' ? ' (condensed)' : ''}</span>
                                     <div className="flex gap-2">
                                         <button onClick={() => setSelectedThesisTickers(new Set(savedAnalyses.map(s => s.ticker)))} className="text-blue-400 hover:text-blue-300">All</button>
                                         <button onClick={() => setSelectedThesisTickers(new Set())} className="text-slate-400 hover:text-slate-300">None</button>
@@ -10073,12 +10158,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 )}
                                 {analysis && (
                                     <>
-                                        {/* Full/Condensed toggle */}
+                                        {/* Detailed/Full/Condensed toggle */}
                                         <div className="flex items-center bg-white/5 border border-white/10 rounded-lg overflow-hidden flex-shrink-0">
-                                            <button onClick={() => setThesisViewMode('full')} className={`px-2 sm:px-3 py-2 text-xs font-medium transition-all ${thesisViewMode === 'full' ? 'bg-teal-500/80 text-white' : 'text-slate-400 hover:text-white'}`}>Full</button>
+                                            <button onClick={() => setThesisViewMode('detailed')} className={`px-2 sm:px-3 py-2 text-xs font-medium transition-all ${thesisViewMode === 'detailed' ? 'bg-teal-500/80 text-white' : 'text-slate-400 hover:text-white'}`}>Detailed</button>
+                                            <button onClick={() => { setThesisViewMode('full'); if (!fullAnalysis && currentTicker) loadThesisFull(currentTicker); }} className={`px-2 sm:px-3 py-2 text-xs font-medium transition-all ${thesisViewMode === 'full' ? 'bg-blue-500/80 text-white' : 'text-slate-400 hover:text-white'}`}>Full</button>
                                             <button onClick={() => { setThesisViewMode('condensed'); if (!condensedAnalysis && currentTicker) loadThesisCondensed(currentTicker); }} className={`px-2 sm:px-3 py-2 text-xs font-medium transition-all ${thesisViewMode === 'condensed' ? 'bg-purple-500/80 text-white' : 'text-slate-400 hover:text-white'}`}>Condensed</button>
                                         </div>
-                                        {!showDocumentManager && thesisViewMode === 'full' && (
+                                        {!showDocumentManager && thesisViewMode === 'detailed' && (
                                             <button
                                                 onClick={() => setShowDocumentManager(true)}
                                                 className="flex items-center gap-1 px-2 sm:px-3 py-2 bg-teal-500/80 hover:bg-teal-500/90 backdrop-blur-sm border border-teal-400/30 shadow-lg shadow-teal-500/20 rounded-lg text-sm font-medium"
@@ -10089,12 +10175,16 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             </button>
                                         )}
                                         <button
-                                            onClick={() => thesisViewMode === 'condensed' && condensedAnalysis ? saveCondensedAnalysis() : setShowSaveDialog(true)}
+                                            onClick={() => {
+                                                if (thesisViewMode === 'condensed' && condensedAnalysis) saveCondensedAnalysis();
+                                                else if (thesisViewMode === 'full' && fullAnalysis) saveFullAnalysis();
+                                                else setShowSaveDialog(true);
+                                            }}
                                             className="flex items-center gap-1 px-2 sm:px-3 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 rounded-lg text-sm font-medium shadow-lg shadow-emerald-500/20"
-                                            title={thesisViewMode === 'condensed' ? 'Save Condensed' : 'Save'}
+                                            title={thesisViewMode === 'condensed' ? 'Save Condensed' : thesisViewMode === 'full' ? 'Save Full' : 'Save'}
                                         >
                                             <Save />
-                                            <span className="hidden md:inline">{thesisViewMode === 'condensed' ? 'Save' : 'Save'}</span>
+                                            <span className="hidden md:inline">Save</span>
                                         </button>
                                         <button 
                                             onClick={quickSendPortfolioEmail} 
@@ -11181,11 +11271,31 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
                                 {!batchUpdateMode && analysis && !showDocumentManager && !showHistory && (() => {
                                     const isCondensedView = thesisViewMode === 'condensed' && !!condensedAnalysis;
-                                    const activeThesis = isCondensedView ? condensedAnalysis.thesis : analysis?.thesis;
-                                    const activeSignposts = isCondensedView ? condensedAnalysis.signposts : analysis?.signposts;
-                                    const activeThreats = isCondensedView ? condensedAnalysis.threats : analysis?.threats;
+                                    const isFullView = thesisViewMode === 'full' && !!fullAnalysis;
+                                    const activeThesis = isCondensedView ? condensedAnalysis.thesis
+                                        : isFullView ? fullAnalysis.thesis : analysis?.thesis;
+                                    const activeSignposts = isCondensedView ? condensedAnalysis.signposts
+                                        : isFullView ? fullAnalysis.signposts : analysis?.signposts;
+                                    const activeThreats = isCondensedView ? condensedAnalysis.threats
+                                        : isFullView ? fullAnalysis.threats : analysis?.threats;
                                     return (
                                     <div className="space-y-6">
+                                    {/* Full mode banner — generate prompt */}
+                                    {thesisViewMode === 'full' && !fullAnalysis && (
+                                        <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-6 text-center">
+                                            <p className="text-sm text-slate-300 mb-3">No curated full version exists yet for {currentTicker}</p>
+                                            <button onClick={() => generateThesisFull(currentTicker)} disabled={fullLoading} className="px-4 py-2 bg-blue-500 hover:bg-blue-600 rounded-lg text-sm font-medium disabled:opacity-50">
+                                                {fullLoading ? 'Generating...' : 'Generate Full Version'}
+                                            </button>
+                                        </div>
+                                    )}
+                                    {/* Full mode banner — viewing indicator */}
+                                    {isFullView && (
+                                        <div className="flex items-center gap-3 bg-blue-500/10 border border-blue-500/30 rounded-lg px-4 py-2">
+                                            <span className="text-xs text-blue-300 font-medium">Viewing curated full thesis</span>
+                                            <button onClick={() => { setFullLoading(true); generateThesisFull(currentTicker); }} className="text-xs text-blue-400 hover:text-blue-300 underline">Regenerate</button>
+                                        </div>
+                                    )}
                                     {/* Condensed mode banner */}
                                     {thesisViewMode === 'condensed' && !condensedAnalysis && (
                                         <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-6 text-center">
@@ -16548,14 +16658,39 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     {fmtTicker && (
                                         <div className="mb-6">
                                             <label className="text-sm text-slate-400 font-medium mb-2 block">Thesis Version</label>
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-2 flex-wrap">
                                                 <div className="flex bg-white/[0.06] rounded-lg p-1">
                                                     <button
-                                                        onClick={() => setFmtThesisVersion('full')}
+                                                        onClick={() => setFmtThesisVersion('detailed')}
                                                         className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
-                                                            fmtThesisVersion === 'full' ? 'bg-teal-600 text-white' : 'text-slate-400 hover:text-white'
+                                                            fmtThesisVersion === 'detailed' ? 'bg-teal-600 text-white' : 'text-slate-400 hover:text-white'
                                                         }`}
-                                                    >Full Thesis</button>
+                                                    >Detailed</button>
+                                                    <button
+                                                        onClick={() => {
+                                                            if (fmtFullData) {
+                                                                setFmtThesisVersion('full');
+                                                            } else if (!fmtFullLoading) {
+                                                                if (confirm('No full version exists yet. Generate one now?')) {
+                                                                    setFmtFullLoading(true);
+                                                                    generateThesisFull(fmtTicker).finally(() => setFmtFullLoading(false));
+                                                                }
+                                                            }
+                                                        }}
+                                                        className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-1.5 ${
+                                                            fmtThesisVersion === 'full' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                                                        }`}
+                                                    >
+                                                        {fmtFullLoading ? (
+                                                            <>
+                                                                <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                                                                Curating...
+                                                            </>
+                                                        ) : 'Full'}
+                                                        {fmtFullData && fmtThesisVersion === 'full' && (
+                                                            <Check className="w-3.5 h-3.5 text-green-400" />
+                                                        )}
+                                                    </button>
                                                     <button
                                                         onClick={() => {
                                                             if (fmtCondensedData) {
@@ -16581,6 +16716,16 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         )}
                                                     </button>
                                                 </div>
+                                                {fmtThesisVersion === 'full' && fmtFullData && (
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs text-blue-400 bg-blue-500/10 px-2 py-1 rounded">curated selection</span>
+                                                        <button
+                                                            onClick={() => { if (confirm('Regenerate full thesis?')) { setFmtFullLoading(true); generateThesisFull(fmtTicker).finally(() => setFmtFullLoading(false)); } }}
+                                                            className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                                                            title="Regenerate"
+                                                        >Regenerate</button>
+                                                    </div>
+                                                )}
                                                 {fmtThesisVersion === 'condensed' && fmtCondensedData && (
                                                     <div className="flex items-center gap-2">
                                                         <span className="text-xs text-purple-400 bg-purple-500/10 px-2 py-1 rounded">1-2 page version</span>
@@ -16596,7 +16741,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         >Delete</button>
                                                     </div>
                                                 )}
-                                                {!fmtCondensedData && !fmtCondensedLoading && (
+                                                {fmtThesisVersion === 'full' && !fmtFullData && !fmtFullLoading && (
+                                                    <span className="text-xs text-slate-500">No full version yet</span>
+                                                )}
+                                                {fmtThesisVersion === 'condensed' && !fmtCondensedData && !fmtCondensedLoading && (
                                                     <span className="text-xs text-slate-500">No condensed version yet</span>
                                                 )}
                                             </div>

@@ -899,6 +899,16 @@ def init_db():
                 )
             ''')
 
+            # Thesis full versions (curated selection from detailed)
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS thesis_full (
+                    ticker VARCHAR(20) PRIMARY KEY,
+                    full_analysis JSONB NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
             # Thesis format history (versioned PDF/DOCX storage)
             cur.execute('''
                 CREATE TABLE IF NOT EXISTS thesis_format_history (
@@ -3822,13 +3832,54 @@ def _generate_analysis_pdf_bytes(row):
     return buf.getvalue()
 
 
+def _resolve_thesis_tier(data):
+    """Resolve thesisTier from request data with backward compat."""
+    thesis_tier = data.get('thesisTier', 'detailed')
+    if not thesis_tier or thesis_tier == 'detailed':
+        if data.get('useCondensed'):
+            thesis_tier = 'condensed'
+    return thesis_tier
+
+
+def _overlay_thesis_tier(row_dict, thesis_tier):
+    """Overlay full or condensed thesis data onto analysis row dict."""
+    if thesis_tier == 'detailed' or not thesis_tier:
+        return
+    table = 'thesis_full' if thesis_tier == 'full' else 'thesis_condensed'
+    column = 'full_analysis' if thesis_tier == 'full' else 'condensed_analysis'
+    ticker = row_dict.get('ticker', '')
+    with get_db() as (_, cur):
+        cur.execute(f'SELECT {column} FROM {table} WHERE ticker = %s', (ticker,))
+        tier_row = cur.fetchone()
+    if not tier_row:
+        return
+    tier_data = tier_row[column]
+    if isinstance(tier_data, str):
+        tier_data = json.loads(tier_data)
+    orig = row_dict.get('analysis') or {}
+    if isinstance(orig, str):
+        orig = json.loads(orig)
+    orig['thesis'] = tier_data.get('thesis', orig.get('thesis', {}))
+    orig['signposts'] = tier_data.get('signposts', orig.get('signposts', []))
+    orig['threats'] = tier_data.get('threats', orig.get('threats', []))
+    orig['conclusion'] = tier_data.get('conclusion', orig.get('conclusion', ''))
+    if thesis_tier == 'condensed':
+        orig['_condensed'] = True
+    row_dict['analysis'] = orig
+
+
+def _thesis_tier_suffix(thesis_tier):
+    """Return filename suffix for thesis tier."""
+    return {'full': '_Full', 'condensed': '_Condensed'}.get(thesis_tier, '')
+
+
 @app.route('/api/analysis-to-docx', methods=['POST'])
 def analysis_to_docx():
     """Export a portfolio analysis as a Word document."""
     try:
         data = request.get_json()
         ticker = data.get('ticker')
-        use_condensed = data.get('useCondensed', False)
+        thesis_tier = _resolve_thesis_tier(data)
         if not ticker:
             return jsonify({'error': 'No ticker provided'}), 400
         with get_db() as (_, cur):
@@ -3837,25 +3888,9 @@ def analysis_to_docx():
         if not row:
             return jsonify({'error': 'Analysis not found'}), 404
         row_dict = dict(row)
-        if use_condensed:
-            with get_db() as (_, cur2):
-                cur2.execute('SELECT condensed_analysis FROM thesis_condensed WHERE ticker = %s', (ticker,))
-                cond_row = cur2.fetchone()
-            if cond_row:
-                condensed = cond_row['condensed_analysis']
-                if isinstance(condensed, str):
-                    condensed = json.loads(condensed)
-                orig = row_dict.get('analysis') or {}
-                if isinstance(orig, str):
-                    orig = json.loads(orig)
-                orig['thesis'] = condensed.get('thesis', orig.get('thesis', {}))
-                orig['signposts'] = condensed.get('signposts', orig.get('signposts', []))
-                orig['threats'] = condensed.get('threats', orig.get('threats', []))
-                orig['conclusion'] = condensed.get('conclusion', orig.get('conclusion', ''))
-                orig['_condensed'] = True
-                row_dict['analysis'] = orig
+        _overlay_thesis_tier(row_dict, thesis_tier)
         docx_bytes = _generate_analysis_docx_bytes(row_dict)
-        suffix = '_Condensed' if use_condensed else ''
+        suffix = _thesis_tier_suffix(thesis_tier)
         docx_b64 = base64.b64encode(docx_bytes).decode('utf-8')
         return jsonify({'success': True, 'fileData': docx_b64, 'filename': f"{ticker}_Thesis{suffix}.docx", 'fileSize': len(docx_bytes)})
     except Exception as e:
@@ -3869,7 +3904,7 @@ def analysis_to_pdf():
     try:
         data = request.get_json()
         ticker = data.get('ticker')
-        use_condensed = data.get('useCondensed', False)
+        thesis_tier = _resolve_thesis_tier(data)
         if not ticker:
             return jsonify({'error': 'No ticker provided'}), 400
         with get_db() as (_, cur):
@@ -3878,25 +3913,9 @@ def analysis_to_pdf():
         if not row:
             return jsonify({'error': 'Analysis not found'}), 404
         row_dict = dict(row)
-        if use_condensed:
-            with get_db() as (_, cur2):
-                cur2.execute('SELECT condensed_analysis FROM thesis_condensed WHERE ticker = %s', (ticker,))
-                cond_row = cur2.fetchone()
-            if cond_row:
-                condensed = cond_row['condensed_analysis']
-                if isinstance(condensed, str):
-                    condensed = json.loads(condensed)
-                orig = row_dict.get('analysis') or {}
-                if isinstance(orig, str):
-                    orig = json.loads(orig)
-                orig['thesis'] = condensed.get('thesis', orig.get('thesis', {}))
-                orig['signposts'] = condensed.get('signposts', orig.get('signposts', []))
-                orig['threats'] = condensed.get('threats', orig.get('threats', []))
-                orig['conclusion'] = condensed.get('conclusion', orig.get('conclusion', ''))
-                orig['_condensed'] = True
-                row_dict['analysis'] = orig
+        _overlay_thesis_tier(row_dict, thesis_tier)
         pdf_bytes = _generate_analysis_pdf_bytes(row_dict)
-        suffix = '_Condensed' if use_condensed else ''
+        suffix = _thesis_tier_suffix(thesis_tier)
         pdf_b64 = base64.b64encode(pdf_bytes).decode('utf-8')
         return jsonify({'success': True, 'fileData': pdf_b64, 'filename': f"{ticker}_Thesis{suffix}.pdf", 'fileSize': len(pdf_bytes)})
     except Exception as e:
@@ -3912,7 +3931,7 @@ def analyses_bulk_export():
         data = request.get_json()
         tickers = data.get('tickers', [])
         export_format = data.get('format', 'docx')
-        use_condensed = data.get('useCondensed', False)
+        thesis_tier = _resolve_thesis_tier(data)
         if not tickers:
             return jsonify({'error': 'No tickers provided'}), 400
         with get_db() as (_, cur):
@@ -3921,32 +3940,41 @@ def analyses_bulk_export():
             rows = cur.fetchall()
         if not rows:
             return jsonify({'error': 'No analyses found'}), 404
-        # Load condensed data if requested
-        condensed_map = {}
-        if use_condensed:
+        # Load tier overlay data if requested
+        tier_map = {}
+        if thesis_tier == 'full':
+            with get_db() as (_, cur2):
+                cur2.execute(f'SELECT ticker, full_analysis FROM thesis_full WHERE ticker IN ({placeholders})', tickers)
+                for cr in cur2.fetchall():
+                    ca = cr['full_analysis']
+                    if isinstance(ca, str):
+                        ca = json.loads(ca)
+                    tier_map[cr['ticker']] = ca
+        elif thesis_tier == 'condensed':
             with get_db() as (_, cur2):
                 cur2.execute(f'SELECT ticker, condensed_analysis FROM thesis_condensed WHERE ticker IN ({placeholders})', tickers)
                 for cr in cur2.fetchall():
                     ca = cr['condensed_analysis']
                     if isinstance(ca, str):
                         ca = json.loads(ca)
-                    condensed_map[cr['ticker']] = ca
-        suffix = '_Condensed' if use_condensed else ''
+                    tier_map[cr['ticker']] = ca
+        suffix = _thesis_tier_suffix(thesis_tier)
         zip_buf = io.BytesIO()
         with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zf:
             for row in rows:
                 row_dict = dict(row)
                 t = row_dict.get('ticker', 'Stock')
-                if use_condensed and t in condensed_map:
+                if thesis_tier in ('full', 'condensed') and t in tier_map:
                     orig = row_dict.get('analysis') or {}
                     if isinstance(orig, str):
                         orig = json.loads(orig)
-                    cond = condensed_map[t]
-                    orig['thesis'] = cond.get('thesis', orig.get('thesis', {}))
-                    orig['signposts'] = cond.get('signposts', orig.get('signposts', []))
-                    orig['threats'] = cond.get('threats', orig.get('threats', []))
-                    orig['conclusion'] = cond.get('conclusion', orig.get('conclusion', ''))
-                    orig['_condensed'] = True
+                    tier_data = tier_map[t]
+                    orig['thesis'] = tier_data.get('thesis', orig.get('thesis', {}))
+                    orig['signposts'] = tier_data.get('signposts', orig.get('signposts', []))
+                    orig['threats'] = tier_data.get('threats', orig.get('threats', []))
+                    orig['conclusion'] = tier_data.get('conclusion', orig.get('conclusion', ''))
+                    if thesis_tier == 'condensed':
+                        orig['_condensed'] = True
                     row_dict['analysis'] = orig
                 fn = f"{t}_Thesis{suffix}.{export_format}"
                 if export_format == 'pdf':
@@ -3954,7 +3982,7 @@ def analyses_bulk_export():
                 else:
                     zf.writestr(fn, _generate_analysis_docx_bytes(row_dict))
         zip_bytes = zip_buf.getvalue()
-        label = 'condensed-theses' if use_condensed else 'theses'
+        label = {'full': 'full-theses', 'condensed': 'condensed-theses'}.get(thesis_tier, 'theses')
         return jsonify({'success': True, 'fileData': base64.b64encode(zip_bytes).decode('utf-8'), 'filename': f"{label}-{len(rows)}-files.zip", 'fileSize': len(zip_bytes), 'fileCount': len(rows)})
     except Exception as e:
         print(f"Error bulk exporting analyses: {e}")
@@ -3972,7 +4000,7 @@ def email_analyses_bulk():
         tickers = data.get('tickers', [])
         recipient = data.get('email')
         smtp_config = data.get('smtpConfig', {})
-        use_condensed = data.get('useCondensed', False)
+        thesis_tier = _resolve_thesis_tier(data)
         if not tickers or not recipient:
             return jsonify({'error': 'Tickers and email required'}), 400
 
@@ -3983,21 +4011,30 @@ def email_analyses_bulk():
         if not rows:
             return jsonify({'error': 'No analyses found'}), 404
 
-        # Load condensed data if requested
-        condensed_map = {}
-        if use_condensed:
+        # Load tier overlay data if requested
+        tier_map = {}
+        if thesis_tier == 'full':
+            with get_db() as (_, cur2):
+                cur2.execute(f'SELECT ticker, full_analysis FROM thesis_full WHERE ticker IN ({placeholders})', tickers)
+                for cr in cur2.fetchall():
+                    ca = cr['full_analysis']
+                    if isinstance(ca, str):
+                        ca = json.loads(ca)
+                    tier_map[cr['ticker']] = ca
+        elif thesis_tier == 'condensed':
             with get_db() as (_, cur2):
                 cur2.execute(f'SELECT ticker, condensed_analysis FROM thesis_condensed WHERE ticker IN ({placeholders})', tickers)
                 for cr in cur2.fetchall():
                     ca = cr['condensed_analysis']
                     if isinstance(ca, str):
                         ca = json.loads(ca)
-                    condensed_map[cr['ticker']] = ca
+                    tier_map[cr['ticker']] = ca
 
         # Sort by ticker for consistency
         rows = sorted(rows, key=lambda r: r['ticker'])
         ticker_list = ', '.join(r['ticker'] for r in rows)
-        subject = f"{'Condensed ' if use_condensed else ''}Investment Theses: {ticker_list}"
+        tier_prefix = {'full': 'Full ', 'condensed': 'Condensed '}.get(thesis_tier, '')
+        subject = f"{tier_prefix}Investment Theses: {ticker_list}"
 
         html_body = '<html><body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 700px;">'
         plain_text = ''
@@ -4011,12 +4048,12 @@ def email_analyses_bulk():
                 try: analysis = _json.loads(analysis)
                 except: analysis = {}
 
-            # Overlay condensed data if available
-            if use_condensed and ticker in condensed_map:
-                cond = condensed_map[ticker]
-                analysis['thesis'] = cond.get('thesis', analysis.get('thesis', {}))
-                analysis['signposts'] = cond.get('signposts', analysis.get('signposts', []))
-                analysis['threats'] = cond.get('threats', analysis.get('threats', []))
+            # Overlay tier data if available
+            if thesis_tier in ('full', 'condensed') and ticker in tier_map:
+                tier_data = tier_map[ticker]
+                analysis['thesis'] = tier_data.get('thesis', analysis.get('thesis', {}))
+                analysis['signposts'] = tier_data.get('signposts', analysis.get('signposts', []))
+                analysis['threats'] = tier_data.get('threats', analysis.get('threats', []))
 
             thesis = analysis.get('thesis', {})
             signposts = analysis.get('signposts', [])
@@ -5178,7 +5215,7 @@ def generate_condensed_thesis():
         if not ticker:
             return jsonify({'error': 'No ticker provided'}), 400
 
-        # Load full thesis
+        # Load analysis — prefer thesis_full (curated) if it exists, else raw detailed
         with get_db() as (_, cur):
             cur.execute('SELECT * FROM portfolio_analyses WHERE ticker = %s', (ticker,))
             row = cur.fetchone()
@@ -5186,6 +5223,21 @@ def generate_condensed_thesis():
             return jsonify({'error': 'No analysis found for this ticker'}), 404
 
         analysis = row['analysis'] if isinstance(row['analysis'], dict) else json.loads(row['analysis'])
+
+        # Check for curated full version to source from
+        with get_db() as (_, cur):
+            cur.execute('SELECT full_analysis FROM thesis_full WHERE ticker = %s', (ticker,))
+            full_row = cur.fetchone()
+        if full_row:
+            full_data = full_row['full_analysis']
+            if isinstance(full_data, str):
+                full_data = json.loads(full_data)
+            # Overlay full tier data as the source for condensing
+            analysis['thesis'] = full_data.get('thesis', analysis.get('thesis', {}))
+            analysis['signposts'] = full_data.get('signposts', analysis.get('signposts', []))
+            analysis['threats'] = full_data.get('threats', analysis.get('threats', []))
+            analysis['conclusion'] = full_data.get('conclusion', analysis.get('conclusion', ''))
+
         thesis = analysis.get('thesis', {})
         signposts = analysis.get('signposts', [])
         threats = analysis.get('threats', [])
@@ -5322,6 +5374,176 @@ def update_condensed_thesis(ticker):
         return jsonify({'error': str(e)}), 500
 
 
+# --- Thesis Full (curated selection) endpoints ---
+
+@app.route('/api/thesis-full/generate', methods=['POST'])
+def generate_full_thesis():
+    """Generate a curated Full version by selecting top items from detailed analysis."""
+    try:
+        data = request.get_json()
+        ticker = data.get('ticker', '').upper()
+        anthropic_key = data.get('apiKey', '')
+        gemini_key = data.get('geminiApiKey', '')
+        if not ticker:
+            return jsonify({'error': 'No ticker provided'}), 400
+
+        # Load detailed thesis
+        with get_db() as (_, cur):
+            cur.execute('SELECT * FROM portfolio_analyses WHERE ticker = %s', (ticker,))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'error': 'No analysis found for this ticker'}), 404
+
+        analysis = row['analysis'] if isinstance(row['analysis'], dict) else json.loads(row['analysis'])
+        thesis = analysis.get('thesis', {})
+        signposts = analysis.get('signposts', [])
+        threats = analysis.get('threats', [])
+        conclusion = analysis.get('conclusion', '')
+
+        # Build prompt — selection only, not rewriting
+        thesis_text = json.dumps(thesis, indent=2)
+        signposts_text = json.dumps(signposts, indent=2)
+        threats_text = json.dumps(threats, indent=2)
+
+        prompt = f"""You are curating an investment thesis by selecting the most important items. Do NOT rewrite or compress — select verbatim.
+
+Rules:
+1. Select 4-5 most important pillars (keep all fields verbatim: title, description, confidence, sources)
+2. Select 5-7 most actionable signposts (keep all fields verbatim)
+3. Select 4-5 highest-risk threats (keep all fields verbatim: threat, triggerPoints, likelihood, impact)
+4. Keep the thesis summary exactly as-is
+5. Do NOT change any text, confidence levels, likelihood/impact ratings, or source citations
+
+Return ONLY valid JSON with this exact structure:
+{{
+  "thesis": {{
+    "summary": "exact original summary",
+    "pillars": [selected pillars with ALL original fields]
+  }},
+  "signposts": [selected signposts with ALL original fields],
+  "threats": [selected threats with ALL original fields],
+  "conclusion": "exact original conclusion"
+}}
+
+Original thesis:
+{thesis_text}
+
+Original signposts:
+{signposts_text}
+
+Original threats:
+{threats_text}
+
+Original conclusion:
+{json.dumps(conclusion)}"""
+
+        result = call_llm(
+            messages=[{"role": "user", "content": prompt}],
+            system="You are a financial analyst selecting the most important items from a thesis. Return only valid JSON, no markdown fences. Preserve all fields verbatim — this is selection, not rewriting.",
+            tier="fast",
+            max_tokens=4096,
+            anthropic_api_key=anthropic_key,
+            gemini_api_key=gemini_key,
+        )
+
+        # Parse response
+        response_text = result['text'].strip()
+        if response_text.startswith('```'):
+            response_text = response_text.split('\n', 1)[1].rsplit('```', 1)[0].strip()
+        full_data = json.loads(response_text)
+
+        # Validate structure
+        if 'thesis' not in full_data:
+            full_data = {'thesis': full_data, 'signposts': signposts[:7], 'threats': threats[:5], 'conclusion': conclusion}
+        if 'signposts' not in full_data:
+            full_data['signposts'] = signposts[:7]
+        if 'threats' not in full_data:
+            full_data['threats'] = threats[:5]
+        if 'conclusion' not in full_data:
+            full_data['conclusion'] = conclusion
+
+        # Upsert into DB
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('''
+                INSERT INTO thesis_full (ticker, full_analysis, updated_at)
+                VALUES (%s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (ticker)
+                DO UPDATE SET full_analysis = EXCLUDED.full_analysis, updated_at = CURRENT_TIMESTAMP
+                RETURNING ticker
+            ''', (ticker, json.dumps(full_data)))
+
+        # Invalidate stale condensed version (should be re-derived from Full)
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('DELETE FROM thesis_condensed WHERE ticker = %s', (ticker,))
+
+        return jsonify({'success': True, 'ticker': ticker, 'full': full_data})
+    except json.JSONDecodeError as je:
+        print(f"Error parsing full thesis JSON: {je}")
+        return jsonify({'error': 'Failed to parse full thesis from LLM'}), 500
+    except Exception as e:
+        print(f"Error generating full thesis: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/thesis-full/<ticker>', methods=['GET'])
+def get_full_thesis(ticker):
+    """Get stored full (curated) thesis for a ticker."""
+    try:
+        ticker = ticker.upper()
+        with get_db() as (_, cur):
+            cur.execute('SELECT full_analysis, created_at, updated_at FROM thesis_full WHERE ticker = %s', (ticker,))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'error': 'No full thesis found'}), 404
+        full_data = row['full_analysis']
+        if isinstance(full_data, str):
+            full_data = json.loads(full_data)
+        return jsonify({
+            'ticker': ticker,
+            'full': full_data,
+            'createdAt': row['created_at'].isoformat() if row['created_at'] else None,
+            'updatedAt': row['updated_at'].isoformat() if row['updated_at'] else None,
+        })
+    except Exception as e:
+        print(f"Error getting full thesis: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/thesis-full/<ticker>', methods=['DELETE'])
+def delete_full_thesis(ticker):
+    """Delete stored full thesis."""
+    try:
+        ticker = ticker.upper()
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('DELETE FROM thesis_full WHERE ticker = %s', (ticker,))
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error deleting full thesis: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/thesis-full/<ticker>', methods=['PUT'])
+def update_full_thesis(ticker):
+    """Save edited full thesis."""
+    try:
+        ticker = ticker.upper()
+        data = request.get_json()
+        full_data = data.get('full_analysis')
+        if not full_data:
+            return jsonify({'error': 'full_analysis required'}), 400
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('''
+                INSERT INTO thesis_full (ticker, full_analysis, updated_at)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (ticker)
+                DO UPDATE SET full_analysis = EXCLUDED.full_analysis, updated_at = EXCLUDED.updated_at
+            ''', (ticker, json.dumps(full_data), datetime.utcnow()))
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error saving full thesis: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/thesis-format/generate', methods=['POST'])
 def generate_thesis_format():
     """Generate a formatted thesis document in a specific template."""
@@ -5330,7 +5552,7 @@ def generate_thesis_format():
         ticker = data.get('ticker', '').upper()
         fmt = data.get('format', 'executive')  # executive, scorecard, onepager, board
         output_type = data.get('outputType', 'pdf')  # pdf or docx
-        use_condensed = data.get('useCondensed', False)
+        thesis_tier = _resolve_thesis_tier(data)
         if not ticker:
             return jsonify({'error': 'No ticker provided'}), 400
 
@@ -5355,25 +5577,7 @@ def generate_thesis_format():
                     scorecard_data = None
 
         row_dict = dict(row)
-
-        # If using condensed thesis, overlay condensed data onto the analysis
-        if use_condensed:
-            with get_db() as (_, cur):
-                cur.execute('SELECT condensed_analysis FROM thesis_condensed WHERE ticker = %s', (ticker,))
-                c_row = cur.fetchone()
-            if c_row:
-                condensed = c_row['condensed_analysis']
-                if isinstance(condensed, str):
-                    condensed = json.loads(condensed)
-                # Merge condensed into the analysis dict
-                orig_analysis = row_dict['analysis'] if isinstance(row_dict['analysis'], dict) else json.loads(row_dict['analysis'])
-                orig_analysis['thesis'] = condensed.get('thesis', orig_analysis.get('thesis', {}))
-                orig_analysis['signposts'] = condensed.get('signposts', orig_analysis.get('signposts', []))
-                orig_analysis['threats'] = condensed.get('threats', orig_analysis.get('threats', []))
-                if condensed.get('conclusion'):
-                    orig_analysis['conclusion'] = condensed['conclusion']
-                orig_analysis['_condensed'] = True
-                row_dict['analysis'] = orig_analysis
+        _overlay_thesis_tier(row_dict, thesis_tier)
 
         # Generate based on format
         format_names = {
@@ -5836,7 +6040,7 @@ def start_thesis_infographic():
         color_scheme = data.get('colorScheme', 'default')
         include_company = data.get('includeCompanyName', False)
         template_id = data.get('templateId')
-        use_condensed = data.get('useCondensed', False)
+        thesis_tier = _resolve_thesis_tier(data)
 
         # If template specified, load its params as defaults
         if template_id:
@@ -5885,26 +6089,11 @@ def start_thesis_infographic():
 
         row_dict = dict(row)
 
-        # If using condensed thesis, overlay condensed data
-        if use_condensed:
-            try:
-                with get_db() as (_, cur):
-                    cur.execute('SELECT condensed_analysis FROM thesis_condensed WHERE ticker = %s', (ticker,))
-                    c_row = cur.fetchone()
-                if c_row:
-                    condensed = c_row['condensed_analysis']
-                    if isinstance(condensed, str):
-                        condensed = json.loads(condensed)
-                    orig_analysis = row_dict['analysis'] if isinstance(row_dict['analysis'], dict) else json.loads(row_dict['analysis'])
-                    orig_analysis['thesis'] = condensed.get('thesis', orig_analysis.get('thesis', {}))
-                    orig_analysis['signposts'] = condensed.get('signposts', orig_analysis.get('signposts', []))
-                    orig_analysis['threats'] = condensed.get('threats', orig_analysis.get('threats', []))
-                    if condensed.get('conclusion'):
-                        orig_analysis['conclusion'] = condensed['conclusion']
-                    orig_analysis['_condensed'] = True
-                    row_dict['analysis'] = orig_analysis
-            except Exception as ce:
-                print(f"Condensed thesis overlay warning: {ce}")
+        # Overlay thesis tier data if not detailed
+        try:
+            _overlay_thesis_tier(row_dict, thesis_tier)
+        except Exception as ce:
+            print(f"Thesis tier overlay warning: {ce}")
 
         d = _parse_analysis_data(row_dict)
         total = 1 if mode == '1' else 3
