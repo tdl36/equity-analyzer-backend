@@ -3912,6 +3912,7 @@ def analyses_bulk_export():
         data = request.get_json()
         tickers = data.get('tickers', [])
         export_format = data.get('format', 'docx')
+        use_condensed = data.get('useCondensed', False)
         if not tickers:
             return jsonify({'error': 'No tickers provided'}), 400
         with get_db() as (_, cur):
@@ -3920,18 +3921,41 @@ def analyses_bulk_export():
             rows = cur.fetchall()
         if not rows:
             return jsonify({'error': 'No analyses found'}), 404
+        # Load condensed data if requested
+        condensed_map = {}
+        if use_condensed:
+            with get_db() as (_, cur2):
+                cur2.execute(f'SELECT ticker, condensed_analysis FROM thesis_condensed WHERE ticker IN ({placeholders})', tickers)
+                for cr in cur2.fetchall():
+                    ca = cr['condensed_analysis']
+                    if isinstance(ca, str):
+                        ca = json.loads(ca)
+                    condensed_map[cr['ticker']] = ca
+        suffix = '_Condensed' if use_condensed else ''
         zip_buf = io.BytesIO()
         with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zf:
             for row in rows:
                 row_dict = dict(row)
                 t = row_dict.get('ticker', 'Stock')
-                fn = f"{t}_Thesis.{export_format}"
+                if use_condensed and t in condensed_map:
+                    orig = row_dict.get('analysis') or {}
+                    if isinstance(orig, str):
+                        orig = json.loads(orig)
+                    cond = condensed_map[t]
+                    orig['thesis'] = cond.get('thesis', orig.get('thesis', {}))
+                    orig['signposts'] = cond.get('signposts', orig.get('signposts', []))
+                    orig['threats'] = cond.get('threats', orig.get('threats', []))
+                    orig['conclusion'] = cond.get('conclusion', orig.get('conclusion', ''))
+                    orig['_condensed'] = True
+                    row_dict['analysis'] = orig
+                fn = f"{t}_Thesis{suffix}.{export_format}"
                 if export_format == 'pdf':
                     zf.writestr(fn, _generate_analysis_pdf_bytes(row_dict))
                 else:
                     zf.writestr(fn, _generate_analysis_docx_bytes(row_dict))
         zip_bytes = zip_buf.getvalue()
-        return jsonify({'success': True, 'fileData': base64.b64encode(zip_bytes).decode('utf-8'), 'filename': f"theses-{len(rows)}-files.zip", 'fileSize': len(zip_bytes), 'fileCount': len(rows)})
+        label = 'condensed-theses' if use_condensed else 'theses'
+        return jsonify({'success': True, 'fileData': base64.b64encode(zip_bytes).decode('utf-8'), 'filename': f"{label}-{len(rows)}-files.zip", 'fileSize': len(zip_bytes), 'fileCount': len(rows)})
     except Exception as e:
         print(f"Error bulk exporting analyses: {e}")
         return jsonify({'error': str(e)}), 500
@@ -3948,6 +3972,7 @@ def email_analyses_bulk():
         tickers = data.get('tickers', [])
         recipient = data.get('email')
         smtp_config = data.get('smtpConfig', {})
+        use_condensed = data.get('useCondensed', False)
         if not tickers or not recipient:
             return jsonify({'error': 'Tickers and email required'}), 400
 
@@ -3958,10 +3983,21 @@ def email_analyses_bulk():
         if not rows:
             return jsonify({'error': 'No analyses found'}), 404
 
+        # Load condensed data if requested
+        condensed_map = {}
+        if use_condensed:
+            with get_db() as (_, cur2):
+                cur2.execute(f'SELECT ticker, condensed_analysis FROM thesis_condensed WHERE ticker IN ({placeholders})', tickers)
+                for cr in cur2.fetchall():
+                    ca = cr['condensed_analysis']
+                    if isinstance(ca, str):
+                        ca = json.loads(ca)
+                    condensed_map[cr['ticker']] = ca
+
         # Sort by ticker for consistency
         rows = sorted(rows, key=lambda r: r['ticker'])
         ticker_list = ', '.join(r['ticker'] for r in rows)
-        subject = f"Investment Theses: {ticker_list}"
+        subject = f"{'Condensed ' if use_condensed else ''}Investment Theses: {ticker_list}"
 
         html_body = '<html><body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 700px;">'
         plain_text = ''
@@ -3974,6 +4010,13 @@ def email_analyses_bulk():
                 import json as _json
                 try: analysis = _json.loads(analysis)
                 except: analysis = {}
+
+            # Overlay condensed data if available
+            if use_condensed and ticker in condensed_map:
+                cond = condensed_map[ticker]
+                analysis['thesis'] = cond.get('thesis', analysis.get('thesis', {}))
+                analysis['signposts'] = cond.get('signposts', analysis.get('signposts', []))
+                analysis['threats'] = cond.get('threats', analysis.get('threats', []))
 
             thesis = analysis.get('thesis', {})
             signposts = analysis.get('signposts', [])

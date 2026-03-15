@@ -8920,8 +8920,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const bulkDownloadTheses = async (format) => {
                 if (selectedThesisTickers.size === 0) return;
                 setThesisBulkLoading(true);
+                const useCondensed = thesisViewMode === 'condensed';
                 try {
-                    const res = await fetch(`${API_URL}/api/analyses-bulk-export`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tickers: Array.from(selectedThesisTickers), format }) });
+                    const res = await fetch(`${API_URL}/api/analyses-bulk-export`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tickers: Array.from(selectedThesisTickers), format, useCondensed }) });
                     if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Bulk export failed'); }
                     const data = await res.json();
                     triggerBase64Download(data.fileData, data.filename, 'application/zip');
@@ -8939,6 +8940,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 try { creds = JSON.parse(saved); } catch (e) { alert('Invalid email credentials'); return; }
                 if (!creds.email && !creds.defaultRecipient && !creds.gmailUser) { alert('No recipient email configured'); return; }
                 const recipient = creds.defaultRecipient || creds.email || creds.gmailUser;
+                const useCondensed = thesisViewMode === 'condensed';
                 setThesisBulkLoading(true);
                 try {
                     const res = await fetch(`${API_URL}/api/email-analyses-bulk`, {
@@ -8946,6 +8948,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         body: JSON.stringify({
                             tickers: Array.from(selectedThesisTickers),
                             email: recipient,
+                            useCondensed,
                             smtpConfig: { use_gmail: creds.useGmail, gmail_user: creds.gmailUser, gmail_app_password: creds.gmailPassword, from_email: creds.gmailUser }
                         })
                     });
@@ -10003,7 +10006,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         {thesisSelectMode && selectedThesisTickers.size > 0 && (
                             <div className="p-3 border-t border-white/15 bg-slate-800/95 space-y-2">
                                 <div className="flex items-center justify-between text-xs">
-                                    <span className="font-medium">{selectedThesisTickers.size} selected</span>
+                                    <span className="font-medium">{selectedThesisTickers.size} selected{thesisViewMode === 'condensed' ? ' (condensed)' : ''}</span>
                                     <div className="flex gap-2">
                                         <button onClick={() => setSelectedThesisTickers(new Set(savedAnalyses.map(s => s.ticker)))} className="text-blue-400 hover:text-blue-300">All</button>
                                         <button onClick={() => setSelectedThesisTickers(new Set())} className="text-slate-400 hover:text-slate-300">None</button>
