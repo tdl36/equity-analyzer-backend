@@ -8994,7 +8994,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 try {
                     const res = await fetch(`${API_URL}/api/thesis-condensed/generate`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ ticker })
+                        body: JSON.stringify({ ticker, apiKey: localStorage.getItem('equity_analyzer_api_key') || '', geminiApiKey: localStorage.getItem('equity_analyzer_gemini_key') || '' })
                     });
                     if (res.ok) {
                         const data = await res.json();

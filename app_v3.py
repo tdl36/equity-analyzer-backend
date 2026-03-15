@@ -5022,6 +5022,8 @@ def generate_condensed_thesis():
     try:
         data = request.get_json()
         ticker = data.get('ticker', '').upper()
+        anthropic_key = data.get('apiKey', '')
+        gemini_key = data.get('geminiApiKey', '')
         if not ticker:
             return jsonify({'error': 'No ticker provided'}), 400
 
@@ -5067,6 +5069,8 @@ Original thesis:
             system="You are a concise financial analyst. Return only valid JSON, no markdown fences.",
             tier="fast",
             max_tokens=2048,
+            anthropic_api_key=anthropic_key,
+            gemini_api_key=gemini_key,
         )
 
         # Parse Claude's response
