@@ -9206,11 +9206,19 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 { id: 'precision', name: 'Precision', desc: 'Pixel-perfect template', gradient: 'from-teal-800 to-slate-900', schemes: [
                     { id: 'default', name: 'Navy & Teal' }, { id: 'midnight', name: 'Midnight' }, { id: 'arctic', name: 'Arctic' }
                 ]},
+                { id: 'analyst_brief', name: 'Analyst Brief', desc: 'Two-column cards', gradient: 'from-slate-900 to-teal-950', schemes: [
+                    { id: 'default', name: 'Dark Navy' }, { id: 'light', name: 'Light' }
+                ]},
+                { id: 'quad_grid', name: 'Quad Grid', desc: 'Grid layout', gradient: 'from-emerald-900 to-slate-900', schemes: [
+                    { id: 'default', name: 'Dark Navy' }, { id: 'light', name: 'Light' }
+                ]},
             ];
+
+            const PILLOW_STYLES = ['precision', 'analyst_brief', 'quad_grid'];
 
             const generateThesisInfographic = async () => {
                 if (!fmtTicker) { alert('Please select a ticker first'); return; }
-                const isPrecision = fmtInfographicStyle === 'precision';
+                const isPrecision = PILLOW_STYLES.includes(fmtInfographicStyle);
                 const geminiKey = isPrecision ? '' : (loadGeminiKeyFromStorage() || '');
                 if (!isPrecision && !geminiKey) { alert('Gemini API key required. Set it in Settings.'); return; }
 
@@ -16446,7 +16454,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             {/* Style Picker */}
                                             <div className={`mb-4 ${fmtInfographicSelectedTemplate ? 'opacity-40 pointer-events-none' : ''}`}>
                                                 <label className="text-xs text-slate-500 mb-2 block">Visual Style {fmtInfographicSelectedTemplate ? '(overridden by template)' : ''}</label>
-                                                <div className="grid grid-cols-3 md:grid-cols-7 gap-2">
+                                                <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-2">
                                                     {INFOGRAPHIC_STYLES.map(st => (
                                                         <button key={st.id} onClick={() => { setFmtInfographicStyle(st.id); setFmtInfographicColorScheme('default'); }}
                                                             className={`rounded-lg overflow-hidden transition-all ${

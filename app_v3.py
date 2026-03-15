@@ -5360,7 +5360,13 @@ def _run_thesis_infographic(job_id, d, scorecard_data, style_key, mode, gemini_k
             # Deterministic Pillow rendering — no Gemini API needed
             job['current'] = 1
             job['progress'] = 50
-            images = _generate_precision_infographic(d, scorecard_data, mode, detail, show_risk_detail=show_risk_detail, color_scheme=color_scheme, include_company=include_company)
+            pillow_renderers = {
+                'precision': _generate_precision_infographic,
+                'analyst_brief': _generate_analyst_brief_infographic,
+                'quad_grid': _generate_quad_grid_infographic,
+            }
+            renderer = pillow_renderers.get(style_key, _generate_precision_infographic)
+            images = renderer(d, scorecard_data, mode, detail, show_risk_detail=show_risk_detail, color_scheme=color_scheme, include_company=include_company)
             job['images'] = images
         elif mode == '1':
             style_prompt = style_def['prompt']
@@ -8692,6 +8698,40 @@ THESIS_INFOGRAPHIC_STYLES = {
             {'id': 'arctic', 'name': 'Arctic', 'colors': {'bg': (15, 30, 50), 'accent': (56, 189, 248), 'dark': (8, 15, 30)}},
         ],
     },
+    'analyst_brief': {
+        'name': 'Analyst Brief',
+        'prompt': '',
+        'engine': 'pillow',
+        'colorSchemes': [
+            {'id': 'default', 'name': 'Dark Navy', 'colors': {
+                'bg': (15, 23, 42), 'accent': (20, 184, 166), 'dark': (8, 15, 30),
+                'card': (22, 33, 55), 'text': (255, 255, 255), 'muted': (148, 163, 184),
+                'risk_accent': (239, 68, 68), 'border': (45, 58, 80),
+            }},
+            {'id': 'light', 'name': 'Light', 'colors': {
+                'bg': (248, 250, 252), 'accent': (15, 118, 110), 'dark': (241, 245, 249),
+                'card': (255, 255, 255), 'text': (15, 23, 42), 'muted': (100, 116, 139),
+                'risk_accent': (220, 38, 38), 'border': (226, 232, 240),
+            }},
+        ],
+    },
+    'quad_grid': {
+        'name': 'Quad Grid',
+        'prompt': '',
+        'engine': 'pillow',
+        'colorSchemes': [
+            {'id': 'default', 'name': 'Dark Navy', 'colors': {
+                'bg': (15, 23, 42), 'accent': (20, 184, 166), 'dark': (8, 15, 30),
+                'card': (22, 33, 55), 'text': (255, 255, 255), 'muted': (148, 163, 184),
+                'risk_accent': (239, 68, 68), 'border': (45, 58, 80),
+            }},
+            {'id': 'light', 'name': 'Light', 'colors': {
+                'bg': (248, 250, 252), 'accent': (15, 118, 110), 'dark': (241, 245, 249),
+                'card': (255, 255, 255), 'text': (15, 23, 42), 'muted': (100, 116, 139),
+                'risk_accent': (220, 38, 38), 'border': (226, 232, 240),
+            }},
+        ],
+    },
 }
 
 
@@ -8747,6 +8787,393 @@ def _draw_status_dot(draw, x, y, status, size=14):
     colors = {'green': (22, 163, 74), 'yellow': (202, 138, 4), 'red': (220, 38, 38)}
     c = colors.get((status or '').lower(), (148, 163, 184))
     draw.ellipse([x, y, x + size, y + size], fill=c)
+
+def _get_pillow_colors(style_key, color_scheme):
+    """Load color dict from THESIS_INFOGRAPHIC_STYLES for a Pillow-rendered style."""
+    sdef = THESIS_INFOGRAPHIC_STYLES.get(style_key, {})
+    schemes = sdef.get('colorSchemes', [])
+    # Default to first scheme
+    colors = schemes[0].get('colors', {}) if schemes else {}
+    if color_scheme and color_scheme != 'default':
+        for cs in schemes:
+            if cs['id'] == color_scheme and 'colors' in cs:
+                colors = cs['colors']
+                break
+    return colors
+
+
+def _generate_analyst_brief_infographic(d, scorecard_data, mode, detail='full', show_risk_detail=False, color_scheme=None, include_company=False):
+    """Layout 1: Analyst Brief — numbered pillar cards left, signposts + risks right."""
+    from PIL import Image, ImageDraw
+    sp_data = _build_signpost_data(d['signposts'], scorecard_data)
+    rk_data = _build_risk_data(d['threats'], scorecard_data)
+    g, y_count, r = _tally_statuses(scorecard_data)
+    fonts = _load_fonts()
+    W, H = 1920, 1080
+    c = _get_pillow_colors('analyst_brief', color_scheme)
+    BG = c.get('bg', (15, 23, 42)); ACCENT = c.get('accent', (20, 184, 166))
+    DARK = c.get('dark', (8, 15, 30)); CARD = c.get('card', (22, 33, 55))
+    TEXT = c.get('text', (255, 255, 255)); MUTED = c.get('muted', (148, 163, 184))
+    RISK_ACCENT = c.get('risk_accent', (239, 68, 68)); BORDER = c.get('border', (45, 58, 80))
+
+    ticker = d['ticker']; company = d['company']
+    thesis = d['thesis']; conclusion = d['conclusion']
+    header_text = f"{ticker} — {company}" if company and include_company else ticker
+    pillars = _build_pillar_data(thesis, scorecard_data)
+
+    def draw_brief_header(draw, img, title):
+        draw.rectangle([0, 0, W, 72], fill=DARK)
+        draw.text((40, 18), title, font=fonts['bold_md'], fill=TEXT)
+        draw.rectangle([0, 72, W, 76], fill=ACCENT)
+
+    def draw_bullet_list(draw, x, y, items, bullet_color, max_items=8):
+        """Draw a clean bullet-point list. Returns final y."""
+        for item in items[:max_items]:
+            draw.ellipse([x, y + 5, x + 8, y + 13], fill=bullet_color)
+            text = item[:80]
+            lines = _wrap_text(draw, text, fonts['small'], W - x - 80)
+            for line in lines[:2]:
+                draw.text((x + 18, y), line, font=fonts['small'], fill=TEXT)
+                y += 18
+            y += 4
+        return y
+
+    if mode == '1':
+        img = Image.new('RGB', (W, H), BG)
+        draw = ImageDraw.Draw(img)
+        draw_brief_header(draw, img, header_text)
+
+        LEFT_W = 780; RIGHT_X = 840; RIGHT_W = W - RIGHT_X - 40
+        y_left = 100; y_right = 100
+
+        # Left: INVESTMENT THESIS section label
+        draw.text((40, y_left), "INVESTMENT THESIS", font=fonts['bold_sm'], fill=MUTED)
+        draw.rectangle([40, y_left + 24, 240, y_left + 26], fill=ACCENT)
+        y_left += 44
+
+        # Pillar cards
+        max_p = 3 if detail == 'simple' else min(len(pillars), 5)
+        for i, p in enumerate(pillars[:max_p], 1):
+            ptitle = p.get('pillar', p.get('title', ''))
+            pdesc = p.get('detail', p.get('description', ''))
+            card_h = 90 if detail == 'full' and pdesc else 60
+            # Card background with left accent border
+            draw.rectangle([40, y_left, LEFT_W, y_left + card_h], fill=CARD, outline=BORDER)
+            draw.rectangle([40, y_left, 46, y_left + card_h], fill=ACCENT)
+            # Number
+            draw.text((LEFT_W - 50, y_left + 8), str(i), font=fonts['bold_md'], fill=ACCENT)
+            # Title
+            title_lines = _wrap_text(draw, ptitle, fonts['bold_sm'], LEFT_W - 120)
+            ty = y_left + 10
+            for line in title_lines[:2]:
+                draw.text((60, ty), line, font=fonts['bold_sm'], fill=TEXT)
+                ty += 22
+            # Description (full mode only)
+            if detail == 'full' and pdesc:
+                desc_lines = _wrap_text(draw, pdesc, fonts['tiny'], LEFT_W - 80)
+                for line in desc_lines[:2]:
+                    draw.text((60, ty), line, font=fonts['tiny'], fill=MUTED)
+                    ty += 15
+            y_left += card_h + 12
+
+        # Right: SIGNPOSTS section
+        draw.text((RIGHT_X, y_right), "SIGNPOSTS / CATALYSTS", font=fonts['bold_sm'], fill=ACCENT)
+        draw.rectangle([RIGHT_X, y_right + 24, RIGHT_X + 250, y_right + 26], fill=ACCENT)
+        y_right += 44
+        sp_items = [s['metric'] + (f": {s['latest']}" if s.get('latest') and detail != 'simple' else '') for s in sp_data]
+        y_right = draw_bullet_list(draw, RIGHT_X, y_right, sp_items, ACCENT, max_items=8)
+
+        # Right: KEY RISKS section
+        y_right += 20
+        draw.text((RIGHT_X, y_right), "KEY RISKS", font=fonts['bold_sm'], fill=RISK_ACCENT)
+        draw.rectangle([RIGHT_X, y_right + 24, RIGHT_X + 120, y_right + 26], fill=RISK_ACCENT)
+        y_right += 44
+        rk_items = [rk['threat'] for rk in rk_data]
+        draw_bullet_list(draw, RIGHT_X, y_right, rk_items, RISK_ACCENT, max_items=6)
+
+        # Bottom health bar
+        total = g + y_count + r
+        if total > 0:
+            draw.rectangle([0, H - 50, W, H], fill=DARK)
+            pct = round(g / total * 100)
+            draw.text((40, H - 40), f"Thesis Health: {pct}%", font=fonts['bold_sm'], fill=ACCENT)
+            bx = W - 280
+            for label, cnt, clr in [('G', g, (22, 163, 74)), ('Y', y_count, (202, 138, 4)), ('R', r, (220, 38, 38))]:
+                draw.rectangle([bx, H - 42, bx + 50, H - 12], fill=clr)
+                draw.text((bx + 18, H - 40), str(cnt), font=fonts['bold_sm'], fill=(255, 255, 255))
+                bx += 70
+
+        return [_img_to_base64(img)]
+    else:
+        # 3-slide mode
+        images = []
+        # Slide 1: Thesis + Pillars
+        img1 = Image.new('RGB', (W, H), BG)
+        d1 = ImageDraw.Draw(img1)
+        draw_brief_header(d1, img1, f"{header_text} — Investment Thesis (1/3)")
+        y = 100
+        d1.text((40, y), "INVESTMENT THESIS", font=fonts['bold_sm'], fill=MUTED)
+        d1.rectangle([40, y + 24, 240, y + 26], fill=ACCENT)
+        y += 50
+        summary = thesis.get('summary', '')
+        if detail in ('summary', 'simple') and '.' in summary:
+            summary = summary[:summary.index('.') + 1]
+        for line in _wrap_text(d1, summary, fonts['regular'], W - 100)[:4]:
+            d1.text((40, y), line, font=fonts['regular'], fill=TEXT)
+            y += 24
+        y += 20
+        max_p = 3 if detail == 'simple' else min(len(pillars), 6)
+        for i, p in enumerate(pillars[:max_p], 1):
+            ptitle = p.get('pillar', p.get('title', ''))
+            pdesc = p.get('detail', p.get('description', ''))
+            card_h = 80 if detail == 'full' and pdesc else 50
+            d1.rectangle([40, y, W - 40, y + card_h], fill=CARD, outline=BORDER)
+            d1.rectangle([40, y, 46, y + card_h], fill=ACCENT)
+            d1.text((60, y + 8), f"{i}.", font=fonts['bold_md'], fill=ACCENT)
+            d1.text((100, y + 12), ptitle, font=fonts['bold_sm'], fill=TEXT)
+            if detail == 'full' and pdesc:
+                for line in _wrap_text(d1, pdesc, fonts['small'], W - 160)[:2]:
+                    d1.text((100, y + 38), line, font=fonts['small'], fill=MUTED)
+                    break
+            y += card_h + 10
+        images.append(_img_to_base64(img1))
+
+        # Slide 2: Signposts
+        img2 = Image.new('RGB', (W, H), BG)
+        d2 = ImageDraw.Draw(img2)
+        draw_brief_header(d2, img2, f"{header_text} — Signposts (2/3)")
+        y = 100
+        d2.text((40, y), "SIGNPOSTS / CATALYSTS", font=fonts['bold_sm'], fill=ACCENT)
+        d2.rectangle([40, y + 24, 290, y + 26], fill=ACCENT)
+        y += 50
+        for s in sp_data[:12]:
+            d2.ellipse([40, y + 5, 48, y + 13], fill=ACCENT)
+            metric = s['metric']
+            if detail != 'simple' and s.get('latest'):
+                metric += f" — Latest: {s['latest']}"
+            if detail == 'full' and s.get('ltGoal'):
+                metric += f" (Target: {s['ltGoal']})"
+            lines = _wrap_text(d2, metric, fonts['regular'], W - 120)
+            for line in lines[:2]:
+                d2.text((58, y), line, font=fonts['regular'], fill=TEXT)
+                y += 24
+            y += 8
+        images.append(_img_to_base64(img2))
+
+        # Slide 3: Risks
+        img3 = Image.new('RGB', (W, H), BG)
+        d3 = ImageDraw.Draw(img3)
+        draw_brief_header(d3, img3, f"{header_text} — Risk Assessment (3/3)")
+        y = 100
+        d3.text((40, y), "KEY RISKS", font=fonts['bold_sm'], fill=RISK_ACCENT)
+        d3.rectangle([40, y + 24, 160, y + 26], fill=RISK_ACCENT)
+        y += 50
+        for rk in rk_data[:10]:
+            d3.ellipse([40, y + 5, 48, y + 13], fill=RISK_ACCENT)
+            text = rk['threat']
+            if show_risk_detail and detail != 'simple':
+                if rk.get('likelihood'):
+                    text += f" (Likelihood: {rk['likelihood']}, Impact: {rk['impact']})"
+            lines = _wrap_text(d3, text, fonts['regular'], W - 120)
+            for line in lines[:2]:
+                d3.text((58, y), line, font=fonts['regular'], fill=TEXT)
+                y += 24
+            y += 8
+        # Health bar
+        total = g + y_count + r
+        if total > 0:
+            d3.rectangle([0, H - 50, W, H], fill=DARK)
+            pct = round(g / total * 100)
+            d3.text((40, H - 40), f"Thesis Health: {pct}%", font=fonts['bold_sm'], fill=ACCENT)
+        images.append(_img_to_base64(img3))
+        return images
+
+
+def _generate_quad_grid_infographic(d, scorecard_data, mode, detail='full', show_risk_detail=False, color_scheme=None, include_company=False):
+    """Layout 2: Quad Grid — pillars left, signposts top-right, risks bottom-right."""
+    from PIL import Image, ImageDraw
+    sp_data = _build_signpost_data(d['signposts'], scorecard_data)
+    rk_data = _build_risk_data(d['threats'], scorecard_data)
+    g, y_count, r = _tally_statuses(scorecard_data)
+    fonts = _load_fonts()
+    W, H = 1920, 1080
+    c = _get_pillow_colors('quad_grid', color_scheme)
+    BG = c.get('bg', (15, 23, 42)); ACCENT = c.get('accent', (20, 184, 166))
+    DARK = c.get('dark', (8, 15, 30)); CARD = c.get('card', (22, 33, 55))
+    TEXT = c.get('text', (255, 255, 255)); MUTED = c.get('muted', (148, 163, 184))
+    RISK_ACCENT = c.get('risk_accent', (239, 68, 68)); BORDER = c.get('border', (45, 58, 80))
+
+    ticker = d['ticker']; company = d['company']
+    thesis = d['thesis']; conclusion = d['conclusion']
+    header_text = f"{ticker} — {company}" if company and include_company else ticker
+    pillars = _build_pillar_data(thesis, scorecard_data)
+
+    def draw_section_pill(draw, x, y, text, color, width=280):
+        """Draw a colored section header pill."""
+        draw.rectangle([x, y, x + width, y + 32], fill=color)
+        draw.text((x + 12, y + 6), text, font=fonts['bold_sm'], fill=(255, 255, 255))
+        return y + 42
+
+    if mode == '1':
+        img = Image.new('RGB', (W, H), BG)
+        draw = ImageDraw.Draw(img)
+
+        # Header
+        draw.rectangle([0, 0, W, 72], fill=DARK)
+        draw.text((40, 18), header_text, font=fonts['bold_md'], fill=TEXT)
+        draw.rectangle([0, 72, W, 76], fill=ACCENT)
+
+        # Layout: left column pillars, right column split signposts/risks
+        LEFT_W = 620; GAP = 30; RIGHT_X = LEFT_W + GAP + 40; RIGHT_W = W - RIGHT_X - 40
+        CONTENT_TOP = 96
+
+        # Left: Pillars
+        y = CONTENT_TOP
+        y = draw_section_pill(draw, 40, y, "Investment Thesis", ACCENT, width=240)
+        max_p = 3 if detail == 'simple' else min(len(pillars), 5)
+        for i, p in enumerate(pillars[:max_p], 1):
+            ptitle = p.get('pillar', p.get('title', ''))
+            pdesc = p.get('detail', p.get('description', ''))
+            # Card
+            card_h = 120 if detail == 'full' and pdesc else 70
+            draw.rectangle([40, y, LEFT_W, y + card_h], fill=CARD, outline=BORDER)
+            # Large number
+            draw.text((56, y + 8), str(i), font=fonts['bold_lg'], fill=ACCENT)
+            # Title
+            title_x = 110
+            title_lines = _wrap_text(draw, ptitle, fonts['bold_sm'], LEFT_W - title_x - 20)
+            ty = y + 12
+            for line in title_lines[:2]:
+                draw.text((title_x, ty), line, font=fonts['bold_sm'], fill=TEXT)
+                ty += 22
+            # Description
+            if detail == 'full' and pdesc:
+                desc_lines = _wrap_text(draw, pdesc, fonts['small'], LEFT_W - title_x - 20)
+                for line in desc_lines[:3]:
+                    draw.text((title_x, ty), line, font=fonts['small'], fill=MUTED)
+                    ty += 16
+            y += card_h + 10
+
+        # Right top: Signposts
+        y_right = CONTENT_TOP
+        y_right = draw_section_pill(draw, RIGHT_X, y_right, "Signposts / Catalysts", ACCENT, width=280)
+        for s in sp_data[:7]:
+            draw.ellipse([RIGHT_X + 4, y_right + 5, RIGHT_X + 12, y_right + 13], fill=ACCENT)
+            metric = s['metric']
+            if detail != 'simple' and s.get('latest'):
+                metric += f": {s['latest']}"
+            lines = _wrap_text(draw, metric, fonts['small'], RIGHT_W - 30)
+            for line in lines[:2]:
+                draw.text((RIGHT_X + 22, y_right), line, font=fonts['small'], fill=TEXT)
+                y_right += 18
+            y_right += 6
+
+        # Right bottom: Risks
+        y_right += 16
+        y_right = draw_section_pill(draw, RIGHT_X, y_right, "Key Risks", RISK_ACCENT, width=160)
+        for rk in rk_data[:6]:
+            draw.ellipse([RIGHT_X + 4, y_right + 5, RIGHT_X + 12, y_right + 13], fill=RISK_ACCENT)
+            lines = _wrap_text(draw, rk['threat'], fonts['small'], RIGHT_W - 30)
+            for line in lines[:2]:
+                draw.text((RIGHT_X + 22, y_right), line, font=fonts['small'], fill=TEXT)
+                y_right += 18
+            y_right += 6
+
+        # Bottom health bar
+        total = g + y_count + r
+        if total > 0:
+            draw.rectangle([0, H - 50, W, H], fill=DARK)
+            pct = round(g / total * 100)
+            draw.text((40, H - 40), f"Thesis Health: {pct}%", font=fonts['bold_sm'], fill=ACCENT)
+            bx = W - 280
+            for label, cnt, clr in [('G', g, (22, 163, 74)), ('Y', y_count, (202, 138, 4)), ('R', r, (220, 38, 38))]:
+                draw.rectangle([bx, H - 42, bx + 50, H - 12], fill=clr)
+                draw.text((bx + 18, H - 40), str(cnt), font=fonts['bold_sm'], fill=(255, 255, 255))
+                bx += 70
+
+        return [_img_to_base64(img)]
+    else:
+        # 3-slide mode
+        images = []
+        # Slide 1: Thesis + Pillars
+        img1 = Image.new('RGB', (W, H), BG)
+        d1 = ImageDraw.Draw(img1)
+        d1.rectangle([0, 0, W, 72], fill=DARK)
+        d1.text((40, 18), f"{header_text} — Investment Thesis (1/3)", font=fonts['bold_md'], fill=TEXT)
+        d1.rectangle([0, 72, W, 76], fill=ACCENT)
+        y = 96
+        y = draw_section_pill(d1, 40, y, "Investment Thesis", ACCENT, width=240)
+        summary = thesis.get('summary', '')
+        if detail in ('summary', 'simple') and '.' in summary:
+            summary = summary[:summary.index('.') + 1]
+        for line in _wrap_text(d1, summary, fonts['regular'], W - 100)[:4]:
+            d1.text((40, y), line, font=fonts['regular'], fill=TEXT)
+            y += 24
+        y += 20
+        max_p = 3 if detail == 'simple' else min(len(pillars), 6)
+        for i, p in enumerate(pillars[:max_p], 1):
+            ptitle = p.get('pillar', p.get('title', ''))
+            pdesc = p.get('detail', p.get('description', ''))
+            card_h = 90 if detail == 'full' and pdesc else 55
+            d1.rectangle([40, y, W - 40, y + card_h], fill=CARD, outline=BORDER)
+            d1.text((56, y + 8), str(i), font=fonts['bold_lg'], fill=ACCENT)
+            d1.text((110, y + 14), ptitle, font=fonts['bold_sm'], fill=TEXT)
+            if detail == 'full' and pdesc:
+                for line in _wrap_text(d1, pdesc, fonts['small'], W - 180)[:2]:
+                    d1.text((110, y + 40), line, font=fonts['small'], fill=MUTED)
+                    break
+            y += card_h + 10
+        images.append(_img_to_base64(img1))
+
+        # Slide 2: Signposts
+        img2 = Image.new('RGB', (W, H), BG)
+        d2 = ImageDraw.Draw(img2)
+        d2.rectangle([0, 0, W, 72], fill=DARK)
+        d2.text((40, 18), f"{header_text} — Signposts (2/3)", font=fonts['bold_md'], fill=TEXT)
+        d2.rectangle([0, 72, W, 76], fill=ACCENT)
+        y = 96
+        y = draw_section_pill(d2, 40, y, "Signposts / Catalysts", ACCENT, width=280)
+        for s in sp_data[:12]:
+            d2.ellipse([40, y + 6, 48, y + 14], fill=ACCENT)
+            metric = s['metric']
+            if detail != 'simple' and s.get('latest'):
+                metric += f" — {s['latest']}"
+            if detail == 'full' and s.get('ltGoal'):
+                metric += f" (Target: {s['ltGoal']})"
+            lines = _wrap_text(d2, metric, fonts['regular'], W - 120)
+            for line in lines[:2]:
+                d2.text((58, y), line, font=fonts['regular'], fill=TEXT)
+                y += 24
+            y += 8
+        images.append(_img_to_base64(img2))
+
+        # Slide 3: Risks
+        img3 = Image.new('RGB', (W, H), BG)
+        d3 = ImageDraw.Draw(img3)
+        d3.rectangle([0, 0, W, 72], fill=DARK)
+        d3.text((40, 18), f"{header_text} — Risk Assessment (3/3)", font=fonts['bold_md'], fill=TEXT)
+        d3.rectangle([0, 72, W, 76], fill=ACCENT)
+        y = 96
+        y = draw_section_pill(d3, 40, y, "Key Risks", RISK_ACCENT, width=160)
+        for rk in rk_data[:10]:
+            d3.ellipse([40, y + 6, 48, y + 14], fill=RISK_ACCENT)
+            text = rk['threat']
+            if show_risk_detail and detail != 'simple':
+                if rk.get('likelihood'):
+                    text += f" (Likelihood: {rk['likelihood']}, Impact: {rk['impact']})"
+            lines = _wrap_text(d3, text, fonts['regular'], W - 120)
+            for line in lines[:2]:
+                d3.text((58, y), line, font=fonts['regular'], fill=TEXT)
+                y += 24
+            y += 8
+        total = g + y_count + r
+        if total > 0:
+            d3.rectangle([0, H - 50, W, H], fill=DARK)
+            pct = round(g / total * 100)
+            d3.text((40, H - 40), f"Thesis Health: {pct}%", font=fonts['bold_sm'], fill=ACCENT)
+        images.append(_img_to_base64(img3))
+        return images
+
 
 def _generate_precision_infographic(d, scorecard_data, mode, detail='full', show_risk_detail=False, color_scheme=None, include_company=False):
     """Generate deterministic infographic images using Pillow."""
