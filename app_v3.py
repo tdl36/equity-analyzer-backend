@@ -5185,23 +5185,25 @@ def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slid
     signpost_text = ""
     for s in sp_data:
         if detail == 'simple':
-            # Simple: metric name + status only
+            # Simple: metric name only, no status
             line = f"  - {s['metric']}"
         elif detail == 'summary':
             line = f"  - {s['metric']}: {s['latest'] or s['ltGoal']}"
+            if s['status']:
+                line += f" [{s['status'].upper()}]"
         else:
             line = f"  - {s['metric']}: Target = {s['ltGoal']}"
             if s['latest']:
                 line += f", Latest = {s['latest']}"
-        if s['status']:
-            line += f" [{s['status'].upper()}]"
+            if s['status']:
+                line += f" [{s['status'].upper()}]"
         signpost_text += line + "\n"
 
     # Build threats section text
     threats_text = ""
     for r in rk_data:
         if detail == 'simple':
-            # Simple: threat name + status only
+            # Simple: threat name only, no status
             line = f"  - {r['threat']}"
         elif show_risk_detail:
             if detail == 'summary':
@@ -5210,7 +5212,7 @@ def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slid
                 line = f"  - {r['threat']}: Likelihood = {r['likelihood']}, Impact = {r['impact']}"
         else:
             line = f"  - {r['threat']}"
-        if r['status']:
+        if detail != 'simple' and r['status']:
             line += f" [{r['status'].upper()}]"
         threats_text += line + "\n"
 
@@ -5239,27 +5241,31 @@ def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slid
     parts.append(
         "CRITICAL RULES:\n"
         "- ALL text MUST be in English\n"
-        "- DO NOT include any watermarks or AI generation notices\n"
+        "- DO NOT include any watermarks, AI generation notices, footer text, branding lines, or attribution text (e.g. no 'Financial Feature | Analysis | 2024' footers)\n"
         "- Use 16:9 widescreen aspect ratio\n"
-        "- Include the ticker symbol prominently\n"
+        "- Include the ticker symbol prominently but do NOT add labels like 'Ticker Symbol' underneath it\n"
         "- All text must be perfectly clear, legible, and properly rendered\n"
         "- Letters must NOT be distorted or artistically modified — B must not look like 8, O must not look like 0\n"
+        "- Do NOT use decorative drop caps or oversized first-letters at the start of paragraphs\n"
         "- Use standard clean fonts — no decorative fonts that sacrifice readability\n"
         "- Ensure sufficient contrast between text and background\n"
-        "- DO NOT include any target prices, price targets, or stock price predictions in the infographic"
+        "- DO NOT include any target prices, price targets, or stock price predictions in the infographic\n"
+        "- DO NOT use quotation marks anywhere in the infographic — no opening/closing quotes around thesis summaries, conclusions, or any text\n"
+        "- DO NOT place emoji icons, colored circles, or traffic-light dots next to individual signpost or risk items — list them as clean text only\n"
+        "- If status information is provided in brackets like [GREEN], render it as a small subtle text label, NOT as a colored circle or emoji"
     )
 
     if detail == 'simple':
         summary_layout = (
             "\nThis is a SIMPLE AT-A-GLANCE version — absolute minimum text. "
-            "Show only names and traffic-light status indicators. No paragraphs, no data values, no descriptions. "
-            "Think executive cheat sheet."
+            "Show only section headers and item names as clean text lists. No paragraphs, no data values, no descriptions, no status indicators. "
+            "Think executive cheat sheet — names only."
         )
     elif detail == 'summary':
         summary_layout = (
             "\nThis is a SUMMARY/PRESENTATION version — use MINIMAL text. "
             "Use LARGE bold numbers and metrics as focal points. Use short bullet points, NOT paragraphs. "
-            "Emphasize visual hierarchy with oversized key figures, traffic-light status dots, and icon-based sections. "
+            "Emphasize visual hierarchy with oversized key figures and clean section headers. "
             "Think executive presentation — the audience will be viewing from a distance."
         )
     else:
@@ -5298,7 +5304,7 @@ def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slid
             if detail in ('summary', 'simple'):
                 parts.append(summary_layout + " Slide 2 of 3.")
             else:
-                parts.append("\nPresent each signpost as a monitoring dashboard item showing the metric name, target value, latest reading, and traffic-light status (green/yellow/red). Use visual indicators like gauges, progress bars, or status dots. Slide 2 of 3.")
+                parts.append("\nPresent each signpost as a clean monitoring dashboard item showing the metric name, target value, and latest reading. Use clean text layout — no colored circles, emojis, or traffic-light dots next to items. Slide 2 of 3.")
         elif slide_num == 3:
             parts.append(f"\nTITLE: {header} — Risk Assessment\n")
             parts.append(f"KEY RISKS:\n{threats_text}")
@@ -5306,9 +5312,9 @@ def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slid
                 parts.append(summary_layout + " Slide 3 of 3.")
             else:
                 if show_risk_detail:
-                    parts.append("\nPresent each risk as a threat card showing the risk name, likelihood, impact level, and current status. Use visual weight to show severity — larger/darker for higher impact risks. Slide 3 of 3.")
+                    parts.append("\nPresent each risk as a clean text card showing the risk name, likelihood, and impact level. Use visual weight (font size, boldness) to show severity — no colored circles or emojis. Slide 3 of 3.")
                 else:
-                    parts.append("\nPresent each risk as a threat card showing the risk name and current status. Use visual weight to show severity. Slide 3 of 3.")
+                    parts.append("\nPresent each risk as a clean text list with the risk name. Use visual weight (font size, boldness) to show severity — no colored circles or emojis. Slide 3 of 3.")
 
     return "\n".join(parts)
 
