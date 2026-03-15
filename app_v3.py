@@ -883,6 +883,28 @@ def init_db():
             ''')
             cur.execute('CREATE INDEX IF NOT EXISTS idx_format_history_ticker ON thesis_format_history(ticker)')
 
+            # Thesis evolution snapshots (track thesis/scorecard changes over time)
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS thesis_snapshots (
+                    id SERIAL PRIMARY KEY,
+                    ticker VARCHAR(20) NOT NULL,
+                    snapshot_type VARCHAR(20) NOT NULL DEFAULT 'analysis',
+                    thesis_summary TEXT,
+                    pillar_count INTEGER DEFAULT 0,
+                    signpost_statuses JSONB DEFAULT '[]',
+                    risk_statuses JSONB DEFAULT '[]',
+                    green_count INTEGER DEFAULT 0,
+                    yellow_count INTEGER DEFAULT 0,
+                    red_count INTEGER DEFAULT 0,
+                    total_items INTEGER DEFAULT 0,
+                    conviction TEXT,
+                    raw_snapshot JSONB,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_thesis_snapshots_ticker ON thesis_snapshots(ticker)')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_thesis_snapshots_ticker_date ON thesis_snapshots(ticker, created_at DESC)')
+
             # Mark stale processing jobs as failed (server restart recovery)
             cur.execute('''
                 UPDATE analysis_jobs
@@ -1493,6 +1515,41 @@ def get_analysis(ticker):
         print(f"Error getting analysis: {e}")
         return jsonify({'error': str(e)}), 500
 
+def _create_thesis_snapshot(ticker, analysis, scorecard_data, snapshot_type='analysis'):
+    """Create a thesis snapshot capturing current state for evolution tracking."""
+    try:
+        if isinstance(analysis, str):
+            try: analysis = json.loads(analysis)
+            except: analysis = {}
+        thesis = analysis.get('thesis', {})
+        summary = thesis.get('summary', '')
+        pillar_count = len(thesis.get('pillars', []))
+        conclusion = analysis.get('conclusion', '')
+        sp_statuses = []
+        if scorecard_data and scorecard_data.get('signposts'):
+            for sp in scorecard_data['signposts']:
+                sp_statuses.append({'metric': sp.get('metric', ''), 'status': (sp.get('status', '') or '').lower()})
+        rk_statuses = []
+        if scorecard_data and scorecard_data.get('risks'):
+            for rk in scorecard_data['risks']:
+                rk_statuses.append({'risk': rk.get('riskFactor', ''), 'status': (rk.get('status', '') or '').lower()})
+        g, y, r = _tally_statuses(scorecard_data) if scorecard_data else (0, 0, 0)
+        total = g + y + r
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('''
+                INSERT INTO thesis_snapshots
+                (ticker, snapshot_type, thesis_summary, pillar_count,
+                 signpost_statuses, risk_statuses, green_count, yellow_count,
+                 red_count, total_items, conviction, raw_snapshot)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ''', (ticker.upper(), snapshot_type, summary, pillar_count,
+                  json.dumps(sp_statuses), json.dumps(rk_statuses),
+                  g, y, r, total, conclusion,
+                  json.dumps({'analysis': analysis, 'scorecard_data': scorecard_data})))
+    except Exception as e:
+        print(f"Error creating thesis snapshot for {ticker}: {e}")
+
+
 @app.route('/api/save-analysis', methods=['POST'])
 def save_analysis():
     """Save or update a portfolio analysis"""
@@ -1521,6 +1578,21 @@ def save_analysis():
             result = cur.fetchone()
 
         cache.invalidate('analyses')
+        cache.invalidate('portfolio_dashboard')
+        # Auto-snapshot for thesis evolution tracking
+        try:
+            sc_data = None
+            with get_db() as (_, cur2):
+                cur2.execute('SELECT scorecard_data FROM thesis_scorecard_data WHERE ticker = %s', (ticker,))
+                sc_row = cur2.fetchone()
+            if sc_row:
+                sc_data = sc_row['scorecard_data']
+                if isinstance(sc_data, str):
+                    try: sc_data = json.loads(sc_data)
+                    except: sc_data = None
+            _create_thesis_snapshot(ticker, analysis, sc_data, 'analysis')
+        except Exception as snap_err:
+            print(f"Snapshot error: {snap_err}")
         return jsonify({'success': True, 'ticker': result['ticker']})
     except Exception as e:
         print(f"Error saving analysis: {e}")
@@ -1540,9 +1612,155 @@ def delete_analysis():
             cur.execute('DELETE FROM portfolio_analyses WHERE ticker = %s', (ticker,))
 
         cache.invalidate('analyses')
+        cache.invalidate('portfolio_dashboard')
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error deleting analysis: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================
+# PORTFOLIO DASHBOARD & THESIS SNAPSHOTS
+# ============================================
+
+@app.route('/api/portfolio/dashboard', methods=['GET'])
+def get_portfolio_dashboard():
+    """Return all tickers with scorecard statuses in a single call."""
+    try:
+        cached = cache.get('portfolio_dashboard')
+        if cached is not None:
+            return jsonify(cached)
+        with get_db() as (_, cur):
+            cur.execute('''
+                SELECT pa.ticker, pa.company, pa.analysis, pa.updated_at, tsd.scorecard_data
+                FROM portfolio_analyses pa
+                LEFT JOIN thesis_scorecard_data tsd ON tsd.ticker = pa.ticker
+                ORDER BY pa.ticker ASC
+            ''')
+            rows = cur.fetchall()
+        result = []
+        total_green = total_yellow = total_red = 0
+        for row in rows:
+            analysis = row['analysis'] or {}
+            if isinstance(analysis, str):
+                try: analysis = json.loads(analysis)
+                except: analysis = {}
+            scorecard_data = row['scorecard_data']
+            if isinstance(scorecard_data, str):
+                try: scorecard_data = json.loads(scorecard_data)
+                except: scorecard_data = None
+            g, y, r = _tally_statuses(scorecard_data)
+            total_green += g; total_yellow += y; total_red += r
+            thesis = analysis.get('thesis', {})
+            summary = thesis.get('summary', '')
+            first_sentence = (summary.split('. ')[0] + '.') if summary else ''
+            sp_statuses = []
+            if scorecard_data and scorecard_data.get('signposts'):
+                for sp in scorecard_data['signposts']:
+                    sp_statuses.append({'metric': sp.get('metric', ''), 'status': (sp.get('status', '') or '').lower()})
+            rk_statuses = []
+            if scorecard_data and scorecard_data.get('risks'):
+                for rk in scorecard_data['risks']:
+                    rk_statuses.append({'risk': rk.get('riskFactor', ''), 'status': (rk.get('status', '') or '').lower()})
+            if r > 0: overall = 'red'
+            elif y > 0: overall = 'yellow'
+            elif g > 0: overall = 'green'
+            else: overall = 'none'
+            result.append({
+                'ticker': row['ticker'], 'company': row['company'],
+                'thesis_summary': first_sentence,
+                'signpost_count': len(analysis.get('signposts', [])),
+                'risk_count': len(analysis.get('threats', [])),
+                'green': g, 'yellow': y, 'red': r,
+                'signpost_statuses': sp_statuses, 'risk_statuses': rk_statuses,
+                'overall': overall,
+                'updated': row['updated_at'].isoformat() if row['updated_at'] else None,
+                'has_scorecard': scorecard_data is not None
+            })
+        total_items = total_green + total_yellow + total_red
+        health_score = round((total_green / total_items * 100) if total_items > 0 else 0, 1)
+        dashboard = {
+            'stocks': result,
+            'summary': {
+                'total_stocks': len(result), 'total_green': total_green,
+                'total_yellow': total_yellow, 'total_red': total_red,
+                'health_score': health_score
+            }
+        }
+        cache.set('portfolio_dashboard', dashboard, ttl=120)
+        return jsonify(dashboard)
+    except Exception as e:
+        print(f"Error getting portfolio dashboard: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/thesis-snapshots/<ticker>', methods=['GET'])
+def get_thesis_snapshots(ticker):
+    """Return all snapshots for a ticker, ordered by date."""
+    try:
+        limit = request.args.get('limit', 50, type=int)
+        with get_db() as (_, cur):
+            cur.execute('''
+                SELECT id, ticker, snapshot_type, thesis_summary, pillar_count,
+                       signpost_statuses, risk_statuses, green_count, yellow_count,
+                       red_count, total_items, conviction, created_at
+                FROM thesis_snapshots WHERE ticker = %s
+                ORDER BY created_at DESC LIMIT %s
+            ''', (ticker.upper(), limit))
+            rows = cur.fetchall()
+        result = []
+        for row in rows:
+            result.append({
+                'id': row['id'], 'ticker': row['ticker'],
+                'snapshot_type': row['snapshot_type'],
+                'thesis_summary': row['thesis_summary'],
+                'pillar_count': row['pillar_count'],
+                'signpost_statuses': row['signpost_statuses'],
+                'risk_statuses': row['risk_statuses'],
+                'green': row['green_count'], 'yellow': row['yellow_count'], 'red': row['red_count'],
+                'total_items': row['total_items'], 'conviction': row['conviction'],
+                'date': row['created_at'].isoformat() if row['created_at'] else None
+            })
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/portfolio/dashboard/timeline', methods=['GET'])
+def get_portfolio_timeline():
+    """Return aggregate G/Y/R snapshots over time for the whole portfolio."""
+    try:
+        days = request.args.get('days', 90, type=int)
+        with get_db() as (_, cur):
+            cur.execute('''
+                SELECT DATE(created_at) as snap_date,
+                       SUM(green_count) as total_green,
+                       SUM(yellow_count) as total_yellow,
+                       SUM(red_count) as total_red,
+                       COUNT(DISTINCT ticker) as stock_count
+                FROM (
+                    SELECT DISTINCT ON (ticker, DATE(created_at))
+                           ticker, green_count, yellow_count, red_count, created_at
+                    FROM thesis_snapshots
+                    WHERE created_at > NOW() - INTERVAL '%s days'
+                    ORDER BY ticker, DATE(created_at), created_at DESC
+                ) daily_snapshots
+                GROUP BY DATE(created_at)
+                ORDER BY snap_date ASC
+            ''', (days,))
+            rows = cur.fetchall()
+        result = []
+        for row in rows:
+            total = row['total_green'] + row['total_yellow'] + row['total_red']
+            result.append({
+                'date': row['snap_date'].isoformat(),
+                'green': row['total_green'], 'yellow': row['total_yellow'], 'red': row['total_red'],
+                'total': total,
+                'green_pct': round(row['total_green'] / total * 100, 1) if total > 0 else 0,
+                'stock_count': row['stock_count']
+            })
+        return jsonify(result)
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
@@ -3932,6 +4150,16 @@ def save_scorecard_data():
                 ON CONFLICT (ticker) DO UPDATE SET scorecard_data = %s, updated_at = CURRENT_TIMESTAMP
             ''', (ticker, json.dumps(scorecard_data), json.dumps(scorecard_data)))
             conn.commit()
+        cache.invalidate('portfolio_dashboard')
+        # Auto-snapshot for thesis evolution tracking
+        try:
+            with get_db() as (_, cur2):
+                cur2.execute('SELECT analysis FROM portfolio_analyses WHERE ticker = %s', (ticker,))
+                a_row = cur2.fetchone()
+            a_data = a_row['analysis'] if a_row else {}
+            _create_thesis_snapshot(ticker, a_data, scorecard_data, 'scorecard')
+        except Exception as snap_err:
+            print(f"Snapshot error: {snap_err}")
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -4462,6 +4690,190 @@ def _generate_risk_focus_pdf(row, scorecard_data=None):
     return buf.getvalue()
 
 
+# ============================================
+# PPTX SLIDE DECK GENERATOR
+# ============================================
+
+def _pptx_status_color(status):
+    """Return RGBColor for a status string."""
+    from pptx.dml.color import RGBColor
+    s = (status or '').lower()
+    if s == 'green': return RGBColor(0x16, 0xA3, 0x4A)
+    elif s == 'yellow': return RGBColor(0xCA, 0x8A, 0x04)
+    elif s == 'red': return RGBColor(0xDC, 0x26, 0x26)
+    return RGBColor(0x94, 0xA3, 0xB8)
+
+def _pptx_status_bg(status):
+    """Return RGBColor background for a status cell."""
+    from pptx.dml.color import RGBColor
+    s = (status or '').lower()
+    if s == 'green': return RGBColor(0xDC, 0xFC, 0xE7)
+    elif s == 'yellow': return RGBColor(0xFE, 0xF9, 0xC3)
+    elif s == 'red': return RGBColor(0xFE, 0xE2, 0xE2)
+    return None
+
+def _generate_thesis_pptx_bytes(row, scorecard_data=None, fmt='executive'):
+    """Generate a 5-slide PowerPoint deck for a stock thesis."""
+    from pptx import Presentation
+    from pptx.util import Inches, Pt, Emu
+    from pptx.dml.color import RGBColor
+    from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+    from pptx.enum.shapes import MSO_SHAPE
+    import io
+
+    d = _parse_analysis_data(row)
+    ticker, company, date_str = d['ticker'], d['company'], d['date_str']
+    thesis, signposts, threats, conclusion = d['thesis'], d['signposts'], d['threats'], d['conclusion']
+    sp_data = _build_signpost_data(signposts, scorecard_data)
+    rk_data = _build_risk_data(threats, scorecard_data)
+    g, y, r = _tally_statuses(scorecard_data)
+
+    prs = Presentation()
+    prs.slide_width = Inches(13.333)
+    prs.slide_height = Inches(7.5)
+
+    NAVY = RGBColor(0x1E, 0x29, 0x3B)
+    DARK = RGBColor(0x0F, 0x17, 0x2A)
+    WHITE = RGBColor(0xFF, 0xFF, 0xFF)
+    TEAL = RGBColor(0x14, 0xB8, 0xA6)
+    SLATE = RGBColor(0x94, 0xA3, 0xB8)
+    LIGHT = RGBColor(0xCB, 0xD5, 0xE1)
+
+    def add_bg(slide, color=NAVY):
+        bg = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height)
+        bg.fill.solid(); bg.fill.fore_color.rgb = color; bg.line.fill.background()
+
+    def add_bar(slide, text, left, top, width):
+        bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left, top, width, Pt(36))
+        bar.fill.solid(); bar.fill.fore_color.rgb = TEAL; bar.line.fill.background()
+        tf = bar.text_frame; tf.margin_left = Pt(10)
+        p = tf.paragraphs[0]; p.alignment = PP_ALIGN.LEFT
+        run = p.add_run(); run.text = text; run.font.size = Pt(14); run.font.color.rgb = WHITE; run.font.bold = True
+
+    def style_cell(cell, font_size=Pt(11), font_color=WHITE, bold=False, fill_color=None, align=PP_ALIGN.LEFT):
+        if fill_color:
+            cell.fill.solid(); cell.fill.fore_color.rgb = fill_color
+        cell.margin_left = Pt(6); cell.margin_right = Pt(6)
+        cell.margin_top = Pt(3); cell.margin_bottom = Pt(3)
+        cell.vertical_anchor = MSO_ANCHOR.MIDDLE
+        for p in cell.text_frame.paragraphs:
+            p.alignment = align
+            for run in p.runs:
+                run.font.size = font_size; run.font.color.rgb = font_color; run.font.bold = bold
+
+    # ---- SLIDE 1: Title ----
+    s1 = prs.slides.add_slide(prs.slide_layouts[6])
+    add_bg(s1)
+    tb = s1.shapes.add_textbox(Inches(1), Inches(2), Inches(11.333), Inches(2))
+    tf = tb.text_frame; tf.word_wrap = True
+    p = tf.paragraphs[0]; p.alignment = PP_ALIGN.CENTER
+    run = p.add_run(); run.text = f"{ticker} — {company}" if company else ticker
+    run.font.size = Pt(44); run.font.color.rgb = WHITE; run.font.bold = True
+    p2 = tf.add_paragraph(); p2.alignment = PP_ALIGN.CENTER; p2.space_before = Pt(12)
+    r2 = p2.add_run(); r2.text = "Investment Thesis"; r2.font.size = Pt(24); r2.font.color.rgb = TEAL
+    line = s1.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(4), Inches(4.2), Inches(5.333), Pt(3))
+    line.fill.solid(); line.fill.fore_color.rgb = TEAL; line.line.fill.background()
+    dtb = s1.shapes.add_textbox(Inches(9), Inches(6.5), Inches(3.5), Inches(0.5))
+    dp = dtb.text_frame.paragraphs[0]; dp.alignment = PP_ALIGN.RIGHT
+    dr = dp.add_run(); dr.text = date_str; dr.font.size = Pt(14); dr.font.color.rgb = SLATE
+
+    # ---- SLIDE 2: Thesis + Pillars ----
+    s2 = prs.slides.add_slide(prs.slide_layouts[6])
+    add_bg(s2)
+    add_bar(s2, "WHY DO WE OWN IT?", Inches(0.5), Inches(0.4), Inches(12.333))
+    stb = s2.shapes.add_textbox(Inches(0.7), Inches(1.2), Inches(11.9), Inches(1.8))
+    stf = stb.text_frame; stf.word_wrap = True
+    sp = stf.paragraphs[0]; sr = sp.add_run()
+    sr.text = thesis.get('summary', ''); sr.font.size = Pt(15); sr.font.color.rgb = WHITE
+    y_pos = Inches(3.2)
+    pillars = thesis.get('pillars', [])
+    for i, pil in enumerate(pillars, 1):
+        ptitle = pil.get('pillar', pil.get('title', ''))
+        pdesc = pil.get('detail', pil.get('description', ''))
+        pb = s2.shapes.add_textbox(Inches(0.7), y_pos, Inches(11.9), Inches(0.7))
+        ptf = pb.text_frame; ptf.word_wrap = True
+        pp = ptf.paragraphs[0]
+        r1 = pp.add_run(); r1.text = f"{i}. {ptitle}: "; r1.font.size = Pt(14); r1.font.color.rgb = TEAL; r1.font.bold = True
+        r2 = pp.add_run(); r2.text = pdesc[:200] if pdesc else ''; r2.font.size = Pt(13); r2.font.color.rgb = LIGHT
+        y_pos += Inches(0.75)
+
+    # ---- SLIDE 3: Signposts Table ----
+    s3 = prs.slides.add_slide(prs.slide_layouts[6])
+    add_bg(s3)
+    add_bar(s3, "WHAT ARE WE WATCHING?", Inches(0.5), Inches(0.4), Inches(12.333))
+    if sp_data:
+        rows_n = len(sp_data) + 1
+        tbl = s3.shapes.add_table(rows_n, 4, Inches(0.5), Inches(1.3), Inches(12.333), Inches(min(rows_n * 0.55, 5.5))).table
+        tbl.columns[0].width = Inches(4.5); tbl.columns[1].width = Inches(3.0); tbl.columns[2].width = Inches(2.833); tbl.columns[3].width = Inches(2.0)
+        for j, h in enumerate(['Metric', 'LT Goal', 'Latest', 'Status']):
+            tbl.cell(0, j).text = h; style_cell(tbl.cell(0, j), Pt(12), WHITE, True, TEAL, PP_ALIGN.CENTER if j == 3 else PP_ALIGN.LEFT)
+        for i, s in enumerate(sp_data):
+            ri = i + 1
+            tbl.cell(ri, 0).text = s.get('metric', ''); style_cell(tbl.cell(ri, 0), fill_color=DARK)
+            tbl.cell(ri, 1).text = s.get('ltGoal', ''); style_cell(tbl.cell(ri, 1), fill_color=DARK)
+            tbl.cell(ri, 2).text = s.get('latest', '') or '—'; style_cell(tbl.cell(ri, 2), fill_color=DARK)
+            st = (s.get('status', '') or '').lower()
+            tbl.cell(ri, 3).text = st.upper() if st else '—'
+            sbg = _pptx_status_bg(st)
+            style_cell(tbl.cell(ri, 3), font_color=_pptx_status_color(st) if not sbg else RGBColor(0x0F, 0x17, 0x2A), fill_color=sbg or DARK, align=PP_ALIGN.CENTER, bold=True)
+
+    # ---- SLIDE 4: Risk Assessment ----
+    s4 = prs.slides.add_slide(prs.slide_layouts[6])
+    add_bg(s4)
+    add_bar(s4, "WHAT COULD GO WRONG?", Inches(0.5), Inches(0.4), Inches(12.333))
+    if rk_data:
+        rows_n = len(rk_data) + 1
+        tbl = s4.shapes.add_table(rows_n, 4, Inches(0.5), Inches(1.3), Inches(12.333), Inches(min(rows_n * 0.55, 5.5))).table
+        tbl.columns[0].width = Inches(4.5); tbl.columns[1].width = Inches(2.5); tbl.columns[2].width = Inches(2.5); tbl.columns[3].width = Inches(2.833)
+        for j, h in enumerate(['Risk Factor', 'Likelihood', 'Impact', 'Status']):
+            tbl.cell(0, j).text = h; style_cell(tbl.cell(0, j), Pt(12), WHITE, True, TEAL, PP_ALIGN.CENTER if j == 3 else PP_ALIGN.LEFT)
+        for i, rk in enumerate(rk_data):
+            ri = i + 1
+            tbl.cell(ri, 0).text = rk.get('threat', ''); style_cell(tbl.cell(ri, 0), fill_color=DARK)
+            tbl.cell(ri, 1).text = rk.get('likelihood', ''); style_cell(tbl.cell(ri, 1), fill_color=DARK)
+            tbl.cell(ri, 2).text = rk.get('impact', ''); style_cell(tbl.cell(ri, 2), fill_color=DARK)
+            st = (rk.get('status', '') or '').lower()
+            tbl.cell(ri, 3).text = st.upper() if st else '—'
+            sbg = _pptx_status_bg(st)
+            style_cell(tbl.cell(ri, 3), font_color=_pptx_status_color(st) if not sbg else RGBColor(0x0F, 0x17, 0x2A), fill_color=sbg or DARK, align=PP_ALIGN.CENTER, bold=True)
+
+    # ---- SLIDE 5: Conclusion + Conviction ----
+    s5 = prs.slides.add_slide(prs.slide_layouts[6])
+    add_bg(s5)
+    add_bar(s5, "CONCLUSION & CONVICTION", Inches(0.5), Inches(0.4), Inches(12.333))
+    # Conviction boxes
+    total = g + y + r
+    bx = Inches(0.7); by = Inches(1.3)
+    for label, count, color, bg_c in [('GREEN', g, RGBColor(0x16,0xA3,0x4A), RGBColor(0x05,0x2E,0x16)),
+                                       ('YELLOW', y, RGBColor(0xCA,0x8A,0x04), RGBColor(0x42,0x2D,0x09)),
+                                       ('RED', r, RGBColor(0xDC,0x26,0x26), RGBColor(0x45,0x0A,0x0A))]:
+        box = s5.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, bx, by, Inches(3.5), Inches(1.2))
+        box.fill.solid(); box.fill.fore_color.rgb = bg_c; box.line.fill.background()
+        btf = box.text_frame; btf.word_wrap = True
+        bp = btf.paragraphs[0]; bp.alignment = PP_ALIGN.CENTER
+        br = bp.add_run(); br.text = str(count); br.font.size = Pt(40); br.font.color.rgb = color; br.font.bold = True
+        bp2 = btf.add_paragraph(); bp2.alignment = PP_ALIGN.CENTER
+        br2 = bp2.add_run(); br2.text = label; br2.font.size = Pt(12); br2.font.color.rgb = SLATE
+        bx += Inches(4.1)
+    # Health score
+    if total > 0:
+        pct = round(g / total * 100)
+        htb = s5.shapes.add_textbox(Inches(0.7), Inches(2.8), Inches(12), Inches(0.6))
+        hp = htb.text_frame.paragraphs[0]; hp.alignment = PP_ALIGN.CENTER
+        hr1 = hp.add_run(); hr1.text = f"Health Score: {pct}%"; hr1.font.size = Pt(20); hr1.font.color.rgb = TEAL; hr1.font.bold = True
+    # Conclusion
+    conclusion_text = conclusion if isinstance(conclusion, str) else str(conclusion or '')
+    if conclusion_text:
+        ctb = s5.shapes.add_textbox(Inches(0.7), Inches(3.8), Inches(11.9), Inches(3))
+        ctf = ctb.text_frame; ctf.word_wrap = True
+        cp = ctf.paragraphs[0]
+        cr = cp.add_run(); cr.text = conclusion_text[:800]; cr.font.size = Pt(15); cr.font.color.rgb = WHITE
+
+    buf = io.BytesIO()
+    prs.save(buf)
+    return buf.getvalue()
+
+
 @app.route('/api/thesis-format/generate', methods=['POST'])
 def generate_thesis_format():
     """Generate a formatted thesis document in a specific template."""
@@ -4519,8 +4931,11 @@ def generate_thesis_format():
             file_bytes = gen_func(row_dict, scorecard_data)
             filename = f"{ticker}_{format_name}.pdf"
             mime = 'application/pdf'
+        elif output_type == 'pptx':
+            file_bytes = _generate_thesis_pptx_bytes(row_dict, scorecard_data, fmt)
+            filename = f"{ticker}_{format_name}.pptx"
+            mime = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
         else:
-            # For Word, use the existing analysis docx generator as base
             file_bytes = _generate_analysis_docx_bytes(row_dict)
             filename = f"{ticker}_{format_name}.docx"
             mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -4580,7 +4995,8 @@ def download_format_history(history_id):
             row = cur.fetchone()
         if not row:
             return jsonify({'error': 'Not found'}), 404
-        mime = 'application/pdf' if row['output_type'] == 'pdf' else 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        mime_map = {'pdf': 'application/pdf', 'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation'}
+        mime = mime_map.get(row['output_type'], 'application/octet-stream')
         return jsonify({'fileData': row['file_data'], 'filename': row['filename'], 'mimeType': mime})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -4789,13 +5205,21 @@ def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slid
 
 
 def _run_thesis_infographic(job_id, d, scorecard_data, style_key, mode, gemini_key, detail='full', edit_prompt=None, parent_id=None):
-    """Background worker to generate thesis infographic images via Gemini."""
+    """Background worker to generate thesis infographic images via Gemini or Pillow."""
     import time as _time
     job = _infographic_jobs[job_id]
-    style_prompt = THESIS_INFOGRAPHIC_STYLES.get(style_key, THESIS_INFOGRAPHIC_STYLES['professional'])['prompt']
+    style_def = THESIS_INFOGRAPHIC_STYLES.get(style_key, THESIS_INFOGRAPHIC_STYLES['professional'])
+    engine = style_def.get('engine', 'gemini')
 
     try:
-        if mode == '1':
+        if engine == 'pillow':
+            # Deterministic Pillow rendering — no Gemini API needed
+            job['current'] = 1
+            job['progress'] = 50
+            images = _generate_precision_infographic(d, scorecard_data, mode, detail)
+            job['images'] = images
+        elif mode == '1':
+            style_prompt = style_def['prompt']
             job['current'] = 1
             prompt = _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, '1', detail=detail)
             if edit_prompt:
@@ -4809,6 +5233,7 @@ def _run_thesis_infographic(job_id, d, scorecard_data, style_key, mode, gemini_k
                 job['status'] = 'error'
                 return
         else:
+            style_prompt = style_def['prompt']
             # 3-slide mode
             for i in range(1, 4):
                 job['current'] = i
@@ -4870,10 +5295,12 @@ def start_thesis_infographic():
 
         if not ticker:
             return jsonify({'error': 'No ticker provided'}), 400
-        if not gemini_key:
-            return jsonify({'error': 'Gemini API key required for infographic generation'}), 400
         if style not in THESIS_INFOGRAPHIC_STYLES:
             return jsonify({'error': f'Unknown style: {style}'}), 400
+        style_def = THESIS_INFOGRAPHIC_STYLES[style]
+        engine = style_def.get('engine', 'gemini')
+        if engine != 'pillow' and not gemini_key:
+            return jsonify({'error': 'Gemini API key required for infographic generation'}), 400
 
         # Fetch analysis
         with get_db() as (_, cur):
@@ -7997,7 +8424,255 @@ THESIS_INFOGRAPHIC_STYLES = {
         'name': 'Editorial',
         'prompt': 'Create an EDITORIAL MAGAZINE STYLE INFOGRAPHIC with the following visual style:\n- Background: Off-white/cream paper with slight texture\n- Layout: Magazine editorial layout with columns, pull quotes, sidebar boxes\n- Colors: High-contrast black and white with ONE accent color (red #dc2626)\n- Typography: Large bold serif headers (like The Economist), clean sans-serif body\n- Icons: Minimal, line-art style, used sparingly\n- Data visualization: Clean minimal charts with red accent, large oversized numbers\n- Decorations: Thin black rules/dividers, drop caps, red accent bars\n- Overall feel: The Economist or Barron\'s magazine feature article\n',
     },
+    'precision': {
+        'name': 'Precision',
+        'prompt': '',
+        'engine': 'pillow',
+    },
 }
+
+
+# ============================================
+# PRECISION INFOGRAPHIC RENDERER (Pillow)
+# ============================================
+
+def _img_to_base64(img):
+    """Convert PIL Image to base64 PNG string."""
+    import io
+    buf = io.BytesIO()
+    img.save(buf, format='PNG', optimize=True)
+    return base64.b64encode(buf.getvalue()).decode('utf-8')
+
+def _wrap_text(draw, text, font, max_width):
+    """Word-wrap text to fit within max_width pixels."""
+    words = (text or '').split()
+    lines = []; current = ''
+    for word in words:
+        test = f"{current} {word}".strip()
+        bbox = draw.textbbox((0, 0), test, font=font)
+        if bbox[2] - bbox[0] <= max_width:
+            current = test
+        else:
+            if current: lines.append(current)
+            current = word
+    if current: lines.append(current)
+    return lines or ['']
+
+def _load_fonts():
+    """Load DejaVu Sans fonts with fallback."""
+    from PIL import ImageFont
+    fonts = {}
+    try:
+        base = "/usr/share/fonts/truetype/dejavu/"
+        fonts['bold_lg'] = ImageFont.truetype(f"{base}DejaVuSans-Bold.ttf", 44)
+        fonts['bold_md'] = ImageFont.truetype(f"{base}DejaVuSans-Bold.ttf", 26)
+        fonts['bold_sm'] = ImageFont.truetype(f"{base}DejaVuSans-Bold.ttf", 18)
+        fonts['regular'] = ImageFont.truetype(f"{base}DejaVuSans.ttf", 16)
+        fonts['small'] = ImageFont.truetype(f"{base}DejaVuSans.ttf", 13)
+        fonts['tiny'] = ImageFont.truetype(f"{base}DejaVuSans.ttf", 11)
+    except Exception:
+        fonts['bold_lg'] = ImageFont.load_default(size=44)
+        fonts['bold_md'] = ImageFont.load_default(size=26)
+        fonts['bold_sm'] = ImageFont.load_default(size=18)
+        fonts['regular'] = ImageFont.load_default(size=16)
+        fonts['small'] = ImageFont.load_default(size=13)
+        fonts['tiny'] = ImageFont.load_default(size=11)
+    return fonts
+
+def _draw_status_dot(draw, x, y, status, size=14):
+    """Draw a colored status circle."""
+    colors = {'green': (22, 163, 74), 'yellow': (202, 138, 4), 'red': (220, 38, 38)}
+    c = colors.get((status or '').lower(), (148, 163, 184))
+    draw.ellipse([x, y, x + size, y + size], fill=c)
+
+def _generate_precision_infographic(d, scorecard_data, mode, detail='full'):
+    """Generate deterministic infographic images using Pillow."""
+    from PIL import Image, ImageDraw
+    sp_data = _build_signpost_data(d['signposts'], scorecard_data)
+    rk_data = _build_risk_data(d['threats'], scorecard_data)
+    g, y_count, r = _tally_statuses(scorecard_data)
+    fonts = _load_fonts()
+    W, H = 1920, 1080
+    BG = (30, 41, 59); TEAL = (20, 184, 166); WHITE = (255, 255, 255)
+    SLATE = (148, 163, 184); DARK = (15, 23, 42); LIGHT = (203, 213, 225)
+
+    def draw_header(draw, img, title_text, subtitle=''):
+        draw.rectangle([0, 0, W, 80], fill=DARK)
+        draw.text((30, 20), title_text, font=fonts['bold_md'], fill=WHITE)
+        if subtitle:
+            bbox = draw.textbbox((0, 0), subtitle, font=fonts['small'])
+            draw.text((W - 30 - (bbox[2] - bbox[0]), 30), subtitle, font=fonts['small'], fill=SLATE)
+        draw.rectangle([0, 80, W, 84], fill=TEAL)
+
+    def draw_section_bar(draw, y_pos, text):
+        draw.rectangle([30, y_pos, W - 30, y_pos + 32], fill=TEAL)
+        draw.text((42, y_pos + 6), text, font=fonts['bold_sm'], fill=WHITE)
+        return y_pos + 40
+
+    def draw_signpost_table(draw, x, y_start, width, data, compact=False):
+        font = fonts['small'] if compact else fonts['regular']
+        hdr_font = fonts['bold_sm'] if not compact else fonts['small']
+        row_h = 28 if compact else 34
+        col_w = [int(width * 0.32), int(width * 0.25), int(width * 0.25), int(width * 0.18)]
+        headers = ['Metric', 'LT Goal', 'Latest', 'Status']
+        draw.rectangle([x, y_start, x + width, y_start + row_h], fill=(20, 184, 166, 200))
+        cx = x
+        for i, h in enumerate(headers):
+            draw.text((cx + 8, y_start + 6), h, font=hdr_font, fill=WHITE)
+            cx += col_w[i]
+        y = y_start + row_h
+        for s in data:
+            draw.rectangle([x, y, x + width, y + row_h], fill=DARK)
+            draw.line([x, y, x + width, y], fill=(255, 255, 255, 30))
+            cx = x
+            metric = (s.get('metric', '') or '')[:30]
+            draw.text((cx + 8, y + 6), metric, font=font, fill=LIGHT)
+            cx += col_w[0]
+            draw.text((cx + 8, y + 6), (s.get('ltGoal', '') or '')[:20], font=font, fill=SLATE)
+            cx += col_w[1]
+            draw.text((cx + 8, y + 6), (s.get('latest', '') or '—')[:20], font=font, fill=SLATE)
+            cx += col_w[2]
+            _draw_status_dot(draw, cx + col_w[3]//2 - 7, y + row_h//2 - 7, s.get('status', ''))
+            y += row_h
+        return y
+
+    def draw_risk_table(draw, x, y_start, width, data, compact=False):
+        font = fonts['small'] if compact else fonts['regular']
+        hdr_font = fonts['bold_sm'] if not compact else fonts['small']
+        row_h = 28 if compact else 34
+        col_w = [int(width * 0.35), int(width * 0.2), int(width * 0.2), int(width * 0.25)]
+        headers = ['Risk Factor', 'Likelihood', 'Impact', 'Status']
+        draw.rectangle([x, y_start, x + width, y_start + row_h], fill=(220, 38, 38, 180))
+        cx = x
+        for i, h in enumerate(headers):
+            draw.text((cx + 8, y_start + 6), h, font=hdr_font, fill=WHITE)
+            cx += col_w[i]
+        y = y_start + row_h
+        for rk in data:
+            draw.rectangle([x, y, x + width, y + row_h], fill=DARK)
+            draw.line([x, y, x + width, y], fill=(255, 255, 255, 30))
+            cx = x
+            draw.text((cx + 8, y + 6), (rk.get('threat', '') or '')[:30], font=font, fill=LIGHT)
+            cx += col_w[0]
+            draw.text((cx + 8, y + 6), (rk.get('likelihood', '') or '')[:12], font=font, fill=SLATE)
+            cx += col_w[1]
+            draw.text((cx + 8, y + 6), (rk.get('impact', '') or '')[:12], font=font, fill=SLATE)
+            cx += col_w[2]
+            _draw_status_dot(draw, cx + col_w[3]//2 - 7, y + row_h//2 - 7, rk.get('status', ''))
+            y += row_h
+        return y
+
+    ticker = d['ticker']; company = d['company']
+    thesis = d['thesis']; conclusion = d['conclusion']
+    header_text = f"{ticker} — {company}" if company else ticker
+
+    if mode == '1':
+        img = Image.new('RGB', (W, H), BG)
+        draw = ImageDraw.Draw(img)
+        draw_header(draw, img, header_text, 'Investment Thesis')
+        # Thesis summary
+        y = 100
+        summary = thesis.get('summary', '')
+        if detail == 'summary' and '.' in summary:
+            summary = summary[:summary.index('.') + 1]
+        lines = _wrap_text(draw, summary, fonts['regular'], W - 80)
+        for line in lines[:4]:
+            draw.text((40, y), line, font=fonts['regular'], fill=WHITE)
+            y += 22
+        # Pillars
+        y += 8
+        for i, p in enumerate(thesis.get('pillars', [])[:5], 1):
+            ptitle = p.get('pillar', p.get('title', ''))
+            pdesc = p.get('detail', p.get('description', ''))
+            if detail == 'summary':
+                text = f"{i}. {ptitle}"
+            else:
+                text = f"{i}. {ptitle}: {pdesc[:100]}"
+            draw.text((40, y), text[:90], font=fonts['small'], fill=TEAL)
+            y += 20
+        # Two-column: signposts + risks
+        y += 10
+        col_w = (W - 80) // 2 - 10
+        y = draw_section_bar(draw, y, "SIGNPOSTS")
+        sp_end = draw_signpost_table(draw, 30, y, col_w, sp_data[:7], compact=True)
+        # Risks on right
+        draw.rectangle([30 + col_w + 20, y - 40, W - 30, y - 8], fill=TEAL)
+        draw.text((42 + col_w + 20, y - 34), "RISKS", font=fonts['bold_sm'], fill=WHITE)
+        draw_risk_table(draw, 30 + col_w + 20, y, col_w, rk_data[:5], compact=True)
+        # Conviction bar at bottom
+        draw.rectangle([0, H - 60, W, H], fill=DARK)
+        total_items = g + y_count + r
+        if total_items > 0:
+            pct = round(g / total_items * 100)
+            draw.text((40, H - 48), f"Health: {pct}%", font=fonts['bold_sm'], fill=TEAL)
+        gyr_x = W - 300
+        for label, cnt, color in [('G', g, (22, 163, 74)), ('Y', y_count, (202, 138, 4)), ('R', r, (220, 38, 38))]:
+            draw.rectangle([gyr_x, H - 50, gyr_x + 60, H - 14], fill=color)
+            draw.text((gyr_x + 20, H - 48), str(cnt), font=fonts['bold_sm'], fill=WHITE)
+            gyr_x += 80
+        return [_img_to_base64(img)]
+    else:
+        images = []
+        # Slide 1: Thesis + Pillars
+        img1 = Image.new('RGB', (W, H), BG)
+        d1 = ImageDraw.Draw(img1)
+        draw_header(d1, img1, header_text, 'Investment Thesis — Slide 1/3')
+        y = 110
+        y = draw_section_bar(d1, y, "WHY DO WE OWN IT?")
+        summary = thesis.get('summary', '')
+        if detail == 'summary' and '.' in summary: summary = summary[:summary.index('.') + 1]
+        for line in _wrap_text(d1, summary, fonts['regular'], W - 80)[:6]:
+            d1.text((40, y), line, font=fonts['regular'], fill=WHITE); y += 24
+        y += 15
+        for i, p in enumerate(thesis.get('pillars', [])[:6], 1):
+            ptitle = p.get('pillar', p.get('title', ''))
+            pdesc = p.get('detail', p.get('description', ''))
+            d1.text((40, y), f"{i}.", font=fonts['bold_md'], fill=TEAL)
+            d1.text((80, y), ptitle, font=fonts['bold_sm'], fill=WHITE)
+            y += 28
+            if detail != 'summary' and pdesc:
+                for line in _wrap_text(d1, pdesc, fonts['small'], W - 120)[:2]:
+                    d1.text((80, y), line, font=fonts['small'], fill=SLATE); y += 18
+            y += 10
+        conclusion_text = conclusion if isinstance(conclusion, str) else ''
+        if detail == 'summary' and '.' in conclusion_text: conclusion_text = conclusion_text[:conclusion_text.index('.') + 1]
+        if conclusion_text:
+            d1.rectangle([30, H - 100, W - 30, H - 30], fill=DARK)
+            for line in _wrap_text(d1, conclusion_text, fonts['small'], W - 100)[:3]:
+                d1.text((50, H - 90), line, font=fonts['small'], fill=LIGHT); break
+        images.append(_img_to_base64(img1))
+
+        # Slide 2: Signposts
+        img2 = Image.new('RGB', (W, H), BG)
+        d2 = ImageDraw.Draw(img2)
+        draw_header(d2, img2, header_text, 'Key Signposts — Slide 2/3')
+        y = 110
+        y = draw_section_bar(d2, y, "WHAT ARE WE WATCHING?")
+        draw_signpost_table(d2, 30, y, W - 60, sp_data[:12])
+        images.append(_img_to_base64(img2))
+
+        # Slide 3: Risks + Conviction
+        img3 = Image.new('RGB', (W, H), BG)
+        d3 = ImageDraw.Draw(img3)
+        draw_header(d3, img3, header_text, 'Risk Assessment — Slide 3/3')
+        y = 110
+        y = draw_section_bar(d3, y, "WHAT COULD GO WRONG?")
+        y_end = draw_risk_table(d3, 30, y, W - 60, rk_data[:10])
+        # Conviction bar
+        y_end += 30
+        d3.rectangle([30, y_end, W - 30, y_end + 80], fill=DARK)
+        total_items = g + y_count + r
+        boxes_x = 50
+        for label, cnt, color in [('GREEN', g, (22, 163, 74)), ('YELLOW', y_count, (202, 138, 4)), ('RED', r, (220, 38, 38))]:
+            d3.rectangle([boxes_x, y_end + 10, boxes_x + 140, y_end + 65], fill=color)
+            d3.text((boxes_x + 50, y_end + 15), str(cnt), font=fonts['bold_md'], fill=WHITE)
+            d3.text((boxes_x + 10, y_end + 45), label, font=fonts['tiny'], fill=WHITE)
+            boxes_x += 170
+        if total_items > 0:
+            pct = round(g / total_items * 100)
+            d3.text((boxes_x + 40, y_end + 20), f"Health Score: {pct}%", font=fonts['bold_md'], fill=TEAL)
+        images.append(_img_to_base64(img3))
+        return images
 
 SECTOR_THEME_MAP = {
     'Healthcare': 'healthcare',

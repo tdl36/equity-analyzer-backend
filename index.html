@@ -275,7 +275,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-03-14T08';
+        const BUILD_VERSION = '2026-03-14T09';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -734,6 +734,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
         const RotateCw = ({className = "w-5 h-5"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>;
         const Cloud = ({className = "w-5 h-5"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>;
         const LayoutTemplate = ({className = "w-5 h-5"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>;
+        const LayoutDashboard = ({className = "w-5 h-5"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>;
 
         // Helper to detect iOS/iPadOS (including iPadOS 13+ that reports as Mac)
         const isIOSDevice = () => {
@@ -1626,6 +1627,18 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [fmtInfographicViewingVersion, setFmtInfographicViewingVersion] = useState(null);
             const [fmtInfographicViewingImages, setFmtInfographicViewingImages] = useState([]);
             const [fmtInfographicEditPrompt, setFmtInfographicEditPrompt] = useState('');
+
+            // Portfolio Dashboard state
+            const [dashboardData, setDashboardData] = useState(null);
+            const [dashboardLoading, setDashboardLoading] = useState(false);
+            const [dashboardFilter, setDashboardFilter] = useState('all');
+            const [dashboardSort, setDashboardSort] = useState('ticker');
+            const [dashboardSortDir, setDashboardSortDir] = useState('asc');
+            const [dashboardSelectedTicker, setDashboardSelectedTicker] = useState(null);
+            const [dashboardDataLoaded, setDashboardDataLoaded] = useState(false);
+            const [timelineData, setTimelineData] = useState([]);
+            const [timelineLoading, setTimelineLoading] = useState(false);
+            const [portfolioTimeline, setPortfolioTimeline] = useState([]);
 
             // Google Drive state (shared across tabs)
             const [driveToken, setDriveToken] = useState(null);
@@ -5486,6 +5499,12 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         loadAnalysis(currentOverviewTicker);
                     }
                 }
+                // Lazy load Dashboard data
+                if (newTab === 'dashboard' && !dashboardDataLoaded) {
+                    loadDashboardData();
+                    loadPortfolioTimeline();
+                    setDashboardDataLoaded(true);
+                }
                 // Lazy load Meeting Prep data
                 if (newTab === 'meetingprep' && !mpDataLoaded) {
                     loadMpMeetings();
@@ -8881,6 +8900,33 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 } catch (e) { console.error('Error loading analyses for formats:', e); }
             };
 
+            // --- Portfolio Dashboard handlers ---
+            const loadDashboardData = async () => {
+                setDashboardLoading(true);
+                try {
+                    const res = await fetch(`${API_URL}/api/portfolio/dashboard`);
+                    if (res.ok) setDashboardData(await res.json());
+                } catch (e) { console.error('Dashboard load failed:', e); }
+                finally { setDashboardLoading(false); }
+            };
+
+            const loadTickerTimeline = async (ticker) => {
+                setTimelineLoading(true);
+                try {
+                    const res = await fetch(`${API_URL}/api/thesis-snapshots/${ticker}?limit=50`);
+                    if (res.ok) setTimelineData(await res.json());
+                    else setTimelineData([]);
+                } catch (e) { setTimelineData([]); }
+                finally { setTimelineLoading(false); }
+            };
+
+            const loadPortfolioTimeline = async () => {
+                try {
+                    const res = await fetch(`${API_URL}/api/portfolio/dashboard/timeline`);
+                    if (res.ok) setPortfolioTimeline(await res.json());
+                } catch (e) { console.error('Portfolio timeline load failed:', e); }
+            };
+
             const loadFmtTicker = async (ticker) => {
                 setFmtTicker(ticker);
                 setFmtScorecardData(null);
@@ -8993,7 +9039,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     });
                     if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Generation failed'); }
                     const data = await res.json();
-                    const mime = outputType === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+                    const mime = outputType === 'pdf' ? 'application/pdf' : outputType === 'pptx' ? 'application/vnd.openxmlformats-officedocument.presentationml.presentation' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
                     triggerBase64Download(data.fileData, data.filename, mime);
                     setFmtLastFileData(data.fileData);
                     setFmtLastFilename(data.filename);
@@ -9070,12 +9116,14 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 { id: 'blueprint', name: 'Blueprint', desc: 'Technical schematic', gradient: 'from-blue-950 to-cyan-900' },
                 { id: 'dashboard', name: 'Dashboard', desc: 'Data widgets & KPIs', gradient: 'from-gray-50 to-blue-50' },
                 { id: 'editorial', name: 'Editorial', desc: 'Magazine layout', gradient: 'from-stone-100 to-stone-50' },
+                { id: 'precision', name: 'Precision', desc: 'Pixel-perfect template', gradient: 'from-teal-800 to-slate-900' },
             ];
 
             const generateThesisInfographic = async () => {
                 if (!fmtTicker) { alert('Please select a ticker first'); return; }
-                const geminiKey = loadGeminiKeyFromStorage() || '';
-                if (!geminiKey) { alert('Gemini API key required. Set it in Settings.'); return; }
+                const isPrecision = fmtInfographicStyle === 'precision';
+                const geminiKey = isPrecision ? '' : (loadGeminiKeyFromStorage() || '');
+                if (!isPrecision && !geminiKey) { alert('Gemini API key required. Set it in Settings.'); return; }
 
                 setFmtInfographicGenerating(true);
                 setFmtInfographicProgress(0);
@@ -9427,10 +9475,23 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             <span className="font-bold text-lg">Charlie</span>
                         </div>
                         <div className="flex items-center gap-1 bg-white/10 backdrop-blur-lg rounded-lg p-1 border border-white/10">
-                            <button 
+                            <button
+                                onClick={() => switchTab('dashboard')}
+                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                                    activeTab === 'dashboard'
+                                        ? 'bg-teal-600 text-white shadow-lg glow-teal'
+                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
+                                }`}
+                            >
+                                <span className="flex items-center gap-2">
+                                    <LayoutDashboard className="w-4 h-4" />
+                                    Dashboard
+                                </span>
+                            </button>
+                            <button
                                 onClick={() => switchTab('portfolio')}
                                 className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                                    activeTab === 'portfolio' 
+                                    activeTab === 'portfolio'
                                         ? 'bg-teal-600 text-white shadow-lg glow-teal'
                                         : 'text-slate-400 hover:text-white hover:bg-white/10'
                                 }`}
@@ -16057,6 +16118,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 rounded-xl text-sm font-medium transition-all">
                                                     <Download className="w-3.5 h-3.5" /> Word
                                                 </button>
+                                                <button onClick={() => generateFmtDocument('pptx')} disabled={fmtGenerating}
+                                                    className="flex items-center gap-1.5 px-4 py-2 bg-orange-600 hover:bg-orange-500 disabled:bg-slate-700 rounded-xl text-sm font-medium transition-all">
+                                                    <Download className="w-3.5 h-3.5" /> PPTX
+                                                </button>
                                             </div>
                                         )}
                                     </div>
@@ -16638,6 +16703,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 rounded-xl text-sm font-medium transition-all">
                                                             <Download className="w-3.5 h-3.5" /> Word
                                                         </button>
+                                                        <button onClick={() => generateFmtDocument('pptx')} disabled={fmtGenerating}
+                                                            className="flex items-center gap-1.5 px-4 py-2 bg-orange-600 hover:bg-orange-500 disabled:bg-slate-700 rounded-xl text-sm font-medium transition-all">
+                                                            <Download className="w-3.5 h-3.5" /> PPTX
+                                                        </button>
                                                         <button onClick={() => emailFmtDocument()} disabled={fmtGenerating || !fmtLastFileData}
                                                             className="flex items-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-700 rounded-xl text-sm font-medium transition-all">
                                                             <Send className="w-3.5 h-3.5" /> Email
@@ -16699,6 +16768,246 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             <LayoutTemplate className="w-12 h-12 text-slate-600 mx-auto mb-4" />
                                             <p className="text-slate-400 text-lg font-medium mb-2">Select a stock to get started</p>
                                             <p className="text-slate-500 text-sm max-w-md mx-auto">Choose a ticker from the dropdown above to import its thesis, then pick a template and customize the scorecard data for professional exports.</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* DASHBOARD TAB */}
+                        {activeTab === 'dashboard' && (
+                            <div className="flex-1 flex flex-col bg-white/[0.02] overflow-y-auto pb-24 md:pb-0" onScroll={(e) => { setShowScrollTop(e.target.scrollTop > 300); scrollContainerRef.current = e.target; }}>
+                                <div className="p-4 md:p-6">
+                                    {/* Header */}
+                                    <div className="flex items-center justify-between mb-6">
+                                        <div className="flex items-center gap-3">
+                                            <LayoutDashboard className="w-6 h-6 text-teal-400" />
+                                            <h1 className="text-xl font-bold">Portfolio Dashboard</h1>
+                                        </div>
+                                        <button onClick={() => { loadDashboardData(); loadPortfolioTimeline(); }}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/15 rounded-lg text-xs font-medium transition-all">
+                                            <RotateCw className="w-3.5 h-3.5" /> Refresh
+                                        </button>
+                                    </div>
+
+                                    {dashboardLoading && !dashboardData ? (
+                                        <div className="flex items-center justify-center py-20">
+                                            <Loader className="w-6 h-6 animate-spin text-teal-400" />
+                                        </div>
+                                    ) : !dashboardData || !dashboardData.stocks || dashboardData.stocks.length === 0 ? (
+                                        <div className="text-center py-20 text-slate-500">
+                                            <LayoutDashboard className="w-12 h-12 mx-auto mb-4 opacity-30" />
+                                            <p className="text-lg font-medium mb-2">No stocks in portfolio</p>
+                                            <p className="text-sm">Save thesis analyses to see them here</p>
+                                        </div>
+                                    ) : dashboardSelectedTicker ? (() => {
+                                        const stock = dashboardData.stocks.find(s => s.ticker === dashboardSelectedTicker);
+                                        if (!stock) return null;
+                                        return (
+                                            <div>
+                                                {/* Detail Header */}
+                                                <div className="flex items-center gap-3 mb-6">
+                                                    <button onClick={() => { setDashboardSelectedTicker(null); setTimelineData([]); }}
+                                                        className="p-2 bg-white/10 hover:bg-white/15 rounded-lg transition-all">
+                                                        <ChevronRight className="w-4 h-4 rotate-180" />
+                                                    </button>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`w-3 h-3 rounded-full ${stock.overall === 'green' ? 'bg-green-500' : stock.overall === 'yellow' ? 'bg-yellow-500' : stock.overall === 'red' ? 'bg-red-500' : 'bg-slate-600'}`} />
+                                                        <h2 className="text-lg font-bold">{stock.ticker}</h2>
+                                                        <span className="text-slate-400">— {stock.company}</span>
+                                                    </div>
+                                                    <button onClick={() => { switchTab('portfolio'); loadAnalysis(stock.ticker); }}
+                                                        className="ml-auto text-xs text-teal-400 hover:text-teal-300 underline">View Full Thesis</button>
+                                                </div>
+
+                                                {/* Signposts & Risks Detail */}
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                                                    <div className="bg-white/[0.04] rounded-xl border border-white/10 p-4">
+                                                        <h3 className="text-sm font-semibold text-teal-400 mb-3">Signposts</h3>
+                                                        <div className="space-y-2">
+                                                            {(stock.signpost_statuses || []).map((sp, i) => (
+                                                                <div key={i} className="flex items-center gap-2 text-sm">
+                                                                    <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${sp.status === 'green' ? 'bg-green-500' : sp.status === 'yellow' ? 'bg-yellow-500' : sp.status === 'red' ? 'bg-red-500' : 'bg-slate-600'}`} />
+                                                                    <span className="text-slate-300 truncate">{sp.metric || sp.signpost || `Signpost ${i+1}`}</span>
+                                                                </div>
+                                                            ))}
+                                                            {(!stock.signpost_statuses || stock.signpost_statuses.length === 0) && (
+                                                                <p className="text-xs text-slate-500">No signpost data</p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <div className="bg-white/[0.04] rounded-xl border border-white/10 p-4">
+                                                        <h3 className="text-sm font-semibold text-red-400 mb-3">Risks</h3>
+                                                        <div className="space-y-2">
+                                                            {(stock.risk_statuses || []).map((rk, i) => (
+                                                                <div key={i} className="flex items-center gap-2 text-sm">
+                                                                    <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${rk.status === 'green' ? 'bg-green-500' : rk.status === 'yellow' ? 'bg-yellow-500' : rk.status === 'red' ? 'bg-red-500' : 'bg-slate-600'}`} />
+                                                                    <span className="text-slate-300 truncate">{rk.risk || `Risk ${i+1}`}</span>
+                                                                </div>
+                                                            ))}
+                                                            {(!stock.risk_statuses || stock.risk_statuses.length === 0) && (
+                                                                <p className="text-xs text-slate-500">No risk data</p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Thesis Evolution Timeline */}
+                                                <div className="bg-white/[0.04] rounded-xl border border-white/10 p-4">
+                                                    <h3 className="text-sm font-semibold text-slate-300 mb-4">Thesis Evolution Timeline</h3>
+                                                    {timelineLoading ? (
+                                                        <div className="flex items-center justify-center py-8">
+                                                            <Loader className="w-5 h-5 animate-spin text-teal-400" />
+                                                        </div>
+                                                    ) : timelineData.length === 0 ? (
+                                                        <p className="text-xs text-slate-500 text-center py-6">No snapshots yet. Save thesis or scorecard data to start tracking changes.</p>
+                                                    ) : (
+                                                        <div className="relative pl-6">
+                                                            <div className="absolute left-2.5 top-2 bottom-2 w-px bg-white/10" />
+                                                            {timelineData.map((snap, idx) => {
+                                                                const prev = idx < timelineData.length - 1 ? timelineData[idx + 1] : null;
+                                                                const dotColor = snap.red_count > 0 ? 'bg-red-500' : snap.yellow_count > 0 ? 'bg-yellow-500' : snap.green_count > 0 ? 'bg-green-500' : 'bg-slate-600';
+                                                                return (
+                                                                    <div key={snap.id} className="relative mb-4 last:mb-0">
+                                                                        <div className={`absolute -left-3.5 top-1.5 w-3 h-3 rounded-full border-2 border-slate-800 ${dotColor}`} />
+                                                                        <div className="bg-white/[0.03] rounded-lg p-3 border border-white/5">
+                                                                            <div className="flex items-center gap-2 mb-1.5">
+                                                                                <span className="text-[10px] text-slate-500">{new Date(snap.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                                                                                <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${snap.snapshot_type === 'analysis' ? 'bg-blue-500/20 text-blue-400' : 'bg-teal-500/20 text-teal-400'}`}>{snap.snapshot_type}</span>
+                                                                            </div>
+                                                                            <div className="flex items-center gap-3">
+                                                                                <div className="flex gap-1.5">
+                                                                                    {[['G', snap.green_count, 'bg-green-600'], ['Y', snap.yellow_count, 'bg-yellow-600'], ['R', snap.red_count, 'bg-red-600']].map(([l, c, bg]) => (
+                                                                                        <span key={l} className={`${bg} text-white text-[10px] font-bold px-2 py-0.5 rounded`}>{l}:{c}</span>
+                                                                                    ))}
+                                                                                </div>
+                                                                                {prev && (snap.green_count !== prev.green_count || snap.yellow_count !== prev.yellow_count || snap.red_count !== prev.red_count) && (
+                                                                                    <div className="flex gap-2 text-[10px] text-slate-500">
+                                                                                        {snap.green_count !== prev.green_count && <span>G: {prev.green_count} → {snap.green_count}</span>}
+                                                                                        {snap.yellow_count !== prev.yellow_count && <span>Y: {prev.yellow_count} → {snap.yellow_count}</span>}
+                                                                                        {snap.red_count !== prev.red_count && <span>R: {prev.red_count} → {snap.red_count}</span>}
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                            {snap.thesis_summary && (
+                                                                                <p className="text-[11px] text-slate-400 mt-1.5 line-clamp-2">{snap.thesis_summary}</p>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })() : (
+                                        <div>
+                                            {/* Summary Cards */}
+                                            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+                                                {[
+                                                    { label: 'Total Stocks', value: dashboardData.summary.total_stocks, color: 'text-white' },
+                                                    { label: 'Green', value: dashboardData.summary.total_green, color: 'text-green-400' },
+                                                    { label: 'Yellow', value: dashboardData.summary.total_yellow, color: 'text-yellow-400' },
+                                                    { label: 'Red', value: dashboardData.summary.total_red, color: 'text-red-400' },
+                                                    { label: 'Health Score', value: `${dashboardData.summary.health_score}%`, color: 'text-teal-400' },
+                                                ].map(card => (
+                                                    <div key={card.label} className="bg-white/[0.04] rounded-xl border border-white/10 p-4 text-center">
+                                                        <div className={`text-2xl font-bold ${card.color}`}>{card.value}</div>
+                                                        <div className="text-[11px] text-slate-500 mt-1">{card.label}</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+
+                                            {/* Portfolio Health Trend */}
+                                            {portfolioTimeline.length > 1 && (
+                                                <div className="bg-white/[0.04] rounded-xl border border-white/10 p-4 mb-6">
+                                                    <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Portfolio Health Trend</h3>
+                                                    <svg viewBox={`0 0 ${Math.max(portfolioTimeline.length * 40, 200)} 60`} className="w-full h-16">
+                                                        {(() => {
+                                                            const pts = portfolioTimeline.map((d, i) => {
+                                                                const total = d.green + d.yellow + d.red;
+                                                                const pct = total > 0 ? d.green / total * 100 : 0;
+                                                                return { x: i * 40 + 20, y: 55 - pct * 0.5 };
+                                                            });
+                                                            const line = pts.map(p => `${p.x},${p.y}`).join(' ');
+                                                            return <>
+                                                                <polyline points={line} fill="none" stroke="#14B8A6" strokeWidth="2" />
+                                                                {pts.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r="3" fill="#14B8A6" />)}
+                                                            </>;
+                                                        })()}
+                                                    </svg>
+                                                </div>
+                                            )}
+
+                                            {/* Filter & Sort */}
+                                            <div className="flex flex-wrap items-center gap-2 mb-4">
+                                                {['all', 'green', 'yellow', 'red', 'none'].map(f => (
+                                                    <button key={f} onClick={() => setDashboardFilter(f)}
+                                                        className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                                                            dashboardFilter === f
+                                                                ? f === 'green' ? 'bg-green-600 text-white' : f === 'yellow' ? 'bg-yellow-600 text-white' : f === 'red' ? 'bg-red-600 text-white' : f === 'none' ? 'bg-slate-600 text-white' : 'bg-teal-600 text-white'
+                                                                : 'bg-white/10 text-slate-400 hover:bg-white/15'
+                                                        }`}>
+                                                        {f === 'none' ? 'No Scorecard' : f.charAt(0).toUpperCase() + f.slice(1)}
+                                                    </button>
+                                                ))}
+                                                <div className="ml-auto flex items-center gap-2">
+                                                    <select value={dashboardSort} onChange={(e) => setDashboardSort(e.target.value)}
+                                                        className="bg-white/10 border border-white/10 rounded-lg px-2 py-1 text-xs">
+                                                        <option value="ticker">Ticker</option>
+                                                        <option value="status">Status</option>
+                                                        <option value="updated">Updated</option>
+                                                    </select>
+                                                    <button onClick={() => setDashboardSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+                                                        className="p-1 bg-white/10 rounded-lg text-xs">
+                                                        {dashboardSortDir === 'asc' ? '↑' : '↓'}
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* Stock Cards Grid */}
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                                {dashboardData.stocks
+                                                    .filter(s => dashboardFilter === 'all' ? true : s.overall === dashboardFilter)
+                                                    .sort((a, b) => {
+                                                        const dir = dashboardSortDir === 'asc' ? 1 : -1;
+                                                        if (dashboardSort === 'ticker') return a.ticker.localeCompare(b.ticker) * dir;
+                                                        if (dashboardSort === 'status') {
+                                                            const order = { green: 0, yellow: 1, red: 2, none: 3 };
+                                                            return ((order[a.overall] || 3) - (order[b.overall] || 3)) * dir;
+                                                        }
+                                                        return ((new Date(b.updated || 0)) - (new Date(a.updated || 0))) * dir;
+                                                    })
+                                                    .map(stock => (
+                                                        <button key={stock.ticker}
+                                                            onClick={() => { setDashboardSelectedTicker(stock.ticker); loadTickerTimeline(stock.ticker); }}
+                                                            className="text-left bg-white/[0.04] hover:bg-white/[0.08] rounded-xl border border-white/10 hover:border-white/20 p-4 transition-all">
+                                                            <div className="flex items-center gap-2 mb-1.5">
+                                                                <span className={`w-2.5 h-2.5 rounded-full ${stock.overall === 'green' ? 'bg-green-500' : stock.overall === 'yellow' ? 'bg-yellow-500' : stock.overall === 'red' ? 'bg-red-500' : 'bg-slate-600'}`} />
+                                                                <span className="font-bold text-sm">{stock.ticker}</span>
+                                                                <span className="text-xs text-slate-500 truncate">{stock.company}</span>
+                                                            </div>
+                                                            {stock.thesis_summary && (
+                                                                <p className="text-[11px] text-slate-400 line-clamp-2 mb-2">{stock.thesis_summary}</p>
+                                                            )}
+                                                            {stock.has_scorecard && (
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <div className="flex-1 h-2 rounded-full bg-slate-700 overflow-hidden flex">
+                                                                        {stock.green > 0 && <div className="bg-green-500 h-full" style={{width: `${stock.green/(stock.green+stock.yellow+stock.red)*100}%`}} />}
+                                                                        {stock.yellow > 0 && <div className="bg-yellow-500 h-full" style={{width: `${stock.yellow/(stock.green+stock.yellow+stock.red)*100}%`}} />}
+                                                                        {stock.red > 0 && <div className="bg-red-500 h-full" style={{width: `${stock.red/(stock.green+stock.yellow+stock.red)*100}%`}} />}
+                                                                    </div>
+                                                                    <span className="text-[10px] text-slate-500">{stock.green}G {stock.yellow}Y {stock.red}R</span>
+                                                                </div>
+                                                            )}
+                                                            {!stock.has_scorecard && (
+                                                                <span className="text-[10px] text-slate-600">No scorecard</span>
+                                                            )}
+                                                        </button>
+                                                    ))
+                                                }
+                                            </div>
                                         </div>
                                     )}
                                 </div>
@@ -17063,13 +17372,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 <button
                                     onClick={() => setShowMoreMenu(true)}
                                     className={`flex flex-col items-center justify-center gap-1 min-w-[56px] py-2 rounded-xl transition-all ${
-                                        activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats'
+                                        activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats'
                                             ? 'text-teal-400'
                                             : 'text-slate-400 active:text-slate-200'
                                     }`}
                                 >
-                                    <MoreHorizontal className={`w-5 h-5 ${activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' ? 'stroke-[2.5]' : 'stroke-[1.5]'}`} />
-                                    <span className={`text-[9px] ${activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' ? 'font-semibold' : 'font-medium'}`}>More</span>
+                                    <MoreHorizontal className={`w-5 h-5 ${activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' ? 'stroke-[2.5]' : 'stroke-[1.5]'}`} />
+                                    <span className={`text-[9px] ${activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' ? 'font-semibold' : 'font-medium'}`}>More</span>
                                 </button>
                             </div>
                         </div>
@@ -17087,6 +17396,27 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 <div className="p-4 pb-[calc(env(safe-area-inset-bottom)+16px)]">
                                     <h3 className="text-lg font-semibold mb-4 text-center">More Options</h3>
                                     <div className="space-y-2">
+                                        <button
+                                            onClick={() => {
+                                                setShowMoreMenu(false);
+                                                switchTab('dashboard');
+                                            }}
+                                            className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
+                                                activeTab === 'dashboard'
+                                                    ? 'bg-teal-600/20 border border-teal-500/50'
+                                                    : 'bg-white/5 hover:bg-white/10 border border-transparent'
+                                            }`}
+                                        >
+                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${activeTab === 'dashboard' ? 'bg-teal-600' : 'bg-white/10'}`}>
+                                                <LayoutDashboard className="w-5 h-5" />
+                                            </div>
+                                            <div className="text-left">
+                                                <div className="font-semibold">Dashboard</div>
+                                                <div className="text-xs text-slate-400">Portfolio health overview at a glance</div>
+                                            </div>
+                                            <ChevronRight className="w-5 h-5 text-slate-500 ml-auto" />
+                                        </button>
+
                                         <button
                                             onClick={() => {
                                                 setShowMoreMenu(false);
