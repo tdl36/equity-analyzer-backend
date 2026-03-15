@@ -4225,6 +4225,33 @@ def _parse_analysis_data(row):
     }
 
 
+def _build_pillar_data(thesis, scorecard_data):
+    """Build pillar list, filtering excluded items and appending manual additions."""
+    raw = thesis.get('pillars', [])
+    if not scorecard_data or not scorecard_data.get('pillars'):
+        return raw
+    sc_pillars = scorecard_data['pillars']
+    # Build lookup of scorecard pillars by title
+    sc_map = {}
+    for sp in sc_pillars:
+        sc_map[sp.get('title', '')] = sp
+    result = []
+    # Walk raw pillars, skip excluded
+    seen = set()
+    for p in raw:
+        title = p.get('pillar', p.get('title', ''))
+        sc = sc_map.get(title, {})
+        if sc.get('included') is False:
+            continue
+        result.append(p)
+        seen.add(title)
+    # Append manual pillars not already in raw
+    for sp in sc_pillars:
+        if sp.get('isManual') and sp.get('included') is not False and sp.get('title', '') not in seen:
+            result.append({'pillar': sp.get('title', ''), 'detail': sp.get('description', '')})
+    return result
+
+
 def _build_signpost_data(signposts, scorecard_data):
     """Build enriched signpost data merging analysis signposts with scorecard data."""
     sc_signposts = {}
@@ -4235,6 +4262,8 @@ def _build_signpost_data(signposts, scorecard_data):
     for sp in signposts:
         key = sp.get('metric', sp.get('signpost', ''))
         sc = sc_signposts.get(key, {})
+        if sc.get('included') is False:
+            continue
         rows.append({
             'metric': _fmt_escape(key),
             'target': _fmt_escape(sp.get('target', '')),
@@ -4246,6 +4275,21 @@ def _build_signpost_data(signposts, scorecard_data):
             'yellow': _fmt_escape(sc.get('yellowThreshold', '')),
             'red': _fmt_escape(sc.get('redThreshold', '')),
         })
+    # Append manual signposts
+    if scorecard_data and scorecard_data.get('signposts'):
+        for sp in scorecard_data['signposts']:
+            if sp.get('isManual') and sp.get('included') is not False:
+                rows.append({
+                    'metric': _fmt_escape(sp.get('metric', '')),
+                    'target': '',
+                    'timeframe': '',
+                    'ltGoal': _fmt_escape(sp.get('ltGoal', '')),
+                    'latest': _fmt_escape(sp.get('latest', '')),
+                    'status': sp.get('status', ''),
+                    'green': _fmt_escape(sp.get('greenThreshold', '')),
+                    'yellow': _fmt_escape(sp.get('yellowThreshold', '')),
+                    'red': _fmt_escape(sp.get('redThreshold', '')),
+                })
     return rows
 
 
@@ -4259,6 +4303,8 @@ def _build_risk_data(threats, scorecard_data):
     for threat in threats:
         key = threat.get('threat', '')
         sc = sc_risks.get(key, {})
+        if sc.get('included') is False:
+            continue
         rows.append({
             'threat': _fmt_escape(key),
             'likelihood': _fmt_escape(threat.get('likelihood', '')),
@@ -4270,20 +4316,39 @@ def _build_risk_data(threats, scorecard_data):
             'yellow': _fmt_escape(sc.get('yellowDescription', '')),
             'red': _fmt_escape(sc.get('redDescription', '')),
         })
+    # Append manual risks
+    if scorecard_data and scorecard_data.get('risks'):
+        for r in scorecard_data['risks']:
+            if r.get('isManual') and r.get('included') is not False:
+                rows.append({
+                    'threat': _fmt_escape(r.get('riskFactor', '')),
+                    'likelihood': '',
+                    'impact': '',
+                    'triggers': '',
+                    'status': r.get('status', ''),
+                    'statusNote': _fmt_escape(r.get('statusNote', '')),
+                    'green': _fmt_escape(r.get('greenDescription', '')),
+                    'yellow': _fmt_escape(r.get('yellowDescription', '')),
+                    'red': _fmt_escape(r.get('redDescription', '')),
+                })
     return rows
 
 
 def _tally_statuses(scorecard_data):
-    """Count green/yellow/red across signposts and risks."""
+    """Count green/yellow/red across signposts and risks (excluding items with included=False)."""
     g = y = r = 0
     if not scorecard_data:
         return g, y, r
     for sp in scorecard_data.get('signposts', []):
+        if sp.get('included') is False:
+            continue
         s = (sp.get('status', '') or '').lower()
         if s == 'green': g += 1
         elif s == 'yellow': y += 1
         elif s == 'red': r += 1
     for rk in scorecard_data.get('risks', []):
+        if rk.get('included') is False:
+            continue
         s = (rk.get('status', '') or '').lower()
         if s == 'green': g += 1
         elif s == 'yellow': y += 1
@@ -4303,7 +4368,7 @@ def _generate_executive_brief_pdf(row, scorecard_data=None):
     has_sc = scorecard_data and (scorecard_data.get('signposts') or scorecard_data.get('risks'))
 
     pillars_html = ''
-    for i, p in enumerate(thesis.get('pillars', []), 1):
+    for i, p in enumerate(_build_pillar_data(thesis, scorecard_data), 1):
         t = _fmt_escape(p.get('pillar', p.get('title', '')))
         desc = _fmt_escape(p.get('detail', p.get('description', '')))
         pillars_html += f'<tr><td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;vertical-align:top;width:32px;color:#1e3a5f;font-weight:bold;font-size:12pt;">{i}.</td><td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;vertical-align:top;"><b style="color:#1e3a5f;font-size:10pt;">{t}</b><br/><span style="color:#475569;font-size:9.5pt;">{desc}</span></td></tr>'
@@ -4374,7 +4439,7 @@ def _generate_scorecard_pdf(row, scorecard_data=None):
 
     # Pillars as compact blocks
     pillars_html = ''
-    for p in thesis.get('pillars', []):
+    for p in _build_pillar_data(thesis, scorecard_data):
         t = _fmt_escape(p.get('pillar', p.get('title', '')))
         desc = _fmt_escape(p.get('detail', p.get('description', '')))
         pillars_html += f'<tr><td style="padding:8px 14px;border-bottom:1px solid #d1d5db;vertical-align:top;width:100%;"><b style="color:#1e293b;">{t}.</b> <span style="color:#475569;font-size:9.5pt;">{desc}</span></td></tr>'
@@ -4434,7 +4499,7 @@ def _generate_onepager_pdf(row, scorecard_data=None):
     rk_data = _build_risk_data(threats, scorecard_data)
 
     pillars_html = ''
-    for i, p in enumerate(thesis.get('pillars', []), 1):
+    for i, p in enumerate(_build_pillar_data(thesis, scorecard_data), 1):
         t = _fmt_escape(p.get('pillar', p.get('title', '')))
         desc = _fmt_escape(p.get('detail', p.get('description', '')))
         pillars_html += f'<tr><td style="padding:3px 0 3px 8px;border-bottom:1px solid #e2e8f0;vertical-align:top;"><b style="color:#1e3a5f;font-size:8.5pt;">{i}. {t}:</b> <span style="color:#475569;font-size:8pt;">{desc}</span></td></tr>'
@@ -4500,7 +4565,7 @@ def _generate_board_pdf(row, scorecard_data=None):
         gauge_html = f'<table style="border:2px solid #e2e8f0;margin-bottom:18px;"><tr><td style="padding:16px 24px;text-align:center;width:40%;"><span style="font-size:40pt;font-weight:bold;color:{conv_color};">{pct}%</span><br/><span style="font-size:10pt;color:#475569;font-weight:700;letter-spacing:1px;">{conv_label}</span></td><td style="padding:16px;text-align:center;background:#dcfce7;width:20%;border-left:2px solid #e2e8f0;"><span style="font-size:24pt;font-weight:bold;color:#16a34a;">{g}</span><br/><span style="font-size:8pt;color:#166534;font-weight:700;">GREEN</span></td><td style="padding:16px;text-align:center;background:#fef9c3;width:20%;border-left:2px solid #e2e8f0;"><span style="font-size:24pt;font-weight:bold;color:#ca8a04;">{y}</span><br/><span style="font-size:8pt;color:#854d0e;font-weight:700;">YELLOW</span></td><td style="padding:16px;text-align:center;background:#fee2e2;width:20%;border-left:2px solid #e2e8f0;"><span style="font-size:24pt;font-weight:bold;color:#dc2626;">{r}</span><br/><span style="font-size:8pt;color:#991b1b;font-weight:700;">RED</span></td></tr></table>'
 
     pillars_html = ''
-    for p in thesis.get('pillars', []):
+    for p in _build_pillar_data(thesis, scorecard_data):
         t = _fmt_escape(p.get('pillar', p.get('title', '')))
         desc = _fmt_escape(p.get('detail', p.get('description', '')))
         conf = (p.get('confidence', '') or '').lower()
@@ -4565,7 +4630,7 @@ def _generate_ic_memo_pdf(row, scorecard_data=None):
         status_line = f'<table style="border:2px solid #e2e8f0;margin-bottom:20px;"><tr><td style="padding:10px 16px;width:50%;"><b style="font-size:9pt;color:#475569;">THESIS STATUS SUMMARY</b></td><td style="padding:10px 12px;text-align:center;background:#dcfce7;border-left:1px solid #e2e8f0;"><b style="color:#16a34a;font-size:14pt;">{g}</b> <span style="font-size:8pt;color:#166534;">GREEN</span></td><td style="padding:10px 12px;text-align:center;background:#fef9c3;border-left:1px solid #e2e8f0;"><b style="color:#ca8a04;font-size:14pt;">{y}</b> <span style="font-size:8pt;color:#854d0e;">YELLOW</span></td><td style="padding:10px 12px;text-align:center;background:#fee2e2;border-left:1px solid #e2e8f0;"><b style="color:#dc2626;font-size:14pt;">{r}</b> <span style="font-size:8pt;color:#991b1b;">RED</span></td></tr></table>'
 
     pillars_html = ''
-    for i, p in enumerate(thesis.get('pillars', []), 1):
+    for i, p in enumerate(_build_pillar_data(thesis, scorecard_data), 1):
         t = _fmt_escape(p.get('pillar', p.get('title', '')))
         desc = _fmt_escape(p.get('detail', p.get('description', '')))
         conf = p.get('confidence', '')
@@ -4786,7 +4851,7 @@ def _generate_thesis_pptx_bytes(row, scorecard_data=None, fmt='executive'):
     sp = stf.paragraphs[0]; sr = sp.add_run()
     sr.text = thesis.get('summary', ''); sr.font.size = Pt(15); sr.font.color.rgb = WHITE
     y_pos = Inches(3.2)
-    pillars = thesis.get('pillars', [])
+    pillars = _build_pillar_data(thesis, scorecard_data)
     for i, pil in enumerate(pillars, 1):
         ptitle = pil.get('pillar', pil.get('title', ''))
         pdesc = pil.get('detail', pil.get('description', ''))
@@ -5095,7 +5160,7 @@ def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slid
 
     # Build thesis section text
     summary = thesis.get('summary', '')
-    pillars_list = thesis.get('pillars', [])
+    pillars_list = _build_pillar_data(thesis, scorecard_data)
     pillars_text = ""
 
     if detail == 'simple':
@@ -8691,7 +8756,7 @@ def _generate_precision_infographic(d, scorecard_data, mode, detail='full', show
         # Pillars
         y += 8
         max_pillars = 3 if detail == 'simple' else 5
-        for i, p in enumerate(thesis.get('pillars', [])[:max_pillars], 1):
+        for i, p in enumerate(_build_pillar_data(thesis, scorecard_data)[:max_pillars], 1):
             ptitle = p.get('pillar', p.get('title', ''))
             pdesc = p.get('detail', p.get('description', ''))
             if detail in ('summary', 'simple'):
@@ -8735,7 +8800,7 @@ def _generate_precision_infographic(d, scorecard_data, mode, detail='full', show
             d1.text((40, y), line, font=fonts['regular'], fill=WHITE); y += 24
         y += 15
         max_pillars_s1 = 3 if detail == 'simple' else 6
-        for i, p in enumerate(thesis.get('pillars', [])[:max_pillars_s1], 1):
+        for i, p in enumerate(_build_pillar_data(thesis, scorecard_data)[:max_pillars_s1], 1):
             ptitle = p.get('pillar', p.get('title', ''))
             pdesc = p.get('detail', p.get('description', ''))
             d1.text((40, y), f"{i}.", font=fonts['bold_md'], fill=TEAL)
