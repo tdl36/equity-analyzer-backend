@@ -1628,6 +1628,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [fmtInfographicViewingVersion, setFmtInfographicViewingVersion] = useState(null);
             const [fmtInfographicViewingImages, setFmtInfographicViewingImages] = useState([]);
             const [fmtInfographicEditPrompt, setFmtInfographicEditPrompt] = useState('');
+            const [fmtInfographicColorScheme, setFmtInfographicColorScheme] = useState('default');
+            const [fmtInfographicShowCompany, setFmtInfographicShowCompany] = useState(false);
 
             // Portfolio Dashboard state
             const [dashboardData, setDashboardData] = useState(null);
@@ -9111,13 +9113,27 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
             // --- Thesis Infographic ---
             const INFOGRAPHIC_STYLES = [
-                { id: 'professional', name: 'Professional', desc: 'Corporate boardroom', gradient: 'from-slate-800 to-slate-950' },
-                { id: 'whiteboard', name: 'Whiteboard', desc: 'Hand-drawn markers', gradient: 'from-gray-100 to-white' },
-                { id: 'sketchnote', name: 'Sketchnote', desc: 'Notebook doodles', gradient: 'from-amber-100 to-orange-50' },
-                { id: 'blueprint', name: 'Blueprint', desc: 'Technical schematic', gradient: 'from-blue-950 to-cyan-900' },
-                { id: 'dashboard', name: 'Dashboard', desc: 'Data widgets & KPIs', gradient: 'from-gray-50 to-blue-50' },
-                { id: 'editorial', name: 'Editorial', desc: 'Magazine layout', gradient: 'from-stone-100 to-stone-50' },
-                { id: 'precision', name: 'Precision', desc: 'Pixel-perfect template', gradient: 'from-teal-800 to-slate-900' },
+                { id: 'professional', name: 'Professional', desc: 'Corporate boardroom', gradient: 'from-slate-800 to-slate-950', schemes: [
+                    { id: 'default', name: 'Navy & Teal' }, { id: 'midnight', name: 'Midnight' }, { id: 'charcoal_amber', name: 'Charcoal & Amber' }
+                ]},
+                { id: 'whiteboard', name: 'Whiteboard', desc: 'Clean strategy brainstorm', gradient: 'from-gray-100 to-white', schemes: [
+                    { id: 'default', name: 'Classic' }, { id: 'pastel', name: 'Pastel' }, { id: 'bold', name: 'Bold' }
+                ]},
+                { id: 'sketchnote', name: 'Sketchnote', desc: 'Notebook doodles', gradient: 'from-amber-100 to-orange-50', schemes: [
+                    { id: 'default', name: 'Warm' }, { id: 'cool', name: 'Cool' }, { id: 'mono', name: 'Monochrome' }
+                ]},
+                { id: 'blueprint', name: 'Blueprint', desc: 'Technical schematic', gradient: 'from-blue-950 to-cyan-900', schemes: [
+                    { id: 'default', name: 'Cyan' }, { id: 'matrix', name: 'Matrix' }, { id: 'amber', name: 'Amber' }
+                ]},
+                { id: 'dashboard', name: 'Dashboard', desc: 'Data widgets & KPIs', gradient: 'from-gray-50 to-blue-50', schemes: [
+                    { id: 'default', name: 'Light' }, { id: 'dark', name: 'Dark Mode' }, { id: 'minimal', name: 'Minimal' }
+                ]},
+                { id: 'editorial', name: 'Editorial', desc: 'Magazine layout', gradient: 'from-stone-100 to-stone-50', schemes: [
+                    { id: 'default', name: 'Classic Red' }, { id: 'blue', name: 'Blue Edition' }, { id: 'gold', name: 'Gold Edition' }
+                ]},
+                { id: 'precision', name: 'Precision', desc: 'Pixel-perfect template', gradient: 'from-teal-800 to-slate-900', schemes: [
+                    { id: 'default', name: 'Navy & Teal' }, { id: 'midnight', name: 'Midnight' }, { id: 'arctic', name: 'Arctic' }
+                ]},
             ];
 
             const generateThesisInfographic = async () => {
@@ -9134,7 +9150,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 try {
                     const res = await fetch(`${API_URL}/api/thesis-format/infographic`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ ticker: fmtTicker, mode: fmtInfographicMode, detail: fmtInfographicDetail, style: fmtInfographicStyle, geminiApiKey: geminiKey, showRiskDetail: fmtInfographicShowRiskDetail })
+                        body: JSON.stringify({ ticker: fmtTicker, mode: fmtInfographicMode, detail: fmtInfographicDetail, style: fmtInfographicStyle, geminiApiKey: geminiKey, showRiskDetail: fmtInfographicShowRiskDetail, colorScheme: fmtInfographicColorScheme, includeCompanyName: fmtInfographicShowCompany })
                     });
                     if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Failed to start generation'); }
                     const data = await res.json();
@@ -16253,7 +16269,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 <div>
                                                     <label className="text-xs text-slate-500 mb-2 block">Detail Level</label>
                                                     <div className="inline-flex bg-white/[0.06] rounded-lg p-0.5">
-                                                        {[{ v: 'full', label: 'Full Detail' }, { v: 'summary', label: 'Summary' }].map(dl => (
+                                                        {[{ v: 'full', label: 'Full Detail' }, { v: 'summary', label: 'Summary' }, { v: 'simple', label: 'Simple' }].map(dl => (
                                                             <button key={dl.v} onClick={() => setFmtInfographicDetail(dl.v)}
                                                                 className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all ${
                                                                     fmtInfographicDetail === dl.v ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'
@@ -16270,6 +16286,15 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         {fmtInfographicShowRiskDetail ? 'Likelihood + Impact ON' : 'Likelihood + Impact OFF'}
                                                     </button>
                                                 </div>
+                                                <div>
+                                                    <label className="text-xs text-slate-500 mb-2 block">Company Name</label>
+                                                    <button onClick={() => setFmtInfographicShowCompany(v => !v)}
+                                                        className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                                                            fmtInfographicShowCompany ? 'bg-purple-600 text-white shadow' : 'bg-white/[0.06] text-slate-400 hover:text-white'
+                                                        }`}>
+                                                        {fmtInfographicShowCompany ? 'Company Name ON' : 'Company Name OFF'}
+                                                    </button>
+                                                </div>
                                             </div>
 
                                             {/* Style Picker */}
@@ -16277,7 +16302,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 <label className="text-xs text-slate-500 mb-2 block">Visual Style</label>
                                                 <div className="grid grid-cols-3 md:grid-cols-7 gap-2">
                                                     {INFOGRAPHIC_STYLES.map(st => (
-                                                        <button key={st.id} onClick={() => setFmtInfographicStyle(st.id)}
+                                                        <button key={st.id} onClick={() => { setFmtInfographicStyle(st.id); setFmtInfographicColorScheme('default'); }}
                                                             className={`rounded-lg overflow-hidden transition-all ${
                                                                 fmtInfographicStyle === st.id ? 'ring-2 ring-purple-400 scale-[1.03]' : 'border border-white/10 hover:border-white/20'
                                                             }`}>
@@ -16289,6 +16314,24 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         </button>
                                                     ))}
                                                 </div>
+                                                {/* Color Scheme Pills */}
+                                                {(() => {
+                                                    const currentStyle = INFOGRAPHIC_STYLES.find(s => s.id === fmtInfographicStyle);
+                                                    const schemes = currentStyle?.schemes || [];
+                                                    return schemes.length > 1 ? (
+                                                        <div className="mt-3">
+                                                            <label className="text-xs text-slate-500 mb-2 block">Color Scheme</label>
+                                                            <div className="flex flex-wrap gap-2">
+                                                                {schemes.map(sc => (
+                                                                    <button key={sc.id} onClick={() => setFmtInfographicColorScheme(sc.id)}
+                                                                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                                                                            fmtInfographicColorScheme === sc.id ? 'bg-purple-600 text-white shadow' : 'bg-white/[0.06] text-slate-400 hover:text-white'
+                                                                        }`}>{sc.name}</button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    ) : null;
+                                                })()}
                                             </div>
 
                                             {/* Generate Button */}

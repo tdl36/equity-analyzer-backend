@@ -5080,7 +5080,7 @@ def email_format():
 # THESIS INFOGRAPHIC GENERATION
 # ============================================
 
-def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slide_num=None, detail='full', show_risk_detail=False):
+def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slide_num=None, detail='full', show_risk_detail=False, color_scheme=None, include_company=False, style_key=None):
     """Build a Gemini image-generation prompt for a thesis infographic slide."""
     ticker = d['ticker']
     company = d['company']
@@ -5091,23 +5091,38 @@ def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slid
     sp_data = _build_signpost_data(signposts, scorecard_data)
     rk_data = _build_risk_data(threats, scorecard_data)
 
-    header = ticker + (f" — {company}" if company else "")
+    header = ticker + (f" — {company}" if company and include_company else "")
 
     # Build thesis section text
     summary = thesis.get('summary', '')
+    pillars_list = thesis.get('pillars', [])
     pillars_text = ""
-    for i, p in enumerate(thesis.get('pillars', []), 1):
-        ptitle = p.get('pillar', p.get('title', ''))
-        pdesc = p.get('detail', p.get('description', ''))
-        if detail == 'summary':
+
+    if detail == 'simple':
+        # Simple: first sentence only for summary
+        if '.' in summary:
+            summary = summary[:summary.index('.') + 1]
+        # Simple: pillar titles only, max 3
+        for i, p in enumerate(pillars_list[:3], 1):
+            ptitle = p.get('pillar', p.get('title', ''))
             pillars_text += f"\n  {i}. {ptitle}"
-        else:
+    elif detail == 'summary':
+        for i, p in enumerate(pillars_list, 1):
+            ptitle = p.get('pillar', p.get('title', ''))
+            pillars_text += f"\n  {i}. {ptitle}"
+    else:
+        for i, p in enumerate(pillars_list, 1):
+            ptitle = p.get('pillar', p.get('title', ''))
+            pdesc = p.get('detail', p.get('description', ''))
             pillars_text += f"\n  {i}. {ptitle}: {pdesc}"
 
     # Build signpost section text
     signpost_text = ""
     for s in sp_data:
-        if detail == 'summary':
+        if detail == 'simple':
+            # Simple: metric name + status only
+            line = f"  - {s['metric']}"
+        elif detail == 'summary':
             line = f"  - {s['metric']}: {s['latest'] or s['ltGoal']}"
         else:
             line = f"  - {s['metric']}: Target = {s['ltGoal']}"
@@ -5120,7 +5135,10 @@ def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slid
     # Build threats section text
     threats_text = ""
     for r in rk_data:
-        if show_risk_detail:
+        if detail == 'simple':
+            # Simple: threat name + status only
+            line = f"  - {r['threat']}"
+        elif show_risk_detail:
             if detail == 'summary':
                 line = f"  - {r['threat']} (Impact: {r['impact']})"
             else:
@@ -5133,8 +5151,11 @@ def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slid
 
     conclusion_text = conclusion if isinstance(conclusion, str) else str(conclusion)
 
+    # For simple mode, omit conclusion entirely
+    if detail == 'simple':
+        conclusion_text = ''
     # For summary mode, truncate to first sentence
-    if detail == 'summary':
+    elif detail == 'summary':
         if '.' in summary:
             summary = summary[:summary.index('.') + 1]
         if '.' in conclusion_text:
@@ -5142,7 +5163,14 @@ def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slid
 
     parts = []
     parts.append(f"Generate a visually compelling 16:9 LANDSCAPE infographic image.\n")
+    # Append color scheme suffix if provided
     parts.append(f"VISUAL STYLE (follow exactly):\n{style_prompt}")
+    if color_scheme and color_scheme != 'default' and style_key:
+        sdef = THESIS_INFOGRAPHIC_STYLES.get(style_key, {})
+        for cs in sdef.get('colorSchemes', []):
+            if cs['id'] == color_scheme and cs.get('promptSuffix'):
+                parts.append(cs['promptSuffix'])
+                break
     parts.append(
         "CRITICAL RULES:\n"
         "- ALL text MUST be in English\n"
@@ -5152,15 +5180,25 @@ def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slid
         "- All text must be perfectly clear, legible, and properly rendered\n"
         "- Letters must NOT be distorted or artistically modified — B must not look like 8, O must not look like 0\n"
         "- Use standard clean fonts — no decorative fonts that sacrifice readability\n"
-        "- Ensure sufficient contrast between text and background"
+        "- Ensure sufficient contrast between text and background\n"
+        "- DO NOT include any target prices, price targets, or stock price predictions in the infographic"
     )
 
-    summary_layout = (
-        "\nThis is a SUMMARY/PRESENTATION version — use MINIMAL text. "
-        "Use LARGE bold numbers and metrics as focal points. Use short bullet points, NOT paragraphs. "
-        "Emphasize visual hierarchy with oversized key figures, traffic-light status dots, and icon-based sections. "
-        "Think executive presentation — the audience will be viewing from a distance."
-    ) if detail == 'summary' else ""
+    if detail == 'simple':
+        summary_layout = (
+            "\nThis is a SIMPLE AT-A-GLANCE version — absolute minimum text. "
+            "Show only names and traffic-light status indicators. No paragraphs, no data values, no descriptions. "
+            "Think executive cheat sheet."
+        )
+    elif detail == 'summary':
+        summary_layout = (
+            "\nThis is a SUMMARY/PRESENTATION version — use MINIMAL text. "
+            "Use LARGE bold numbers and metrics as focal points. Use short bullet points, NOT paragraphs. "
+            "Emphasize visual hierarchy with oversized key figures, traffic-light status dots, and icon-based sections. "
+            "Think executive presentation — the audience will be viewing from a distance."
+        )
+    else:
+        summary_layout = ""
 
     if mode == '1':
         parts.append(f"\nTITLE: {header} — Investment Thesis\n")
@@ -5173,7 +5211,7 @@ def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slid
             parts.append(f"\nKEY RISKS:\n{threats_text}")
         if conclusion_text:
             parts.append(f"\nCONCLUSION: {conclusion_text}")
-        if detail == 'summary':
+        if detail in ('summary', 'simple'):
             parts.append(summary_layout)
         else:
             parts.append("\nLayout this as a dense but readable infographic with all sections visible. Use visual hierarchy: large thesis header, medium section headers, compact data tables/lists for signposts and risks.")
@@ -5185,21 +5223,21 @@ def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slid
                 parts.append(f"\nKEY PILLARS:{pillars_text}")
             if conclusion_text:
                 parts.append(f"\nCONCLUSION: {conclusion_text}")
-            if detail == 'summary':
+            if detail in ('summary', 'simple'):
                 parts.append(summary_layout + " Slide 1 of 3.")
             else:
                 parts.append("\nFocus this slide on the investment thesis narrative. Make the summary prominent, pillars clearly numbered, conclusion at bottom. Slide 1 of 3.")
         elif slide_num == 2:
             parts.append(f"\nTITLE: {header} — Key Signposts\n")
             parts.append(f"SIGNPOSTS TO MONITOR:\n{signpost_text}")
-            if detail == 'summary':
+            if detail in ('summary', 'simple'):
                 parts.append(summary_layout + " Slide 2 of 3.")
             else:
                 parts.append("\nPresent each signpost as a monitoring dashboard item showing the metric name, target value, latest reading, and traffic-light status (green/yellow/red). Use visual indicators like gauges, progress bars, or status dots. Slide 2 of 3.")
         elif slide_num == 3:
             parts.append(f"\nTITLE: {header} — Risk Assessment\n")
             parts.append(f"KEY RISKS:\n{threats_text}")
-            if detail == 'summary':
+            if detail in ('summary', 'simple'):
                 parts.append(summary_layout + " Slide 3 of 3.")
             else:
                 if show_risk_detail:
@@ -5210,7 +5248,7 @@ def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slid
     return "\n".join(parts)
 
 
-def _run_thesis_infographic(job_id, d, scorecard_data, style_key, mode, gemini_key, detail='full', edit_prompt=None, parent_id=None, show_risk_detail=False):
+def _run_thesis_infographic(job_id, d, scorecard_data, style_key, mode, gemini_key, detail='full', edit_prompt=None, parent_id=None, show_risk_detail=False, color_scheme=None, include_company=False):
     """Background worker to generate thesis infographic images via Gemini or Pillow."""
     import time as _time
     job = _infographic_jobs[job_id]
@@ -5222,12 +5260,12 @@ def _run_thesis_infographic(job_id, d, scorecard_data, style_key, mode, gemini_k
             # Deterministic Pillow rendering — no Gemini API needed
             job['current'] = 1
             job['progress'] = 50
-            images = _generate_precision_infographic(d, scorecard_data, mode, detail, show_risk_detail=show_risk_detail)
+            images = _generate_precision_infographic(d, scorecard_data, mode, detail, show_risk_detail=show_risk_detail, color_scheme=color_scheme, include_company=include_company)
             job['images'] = images
         elif mode == '1':
             style_prompt = style_def['prompt']
             job['current'] = 1
-            prompt = _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, '1', detail=detail, show_risk_detail=show_risk_detail)
+            prompt = _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, '1', detail=detail, show_risk_detail=show_risk_detail, color_scheme=color_scheme, include_company=include_company, style_key=style_key)
             if edit_prompt:
                 prompt += f"\n\nADDITIONAL INSTRUCTIONS (edit request): {edit_prompt}"
             img = _generate_slide_image(prompt, gemini_key)
@@ -5244,7 +5282,7 @@ def _run_thesis_infographic(job_id, d, scorecard_data, style_key, mode, gemini_k
             for i in range(1, 4):
                 job['current'] = i
                 job['progress'] = int((i - 1) / 3 * 100)
-                prompt = _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, '3', slide_num=i, detail=detail, show_risk_detail=show_risk_detail)
+                prompt = _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, '3', slide_num=i, detail=detail, show_risk_detail=show_risk_detail, color_scheme=color_scheme, include_company=include_company, style_key=style_key)
                 if edit_prompt:
                     prompt += f"\n\nADDITIONAL INSTRUCTIONS (edit request): {edit_prompt}"
                 img = _generate_slide_image(prompt, gemini_key)
@@ -5295,10 +5333,12 @@ def start_thesis_infographic():
         data = request.get_json()
         ticker = data.get('ticker', '').upper()
         mode = data.get('mode', '1')  # '1' or '3'
-        detail = data.get('detail', 'full')  # 'full' or 'summary'
+        detail = data.get('detail', 'full')  # 'full', 'summary', or 'simple'
         style = data.get('style', 'professional')
         gemini_key = data.get('geminiApiKey', '')
         show_risk_detail = data.get('showRiskDetail', False)
+        color_scheme = data.get('colorScheme', 'default')
+        include_company = data.get('includeCompanyName', False)
 
         if not ticker:
             return jsonify({'error': 'No ticker provided'}), 400
@@ -5352,7 +5392,7 @@ def start_thesis_infographic():
         t = threading.Thread(
             target=_run_thesis_infographic,
             args=(job_id, d, scorecard_data, style, mode, gemini_key, detail),
-            kwargs={'show_risk_detail': show_risk_detail},
+            kwargs={'show_risk_detail': show_risk_detail, 'color_scheme': color_scheme, 'include_company': include_company},
             daemon=True
         )
         t.start()
@@ -8411,31 +8451,66 @@ THESIS_INFOGRAPHIC_STYLES = {
     'professional': {
         'name': 'Professional',
         'prompt': 'Create a PROFESSIONAL CORPORATE INFOGRAPHIC with the following visual style:\n- Background: Deep navy (#1e293b) with subtle geometric patterns\n- Layout: Structured grid with clear sections separated by thin lines\n- Colors: Navy, white, slate blue accents, gold highlights for key numbers\n- Typography: Clean sans-serif, large bold headers, readable body text\n- Icons: Simple line icons (not filled) in white/gold\n- Data visualization: Clean bar charts, progress indicators, status badges\n- Overall feel: Fortune 500 boardroom presentation\n',
+        'colorSchemes': [
+            {'id': 'default', 'name': 'Navy & Teal', 'promptSuffix': ''},
+            {'id': 'midnight', 'name': 'Midnight', 'promptSuffix': '\nCOLOR OVERRIDE: Use black (#0a0a0a) background with electric blue (#3b82f6) accents instead of navy/teal. White text, blue highlights.'},
+            {'id': 'charcoal_amber', 'name': 'Charcoal & Amber', 'promptSuffix': '\nCOLOR OVERRIDE: Use dark charcoal (#1c1917) background with warm amber (#f59e0b) accents instead of navy/teal. Cream text, amber highlights.'},
+        ],
     },
     'whiteboard': {
         'name': 'Whiteboard',
-        'prompt': 'Create a WHITEBOARD STYLE INFOGRAPHIC with the following visual style:\n- Background: Clean white/very light gray like a dry-erase whiteboard\n- Layout: Hand-drawn boxes, arrows connecting ideas, mind-map feel\n- Colors: Blue, red, green, black markers on white background\n- Typography: Hand-written marker style text, messy but readable\n- Icons: Simple hand-drawn sketches, stick figures, basic shapes\n- Data visualization: Hand-drawn charts, circled numbers, underlined text\n- Decorations: Marker smudges, doodle arrows, exclamation marks, stars\n- Overall feel: Strategy session on a conference room whiteboard\n',
+        'prompt': 'Create a WHITEBOARD STYLE INFOGRAPHIC with the following visual style:\n- Background: Clean white/very light gray\n- Layout: Organized boxes and sections with connecting arrows, mind-map feel\n- Colors: Blue, red, green, black on white background\n- Typography: Hand-written marker style text, neat and readable\n- Icons: Simple hand-drawn sketches, basic shapes\n- Data visualization: Hand-drawn charts, circled numbers, underlined key metrics\n- Overall feel: Clean strategy brainstorm — organized and professional, not cluttered\n',
+        'colorSchemes': [
+            {'id': 'default', 'name': 'Classic', 'promptSuffix': ''},
+            {'id': 'pastel', 'name': 'Pastel', 'promptSuffix': '\nCOLOR OVERRIDE: Use soft pastel colors — light blue, blush pink, mint green, lavender — instead of bold primary markers. Gentle, modern feel.'},
+            {'id': 'bold', 'name': 'Bold', 'promptSuffix': '\nCOLOR OVERRIDE: Use thick high-contrast lines — black outlines, bright red/blue/green fills. Bold, punchy, heavy marker weight.'},
+        ],
     },
     'sketchnote': {
         'name': 'Sketchnote',
         'prompt': 'Create a SKETCHNOTE STYLE INFOGRAPHIC with the following visual style:\n- Background: Warm beige/cream textured paper like a Moleskine notebook\n- Layout: Organic flow with hand-lettered headers, doodle borders\n- Colors: Warm palette - brown, orange, teal, mustard yellow, coral\n- Typography: Hand-lettered headers (large, playful), neat handwriting for body\n- Icons: Cute cartoon doodles, tiny illustrations, emoji-like drawings\n- Data visualization: Doodle charts, numbered lists with fun bullets\n- Decorations: Stars, sparkles, arrows, sticky notes, washi tape borders\n- Overall feel: Designer sketchnote from a TED talk\n',
+        'colorSchemes': [
+            {'id': 'default', 'name': 'Warm', 'promptSuffix': ''},
+            {'id': 'cool', 'name': 'Cool', 'promptSuffix': '\nCOLOR OVERRIDE: Use cool palette — indigo, teal, mint green, slate blue — instead of warm browns/oranges. Keep the notebook texture.'},
+            {'id': 'mono', 'name': 'Monochrome', 'promptSuffix': '\nCOLOR OVERRIDE: Use monochrome palette — black ink with burnt orange (#ea580c) as the only accent color. Like a Moleskine with one orange pen.'},
+        ],
     },
     'blueprint': {
         'name': 'Blueprint',
         'prompt': 'Create a BLUEPRINT STYLE INFOGRAPHIC with the following visual style:\n- Background: Deep navy/dark blue (#0f172a) with subtle grid lines\n- Layout: Technical drawing style with measurement marks and grid\n- Colors: Cyan/electric blue lines on dark navy, white text, neon accents\n- Typography: Monospaced/technical font, all-caps headers, clean body text\n- Icons: Wireframe/outline style icons, technical diagrams, schematic symbols\n- Data visualization: Technical gauges, radar charts, status indicators with glow\n- Decorations: Grid dots, coordinate markers, dimension lines, crosshairs\n- Overall feel: Engineering blueprint or technical schematic\n',
+        'colorSchemes': [
+            {'id': 'default', 'name': 'Cyan', 'promptSuffix': ''},
+            {'id': 'matrix', 'name': 'Matrix', 'promptSuffix': '\nCOLOR OVERRIDE: Use dark black (#0a0a0a) background with bright green (#22c55e) lines and text — Matrix/terminal aesthetic. Green on black.'},
+            {'id': 'amber', 'name': 'Amber', 'promptSuffix': '\nCOLOR OVERRIDE: Use dark navy background with warm amber (#f59e0b) lines and text instead of cyan. Retro radar/instrument panel feel.'},
+        ],
     },
     'dashboard': {
         'name': 'Dashboard',
         'prompt': 'Create a DATA DASHBOARD STYLE INFOGRAPHIC with the following visual style:\n- Background: White/very light gray with subtle card shadows\n- Layout: Multi-panel grid of cards/widgets, clean modern UI\n- Colors: White cards, dark text, green/yellow/red traffic lights, blue charts\n- Typography: Modern sans-serif, bold metric numbers, small labels\n- Icons: Material design style, filled, inside colored circles\n- Data visualization: Donut charts, sparklines, KPI cards with big numbers, traffic light dots\n- Decorations: Card shadows, thin borders, rounded corners, status pills\n- Overall feel: Bloomberg terminal meets modern SaaS dashboard\n',
+        'colorSchemes': [
+            {'id': 'default', 'name': 'Light', 'promptSuffix': ''},
+            {'id': 'dark', 'name': 'Dark Mode', 'promptSuffix': '\nCOLOR OVERRIDE: Use dark mode — dark gray (#1e1e1e) background, dark cards (#2d2d2d), white text, blue/green/red accent colors. Modern dark dashboard.'},
+            {'id': 'minimal', 'name': 'Minimal', 'promptSuffix': '\nCOLOR OVERRIDE: Use pure white background with single teal (#0d9488) accent color. Minimal, clean, no gradients. Teal for highlights and charts only.'},
+        ],
     },
     'editorial': {
         'name': 'Editorial',
         'prompt': 'Create an EDITORIAL MAGAZINE STYLE INFOGRAPHIC with the following visual style:\n- Background: Off-white/cream paper with slight texture\n- Layout: Magazine editorial layout with columns, pull quotes, sidebar boxes\n- Colors: High-contrast black and white with ONE accent color (red #dc2626)\n- Typography: Large bold serif headers (like The Economist), clean sans-serif body\n- Icons: Minimal, line-art style, used sparingly\n- Data visualization: Clean minimal charts with red accent, large oversized numbers\n- Decorations: Thin black rules/dividers, drop caps, red accent bars\n- Overall feel: The Economist or Barron\'s magazine feature article\n',
+        'colorSchemes': [
+            {'id': 'default', 'name': 'Classic Red', 'promptSuffix': ''},
+            {'id': 'blue', 'name': 'Blue Edition', 'promptSuffix': '\nCOLOR OVERRIDE: Use navy blue (#1e40af) as the single accent color instead of red. Blue accent bars, blue highlights, blue charts.'},
+            {'id': 'gold', 'name': 'Gold Edition', 'promptSuffix': '\nCOLOR OVERRIDE: Use deep gold (#b45309) as the single accent color instead of red. Gold accent bars, gold highlights. Luxury financial magazine feel.'},
+        ],
     },
     'precision': {
         'name': 'Precision',
         'prompt': '',
         'engine': 'pillow',
+        'colorSchemes': [
+            {'id': 'default', 'name': 'Navy & Teal', 'colors': {'bg': (30, 41, 59), 'accent': (20, 184, 166), 'dark': (15, 23, 42)}},
+            {'id': 'midnight', 'name': 'Midnight', 'colors': {'bg': (15, 10, 40), 'accent': (139, 92, 246), 'dark': (5, 3, 20)}},
+            {'id': 'arctic', 'name': 'Arctic', 'colors': {'bg': (15, 30, 50), 'accent': (56, 189, 248), 'dark': (8, 15, 30)}},
+        ],
     },
 }
 
@@ -8493,7 +8568,7 @@ def _draw_status_dot(draw, x, y, status, size=14):
     c = colors.get((status or '').lower(), (148, 163, 184))
     draw.ellipse([x, y, x + size, y + size], fill=c)
 
-def _generate_precision_infographic(d, scorecard_data, mode, detail='full', show_risk_detail=False):
+def _generate_precision_infographic(d, scorecard_data, mode, detail='full', show_risk_detail=False, color_scheme=None, include_company=False):
     """Generate deterministic infographic images using Pillow."""
     from PIL import Image, ImageDraw
     sp_data = _build_signpost_data(d['signposts'], scorecard_data)
@@ -8503,6 +8578,16 @@ def _generate_precision_infographic(d, scorecard_data, mode, detail='full', show
     W, H = 1920, 1080
     BG = (30, 41, 59); TEAL = (20, 184, 166); WHITE = (255, 255, 255)
     SLATE = (148, 163, 184); DARK = (15, 23, 42); LIGHT = (203, 213, 225)
+
+    # Override colors from color scheme
+    if color_scheme and color_scheme != 'default':
+        prec_def = THESIS_INFOGRAPHIC_STYLES.get('precision', {})
+        for cs in prec_def.get('colorSchemes', []):
+            if cs['id'] == color_scheme and 'colors' in cs:
+                BG = cs['colors']['bg']
+                TEAL = cs['colors']['accent']
+                DARK = cs['colors']['dark']
+                break
 
     def draw_header(draw, img, title_text, subtitle=''):
         draw.rectangle([0, 0, W, 80], fill=DARK)
@@ -8521,9 +8606,14 @@ def _generate_precision_infographic(d, scorecard_data, mode, detail='full', show
         font = fonts['small'] if compact else fonts['regular']
         hdr_font = fonts['bold_sm'] if not compact else fonts['small']
         row_h = 28 if compact else 34
-        col_w = [int(width * 0.32), int(width * 0.25), int(width * 0.25), int(width * 0.18)]
-        headers = ['Metric', 'LT Goal', 'Latest', 'Status']
-        draw.rectangle([x, y_start, x + width, y_start + row_h], fill=(20, 184, 166, 200))
+        if detail == 'simple':
+            # Simple: 2 columns only — Metric, Status
+            col_w = [int(width * 0.75), int(width * 0.25)]
+            headers = ['Metric', 'Status']
+        else:
+            col_w = [int(width * 0.32), int(width * 0.25), int(width * 0.25), int(width * 0.18)]
+            headers = ['Metric', 'LT Goal', 'Latest', 'Status']
+        draw.rectangle([x, y_start, x + width, y_start + row_h], fill=tuple(list(TEAL) + [200]) if len(TEAL) == 3 else TEAL)
         cx = x
         for i, h in enumerate(headers):
             draw.text((cx + 8, y_start + 6), h, font=hdr_font, fill=WHITE)
@@ -8536,11 +8626,12 @@ def _generate_precision_infographic(d, scorecard_data, mode, detail='full', show
             metric = (s.get('metric', '') or '')[:30]
             draw.text((cx + 8, y + 6), metric, font=font, fill=LIGHT)
             cx += col_w[0]
-            draw.text((cx + 8, y + 6), (s.get('ltGoal', '') or '')[:20], font=font, fill=SLATE)
-            cx += col_w[1]
-            draw.text((cx + 8, y + 6), (s.get('latest', '') or '—')[:20], font=font, fill=SLATE)
-            cx += col_w[2]
-            _draw_status_dot(draw, cx + col_w[3]//2 - 7, y + row_h//2 - 7, s.get('status', ''))
+            if detail != 'simple':
+                draw.text((cx + 8, y + 6), (s.get('ltGoal', '') or '')[:20], font=font, fill=SLATE)
+                cx += col_w[1]
+                draw.text((cx + 8, y + 6), (s.get('latest', '') or '—')[:20], font=font, fill=SLATE)
+                cx += col_w[2]
+            _draw_status_dot(draw, cx + col_w[-1]//2 - 7, y + row_h//2 - 7, s.get('status', ''))
             y += row_h
         return y
 
@@ -8548,7 +8639,11 @@ def _generate_precision_infographic(d, scorecard_data, mode, detail='full', show
         font = fonts['small'] if compact else fonts['regular']
         hdr_font = fonts['bold_sm'] if not compact else fonts['small']
         row_h = 28 if compact else 34
-        if show_risk_detail:
+        if detail == 'simple':
+            # Simple: always 2 columns — Risk Factor, Status (ignore show_risk_detail)
+            col_w = [int(width * 0.75), int(width * 0.25)]
+            headers = ['Risk Factor', 'Status']
+        elif show_risk_detail:
             col_w = [int(width * 0.35), int(width * 0.2), int(width * 0.2), int(width * 0.25)]
             headers = ['Risk Factor', 'Likelihood', 'Impact', 'Status']
         else:
@@ -8564,10 +8659,10 @@ def _generate_precision_infographic(d, scorecard_data, mode, detail='full', show
             draw.rectangle([x, y, x + width, y + row_h], fill=DARK)
             draw.line([x, y, x + width, y], fill=(255, 255, 255, 30))
             cx = x
-            max_chars = 30 if show_risk_detail else 60
+            max_chars = 30 if (show_risk_detail and detail != 'simple') else 60
             draw.text((cx + 8, y + 6), (rk.get('threat', '') or '')[:max_chars], font=font, fill=LIGHT)
             cx += col_w[0]
-            if show_risk_detail:
+            if show_risk_detail and detail != 'simple':
                 draw.text((cx + 8, y + 6), (rk.get('likelihood', '') or '')[:12], font=font, fill=SLATE)
                 cx += col_w[1]
                 draw.text((cx + 8, y + 6), (rk.get('impact', '') or '')[:12], font=font, fill=SLATE)
@@ -8578,7 +8673,7 @@ def _generate_precision_infographic(d, scorecard_data, mode, detail='full', show
 
     ticker = d['ticker']; company = d['company']
     thesis = d['thesis']; conclusion = d['conclusion']
-    header_text = f"{ticker} — {company}" if company else ticker
+    header_text = f"{ticker} — {company}" if company and include_company else ticker
 
     if mode == '1':
         img = Image.new('RGB', (W, H), BG)
@@ -8587,7 +8682,7 @@ def _generate_precision_infographic(d, scorecard_data, mode, detail='full', show
         # Thesis summary
         y = 100
         summary = thesis.get('summary', '')
-        if detail == 'summary' and '.' in summary:
+        if detail in ('summary', 'simple') and '.' in summary:
             summary = summary[:summary.index('.') + 1]
         lines = _wrap_text(draw, summary, fonts['regular'], W - 80)
         for line in lines[:4]:
@@ -8595,10 +8690,11 @@ def _generate_precision_infographic(d, scorecard_data, mode, detail='full', show
             y += 22
         # Pillars
         y += 8
-        for i, p in enumerate(thesis.get('pillars', [])[:5], 1):
+        max_pillars = 3 if detail == 'simple' else 5
+        for i, p in enumerate(thesis.get('pillars', [])[:max_pillars], 1):
             ptitle = p.get('pillar', p.get('title', ''))
             pdesc = p.get('detail', p.get('description', ''))
-            if detail == 'summary':
+            if detail in ('summary', 'simple'):
                 text = f"{i}. {ptitle}"
             else:
                 text = f"{i}. {ptitle}: {pdesc[:100]}"
@@ -8634,22 +8730,26 @@ def _generate_precision_infographic(d, scorecard_data, mode, detail='full', show
         y = 110
         y = draw_section_bar(d1, y, "WHY DO WE OWN IT?")
         summary = thesis.get('summary', '')
-        if detail == 'summary' and '.' in summary: summary = summary[:summary.index('.') + 1]
+        if detail in ('summary', 'simple') and '.' in summary: summary = summary[:summary.index('.') + 1]
         for line in _wrap_text(d1, summary, fonts['regular'], W - 80)[:6]:
             d1.text((40, y), line, font=fonts['regular'], fill=WHITE); y += 24
         y += 15
-        for i, p in enumerate(thesis.get('pillars', [])[:6], 1):
+        max_pillars_s1 = 3 if detail == 'simple' else 6
+        for i, p in enumerate(thesis.get('pillars', [])[:max_pillars_s1], 1):
             ptitle = p.get('pillar', p.get('title', ''))
             pdesc = p.get('detail', p.get('description', ''))
             d1.text((40, y), f"{i}.", font=fonts['bold_md'], fill=TEAL)
             d1.text((80, y), ptitle, font=fonts['bold_sm'], fill=WHITE)
             y += 28
-            if detail != 'summary' and pdesc:
+            if detail not in ('summary', 'simple') and pdesc:
                 for line in _wrap_text(d1, pdesc, fonts['small'], W - 120)[:2]:
                     d1.text((80, y), line, font=fonts['small'], fill=SLATE); y += 18
             y += 10
         conclusion_text = conclusion if isinstance(conclusion, str) else ''
-        if detail == 'summary' and '.' in conclusion_text: conclusion_text = conclusion_text[:conclusion_text.index('.') + 1]
+        if detail == 'simple':
+            conclusion_text = ''  # Omit conclusion in simple mode
+        elif detail == 'summary' and '.' in conclusion_text:
+            conclusion_text = conclusion_text[:conclusion_text.index('.') + 1]
         if conclusion_text:
             d1.rectangle([30, H - 100, W - 30, H - 30], fill=DARK)
             for line in _wrap_text(d1, conclusion_text, fonts['small'], W - 100)[:3]:
