@@ -514,6 +514,10 @@ def init_db():
                                   WHERE table_name='meeting_summaries' AND column_name='assessment') THEN
                         ALTER TABLE meeting_summaries ADD COLUMN assessment TEXT DEFAULT '';
                     END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                  WHERE table_name='meeting_summaries' AND column_name='categories') THEN
+                        ALTER TABLE meeting_summaries ADD COLUMN categories JSONB DEFAULT '[]';
+                    END IF;
                 END $$;
             ''')
 
@@ -882,6 +886,16 @@ def init_db():
                     reference_image TEXT NOT NULL,
                     source_ticker VARCHAR(20),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+            # Thesis condensed versions (shorter input source for formats)
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS thesis_condensed (
+                    ticker VARCHAR(20) PRIMARY KEY,
+                    condensed_analysis JSONB NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
 
@@ -1994,7 +2008,7 @@ def get_summaries():
 
         with get_db() as (conn, cur):
             cur.execute('''
-                SELECT id, title, raw_notes, summary, questions, assessment, topic, topic_type, source_type, source_files, doc_type, has_stored_files, created_at
+                SELECT id, title, raw_notes, summary, questions, assessment, topic, topic_type, source_type, source_files, doc_type, has_stored_files, categories, created_at
                 FROM meeting_summaries
                 ORDER BY created_at DESC
             ''')
@@ -2015,6 +2029,7 @@ def get_summaries():
                 'sourceFiles': row.get('source_files') or [],
                 'docType': row.get('doc_type') or 'other',
                 'hasStoredFiles': row.get('has_stored_files') or False,
+                'categories': row.get('categories') or [],
                 'createdAt': row['created_at'].isoformat() if row['created_at'] else None
             })
 
@@ -2039,10 +2054,15 @@ def save_summary():
         if isinstance(source_files, list):
             source_files = json.dumps(source_files)
 
+        # Convert categories list to JSON
+        categories = data.get('categories', [])
+        if isinstance(categories, list):
+            categories = json.dumps(categories)
+
         with get_db(commit=True) as (conn, cur):
             cur.execute('''
-                INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, assessment, topic, topic_type, source_type, source_files, doc_type, created_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, assessment, topic, topic_type, source_type, source_files, doc_type, categories, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (id)
                 DO UPDATE SET
                     title = EXCLUDED.title,
@@ -2054,7 +2074,8 @@ def save_summary():
                     topic_type = EXCLUDED.topic_type,
                     source_type = EXCLUDED.source_type,
                     source_files = EXCLUDED.source_files,
-                    doc_type = EXCLUDED.doc_type
+                    doc_type = EXCLUDED.doc_type,
+                    categories = EXCLUDED.categories
                 RETURNING id
             ''', (
                 summary_id,
@@ -2068,6 +2089,7 @@ def save_summary():
                 data.get('sourceType', 'paste'),
                 source_files,
                 data.get('docType', 'other'),
+                categories,
                 data.get('createdAt', datetime.utcnow().isoformat())
             ))
 
@@ -2097,6 +2119,40 @@ def delete_summary():
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error deleting summary: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================
+# SUMMARY CATEGORIES ENDPOINTS
+# ============================================
+
+@app.route('/api/summary-categories', methods=['POST'])
+def update_summary_categories():
+    """Quick-update categories for a single summary"""
+    try:
+        data = request.json
+        summary_id = data.get('summaryId', '')
+        categories = data.get('categories', [])
+        if not summary_id:
+            return jsonify({'error': 'summaryId is required'}), 400
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('UPDATE meeting_summaries SET categories = %s WHERE id = %s', (json.dumps(categories), summary_id))
+        cache.invalidate('summaries')
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error updating categories: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/summary-categories/all', methods=['GET'])
+def get_all_summary_categories():
+    """Return deduplicated list of all category names across all summaries"""
+    try:
+        with get_db() as (_, cur):
+            cur.execute("SELECT DISTINCT jsonb_array_elements_text(COALESCE(categories, '[]'::jsonb)) AS cat FROM meeting_summaries ORDER BY cat")
+            rows = cur.fetchall()
+        return jsonify([r['cat'] for r in rows])
+    except Exception as e:
+        print(f"Error getting categories: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -4956,6 +5012,139 @@ def _generate_thesis_pptx_bytes(row, scorecard_data=None, fmt='executive'):
     return buf.getvalue()
 
 
+# ============================================
+# THESIS CONDENSED ENDPOINTS
+# ============================================
+
+@app.route('/api/thesis-condensed/generate', methods=['POST'])
+def generate_condensed_thesis():
+    """Generate a condensed version of a thesis using Claude."""
+    try:
+        data = request.get_json()
+        ticker = data.get('ticker', '').upper()
+        if not ticker:
+            return jsonify({'error': 'No ticker provided'}), 400
+
+        # Load full thesis
+        with get_db() as (_, cur):
+            cur.execute('SELECT * FROM portfolio_analyses WHERE ticker = %s', (ticker,))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'error': 'No analysis found for this ticker'}), 404
+
+        analysis = row['analysis'] if isinstance(row['analysis'], dict) else json.loads(row['analysis'])
+        thesis = analysis.get('thesis', {})
+        signposts = analysis.get('signposts', [])
+        threats = analysis.get('threats', [])
+        conclusion = analysis.get('conclusion', '')
+
+        # Build prompt for Claude to condense
+        thesis_text = json.dumps({
+            'summary': thesis.get('summary', ''),
+            'pillars': thesis.get('pillars', []),
+        }, indent=2)
+        threats_text = json.dumps(threats, indent=2)
+
+        prompt = f"""Condense this investment thesis into a shorter version. Rules:
+1. Thesis summary: keep to 2-3 tight, punchy sentences. Preserve the core WHY.
+2. Each pillar: keep the title exactly as-is. Condense the description to 1 sentence max.
+3. Keep confidence levels unchanged.
+4. Remove all source citations from pillars.
+
+Return ONLY valid JSON with this exact structure:
+{{
+  "summary": "condensed summary here",
+  "pillars": [
+    {{"title": "exact original title", "description": "1 sentence", "confidence": "High/Medium/Low"}}
+  ]
+}}
+
+Original thesis:
+{thesis_text}"""
+
+        result = call_llm(
+            messages=[{"role": "user", "content": prompt}],
+            system="You are a concise financial analyst. Return only valid JSON, no markdown fences.",
+            tier="fast",
+            max_tokens=2048,
+        )
+
+        # Parse Claude's response
+        response_text = result['text'].strip()
+        if response_text.startswith('```'):
+            response_text = response_text.split('\n', 1)[1].rsplit('```', 1)[0].strip()
+        condensed_thesis = json.loads(response_text)
+
+        # Build condensed threats (remove likelihood/impact)
+        condensed_threats = []
+        for t in threats:
+            condensed_threats.append({
+                'threat': t.get('threat', ''),
+                'triggerPoints': t.get('triggerPoints', ''),
+            })
+
+        # Assemble full condensed analysis
+        condensed = {
+            'thesis': condensed_thesis,
+            'signposts': signposts,  # unchanged
+            'threats': condensed_threats,
+            'conclusion': conclusion,
+        }
+
+        # Upsert into DB
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('''
+                INSERT INTO thesis_condensed (ticker, condensed_analysis, updated_at)
+                VALUES (%s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (ticker)
+                DO UPDATE SET condensed_analysis = EXCLUDED.condensed_analysis, updated_at = CURRENT_TIMESTAMP
+                RETURNING ticker
+            ''', (ticker, json.dumps(condensed)))
+
+        return jsonify({'success': True, 'ticker': ticker, 'condensed': condensed})
+    except json.JSONDecodeError as je:
+        print(f"Error parsing condensed thesis JSON: {je}")
+        return jsonify({'error': 'Failed to parse condensed thesis from Claude'}), 500
+    except Exception as e:
+        print(f"Error generating condensed thesis: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/thesis-condensed/<ticker>', methods=['GET'])
+def get_condensed_thesis(ticker):
+    """Get stored condensed thesis for a ticker."""
+    try:
+        ticker = ticker.upper()
+        with get_db() as (_, cur):
+            cur.execute('SELECT condensed_analysis, created_at, updated_at FROM thesis_condensed WHERE ticker = %s', (ticker,))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'error': 'No condensed thesis found'}), 404
+        condensed = row['condensed_analysis']
+        if isinstance(condensed, str):
+            condensed = json.loads(condensed)
+        return jsonify({
+            'ticker': ticker,
+            'condensed': condensed,
+            'createdAt': row['created_at'].isoformat() if row['created_at'] else None,
+            'updatedAt': row['updated_at'].isoformat() if row['updated_at'] else None,
+        })
+    except Exception as e:
+        print(f"Error getting condensed thesis: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/thesis-condensed/<ticker>', methods=['DELETE'])
+def delete_condensed_thesis(ticker):
+    """Delete stored condensed thesis."""
+    try:
+        ticker = ticker.upper()
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('DELETE FROM thesis_condensed WHERE ticker = %s', (ticker,))
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error deleting condensed thesis: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/thesis-format/generate', methods=['POST'])
 def generate_thesis_format():
     """Generate a formatted thesis document in a specific template."""
@@ -4964,6 +5153,7 @@ def generate_thesis_format():
         ticker = data.get('ticker', '').upper()
         fmt = data.get('format', 'executive')  # executive, scorecard, onepager, board
         output_type = data.get('outputType', 'pdf')  # pdf or docx
+        use_condensed = data.get('useCondensed', False)
         if not ticker:
             return jsonify({'error': 'No ticker provided'}), 400
 
@@ -4988,6 +5178,24 @@ def generate_thesis_format():
                     scorecard_data = None
 
         row_dict = dict(row)
+
+        # If using condensed thesis, overlay condensed data onto the analysis
+        if use_condensed:
+            with get_db() as (_, cur):
+                cur.execute('SELECT condensed_analysis FROM thesis_condensed WHERE ticker = %s', (ticker,))
+                c_row = cur.fetchone()
+            if c_row:
+                condensed = c_row['condensed_analysis']
+                if isinstance(condensed, str):
+                    condensed = json.loads(condensed)
+                # Merge condensed into the analysis dict
+                orig_analysis = row_dict['analysis'] if isinstance(row_dict['analysis'], dict) else json.loads(row_dict['analysis'])
+                orig_analysis['thesis'] = condensed.get('thesis', orig_analysis.get('thesis', {}))
+                orig_analysis['signposts'] = condensed.get('signposts', orig_analysis.get('signposts', []))
+                orig_analysis['threats'] = condensed.get('threats', orig_analysis.get('threats', []))
+                if condensed.get('conclusion'):
+                    orig_analysis['conclusion'] = condensed['conclusion']
+                row_dict['analysis'] = orig_analysis
 
         # Generate based on format
         format_names = {
@@ -5446,6 +5654,7 @@ def start_thesis_infographic():
         color_scheme = data.get('colorScheme', 'default')
         include_company = data.get('includeCompanyName', False)
         template_id = data.get('templateId')
+        use_condensed = data.get('useCondensed', False)
 
         # If template specified, load its params as defaults
         if template_id:
@@ -5492,7 +5701,29 @@ def start_thesis_infographic():
                 except:
                     scorecard_data = None
 
-        d = _parse_analysis_data(dict(row))
+        row_dict = dict(row)
+
+        # If using condensed thesis, overlay condensed data
+        if use_condensed:
+            try:
+                with get_db() as (_, cur):
+                    cur.execute('SELECT condensed_analysis FROM thesis_condensed WHERE ticker = %s', (ticker,))
+                    c_row = cur.fetchone()
+                if c_row:
+                    condensed = c_row['condensed_analysis']
+                    if isinstance(condensed, str):
+                        condensed = json.loads(condensed)
+                    orig_analysis = row_dict['analysis'] if isinstance(row_dict['analysis'], dict) else json.loads(row_dict['analysis'])
+                    orig_analysis['thesis'] = condensed.get('thesis', orig_analysis.get('thesis', {}))
+                    orig_analysis['signposts'] = condensed.get('signposts', orig_analysis.get('signposts', []))
+                    orig_analysis['threats'] = condensed.get('threats', orig_analysis.get('threats', []))
+                    if condensed.get('conclusion'):
+                        orig_analysis['conclusion'] = condensed['conclusion']
+                    row_dict['analysis'] = orig_analysis
+            except Exception as ce:
+                print(f"Condensed thesis overlay warning: {ce}")
+
+        d = _parse_analysis_data(row_dict)
         total = 1 if mode == '1' else 3
         job_id = f"infog_{ticker}_{int(time.time()*1000)}"
 
