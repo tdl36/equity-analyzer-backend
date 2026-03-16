@@ -975,6 +975,21 @@ def init_db():
                 )
             ''')
 
+            # Add history columns to thesis tables (migration)
+            cur.execute('''
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                  WHERE table_name='thesis_full' AND column_name='history') THEN
+                        ALTER TABLE thesis_full ADD COLUMN history JSONB DEFAULT '[]';
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                  WHERE table_name='thesis_condensed' AND column_name='history') THEN
+                        ALTER TABLE thesis_condensed ADD COLUMN history JSONB DEFAULT '[]';
+                    END IF;
+                END $$;
+            ''')
+
             # Thesis format history (versioned PDF/DOCX storage)
             cur.execute('''
                 CREATE TABLE IF NOT EXISTS thesis_format_history (
@@ -3787,17 +3802,12 @@ def _generate_analysis_docx_bytes(row):
         for r in h.runs: r.font.name = 'Calibri'; r.font.color.rgb = RGBColor(0, 0, 0)
         for threat in threats:
             threat_desc = threat.get('threat', '')
-            likelihood = threat.get('likelihood', '')
-            impact = threat.get('impact', '')
             triggers = threat.get('triggerPoints', '')
             p = doc.add_paragraph(style='List Bullet')
             run = p.add_run(threat_desc)
             run.bold = True
             run.font.name = 'Calibri'
             details = []
-            if not is_condensed:
-                if likelihood: details.append(f"Likelihood: {likelihood}")
-                if impact: details.append(f"Impact: {impact}")
             if triggers: details.append(f"Watch for: {triggers}")
             if details:
                 run2 = p.add_run(f"\n{' | '.join(details)}")
@@ -4481,19 +4491,44 @@ def _parse_analysis_data(row):
     threats = analysis.get('threats', [])
     conclusion = analysis.get('conclusion', '')
     is_condensed = analysis.get('_condensed', False)
-    # Strip confidence from pillars and likelihood/impact from threats when condensed
+    # Strip confidence from pillars when condensed
     if is_condensed:
         for p in thesis.get('pillars', []):
             p.pop('confidence', None)
-        for t in threats:
-            t.pop('likelihood', None)
-            t.pop('impact', None)
+    # Always strip likelihood/impact from threats
+    for t in threats:
+        t.pop('likelihood', None)
+        t.pop('impact', None)
     return {
         'ticker': ticker, 'company': company, 'date_str': date_str,
         'thesis': thesis, 'signposts': signposts, 'threats': threats,
         'conclusion': conclusion, 'analysis': analysis,
         '_condensed': is_condensed,
     }
+
+
+def _snapshot_tier_history(cur, table, analysis_col, ticker, max_versions=20):
+    """Push current tier data into history array before overwriting."""
+    cur.execute(f'SELECT {analysis_col}, history FROM {table} WHERE ticker = %s', (ticker,))
+    row = cur.fetchone()
+    if not row or not row[analysis_col]:
+        return
+    current = row[analysis_col]
+    if isinstance(current, str):
+        current = json.loads(current)
+    history = row.get('history') or []
+    if isinstance(history, str):
+        history = json.loads(history)
+    snapshot = {
+        'timestamp': datetime.utcnow().isoformat(),
+        'thesis': current.get('thesis'),
+        'signposts': current.get('signposts'),
+        'threats': current.get('threats'),
+        'conclusion': current.get('conclusion', ''),
+    }
+    history.append(snapshot)
+    history = history[-max_versions:]
+    cur.execute(f'UPDATE {table} SET history = %s WHERE ticker = %s', (json.dumps(history), ticker))
 
 
 def _build_pillar_data(thesis, scorecard_data):
@@ -4578,8 +4613,6 @@ def _build_risk_data(threats, scorecard_data):
             continue
         rows.append({
             'threat': _fmt_escape(key),
-            'likelihood': _fmt_escape(threat.get('likelihood', '')),
-            'impact': _fmt_escape(threat.get('impact', '')),
             'triggers': _fmt_escape(threat.get('triggerPoints', '')),
             'status': sc.get('status', ''),
             'statusNote': _fmt_escape(sc.get('statusNote', '')),
@@ -4593,8 +4626,6 @@ def _build_risk_data(threats, scorecard_data):
             if r.get('isManual') and r.get('included') is not False:
                 rows.append({
                     'threat': _fmt_escape(r.get('riskFactor', '')),
-                    'likelihood': '',
-                    'impact': '',
                     'triggers': '',
                     'status': r.get('status', ''),
                     'statusNote': _fmt_escape(r.get('statusNote', '')),
@@ -4670,17 +4701,14 @@ def _generate_executive_brief_pdf(row, scorecard_data=None):
         status_col = ''
         if has_sc:
             status_col = f'<td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;background:{st_bg};color:{st_color};font-weight:bold;width:10%;">{st.upper() if st else "—"}</td>'
-        if is_condensed:
-            risk_rows += f'<tr><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#1e293b;width:70%;">{r["threat"]}{trigger_sub}</td>{status_col}</tr>'
-        else:
-            risk_rows += f'<tr><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#1e293b;width:50%;">{r["threat"]}{trigger_sub}</td><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;width:20%;">{r["likelihood"]}</td><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;width:20%;">{r["impact"]}</td>{status_col}</tr>'
+        risk_rows += f'<tr><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#1e293b;width:70%;">{r["threat"]}{trigger_sub}</td>{status_col}</tr>'
 
     risk_header_status = ''
     if has_sc:
         risk_header_status = '<th style="padding:8px 12px;text-align:center;font-size:9pt;color:#1e293b;font-weight:bold;border-bottom:2px solid #1e3a5f;width:10%;">Status</th>'
 
-    risk_lk_imp_headers = '' if is_condensed else '<th style="padding:8px 12px;text-align:center;font-size:9pt;color:#1e293b;font-weight:bold;border-bottom:2px solid #1e3a5f;width:20%;">Likelihood</th><th style="padding:8px 12px;text-align:center;font-size:9pt;color:#1e293b;font-weight:bold;border-bottom:2px solid #1e3a5f;width:20%;">Impact</th>'
-    risk_threat_width = '70%' if is_condensed else '50%'
+    risk_lk_imp_headers = ''
+    risk_threat_width = '70%'
 
     html = f"""<html><head><style>
         @page {{ margin: 0.75in; size: letter; }}
@@ -4796,8 +4824,7 @@ def _generate_onepager_pdf(row, scorecard_data=None):
     for r in rk_data:
         st = r['status']
         st_color = _status_color(st) if st else '#94a3b8'
-        lk_imp_cell = '' if is_condensed else (f'<td style="padding:3px 6px;border-bottom:1px solid #e2e8f0;font-size:8pt;color:#475569;text-align:center;">{r["likelihood"]}/{r["impact"]}</td>' if (r["likelihood"] or r["impact"]) else '')
-        risk_rows += f'<tr><td style="padding:3px 6px;border-bottom:1px solid #e2e8f0;font-size:8pt;font-weight:600;color:#1e293b;">{r["threat"]}</td>{lk_imp_cell}<td style="padding:3px 6px;border-bottom:1px solid #e2e8f0;font-size:8pt;text-align:center;font-weight:bold;color:{st_color};">{st.upper() if st else "—"}</td></tr>'
+        risk_rows += f'<tr><td style="padding:3px 6px;border-bottom:1px solid #e2e8f0;font-size:8pt;font-weight:600;color:#1e293b;">{r["threat"]}</td><td style="padding:3px 6px;border-bottom:1px solid #e2e8f0;font-size:8pt;text-align:center;font-weight:bold;color:{st_color};">{st.upper() if st else "—"}</td></tr>'
 
     html = f"""<html><head><style>
         @page {{ margin: 0.45in; size: letter; }}
@@ -4947,15 +4974,13 @@ def _generate_ic_memo_pdf(row, scorecard_data=None):
     if has_sc:
         sp_hdr_extra = '<th style="padding:7px 12px;text-align:center;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:15%;">Latest</th><th style="padding:7px 12px;text-align:center;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:15%;">Status</th>'
 
-    # Risk column widths — always sum to 100%
-    rk_lk_w = '15%' if has_sc else '20%'
-    rk_imp_w = '15%' if has_sc else '20%'
-    if is_condensed:
-        rk_threat_w = '80%' if has_sc else '100%'
+    # Risk column widths
+    if has_sc:
+        rk_threat_w = '80%'
         rk_status_w = '20%'
     else:
-        rk_threat_w = '45%' if has_sc else '60%'
-        rk_status_w = '25%'
+        rk_threat_w = '100%'
+        rk_status_w = '0%'
 
     risk_rows = ''
     for rk in rk_data:
@@ -4965,15 +4990,12 @@ def _generate_ic_memo_pdf(row, scorecard_data=None):
         status_col = ''
         if has_sc:
             status_col = f'<td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;text-align:center;font-weight:bold;color:{st_color};width:{rk_status_w};">{st.upper() if st else "—"}</td>'
-        if is_condensed:
-            risk_rows += f'<tr><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#1e293b;width:{rk_threat_w};">{rk["threat"]}{trigger_sub}</td>{status_col}</tr>'
-        else:
-            risk_rows += f'<tr><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#1e293b;width:{rk_threat_w};">{rk["threat"]}{trigger_sub}</td><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;width:{rk_lk_w};">{rk["likelihood"]}</td><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;color:#475569;text-align:center;width:{rk_imp_w};">{rk["impact"]}</td>{status_col}</tr>'
+        risk_rows += f'<tr><td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#1e293b;width:{rk_threat_w};">{rk["threat"]}{trigger_sub}</td>{status_col}</tr>'
 
     risk_hdr_status = ''
     if has_sc:
         risk_hdr_status = f'<th style="padding:7px 12px;text-align:center;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:{rk_status_w};">Status</th>'
-    risk_lk_imp_headers_ic = '' if is_condensed else f'<th style="padding:7px 12px;text-align:center;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:{rk_lk_w};">Likelihood</th><th style="padding:7px 12px;text-align:center;font-size:9pt;color:#475569;font-weight:700;border-bottom:2px solid #475569;width:{rk_imp_w};">Impact</th>'
+    risk_lk_imp_headers_ic = ''
     risk_threat_width_ic = rk_threat_w
 
     html = f"""<html><head><style>
@@ -5202,32 +5224,17 @@ def _generate_thesis_pptx_bytes(row, scorecard_data=None, fmt='executive'):
     add_bar(s4, "WHAT COULD GO WRONG?", Inches(0.5), Inches(0.4), Inches(12.333))
     if rk_data:
         rows_n = len(rk_data) + 1
-        if is_condensed:
-            tbl = s4.shapes.add_table(rows_n, 2, Inches(0.5), Inches(1.3), Inches(12.333), Inches(min(rows_n * 0.55, 5.5))).table
-            tbl.columns[0].width = Inches(9.5); tbl.columns[1].width = Inches(2.833)
-            for j, h in enumerate(['Risk Factor', 'Status']):
-                tbl.cell(0, j).text = h; style_cell(tbl.cell(0, j), Pt(12), WHITE, True, TEAL, PP_ALIGN.CENTER if j == 1 else PP_ALIGN.LEFT)
-            for i, rk in enumerate(rk_data):
-                ri = i + 1
-                tbl.cell(ri, 0).text = rk.get('threat', ''); style_cell(tbl.cell(ri, 0), fill_color=DARK)
-                st = (rk.get('status', '') or '').lower()
-                tbl.cell(ri, 1).text = st.upper() if st else '—'
-                sbg = _pptx_status_bg(st)
-                style_cell(tbl.cell(ri, 1), font_color=_pptx_status_color(st) if not sbg else RGBColor(0x0F, 0x17, 0x2A), fill_color=sbg or DARK, align=PP_ALIGN.CENTER, bold=True)
-        else:
-            tbl = s4.shapes.add_table(rows_n, 4, Inches(0.5), Inches(1.3), Inches(12.333), Inches(min(rows_n * 0.55, 5.5))).table
-            tbl.columns[0].width = Inches(4.5); tbl.columns[1].width = Inches(2.5); tbl.columns[2].width = Inches(2.5); tbl.columns[3].width = Inches(2.833)
-            for j, h in enumerate(['Risk Factor', 'Likelihood', 'Impact', 'Status']):
-                tbl.cell(0, j).text = h; style_cell(tbl.cell(0, j), Pt(12), WHITE, True, TEAL, PP_ALIGN.CENTER if j == 3 else PP_ALIGN.LEFT)
-            for i, rk in enumerate(rk_data):
-                ri = i + 1
-                tbl.cell(ri, 0).text = rk.get('threat', ''); style_cell(tbl.cell(ri, 0), fill_color=DARK)
-                tbl.cell(ri, 1).text = rk.get('likelihood', ''); style_cell(tbl.cell(ri, 1), fill_color=DARK)
-                tbl.cell(ri, 2).text = rk.get('impact', ''); style_cell(tbl.cell(ri, 2), fill_color=DARK)
-                st = (rk.get('status', '') or '').lower()
-                tbl.cell(ri, 3).text = st.upper() if st else '—'
-                sbg = _pptx_status_bg(st)
-                style_cell(tbl.cell(ri, 3), font_color=_pptx_status_color(st) if not sbg else RGBColor(0x0F, 0x17, 0x2A), fill_color=sbg or DARK, align=PP_ALIGN.CENTER, bold=True)
+        tbl = s4.shapes.add_table(rows_n, 2, Inches(0.5), Inches(1.3), Inches(12.333), Inches(min(rows_n * 0.55, 5.5))).table
+        tbl.columns[0].width = Inches(9.5); tbl.columns[1].width = Inches(2.833)
+        for j, h in enumerate(['Risk Factor', 'Status']):
+            tbl.cell(0, j).text = h; style_cell(tbl.cell(0, j), Pt(12), WHITE, True, TEAL, PP_ALIGN.CENTER if j == 1 else PP_ALIGN.LEFT)
+        for i, rk in enumerate(rk_data):
+            ri = i + 1
+            tbl.cell(ri, 0).text = rk.get('threat', ''); style_cell(tbl.cell(ri, 0), fill_color=DARK)
+            st = (rk.get('status', '') or '').lower()
+            tbl.cell(ri, 1).text = st.upper() if st else '—'
+            sbg = _pptx_status_bg(st)
+            style_cell(tbl.cell(ri, 1), font_color=_pptx_status_color(st) if not sbg else RGBColor(0x0F, 0x17, 0x2A), fill_color=sbg or DARK, align=PP_ALIGN.CENTER, bold=True)
 
     # ---- SLIDE 5: Conclusion + Conviction ----
     s5 = prs.slides.add_slide(prs.slide_layouts[6])
@@ -5292,8 +5299,8 @@ def _build_condensed_tier(source_data, anthropic_key="", gemini_key=""):
 
 1. Summary: 2-3 tight sentences. Preserve the core WHY.
 2. Pillars: keep 4-5 strongest. 1 sentence description each. Keep title exactly as-is. Drop confidence and sources.
-3. Signposts: keep 3-5 most actionable. 1 sentence each. Drop confidence, sources, and timeframe.
-4. Threats: keep 3-4 highest-impact. 1 sentence each. Drop likelihood and impact entirely.
+3. Signposts: keep 3-5 most actionable. Keep the metric name exactly as-is. Tighten the target to 1 sentence. Drop confidence, sources, and timeframe.
+4. Threats: keep 3-4 highest-impact. Keep the threat title exactly as-is. Tighten triggerPoints to 1 sentence.
 5. Conclusion: 1-2 sentences max.
 
 Return ONLY valid JSON:
@@ -5302,8 +5309,8 @@ Return ONLY valid JSON:
     "summary": "...",
     "pillars": [{{"title": "exact original title", "description": "1 sentence"}}]
   }},
-  "signposts": [{{"signpost": "1 sentence"}}],
-  "threats": [{{"threat": "1 sentence"}}],
+  "signposts": [{{"metric": "exact original metric name", "target": "1 sentence target"}}],
+  "threats": [{{"threat": "exact original threat title", "triggerPoints": "1 sentence"}}],
   "conclusion": "1-2 sentences"
 }}
 
@@ -5373,6 +5380,10 @@ def generate_condensed_thesis():
 
         condensed = _build_condensed_tier(analysis, anthropic_key, gemini_key)
 
+        # Snapshot existing tier before overwrite
+        with get_db(commit=True) as (conn, cur):
+            _snapshot_tier_history(cur, 'thesis_condensed', 'condensed_analysis', ticker)
+
         # Upsert into DB
         with get_db(commit=True) as (conn, cur):
             cur.execute('''
@@ -5397,7 +5408,7 @@ def get_condensed_thesis(ticker):
     try:
         ticker = ticker.upper()
         with get_db() as (_, cur):
-            cur.execute('SELECT condensed_analysis, created_at, updated_at FROM thesis_condensed WHERE ticker = %s', (ticker,))
+            cur.execute('SELECT condensed_analysis, history, created_at, updated_at FROM thesis_condensed WHERE ticker = %s', (ticker,))
             row = cur.fetchone()
         if not row:
             return jsonify({'error': 'No condensed thesis found'}), 404
@@ -5409,6 +5420,7 @@ def get_condensed_thesis(ticker):
             'condensed': condensed,
             'createdAt': row['created_at'].isoformat() if row['created_at'] else None,
             'updatedAt': row['updated_at'].isoformat() if row['updated_at'] else None,
+            'history': row.get('history') or [],
         })
     except Exception as e:
         print(f"Error getting condensed thesis: {e}")
@@ -5436,6 +5448,9 @@ def update_condensed_thesis(ticker):
         condensed = data.get('condensed_analysis')
         if not condensed:
             return jsonify({'error': 'condensed_analysis required'}), 400
+        # Snapshot existing tier before overwrite
+        with get_db(commit=True) as (conn, cur):
+            _snapshot_tier_history(cur, 'thesis_condensed', 'condensed_analysis', ticker)
         with get_db(commit=True) as (conn, cur):
             cur.execute('''
                 INSERT INTO thesis_condensed (ticker, condensed_analysis, updated_at)
@@ -5470,7 +5485,7 @@ def _build_full_tier(analysis, anthropic_key="", gemini_key=""):
 Rules:
 1. Select 4-5 most important pillars. Keep title exactly as-is. You may tighten the description to remove filler, but preserve meaning. Keep confidence and sources unchanged.
 2. Select 5-7 most actionable signposts. You may tighten the text slightly. Keep all fields (confidence, sources, timeframe).
-3. Select 4-5 highest-risk threats. Keep likelihood and impact unchanged. You may tighten the threat sentence.
+3. Select 4-5 highest-risk threats. Drop likelihood and impact entirely. You may tighten the threat sentence.
 4. Summary: keep as-is or remove filler only. Do not change meaning.
 5. Conclusion: keep exactly as-is.
 
@@ -5548,6 +5563,10 @@ def generate_full_thesis():
 
         full_data = _build_full_tier(analysis, anthropic_key, gemini_key)
 
+        # Snapshot existing tier before overwrite
+        with get_db(commit=True) as (conn, cur):
+            _snapshot_tier_history(cur, 'thesis_full', 'full_analysis', ticker)
+
         # Upsert into DB
         with get_db(commit=True) as (conn, cur):
             cur.execute('''
@@ -5577,7 +5596,7 @@ def get_full_thesis(ticker):
     try:
         ticker = ticker.upper()
         with get_db() as (_, cur):
-            cur.execute('SELECT full_analysis, created_at, updated_at FROM thesis_full WHERE ticker = %s', (ticker,))
+            cur.execute('SELECT full_analysis, history, created_at, updated_at FROM thesis_full WHERE ticker = %s', (ticker,))
             row = cur.fetchone()
         if not row:
             return jsonify({'error': 'No full thesis found'}), 404
@@ -5589,6 +5608,7 @@ def get_full_thesis(ticker):
             'full': full_data,
             'createdAt': row['created_at'].isoformat() if row['created_at'] else None,
             'updatedAt': row['updated_at'].isoformat() if row['updated_at'] else None,
+            'history': row.get('history') or [],
         })
     except Exception as e:
         print(f"Error getting full thesis: {e}")
@@ -5617,6 +5637,9 @@ def update_full_thesis(ticker):
         full_data = data.get('full_analysis')
         if not full_data:
             return jsonify({'error': 'full_analysis required'}), 400
+        # Snapshot existing tier before overwrite
+        with get_db(commit=True) as (conn, cur):
+            _snapshot_tier_history(cur, 'thesis_full', 'full_analysis', ticker)
         with get_db(commit=True) as (conn, cur):
             cur.execute('''
                 INSERT INTO thesis_full (ticker, full_analysis, updated_at)
@@ -5653,6 +5676,10 @@ def generate_all_thesis_tiers():
         # Step 1: Build Full tier
         full_data = _build_full_tier(analysis, anthropic_key, gemini_key)
 
+        # Snapshot existing full tier before overwrite
+        with get_db(commit=True) as (conn, cur):
+            _snapshot_tier_history(cur, 'thesis_full', 'full_analysis', ticker)
+
         # Upsert Full into DB
         with get_db(commit=True) as (conn, cur):
             cur.execute('''
@@ -5670,6 +5697,10 @@ def generate_all_thesis_tiers():
         result = {'success': True, 'ticker': ticker, 'full': full_data}
         try:
             condensed_data = _build_condensed_tier(full_data, anthropic_key, gemini_key)
+
+            # Snapshot existing condensed tier before overwrite
+            with get_db(commit=True) as (conn, cur):
+                _snapshot_tier_history(cur, 'thesis_condensed', 'condensed_analysis', ticker)
 
             with get_db(commit=True) as (conn, cur):
                 cur.execute('''
@@ -7070,7 +7101,7 @@ Return a JSON object with this exact structure:
         {"metric": "Key metric name", "target": "Target value", "timeframe": "When to expect", "category": "Financial/Operational/Strategic/Market", "confidence": "High/Medium/Low", "sources": [{"filename": "Document name", "excerpt": "Brief supporting quote"}]}
     ],
     "threats": [
-        {"threat": "Risk factor in one sentence", "likelihood": "High/Medium/Low", "impact": "High/Medium/Low", "triggerPoints": "One sentence on what to watch for", "sources": [{"filename": "Document name", "excerpt": "Brief supporting quote"}]}
+        {"threat": "Risk factor in one sentence", "triggerPoints": "One sentence on what to watch for", "sources": [{"filename": "Document name", "excerpt": "Brief supporting quote"}]}
     ],
     "documentMetadata": [
         {"filename": "exact_filename.pdf", "docType": "broker_report", "source": "Citi", "publishDate": "YYYY-MM-DD", "authors": ["Analyst Name"], "title": "Report Title"},
@@ -7146,7 +7177,7 @@ DOCUMENT WEIGHTING:
 Focus on:
 1. Why own this stock? (Investment Thesis) - include confidence level and source citations
 2. What are we looking for? (Signposts - specific KPIs, events, milestones with metric names)
-3. Where can we be wrong? (Threats - bear case scenarios with likelihood, impact, and trigger points)
+3. Where can we be wrong? (Threats - bear case scenarios with trigger points to watch)
 
 For each pillar, signpost, and threat, include:
 - "sources": Array of source documents that support this point, with filename and a brief excerpt
@@ -7499,12 +7530,8 @@ def send_analysis_email():
         html_body += '<ul style="margin-left: 20px;">'
         for threat in threats:
             threat_desc = threat.get('threat', '')
-            likelihood = threat.get('likelihood', '')
-            impact = threat.get('impact', '')
             triggers = threat.get('triggerPoints', '')
             html_body += f'<li style="margin-bottom: 10px;"><strong>{threat_desc}</strong>'
-            if likelihood or impact:
-                html_body += f'<br><span style="color: #666; font-size: 0.9em;">Likelihood: {likelihood} | Impact: {impact}</span>'
             if triggers:
                 html_body += f'<br><span style="color: #666; font-size: 0.9em;">Watch for: {triggers}</span>'
             html_body += '</li>'
@@ -9724,9 +9751,6 @@ def _generate_analyst_brief_infographic(d, scorecard_data, mode, detail='full', 
         for rk in rk_data[:10]:
             d3.ellipse([40, y + 5, 48, y + 13], fill=RISK_ACCENT)
             text = rk['threat']
-            if show_risk_detail and detail != 'simple':
-                if rk.get('likelihood'):
-                    text += f" (Likelihood: {rk['likelihood']}, Impact: {rk['impact']})"
             lines = _wrap_text(d3, text, fonts['regular'], W - 120)
             for line in lines[:2]:
                 d3.text((58, y), line, font=fonts['regular'], fill=TEXT)
@@ -9911,9 +9935,6 @@ def _generate_quad_grid_infographic(d, scorecard_data, mode, detail='full', show
         for rk in rk_data[:10]:
             d3.ellipse([40, y + 6, 48, y + 14], fill=RISK_ACCENT)
             text = rk['threat']
-            if show_risk_detail and detail != 'simple':
-                if rk.get('likelihood'):
-                    text += f" (Likelihood: {rk['likelihood']}, Impact: {rk['impact']})"
             lines = _wrap_text(d3, text, fonts['regular'], W - 120)
             for line in lines[:2]:
                 d3.text((58, y), line, font=fonts['regular'], fill=TEXT)
@@ -10017,14 +10038,9 @@ def _generate_precision_infographic(d, scorecard_data, mode, detail='full', show
             draw.rectangle([x, y, x + width, y + row_h], fill=DARK)
             draw.line([x, y, x + width, y], fill=(255, 255, 255, 30))
             cx = x
-            max_chars = 30 if (show_risk_detail and detail != 'simple' and not is_condensed) else 60
+            max_chars = 60
             draw.text((cx + 8, y + 6), (rk.get('threat', '') or '')[:max_chars], font=font, fill=LIGHT)
             cx += col_w[0]
-            if show_risk_detail and detail != 'simple' and not is_condensed:
-                draw.text((cx + 8, y + 6), (rk.get('likelihood', '') or '')[:12], font=font, fill=SLATE)
-                cx += col_w[1]
-                draw.text((cx + 8, y + 6), (rk.get('impact', '') or '')[:12], font=font, fill=SLATE)
-                cx += col_w[2]
             _draw_status_dot(draw, cx + col_w[-1]//2 - 7, y + row_h//2 - 7, rk.get('status', ''))
             y += row_h
         return y
