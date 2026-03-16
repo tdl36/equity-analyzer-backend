@@ -123,24 +123,40 @@ def _extract_json(text):
             except json.JSONDecodeError:
                 continue
     # Repair truncated JSON by closing open brackets/braces
+    import re
     for sc, ec in [("{", "}"), ("[", "]")]:
         s = text.find(sc)
         if s != -1:
             fragment = text[s:]
-            for _attempt in range(5):
+            for _attempt in range(8):
                 try:
                     return json.loads(fragment)
                 except json.JSONDecodeError:
+                    # Strip trailing partial string value (e.g. `"key": "truncated te`)
+                    fragment = re.sub(r',\s*"[^"]*":\s*"[^"]*$', '', fragment)
+                    # Strip trailing partial key (e.g. `"key": `)
+                    fragment = re.sub(r',\s*"[^"]*"\s*:\s*$', '', fragment)
+                    # Strip trailing comma
+                    fragment = re.sub(r',\s*$', '', fragment)
+                    # Close open brackets/braces
                     open_braces = fragment.count('{') - fragment.count('}')
                     open_brackets = fragment.count('[') - fragment.count(']')
-                    last_comma = fragment.rfind(',')
-                    if last_comma > 0:
-                        fragment = fragment[:last_comma]
-                    fragment += '}' * max(0, open_braces) + ']' * max(0, open_brackets)
+                    fragment = fragment.rstrip()
+                    # Remove trailing comma before closing
+                    if fragment.endswith(','):
+                        fragment = fragment[:-1]
+                    fragment += ']' * max(0, open_brackets) + '}' * max(0, open_braces)
                     try:
                         return json.loads(fragment)
                     except json.JSONDecodeError:
-                        break
+                        # Strip back further — remove last complete entry and try again
+                        last_brace = fragment.rfind('},')
+                        last_bracket = fragment.rfind('],')
+                        cut_point = max(last_brace, last_bracket)
+                        if cut_point > 0:
+                            fragment = fragment[:cut_point + 1]
+                        else:
+                            break
     raise json.JSONDecodeError("Could not parse JSON from LLM response", text[:500], 0)
 
 
@@ -5485,15 +5501,17 @@ Original conclusion:
         messages=[{"role": "user", "content": prompt}],
         system="You are a financial analyst curating the most important items from a thesis. Return only valid JSON, no markdown fences. Light tightening is OK; do not compress or rewrite.",
         tier="fast",
-        max_tokens=6144,
+        max_tokens=16384,
         anthropic_api_key=anthropic_key,
         gemini_api_key=gemini_key,
     )
 
+    print(f"[_build_full_tier] LLM response length: {len(result['text'])} chars, provider: {result.get('provider')}, model: {result.get('model')}")
     try:
         full_data = _extract_json(result['text'])
     except json.JSONDecodeError:
-        print(f"[_build_full_tier] Raw LLM response:\n{result['text'][:2000]}")
+        print(f"[_build_full_tier] FAILED TO PARSE. Raw LLM response (first 3000 chars):\n{result['text'][:3000]}")
+        print(f"[_build_full_tier] Raw LLM response (last 500 chars):\n{result['text'][-500:]}")
         raise
 
     # Validate structure
