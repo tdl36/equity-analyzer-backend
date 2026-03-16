@@ -7405,7 +7405,8 @@ Return ONLY valid JSON, no markdown, no explanation."""
         # JSON.parse() ignores leading whitespace, so the frontend parses normally.
         def generate():
             try:
-                client = anthropic.Anthropic(api_key=api_key)
+                import httpx as _httpx
+                client = anthropic.Anthropic(api_key=api_key, timeout=_httpx.Timeout(300.0, connect=30.0))
                 result_text = ""
                 kwargs = {
                     "model": "claude-sonnet-4-5-20250929",
@@ -11071,7 +11072,8 @@ Return ONLY valid JSON array, no markdown fencing."""
         api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('apiKey', '') or data.get('api_key', '')
         if not api_key:
             return jsonify({'error': 'Anthropic API key not configured. Add it in Settings.'}), 500
-        client_ai = anthropic.Anthropic(api_key=api_key)
+        import httpx as _httpx
+        client_ai = anthropic.Anthropic(api_key=api_key, timeout=_httpx.Timeout(120.0, connect=15.0))
         response = client_ai.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=8192,
