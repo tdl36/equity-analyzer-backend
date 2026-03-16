@@ -1122,6 +1122,28 @@ def _split_large_pdf(base64_data, max_pages=MAX_PDF_PAGES_PER_CHUNK):
         return [(base64_data, 30)]
 
 
+def _repair_truncated_json(text):
+    """Attempt to repair truncated JSON from a max_tokens cutoff."""
+    import re
+    repaired = text
+    # Strip trailing incomplete key:value pairs
+    repaired = re.sub(r',\s*"[^"]*$', '', repaired)                    # trailing key without value
+    repaired = re.sub(r',\s*"[^"]*":\s*"[^"]*$', '', repaired)        # trailing key:partial-string
+    repaired = re.sub(r',\s*"[^"]*":\s*$', '', repaired)              # trailing key: (no value)
+    repaired = re.sub(r',\s*$', '', repaired)                          # trailing comma
+    # Close open structures
+    open_brackets = repaired.count('[') - repaired.count(']')
+    open_braces = repaired.count('{') - repaired.count('}')
+    repaired += ']' * max(0, open_brackets)
+    repaired += '}' * max(0, open_braces)
+    try:
+        result = json.loads(repaired)
+        print(f"[_repair_truncated_json] Repair succeeded")
+        return result
+    except json.JSONDecodeError as e:
+        raise Exception(f"JSON truncated and repair failed: {e}")
+
+
 def _update_job(job_id, **kwargs):
     """Update analysis_jobs row with provided fields."""
     if not kwargs:
@@ -1383,7 +1405,7 @@ def _run_analysis_job(job_id):
 
                     with client.messages.stream(
                         model="claude-sonnet-4-5-20250929",
-                        max_tokens=16384,
+                        max_tokens=32768,
                         messages=[{'role': 'user', 'content': content}],
                         system="You are an expert equity research analyst. Analyze documents thoroughly and provide institutional-quality investment analysis. Be concise: the final thesis should fit 2-3 printed pages (3-5 pillars, 4-6 signposts, 3-5 threats, each described in 1-2 sentences). Prioritize the most important insights. Always respond with valid JSON only."
                     ) as stream:
@@ -1397,7 +1419,7 @@ def _run_analysis_job(job_id):
                             'output_tokens': final_msg.usage.output_tokens
                         }
 
-                    # Parse JSON
+                    # Parse JSON — with truncation repair
                     cleaned = result_text.strip()
                     if cleaned.startswith('```'):
                         cleaned = cleaned.split('\n', 1)[1] if '\n' in cleaned else cleaned[3:]
@@ -1406,7 +1428,11 @@ def _run_analysis_job(job_id):
                     if cleaned.startswith('json'):
                         cleaned = cleaned[4:].strip()
 
-                    analysis = json.loads(cleaned)
+                    try:
+                        analysis = json.loads(cleaned)
+                    except json.JSONDecodeError as je:
+                        print(f"[analysis-job {job_id}] JSON parse failed ({je}), attempting repair...")
+                        analysis = _repair_truncated_json(cleaned)
                     break  # success — exit retry loop
 
                 except (httpx.TimeoutException, httpx.ReadTimeout, httpx.ConnectTimeout) as e:
@@ -7410,7 +7436,7 @@ Return ONLY valid JSON, no markdown, no explanation."""
                 result_text = ""
                 kwargs = {
                     "model": "claude-sonnet-4-5-20250929",
-                    "max_tokens": 8192,
+                    "max_tokens": 32768,
                     "messages": [{'role': 'user', 'content': content}],
                     "system": "You are an expert equity research analyst. Provide institutional-quality investment analysis that is CONCISE: 2-3 printed pages max. Limit to 3-5 pillars, 4-6 signposts, 3-5 threats, each described in 1-2 sentences. Prioritize the most important insights and consolidate related points. Always respond with valid JSON only.",
                 }
@@ -7438,7 +7464,11 @@ Return ONLY valid JSON, no markdown, no explanation."""
                 if cleaned.startswith('json'):
                     cleaned = cleaned[4:].strip()
 
-                analysis = json.loads(cleaned)
+                try:
+                    analysis = json.loads(cleaned)
+                except json.JSONDecodeError:
+                    print(f"[analyze-multi] JSON parse failed, attempting repair...")
+                    analysis = _repair_truncated_json(cleaned)
                 changes = analysis.pop('changes', [])
                 document_metadata = analysis.pop('documentMetadata', [])
 
