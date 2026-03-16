@@ -1680,9 +1680,42 @@ def save_analysis():
         ticker = data.get('ticker', '').upper()
         company = data.get('companyName', data.get('company', ''))
         analysis = data.get('analysis', {})
-        
+
         if not ticker:
             return jsonify({'error': 'Ticker is required'}), 400
+
+        # Backend-side history & documentHistory preservation
+        # If the incoming analysis lacks history/documentHistory, carry over from existing
+        with get_db() as (conn, cur):
+            cur.execute('SELECT analysis FROM portfolio_analyses WHERE ticker = %s', (ticker,))
+            existing_row = cur.fetchone()
+        if existing_row and existing_row['analysis']:
+            old = existing_row['analysis']
+            if isinstance(old, str):
+                try: old = json.loads(old)
+                except: old = {}
+
+            # Preserve history: if incoming has none, snapshot old thesis + carry over
+            if not analysis.get('history'):
+                old_history = old.get('history') or []
+                if old.get('thesis') or old.get('signposts') or old.get('threats'):
+                    old_history = list(old_history)  # copy
+                    old_history.append({
+                        'timestamp': old.get('updatedAt') or datetime.utcnow().isoformat(),
+                        'thesis': old.get('thesis'),
+                        'signposts': old.get('signposts'),
+                        'threats': old.get('threats'),
+                    })
+                    old_history = old_history[-20:]
+                analysis['history'] = old_history
+
+            # Preserve documentHistory: if incoming has none, carry over existing
+            if not analysis.get('documentHistory'):
+                analysis['documentHistory'] = old.get('documentHistory') or []
+
+            # Set updatedAt if missing
+            if not analysis.get('updatedAt'):
+                analysis['updatedAt'] = datetime.utcnow().isoformat()
 
         with get_db(commit=True) as (conn, cur):
             # Upsert - insert or update
