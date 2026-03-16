@@ -5893,6 +5893,15 @@ def generate_all_thesis_tiers():
             result['partialSuccess'] = True
             result['condensedError'] = str(ce)
 
+        # Fetch history for both tiers
+        with get_db() as (_, cur):
+            cur.execute('SELECT history FROM thesis_full WHERE ticker = %s', (ticker,))
+            frow = cur.fetchone()
+            result['fullHistory'] = (frow.get('history') or []) if frow else []
+            cur.execute('SELECT history FROM thesis_condensed WHERE ticker = %s', (ticker,))
+            crow = cur.fetchone()
+            result['condensedHistory'] = (crow.get('history') or []) if crow else []
+
         return jsonify(result)
     except json.JSONDecodeError as je:
         print(f"Error parsing thesis JSON in generate-all: {je}")
