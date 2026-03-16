@@ -1303,8 +1303,12 @@ def _run_analysis_job(job_id):
 
         _update_job(job_id, total_batches=len(batches), progress=f'{total_pages} pages, {len(batches)} batch(es)')
 
-        # Process batches
-        client = anthropic.Anthropic(api_key=api_key)
+        # Process batches — 5 min timeout per batch, 1 retry on failure
+        import httpx
+        client = anthropic.Anthropic(
+            api_key=api_key,
+            timeout=httpx.Timeout(300.0, connect=30.0),  # 5 min total, 30s connect
+        )
         current_analysis = existing_analysis
         all_changes = []
         all_metadata = []
@@ -1319,34 +1323,64 @@ def _run_analysis_job(job_id):
             if not content:
                 continue
 
-            result_text = ""
-            usage_data = {}
-            with client.messages.stream(
-                model="claude-sonnet-4-5-20250929",
-                max_tokens=16384,
-                messages=[{'role': 'user', 'content': content}],
-                system="You are an expert equity research analyst. Analyze documents thoroughly and provide institutional-quality investment analysis. Be concise: the final thesis should fit 2-3 printed pages (3-5 pillars, 4-6 signposts, 3-5 threats, each described in 1-2 sentences). Prioritize the most important insights. Always respond with valid JSON only."
-            ) as stream:
-                for text in stream.text_stream:
-                    result_text += text
-                    if len(result_text) % 500 < len(text):
-                        _update_job(job_id, chars_received=len(result_text))
-                final_msg = stream.get_final_message()
-                usage_data = {
-                    'input_tokens': final_msg.usage.input_tokens,
-                    'output_tokens': final_msg.usage.output_tokens
-                }
+            # Retry loop: try up to 2 attempts per batch
+            max_attempts = 2
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    result_text = ""
+                    usage_data = {}
+                    if attempt > 1:
+                        _update_job(job_id, chars_received=0,
+                                    progress=f'Retrying batch {i + 1} of {len(batches)} (attempt {attempt})')
+                        print(f"[analysis-job {job_id}] Retry batch {i + 1}, attempt {attempt}")
 
-            # Parse JSON
-            cleaned = result_text.strip()
-            if cleaned.startswith('```'):
-                cleaned = cleaned.split('\n', 1)[1] if '\n' in cleaned else cleaned[3:]
-            if cleaned.endswith('```'):
-                cleaned = cleaned.rsplit('\n', 1)[0]
-            if cleaned.startswith('json'):
-                cleaned = cleaned[4:].strip()
+                    with client.messages.stream(
+                        model="claude-sonnet-4-5-20250929",
+                        max_tokens=16384,
+                        messages=[{'role': 'user', 'content': content}],
+                        system="You are an expert equity research analyst. Analyze documents thoroughly and provide institutional-quality investment analysis. Be concise: the final thesis should fit 2-3 printed pages (3-5 pillars, 4-6 signposts, 3-5 threats, each described in 1-2 sentences). Prioritize the most important insights. Always respond with valid JSON only."
+                    ) as stream:
+                        for text in stream.text_stream:
+                            result_text += text
+                            if len(result_text) % 500 < len(text):
+                                _update_job(job_id, chars_received=len(result_text))
+                        final_msg = stream.get_final_message()
+                        usage_data = {
+                            'input_tokens': final_msg.usage.input_tokens,
+                            'output_tokens': final_msg.usage.output_tokens
+                        }
 
-            analysis = json.loads(cleaned)
+                    # Parse JSON
+                    cleaned = result_text.strip()
+                    if cleaned.startswith('```'):
+                        cleaned = cleaned.split('\n', 1)[1] if '\n' in cleaned else cleaned[3:]
+                    if cleaned.endswith('```'):
+                        cleaned = cleaned.rsplit('\n', 1)[0]
+                    if cleaned.startswith('json'):
+                        cleaned = cleaned[4:].strip()
+
+                    analysis = json.loads(cleaned)
+                    break  # success — exit retry loop
+
+                except (httpx.TimeoutException, httpx.ReadTimeout, httpx.ConnectTimeout) as e:
+                    print(f"[analysis-job {job_id}] Batch {i + 1} timeout (attempt {attempt}): {e}")
+                    if attempt == max_attempts:
+                        raise Exception(f"Batch {i + 1} timed out after {max_attempts} attempts ({batch_pages} pages)")
+                    import time
+                    time.sleep(5)
+                except json.JSONDecodeError as e:
+                    print(f"[analysis-job {job_id}] Batch {i + 1} JSON parse error (attempt {attempt}): {e}")
+                    if attempt == max_attempts:
+                        raise Exception(f"Batch {i + 1} returned invalid JSON after {max_attempts} attempts")
+                    import time
+                    time.sleep(3)
+                except Exception as e:
+                    print(f"[analysis-job {job_id}] Batch {i + 1} error (attempt {attempt}): {e}")
+                    if attempt == max_attempts:
+                        raise
+                    import time
+                    time.sleep(5)
+
             changes = analysis.pop('changes', [])
             doc_metadata = analysis.pop('documentMetadata', [])
 
@@ -1548,7 +1582,9 @@ def get_analysis_jobs_batch_status():
 
         jobs = {}
         clear_ids = []
+        stale_ids = []
         for job in rows:
+            elapsed = int((datetime.utcnow() - job['created_at']).total_seconds()) if job['created_at'] else 0
             resp = {
                 'ticker': job['ticker'],
                 'status': job['status'],
@@ -1556,14 +1592,26 @@ def get_analysis_jobs_batch_status():
                 'batchNum': job['batch_num'],
                 'totalBatches': job['total_batches'],
                 'charsReceived': job['chars_received'],
-                'elapsedSeconds': int((datetime.utcnow() - job['created_at']).total_seconds()) if job['created_at'] else 0
+                'elapsedSeconds': elapsed
             }
+            # Stale job detection: if processing for >8 min, mark as failed
+            if job['status'] == 'processing' and elapsed > 480:
+                resp['status'] = 'failed'
+                resp['error'] = f'Job timed out after {elapsed}s — the API call may have hung. Please retry.'
+                stale_ids.append(job['id'])
+                print(f"[analysis-job {job['id']}] Stale job detected for {job['ticker']} ({elapsed}s), marking failed")
             if job['status'] == 'complete' and job['result']:
                 resp['result'] = job['result'] if isinstance(job['result'], dict) else json.loads(job['result'])
                 clear_ids.append(job['id'])
             if job['status'] == 'failed':
                 resp['error'] = job['error']
             jobs[job['id']] = resp
+
+        # Mark stale jobs as failed in DB
+        if stale_ids:
+            stale_ph = ','.join(['%s'] * len(stale_ids))
+            with get_db(commit=True) as (conn, cur):
+                cur.execute(f"UPDATE analysis_jobs SET status = 'failed', error = 'Timed out', api_key = '' WHERE id IN ({stale_ph})", stale_ids)
 
         # Clear API keys for completed jobs
         if clear_ids:
