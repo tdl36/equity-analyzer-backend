@@ -1123,29 +1123,17 @@ def _split_large_pdf(base64_data, max_pages=MAX_PDF_PAGES_PER_CHUNK):
 
 
 def _trim_analysis_for_context(analysis):
-    """Strip verbose fields from existing analysis before passing as context to subsequent batches.
-    This dramatically reduces prompt size and prevents output truncation."""
+    """Remove non-analytical metadata from existing analysis before passing as LLM context.
+    Preserves ALL analytical content (pillars, signposts, threats, sources with excerpts, conclusion).
+    Only strips UI-only fields: history, documentHistory, updatedAt."""
     if not analysis or not isinstance(analysis, dict):
         return analysis
     import copy
     trimmed = copy.deepcopy(analysis)
-    # Strip source excerpts from pillars (keep filename only)
-    for pillar in (trimmed.get('thesis', {}).get('pillars', []) or []):
-        if 'sources' in pillar:
-            pillar['sources'] = [{'filename': s.get('filename', '')} for s in pillar['sources'][:3]]
-    # Strip source excerpts from signposts
-    for sp in (trimmed.get('signposts', []) or []):
-        if 'sources' in sp:
-            sp['sources'] = [{'filename': s.get('filename', '')} for s in sp['sources'][:3]]
-    # Strip source excerpts from threats
-    for t in (trimmed.get('threats', []) or []):
-        if 'sources' in t:
-            t['sources'] = [{'filename': s.get('filename', '')} for s in t['sources'][:3]]
-    # Remove fields that don't need to be in the LLM context
+    # Remove UI-only fields that have zero analytical value
     trimmed.pop('history', None)
     trimmed.pop('documentHistory', None)
     trimmed.pop('updatedAt', None)
-    trimmed.pop('conclusion', None)  # will be regenerated
     return trimmed
 
 
