@@ -1122,6 +1122,33 @@ def _split_large_pdf(base64_data, max_pages=MAX_PDF_PAGES_PER_CHUNK):
         return [(base64_data, 30)]
 
 
+def _trim_analysis_for_context(analysis):
+    """Strip verbose fields from existing analysis before passing as context to subsequent batches.
+    This dramatically reduces prompt size and prevents output truncation."""
+    if not analysis or not isinstance(analysis, dict):
+        return analysis
+    import copy
+    trimmed = copy.deepcopy(analysis)
+    # Strip source excerpts from pillars (keep filename only)
+    for pillar in (trimmed.get('thesis', {}).get('pillars', []) or []):
+        if 'sources' in pillar:
+            pillar['sources'] = [{'filename': s.get('filename', '')} for s in pillar['sources'][:3]]
+    # Strip source excerpts from signposts
+    for sp in (trimmed.get('signposts', []) or []):
+        if 'sources' in sp:
+            sp['sources'] = [{'filename': s.get('filename', '')} for s in sp['sources'][:3]]
+    # Strip source excerpts from threats
+    for t in (trimmed.get('threats', []) or []):
+        if 'sources' in t:
+            t['sources'] = [{'filename': s.get('filename', '')} for s in t['sources'][:3]]
+    # Remove fields that don't need to be in the LLM context
+    trimmed.pop('history', None)
+    trimmed.pop('documentHistory', None)
+    trimmed.pop('updatedAt', None)
+    trimmed.pop('conclusion', None)  # will be regenerated
+    return trimmed
+
+
 def _repair_truncated_json(text):
     """Attempt to repair truncated JSON from a max_tokens cutoff."""
     import re
@@ -1243,10 +1270,12 @@ def _build_analysis_content(batch_docs, all_docs, existing_analysis, historical_
             weight_instr = f"WEIGHTING: Preserve {existing_weight}% of existing analysis. New documents contribute {new_docs_weight}% changes. Keep most existing content intact, only add minor refinements.\n"
         else:
             weight_instr = "Give MORE emphasis to higher-weighted documents.\n"
+        # Trim verbose fields to prevent context bloat on multi-batch updates
+        trimmed = _trim_analysis_for_context(existing_analysis)
         prompt = f"""Update this existing analysis with new information from the documents.{batch_note}
 
 Existing Analysis:
-{json.dumps(existing_analysis, indent=2)}
+{json.dumps(trimmed, indent=2)}
 
 {weight_instr}
 Review the new documents and:
@@ -1405,7 +1434,7 @@ def _run_analysis_job(job_id):
 
                     with client.messages.stream(
                         model="claude-sonnet-4-5-20250929",
-                        max_tokens=32768,
+                        max_tokens=64000,
                         messages=[{'role': 'user', 'content': content}],
                         system="You are an expert equity research analyst. Analyze documents thoroughly and provide institutional-quality investment analysis. Be concise: the final thesis should fit 2-3 printed pages (3-5 pillars, 4-6 signposts, 3-5 threats, each described in 1-2 sentences). Prioritize the most important insights. Always respond with valid JSON only."
                     ) as stream:
@@ -7436,7 +7465,7 @@ Return ONLY valid JSON, no markdown, no explanation."""
                 result_text = ""
                 kwargs = {
                     "model": "claude-sonnet-4-5-20250929",
-                    "max_tokens": 32768,
+                    "max_tokens": 64000,
                     "messages": [{'role': 'user', 'content': content}],
                     "system": "You are an expert equity research analyst. Provide institutional-quality investment analysis that is CONCISE: 2-3 printed pages max. Limit to 3-5 pillars, 4-6 signposts, 3-5 threats, each described in 1-2 sentences. Prioritize the most important insights and consolidate related points. Always respond with valid JSON only.",
                 }
