@@ -95,30 +95,53 @@ MODEL_TIERS = {
 }
 
 def _extract_json(text):
-    """Extract and parse JSON from LLM response text, handling markdown fences and surrounding prose."""
+    """Extract and parse JSON from LLM response text.
+
+    Handles markdown fences, surrounding prose, truncated JSON (auto-closes
+    brackets), and trailing commas.  Mirrors the robust parse_mp_json() logic.
+    """
     text = text.strip()
-    # Strip markdown code fences (```json ... ``` or ``` ... ```)
-    if '```' in text:
-        # Find the first ``` block
-        start = text.find('```')
-        # Skip optional language tag on the same line
-        first_newline = text.find('\n', start)
-        if first_newline == -1:
-            first_newline = start + 3
-        end = text.find('```', first_newline)
-        if end != -1:
-            text = text[first_newline + 1:end].strip()
-        else:
-            text = text[first_newline + 1:].strip()
-    # If still not starting with { or [, try to find JSON object
-    if not text.startswith('{') and not text.startswith('['):
-        brace = text.find('{')
-        bracket = text.find('[')
-        if brace == -1 and bracket == -1:
-            raise json.JSONDecodeError("No JSON found in response", text, 0)
-        start = min(x for x in (brace, bracket) if x != -1)
-        text = text[start:]
-    return json.loads(text)
+    # Strip markdown code fences
+    if text.startswith("```"):
+        lines = text.split("\n")
+        lines = lines[1:]  # skip opening ```json line
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+    # Try direct parse first
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    # Try to find outermost JSON object/array
+    for sc, ec in [("{", "}"), ("[", "]")]:
+        s = text.find(sc)
+        e = text.rfind(ec)
+        if s != -1 and e != -1 and e > s:
+            try:
+                return json.loads(text[s:e + 1])
+            except json.JSONDecodeError:
+                continue
+    # Repair truncated JSON by closing open brackets/braces
+    for sc, ec in [("{", "}"), ("[", "]")]:
+        s = text.find(sc)
+        if s != -1:
+            fragment = text[s:]
+            for _attempt in range(5):
+                try:
+                    return json.loads(fragment)
+                except json.JSONDecodeError:
+                    open_braces = fragment.count('{') - fragment.count('}')
+                    open_brackets = fragment.count('[') - fragment.count(']')
+                    last_comma = fragment.rfind(',')
+                    if last_comma > 0:
+                        fragment = fragment[:last_comma]
+                    fragment += '}' * max(0, open_braces) + ']' * max(0, open_brackets)
+                    try:
+                        return json.loads(fragment)
+                    except json.JSONDecodeError:
+                        break
+    raise json.JSONDecodeError("Could not parse JSON from LLM response", text[:500], 0)
 
 
 def _get_api_keys(anthropic_api_key="", gemini_api_key="", openai_api_key=""):
@@ -5275,7 +5298,7 @@ Source data:
         messages=[{"role": "user", "content": prompt}],
         system="You are a concise financial analyst. Return only valid JSON, no markdown fences.",
         tier="fast",
-        max_tokens=3072,
+        max_tokens=4096,
         anthropic_api_key=anthropic_key,
         gemini_api_key=gemini_key,
     )
@@ -5462,7 +5485,7 @@ Original conclusion:
         messages=[{"role": "user", "content": prompt}],
         system="You are a financial analyst curating the most important items from a thesis. Return only valid JSON, no markdown fences. Light tightening is OK; do not compress or rewrite.",
         tier="fast",
-        max_tokens=4096,
+        max_tokens=6144,
         anthropic_api_key=anthropic_key,
         gemini_api_key=gemini_key,
     )
