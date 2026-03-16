@@ -1092,8 +1092,35 @@ def save_settings():
 # ============================================
 
 import uuid
-from PyPDF2 import PdfReader
+from PyPDF2 import PdfReader, PdfWriter
 import io
+
+MAX_PDF_PAGES_PER_CHUNK = 95  # Claude API rejects >100 pages per document
+MAX_PAGES_PER_BATCH = 150     # generous batch size — Claude handles 200K tokens
+
+
+def _split_large_pdf(base64_data, max_pages=MAX_PDF_PAGES_PER_CHUNK):
+    """Split a base64 PDF into chunks of ≤max_pages. Returns list of (base64_data, page_count)."""
+    try:
+        pdf_bytes = base64.b64decode(base64_data)
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        total = len(reader.pages)
+        if total <= max_pages:
+            return [(base64_data, total)]
+        chunks = []
+        for start in range(0, total, max_pages):
+            writer = PdfWriter()
+            end = min(start + max_pages, total)
+            for p in range(start, end):
+                writer.add_page(reader.pages[p])
+            buf = io.BytesIO()
+            writer.write(buf)
+            chunks.append((base64.b64encode(buf.getvalue()).decode('utf-8'), end - start))
+        return chunks
+    except Exception as e:
+        print(f"[_split_large_pdf] Error splitting PDF: {e}")
+        return [(base64_data, 30)]
+
 
 def _update_job(job_id, **kwargs):
     """Update analysis_jobs row with provided fields."""
@@ -1282,17 +1309,37 @@ def _run_analysis_job(job_id):
             doc['mime_type'] = doc.get('mimeType', 'application/pdf')
             all_docs.append(doc)
 
+        # Auto-split PDFs that exceed Claude's 100-page-per-document limit
+        expanded_docs = []
+        for doc in all_docs:
+            if doc.get('file_type', doc.get('fileType', '')) == 'pdf' and doc['_pages'] > MAX_PDF_PAGES_PER_CHUNK:
+                file_data = doc.get('file_data') or doc.get('fileData', '')
+                chunks = _split_large_pdf(file_data)
+                base_name = doc.get('filename', 'document.pdf')
+                print(f"[analysis-job {job_id}] Split {base_name} ({doc['_pages']}p) into {len(chunks)} chunks")
+                for ci, (chunk_data, chunk_pages) in enumerate(chunks, 1):
+                    chunk_doc = dict(doc)
+                    chunk_doc['file_data'] = chunk_data
+                    chunk_doc['fileData'] = chunk_data
+                    chunk_doc['_pages'] = chunk_pages
+                    if len(chunks) > 1:
+                        chunk_doc['filename'] = f"{base_name} (part {ci}/{len(chunks)})"
+                    expanded_docs.append(chunk_doc)
+            else:
+                expanded_docs.append(doc)
+        all_docs = expanded_docs
+
         total_pages = sum(d['_pages'] for d in all_docs)
 
-        # Split into batches of <=50 pages
-        if total_pages <= 50:
+        # Split into batches of <=MAX_PAGES_PER_BATCH pages
+        if total_pages <= MAX_PAGES_PER_BATCH:
             batches = [all_docs]
         else:
             batches = []
             batch = []
             batch_pages = 0
             for doc in all_docs:
-                if batch_pages + doc['_pages'] > 50 and batch:
+                if batch_pages + doc['_pages'] > MAX_PAGES_PER_BATCH and batch:
                     batches.append(batch)
                     batch = []
                     batch_pages = 0
