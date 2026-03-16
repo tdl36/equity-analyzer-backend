@@ -4271,29 +4271,29 @@ def email_analyses_bulk():
             plain_text += f"{ticker} — {company}\n{'='*40}\n\n"
 
             if thesis:
-                html_body += '<h2 style="color:#2c5282;margin-top:25px;">Investment Thesis</h2>'
-                html_body += f'<p style="margin-left:20px;">{thesis.get("summary","")}</p>'
-                plain_text += f"INVESTMENT THESIS\n{thesis.get('summary','')}\n\n"
+                html_body += '<h2 style="color: #2c5282; margin-top: 25px;">1. Investment Thesis</h2>'
+                html_body += f'<p style="margin-left: 20px;">{thesis.get("summary","")}</p>'
+                plain_text += f"1. INVESTMENT THESIS\n{thesis.get('summary','')}\n\n"
                 if thesis.get('pillars'):
-                    html_body += '<ul style="margin-left:20px;">'
+                    html_body += '<ul style="margin-left: 20px;">'
                     for pillar in thesis['pillars']:
                         t = pillar.get('pillar', pillar.get('title', ''))
                         d = pillar.get('detail', pillar.get('description', ''))
-                        html_body += f'<li style="margin-bottom:8px;"><strong>{t}:</strong> {d}</li>'
+                        html_body += f'<li style="margin-bottom: 8px;"><strong>{t}:</strong> {d}</li>'
                         plain_text += f"  - {t}: {d}\n"
                     html_body += '</ul>'
                     plain_text += '\n'
 
             if signposts:
-                html_body += '<h2 style="color:#2c5282;margin-top:25px;">Signposts</h2><ul style="margin-left:20px;">'
-                plain_text += "SIGNPOSTS\n"
+                html_body += '<h2 style="color: #2c5282; margin-top: 25px;">2. Signposts (What We\'re Watching)</h2><ul style="margin-left: 20px;">'
+                plain_text += "2. SIGNPOSTS\n"
                 for sp in signposts:
                     m = sp.get('metric', sp.get('signpost', ''))
                     tgt = sp.get('target', '')
                     tf = sp.get('timeframe', '')
                     line = f"{m}: {tgt}"
                     if tf: line += f" ({tf})"
-                    html_body += f'<li style="margin-bottom:8px;"><strong>{m}:</strong> {tgt}'
+                    html_body += f'<li style="margin-bottom: 8px;"><strong>{m}:</strong> {tgt}'
                     if tf: html_body += f' <em>({tf})</em>'
                     html_body += '</li>'
                     plain_text += f"  - {line}\n"
@@ -4301,12 +4301,18 @@ def email_analyses_bulk():
                 plain_text += '\n'
 
             if threats:
-                html_body += '<h2 style="color:#2c5282;margin-top:25px;">Thesis Threats</h2><ul style="margin-left:20px;">'
-                plain_text += "THESIS THREATS\n"
+                html_body += '<h2 style="color: #2c5282; margin-top: 25px;">3. Thesis Threats (Where We Can Be Wrong)</h2><ul style="margin-left: 20px;">'
+                plain_text += "3. THESIS THREATS\n"
                 for threat in threats:
                     td = threat.get('threat', '')
-                    html_body += f'<li style="margin-bottom:10px;"><strong>{td}</strong></li>'
+                    triggers = threat.get('triggerPoints', '')
+                    html_body += f'<li style="margin-bottom: 10px;"><strong>{td}</strong>'
+                    if triggers:
+                        html_body += f'<br><span style="color: #666; font-size: 0.9em;">Watch for: {triggers}</span>'
+                    html_body += '</li>'
                     plain_text += f"  - {td}\n"
+                    if triggers:
+                        plain_text += f"    Watch for: {triggers}\n"
                 html_body += '</ul>'
                 plain_text += '\n'
 
