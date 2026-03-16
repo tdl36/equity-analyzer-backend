@@ -9808,303 +9808,313 @@ def _get_pillow_colors(style_key, color_scheme):
 
 
 def _generate_analyst_brief_infographic(d, scorecard_data, mode, detail='full', show_risk_detail=False, color_scheme=None, include_company=False):
-    """Layout 1: Analyst Brief — clean card-based layout, light theme."""
-    from PIL import Image, ImageDraw
+    """Layout 1: Analyst Brief — dense card-based layout, light theme, content-fitted."""
+    import html as _html
+    from PIL import Image, ImageDraw, ImageFont
     sp_data = _build_signpost_data(d['signposts'], scorecard_data)
     rk_data = _build_risk_data(d['threats'], scorecard_data)
     g, y_count, r = _tally_statuses(scorecard_data)
-    fonts = _load_fonts()
     W, H = 1920, 1080
+
+    # Larger font sizes for better readability
+    fonts = {}
+    try:
+        base = "/usr/share/fonts/truetype/dejavu/"
+        fonts['ticker']  = ImageFont.truetype(f"{base}DejaVuSans-Bold.ttf", 38)
+        fonts['company'] = ImageFont.truetype(f"{base}DejaVuSans.ttf", 20)
+        fonts['section'] = ImageFont.truetype(f"{base}DejaVuSans-Bold.ttf", 20)
+        fonts['pillar_num'] = ImageFont.truetype(f"{base}DejaVuSans-Bold.ttf", 22)
+        fonts['pillar_title'] = ImageFont.truetype(f"{base}DejaVuSans-Bold.ttf", 17)
+        fonts['body']    = ImageFont.truetype(f"{base}DejaVuSans.ttf", 15)
+        fonts['summary'] = ImageFont.truetype(f"{base}DejaVuSans.ttf", 15)
+        fonts['bullet']  = ImageFont.truetype(f"{base}DejaVuSans.ttf", 16)
+        fonts['conclusion'] = ImageFont.truetype(f"{base}DejaVuSans.ttf", 14)
+        fonts['footer']  = ImageFont.truetype(f"{base}DejaVuSans-Bold.ttf", 16)
+        # For 3-slide mode
+        fonts['bold_md'] = ImageFont.truetype(f"{base}DejaVuSans-Bold.ttf", 26)
+        fonts['bold_sm'] = ImageFont.truetype(f"{base}DejaVuSans-Bold.ttf", 18)
+        fonts['regular'] = ImageFont.truetype(f"{base}DejaVuSans.ttf", 16)
+        fonts['small']   = ImageFont.truetype(f"{base}DejaVuSans.ttf", 14)
+    except Exception:
+        for name, sz in [('ticker',38),('company',20),('section',20),('pillar_num',22),
+                         ('pillar_title',17),('body',15),('summary',15),('bullet',16),
+                         ('conclusion',14),('footer',16),('bold_md',26),('bold_sm',18),
+                         ('regular',16),('small',14)]:
+            fonts[name] = ImageFont.load_default(size=sz)
 
     ticker = d['ticker']; company = d['company']
     thesis = d['thesis']; conclusion = d['conclusion']
     pillars = _build_pillar_data(thesis, scorecard_data)
 
+    def ue(text):
+        """Unescape HTML entities."""
+        return _html.unescape(text) if text else text
+
     # -- Color palette --
-    BG       = (245, 245, 248)     # warm off-white
-    HEADER_BG = (24, 30, 46)       # dark navy header
-    HEADER_ACC = (16, 185, 168)    # teal accent line
-    CARD_BG  = (255, 255, 255)     # white cards
-    CARD_BORDER = (228, 230, 235)  # subtle gray border
-    TEXT_PRIMARY = (30, 35, 50)    # near-black
-    TEXT_SECONDARY = (100, 110, 130)  # muted gray
-    SUMMARY_BG = (255, 255, 255)   # white summary card
-    # Section colors
-    THESIS_ACCENT = (88, 80, 170)  # purple for thesis
-    THESIS_LIGHT  = (244, 242, 255) # light purple tint
-    SP_ACCENT     = (22, 163, 90)  # green for signposts
-    SP_LIGHT      = (240, 253, 244) # light green tint
-    SP_DOT        = (34, 180, 100) # brighter green dot
-    RISK_ACCENT   = (220, 70, 55)  # red for risks
-    RISK_LIGHT    = (254, 243, 242) # light red tint
-    RISK_DOT      = (230, 80, 65)  # coral dot
-    DIVIDER       = (215, 218, 225)
+    BG           = (242, 243, 247)
+    HEADER_BG    = (20, 26, 40)
+    HEADER_ACC   = (14, 180, 164)
+    CARD_BG      = (255, 255, 255)
+    CARD_BORDER  = (222, 224, 230)
+    TEXT_PRI     = (28, 32, 48)
+    TEXT_SEC     = (90, 100, 120)
+    TEXT_MUTED   = (130, 138, 155)
+    THESIS_ACC   = (82, 74, 160)
+    THESIS_LIGHT = (242, 240, 255)
+    SP_ACC       = (18, 155, 82)
+    SP_LIGHT     = (236, 252, 242)
+    SP_DOT       = (30, 172, 95)
+    RISK_ACC     = (210, 60, 50)
+    RISK_LIGHT   = (254, 241, 240)
+    RISK_DOT     = (220, 72, 60)
+    CONCL_BG     = (248, 249, 252)
 
-    def draw_rounded_rect(draw, box, fill, outline=None, radius=12):
-        """Draw a rounded rectangle using arcs + rectangles (PIL compat)."""
+    def rr(draw, box, fill, outline=None, rad=10):
         x0, y0, x1, y1 = box
-        r = min(radius, (x1 - x0) // 2, (y1 - y0) // 2)
-        # Fill core
-        draw.rectangle([x0 + r, y0, x1 - r, y1], fill=fill)
-        draw.rectangle([x0, y0 + r, x1, y1 - r], fill=fill)
-        # Corners
-        draw.pieslice([x0, y0, x0 + 2*r, y0 + 2*r], 180, 270, fill=fill)
-        draw.pieslice([x1 - 2*r, y0, x1, y0 + 2*r], 270, 360, fill=fill)
-        draw.pieslice([x0, y1 - 2*r, x0 + 2*r, y1], 90, 180, fill=fill)
-        draw.pieslice([x1 - 2*r, y1 - 2*r, x1, y1], 0, 90, fill=fill)
+        r = min(rad, (x1-x0)//2, (y1-y0)//2)
+        draw.rectangle([x0+r, y0, x1-r, y1], fill=fill)
+        draw.rectangle([x0, y0+r, x1, y1-r], fill=fill)
+        draw.pieslice([x0, y0, x0+2*r, y0+2*r], 180, 270, fill=fill)
+        draw.pieslice([x1-2*r, y0, x1, y0+2*r], 270, 360, fill=fill)
+        draw.pieslice([x0, y1-2*r, x0+2*r, y1], 90, 180, fill=fill)
+        draw.pieslice([x1-2*r, y1-2*r, x1, y1], 0, 90, fill=fill)
         if outline:
-            # Top and bottom edges
-            draw.line([x0 + r, y0, x1 - r, y0], fill=outline)
-            draw.line([x0 + r, y1, x1 - r, y1], fill=outline)
-            # Left and right edges
-            draw.line([x0, y0 + r, x0, y1 - r], fill=outline)
-            draw.line([x1, y0 + r, x1, y1 - r], fill=outline)
-            # Corner arcs
-            draw.arc([x0, y0, x0 + 2*r, y0 + 2*r], 180, 270, fill=outline)
-            draw.arc([x1 - 2*r, y0, x1, y0 + 2*r], 270, 360, fill=outline)
-            draw.arc([x0, y1 - 2*r, x0 + 2*r, y1], 90, 180, fill=outline)
-            draw.arc([x1 - 2*r, y1 - 2*r, x1, y1], 0, 90, fill=outline)
+            draw.line([x0+r, y0, x1-r, y0], fill=outline)
+            draw.line([x0+r, y1, x1-r, y1], fill=outline)
+            draw.line([x0, y0+r, x0, y1-r], fill=outline)
+            draw.line([x1, y0+r, x1, y1-r], fill=outline)
+            draw.arc([x0, y0, x0+2*r, y0+2*r], 180, 270, fill=outline)
+            draw.arc([x1-2*r, y0, x1, y0+2*r], 270, 360, fill=outline)
+            draw.arc([x0, y1-2*r, x0+2*r, y1], 90, 180, fill=outline)
+            draw.arc([x1-2*r, y1-2*r, x1, y1], 0, 90, fill=outline)
 
-    def draw_section_header(draw, x, y, w, text, accent_color, bg_tint):
-        """Draw a section header with colored left border and tinted background."""
-        h = 36
-        draw_rounded_rect(draw, [x, y, x + w, y + h], fill=bg_tint, radius=6)
-        draw.rectangle([x, y + 4, x + 4, y + h - 4], fill=accent_color)
-        bbox = draw.textbbox((0, 0), text, font=fonts['bold_sm'])
-        tw = bbox[2] - bbox[0]
-        tx = x + (w - tw) // 2
-        draw.text((tx, y + 8), text, font=fonts['bold_sm'], fill=accent_color)
-        return y + h + 14
+    def sec_hdr(draw, x, y, w, text, accent, tint):
+        h = 34
+        rr(draw, [x, y, x+w, y+h], fill=tint, rad=6)
+        draw.rectangle([x, y+4, x+4, y+h-4], fill=accent)
+        bbox = draw.textbbox((0,0), text, font=fonts['section'])
+        tw = bbox[2]-bbox[0]
+        draw.text((x + (w-tw)//2, y+6), text, font=fonts['section'], fill=accent)
+        return y + h + 10
 
     if mode == '1':
-        # ====== SINGLE SLIDE — Landscape 1920x1080 ======
-        M = 50  # page margin
+        M = 40
         img = Image.new('RGB', (W, H), BG)
         draw = ImageDraw.Draw(img)
 
-        # --- Header bar ---
-        HEADER_H = 70
-        draw.rectangle([0, 0, W, HEADER_H], fill=HEADER_BG)
-        draw.rectangle([0, HEADER_H, W, HEADER_H + 4], fill=HEADER_ACC)
-        # Ticker (large bold) + company name
-        draw.text((M, 14), ticker, font=fonts['bold_lg'], fill=(255, 255, 255))
+        # --- Header ---
+        HH = 62
+        draw.rectangle([0, 0, W, HH], fill=HEADER_BG)
+        draw.rectangle([0, HH, W, HH+3], fill=HEADER_ACC)
+        draw.text((M, 12), ticker, font=fonts['ticker'], fill=(255,255,255))
         if company:
-            ticker_bbox = draw.textbbox((0, 0), ticker, font=fonts['bold_lg'])
-            cx = M + (ticker_bbox[2] - ticker_bbox[0]) + 20
-            draw.text((cx, 28), company, font=fonts['regular'], fill=(180, 190, 210))
+            tb = draw.textbbox((0,0), ticker, font=fonts['ticker'])
+            draw.text((M + tb[2]-tb[0] + 18, 22), ue(company), font=fonts['company'], fill=(175,185,205))
 
-        yc = HEADER_H + 18
+        yc = HH + 14
 
-        # --- Summary card (full width) ---
-        summary = thesis.get('summary', '')
+        # --- Summary ---
+        summary = ue(thesis.get('summary', ''))
         if summary:
-            sum_lines = _wrap_text(draw, summary, fonts['regular'], W - M * 2 - 40)[:3]
-            sum_h = len(sum_lines) * 24 + 24
-            draw_rounded_rect(draw, [M, yc, W - M, yc + sum_h], fill=SUMMARY_BG, outline=CARD_BORDER, radius=10)
-            sy = yc + 12
-            for line in sum_lines:
-                draw.text((M + 20, sy), line, font=fonts['regular'], fill=TEXT_SECONDARY)
-                sy += 24
-            yc += sum_h + 16
-        else:
-            yc += 8
+            sl = _wrap_text(draw, summary, fonts['summary'], W - M*2 - 36)[:3]
+            sh = len(sl) * 22 + 20
+            rr(draw, [M, yc, W-M, yc+sh], fill=CARD_BG, outline=CARD_BORDER, rad=8)
+            sy = yc + 10
+            for line in sl:
+                draw.text((M+18, sy), line, font=fonts['summary'], fill=TEXT_SEC)
+                sy += 22
+            yc += sh + 12
 
-        # --- Two-column layout ---
-        COL_GAP = 36
-        LEFT_W = int((W - M * 2 - COL_GAP) * 0.42)
-        LEFT_X = M
-        RIGHT_X = M + LEFT_W + COL_GAP
-        RIGHT_W = W - RIGHT_X - M
+        # --- Two columns ---
+        GAP = 30
+        LW = int((W - M*2 - GAP) * 0.40)
+        LX = M
+        RX = M + LW + GAP
+        RW = W - RX - M
         col_top = yc
-        col_bottom = H - M - 8
 
-        # ===== LEFT COLUMN: Investment Thesis =====
-        y_left = col_top
-        y_left = draw_section_header(draw, LEFT_X, y_left, LEFT_W, "Investment Thesis", THESIS_ACCENT, THESIS_LIGHT)
+        # Conclusion at bottom?
+        concl_h = 0
+        concl_lines = []
+        if conclusion:
+            concl_lines = _wrap_text(draw, ue(conclusion), fonts['conclusion'], W - M*2 - 36)[:2]
+            concl_h = len(concl_lines) * 20 + 20 + 10  # card + gap above
+        col_bottom = H - M - concl_h
+
+        # ===== LEFT: Investment Thesis =====
+        yl = col_top
+        yl = sec_hdr(draw, LX, yl, LW, "Investment Thesis", THESIS_ACC, THESIS_LIGHT)
 
         max_p = 3 if detail == 'simple' else min(len(pillars), 6)
-        avail_h = col_bottom - y_left
-        pillar_gap = 10
-        # Calculate card height to fill available space
-        card_h = max(60, (avail_h - pillar_gap * max(max_p - 1, 0)) // max(max_p, 1))
-        card_h = min(card_h, 160)  # cap for very few pillars
-
+        # Measure content-fitted card heights
+        pillar_cards = []
         for i, p in enumerate(pillars[:max_p], 1):
-            ptitle = p.get('pillar', p.get('title', ''))
-            pdesc = p.get('detail', p.get('description', ''))
+            ptitle = ue(p.get('pillar', p.get('title', '')))
+            pdesc = ue(p.get('detail', p.get('description', '')))
+            title_lines = _wrap_text(draw, ptitle, fonts['pillar_title'], LW - 72)[:2]
+            desc_lines = []
+            if pdesc:
+                desc_lines = _wrap_text(draw, pdesc, fonts['body'], LW - 72)[:3]
+            # Height: padding(12) + title_lines*22 + gap(6) + desc_lines*20 + padding(12)
+            ch = 12 + len(title_lines)*22 + (6 + len(desc_lines)*20 if desc_lines else 0) + 12
+            ch = max(ch, 52)
+            pillar_cards.append((i, ptitle, title_lines, desc_lines, ch))
 
-            # Card
-            draw_rounded_rect(draw, [LEFT_X, y_left, LEFT_X + LEFT_W, y_left + card_h],
-                              fill=CARD_BG, outline=CARD_BORDER, radius=10)
+        # Distribute remaining space to cards
+        total_card_h = sum(c[4] for c in pillar_cards) + 8 * max(len(pillar_cards)-1, 0)
+        avail = col_bottom - yl
+        if total_card_h < avail and len(pillar_cards) > 0:
+            extra_per = (avail - total_card_h) // len(pillar_cards)
+            extra_per = min(extra_per, 30)  # don't over-stretch
+            pillar_cards = [(i, t, tl, dl, ch + extra_per) for i, t, tl, dl, ch in pillar_cards]
 
+        for i, ptitle, title_lines, desc_lines, ch in pillar_cards:
+            rr(draw, [LX, yl, LX+LW, yl+ch], fill=CARD_BG, outline=CARD_BORDER, rad=8)
             # Number
-            draw.text((LEFT_X + 16, y_left + 12), str(i), font=fonts['bold_md'], fill=THESIS_ACCENT)
-
+            draw.text((LX+14, yl+10), str(i), font=fonts['pillar_num'], fill=THESIS_ACC)
             # Title
-            title_x = LEFT_X + 50
-            title_w = LEFT_W - 70
-            title_lines = _wrap_text(draw, ptitle, fonts['bold_sm'], title_w)
-            ty = y_left + 14
-            for line in title_lines[:2]:
-                draw.text((title_x, ty), line, font=fonts['bold_sm'], fill=TEXT_PRIMARY)
-                ty += 24
-
-            # Description (if space and detail mode)
-            if detail == 'full' and pdesc:
+            ty = yl + 12
+            for line in title_lines:
+                draw.text((LX+46, ty), line, font=fonts['pillar_title'], fill=TEXT_PRI)
+                ty += 22
+            # Description
+            if desc_lines:
                 ty += 4
-                max_desc_lines = max(1, (card_h - (ty - y_left) - 10) // 20)
-                desc_lines = _wrap_text(draw, pdesc, fonts['small'], title_w)
-                for line in desc_lines[:max_desc_lines]:
-                    draw.text((title_x, ty), line, font=fonts['small'], fill=TEXT_SECONDARY)
+                for line in desc_lines:
+                    draw.text((LX+46, ty), line, font=fonts['body'], fill=TEXT_SEC)
                     ty += 20
+            yl += ch + 8
 
-            y_left += card_h + pillar_gap
+        # ===== RIGHT: Signposts + Risks =====
+        yr = col_top
+        right_avail = col_bottom - yr
+        sp_items = [ue(s['metric'] + (f": {s['latest']}" if s.get('latest') and detail != 'simple' else '')) for s in sp_data]
+        rk_items = [ue(rk['threat']) for rk in rk_data]
+        sp_n = min(len(sp_items), 10)
+        rk_n = min(len(rk_items), 8)
+        BULLET_H = 28
 
-        # ===== RIGHT COLUMN: Signposts + Key Risks =====
-        y_right = col_top
-        right_avail = col_bottom - y_right
-        sp_count = min(len(sp_data), 10)
-        rk_count = min(len(rk_data), 8)
+        # Calculate content heights
+        sp_content_h = sp_n * BULLET_H + 20
+        rk_content_h = rk_n * BULLET_H + 20
+        hdr_h = 34 + 10  # section header + gap
+        needed = sp_content_h + rk_content_h + hdr_h * 2 + 16
+        if needed > right_avail:
+            ratio = (right_avail - hdr_h*2 - 16 - 40) / (sp_content_h + rk_content_h)
+            sp_n = max(3, int(sp_n * ratio))
+            rk_n = max(3, int(rk_n * ratio))
+            sp_content_h = sp_n * BULLET_H + 20
+            rk_content_h = rk_n * BULLET_H + 20
 
-        # Estimate signpost card height (adaptive split)
-        sp_item_h = 28
-        rk_item_h = 28
-        sp_card_content = sp_count * sp_item_h + 20
-        rk_card_content = rk_count * rk_item_h + 20
-        total_content = sp_card_content + rk_card_content + 36 + 36 + 20  # headers + gap
-        if total_content > right_avail:
-            # Reduce items to fit
-            ratio = right_avail / total_content
-            sp_count = max(3, int(sp_count * ratio))
-            rk_count = max(3, int(rk_count * ratio))
-            sp_card_content = sp_count * sp_item_h + 20
-            rk_card_content = rk_count * rk_item_h + 20
+        # Extra space distributed to cards
+        remaining = right_avail - (sp_content_h + rk_content_h + hdr_h*2 + 16)
+        sp_extra = min(remaining // 2, 20) if remaining > 0 else 0
+        rk_extra = sp_extra
 
-        # Split: signposts get proportional space, risks get the rest
-        sp_card_h = sp_card_content + 36  # include header
-        rk_card_h = rk_card_content + 36
-        gap_between = max(12, right_avail - sp_card_h - rk_card_h)
-        if gap_between > 40:
-            # Distribute extra space evenly
-            extra = gap_between - 20
-            sp_card_h += extra // 2
-            rk_card_h += extra // 2
-            gap_between = 20
+        # -- Signposts --
+        yr = sec_hdr(draw, RX, yr, RW, "Signposts / Catalysts", SP_ACC, SP_LIGHT)
+        sp_card_h = sp_content_h + sp_extra
+        rr(draw, [RX, yr, RX+RW, yr+sp_card_h], fill=CARD_BG, outline=CARD_BORDER, rad=8)
+        sy = yr + 12
+        for item in sp_items[:sp_n]:
+            draw.ellipse([RX+16, sy+7, RX+26, sy+17], fill=SP_DOT)
+            lines = _wrap_text(draw, item, fonts['bullet'], RW - 52)
+            draw.text((RX+36, sy), lines[0], font=fonts['bullet'], fill=TEXT_PRI)
+            sy += BULLET_H
+        yr += sp_card_h + 16
 
-        # -- Signposts card --
-        y_right = draw_section_header(draw, RIGHT_X, y_right, RIGHT_W, "Signposts / Catalysts", SP_ACCENT, SP_LIGHT)
-        sp_card_top = y_right
-        sp_inner_h = sp_card_h - 36
-        draw_rounded_rect(draw, [RIGHT_X, sp_card_top, RIGHT_X + RIGHT_W, sp_card_top + sp_inner_h],
-                          fill=CARD_BG, outline=CARD_BORDER, radius=10)
-        sy = sp_card_top + 14
-        sp_items = [s['metric'] + (f": {s['latest']}" if s.get('latest') and detail != 'simple' else '') for s in sp_data]
-        for item in sp_items[:sp_count]:
-            if sy + 24 > sp_card_top + sp_inner_h - 8:
-                break
-            draw.ellipse([RIGHT_X + 18, sy + 6, RIGHT_X + 28, sy + 16], fill=SP_DOT)
-            lines = _wrap_text(draw, item[:100], fonts['regular'], RIGHT_W - 56)
-            draw.text((RIGHT_X + 38, sy), lines[0], font=fonts['regular'], fill=TEXT_PRIMARY)
-            sy += sp_item_h
+        # -- Risks --
+        yr = sec_hdr(draw, RX, yr, RW, "Key Risks", RISK_ACC, RISK_LIGHT)
+        rk_card_h = min(rk_content_h + rk_extra, col_bottom - yr)
+        rr(draw, [RX, yr, RX+RW, yr+rk_card_h], fill=CARD_BG, outline=CARD_BORDER, rad=8)
+        ry = yr + 12
+        for item in rk_items[:rk_n]:
+            draw.ellipse([RX+16, ry+7, RX+26, ry+17], fill=RISK_DOT)
+            lines = _wrap_text(draw, item, fonts['bullet'], RW - 52)
+            draw.text((RX+36, ry), lines[0], font=fonts['bullet'], fill=TEXT_PRI)
+            ry += BULLET_H
 
-        y_right = sp_card_top + sp_inner_h + gap_between
-
-        # -- Key Risks card --
-        y_right = draw_section_header(draw, RIGHT_X, y_right, RIGHT_W, "Key Risks", RISK_ACCENT, RISK_LIGHT)
-        rk_card_top = y_right
-        rk_inner_h = min(rk_card_h - 36, col_bottom - rk_card_top)
-        draw_rounded_rect(draw, [RIGHT_X, rk_card_top, RIGHT_X + RIGHT_W, rk_card_top + rk_inner_h],
-                          fill=CARD_BG, outline=CARD_BORDER, radius=10)
-        ry = rk_card_top + 14
-        rk_items = [rk['threat'] for rk in rk_data]
-        for item in rk_items[:rk_count]:
-            if ry + 24 > rk_card_top + rk_inner_h - 8:
-                break
-            draw.ellipse([RIGHT_X + 18, ry + 6, RIGHT_X + 28, ry + 16], fill=RISK_DOT)
-            lines = _wrap_text(draw, item[:100], fonts['regular'], RIGHT_W - 56)
-            draw.text((RIGHT_X + 38, ry), lines[0], font=fonts['regular'], fill=TEXT_PRIMARY)
-            ry += rk_item_h
+        # --- Conclusion bar ---
+        if concl_lines:
+            cy = H - M - len(concl_lines)*20 - 20
+            rr(draw, [M, cy, W-M, cy + len(concl_lines)*20 + 18], fill=CONCL_BG, outline=CARD_BORDER, rad=8)
+            for line in concl_lines:
+                draw.text((M+18, cy+9), line, font=fonts['conclusion'], fill=TEXT_MUTED)
+                cy += 20
 
         return [_img_to_base64(img)]
     else:
         # ====== 3-SLIDE MODE ======
         images = []
+        HH = 62; M = 40
 
-        def draw_slide_header(draw, slide_title):
-            draw.rectangle([0, 0, W, HEADER_H], fill=HEADER_BG)
-            draw.rectangle([0, HEADER_H, W, HEADER_H + 4], fill=HEADER_ACC)
-            draw.text((M, 14), slide_title, font=fonts['bold_md'], fill=(255, 255, 255))
+        def slide_hdr(draw, title):
+            draw.rectangle([0,0,W,HH], fill=HEADER_BG)
+            draw.rectangle([0,HH,W,HH+3], fill=HEADER_ACC)
+            draw.text((M,14), title, font=fonts['bold_md'], fill=(255,255,255))
 
-        HEADER_H = 70
-        M = 50
-
-        # Slide 1: Thesis + Pillars
+        # Slide 1: Thesis
         img1 = Image.new('RGB', (W, H), BG)
         d1 = ImageDraw.Draw(img1)
-        draw_slide_header(d1, f"{ticker} — Investment Thesis (1/3)")
-        y = HEADER_H + 24
-        summary = thesis.get('summary', '')
+        slide_hdr(d1, f"{ticker} — Investment Thesis (1/3)")
+        y = HH + 18
+        summary = ue(thesis.get('summary', ''))
         if summary:
-            sum_lines = _wrap_text(d1, summary, fonts['regular'], W - M * 2 - 40)[:4]
-            sum_h = len(sum_lines) * 24 + 24
-            draw_rounded_rect(d1, [M, y, W - M, y + sum_h], fill=CARD_BG, outline=CARD_BORDER, radius=10)
-            sy = y + 12
-            for line in sum_lines:
-                d1.text((M + 20, sy), line, font=fonts['regular'], fill=TEXT_SECONDARY)
-                sy += 24
-            y += sum_h + 20
+            sl = _wrap_text(d1, summary, fonts['summary'], W-M*2-36)[:4]
+            sh = len(sl)*22+20
+            rr(d1, [M,y,W-M,y+sh], fill=CARD_BG, outline=CARD_BORDER, rad=8)
+            sy = y+10
+            for line in sl:
+                d1.text((M+18,sy), line, font=fonts['summary'], fill=TEXT_SEC); sy+=22
+            y += sh + 16
         max_p = 3 if detail == 'simple' else min(len(pillars), 6)
         avail = H - y - M
-        card_h = max(60, (avail - 10 * max(max_p - 1, 0)) // max(max_p, 1))
-        card_h = min(card_h, 140)
+        card_h = max(55, (avail - 8*max(max_p-1,0)) // max(max_p,1))
+        card_h = min(card_h, 130)
         for i, p in enumerate(pillars[:max_p], 1):
-            ptitle = p.get('pillar', p.get('title', ''))
-            pdesc = p.get('detail', p.get('description', ''))
-            draw_rounded_rect(d1, [M, y, W - M, y + card_h], fill=CARD_BG, outline=CARD_BORDER, radius=10)
-            d1.text((M + 16, y + 12), str(i), font=fonts['bold_md'], fill=THESIS_ACCENT)
-            ty = y + 14
-            for line in _wrap_text(d1, ptitle, fonts['bold_sm'], W - M * 2 - 80)[:2]:
-                d1.text((M + 50, ty), line, font=fonts['bold_sm'], fill=TEXT_PRIMARY)
-                ty += 24
-            if detail == 'full' and pdesc:
+            pt = ue(p.get('pillar', p.get('title', '')))
+            pd = ue(p.get('detail', p.get('description', '')))
+            rr(d1, [M,y,W-M,y+card_h], fill=CARD_BG, outline=CARD_BORDER, rad=8)
+            d1.text((M+14,y+10), str(i), font=fonts['pillar_num'], fill=THESIS_ACC)
+            ty = y+12
+            for line in _wrap_text(d1, pt, fonts['pillar_title'], W-M*2-72)[:2]:
+                d1.text((M+46,ty), line, font=fonts['pillar_title'], fill=TEXT_PRI); ty+=22
+            if pd:
                 ty += 4
-                for line in _wrap_text(d1, pdesc, fonts['small'], W - M * 2 - 80)[:max(1, (card_h - (ty - y) - 10) // 20)]:
-                    d1.text((M + 50, ty), line, font=fonts['small'], fill=TEXT_SECONDARY)
-                    ty += 20
-            y += card_h + 10
+                for line in _wrap_text(d1, pd, fonts['body'], W-M*2-72)[:max(1,(card_h-(ty-y)-10)//20)]:
+                    d1.text((M+46,ty), line, font=fonts['body'], fill=TEXT_SEC); ty+=20
+            y += card_h + 8
         images.append(_img_to_base64(img1))
 
         # Slide 2: Signposts
         img2 = Image.new('RGB', (W, H), BG)
         d2 = ImageDraw.Draw(img2)
-        draw_slide_header(d2, f"{ticker} — Signposts (2/3)")
-        y = HEADER_H + 24
-        y = draw_section_header(d2, M, y, W - M * 2, "Signposts / Catalysts", SP_ACCENT, SP_LIGHT)
+        slide_hdr(d2, f"{ticker} — Signposts (2/3)")
+        y = HH + 18
+        y = sec_hdr(d2, M, y, W-M*2, "Signposts / Catalysts", SP_ACC, SP_LIGHT)
         for s in sp_data[:12]:
-            d2.ellipse([M + 20, y + 6, M + 30, y + 16], fill=SP_DOT)
-            metric = s['metric']
+            d2.ellipse([M+18, y+7, M+28, y+17], fill=SP_DOT)
+            metric = ue(s['metric'])
             if detail != 'simple' and s.get('latest'):
-                metric += f" — Latest: {s['latest']}"
-            lines = _wrap_text(d2, metric, fonts['regular'], W - M * 2 - 60)
+                metric += f" — {ue(s['latest'])}"
+            lines = _wrap_text(d2, metric, fonts['bullet'], W-M*2-56)
             for line in lines[:2]:
-                d2.text((M + 40, y), line, font=fonts['regular'], fill=TEXT_PRIMARY)
-                y += 26
-            y += 8
+                d2.text((M+38,y), line, font=fonts['bullet'], fill=TEXT_PRI); y+=28
+            y += 6
         images.append(_img_to_base64(img2))
 
         # Slide 3: Risks
         img3 = Image.new('RGB', (W, H), BG)
         d3 = ImageDraw.Draw(img3)
-        draw_slide_header(d3, f"{ticker} — Risk Assessment (3/3)")
-        y = HEADER_H + 24
-        y = draw_section_header(d3, M, y, W - M * 2, "Key Risks", RISK_ACCENT, RISK_LIGHT)
+        slide_hdr(d3, f"{ticker} — Risk Assessment (3/3)")
+        y = HH + 18
+        y = sec_hdr(d3, M, y, W-M*2, "Key Risks", RISK_ACC, RISK_LIGHT)
         for rk in rk_data[:10]:
-            d3.ellipse([M + 20, y + 6, M + 30, y + 16], fill=RISK_DOT)
-            lines = _wrap_text(d3, rk['threat'], fonts['regular'], W - M * 2 - 60)
+            d3.ellipse([M+18, y+7, M+28, y+17], fill=RISK_DOT)
+            lines = _wrap_text(d3, ue(rk['threat']), fonts['bullet'], W-M*2-56)
             for line in lines[:2]:
-                d3.text((M + 40, y), line, font=fonts['regular'], fill=TEXT_PRIMARY)
-                y += 26
-            y += 8
+                d3.text((M+38,y), line, font=fonts['bullet'], fill=TEXT_PRI); y+=28
+            y += 6
         images.append(_img_to_base64(img3))
         return images
 
