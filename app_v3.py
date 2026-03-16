@@ -5571,7 +5571,16 @@ def generate_condensed_thesis():
                 RETURNING ticker
             ''', (ticker, json.dumps(condensed)))
 
-        return jsonify({'success': True, 'ticker': ticker, 'condensed': condensed})
+        # Fetch updated history and timestamp
+        with get_db() as (_, cur):
+            cur.execute('SELECT history, updated_at FROM thesis_condensed WHERE ticker = %s', (ticker,))
+            meta = cur.fetchone()
+
+        return jsonify({
+            'success': True, 'ticker': ticker, 'condensed': condensed,
+            'history': (meta.get('history') or []) if meta else [],
+            'updatedAt': meta['updated_at'].isoformat() if meta and meta.get('updated_at') else None,
+        })
     except json.JSONDecodeError as je:
         print(f"Error parsing condensed thesis JSON: {je}")
         return jsonify({'error': 'Failed to parse condensed thesis from Claude'}), 500
@@ -5635,7 +5644,14 @@ def update_condensed_thesis(ticker):
                 ON CONFLICT (ticker)
                 DO UPDATE SET condensed_analysis = EXCLUDED.condensed_analysis, updated_at = EXCLUDED.updated_at
             ''', (ticker, json.dumps(condensed), datetime.utcnow()))
-        return jsonify({'success': True})
+        with get_db() as (_, cur):
+            cur.execute('SELECT history, updated_at FROM thesis_condensed WHERE ticker = %s', (ticker,))
+            meta = cur.fetchone()
+        return jsonify({
+            'success': True,
+            'history': (meta.get('history') or []) if meta else [],
+            'updatedAt': meta['updated_at'].isoformat() if meta and meta.get('updated_at') else None,
+        })
     except Exception as e:
         print(f"Error saving condensed thesis: {e}")
         return jsonify({'error': str(e)}), 500
@@ -5758,7 +5774,16 @@ def generate_full_thesis():
         with get_db(commit=True) as (conn, cur):
             cur.execute('DELETE FROM thesis_condensed WHERE ticker = %s', (ticker,))
 
-        return jsonify({'success': True, 'ticker': ticker, 'full': full_data})
+        # Fetch updated history and timestamp
+        with get_db() as (_, cur):
+            cur.execute('SELECT history, updated_at FROM thesis_full WHERE ticker = %s', (ticker,))
+            meta = cur.fetchone()
+
+        return jsonify({
+            'success': True, 'ticker': ticker, 'full': full_data,
+            'history': (meta.get('history') or []) if meta else [],
+            'updatedAt': meta['updated_at'].isoformat() if meta and meta.get('updated_at') else None,
+        })
     except json.JSONDecodeError as je:
         print(f"Error parsing full thesis JSON: {je}")
         return jsonify({'error': 'Failed to parse full thesis from LLM'}), 500
@@ -5824,7 +5849,14 @@ def update_full_thesis(ticker):
                 ON CONFLICT (ticker)
                 DO UPDATE SET full_analysis = EXCLUDED.full_analysis, updated_at = EXCLUDED.updated_at
             ''', (ticker, json.dumps(full_data), datetime.utcnow()))
-        return jsonify({'success': True})
+        with get_db() as (_, cur):
+            cur.execute('SELECT history, updated_at FROM thesis_full WHERE ticker = %s', (ticker,))
+            meta = cur.fetchone()
+        return jsonify({
+            'success': True,
+            'history': (meta.get('history') or []) if meta else [],
+            'updatedAt': meta['updated_at'].isoformat() if meta and meta.get('updated_at') else None,
+        })
     except Exception as e:
         print(f"Error saving full thesis: {e}")
         return jsonify({'error': str(e)}), 500
@@ -5893,14 +5925,16 @@ def generate_all_thesis_tiers():
             result['partialSuccess'] = True
             result['condensedError'] = str(ce)
 
-        # Fetch history for both tiers
+        # Fetch history and timestamps for both tiers
         with get_db() as (_, cur):
-            cur.execute('SELECT history FROM thesis_full WHERE ticker = %s', (ticker,))
+            cur.execute('SELECT history, updated_at FROM thesis_full WHERE ticker = %s', (ticker,))
             frow = cur.fetchone()
             result['fullHistory'] = (frow.get('history') or []) if frow else []
-            cur.execute('SELECT history FROM thesis_condensed WHERE ticker = %s', (ticker,))
+            result['fullUpdatedAt'] = frow['updated_at'].isoformat() if frow and frow.get('updated_at') else None
+            cur.execute('SELECT history, updated_at FROM thesis_condensed WHERE ticker = %s', (ticker,))
             crow = cur.fetchone()
             result['condensedHistory'] = (crow.get('history') or []) if crow else []
+            result['condensedUpdatedAt'] = crow['updated_at'].isoformat() if crow and crow.get('updated_at') else None
 
         return jsonify(result)
     except json.JSONDecodeError as je:
