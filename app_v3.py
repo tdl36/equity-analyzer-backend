@@ -9652,69 +9652,123 @@ def _generate_analyst_brief_infographic(d, scorecard_data, mode, detail='full', 
         return y
 
     if mode == '1':
-        img = Image.new('RGB', (W, H), BG)
+        # Portrait layout — fits one printed page with narrow margins
+        PW, PH = 1200, 1600
+        M = 30  # margin
+        img = Image.new('RGB', (PW, PH), BG)
         draw = ImageDraw.Draw(img)
-        draw_brief_header(draw, img, header_text)
 
-        LEFT_W = 780; RIGHT_X = 840; RIGHT_W = W - RIGHT_X - 40
-        y_left = 100; y_right = 100
+        # Header
+        draw.rectangle([0, 0, PW, 64], fill=DARK)
+        draw.text((M, 16), header_text, font=fonts['bold_md'], fill=TEXT)
+        draw.rectangle([0, 64, PW, 68], fill=ACCENT)
 
-        # Left: INVESTMENT THESIS section label
-        draw.text((40, y_left), "INVESTMENT THESIS", font=fonts['bold_sm'], fill=MUTED)
-        draw.rectangle([40, y_left + 24, 240, y_left + 26], fill=ACCENT)
-        y_left += 44
+        yc = 82  # current y
 
-        # Pillar cards
-        max_p = 3 if detail == 'simple' else min(len(pillars), 5)
+        # Thesis summary
+        summary = thesis.get('summary', '')
+        if summary:
+            for line in _wrap_text(draw, summary, fonts['regular'], PW - M * 2)[:3]:
+                draw.text((M, yc), line, font=fonts['regular'], fill=MUTED)
+                yc += 22
+            yc += 14
+
+        # Divider
+        draw.rectangle([M, yc, PW - M, yc + 2], fill=BORDER)
+        yc += 14
+
+        # Two-column layout
+        COL_GAP = 24
+        LEFT_W = (PW - M * 2 - COL_GAP) // 2
+        LEFT_X = M
+        RIGHT_X = M + LEFT_W + COL_GAP
+        RIGHT_W = PW - RIGHT_X - M
+
+        y_left = yc
+        y_right = yc
+
+        # Left: INVESTMENT THESIS
+        draw.text((LEFT_X, y_left), "INVESTMENT THESIS", font=fonts['bold_sm'], fill=MUTED)
+        draw.rectangle([LEFT_X, y_left + 24, LEFT_X + 200, y_left + 26], fill=ACCENT)
+        y_left += 40
+
+        # Adaptive card sizing: distribute pillar cards across available height
+        FOOTER_H = 56
+        avail_h = PH - FOOTER_H - yc - 50  # available column height
+        max_p = 3 if detail == 'simple' else min(len(pillars), 6)
+        card_h_full = min(160, max(90, (avail_h - 50) // max(max_p, 1) - 14))
+        card_h_simple = min(80, card_h_full // 2 + 10)
+
         for i, p in enumerate(pillars[:max_p], 1):
             ptitle = p.get('pillar', p.get('title', ''))
             pdesc = p.get('detail', p.get('description', ''))
-            card_h = 90 if detail == 'full' and pdesc else 60
+            ch = card_h_full if detail == 'full' and pdesc else card_h_simple
             # Card background with left accent border
-            draw.rectangle([40, y_left, LEFT_W, y_left + card_h], fill=CARD, outline=BORDER)
-            draw.rectangle([40, y_left, 46, y_left + card_h], fill=ACCENT)
-            # Number
-            draw.text((LEFT_W - 50, y_left + 8), str(i), font=fonts['bold_md'], fill=ACCENT)
+            draw.rectangle([LEFT_X, y_left, LEFT_X + LEFT_W, y_left + ch], fill=CARD, outline=BORDER)
+            draw.rectangle([LEFT_X, y_left, LEFT_X + 6, y_left + ch], fill=ACCENT)
+            # Number badge
+            draw.text((LEFT_X + LEFT_W - 44, y_left + 6), str(i), font=fonts['bold_md'], fill=ACCENT)
             # Title
-            title_lines = _wrap_text(draw, ptitle, fonts['bold_sm'], LEFT_W - 120)
+            title_lines = _wrap_text(draw, ptitle, fonts['bold_sm'], LEFT_W - 80)
             ty = y_left + 10
             for line in title_lines[:2]:
-                draw.text((60, ty), line, font=fonts['bold_sm'], fill=TEXT)
+                draw.text((LEFT_X + 16, ty), line, font=fonts['bold_sm'], fill=TEXT)
                 ty += 22
-            # Description (full mode only)
+            # Description
             if detail == 'full' and pdesc:
-                desc_lines = _wrap_text(draw, pdesc, fonts['tiny'], LEFT_W - 80)
-                for line in desc_lines[:2]:
-                    draw.text((60, ty), line, font=fonts['tiny'], fill=MUTED)
-                    ty += 15
-            y_left += card_h + 12
+                desc_lines = _wrap_text(draw, pdesc, fonts['small'], LEFT_W - 40)
+                for line in desc_lines[:3]:
+                    draw.text((LEFT_X + 16, ty), line, font=fonts['small'], fill=MUTED)
+                    ty += 17
+            y_left += ch + 10
 
-        # Right: SIGNPOSTS section
+        # Right: SIGNPOSTS
         draw.text((RIGHT_X, y_right), "SIGNPOSTS / CATALYSTS", font=fonts['bold_sm'], fill=ACCENT)
-        draw.rectangle([RIGHT_X, y_right + 24, RIGHT_X + 250, y_right + 26], fill=ACCENT)
-        y_right += 44
+        draw.rectangle([RIGHT_X, y_right + 24, RIGHT_X + 230, y_right + 26], fill=ACCENT)
+        y_right += 40
         sp_items = [s['metric'] + (f": {s['latest']}" if s.get('latest') and detail != 'simple' else '') for s in sp_data]
-        y_right = draw_bullet_list(draw, RIGHT_X, y_right, sp_items, ACCENT, max_items=8)
+        for item in sp_items[:8]:
+            draw.ellipse([RIGHT_X, y_right + 5, RIGHT_X + 10, y_right + 15], fill=ACCENT)
+            lines = _wrap_text(draw, item[:100], fonts['small'], RIGHT_W - 24)
+            for line in lines[:2]:
+                draw.text((RIGHT_X + 18, y_right), line, font=fonts['small'], fill=TEXT)
+                y_right += 19
+            y_right += 7
 
-        # Right: KEY RISKS section
-        y_right += 20
+        # Right: KEY RISKS
+        y_right += 16
         draw.text((RIGHT_X, y_right), "KEY RISKS", font=fonts['bold_sm'], fill=RISK_ACCENT)
-        draw.rectangle([RIGHT_X, y_right + 24, RIGHT_X + 120, y_right + 26], fill=RISK_ACCENT)
-        y_right += 44
+        draw.rectangle([RIGHT_X, y_right + 24, RIGHT_X + 110, y_right + 26], fill=RISK_ACCENT)
+        y_right += 40
         rk_items = [rk['threat'] for rk in rk_data]
-        draw_bullet_list(draw, RIGHT_X, y_right, rk_items, RISK_ACCENT, max_items=6)
+        for item in rk_items[:6]:
+            draw.ellipse([RIGHT_X, y_right + 5, RIGHT_X + 10, y_right + 15], fill=RISK_ACCENT)
+            lines = _wrap_text(draw, item[:100], fonts['small'], RIGHT_W - 24)
+            for line in lines[:2]:
+                draw.text((RIGHT_X + 18, y_right), line, font=fonts['small'], fill=TEXT)
+                y_right += 19
+            y_right += 7
 
-        # Bottom health bar
+        # Conclusion at bottom (if space)
+        y_bottom = max(y_left, y_right) + 16
+        if conclusion and y_bottom < PH - FOOTER_H - 50:
+            draw.rectangle([M, y_bottom, PW - M, y_bottom + 2], fill=BORDER)
+            y_bottom += 10
+            for line in _wrap_text(draw, conclusion, fonts['small'], PW - M * 2)[:2]:
+                draw.text((M, y_bottom), line, font=fonts['small'], fill=MUTED)
+                y_bottom += 17
+
+        # Footer health bar
         total = g + y_count + r
+        draw.rectangle([0, PH - FOOTER_H, PW, PH], fill=DARK)
         if total > 0:
-            draw.rectangle([0, H - 50, W, H], fill=DARK)
             pct = round(g / total * 100)
-            draw.text((40, H - 40), f"Thesis Health: {pct}%", font=fonts['bold_sm'], fill=ACCENT)
-            bx = W - 280
+            draw.text((M, PH - 42), f"Thesis Health: {pct}%", font=fonts['bold_sm'], fill=ACCENT)
+            bx = PW - 240
             for label, cnt, clr in [('G', g, (22, 163, 74)), ('Y', y_count, (202, 138, 4)), ('R', r, (220, 38, 38))]:
-                draw.rectangle([bx, H - 42, bx + 50, H - 12], fill=clr)
-                draw.text((bx + 18, H - 40), str(cnt), font=fonts['bold_sm'], fill=(255, 255, 255))
-                bx += 70
+                draw.rectangle([bx, PH - 44, bx + 46, PH - 14], fill=clr)
+                draw.text((bx + 16, PH - 42), str(cnt), font=fonts['bold_sm'], fill=(255, 255, 255))
+                bx += 64
 
         return [_img_to_base64(img)]
     else:
@@ -9825,81 +9879,117 @@ def _generate_quad_grid_infographic(d, scorecard_data, mode, detail='full', show
         return y + 42
 
     if mode == '1':
-        img = Image.new('RGB', (W, H), BG)
+        # Portrait layout — fits one printed page with narrow margins
+        PW, PH = 1200, 1600
+        M = 30  # margin
+        img = Image.new('RGB', (PW, PH), BG)
         draw = ImageDraw.Draw(img)
 
         # Header
-        draw.rectangle([0, 0, W, 72], fill=DARK)
-        draw.text((40, 18), header_text, font=fonts['bold_md'], fill=TEXT)
-        draw.rectangle([0, 72, W, 76], fill=ACCENT)
+        draw.rectangle([0, 0, PW, 64], fill=DARK)
+        draw.text((M, 16), header_text, font=fonts['bold_md'], fill=TEXT)
+        draw.rectangle([0, 64, PW, 68], fill=ACCENT)
 
-        # Layout: left column pillars, right column split signposts/risks
-        LEFT_W = 620; GAP = 30; RIGHT_X = LEFT_W + GAP + 40; RIGHT_W = W - RIGHT_X - 40
-        CONTENT_TOP = 96
+        yc = 82
 
-        # Left: Pillars
-        y = CONTENT_TOP
-        y = draw_section_pill(draw, 40, y, "Investment Thesis", ACCENT, width=240)
-        max_p = 3 if detail == 'simple' else min(len(pillars), 5)
+        # Thesis summary
+        summary = thesis.get('summary', '')
+        if summary:
+            for line in _wrap_text(draw, summary, fonts['regular'], PW - M * 2)[:3]:
+                draw.text((M, yc), line, font=fonts['regular'], fill=MUTED)
+                yc += 22
+            yc += 14
+
+        # Divider
+        draw.rectangle([M, yc, PW - M, yc + 2], fill=BORDER)
+        yc += 14
+
+        # Two-column layout
+        COL_GAP = 24
+        LEFT_W = (PW - M * 2 - COL_GAP) // 2
+        LEFT_X = M
+        RIGHT_X = M + LEFT_W + COL_GAP
+        RIGHT_W = PW - RIGHT_X - M
+
+        y_left = yc
+        y_right = yc
+
+        # Left: Investment Thesis pill
+        y_left = draw_section_pill(draw, LEFT_X, y_left, "Investment Thesis", ACCENT, width=220)
+
+        # Adaptive card sizing
+        FOOTER_H = 56
+        avail_h = PH - FOOTER_H - yc - 50
+        max_p = 3 if detail == 'simple' else min(len(pillars), 6)
+        card_h_full = min(170, max(100, (avail_h - 50) // max(max_p, 1) - 14))
+        card_h_simple = min(80, card_h_full // 2 + 10)
+
         for i, p in enumerate(pillars[:max_p], 1):
             ptitle = p.get('pillar', p.get('title', ''))
             pdesc = p.get('detail', p.get('description', ''))
-            # Card
-            card_h = 120 if detail == 'full' and pdesc else 70
-            draw.rectangle([40, y, LEFT_W, y + card_h], fill=CARD, outline=BORDER)
+            ch = card_h_full if detail == 'full' and pdesc else card_h_simple
+            draw.rectangle([LEFT_X, y_left, LEFT_X + LEFT_W, y_left + ch], fill=CARD, outline=BORDER)
             # Large number
-            draw.text((56, y + 8), str(i), font=fonts['bold_lg'], fill=ACCENT)
+            draw.text((LEFT_X + 12, y_left + 6), str(i), font=fonts['bold_lg'], fill=ACCENT)
             # Title
-            title_x = 110
-            title_lines = _wrap_text(draw, ptitle, fonts['bold_sm'], LEFT_W - title_x - 20)
-            ty = y + 12
+            title_x = LEFT_X + 70
+            title_lines = _wrap_text(draw, ptitle, fonts['bold_sm'], LEFT_W - 90)
+            ty = y_left + 10
             for line in title_lines[:2]:
                 draw.text((title_x, ty), line, font=fonts['bold_sm'], fill=TEXT)
                 ty += 22
             # Description
             if detail == 'full' and pdesc:
-                desc_lines = _wrap_text(draw, pdesc, fonts['small'], LEFT_W - title_x - 20)
-                for line in desc_lines[:3]:
+                desc_lines = _wrap_text(draw, pdesc, fonts['small'], LEFT_W - 90)
+                for line in desc_lines[:4]:
                     draw.text((title_x, ty), line, font=fonts['small'], fill=MUTED)
-                    ty += 16
-            y += card_h + 10
+                    ty += 17
+            y_left += ch + 10
 
-        # Right top: Signposts
-        y_right = CONTENT_TOP
-        y_right = draw_section_pill(draw, RIGHT_X, y_right, "Signposts / Catalysts", ACCENT, width=280)
-        for s in sp_data[:7]:
-            draw.ellipse([RIGHT_X + 4, y_right + 5, RIGHT_X + 12, y_right + 13], fill=ACCENT)
+        # Right top: Signposts pill
+        y_right = draw_section_pill(draw, RIGHT_X, y_right, "Signposts / Catalysts", ACCENT, width=260)
+        for s in sp_data[:8]:
+            draw.ellipse([RIGHT_X + 4, y_right + 5, RIGHT_X + 14, y_right + 15], fill=ACCENT)
             metric = s['metric']
             if detail != 'simple' and s.get('latest'):
                 metric += f": {s['latest']}"
-            lines = _wrap_text(draw, metric, fonts['small'], RIGHT_W - 30)
+            lines = _wrap_text(draw, metric, fonts['small'], RIGHT_W - 28)
             for line in lines[:2]:
                 draw.text((RIGHT_X + 22, y_right), line, font=fonts['small'], fill=TEXT)
-                y_right += 18
-            y_right += 6
+                y_right += 19
+            y_right += 7
 
-        # Right bottom: Risks
+        # Right bottom: Risks pill
         y_right += 16
-        y_right = draw_section_pill(draw, RIGHT_X, y_right, "Key Risks", RISK_ACCENT, width=160)
+        y_right = draw_section_pill(draw, RIGHT_X, y_right, "Key Risks", RISK_ACCENT, width=150)
         for rk in rk_data[:6]:
-            draw.ellipse([RIGHT_X + 4, y_right + 5, RIGHT_X + 12, y_right + 13], fill=RISK_ACCENT)
-            lines = _wrap_text(draw, rk['threat'], fonts['small'], RIGHT_W - 30)
+            draw.ellipse([RIGHT_X + 4, y_right + 5, RIGHT_X + 14, y_right + 15], fill=RISK_ACCENT)
+            lines = _wrap_text(draw, rk['threat'], fonts['small'], RIGHT_W - 28)
             for line in lines[:2]:
                 draw.text((RIGHT_X + 22, y_right), line, font=fonts['small'], fill=TEXT)
-                y_right += 18
-            y_right += 6
+                y_right += 19
+            y_right += 7
 
-        # Bottom health bar
+        # Conclusion (if space)
+        y_bottom = max(y_left, y_right) + 16
+        if conclusion and y_bottom < PH - FOOTER_H - 50:
+            draw.rectangle([M, y_bottom, PW - M, y_bottom + 2], fill=BORDER)
+            y_bottom += 10
+            for line in _wrap_text(draw, conclusion, fonts['small'], PW - M * 2)[:2]:
+                draw.text((M, y_bottom), line, font=fonts['small'], fill=MUTED)
+                y_bottom += 17
+
+        # Footer health bar
         total = g + y_count + r
+        draw.rectangle([0, PH - FOOTER_H, PW, PH], fill=DARK)
         if total > 0:
-            draw.rectangle([0, H - 50, W, H], fill=DARK)
             pct = round(g / total * 100)
-            draw.text((40, H - 40), f"Thesis Health: {pct}%", font=fonts['bold_sm'], fill=ACCENT)
-            bx = W - 280
+            draw.text((M, PH - 42), f"Thesis Health: {pct}%", font=fonts['bold_sm'], fill=ACCENT)
+            bx = PW - 240
             for label, cnt, clr in [('G', g, (22, 163, 74)), ('Y', y_count, (202, 138, 4)), ('R', r, (220, 38, 38))]:
-                draw.rectangle([bx, H - 42, bx + 50, H - 12], fill=clr)
-                draw.text((bx + 18, H - 40), str(cnt), font=fonts['bold_sm'], fill=(255, 255, 255))
-                bx += 70
+                draw.rectangle([bx, PH - 44, bx + 46, PH - 14], fill=clr)
+                draw.text((bx + 16, PH - 42), str(cnt), font=fonts['bold_sm'], fill=(255, 255, 255))
+                bx += 64
 
         return [_img_to_base64(img)]
     else:
