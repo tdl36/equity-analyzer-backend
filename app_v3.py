@@ -9828,7 +9828,7 @@ def _generate_analyst_brief_infographic(d, scorecard_data, mode, detail='full', 
         fonts['body']    = ImageFont.truetype(f"{base}DejaVuSans.ttf", 18)
         fonts['summary'] = ImageFont.truetype(f"{base}DejaVuSans.ttf", 22)
         fonts['bullet']  = ImageFont.truetype(f"{base}DejaVuSans-Bold.ttf", 19)
-        fonts['detail']  = ImageFont.truetype(f"{base}DejaVuSans.ttf", 17)
+        fonts['detail']  = ImageFont.truetype(f"{base}DejaVuSans.ttf", 18)
         fonts['conclusion'] = ImageFont.truetype(f"{base}DejaVuSans.ttf", 16)
         fonts['footer']  = ImageFont.truetype(f"{base}DejaVuSans-Bold.ttf", 16)
         # For 3-slide mode
@@ -9903,6 +9903,15 @@ def _generate_analyst_brief_infographic(d, scorecard_data, mode, detail='full', 
         img = Image.new('RGB', (W, H), BG)
         draw = ImageDraw.Draw(img)
 
+        # Detail-level config: full / summary / simple
+        show_pillar_desc = detail != 'simple'
+        show_sp_detail = detail == 'full'
+        show_rk_detail_text = detail == 'full'
+        max_p = 3 if detail == 'simple' else min(len(pillars), 5)
+        max_pillar_desc = 4 if detail == 'full' else 2  # lines of description
+        max_sp = 10 if detail != 'simple' else 6
+        max_rk = 8 if detail != 'simple' else 5
+
         # --- Header ---
         HH = 56
         draw.rectangle([0, 0, W, HH], fill=HEADER_BG)
@@ -9914,10 +9923,11 @@ def _generate_analyst_brief_infographic(d, scorecard_data, mode, detail='full', 
 
         yc = HH + 8
 
-        # --- Summary (22pt font, fills width) ---
+        # --- Summary (22pt) ---
         summary = ue(thesis.get('summary', ''))
+        max_summary = 4 if detail == 'full' else 2 if detail == 'summary' else 1
         if summary:
-            sl = _wrap_text(draw, summary, fonts['summary'], W - M*2 - 28)[:4]
+            sl = _wrap_text(draw, summary, fonts['summary'], W - M*2 - 28)[:max_summary]
             sh = len(sl) * 28 + 16
             rr(draw, [M, yc, W-M, yc+sh], fill=CARD_BG, outline=CARD_BORDER, rad=8)
             sy = yc + 8
@@ -9933,16 +9943,14 @@ def _generate_analyst_brief_infographic(d, scorecard_data, mode, detail='full', 
         C2X = M + COL_W + GAP
         C3X = M + (COL_W + GAP)*2
         col_top = yc
-        col_bottom = H - 8  # use nearly full height
+        col_bottom = H - 8
 
         # ===== COLUMN 1: Investment Thesis (Pillars) =====
         yl = col_top
         yl = sec_hdr(draw, C1X, yl, COL_W, "Investment Thesis", THESIS_ACC, THESIS_LIGHT)
 
-        max_p = 3 if detail == 'simple' else min(len(pillars), 6)
         avail_col = col_bottom - yl
         card_gap = 6
-        # Each card gets equal share of available space
         card_h = (avail_col - card_gap * max(max_p - 1, 0)) // max(max_p, 1)
 
         for i, p in enumerate(pillars[:max_p], 1):
@@ -9955,13 +9963,15 @@ def _generate_analyst_brief_infographic(d, scorecard_data, mode, detail='full', 
             for line in title_lines:
                 draw.text((C1X+44, ty), line, font=fonts['pillar_title'], fill=TEXT_PRI)
                 ty += 26
-            if pdesc:
+            if pdesc and show_pillar_desc:
                 ty += 4
-                # Fill remaining card space with description
-                remaining_h = (yl + card_h - 10) - ty
-                max_lines = max(1, remaining_h // 24)
-                desc_lines = _wrap_text(draw, pdesc, fonts['body'], COL_W - 56)[:max_lines]
+                # Use capped lines, ensure text doesn't overflow card
+                remaining_h = (yl + card_h - 12) - ty
+                fit_lines = min(max_pillar_desc, max(1, remaining_h // 24))
+                desc_lines = _wrap_text(draw, pdesc, fonts['body'], COL_W - 56)[:fit_lines]
                 for line in desc_lines:
+                    if ty + 24 > yl + card_h - 8:
+                        break
                     draw.text((C1X+44, ty), line, font=fonts['body'], fill=TEXT_SEC)
                     ty += 24
             yl += card_h + card_gap
@@ -9974,24 +9984,25 @@ def _generate_analyst_brief_infographic(d, scorecard_data, mode, detail='full', 
         sp_rich = []
         for s in sp_data:
             title = ue(s['metric'])
-            parts = []
-            if s.get('latest'):
-                parts.append(ue(s['latest']))
-            if s.get('ltGoal') and s.get('ltGoal') != s.get('latest'):
-                parts.append(f"Target: {ue(s['ltGoal'])}")
-            detail_str = " | ".join(parts) if parts else ""
+            if show_sp_detail:
+                parts = []
+                if s.get('latest'):
+                    parts.append(ue(s['latest']))
+                if s.get('ltGoal') and s.get('ltGoal') != s.get('latest'):
+                    parts.append(f"Target: {ue(s['ltGoal'])}")
+                detail_str = " | ".join(parts) if parts else ""
+            else:
+                detail_str = ""
             sp_rich.append((title, detail_str))
 
-        # Single card filling entire column
         sp_card_h = col_bottom - yr
         rr(draw, [C2X, yr, C2X+COL_W, yr+sp_card_h], fill=CARD_BG, outline=CARD_BORDER, rad=8)
         sy = yr + 14
-        # Adaptive spacing: distribute items evenly in available space
-        sp_n = len(sp_rich)
-        if sp_n > 0:
-            item_space = (sp_card_h - 28) // sp_n  # available per item
-            item_space = max(item_space, 50)  # minimum per item
-            sp_n = min(sp_n, (sp_card_h - 28) // item_space)
+        sp_n = min(len(sp_rich), max_sp)
+        # Compute item spacing to fill the card evenly
+        per_item_h = 28 + (24 if show_sp_detail else 0)  # title + optional detail
+        total_content = sp_n * per_item_h
+        gap_each = max(8, (sp_card_h - 28 - total_content) // max(sp_n, 1))
         for idx in range(sp_n):
             title, det = sp_rich[idx]
             if sy + 26 > yr + sp_card_h - 10:
@@ -10001,35 +10012,35 @@ def _generate_analyst_brief_infographic(d, scorecard_data, mode, detail='full', 
             draw.ellipse([C2X+14, sy+6, C2X+28, sy+20], fill=dot_color)
             tlines = _wrap_text(draw, title, fonts['bullet'], COL_W - 54)
             draw.text((C2X+36, sy), tlines[0], font=fonts['bullet'], fill=TEXT_PRI)
-            sy += 26
-            if det and sy + 22 < yr + sp_card_h - 10:
-                dlines = _wrap_text(draw, det, fonts['detail'], COL_W - 54)
-                draw.text((C2X+36, sy), dlines[0], font=fonts['detail'], fill=TEXT_MUTED)
-                sy += 22
-            sy += item_space - 48 if item_space > 48 else 8
+            sy += 28
+            if det and sy + 24 < yr + sp_card_h - 10:
+                dlines = _wrap_text(draw, det, fonts['body'], COL_W - 54)
+                draw.text((C2X+36, sy), dlines[0], font=fonts['body'], fill=TEXT_MUTED)
+                sy += 24
+            sy += gap_each
 
         # ===== COLUMN 3: Key Risks =====
         yrk = col_top
         yrk = sec_hdr(draw, C3X, yrk, COL_W, "Key Risks", RISK_ACC, RISK_LIGHT)
 
-        # Build risk items
         rk_rich = []
         for rk in rk_data:
             title = ue(rk['threat'])
-            trigger = ue(rk.get('triggers', '')) or ''
-            status_note = ue(rk.get('statusNote', '')) or ''
-            detail_str = trigger if trigger else status_note
+            if show_rk_detail_text:
+                trigger = ue(rk.get('triggers', '')) or ''
+                status_note = ue(rk.get('statusNote', '')) or ''
+                detail_str = trigger if trigger else status_note
+            else:
+                detail_str = ""
             rk_rich.append((title, detail_str))
 
-        # Single card filling entire column
         rk_card_h = col_bottom - yrk
         rr(draw, [C3X, yrk, C3X+COL_W, yrk+rk_card_h], fill=CARD_BG, outline=CARD_BORDER, rad=8)
         ry = yrk + 14
-        rk_n = len(rk_rich)
-        if rk_n > 0:
-            rk_item_space = (rk_card_h - 28) // rk_n
-            rk_item_space = max(rk_item_space, 60)
-            rk_n = min(rk_n, (rk_card_h - 28) // rk_item_space)
+        rk_n = min(len(rk_rich), max_rk)
+        # Estimate lines per risk item (title may wrap, detail may wrap)
+        rk_per_item = 54 + (48 if show_rk_detail_text else 0)  # 2 title + 2 detail lines
+        rk_gap = max(8, (rk_card_h - 28 - rk_n * rk_per_item) // max(rk_n, 1))
         for idx in range(rk_n):
             title, det = rk_rich[idx]
             if ry + 26 > yrk + rk_card_h - 10:
@@ -10037,22 +10048,18 @@ def _generate_analyst_brief_infographic(d, scorecard_data, mode, detail='full', 
             status = rk_data[idx].get('status', '')
             dot_color = (30, 172, 95) if status == 'green' else (234, 179, 8) if status == 'yellow' else (220, 72, 60) if status == 'red' else RISK_DOT
             draw.ellipse([C3X+14, ry+6, C3X+28, ry+20], fill=dot_color)
-            # Title — wrap to 2 lines if needed
             tlines = _wrap_text(draw, title, fonts['bullet'], COL_W - 54)
             for tl in tlines[:2]:
                 draw.text((C3X+36, ry), tl, font=fonts['bullet'], fill=TEXT_PRI)
                 ry += 26
-            # Trigger points / detail — wrap to fill remaining item space
-            if det:
-                dlines = _wrap_text(draw, det, fonts['detail'], COL_W - 54)
-                max_det = max(1, (rk_item_space - len(tlines[:2])*26 - 8) // 22)
-                for dl in dlines[:max_det]:
-                    if ry + 22 > yrk + rk_card_h - 10:
+            if det and show_rk_detail_text:
+                dlines = _wrap_text(draw, det, fonts['body'], COL_W - 54)
+                for dl in dlines[:2]:
+                    if ry + 24 > yrk + rk_card_h - 10:
                         break
-                    draw.text((C3X+36, ry), dl, font=fonts['detail'], fill=TEXT_MUTED)
-                    ry += 22
-            ry += rk_item_space - (ry - (yrk + 14 + idx * rk_item_space))  # align to grid
-            ry = max(ry, yrk + 14 + (idx + 1) * rk_item_space)
+                    draw.text((C3X+36, ry), dl, font=fonts['body'], fill=TEXT_MUTED)
+                    ry += 24
+            ry += rk_gap
 
         return [_img_to_base64(img)]
     else:
