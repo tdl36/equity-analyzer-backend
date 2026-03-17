@@ -9898,19 +9898,41 @@ def _generate_analyst_brief_infographic(d, scorecard_data, mode, detail='full', 
         draw.text((x + (w-tw)//2, y+6), text, font=fonts['section'], fill=accent)
         return y + h + 10
 
+    # Helper: truncate wrapped lines cleanly with "..." on the last line
+    def fit_lines(draw, text, font, max_w, max_n):
+        """Wrap text and truncate with '...' if it exceeds max_n lines."""
+        all_lines = _wrap_text(draw, text, font, max_w)
+        if len(all_lines) <= max_n:
+            return all_lines
+        result = all_lines[:max_n]
+        # Find a clean break point on the last line (end of sentence or word)
+        last = result[-1]
+        # Try to end at a period/sentence boundary
+        for sep in ['. ', '; ', ', ']:
+            idx = last.rfind(sep)
+            if idx > len(last) // 3:  # only if reasonable break point
+                result[-1] = last[:idx + len(sep) - 1] + '...'
+                return result
+        # Otherwise just add ... to the end (word-wrapped, so it's at a word boundary)
+        result[-1] = last.rstrip() + '...'
+        return result
+
     if mode == '1':
         M = 28
         img = Image.new('RGB', (W, H), BG)
         draw = ImageDraw.Draw(img)
 
         # Detail-level config: full / summary / simple
+        # Full: all detail shown | Summary: less detail | Simple: titles only
         show_pillar_desc = detail != 'simple'
-        show_sp_detail = detail == 'full'
-        show_rk_detail_text = detail == 'full'
+        show_sp_detail = detail != 'simple'  # all modes except simple show detail
+        show_rk_detail_text = detail != 'simple'
         max_p = 3 if detail == 'simple' else min(len(pillars), 5)
-        max_pillar_desc = 4 if detail == 'full' else 2  # lines of description
         max_sp = 10 if detail != 'simple' else 6
         max_rk = 8 if detail != 'simple' else 5
+        # Detail lines: full gets more, summary gets 1 line each
+        sp_detail_lines = 1  # signpost detail is always 1 line (target info)
+        rk_detail_lines = 2 if detail == 'full' else 1
 
         # --- Header ---
         HH = 56
@@ -9923,17 +9945,19 @@ def _generate_analyst_brief_infographic(d, scorecard_data, mode, detail='full', 
 
         yc = HH + 8
 
-        # --- Summary (22pt) ---
+        # --- Summary — always show full text, up to 5 lines ---
         summary = ue(thesis.get('summary', ''))
-        max_summary = 4 if detail == 'full' else 2 if detail == 'summary' else 1
+        sum_font = fonts['summary']  # 22pt
+        max_summary = 5 if detail != 'simple' else 2
         if summary:
-            sl = _wrap_text(draw, summary, fonts['summary'], W - M*2 - 28)[:max_summary]
-            sh = len(sl) * 28 + 16
+            sl = fit_lines(draw, summary, sum_font, W - M*2 - 28, max_summary)
+            LH_SUM = 30  # line height for 22pt
+            sh = len(sl) * LH_SUM + 16
             rr(draw, [M, yc, W-M, yc+sh], fill=CARD_BG, outline=CARD_BORDER, rad=8)
             sy = yc + 8
             for line in sl:
-                draw.text((M+14, sy), line, font=fonts['summary'], fill=TEXT_SEC)
-                sy += 28
+                draw.text((M+14, sy), line, font=sum_font, fill=TEXT_SEC)
+                sy += LH_SUM
             yc += sh + 8
 
         # --- Three columns ---
@@ -9944,6 +9968,10 @@ def _generate_analyst_brief_infographic(d, scorecard_data, mode, detail='full', 
         C3X = M + (COL_W + GAP)*2
         col_top = yc
         col_bottom = H - 8
+
+        LH_TITLE = 26   # pillar title line height (20pt bold)
+        LH_BODY = 24    # body/description line height (18pt)
+        LH_BULLET = 26  # signpost/risk title line height (19pt bold)
 
         # ===== COLUMN 1: Investment Thesis (Pillars) =====
         yl = col_top
@@ -9962,25 +9990,24 @@ def _generate_analyst_brief_infographic(d, scorecard_data, mode, detail='full', 
             title_lines = _wrap_text(draw, ptitle, fonts['pillar_title'], COL_W - 56)[:2]
             for line in title_lines:
                 draw.text((C1X+44, ty), line, font=fonts['pillar_title'], fill=TEXT_PRI)
-                ty += 26
+                ty += LH_TITLE
             if pdesc and show_pillar_desc:
                 ty += 4
-                # Use capped lines, ensure text doesn't overflow card
-                remaining_h = (yl + card_h - 12) - ty
-                fit_lines = min(max_pillar_desc, max(1, remaining_h // 24))
-                desc_lines = _wrap_text(draw, pdesc, fonts['body'], COL_W - 56)[:fit_lines]
+                remaining_h = (yl + card_h - 10) - ty
+                max_desc = max(1, remaining_h // LH_BODY)
+                desc_lines = fit_lines(draw, pdesc, fonts['body'], COL_W - 56, max_desc)
                 for line in desc_lines:
-                    if ty + 24 > yl + card_h - 8:
+                    if ty + LH_BODY > yl + card_h - 4:
                         break
                     draw.text((C1X+44, ty), line, font=fonts['body'], fill=TEXT_SEC)
-                    ty += 24
+                    ty += LH_BODY
             yl += card_h + card_gap
 
         # ===== COLUMN 2: Signposts / Catalysts =====
         yr = col_top
         yr = sec_hdr(draw, C2X, yr, COL_W, "Signposts / Catalysts", SP_ACC, SP_LIGHT)
 
-        # Build signpost items
+        # Build signpost items — always include detail (except simple)
         sp_rich = []
         for s in sp_data:
             title = ue(s['metric'])
@@ -9999,25 +10026,26 @@ def _generate_analyst_brief_infographic(d, scorecard_data, mode, detail='full', 
         rr(draw, [C2X, yr, C2X+COL_W, yr+sp_card_h], fill=CARD_BG, outline=CARD_BORDER, rad=8)
         sy = yr + 14
         sp_n = min(len(sp_rich), max_sp)
-        # Compute item spacing to fill the card evenly
-        per_item_h = 28 + (24 if show_sp_detail else 0)  # title + optional detail
-        total_content = sp_n * per_item_h
-        gap_each = max(8, (sp_card_h - 28 - total_content) // max(sp_n, 1))
+        # Compute even spacing
+        per_item = LH_BULLET + (LH_BODY * sp_detail_lines if show_sp_detail else 0)
+        total_items_h = sp_n * per_item
+        sp_gap = max(6, (sp_card_h - 28 - total_items_h) // max(sp_n, 1))
         for idx in range(sp_n):
             title, det = sp_rich[idx]
-            if sy + 26 > yr + sp_card_h - 10:
+            if sy + LH_BULLET > yr + sp_card_h - 10:
                 break
             status = sp_data[idx].get('status', '')
             dot_color = (30, 172, 95) if status == 'green' else (234, 179, 8) if status == 'yellow' else (220, 72, 60) if status == 'red' else SP_DOT
             draw.ellipse([C2X+14, sy+6, C2X+28, sy+20], fill=dot_color)
             tlines = _wrap_text(draw, title, fonts['bullet'], COL_W - 54)
             draw.text((C2X+36, sy), tlines[0], font=fonts['bullet'], fill=TEXT_PRI)
-            sy += 28
-            if det and sy + 24 < yr + sp_card_h - 10:
-                dlines = _wrap_text(draw, det, fonts['body'], COL_W - 54)
-                draw.text((C2X+36, sy), dlines[0], font=fonts['body'], fill=TEXT_MUTED)
-                sy += 24
-            sy += gap_each
+            sy += LH_BULLET
+            if det and sy + LH_BODY < yr + sp_card_h - 10:
+                dlines = fit_lines(draw, det, fonts['body'], COL_W - 54, sp_detail_lines)
+                for dl in dlines:
+                    draw.text((C2X+36, sy), dl, font=fonts['body'], fill=TEXT_MUTED)
+                    sy += LH_BODY
+            sy += sp_gap
 
         # ===== COLUMN 3: Key Risks =====
         yrk = col_top
@@ -10038,27 +10066,29 @@ def _generate_analyst_brief_infographic(d, scorecard_data, mode, detail='full', 
         rr(draw, [C3X, yrk, C3X+COL_W, yrk+rk_card_h], fill=CARD_BG, outline=CARD_BORDER, rad=8)
         ry = yrk + 14
         rk_n = min(len(rk_rich), max_rk)
-        # Estimate lines per risk item (title may wrap, detail may wrap)
-        rk_per_item = 54 + (48 if show_rk_detail_text else 0)  # 2 title + 2 detail lines
-        rk_gap = max(8, (rk_card_h - 28 - rk_n * rk_per_item) // max(rk_n, 1))
+        # Estimate height per risk: title(1-2 lines) + detail
+        rk_per = LH_BULLET * 2 + LH_BODY * rk_detail_lines if show_rk_detail_text else LH_BULLET * 2
+        rk_gap = max(6, (rk_card_h - 28 - rk_n * rk_per) // max(rk_n, 1))
         for idx in range(rk_n):
             title, det = rk_rich[idx]
-            if ry + 26 > yrk + rk_card_h - 10:
+            if ry + LH_BULLET > yrk + rk_card_h - 10:
                 break
             status = rk_data[idx].get('status', '')
             dot_color = (30, 172, 95) if status == 'green' else (234, 179, 8) if status == 'yellow' else (220, 72, 60) if status == 'red' else RISK_DOT
             draw.ellipse([C3X+14, ry+6, C3X+28, ry+20], fill=dot_color)
-            tlines = _wrap_text(draw, title, fonts['bullet'], COL_W - 54)
-            for tl in tlines[:2]:
+            # Title — wrap up to 2 lines with clean truncation
+            tlines = fit_lines(draw, title, fonts['bullet'], COL_W - 54, 2)
+            for tl in tlines:
                 draw.text((C3X+36, ry), tl, font=fonts['bullet'], fill=TEXT_PRI)
-                ry += 26
+                ry += LH_BULLET
+            # Trigger/detail text
             if det and show_rk_detail_text:
-                dlines = _wrap_text(draw, det, fonts['body'], COL_W - 54)
-                for dl in dlines[:2]:
-                    if ry + 24 > yrk + rk_card_h - 10:
+                dlines = fit_lines(draw, det, fonts['body'], COL_W - 54, rk_detail_lines)
+                for dl in dlines:
+                    if ry + LH_BODY > yrk + rk_card_h - 10:
                         break
                     draw.text((C3X+36, ry), dl, font=fonts['body'], fill=TEXT_MUTED)
-                    ry += 24
+                    ry += LH_BODY
             ry += rk_gap
 
         return [_img_to_base64(img)]
