@@ -9898,24 +9898,49 @@ def _generate_analyst_brief_infographic(d, scorecard_data, mode, detail='full', 
         draw.text((x + (w-tw)//2, y+6), text, font=fonts['section'], fill=accent)
         return y + h + 10
 
-    # Helper: truncate wrapped lines cleanly with "..." on the last line
-    def fit_lines(draw, text, font, max_w, max_n):
-        """Wrap text and truncate with '...' if it exceeds max_n lines."""
+    import re as _re
+    def fit_sentences(draw, text, font, max_w, max_n):
+        """Select complete sentences that fit within max_n wrapped lines.
+
+        Instead of truncating mid-thought, this keeps only whole sentences
+        that fit. If even the first sentence is too long, it takes the
+        first clause (up to a comma/semicolon) that fits.
+        """
+        if not text:
+            return []
+        # First check if the full text fits
         all_lines = _wrap_text(draw, text, font, max_w)
         if len(all_lines) <= max_n:
             return all_lines
-        result = all_lines[:max_n]
-        # Find a clean break point on the last line (end of sentence or word)
-        last = result[-1]
-        # Try to end at a period/sentence boundary
-        for sep in ['. ', '; ', ', ']:
-            idx = last.rfind(sep)
-            if idx > len(last) // 3:  # only if reasonable break point
-                result[-1] = last[:idx + len(sep) - 1] + '...'
-                return result
-        # Otherwise just add ... to the end (word-wrapped, so it's at a word boundary)
-        result[-1] = last.rstrip() + '...'
-        return result
+        # Split into sentences (keep the delimiter attached)
+        sentences = _re.split(r'(?<=[.!?])\s+', text.strip())
+        if not sentences:
+            return all_lines[:max_n]
+        # Greedily add sentences until we exceed max_n lines
+        chosen = ''
+        for s in sentences:
+            candidate = (chosen + ' ' + s).strip() if chosen else s
+            wrapped = _wrap_text(draw, candidate, font, max_w)
+            if len(wrapped) <= max_n:
+                chosen = candidate
+            else:
+                break
+        # If we got at least one complete sentence, use it
+        if chosen:
+            return _wrap_text(draw, chosen, font, max_w)
+        # First sentence alone exceeds max_n lines — try first clause
+        first = sentences[0]
+        for delim in ['; ', ', ']:
+            parts = first.split(delim)
+            for k in range(len(parts), 0, -1):
+                fragment = delim.join(parts[:k])
+                if not fragment.endswith('.'):
+                    fragment += '.'
+                wrapped = _wrap_text(draw, fragment, font, max_w)
+                if len(wrapped) <= max_n:
+                    return wrapped
+        # Last resort: take max_n lines of the first sentence
+        return _wrap_text(draw, first, font, max_w)[:max_n]
 
     if mode == '1':
         M = 28
@@ -9950,7 +9975,7 @@ def _generate_analyst_brief_infographic(d, scorecard_data, mode, detail='full', 
         sum_font = fonts['summary']  # 22pt
         max_summary = 5 if detail != 'simple' else 2
         if summary:
-            sl = fit_lines(draw, summary, sum_font, W - M*2 - 28, max_summary)
+            sl = fit_sentences(draw, summary, sum_font, W - M*2 - 28, max_summary)
             LH_SUM = 30  # line height for 22pt
             sh = len(sl) * LH_SUM + 16
             rr(draw, [M, yc, W-M, yc+sh], fill=CARD_BG, outline=CARD_BORDER, rad=8)
@@ -9995,7 +10020,7 @@ def _generate_analyst_brief_infographic(d, scorecard_data, mode, detail='full', 
                 ty += 4
                 remaining_h = (yl + card_h - 10) - ty
                 max_desc = max(1, remaining_h // LH_BODY)
-                desc_lines = fit_lines(draw, pdesc, fonts['body'], COL_W - 56, max_desc)
+                desc_lines = fit_sentences(draw, pdesc, fonts['body'], COL_W - 56, max_desc)
                 for line in desc_lines:
                     if ty + LH_BODY > yl + card_h - 4:
                         break
@@ -10041,7 +10066,7 @@ def _generate_analyst_brief_infographic(d, scorecard_data, mode, detail='full', 
             draw.text((C2X+36, sy), tlines[0], font=fonts['bullet'], fill=TEXT_PRI)
             sy += LH_BULLET
             if det and sy + LH_BODY < yr + sp_card_h - 10:
-                dlines = fit_lines(draw, det, fonts['body'], COL_W - 54, sp_detail_lines)
+                dlines = fit_sentences(draw, det, fonts['body'], COL_W - 54, sp_detail_lines)
                 for dl in dlines:
                     draw.text((C2X+36, sy), dl, font=fonts['body'], fill=TEXT_MUTED)
                     sy += LH_BODY
@@ -10077,13 +10102,13 @@ def _generate_analyst_brief_infographic(d, scorecard_data, mode, detail='full', 
             dot_color = (30, 172, 95) if status == 'green' else (234, 179, 8) if status == 'yellow' else (220, 72, 60) if status == 'red' else RISK_DOT
             draw.ellipse([C3X+14, ry+6, C3X+28, ry+20], fill=dot_color)
             # Title — wrap up to 2 lines with clean truncation
-            tlines = fit_lines(draw, title, fonts['bullet'], COL_W - 54, 2)
+            tlines = fit_sentences(draw, title, fonts['bullet'], COL_W - 54, 2)
             for tl in tlines:
                 draw.text((C3X+36, ry), tl, font=fonts['bullet'], fill=TEXT_PRI)
                 ry += LH_BULLET
             # Trigger/detail text
             if det and show_rk_detail_text:
-                dlines = fit_lines(draw, det, fonts['body'], COL_W - 54, rk_detail_lines)
+                dlines = fit_sentences(draw, det, fonts['body'], COL_W - 54, rk_detail_lines)
                 for dl in dlines:
                     if ry + LH_BODY > yrk + rk_card_h - 10:
                         break
