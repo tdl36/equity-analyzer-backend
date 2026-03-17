@@ -6254,6 +6254,7 @@ def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slid
     parts.append(
         "CRITICAL RULES:\n"
         "- ALL text MUST be in English\n"
+        "- DO NOT use quotation marks around any text — no double quotes, no curly quotes, no single quotes for emphasis\n"
         "- DO NOT include any watermarks, AI generation notices, footer text, branding lines, or attribution text (e.g. no 'Financial Feature | Analysis | 2024' footers)\n"
         "- Use 16:9 widescreen aspect ratio\n"
         "- Include the ticker symbol prominently but do NOT add labels like 'Ticker Symbol' underneath it\n"
@@ -6330,6 +6331,35 @@ def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slid
                     parts.append("\nPresent each risk as a clean text list with the risk name. Use visual weight (font size, boldness) to show severity — no colored circles or emojis. Slide 3 of 3.")
 
     return "\n".join(parts)
+
+
+def _strip_quotes_from_data(d):
+    """Remove all quotation marks from text fields in the data dictionary."""
+    import copy
+    d = copy.deepcopy(d)
+    QUOTES = ['\u201c', '\u201d', '\u2018', '\u2019', '"']
+    def strip_q(text):
+        if not isinstance(text, str):
+            return text
+        for q in QUOTES:
+            text = text.replace(q, '')
+        return text
+    if d.get('thesis') and isinstance(d['thesis'], dict):
+        d['thesis']['summary'] = strip_q(d['thesis'].get('summary', ''))
+        for p in d['thesis'].get('pillars', []):
+            for k in ('pillar', 'title', 'detail', 'description'):
+                if k in p:
+                    p[k] = strip_q(p[k])
+    d['conclusion'] = strip_q(d.get('conclusion', ''))
+    for sp in d.get('signposts', []):
+        for k in ('metric', 'signpost', 'target', 'timeframe'):
+            if k in sp:
+                sp[k] = strip_q(sp[k])
+    for t in d.get('threats', []):
+        for k in ('threat', 'triggerPoints'):
+            if k in t:
+                t[k] = strip_q(t[k])
+    return d
 
 
 def _apply_pillow_edit(d, edit_prompt):
@@ -6424,6 +6454,9 @@ def _run_thesis_infographic(job_id, d, scorecard_data, style_key, mode, gemini_k
             print(f"Failed to load template {template_id}: {e}")
 
     try:
+        # Strip quotation marks from all text fields (per user preference)
+        d = _strip_quotes_from_data(d)
+
         if engine == 'pillow':
             # Deterministic Pillow rendering — no Gemini API needed
             job['current'] = 1
@@ -9948,8 +9981,13 @@ def _generate_analyst_brief_infographic(d, scorecard_data, mode, detail='full', 
     pillars = _build_pillar_data(thesis, scorecard_data)
 
     def ue(text):
-        """Unescape HTML entities."""
-        return _html.unescape(text) if text else text
+        """Unescape HTML entities and strip quotation marks."""
+        if not text:
+            return text
+        text = _html.unescape(text)
+        for ch in ['\u201c', '\u201d', '\u2018', '\u2019', '"']:
+            text = text.replace(ch, '')
+        return text
 
     # -- Color palette --
     BG           = (242, 243, 247)
