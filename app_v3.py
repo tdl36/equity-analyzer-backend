@@ -937,6 +937,7 @@ def init_db():
                 )
             ''')
             cur.execute('CREATE INDEX IF NOT EXISTS idx_infographic_history_ticker ON thesis_infographic_history(ticker)')
+            cur.execute("ALTER TABLE thesis_infographic_history ADD COLUMN IF NOT EXISTS color_scheme VARCHAR(50) DEFAULT 'default'")
 
             # Infographic templates (saved favorites for reuse across tickers)
             cur.execute('''
@@ -6409,13 +6410,13 @@ def _run_thesis_infographic(job_id, d, scorecard_data, style_key, mode, gemini_k
             with get_db(commit=True) as (conn, cur):
                 cur.execute('''
                     INSERT INTO thesis_infographic_history
-                    (ticker, mode, detail, style, slide_images, edit_prompt, parent_id)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    (ticker, mode, detail, style, slide_images, edit_prompt, parent_id, color_scheme)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                 ''', (
                     job['ticker'], job['mode'], job.get('detail', 'full'),
                     job['style'], json.dumps(job['images']),
-                    edit_prompt, parent_id
+                    edit_prompt, parent_id, job.get('color_scheme', 'default')
                 ))
                 job['saved_id'] = cur.fetchone()['id']
         except Exception as e:
@@ -6441,7 +6442,13 @@ def start_thesis_infographic():
         color_scheme = data.get('colorScheme', 'default')
         include_company = data.get('includeCompanyName', False)
         template_id = data.get('templateId')
-        thesis_tier = _resolve_thesis_tier(data)
+
+        # Map detail level to thesis tier: Full Detail→detailed, Summary→full, Simple→condensed
+        detail_to_tier = {'full': 'detailed', 'summary': 'full', 'simple': 'condensed'}
+        thesis_tier = detail_to_tier.get(detail, 'detailed')
+        # Allow explicit override if provided
+        if data.get('thesisTier'):
+            thesis_tier = data['thesisTier']
 
         # If template specified, load its params as defaults
         if template_id:
@@ -6506,6 +6513,7 @@ def start_thesis_infographic():
             'mode': mode,
             'detail': detail,
             'style': style,
+            'color_scheme': color_scheme,
             'progress': 0,
             'current': 0,
             'total': total,
@@ -6574,7 +6582,7 @@ def get_infographic_history(ticker):
     try:
         with get_db() as (_, cur):
             cur.execute('''
-                SELECT id, ticker, mode, detail, style, edit_prompt, parent_id, created_at,
+                SELECT id, ticker, mode, detail, style, color_scheme, edit_prompt, parent_id, created_at,
                        jsonb_array_length(slide_images) as image_count
                 FROM thesis_infographic_history
                 WHERE ticker = %s
@@ -6587,6 +6595,7 @@ def get_infographic_history(ticker):
             'mode': r['mode'],
             'detail': r['detail'],
             'style': r['style'],
+            'colorScheme': r.get('color_scheme', 'default'),
             'editPrompt': r['edit_prompt'],
             'parentId': r['parent_id'],
             'imageCount': r['image_count'],
@@ -6602,7 +6611,7 @@ def get_infographic_history_images(history_id):
     try:
         with get_db() as (_, cur):
             cur.execute('''
-                SELECT id, ticker, mode, detail, style, slide_images, edit_prompt, parent_id, created_at
+                SELECT id, ticker, mode, detail, style, color_scheme, slide_images, edit_prompt, parent_id, created_at
                 FROM thesis_infographic_history WHERE id = %s
             ''', (history_id,))
             row = cur.fetchone()
@@ -6683,7 +6692,7 @@ def save_infographic_template():
                 (name, mode, detail, style, color_scheme, reference_image, source_ticker)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
-            ''', (name, hist['mode'], hist['detail'], hist['style'], 'default', ref_image, hist['ticker']))
+            ''', (name, hist['mode'], hist['detail'], hist['style'], hist.get('color_scheme', 'default') or 'default', ref_image, hist['ticker']))
             new_id = cur.fetchone()['id']
         return jsonify({'id': new_id, 'success': True})
     except Exception as e:
@@ -6728,6 +6737,11 @@ def edit_thesis_infographic():
         mode = parent['mode']
         detail_level = parent['detail']
         style_key = parent['style']
+        color_scheme = parent.get('color_scheme', 'default') or 'default'
+
+        # Map detail level to thesis tier for data sourcing
+        detail_to_tier = {'full': 'detailed', 'summary': 'full', 'simple': 'condensed'}
+        thesis_tier = detail_to_tier.get(detail_level, 'detailed')
 
         # Fetch analysis data
         with get_db() as (_, cur):
@@ -6748,7 +6762,12 @@ def edit_thesis_infographic():
                 except:
                     scorecard_data = None
 
-        d = _parse_analysis_data(dict(row))
+        row_dict = dict(row)
+        try:
+            _overlay_thesis_tier(row_dict, thesis_tier)
+        except Exception as ce:
+            print(f"Edit thesis tier overlay warning: {ce}")
+        d = _parse_analysis_data(row_dict)
         total = 1 if mode == '1' else 3
         job_id = f"infog_edit_{ticker}_{int(time.time()*1000)}"
 
@@ -6758,6 +6777,7 @@ def edit_thesis_infographic():
             'mode': mode,
             'detail': detail_level,
             'style': style_key,
+            'color_scheme': color_scheme,
             'progress': 0,
             'current': 0,
             'total': total,
@@ -6770,6 +6790,7 @@ def edit_thesis_infographic():
         t = threading.Thread(
             target=_run_thesis_infographic,
             args=(job_id, d, scorecard_data, style_key, mode, gemini_key, detail_level, edit_prompt, parent_id),
+            kwargs={'color_scheme': color_scheme},
             daemon=True
         )
         t.start()
