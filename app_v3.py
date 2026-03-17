@@ -6332,6 +6332,78 @@ def _build_thesis_infographic_prompt(d, scorecard_data, style_prompt, mode, slid
     return "\n".join(parts)
 
 
+def _apply_pillow_edit(d, edit_prompt):
+    """Apply text edits from a prompt to the data dictionary for Pillow re-rendering.
+
+    Supports:
+      - "remove X" / "delete X" → removes X from all text fields
+      - "change X to Y" / "replace X with Y" → substitutes X→Y in all text fields
+      - Direct find→replace pairs separated by newlines
+    """
+    import re as _re
+    if not edit_prompt or not edit_prompt.strip():
+        return d
+
+    # Collect all substitution pairs: (old, new)
+    subs = []
+    for line in edit_prompt.strip().split('\n'):
+        line = line.strip()
+        if not line:
+            continue
+        # "remove X" / "delete X"
+        m = _re.match(r'^(?:remove|delete)\s+["\']?(.+?)["\']?\s*$', line, _re.IGNORECASE)
+        if m:
+            subs.append((m.group(1), ''))
+            continue
+        # "change X to Y" / "replace X with Y"
+        m = _re.match(r'^(?:change|replace)\s+["\']?(.+?)["\']?\s+(?:to|with)\s+["\']?(.+?)["\']?\s*$', line, _re.IGNORECASE)
+        if m:
+            subs.append((m.group(1), m.group(2)))
+            continue
+        # "X -> Y" or "X → Y"
+        for arrow in [' -> ', ' → ', '→', '->']:
+            if arrow in line:
+                parts = line.split(arrow, 1)
+                if len(parts) == 2 and parts[0].strip():
+                    subs.append((parts[0].strip().strip('"\''), parts[1].strip().strip('"\'')))
+                break
+
+    if not subs:
+        # Treat entire prompt as a single removal if short, otherwise skip
+        if len(edit_prompt.strip()) < 60:
+            subs.append((edit_prompt.strip(), ''))
+        else:
+            return d
+
+    def apply_subs(text):
+        if not isinstance(text, str):
+            return text
+        for old, new in subs:
+            text = text.replace(old, new)
+        return text
+
+    # Apply to all text fields in the data dictionary
+    import copy
+    d = copy.deepcopy(d)
+    if d.get('thesis'):
+        if isinstance(d['thesis'], dict):
+            d['thesis']['summary'] = apply_subs(d['thesis'].get('summary', ''))
+            for p in d['thesis'].get('pillars', []):
+                for k in ('pillar', 'title', 'detail', 'description'):
+                    if k in p:
+                        p[k] = apply_subs(p[k])
+    d['conclusion'] = apply_subs(d.get('conclusion', ''))
+    for sp in d.get('signposts', []):
+        for k in ('metric', 'signpost', 'target', 'timeframe'):
+            if k in sp:
+                sp[k] = apply_subs(sp[k])
+    for t in d.get('threats', []):
+        for k in ('threat', 'triggerPoints'):
+            if k in t:
+                t[k] = apply_subs(t[k])
+    return d
+
+
 def _run_thesis_infographic(job_id, d, scorecard_data, style_key, mode, gemini_key, detail='full', edit_prompt=None, parent_id=None, show_risk_detail=False, color_scheme=None, include_company=False, template_id=None):
     """Background worker to generate thesis infographic images via Gemini or Pillow."""
     import time as _time
@@ -6356,6 +6428,9 @@ def _run_thesis_infographic(job_id, d, scorecard_data, style_key, mode, gemini_k
             # Deterministic Pillow rendering — no Gemini API needed
             job['current'] = 1
             job['progress'] = 50
+            # Apply text edits if provided (quick fix for Pillow infographics)
+            if edit_prompt:
+                d = _apply_pillow_edit(d, edit_prompt)
             pillow_renderers = {
                 'precision': _generate_precision_infographic,
                 'analyst_brief': _generate_analyst_brief_infographic,
@@ -6723,8 +6798,6 @@ def edit_thesis_infographic():
             return jsonify({'error': 'parentId required'}), 400
         if not edit_prompt:
             return jsonify({'error': 'editPrompt required'}), 400
-        if not gemini_key:
-            return jsonify({'error': 'Gemini API key required'}), 400
 
         # Fetch parent version
         with get_db() as (_, cur):
@@ -6732,6 +6805,12 @@ def edit_thesis_infographic():
             parent = cur.fetchone()
         if not parent:
             return jsonify({'error': 'Parent version not found'}), 404
+
+        # Check if Gemini key is needed (not required for Pillow-based styles)
+        style_key_parent = parent['style']
+        parent_engine = THESIS_INFOGRAPHIC_STYLES.get(style_key_parent, {}).get('engine', 'gemini')
+        if parent_engine != 'pillow' and not gemini_key:
+            return jsonify({'error': 'Gemini API key required for this style'}), 400
 
         ticker = parent['ticker']
         mode = parent['mode']
