@@ -6536,114 +6536,197 @@ def _run_thesis_infographic(job_id, d, scorecard_data, style_key, mode, gemini_k
         job['status'] = 'error'
 
 
+def _resolve_infographic_params(mode, detail, style, gemini_key, color_scheme,
+                                show_risk_detail, include_company, template_id,
+                                thesis_tier_override=None):
+    """Resolve infographic params, applying template overrides if needed.
+    Returns (mode, detail, style, gemini_key, color_scheme, show_risk_detail, include_company, thesis_tier, error_msg)."""
+    # If template specified, load its params as defaults
+    if template_id:
+        try:
+            with get_db() as (_, cur):
+                cur.execute('SELECT mode, detail, style, color_scheme, show_risk_detail, include_company FROM thesis_infographic_templates WHERE id = %s', (template_id,))
+                tpl = cur.fetchone()
+                if tpl:
+                    mode = tpl['mode']
+                    detail = tpl['detail']
+                    style = tpl['style']
+                    color_scheme = tpl['color_scheme'] or 'default'
+                    show_risk_detail = tpl['show_risk_detail'] or False
+                    include_company = tpl['include_company'] or False
+        except Exception as e:
+            print(f"Template load warning: {e}")
+
+    if style not in THESIS_INFOGRAPHIC_STYLES:
+        return None, None, None, None, None, None, None, None, f'Unknown style: {style}'
+    style_def = THESIS_INFOGRAPHIC_STYLES[style]
+    engine = style_def.get('engine', 'gemini')
+    if engine != 'pillow' and not gemini_key:
+        return None, None, None, None, None, None, None, None, 'Gemini API key required for infographic generation'
+
+    # Map detail level to thesis tier
+    detail_to_tier = {'full': 'detailed', 'summary': 'full', 'simple': 'condensed'}
+    thesis_tier = thesis_tier_override or detail_to_tier.get(detail, 'detailed')
+
+    return mode, detail, style, gemini_key, color_scheme, show_risk_detail, include_company, thesis_tier, None
+
+
+def _launch_infographic_job(ticker, mode, detail, style, gemini_key, color_scheme,
+                            show_risk_detail, include_company, thesis_tier, template_id=None):
+    """Fetch data and launch a single infographic job for a ticker.
+    Returns (job_id, total, error_msg). On error, job_id is None."""
+    import threading
+
+    # Fetch analysis
+    with get_db() as (_, cur):
+        cur.execute('SELECT * FROM portfolio_analyses WHERE ticker = %s', (ticker,))
+        row = cur.fetchone()
+    if not row:
+        return None, 0, f'No analysis found for {ticker}'
+
+    # Fetch scorecard data
+    scorecard_data = None
+    with get_db() as (_, cur):
+        cur.execute('SELECT scorecard_data FROM thesis_scorecard_data WHERE ticker = %s', (ticker,))
+        sc_row = cur.fetchone()
+    if sc_row:
+        scorecard_data = sc_row['scorecard_data']
+        if isinstance(scorecard_data, str):
+            try:
+                scorecard_data = json.loads(scorecard_data)
+            except:
+                scorecard_data = None
+
+    row_dict = dict(row)
+
+    # Overlay thesis tier data if not detailed
+    try:
+        _overlay_thesis_tier(row_dict, thesis_tier)
+    except Exception as ce:
+        print(f"Thesis tier overlay warning: {ce}")
+
+    d = _parse_analysis_data(row_dict)
+    total = 1 if mode == '1' else 3
+    job_id = f"infog_{ticker}_{int(time.time()*1000)}"
+
+    _infographic_jobs[job_id] = {
+        'status': 'running',
+        'ticker': ticker,
+        'mode': mode,
+        'detail': detail,
+        'style': style,
+        'color_scheme': color_scheme,
+        'progress': 0,
+        'current': 0,
+        'total': total,
+        'images': [],
+        'error': None,
+        'created_at': time.time(),
+    }
+
+    t = threading.Thread(
+        target=_run_thesis_infographic,
+        args=(job_id, d, scorecard_data, style, mode, gemini_key, detail),
+        kwargs={'show_risk_detail': show_risk_detail, 'color_scheme': color_scheme, 'include_company': include_company, 'template_id': template_id},
+        daemon=True
+    )
+    t.start()
+    return job_id, total, None
+
+
 @app.route('/api/thesis-format/infographic', methods=['POST'])
 def start_thesis_infographic():
     """Start async thesis infographic generation."""
     try:
         data = request.get_json()
         ticker = data.get('ticker', '').upper()
-        mode = data.get('mode', '1')  # '1' or '3'
-        detail = data.get('detail', 'full')  # 'full', 'summary', or 'simple'
-        style = data.get('style', 'professional')
-        gemini_key = data.get('geminiApiKey', '')
-        show_risk_detail = data.get('showRiskDetail', False)
-        color_scheme = data.get('colorScheme', 'default')
-        include_company = data.get('includeCompanyName', False)
-        template_id = data.get('templateId')
-
-        # Map detail level to thesis tier: Full Detail→detailed, Summary→full, Simple→condensed
-        detail_to_tier = {'full': 'detailed', 'summary': 'full', 'simple': 'condensed'}
-        thesis_tier = detail_to_tier.get(detail, 'detailed')
-        # Allow explicit override if provided
-        if data.get('thesisTier'):
-            thesis_tier = data['thesisTier']
-
-        # If template specified, load its params as defaults
-        if template_id:
-            try:
-                with get_db() as (_, cur):
-                    cur.execute('SELECT mode, detail, style, color_scheme, show_risk_detail, include_company FROM thesis_infographic_templates WHERE id = %s', (template_id,))
-                    tpl = cur.fetchone()
-                    if tpl:
-                        mode = tpl['mode']
-                        detail = tpl['detail']
-                        style = tpl['style']
-                        color_scheme = tpl['color_scheme'] or 'default'
-                        show_risk_detail = tpl['show_risk_detail'] or False
-                        include_company = tpl['include_company'] or False
-            except Exception as e:
-                print(f"Template load warning: {e}")
-
         if not ticker:
             return jsonify({'error': 'No ticker provided'}), 400
-        if style not in THESIS_INFOGRAPHIC_STYLES:
-            return jsonify({'error': f'Unknown style: {style}'}), 400
-        style_def = THESIS_INFOGRAPHIC_STYLES[style]
-        engine = style_def.get('engine', 'gemini')
-        if engine != 'pillow' and not gemini_key:
-            return jsonify({'error': 'Gemini API key required for infographic generation'}), 400
 
-        # Fetch analysis
-        with get_db() as (_, cur):
-            cur.execute('SELECT * FROM portfolio_analyses WHERE ticker = %s', (ticker,))
-            row = cur.fetchone()
-        if not row:
-            return jsonify({'error': 'No analysis found for this ticker'}), 404
+        mode, detail, style, gemini_key, color_scheme, show_risk_detail, include_company, thesis_tier, err = \
+            _resolve_infographic_params(
+                data.get('mode', '1'), data.get('detail', 'full'), data.get('style', 'professional'),
+                data.get('geminiApiKey', ''), data.get('colorScheme', 'default'),
+                data.get('showRiskDetail', False), data.get('includeCompanyName', False),
+                data.get('templateId'), thesis_tier_override=data.get('thesisTier'))
+        if err:
+            return jsonify({'error': err}), 400
 
-        # Fetch scorecard data
-        scorecard_data = None
-        with get_db() as (_, cur):
-            cur.execute('SELECT scorecard_data FROM thesis_scorecard_data WHERE ticker = %s', (ticker,))
-            sc_row = cur.fetchone()
-        if sc_row:
-            scorecard_data = sc_row['scorecard_data']
-            if isinstance(scorecard_data, str):
-                try:
-                    scorecard_data = json.loads(scorecard_data)
-                except:
-                    scorecard_data = None
-
-        row_dict = dict(row)
-
-        # Overlay thesis tier data if not detailed
-        try:
-            _overlay_thesis_tier(row_dict, thesis_tier)
-        except Exception as ce:
-            print(f"Thesis tier overlay warning: {ce}")
-
-        d = _parse_analysis_data(row_dict)
-        total = 1 if mode == '1' else 3
-        job_id = f"infog_{ticker}_{int(time.time()*1000)}"
-
-        _infographic_jobs[job_id] = {
-            'status': 'running',
-            'ticker': ticker,
-            'mode': mode,
-            'detail': detail,
-            'style': style,
-            'color_scheme': color_scheme,
-            'progress': 0,
-            'current': 0,
-            'total': total,
-            'images': [],
-            'error': None,
-            'created_at': time.time(),
-        }
-
-        # Spawn background thread
-        import threading
-        t = threading.Thread(
-            target=_run_thesis_infographic,
-            args=(job_id, d, scorecard_data, style, mode, gemini_key, detail),
-            kwargs={'show_risk_detail': show_risk_detail, 'color_scheme': color_scheme, 'include_company': include_company, 'template_id': template_id},
-            daemon=True
-        )
-        t.start()
+        job_id, total, launch_err = _launch_infographic_job(
+            ticker, mode, detail, style, gemini_key, color_scheme,
+            show_risk_detail, include_company, thesis_tier, template_id=data.get('templateId'))
+        if launch_err:
+            return jsonify({'error': launch_err}), 404
 
         return jsonify({'jobId': job_id, 'total': total})
     except Exception as e:
         print(f"Error starting infographic: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/thesis-format/infographic/batch', methods=['POST'])
+def start_thesis_infographic_batch():
+    """Start batch infographic generation for multiple tickers."""
+    try:
+        data = request.get_json()
+        tickers = data.get('tickers', [])
+        if not tickers:
+            return jsonify({'error': 'No tickers provided'}), 400
+        if len(tickers) > 30:
+            return jsonify({'error': 'Maximum 30 tickers per batch'}), 400
+
+        mode, detail, style, gemini_key, color_scheme, show_risk_detail, include_company, thesis_tier, err = \
+            _resolve_infographic_params(
+                data.get('mode', '1'), data.get('detail', 'full'), data.get('style', 'professional'),
+                data.get('geminiApiKey', ''), data.get('colorScheme', 'default'),
+                data.get('showRiskDetail', False), data.get('includeCompanyName', False),
+                data.get('templateId'), thesis_tier_override=data.get('thesisTier'))
+        if err:
+            return jsonify({'error': err}), 400
+
+        job_ids = {}
+        errors = {}
+        for t in tickers:
+            tk = t.upper().strip()
+            if not tk:
+                continue
+            job_id, total, launch_err = _launch_infographic_job(
+                tk, mode, detail, style, gemini_key, color_scheme,
+                show_risk_detail, include_company, thesis_tier, template_id=data.get('templateId'))
+            if launch_err:
+                errors[tk] = launch_err
+            else:
+                job_ids[tk] = job_id
+
+        return jsonify({'jobIds': job_ids, 'errors': errors})
+    except Exception as e:
+        print(f"Error starting batch infographic: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/thesis-format/infographic/batch-status', methods=['POST'])
+def poll_thesis_infographic_batch():
+    """Poll status of multiple infographic generation jobs."""
+    data = request.get_json()
+    job_ids = data.get('jobIds', {})  # {TICKER: job_id, ...}
+
+    results = {}
+    for ticker, job_id in job_ids.items():
+        job = _infographic_jobs.get(job_id)
+        if not job:
+            results[ticker] = {'status': 'not_found'}
+            continue
+        results[ticker] = {
+            'status': job['status'],
+            'progress': job['progress'],
+            'error': job.get('error'),
+        }
+        if job['status'] == 'done':
+            results[ticker]['images'] = job['images']
+            if job.get('saved_id'):
+                results[ticker]['savedId'] = job['saved_id']
+
+    return jsonify(results)
 
 
 @app.route('/api/thesis-format/infographic/<job_id>', methods=['GET'])
