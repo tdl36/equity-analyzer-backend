@@ -4622,9 +4622,27 @@ def _fmt_escape(text):
     return str(text).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
 
+def _normalize_status(status):
+    """Convert numeric score (1-10) or legacy color to canonical green/yellow/red."""
+    s = (status or '').strip().lower()
+    if s in ('green', 'yellow', 'red'):
+        return s
+    try:
+        n = int(s)
+    except (ValueError, TypeError):
+        return ''
+    if n >= 7:
+        return 'green'
+    elif n >= 4:
+        return 'yellow'
+    elif n >= 1:
+        return 'red'
+    return ''
+
+
 def _status_color(status):
     """Return CSS color for a traffic-light status."""
-    s = (status or '').lower()
+    s = _normalize_status(status)
     if s == 'green':
         return '#16a34a'
     elif s == 'yellow':
@@ -4636,7 +4654,7 @@ def _status_color(status):
 
 def _status_bg(status):
     """Return CSS background for a traffic-light status."""
-    s = (status or '').lower()
+    s = _normalize_status(status)
     if s == 'green':
         return '#dcfce7'
     elif s == 'yellow':
@@ -4822,14 +4840,14 @@ def _tally_statuses(scorecard_data):
     for sp in scorecard_data.get('signposts', []):
         if sp.get('included') is False:
             continue
-        s = (sp.get('status', '') or '').lower()
+        s = _normalize_status(sp.get('status', ''))
         if s == 'green': g += 1
         elif s == 'yellow': y += 1
         elif s == 'red': r += 1
     for rk in scorecard_data.get('risks', []):
         if rk.get('included') is False:
             continue
-        s = (rk.get('status', '') or '').lower()
+        s = _normalize_status(rk.get('status', ''))
         if s == 'green': g += 1
         elif s == 'yellow': y += 1
         elif s == 'red': r += 1
@@ -4933,7 +4951,7 @@ def _generate_scorecard_pdf(row, scorecard_data=None):
 
     def _tl_cell(color_name, desc, current):
         """Render a G/Y/R threshold cell, highlighted if active."""
-        is_active = (current or '').lower() == color_name
+        is_active = _normalize_status(current) == color_name
         if is_active:
             return f'<td style="padding:6px 8px;border:1px solid #d1d5db;background:{_status_bg(color_name)};text-align:center;font-size:8pt;font-weight:bold;color:{_status_color(color_name)};width:14%;">{desc if desc else color_name.upper()}</td>'
         return f'<td style="padding:6px 8px;border:1px solid #d1d5db;text-align:center;font-size:8pt;color:#94a3b8;width:14%;">{desc if desc else ""}</td>'
@@ -4948,7 +4966,8 @@ def _generate_scorecard_pdf(row, scorecard_data=None):
     risk_rows = ''
     for r in rk_data:
         st = r['status'] or ''
-        st_display = r['statusNote'] if r['statusNote'] else (st.upper() if st else '—')
+        norm_st = _normalize_status(st)
+        st_display = r['statusNote'] if r['statusNote'] else (norm_st.upper() if norm_st else '—')
         st_bg = _status_bg(st) if st else '#f8fafc'
         st_color = _status_color(st) if st else '#94a3b8'
         risk_rows += f'<tr><td style="padding:7px 10px;border:1px solid #d1d5db;font-weight:600;color:#1e293b;font-size:9.5pt;width:22%;">{r["threat"]}</td><td style="padding:7px 10px;border:1px solid #d1d5db;text-align:center;background:{st_bg};color:{st_color};font-weight:bold;font-size:9pt;width:16%;">{st_display}</td>{_tl_cell("green", r["green"], st)}{_tl_cell("yellow", r["yellow"], st)}{_tl_cell("red", r["red"], st)}</tr>'
@@ -5227,7 +5246,7 @@ def _generate_risk_focus_pdf(row, scorecard_data=None):
 
     def _tl_cell_rf(color_name, desc, current):
         """Render a G/Y/R threshold cell for risk focus template."""
-        is_active = (current or '').lower() == color_name
+        is_active = _normalize_status(current) == color_name
         if is_active:
             return f'<td style="padding:6px 8px;border:1px solid #d1d5db;background:{_status_bg(color_name)};text-align:center;font-size:8pt;font-weight:bold;color:{_status_color(color_name)};width:14%;">{desc if desc else color_name.upper()}</td>'
         return f'<td style="padding:6px 8px;border:1px solid #d1d5db;text-align:center;font-size:8pt;color:#94a3b8;width:14%;">{desc if desc else ""}</td>'
@@ -5236,7 +5255,8 @@ def _generate_risk_focus_pdf(row, scorecard_data=None):
     risk_rows = ''
     for rk in rk_data:
         st = rk['status'] or ''
-        st_display = rk['statusNote'] if rk['statusNote'] else (st.upper() if st else '—')
+        norm_st = _normalize_status(st)
+        st_display = rk['statusNote'] if rk['statusNote'] else (norm_st.upper() if norm_st else '—')
         st_bg = _status_bg(st) if st else '#f8fafc'
         st_color = _status_color(st) if st else '#94a3b8'
         risk_rows += f'<tr><td style="padding:7px 10px;border:1px solid #d1d5db;font-weight:600;color:#1e293b;font-size:9.5pt;width:22%;">{rk["threat"]}</td><td style="padding:7px 10px;border:1px solid #d1d5db;text-align:center;background:{st_bg};color:{st_color};font-weight:bold;font-size:9pt;width:16%;">{st_display}</td>{_tl_cell_rf("green", rk["green"], st)}{_tl_cell_rf("yellow", rk["yellow"], st)}{_tl_cell_rf("red", rk["red"], st)}</tr>'
@@ -5275,7 +5295,7 @@ def _generate_risk_focus_pdf(row, scorecard_data=None):
 def _pptx_status_color(status):
     """Return RGBColor for a status string."""
     from pptx.dml.color import RGBColor
-    s = (status or '').lower()
+    s = _normalize_status(status)
     if s == 'green': return RGBColor(0x16, 0xA3, 0x4A)
     elif s == 'yellow': return RGBColor(0xCA, 0x8A, 0x04)
     elif s == 'red': return RGBColor(0xDC, 0x26, 0x26)
@@ -5284,7 +5304,7 @@ def _pptx_status_color(status):
 def _pptx_status_bg(status):
     """Return RGBColor background for a status cell."""
     from pptx.dml.color import RGBColor
-    s = (status or '').lower()
+    s = _normalize_status(status)
     if s == 'green': return RGBColor(0xDC, 0xFC, 0xE7)
     elif s == 'yellow': return RGBColor(0xFE, 0xF9, 0xC3)
     elif s == 'red': return RGBColor(0xFE, 0xE2, 0xE2)
@@ -10280,7 +10300,7 @@ def _generate_analyst_brief_infographic(d, scorecard_data, mode, detail='full', 
             title, det = sp_rich[idx]
             if sy + LH_BULLET > yr + sp_card_h - 10:
                 break
-            status = sp_data[idx].get('status', '')
+            status = _normalize_status(sp_data[idx].get('status', ''))
             dot_color = (30, 172, 95) if status == 'green' else (234, 179, 8) if status == 'yellow' else (220, 72, 60) if status == 'red' else SP_DOT
             draw.ellipse([C2X+14, sy+6, C2X+28, sy+20], fill=dot_color)
             tlines = _wrap_text(draw, title, fonts['bullet'], COL_W - 54)
@@ -10319,7 +10339,7 @@ def _generate_analyst_brief_infographic(d, scorecard_data, mode, detail='full', 
             title, det = rk_rich[idx]
             if ry + LH_BULLET > yrk + rk_card_h - 10:
                 break
-            status = rk_data[idx].get('status', '')
+            status = _normalize_status(rk_data[idx].get('status', ''))
             dot_color = (30, 172, 95) if status == 'green' else (234, 179, 8) if status == 'yellow' else (220, 72, 60) if status == 'red' else RISK_DOT
             draw.ellipse([C3X+14, ry+6, C3X+28, ry+20], fill=dot_color)
             # Title — wrap up to 2 lines with clean truncation
