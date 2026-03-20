@@ -1439,6 +1439,9 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
                     if not analysis_data.get('documentHistory'):
                         analysis_data['documentHistory'] = old_analysis.get('documentHistory') or []
                 analysis_data['updatedAt'] = datetime.utcnow().isoformat()
+                # Inject company + ticker into analysis JSON (frontend reads from here)
+                analysis_data['company'] = company
+                analysis_data['ticker'] = ticker
 
                 with get_db(commit=True) as (conn, cur):
                     cur.execute('''
