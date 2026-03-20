@@ -5288,6 +5288,376 @@ def _generate_risk_focus_pdf(row, scorecard_data=None):
     return buf.getvalue()
 
 
+def _generate_catalyst_timeline_pdf(row, scorecard_data=None):
+    """Catalyst Timeline — visual timeline of upcoming catalysts derived from signpost timeframes."""
+    from xhtml2pdf import pisa
+    d = _parse_analysis_data(row)
+    ticker, company, date_str = d['ticker'], d['company'], d['date_str']
+    thesis, signposts, threats, conclusion = d['thesis'], d['signposts'], d['threats'], d['conclusion']
+    is_condensed = d.get('_condensed', False)
+    sp_data = _build_signpost_data(signposts, scorecard_data)
+    rk_data = _build_risk_data(threats, scorecard_data)
+
+    # Thesis summary box
+    thesis_html = f'<table style="border:1px solid #99f6e4;margin-bottom:18px;"><tr><td style="padding:10px 16px;background:#f0fdfa;"><b style="color:#0d9488;font-size:9pt;">INVESTMENT THESIS:</b> <span style="color:#334155;font-size:9.5pt;">{_fmt_escape(thesis.get("summary", ""))}</span></td></tr></table>'
+
+    # Sort signposts by timeframe for timeline grouping
+    tf_order = {'near-term': 0, 'q1': 1, 'q2': 2, 'q3': 3, 'q4': 4, 'h1': 5, 'h2': 6, '1 year': 7, '2 year': 8, '3 year': 9, 'long-term': 10}
+    def _tf_sort_key(s):
+        tf_lower = (s.get('timeframe') or '').strip().lower()
+        for k, v in tf_order.items():
+            if k in tf_lower:
+                return v
+        return 50
+    sorted_sp = sorted(sp_data, key=_tf_sort_key)
+
+    # Build timeline entries
+    timeline_rows = ''
+    for s in sorted_sp:
+        st = s['status'] or ''
+        st_bg = _status_bg(st) if st else '#f0fdfa'
+        st_color = _status_color(st) if st else '#94a3b8'
+        norm_st = _normalize_status(st)
+        st_label = norm_st.upper() if norm_st else '—'
+        tf_display = s['timeframe'] if s['timeframe'] else '—'
+        latest_display = s['latest'] if s['latest'] else '—'
+        timeline_rows += f'<tr style="page-break-inside:avoid;"><td style="padding:10px 14px;border:1px solid #e2e8f0;background:#f0fdfa;text-align:center;vertical-align:top;width:22%;"><b style="color:#0d9488;font-size:9.5pt;">{tf_display}</b></td><td style="padding:10px 14px;border:1px solid #e2e8f0;width:50%;"><b style="color:#0f172a;font-size:9.5pt;">{s["metric"]}</b><br/><span style="color:#64748b;font-size:8.5pt;">Target: {s["target"]}</span></td><td style="padding:10px 14px;border:1px solid #e2e8f0;text-align:center;width:13%;"><span style="color:#0f172a;font-weight:bold;font-size:9pt;">{latest_display}</span></td><td style="padding:10px 14px;border:1px solid #e2e8f0;text-align:center;background:{st_bg};width:15%;"><b style="color:{st_color};font-size:8.5pt;">{st_label}</b></td></tr>'
+
+    # Risk watchlist — compact
+    risk_rows = ''
+    for rk in rk_data:
+        st = rk['status'] or ''
+        st_bg = _status_bg(st) if st else '#ffffff'
+        st_color = _status_color(st) if st else '#94a3b8'
+        norm_st = _normalize_status(st)
+        st_label = rk['statusNote'] if rk['statusNote'] else (norm_st.upper() if norm_st else '—')
+        risk_rows += f'<tr><td style="padding:6px 12px;border:1px solid #e2e8f0;font-weight:600;color:#1e293b;font-size:9pt;width:60%;">{rk["threat"]}</td><td style="padding:6px 12px;border:1px solid #e2e8f0;text-align:center;background:{st_bg};color:{st_color};font-weight:bold;font-size:8.5pt;width:20%;">{st_label}</td><td style="padding:6px 12px;border:1px solid #e2e8f0;color:#64748b;font-size:8pt;width:20%;">{rk["triggers"][:50] + "..." if len(rk["triggers"]) > 50 else rk["triggers"]}</td></tr>'
+
+    html = f"""<html><head><style>
+        @page {{ margin: 0.65in 0.7in; size: letter; }}
+        body {{ font-family: Calibri, Arial, sans-serif; font-size: 10pt; color: #1e293b; line-height: 1.45; }}
+        table {{ border-collapse: collapse; width: 100%; }}
+        tr {{ page-break-inside: avoid; }}
+    </style></head><body>
+        <table style="margin-bottom:14px;"><tr>
+            <td style="background:#0d9488;padding:18px 24px;width:60%;"><span style="font-size:26pt;font-weight:bold;color:#ffffff;">{_fmt_escape(ticker)}</span><br/><span style="font-size:11pt;color:#ccfbf1;">{_fmt_escape(company)}</span></td>
+            <td style="background:#0d9488;padding:18px 24px;text-align:right;vertical-align:bottom;width:40%;"><span style="font-size:8pt;color:#ccfbf1;">CATALYST TIMELINE | {date_str}</span></td>
+        </tr></table>
+
+        {thesis_html}
+
+        {'<table style="margin-bottom:8px;"><tr><td style="background:#134e4a;padding:8px 16px;width:100%;"><b style="color:#ffffff;font-size:10pt;letter-spacing:1px;">CATALYST TIMELINE</b></td></tr></table><table style="border:1px solid #e2e8f0;margin-bottom:20px;"><thead><tr style="background:#f0fdfa;"><th style="padding:8px 14px;text-align:center;font-size:8pt;color:#0d9488;font-weight:700;border:1px solid #e2e8f0;width:22%;">TIMEFRAME</th><th style="padding:8px 14px;text-align:left;font-size:8pt;color:#0d9488;font-weight:700;border:1px solid #e2e8f0;width:50%;">CATALYST / METRIC</th><th style="padding:8px 14px;text-align:center;font-size:8pt;color:#0d9488;font-weight:700;border:1px solid #e2e8f0;width:13%;">LATEST</th><th style="padding:8px 14px;text-align:center;font-size:8pt;color:#0d9488;font-weight:700;border:1px solid #e2e8f0;width:15%;">STATUS</th></tr></thead><tbody>' + timeline_rows + '</tbody></table>' if signposts else ''}
+
+        {'<table style="margin-bottom:8px;"><tr><td style="background:#134e4a;padding:8px 16px;width:100%;"><b style="color:#ffffff;font-size:10pt;letter-spacing:1px;">RISK WATCHLIST</b></td></tr></table><table style="border:1px solid #e2e8f0;margin-bottom:18px;"><thead><tr style="background:#f0fdfa;"><th style="padding:6px 12px;text-align:left;font-size:8pt;color:#0d9488;font-weight:700;border:1px solid #e2e8f0;width:60%;">RISK FACTOR</th><th style="padding:6px 12px;text-align:center;font-size:8pt;color:#0d9488;font-weight:700;border:1px solid #e2e8f0;width:20%;">STATUS</th><th style="padding:6px 12px;text-align:left;font-size:8pt;color:#0d9488;font-weight:700;border:1px solid #e2e8f0;width:20%;">TRIGGER</th></tr></thead><tbody>' + risk_rows + '</tbody></table>' if threats else ''}
+    </body></html>"""
+    buf = io.BytesIO()
+    pisa.CreatePDF(html, dest=buf)
+    return buf.getvalue()
+
+
+def _generate_valuation_summary_pdf(row, scorecard_data=None):
+    """Valuation Summary — valuation-focused layout presenting thesis from a value perspective."""
+    from xhtml2pdf import pisa
+    d = _parse_analysis_data(row)
+    ticker, company, date_str = d['ticker'], d['company'], d['date_str']
+    thesis, signposts, threats, conclusion = d['thesis'], d['signposts'], d['threats'], d['conclusion']
+    is_condensed = d.get('_condensed', False)
+    sp_data = _build_signpost_data(signposts, scorecard_data)
+    rk_data = _build_risk_data(threats, scorecard_data)
+
+    # Investment Case box
+    case_html = f'<table style="border:1px solid #a7f3d0;margin-bottom:18px;"><tr><td style="padding:12px 16px;background:#ecfdf5;"><b style="color:#064e3b;font-size:10pt;">INVESTMENT CASE</b><br/><span style="color:#334155;font-size:9.5pt;line-height:1.6;">{_fmt_escape(thesis.get("summary", ""))}</span></td></tr></table>'
+
+    # Value Drivers — numbered pillars
+    pillar_rows = ''
+    for i, p in enumerate(_build_pillar_data(thesis, scorecard_data), 1):
+        t = _fmt_escape(p.get('pillar', p.get('title', '')))
+        desc = _fmt_escape(p.get('detail', p.get('description', '')))
+        conf = (p.get('confidence', '') or '').lower()
+        conf_color = '#16a34a' if conf == 'high' else '#ca8a04' if conf == 'medium' else '#dc2626' if conf == 'low' else '#64748b'
+        conf_label = conf.upper() if conf else ''
+        conf_html = f'<span style="font-size:7.5pt;color:{conf_color};font-weight:bold;"> [{conf_label}]</span>' if conf_label else ''
+        pillar_rows += f'<tr><td style="padding:8px 12px;border-bottom:1px solid #d1fae5;vertical-align:top;width:30px;color:#064e3b;font-weight:bold;font-size:12pt;">{i}.</td><td style="padding:8px 12px;border-bottom:1px solid #d1fae5;vertical-align:top;width:100%;"><b style="color:#064e3b;font-size:10pt;">{t}</b>{conf_html}<br/><span style="color:#475569;font-size:9pt;">{desc}</span></td></tr>'
+
+    # Valuation Checkpoints — signpost table
+    sp_rows = ''
+    for s in sp_data:
+        st = s['status'] or ''
+        st_bg = _status_bg(st) if st else '#ffffff'
+        st_color = _status_color(st) if st else '#94a3b8'
+        norm_st = _normalize_status(st)
+        st_label = norm_st.upper() if norm_st else '—'
+        sp_rows += f'<tr><td style="padding:7px 12px;border:1px solid #e2e8f0;font-weight:600;color:#1e293b;font-size:9pt;width:30%;">{s["metric"]}</td><td style="padding:7px 12px;border:1px solid #e2e8f0;color:#475569;font-size:9pt;text-align:center;width:25%;">{s["target"]}</td><td style="padding:7px 12px;border:1px solid #e2e8f0;color:#0f172a;font-size:9pt;text-align:center;font-weight:bold;width:20%;">{s["latest"] or "—"}</td><td style="padding:7px 12px;border:1px solid #e2e8f0;text-align:center;background:{st_bg};color:{st_color};font-weight:bold;font-size:8.5pt;width:15%;">{st_label}</td></tr>'
+
+    # Valuation Risks — compact
+    risk_rows = ''
+    for rk in rk_data:
+        st = rk['status'] or ''
+        st_bg = _status_bg(st) if st else '#ffffff'
+        st_color = _status_color(st) if st else '#94a3b8'
+        norm_st = _normalize_status(st)
+        st_label = rk['statusNote'] if rk['statusNote'] else (norm_st.upper() if norm_st else '—')
+        trigger_sub = f'<br/><span style="font-size:8pt;color:#64748b;font-weight:normal;">{rk["triggers"]}</span>' if rk['triggers'] else ''
+        risk_rows += f'<tr><td style="padding:7px 12px;border:1px solid #e2e8f0;font-weight:600;color:#1e293b;font-size:9pt;width:70%;">{rk["threat"]}{trigger_sub}</td><td style="padding:7px 12px;border:1px solid #e2e8f0;text-align:center;background:{st_bg};color:{st_color};font-weight:bold;font-size:8.5pt;width:30%;">{st_label}</td></tr>'
+
+    # Valuation Assessment — conclusion
+    conclusion_html = ''
+    if conclusion:
+        conclusion_html = f'<table style="border:1px solid #a7f3d0;margin-top:4px;"><tr><td style="padding:12px 16px;background:#ecfdf5;"><b style="color:#064e3b;font-size:10pt;">VALUATION ASSESSMENT</b><br/><span style="color:#334155;font-size:9.5pt;line-height:1.6;">{_fmt_escape(conclusion)}</span></td></tr></table>'
+
+    html = f"""<html><head><style>
+        @page {{ margin: 0.65in 0.7in; size: letter; }}
+        body {{ font-family: Calibri, Arial, sans-serif; font-size: 10pt; color: #1e293b; line-height: 1.45; }}
+        table {{ border-collapse: collapse; width: 100%; }}
+        tr {{ page-break-inside: avoid; }}
+    </style></head><body>
+        <table style="margin-bottom:14px;"><tr>
+            <td style="background:#064e3b;padding:18px 24px;width:60%;"><span style="font-size:26pt;font-weight:bold;color:#ffffff;">{_fmt_escape(ticker)}</span><br/><span style="font-size:11pt;color:#a7f3d0;">{_fmt_escape(company)}</span></td>
+            <td style="background:#064e3b;padding:18px 24px;text-align:right;vertical-align:bottom;width:40%;"><span style="font-size:8pt;color:#a7f3d0;">VALUATION FRAMEWORK | {date_str}</span></td>
+        </tr></table>
+
+        {case_html}
+
+        <table style="margin-bottom:8px;"><tr><td style="background:#065f46;padding:8px 16px;width:100%;"><b style="color:#ffffff;font-size:10pt;letter-spacing:1px;">VALUE DRIVERS</b></td></tr></table>
+        <table style="margin-bottom:18px;">{pillar_rows}</table>
+
+        {'<table style="margin-bottom:8px;"><tr><td style="background:#065f46;padding:8px 16px;width:100%;"><b style="color:#ffffff;font-size:10pt;letter-spacing:1px;">VALUATION CHECKPOINTS</b></td></tr></table><table style="border:1px solid #e2e8f0;margin-bottom:18px;"><thead><tr style="background:#ecfdf5;"><th style="padding:7px 12px;text-align:left;font-size:8pt;color:#064e3b;font-weight:700;border:1px solid #e2e8f0;width:30%;">METRIC</th><th style="padding:7px 12px;text-align:center;font-size:8pt;color:#064e3b;font-weight:700;border:1px solid #e2e8f0;width:25%;">TARGET</th><th style="padding:7px 12px;text-align:center;font-size:8pt;color:#064e3b;font-weight:700;border:1px solid #e2e8f0;width:20%;">LATEST</th><th style="padding:7px 12px;text-align:center;font-size:8pt;color:#064e3b;font-weight:700;border:1px solid #e2e8f0;width:15%;">STATUS</th></tr></thead><tbody>' + sp_rows + '</tbody></table>' if signposts else ''}
+
+        {'<table style="margin-bottom:8px;"><tr><td style="background:#065f46;padding:8px 16px;width:100%;"><b style="color:#ffffff;font-size:10pt;letter-spacing:1px;">VALUATION RISKS</b></td></tr></table><table style="border:1px solid #e2e8f0;margin-bottom:18px;"><thead><tr style="background:#ecfdf5;"><th style="padding:7px 12px;text-align:left;font-size:8pt;color:#064e3b;font-weight:700;border:1px solid #e2e8f0;width:70%;">RISK FACTOR</th><th style="padding:7px 12px;text-align:center;font-size:8pt;color:#064e3b;font-weight:700;border:1px solid #e2e8f0;width:30%;">STATUS</th></tr></thead><tbody>' + risk_rows + '</tbody></table>' if threats else ''}
+
+        {conclusion_html}
+    </body></html>"""
+    buf = io.BytesIO()
+    pisa.CreatePDF(html, dest=buf)
+    return buf.getvalue()
+
+
+def _generate_bull_bear_pdf(row, scorecard_data=None):
+    """Bull/Bear Framework — side-by-side bull case vs bear case presentation."""
+    from xhtml2pdf import pisa
+    d = _parse_analysis_data(row)
+    ticker, company, date_str = d['ticker'], d['company'], d['date_str']
+    thesis, signposts, threats, conclusion = d['thesis'], d['signposts'], d['threats'], d['conclusion']
+    is_condensed = d.get('_condensed', False)
+    sp_data = _build_signpost_data(signposts, scorecard_data)
+    rk_data = _build_risk_data(threats, scorecard_data)
+    g, y, r_count = _tally_statuses(scorecard_data)
+    total = g + y + r_count
+
+    # Build bull case items from pillars + green signposts
+    bull_items = ''
+    for p in _build_pillar_data(thesis, scorecard_data):
+        t = _fmt_escape(p.get('pillar', p.get('title', '')))
+        desc = _fmt_escape(p.get('detail', p.get('description', '')))
+        bull_items += f'<tr><td style="padding:6px 10px;border-bottom:1px solid #bbf7d0;vertical-align:top;width:100%;"><b style="color:#166534;font-size:9pt;">{t}</b><br/><span style="color:#334155;font-size:8.5pt;">{desc}</span></td></tr>'
+
+    # Add green-status signposts to bull side
+    for s in sp_data:
+        st = s['status'] or ''
+        norm_st = _normalize_status(st)
+        if norm_st == 'green':
+            bull_items += f'<tr><td style="padding:5px 10px;border-bottom:1px solid #bbf7d0;vertical-align:top;width:100%;background:#f0fdf4;"><span style="color:#16a34a;font-size:8pt;font-weight:bold;">SIGNPOST:</span> <span style="color:#166534;font-size:8.5pt;font-weight:600;">{s["metric"]}</span><br/><span style="color:#475569;font-size:8pt;">Latest: {s["latest"] or "—"} | Target: {s["target"]}</span></td></tr>'
+
+    # Build bear case items from risks + red/yellow signposts
+    bear_items = ''
+    for rk in rk_data:
+        st = rk['status'] or ''
+        st_color = _status_color(st) if st else '#991b1b'
+        bear_items += f'<tr><td style="padding:6px 10px;border-bottom:1px solid #fecaca;vertical-align:top;width:100%;"><b style="color:#991b1b;font-size:9pt;">{rk["threat"]}</b><br/><span style="color:#334155;font-size:8.5pt;">{rk["triggers"]}</span></td></tr>'
+
+    # Add red/yellow signposts to bear side
+    for s in sp_data:
+        st = s['status'] or ''
+        norm_st = _normalize_status(st)
+        if norm_st in ('red', 'yellow'):
+            label_color = '#dc2626' if norm_st == 'red' else '#ca8a04'
+            bg = '#fef2f2' if norm_st == 'red' else '#fefce8'
+            bear_items += f'<tr><td style="padding:5px 10px;border-bottom:1px solid #fecaca;vertical-align:top;width:100%;background:{bg};"><span style="color:{label_color};font-size:8pt;font-weight:bold;">SIGNPOST:</span> <span style="color:#991b1b;font-size:8.5pt;font-weight:600;">{s["metric"]}</span><br/><span style="color:#475569;font-size:8pt;">Latest: {s["latest"] or "—"} | Target: {s["target"]}</span></td></tr>'
+
+    # Conviction verdict
+    pct = round(g / total * 100) if total > 0 else 0
+    conv_color = '#16a34a' if pct >= 70 else '#ca8a04' if pct >= 40 else '#dc2626'
+    conv_label = 'HIGH CONVICTION' if pct >= 70 else 'MEDIUM CONVICTION' if pct >= 40 else 'LOW CONVICTION'
+
+    verdict_html = ''
+    if conclusion:
+        gauge_part = ''
+        if total > 0:
+            gauge_part = f'<table style="border:1px solid #e2e8f0;margin-bottom:10px;"><tr><td style="padding:12px 20px;text-align:center;width:30%;"><span style="font-size:32pt;font-weight:bold;color:{conv_color};">{pct}%</span><br/><span style="font-size:9pt;color:#475569;font-weight:700;letter-spacing:1px;">{conv_label}</span></td><td style="padding:12px 20px;text-align:center;background:#dcfce7;width:23%;border-left:1px solid #e2e8f0;"><b style="color:#16a34a;font-size:18pt;">{g}</b><br/><span style="font-size:8pt;color:#166534;font-weight:700;">GREEN</span></td><td style="padding:12px 20px;text-align:center;background:#fef9c3;width:23%;border-left:1px solid #e2e8f0;"><b style="color:#ca8a04;font-size:18pt;">{y}</b><br/><span style="font-size:8pt;color:#854d0e;font-weight:700;">YELLOW</span></td><td style="padding:12px 20px;text-align:center;background:#fee2e2;width:24%;border-left:1px solid #e2e8f0;"><b style="color:#dc2626;font-size:18pt;">{r_count}</b><br/><span style="font-size:8pt;color:#991b1b;font-weight:700;">RED</span></td></tr></table>'
+        verdict_html = f'{gauge_part}<table style="border:1px solid #e2e8f0;"><tr><td style="padding:10px 16px;background:#f8fafc;"><b style="color:#0f172a;font-size:10pt;">VERDICT</b><br/><span style="color:#334155;font-size:9.5pt;line-height:1.6;">{_fmt_escape(conclusion)}</span></td></tr></table>'
+
+    html = f"""<html><head><style>
+        @page {{ margin: 0.6in 0.7in; size: letter; }}
+        body {{ font-family: Calibri, Arial, sans-serif; font-size: 10pt; color: #1e293b; line-height: 1.45; }}
+        table {{ border-collapse: collapse; width: 100%; }}
+        tr {{ page-break-inside: avoid; }}
+    </style></head><body>
+        <table style="margin-bottom:14px;"><tr>
+            <td style="background:#0f172a;padding:18px 24px;width:100%;text-align:center;"><span style="font-size:26pt;font-weight:bold;color:#ffffff;">{_fmt_escape(ticker)}</span><span style="font-size:11pt;color:#94a3b8;"> &mdash; Bull/Bear Framework</span><br/><span style="font-size:8pt;color:#64748b;">{_fmt_escape(company)} | {date_str}</span></td>
+        </tr></table>
+
+        <table style="margin-bottom:20px;"><tr>
+            <td style="vertical-align:top;width:49%;padding-right:4px;">
+                <table><tr><td style="background:#166534;padding:8px 14px;width:100%;"><b style="color:#ffffff;font-size:10pt;letter-spacing:1px;">BULL CASE</b></td></tr></table>
+                <table style="border:1px solid #bbf7d0;">{bull_items if bull_items else '<tr><td style="padding:10px;color:#64748b;font-size:9pt;width:100%;">No bull case items</td></tr>'}</table>
+            </td>
+            <td style="vertical-align:top;width:2%;"></td>
+            <td style="vertical-align:top;width:49%;padding-left:4px;">
+                <table><tr><td style="background:#991b1b;padding:8px 14px;width:100%;"><b style="color:#ffffff;font-size:10pt;letter-spacing:1px;">BEAR CASE</b></td></tr></table>
+                <table style="border:1px solid #fecaca;">{bear_items if bear_items else '<tr><td style="padding:10px;color:#64748b;font-size:9pt;width:100%;">No bear case items</td></tr>'}</table>
+            </td>
+        </tr></table>
+
+        {verdict_html}
+    </body></html>"""
+    buf = io.BytesIO()
+    pisa.CreatePDF(html, dest=buf)
+    return buf.getvalue()
+
+
+def _generate_portfolio_context_pdf(row, scorecard_data=None):
+    """Portfolio Context — position-level view for portfolio review."""
+    from xhtml2pdf import pisa
+    d = _parse_analysis_data(row)
+    ticker, company, date_str = d['ticker'], d['company'], d['date_str']
+    thesis, signposts, threats, conclusion = d['thesis'], d['signposts'], d['threats'], d['conclusion']
+    is_condensed = d.get('_condensed', False)
+    sp_data = _build_signpost_data(signposts, scorecard_data)
+    rk_data = _build_risk_data(threats, scorecard_data)
+    g, y, r_count = _tally_statuses(scorecard_data)
+    total = g + y + r_count
+
+    # Thesis Health summary bar
+    health_html = ''
+    if total > 0:
+        pct_g = round(g / total * 100)
+        pct_y = round(y / total * 100)
+        pct_r = round(r_count / total * 100)
+        overall = 'HEALTHY' if pct_g >= 60 else 'MIXED' if pct_g >= 30 else 'AT RISK'
+        overall_color = '#16a34a' if pct_g >= 60 else '#ca8a04' if pct_g >= 30 else '#dc2626'
+        health_html = f'<table style="border:2px solid #e2e8f0;margin-bottom:16px;"><tr><td style="padding:10px 16px;width:34%;border-right:1px solid #e2e8f0;"><b style="font-size:9pt;color:#475569;">THESIS HEALTH</b><br/><span style="font-size:16pt;font-weight:bold;color:{overall_color};">{overall}</span></td><td style="padding:10px 14px;text-align:center;width:22%;background:#dcfce7;border-right:1px solid #e2e8f0;"><b style="color:#16a34a;font-size:18pt;">{g}</b><br/><span style="font-size:8pt;color:#166534;font-weight:700;">GREEN ({pct_g}%)</span></td><td style="padding:10px 14px;text-align:center;width:22%;background:#fef9c3;border-right:1px solid #e2e8f0;"><b style="color:#ca8a04;font-size:18pt;">{y}</b><br/><span style="font-size:8pt;color:#854d0e;font-weight:700;">YELLOW ({pct_y}%)</span></td><td style="padding:10px 14px;text-align:center;width:22%;background:#fee2e2;"><b style="color:#dc2626;font-size:18pt;">{r_count}</b><br/><span style="font-size:8pt;color:#991b1b;font-weight:700;">RED ({pct_r}%)</span></td></tr></table>'
+
+    # Compact thesis
+    thesis_html = f'<table style="border:1px solid #cbd5e1;margin-bottom:16px;"><tr><td style="padding:10px 14px;background:#f8fafc;width:100%;"><b style="color:#1e293b;font-size:9pt;">THESIS:</b> <span style="color:#475569;font-size:9pt;">{_fmt_escape(thesis.get("summary", ""))}</span></td></tr></table>'
+
+    # Combined monitoring table — signposts + risks in one table
+    monitor_rows = ''
+    for s in sp_data:
+        st = s['status'] or ''
+        st_bg = _status_bg(st) if st else '#ffffff'
+        st_color = _status_color(st) if st else '#94a3b8'
+        norm_st = _normalize_status(st)
+        st_label = norm_st.upper() if norm_st else '—'
+        monitor_rows += f'<tr><td style="padding:7px 12px;border:1px solid #e2e8f0;font-weight:600;color:#1e293b;font-size:9pt;width:50%;">{s["metric"]}</td><td style="padding:7px 12px;border:1px solid #e2e8f0;text-align:center;color:#0ea5e9;font-size:8pt;font-weight:700;width:20%;">SIGNPOST</td><td style="padding:7px 12px;border:1px solid #e2e8f0;text-align:center;background:{st_bg};color:{st_color};font-weight:bold;font-size:8.5pt;width:30%;">{st_label}</td></tr>'
+
+    for rk in rk_data:
+        st = rk['status'] or ''
+        st_bg = _status_bg(st) if st else '#ffffff'
+        st_color = _status_color(st) if st else '#94a3b8'
+        norm_st = _normalize_status(st)
+        st_label = rk['statusNote'] if rk['statusNote'] else (norm_st.upper() if norm_st else '—')
+        monitor_rows += f'<tr><td style="padding:7px 12px;border:1px solid #e2e8f0;font-weight:600;color:#1e293b;font-size:9pt;width:50%;">{rk["threat"]}</td><td style="padding:7px 12px;border:1px solid #e2e8f0;text-align:center;color:#ef4444;font-size:8pt;font-weight:700;width:20%;">RISK</td><td style="padding:7px 12px;border:1px solid #e2e8f0;text-align:center;background:{st_bg};color:{st_color};font-weight:bold;font-size:8.5pt;width:30%;">{st_label}</td></tr>'
+
+    # Position Outlook
+    outlook_html = ''
+    if conclusion:
+        outlook_html = f'<table style="border:1px solid #bae6fd;margin-top:4px;"><tr><td style="padding:12px 16px;background:#f0f9ff;width:100%;"><b style="color:#1e293b;font-size:10pt;">POSITION OUTLOOK</b><br/><span style="color:#334155;font-size:9.5pt;line-height:1.6;">{_fmt_escape(conclusion)}</span></td></tr></table>'
+
+    html = f"""<html><head><style>
+        @page {{ margin: 0.65in 0.7in; size: letter; }}
+        body {{ font-family: Calibri, Arial, sans-serif; font-size: 10pt; color: #1e293b; line-height: 1.45; }}
+        table {{ border-collapse: collapse; width: 100%; }}
+        tr {{ page-break-inside: avoid; }}
+    </style></head><body>
+        <table style="margin-bottom:14px;"><tr>
+            <td style="background:#1e293b;padding:18px 24px;width:60%;"><span style="font-size:26pt;font-weight:bold;color:#ffffff;">{_fmt_escape(ticker)}</span><br/><span style="font-size:11pt;color:#94a3b8;">{_fmt_escape(company)}</span></td>
+            <td style="background:#1e293b;padding:18px 24px;text-align:right;vertical-align:bottom;width:40%;"><span style="font-size:8pt;color:#94a3b8;">POSITION REVIEW | {date_str}</span></td>
+        </tr></table>
+
+        {health_html}
+        {thesis_html}
+
+        <table style="margin-bottom:8px;"><tr><td style="background:#0c4a6e;padding:8px 16px;width:100%;"><b style="color:#ffffff;font-size:10pt;letter-spacing:1px;">KEY MONITORING POINTS</b></td></tr></table>
+        <table style="border:1px solid #e2e8f0;margin-bottom:18px;"><thead><tr style="background:#f0f9ff;"><th style="padding:7px 12px;text-align:left;font-size:8pt;color:#1e293b;font-weight:700;border:1px solid #e2e8f0;width:50%;">ITEM</th><th style="padding:7px 12px;text-align:center;font-size:8pt;color:#1e293b;font-weight:700;border:1px solid #e2e8f0;width:20%;">TYPE</th><th style="padding:7px 12px;text-align:center;font-size:8pt;color:#1e293b;font-weight:700;border:1px solid #e2e8f0;width:30%;">STATUS</th></tr></thead><tbody>{monitor_rows}</tbody></table>
+
+        {outlook_html}
+    </body></html>"""
+    buf = io.BytesIO()
+    pisa.CreatePDF(html, dest=buf)
+    return buf.getvalue()
+
+
+def _generate_earnings_snapshot_pdf(row, scorecard_data=None):
+    """Earnings Snapshot — quick-reference card for earnings season."""
+    from xhtml2pdf import pisa
+    d = _parse_analysis_data(row)
+    ticker, company, date_str = d['ticker'], d['company'], d['date_str']
+    thesis, signposts, threats, conclusion = d['thesis'], d['signposts'], d['threats'], d['conclusion']
+    is_condensed = d.get('_condensed', False)
+    sp_data = _build_signpost_data(signposts, scorecard_data)
+    rk_data = _build_risk_data(threats, scorecard_data)
+    g, y, r_count = _tally_statuses(scorecard_data)
+    total = g + y + r_count
+    pct = round(g / total * 100) if total > 0 else 0
+    pillar_count = len(_build_pillar_data(thesis, scorecard_data))
+
+    # Compact thesis — truncated
+    summary_text = _fmt_escape(thesis.get('summary', ''))
+    if len(summary_text) > 300:
+        summary_text = summary_text[:297] + '...'
+    thesis_html = f'<table style="border:1px solid #c4b5fd;margin-bottom:16px;"><tr><td style="padding:8px 14px;background:#f5f3ff;width:100%;"><b style="color:#4c1d95;font-size:9pt;">THESIS:</b> <span style="color:#334155;font-size:9pt;">{summary_text}</span></td></tr></table>'
+
+    # What To Watch — signpost table (compact)
+    sp_rows = ''
+    for s in sp_data:
+        st = s['status'] or ''
+        st_bg = _status_bg(st) if st else '#ffffff'
+        st_color = _status_color(st) if st else '#94a3b8'
+        norm_st = _normalize_status(st)
+        st_label = norm_st.upper() if norm_st else '—'
+        sp_rows += f'<tr><td style="padding:6px 10px;border:1px solid #e2e8f0;font-weight:600;color:#1e293b;font-size:9pt;width:30%;">{s["metric"]}</td><td style="padding:6px 10px;border:1px solid #e2e8f0;color:#475569;font-size:8.5pt;text-align:center;width:25%;">{s["target"]}</td><td style="padding:6px 10px;border:1px solid #e2e8f0;color:#0f172a;font-size:9pt;text-align:center;font-weight:bold;width:20%;">{s["latest"] or "—"}</td><td style="padding:6px 10px;border:1px solid #e2e8f0;text-align:center;background:{st_bg};color:{st_color};font-weight:bold;font-size:8.5pt;width:15%;">{st_label}</td></tr>'
+
+    # Key Risks Into Print
+    risk_rows = ''
+    for rk in rk_data:
+        st = rk['status'] or ''
+        st_bg = _status_bg(st) if st else '#ffffff'
+        st_color = _status_color(st) if st else '#94a3b8'
+        norm_st = _normalize_status(st)
+        st_label = rk['statusNote'] if rk['statusNote'] else (norm_st.upper() if norm_st else '—')
+        risk_rows += f'<tr><td style="padding:6px 10px;border:1px solid #e2e8f0;font-weight:600;color:#1e293b;font-size:9pt;width:70%;">{rk["threat"]}</td><td style="padding:6px 10px;border:1px solid #e2e8f0;text-align:center;background:{st_bg};color:{st_color};font-weight:bold;font-size:8.5pt;width:30%;">{st_label}</td></tr>'
+
+    # Quick reference box
+    conv_color = '#16a34a' if pct >= 70 else '#ca8a04' if pct >= 40 else '#dc2626'
+    conv_label = 'HIGH' if pct >= 70 else 'MEDIUM' if pct >= 40 else 'LOW'
+    ref_html = ''
+    if total > 0:
+        ref_html = f'<table style="border:2px solid #c4b5fd;margin-top:4px;"><tr><td style="padding:12px 18px;text-align:center;background:#f5f3ff;width:34%;"><span style="font-size:8pt;color:#4c1d95;font-weight:700;">CONVICTION</span><br/><span style="font-size:22pt;font-weight:bold;color:{conv_color};">{pct}%</span><br/><span style="font-size:8pt;color:{conv_color};font-weight:700;">{conv_label}</span></td><td style="padding:12px 18px;text-align:center;width:22%;border-left:1px solid #c4b5fd;"><span style="font-size:8pt;color:#4c1d95;font-weight:700;">PILLARS</span><br/><span style="font-size:20pt;font-weight:bold;color:#4c1d95;">{pillar_count}</span></td><td style="padding:12px 18px;text-align:center;width:22%;border-left:1px solid #c4b5fd;"><span style="font-size:8pt;color:#4c1d95;font-weight:700;">SIGNPOSTS</span><br/><span style="font-size:20pt;font-weight:bold;color:#4c1d95;">{len(sp_data)}</span></td><td style="padding:12px 18px;text-align:center;width:22%;border-left:1px solid #c4b5fd;"><span style="font-size:8pt;color:#4c1d95;font-weight:700;">RISKS</span><br/><span style="font-size:20pt;font-weight:bold;color:#4c1d95;">{len(rk_data)}</span></td></tr></table>'
+
+    html = f"""<html><head><style>
+        @page {{ margin: 0.6in 0.7in; size: letter; }}
+        body {{ font-family: Calibri, Arial, sans-serif; font-size: 10pt; color: #1e293b; line-height: 1.45; }}
+        table {{ border-collapse: collapse; width: 100%; }}
+        tr {{ page-break-inside: avoid; }}
+    </style></head><body>
+        <table style="margin-bottom:14px;"><tr>
+            <td style="background:#4c1d95;padding:18px 24px;width:60%;"><span style="font-size:26pt;font-weight:bold;color:#ffffff;">{_fmt_escape(ticker)}</span><br/><span style="font-size:11pt;color:#ddd6fe;">{_fmt_escape(company)}</span></td>
+            <td style="background:#4c1d95;padding:18px 24px;text-align:right;vertical-align:bottom;width:40%;"><span style="font-size:8pt;color:#ddd6fe;">EARNINGS SNAPSHOT | {date_str}</span></td>
+        </tr></table>
+
+        {thesis_html}
+
+        {'<table style="margin-bottom:8px;"><tr><td style="background:#5b21b6;padding:8px 16px;width:100%;"><b style="color:#ffffff;font-size:10pt;letter-spacing:1px;">WHAT TO WATCH THIS QUARTER</b></td></tr></table><table style="border:1px solid #e2e8f0;margin-bottom:18px;"><thead><tr style="background:#f5f3ff;"><th style="padding:6px 10px;text-align:left;font-size:8pt;color:#4c1d95;font-weight:700;border:1px solid #e2e8f0;width:30%;">METRIC</th><th style="padding:6px 10px;text-align:center;font-size:8pt;color:#4c1d95;font-weight:700;border:1px solid #e2e8f0;width:25%;">TARGET</th><th style="padding:6px 10px;text-align:center;font-size:8pt;color:#4c1d95;font-weight:700;border:1px solid #e2e8f0;width:20%;">LATEST</th><th style="padding:6px 10px;text-align:center;font-size:8pt;color:#4c1d95;font-weight:700;border:1px solid #e2e8f0;width:15%;">STATUS</th></tr></thead><tbody>' + sp_rows + '</tbody></table>' if signposts else ''}
+
+        {'<table style="margin-bottom:8px;"><tr><td style="background:#5b21b6;padding:8px 16px;width:100%;"><b style="color:#ffffff;font-size:10pt;letter-spacing:1px;">KEY RISKS INTO PRINT</b></td></tr></table><table style="border:1px solid #e2e8f0;margin-bottom:18px;"><thead><tr style="background:#f5f3ff;"><th style="padding:6px 10px;text-align:left;font-size:8pt;color:#4c1d95;font-weight:700;border:1px solid #e2e8f0;width:70%;">RISK FACTOR</th><th style="padding:6px 10px;text-align:center;font-size:8pt;color:#4c1d95;font-weight:700;border:1px solid #e2e8f0;width:30%;">STATUS</th></tr></thead><tbody>' + risk_rows + '</tbody></table>' if threats else ''}
+
+        {ref_html}
+    </body></html>"""
+    buf = io.BytesIO()
+    pisa.CreatePDF(html, dest=buf)
+    return buf.getvalue()
+
+
 # ============================================
 # PPTX SLIDE DECK GENERATOR
 # ============================================
@@ -6009,6 +6379,11 @@ def generate_thesis_format():
             'board': 'Conviction_Card',
             'ic_memo': 'IC_Memo',
             'risk_focus': 'Risk_Monitor',
+            'catalyst': 'Catalyst_Timeline',
+            'valuation': 'Valuation_Summary',
+            'bull_bear': 'Bull_Bear_Framework',
+            'portfolio': 'Portfolio_Context',
+            'earnings': 'Earnings_Snapshot',
         }
         format_name = format_names.get(fmt, 'Formatted')
 
@@ -6020,6 +6395,11 @@ def generate_thesis_format():
                 'board': _generate_board_pdf,
                 'ic_memo': _generate_ic_memo_pdf,
                 'risk_focus': _generate_risk_focus_pdf,
+                'catalyst': _generate_catalyst_timeline_pdf,
+                'valuation': _generate_valuation_summary_pdf,
+                'bull_bear': _generate_bull_bear_pdf,
+                'portfolio': _generate_portfolio_context_pdf,
+                'earnings': _generate_earnings_snapshot_pdf,
             }
             gen_func = generators.get(fmt, _generate_executive_brief_pdf)
             file_bytes = gen_func(row_dict, scorecard_data)
