@@ -1405,6 +1405,59 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
             if sub_result and sub_result['status'] == 'failed':
                 raise Exception(f'Analysis failed: {sub_result.get("error", "Unknown error")}')
 
+            # Save analysis result to portfolio_analyses
+            if sub_result and sub_result['status'] == 'complete' and sub_result.get('result'):
+                _update_pipeline_job(job_id, current_step='Saving analysis to portfolio', progress=57)
+                result_data = sub_result['result'] if isinstance(sub_result['result'], dict) else json.loads(sub_result['result'])
+                analysis_data = result_data.get('analysis', {})
+                company = analysis_data.get('company', existing.get('company', '') if existing else '')
+
+                # Preserve history from existing analysis
+                if existing:
+                    old_analysis = existing.get('analysis', {})
+                    if isinstance(old_analysis, str):
+                        try: old_analysis = json.loads(old_analysis)
+                        except: old_analysis = {}
+                    if not analysis_data.get('history'):
+                        old_history = old_analysis.get('history') or []
+                        if old_analysis.get('thesis') or old_analysis.get('signposts') or old_analysis.get('threats'):
+                            old_history = list(old_history)
+                            old_history.append({
+                                'timestamp': old_analysis.get('updatedAt') or datetime.utcnow().isoformat(),
+                                'thesis': old_analysis.get('thesis'),
+                                'signposts': old_analysis.get('signposts'),
+                                'threats': old_analysis.get('threats'),
+                            })
+                            old_history = old_history[-20:]
+                        analysis_data['history'] = old_history
+                    if not analysis_data.get('documentHistory'):
+                        analysis_data['documentHistory'] = old_analysis.get('documentHistory') or []
+                analysis_data['updatedAt'] = datetime.utcnow().isoformat()
+
+                with get_db(commit=True) as (conn, cur):
+                    cur.execute('''
+                        INSERT INTO portfolio_analyses (ticker, company, analysis, updated_at)
+                        VALUES (%s, %s, %s, %s)
+                        ON CONFLICT (ticker)
+                        DO UPDATE SET company = EXCLUDED.company, analysis = EXCLUDED.analysis, updated_at = EXCLUDED.updated_at
+                    ''', (ticker, company, json.dumps(analysis_data), datetime.utcnow()))
+                print(f'[pipeline {job_id}] Saved analysis to portfolio_analyses for {ticker}')
+
+                # Auto-snapshot for thesis evolution tracking
+                try:
+                    sc_data = None
+                    with get_db() as (_, cur2):
+                        cur2.execute('SELECT scorecard_data FROM thesis_scorecard_data WHERE ticker = %s', (ticker,))
+                        sc_row = cur2.fetchone()
+                    if sc_row:
+                        sc_data = sc_row['scorecard_data']
+                        if isinstance(sc_data, str):
+                            try: sc_data = json.loads(sc_data)
+                            except: sc_data = None
+                    _create_thesis_snapshot(ticker, analysis_data, sc_data, 'pipeline')
+                except Exception as snap_err:
+                    print(f'[pipeline {job_id}] Snapshot error: {snap_err}')
+
         _update_pipeline_job(job_id, current_step=steps[4], progress=71)
 
         # Step 5: Build deliverables summary
