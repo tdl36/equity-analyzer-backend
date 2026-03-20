@@ -1410,7 +1410,13 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
                 _update_pipeline_job(job_id, current_step='Saving analysis to portfolio', progress=57)
                 result_data = sub_result['result'] if isinstance(sub_result['result'], dict) else json.loads(sub_result['result'])
                 analysis_data = result_data.get('analysis', {})
-                company = analysis_data.get('company', existing.get('company', '') if existing else '')
+                analysis_changes = result_data.get('changes', [])
+                doc_metadata = result_data.get('documentMetadata', [])
+                # Company: prefer existing DB column, then analysis data, then fallback
+                company = (existing['company'] if existing and existing.get('company') else '') or analysis_data.pop('company', '') or ticker
+                # Preserve changes in analysis for the Thesis tab to display
+                if analysis_changes:
+                    analysis_data['_pipelineChanges'] = analysis_changes
 
                 # Preserve history from existing analysis
                 if existing:
