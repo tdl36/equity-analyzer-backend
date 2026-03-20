@@ -1063,6 +1063,23 @@ def init_db():
             cur.execute('CREATE INDEX IF NOT EXISTS idx_pipeline_jobs_ticker ON research_pipeline_jobs(ticker)')
             cur.execute('CREATE INDEX IF NOT EXISTS idx_pipeline_jobs_status ON research_pipeline_jobs(status)')
 
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS research_notes (
+                    id TEXT PRIMARY KEY,
+                    ticker VARCHAR(20) NOT NULL,
+                    version VARCHAR(10) DEFAULT '1.0',
+                    note_markdown TEXT,
+                    sources_markdown TEXT,
+                    changelog_markdown TEXT,
+                    note_docx TEXT,
+                    charts JSONB DEFAULT '[]',
+                    metadata JSONB DEFAULT '{}',
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP DEFAULT NOW()
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_research_notes_ticker ON research_notes(ticker)')
+
             # Mark stale processing jobs as failed (server restart recovery)
             cur.execute('''
                 UPDATE analysis_jobs
@@ -8870,6 +8887,46 @@ for _sec, _tks in PIPELINE_SECTOR_MAP.items():
     for _tk in _tks:
         PIPELINE_TICKER_SECTOR[_tk] = _sec
 
+RESEARCH_NOTE_PLAYBOOK = """
+## NOTE FORMAT RULES
+
+### Structure (adapt emphasis per stock, but include all sections):
+1. Executive Summary / Investment Thesis (bull + bear in 3-4 bullets each)
+2. Business Overview & Segment Breakdown
+3. Key Revenue & Earnings Drivers
+4. What the Street Is Debating (the 2-3 key open questions)
+5. Catalyst Calendar (earnings, FDA dates, contract renewals, etc.)
+6. Valuation Context (vs. history, vs. peers)
+7. Risks
+8. Bottom Line: Own / Avoid / Revisit at $X
+
+### Sector-specific additions:
+- Pharma/Biotech: Patent cliffs, pipeline table, LOE timeline
+- MedTech: Procedure volume trends, ASP dynamics, new product cycles
+- Managed Care: Membership trends, MLR, PBM reform risk, star ratings
+- Distribution: Drug pricing dynamics, biosimilar opportunity, generic deflation
+- Industrials: Cycle positioning, book-to-bill, aftermarket mix, margin expansion
+- REITs: Same-store NOI, occupancy, cap rates, lease spreads, FFO/AFFO
+
+### STRICT RULES:
+- NEVER reference specific analyst names, firms, or broker ratings
+- Synthesize data points from reports but attribute nothing to specific brokers
+- Hard facts (reported financials, FDA approvals, deals, guidance) = state directly
+- Sellside opinions: include if valuable but do NOT attribute
+- NEVER attribute headline YoY EPS growth to a single narrative driver without decomposing the bridge
+- Cross-check every narrative claim against data tables
+- When FY EPS includes >$0.50/share in non-recurring items, flag explicitly
+- Distinguish reported vs underlying/organic growth rates
+
+### TONE:
+- Write as if the analyst is authoring the note to their PM
+- Confident, concise, first-person where appropriate
+- No hedging language
+- Lead with conclusion, support with evidence
+- Use precise numbers, no rounding
+- No emojis, no filler
+"""
+
 
 @app.route('/api/pipeline/start', methods=['POST'])
 def pipeline_start():
@@ -9327,6 +9384,468 @@ def pipeline_clear_history():
         return jsonify({'deleted': deleted})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+# ============================================
+# RESEARCH NOTE GENERATION
+# ============================================
+
+@app.route('/api/notes/generate', methods=['POST'])
+def generate_research_note():
+    """Generate a full equity research note for a ticker."""
+    data = request.get_json()
+    ticker = data.get('ticker', '').upper()
+    api_key = data.get('apiKey', '')
+    mode = data.get('mode', 'new')  # 'new' or 'update'
+
+    if not ticker:
+        return jsonify({'error': 'No ticker provided'}), 400
+    if not api_key:
+        return jsonify({'error': 'API key required'}), 400
+
+    # Create a pipeline job for tracking
+    job_id = str(uuid.uuid4())
+    with get_db(commit=True) as (conn, cur):
+        cur.execute('''
+            INSERT INTO research_pipeline_jobs (id, batch_id, ticker, job_type, status, progress, current_step, total_steps, steps_detail)
+            VALUES (%s, %s, %s, 'note', 'queued', 0, 'Queued', 6, %s)
+        ''', (job_id, str(uuid.uuid4()), ticker, json.dumps({'mode': mode})))
+
+    threading.Thread(target=_generate_research_note, args=(job_id, ticker, api_key, mode), daemon=True).start()
+
+    return jsonify({'jobId': job_id, 'ticker': ticker})
+
+
+@app.route('/api/notes/<ticker>', methods=['GET'])
+def get_research_note(ticker):
+    """Get the latest research note for a ticker."""
+    ticker = ticker.upper()
+    with get_db() as (_, cur):
+        cur.execute('SELECT * FROM research_notes WHERE ticker = %s ORDER BY created_at DESC LIMIT 1', (ticker,))
+        note = cur.fetchone()
+    if not note:
+        return jsonify({'error': 'No note found'}), 404
+
+    return jsonify({
+        'id': note['id'],
+        'ticker': note['ticker'],
+        'version': note['version'],
+        'noteMarkdown': note['note_markdown'],
+        'sourcesMarkdown': note['sources_markdown'],
+        'changelogMarkdown': note['changelog_markdown'],
+        'noteDocx': note['note_docx'],
+        'charts': note['charts'] if isinstance(note['charts'], list) else json.loads(note['charts'] or '[]'),
+        'metadata': note['metadata'] if isinstance(note['metadata'], dict) else json.loads(note['metadata'] or '{}'),
+        'createdAt': note['created_at'].isoformat() if note['created_at'] else None,
+    })
+
+
+@app.route('/api/notes/<ticker>/history', methods=['GET'])
+def get_research_note_history(ticker):
+    """Get all note versions for a ticker."""
+    ticker = ticker.upper()
+    with get_db() as (_, cur):
+        cur.execute('''
+            SELECT id, ticker, version, metadata, created_at
+            FROM research_notes WHERE ticker = %s ORDER BY created_at DESC
+        ''', (ticker,))
+        notes = cur.fetchall()
+    return jsonify({
+        'notes': [{
+            'id': n['id'], 'version': n['version'],
+            'metadata': n['metadata'] if isinstance(n['metadata'], dict) else json.loads(n['metadata'] or '{}'),
+            'createdAt': n['created_at'].isoformat() if n['created_at'] else None,
+        } for n in notes]
+    })
+
+
+def _generate_research_note(job_id, ticker, api_key, mode='new'):
+    """Generate a full equity research note in a background thread."""
+    try:
+        _update_pipeline_job(job_id, status='running', current_step='Loading data', progress=0)
+
+        # Step 1: Load existing analysis (thesis data)
+        with get_db() as (_, cur):
+            cur.execute('SELECT * FROM portfolio_analyses WHERE ticker = %s', (ticker,))
+            analysis_row = cur.fetchone()
+
+        analysis = {}
+        company = ticker
+        if analysis_row:
+            analysis = analysis_row['analysis'] if isinstance(analysis_row['analysis'], dict) else json.loads(analysis_row['analysis'] or '{}')
+            company = analysis_row.get('company', ticker) or ticker
+
+        # Step 2: Load source documents
+        _update_pipeline_job(job_id, current_step='Reading source documents', progress=10)
+        with get_db() as (_, cur):
+            cur.execute('SELECT filename, file_data, file_type FROM document_files WHERE ticker = %s', (ticker,))
+            docs = cur.fetchall()
+
+        if not docs and not analysis:
+            raise Exception(f'No documents or analysis found for {ticker}')
+
+        # Build document content for LLM
+        doc_contents = []
+        for doc in docs:
+            if doc.get('file_type') == 'pdf' and doc.get('file_data'):
+                doc_contents.append({
+                    'type': 'document',
+                    'source': {'type': 'base64', 'media_type': 'application/pdf', 'data': doc['file_data']},
+                })
+                doc_contents.append({'type': 'text', 'text': f'[Document: {doc["filename"]}]'})
+
+        # Step 3: Load existing note if updating
+        existing_note = None
+        if mode == 'update':
+            with get_db() as (_, cur):
+                cur.execute('SELECT * FROM research_notes WHERE ticker = %s ORDER BY created_at DESC LIMIT 1', (ticker,))
+                existing_note = cur.fetchone()
+
+        _update_pipeline_job(job_id, current_step='Generating research note', progress=20)
+
+        # Step 4: Generate the note via LLM
+        sector = PIPELINE_TICKER_SECTOR.get(ticker, 'Other')
+
+        existing_thesis_context = ""
+        if analysis:
+            thesis = analysis.get('thesis', {})
+            signposts = analysis.get('signposts', [])
+            threats = analysis.get('threats', [])
+            conclusion = analysis.get('conclusion', '')
+            existing_thesis_context = f"""
+EXISTING STRUCTURED THESIS (use as foundation, expand with document details):
+Summary: {thesis.get('summary', '')}
+Pillars: {json.dumps(thesis.get('pillars', []), indent=2)}
+Signposts: {json.dumps(signposts, indent=2)}
+Threats: {json.dumps(threats, indent=2)}
+Conclusion: {conclusion}
+"""
+
+        update_context = ""
+        if existing_note and mode == 'update':
+            update_context = f"""
+EXISTING NOTE (update this, don't rewrite from scratch):
+{existing_note['note_markdown'][:8000]}
+
+Update the note with new information from the source documents. Add a "What's Changed" section at the top. Update any data points, estimates, or catalysts that have changed.
+"""
+
+        prompt = f"""You are a senior equity research analyst writing a comprehensive investment research note.
+
+TICKER: {ticker}
+COMPANY: {company}
+SECTOR: {sector}
+
+{RESEARCH_NOTE_PLAYBOOK}
+
+{existing_thesis_context}
+
+{update_context}
+
+Using the source documents provided, write a complete equity research note in markdown format.
+
+The note should be 8-12 pages when printed, with these sections:
+1. Executive Summary / Investment Thesis
+2. Business Overview & Segment Breakdown
+3. Key Revenue & Earnings Drivers
+4. What the Street Is Debating
+5. Catalyst Calendar
+6. Valuation Context
+7. Risks
+8. Bottom Line
+
+Also provide:
+- Revenue segment data for pie chart (JSON array: [{{"segment": "name", "revenue": number_in_millions}}])
+- Profit segment data for pie chart (JSON array: [{{"segment": "name", "profit": number_in_millions}}])
+
+Return your response in this exact format:
+
+===NOTE_START===
+[full markdown note here]
+===NOTE_END===
+
+===SOURCES_START===
+[sources document: section-by-section, which reports informed each claim, broker name + date + page ref]
+===SOURCES_END===
+
+===REVENUE_CHART_DATA===
+[JSON array of revenue segments]
+===REVENUE_CHART_END===
+
+===PROFIT_CHART_DATA===
+[JSON array of profit segments]
+===PROFIT_CHART_END===
+"""
+
+        # Build messages with documents
+        messages = [{"role": "user", "content": doc_contents + [{"type": "text", "text": prompt}]}] if doc_contents else [{"role": "user", "content": prompt}]
+
+        result = call_llm(
+            messages=messages,
+            system="You are a senior equity research analyst. Write thorough, data-driven research notes. Be precise with numbers. No sellside attribution.",
+            tier="advanced",
+            max_tokens=16384,
+            anthropic_api_key=api_key,
+        )
+
+        _update_pipeline_job(job_id, current_step='Parsing note', progress=60)
+
+        response_text = result['text']
+
+        # Parse sections
+        note_md = ''
+        sources_md = ''
+        revenue_data = []
+        profit_data = []
+
+        note_match = re.search(r'===NOTE_START===\s*(.*?)\s*===NOTE_END===', response_text, re.DOTALL)
+        if note_match:
+            note_md = note_match.group(1).strip()
+        else:
+            # Fallback: treat entire response as note
+            note_md = response_text
+
+        sources_match = re.search(r'===SOURCES_START===\s*(.*?)\s*===SOURCES_END===', response_text, re.DOTALL)
+        if sources_match:
+            sources_md = sources_match.group(1).strip()
+
+        rev_match = re.search(r'===REVENUE_CHART_DATA===\s*(.*?)\s*===REVENUE_CHART_END===', response_text, re.DOTALL)
+        if rev_match:
+            try:
+                revenue_data = json.loads(rev_match.group(1).strip())
+            except Exception:
+                pass
+
+        profit_match = re.search(r'===PROFIT_CHART_DATA===\s*(.*?)\s*===PROFIT_CHART_END===', response_text, re.DOTALL)
+        if profit_match:
+            try:
+                profit_data = json.loads(profit_match.group(1).strip())
+            except Exception:
+                pass
+
+        # Step 5: Generate charts
+        _update_pipeline_job(job_id, current_step='Generating charts', progress=70)
+        charts = []
+
+        try:
+            if revenue_data:
+                rev_chart = _generate_donut_chart(ticker, 'Revenue', revenue_data, 'revenue')
+                if rev_chart:
+                    charts.append({'type': 'revenue', 'data': rev_chart, 'filename': f'{ticker}_Revenue_Breakdown.png'})
+
+            if profit_data:
+                prof_chart = _generate_donut_chart(ticker, 'Profit', profit_data, 'profit')
+                if prof_chart:
+                    charts.append({'type': 'profit', 'data': prof_chart, 'filename': f'{ticker}_Profit_Breakdown.png'})
+        except Exception as chart_err:
+            print(f'[note-gen {job_id}] Chart generation error: {chart_err}')
+
+        # Step 6: Generate DOCX
+        _update_pipeline_job(job_id, current_step='Building Word document', progress=80)
+        docx_b64 = ''
+        try:
+            docx_b64 = _generate_note_docx(ticker, company, note_md, charts)
+        except Exception as docx_err:
+            print(f'[note-gen {job_id}] DOCX generation error: {docx_err}')
+
+        # Determine version
+        version = '1.0'
+        if mode == 'update' and existing_note:
+            old_ver = existing_note.get('version', '1.0')
+            parts = old_ver.split('.')
+            try:
+                parts[-1] = str(int(parts[-1]) + 1)
+                version = '.'.join(parts)
+            except Exception:
+                version = old_ver + '.1'
+
+        # Generate changelog
+        now_str = datetime.utcnow().strftime('%Y-%m-%d')
+        changelog_md = f"# {ticker} Changelog\n\n## Version {version} — {now_str}\n- {'Updated' if mode == 'update' else 'Initial'} research note\n- {len(docs)} source documents processed\n- Generated via Charlie Pipeline\n"
+        if existing_note and existing_note.get('changelog_markdown'):
+            old_changelog = existing_note['changelog_markdown']
+            if '\n' in old_changelog:
+                changelog_md += '\n' + old_changelog.split('\n', 1)[1]
+
+        # Save to DB
+        _update_pipeline_job(job_id, current_step='Saving note', progress=90)
+        note_id = str(uuid.uuid4())
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('''
+                INSERT INTO research_notes (id, ticker, version, note_markdown, sources_markdown, changelog_markdown, note_docx, charts, metadata)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ''', (note_id, ticker, version, note_md, sources_md, changelog_md, docx_b64,
+                  json.dumps([{'type': c['type'], 'filename': c['filename']} for c in charts]),
+                  json.dumps({
+                      'mode': mode,
+                      'documentsProcessed': len(docs),
+                      'provider': result.get('provider', ''),
+                      'model': result.get('model', ''),
+                      'charCount': len(note_md),
+                  })))
+
+        _update_pipeline_job(job_id, status='complete', current_step='Complete', progress=100,
+                            result=json.dumps({'noteId': note_id, 'version': version, 'ticker': ticker}))
+        print(f'[note-gen {job_id}] Complete: {ticker} v{version}')
+
+    except Exception as e:
+        print(f'[note-gen {job_id}] Failed: {e}')
+        import traceback
+        traceback.print_exc()
+        _update_pipeline_job(job_id, status='failed', error=str(e), current_step='Failed')
+
+
+def _generate_donut_chart(ticker, chart_type, data, value_key):
+    """Generate a donut chart as base64 PNG."""
+    try:
+        import numpy as np
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        import matplotlib.patheffects as pe
+
+        labels = [d.get('segment', '') for d in data]
+        values = [d.get(value_key, d.get('revenue', d.get('profit', 0))) for d in data]
+
+        if not values or sum(values) == 0:
+            return None
+
+        total = sum(values)
+        colors = ['#5DADE2', '#F7DC6F', '#F1948A', '#7DCEA0', '#BB8FCE', '#85C1E9', '#F8C471', '#82E0AA']
+
+        fig, ax = plt.subplots(figsize=(10, 8), facecolor='white')
+        wedges, _ = ax.pie(values, labels=None, colors=colors[:len(values)],
+                           startangle=90, wedgeprops={'width': 0.58, 'edgecolor': 'none', 'linewidth': 0})
+
+        # Center text
+        centre_circle = plt.Circle((0, 0), 0.30, fc='white')
+        ax.add_artist(centre_circle)
+        total_str = f'\${total/1000:.1f}B' if total >= 1000 else f'\${total:.0f}M'
+        ax.text(0, 0.05, 'Total', ha='center', va='center', fontsize=12, color='#333333', fontweight='normal')
+        ax.text(0, -0.08, total_str, ha='center', va='center', fontsize=16, color='#333333', fontweight='bold')
+
+        # Inside labels
+        for i, (wedge, value) in enumerate(zip(wedges, values)):
+            pct = value / total * 100
+            ang = (wedge.theta2 - wedge.theta1) / 2. + wedge.theta1
+            x = 0.70 * np.cos(np.deg2rad(ang))
+            y = 0.70 * np.sin(np.deg2rad(ang))
+            val_str = f'\${value/1000:.1f}B' if value >= 1000 else f'\${value:.0f}M'
+            fontsize = 11 if pct > 15 else 10 if pct > 8 else 9
+            if pct >= 3:
+                ax.text(x, y, f'{val_str}\n({pct:.1f}%)', ha='center', va='center',
+                        fontsize=fontsize, fontweight='bold', color='white',
+                        path_effects=[pe.withStroke(linewidth=2, foreground='black')])
+
+        # Outside labels
+        for i, (wedge, label) in enumerate(zip(wedges, labels)):
+            ang = (wedge.theta2 - wedge.theta1) / 2. + wedge.theta1
+            x = 1.15 * np.cos(np.deg2rad(ang))
+            y = 1.15 * np.sin(np.deg2rad(ang))
+            ax.text(x, y, label, ha='center', va='center', fontsize=10, fontweight='bold', color='#333333')
+
+        ax.set_title(f'{ticker} — {chart_type} Breakdown', fontsize=14, fontweight='bold', color='#333333', pad=20)
+        ax.set_aspect('equal')
+        plt.tight_layout()
+
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='white')
+        plt.close(fig)
+        buf.seek(0)
+        return base64.b64encode(buf.read()).decode('ascii')
+    except Exception as e:
+        print(f'Chart generation error for {ticker} {chart_type}: {e}')
+        return None
+
+
+def _generate_note_docx(ticker, company, markdown_text, charts):
+    """Generate a Word document from markdown note text with embedded charts."""
+    try:
+        from docx import Document
+        from docx.shared import Inches, Pt, RGBColor
+        from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
+
+        doc = Document()
+        style = doc.styles['Normal']
+        font = style.font
+        font.name = 'Calibri'
+        font.size = Pt(11)
+        font.color.rgb = RGBColor(0, 0, 0)
+
+        # Title
+        title = doc.add_heading(f'{ticker} — {company}', level=1)
+        title.runs[0].font.color.rgb = RGBColor(0, 0, 0)
+
+        # Subtitle
+        sub = doc.add_paragraph(f'Equity Research Note — {datetime.utcnow().strftime("%B %Y")}')
+        sub.style.font.size = Pt(10)
+        sub.style.font.color.rgb = RGBColor(100, 100, 100)
+
+        # Parse markdown and add to doc
+        lines = markdown_text.split('\n')
+        i = 0
+
+        while i < len(lines):
+            line = lines[i]
+
+            # Headings
+            if line.startswith('### '):
+                h = doc.add_heading(line[4:].strip(), level=3)
+                h.runs[0].font.color.rgb = RGBColor(0, 0, 0)
+            elif line.startswith('## '):
+                section_title = line[3:].strip()
+                h = doc.add_heading(section_title, level=2)
+                h.runs[0].font.color.rgb = RGBColor(0, 0, 0)
+            elif line.startswith('# '):
+                h = doc.add_heading(line[2:].strip(), level=1)
+                h.runs[0].font.color.rgb = RGBColor(0, 0, 0)
+            elif line.startswith('- ') or line.startswith('* '):
+                doc.add_paragraph(line[2:].strip(), style='List Bullet')
+            elif re.match(r'^\d+\.\s', line):
+                doc.add_paragraph(line.split('. ', 1)[-1].strip(), style='List Number')
+            elif line.strip() == '':
+                pass  # Skip blank lines
+            else:
+                # Handle bold/italic text
+                p = doc.add_paragraph()
+                _add_formatted_text(p, line)
+
+            i += 1
+
+        # Add charts at end
+        if charts:
+            doc.add_heading('Charts', level=2).runs[0].font.color.rgb = RGBColor(0, 0, 0)
+            for chart in charts:
+                if chart.get('data'):
+                    img_bytes = base64.b64decode(chart['data'])
+                    img_buf = io.BytesIO(img_bytes)
+                    doc.add_picture(img_buf, width=Inches(6))
+                    doc.add_paragraph(chart.get('filename', ''))
+
+        # Save to bytes
+        buf = io.BytesIO()
+        doc.save(buf)
+        buf.seek(0)
+        return base64.b64encode(buf.read()).decode('ascii')
+    except Exception as e:
+        print(f'DOCX generation error: {e}')
+        import traceback
+        traceback.print_exc()
+        return ''
+
+
+def _add_formatted_text(paragraph, text):
+    """Add text to a paragraph, handling **bold** and *italic* markdown."""
+    parts = re.split(r'(\*\*.*?\*\*|\*.*?\*)', text)
+    for part in parts:
+        if part.startswith('**') and part.endswith('**'):
+            run = paragraph.add_run(part[2:-2])
+            run.bold = True
+        elif part.startswith('*') and part.endswith('*'):
+            run = paragraph.add_run(part[1:-1])
+            run.italic = True
+        else:
+            paragraph.add_run(part)
 
 
 # ============================================
