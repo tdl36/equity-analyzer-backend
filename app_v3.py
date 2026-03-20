@@ -1399,7 +1399,62 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
 
         _update_pipeline_job(job_id, current_step=steps[5], progress=85)
 
-        # Step 6: Save results
+        # Step 7-8-9: Generate thesis tiers if requested
+        with get_db() as (_, cur):
+            cur.execute('SELECT steps_detail FROM research_pipeline_jobs WHERE id = %s', (job_id,))
+            sd_row = cur.fetchone()
+        sd = sd_row['steps_detail'] if sd_row and sd_row['steps_detail'] else {}
+        if isinstance(sd, str):
+            try: sd = json.loads(sd)
+            except: sd = {}
+        generate_tiers = sd.get('generateTiers', 'detailed')
+
+        if generate_tiers in ('full', 'all'):
+            # Load the just-saved analysis
+            with get_db() as (_, cur):
+                cur.execute('SELECT analysis FROM portfolio_analyses WHERE ticker = %s', (ticker,))
+                ana_row = cur.fetchone()
+            if ana_row:
+                analysis_data = ana_row['analysis'] if isinstance(ana_row['analysis'], dict) else json.loads(ana_row['analysis'])
+
+                # Generate Full tier
+                _update_pipeline_job(job_id, current_step='Generating Full tier', progress=86)
+                full_data = None
+                try:
+                    full_data = _build_full_tier(analysis_data, anthropic_key=api_key, gemini_key="")
+                    with get_db(commit=True) as (conn, cur):
+                        _snapshot_tier_history(cur, 'thesis_full', 'full_analysis', ticker)
+                    with get_db(commit=True) as (conn, cur):
+                        cur.execute('''
+                            INSERT INTO thesis_full (ticker, full_analysis, updated_at)
+                            VALUES (%s, %s, CURRENT_TIMESTAMP)
+                            ON CONFLICT (ticker)
+                            DO UPDATE SET full_analysis = EXCLUDED.full_analysis, updated_at = CURRENT_TIMESTAMP
+                        ''', (ticker, json.dumps(full_data)))
+                    print(f'[pipeline {job_id}] Full tier generated for {ticker}')
+                except Exception as tier_err:
+                    print(f'[pipeline {job_id}] Full tier generation failed for {ticker}: {tier_err}')
+
+                if generate_tiers == 'all':
+                    # Generate Condensed tier from Full (fall back to Detailed if Full failed)
+                    _update_pipeline_job(job_id, current_step='Generating Condensed tier', progress=93)
+                    try:
+                        condensed_source = full_data if full_data else analysis_data
+                        condensed_data = _build_condensed_tier(condensed_source, anthropic_key=api_key, gemini_key="")
+                        with get_db(commit=True) as (conn, cur):
+                            _snapshot_tier_history(cur, 'thesis_condensed', 'condensed_analysis', ticker)
+                        with get_db(commit=True) as (conn, cur):
+                            cur.execute('''
+                                INSERT INTO thesis_condensed (ticker, condensed_analysis, updated_at)
+                                VALUES (%s, %s, CURRENT_TIMESTAMP)
+                                ON CONFLICT (ticker)
+                                DO UPDATE SET condensed_analysis = EXCLUDED.condensed_analysis, updated_at = CURRENT_TIMESTAMP
+                            ''', (ticker, json.dumps(condensed_data)))
+                        print(f'[pipeline {job_id}] Condensed tier generated for {ticker}')
+                    except Exception as tier_err:
+                        print(f'[pipeline {job_id}] Condensed tier generation failed for {ticker}: {tier_err}')
+
+        # Final step: Save results and mark complete
         _update_pipeline_job(job_id, status='complete', current_step='Complete', progress=100, result=json.dumps(result))
         print(f"[pipeline-job {job_id}] Completed successfully for {ticker}")
 
@@ -6299,7 +6354,7 @@ def _build_full_tier(analysis, anthropic_key="", gemini_key=""):
 Rules:
 1. Select 4-5 most important pillars. Keep title exactly as-is. You may tighten the description to remove filler, but preserve meaning. Keep confidence and sources unchanged.
 2. Select 5-7 most actionable signposts. You may tighten the text slightly. Keep all fields (confidence, sources, timeframe).
-3. Select 4-5 highest-risk threats. Drop likelihood and impact entirely. You may tighten the threat sentence.
+3. Select 4-5 highest-risk threats. Drop likelihood and impact fields entirely, but KEEP the triggerPoints field (this is the "Watch for" text — it MUST be preserved). You may tighten the threat sentence.
 4. Summary: keep as-is or remove filler only. Do not change meaning.
 5. Conclusion: keep exactly as-is.
 
@@ -6310,7 +6365,7 @@ Return ONLY valid JSON with this exact structure:
     "pillars": [selected pillars with ALL original fields]
   }},
   "signposts": [selected signposts with ALL original fields],
-  "threats": [selected threats with ALL original fields],
+  "threats": [selected threats — each MUST include "threat" and "triggerPoints" fields],
   "conclusion": "exact original conclusion"
 }}
 
@@ -6352,6 +6407,14 @@ Original conclusion:
         full_data['threats'] = threats[:5]
     if 'conclusion' not in full_data:
         full_data['conclusion'] = conclusion
+
+    # Restore triggerPoints if LLM dropped them — match by threat name to originals
+    orig_threats_map = {t.get('threat', ''): t for t in threats}
+    for ft in full_data.get('threats', []):
+        if not ft.get('triggerPoints'):
+            orig = orig_threats_map.get(ft.get('threat', ''), {})
+            if orig.get('triggerPoints'):
+                ft['triggerPoints'] = orig['triggerPoints']
 
     return full_data
 
@@ -8736,11 +8799,19 @@ def pipeline_start():
         job_type = data.get('jobType', 'process')
         api_key = data.get('apiKey', '')
         document_config = data.get('documentConfig', {})
+        generate_tiers = data.get('generateTiers', 'detailed')
 
         if not tickers:
             return jsonify({'error': 'At least one ticker is required'}), 400
         if not api_key:
             return jsonify({'error': 'API key is required'}), 400
+
+        # Determine total steps based on tier generation
+        total_steps = 7
+        if generate_tiers == 'full':
+            total_steps = 9
+        elif generate_tiers == 'all':
+            total_steps = 10
 
         batch_id = str(uuid.uuid4())
         jobs = []
@@ -8751,8 +8822,8 @@ def pipeline_start():
                 doc_config = document_config.get(ticker.upper(), {}) if document_config else {}
                 cur.execute('''
                     INSERT INTO research_pipeline_jobs (id, batch_id, ticker, job_type, status, progress, current_step, total_steps, steps_detail)
-                    VALUES (%s, %s, %s, %s, 'queued', 0, 'Queued', 7, %s)
-                ''', (job_id, batch_id, ticker.upper(), job_type, json.dumps({'documentConfig': doc_config})))
+                    VALUES (%s, %s, %s, %s, 'queued', 0, 'Queued', %s, %s)
+                ''', (job_id, batch_id, ticker.upper(), job_type, total_steps, json.dumps({'documentConfig': doc_config, 'generateTiers': generate_tiers})))
                 jobs.append({'id': job_id, 'ticker': ticker.upper(), 'status': 'queued'})
 
         # Spawn background thread for the batch
@@ -8986,10 +9057,18 @@ def pipeline_refresh_sector():
     sector = data.get('sector', '')
     job_type = data.get('jobType', 'update')
     api_key = data.get('apiKey', '')
+    generate_tiers = data.get('generateTiers', 'detailed')
 
     tickers = PIPELINE_SECTOR_MAP.get(sector, [])
     if not tickers:
         return jsonify({'error': f'Unknown sector: {sector}'}), 400
+
+    # Determine total steps based on tier generation
+    total_steps = 7
+    if generate_tiers == 'full':
+        total_steps = 9
+    elif generate_tiers == 'all':
+        total_steps = 10
 
     # Filter to only tickers that exist in portfolio_analyses
     with get_db() as (_, cur):
@@ -9006,8 +9085,8 @@ def pipeline_refresh_sector():
             job_id = str(uuid.uuid4())
             cur.execute('''
                 INSERT INTO research_pipeline_jobs (id, batch_id, ticker, job_type, status, progress, current_step, total_steps, steps_detail)
-                VALUES (%s, %s, %s, %s, 'queued', 0, 'Queued', 7, '[]')
-            ''', (job_id, batch_id, ticker, job_type))
+                VALUES (%s, %s, %s, %s, 'queued', 0, 'Queued', %s, %s)
+            ''', (job_id, batch_id, ticker, job_type, total_steps, json.dumps({'generateTiers': generate_tiers})))
             jobs.append({'id': job_id, 'ticker': ticker, 'status': 'queued'})
 
     threading.Thread(target=_run_pipeline_batch, args=(batch_id, existing, job_type, api_key), daemon=True).start()
