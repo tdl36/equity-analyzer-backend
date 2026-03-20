@@ -10594,6 +10594,84 @@ Return ONLY valid JSON, no markdown fencing."""
 
 
 # ============================================
+# LOCAL AGENT API
+# ============================================
+
+@app.route('/api/agent/update-job', methods=['POST'])
+def agent_update_job():
+    """Allow local agent to update a pipeline job's progress."""
+    data = request.get_json()
+    job_id = data.get('jobId', '')
+    status = data.get('status', '')
+    current_step = data.get('currentStep', '')
+    progress = data.get('progress')
+    error = data.get('error')
+
+    if not job_id:
+        return jsonify({'error': 'No jobId provided'}), 400
+
+    kwargs = {}
+    if status:
+        kwargs['status'] = status
+    if current_step:
+        kwargs['current_step'] = current_step
+    if progress is not None:
+        kwargs['progress'] = progress
+    if error:
+        kwargs['error'] = error
+
+    if kwargs:
+        _update_pipeline_job(job_id, **kwargs)
+
+    return jsonify({'success': True})
+
+
+@app.route('/api/agent/save-note', methods=['POST'])
+def agent_save_note():
+    """Allow local agent to save a completed research note."""
+    data = request.get_json()
+    note_id = data.get('noteId', str(uuid.uuid4()))
+    ticker = data.get('ticker', '').upper()
+    version = data.get('version', '1.0')
+    note_md = data.get('noteMarkdown', '')
+    sources_md = data.get('sourcesMarkdown', '')
+    changelog_md = data.get('changelogMarkdown', '')
+    docx_b64 = data.get('noteDocx', '')
+    charts = data.get('charts', [])
+    metadata = data.get('metadata', {})
+
+    if not ticker:
+        return jsonify({'error': 'No ticker provided'}), 400
+
+    try:
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('''
+                INSERT INTO research_notes (id, ticker, version, note_markdown, sources_markdown, changelog_markdown, note_docx, charts, metadata)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE SET
+                    note_markdown = EXCLUDED.note_markdown,
+                    sources_markdown = EXCLUDED.sources_markdown,
+                    changelog_markdown = EXCLUDED.changelog_markdown,
+                    note_docx = EXCLUDED.note_docx,
+                    charts = EXCLUDED.charts,
+                    metadata = EXCLUDED.metadata,
+                    updated_at = NOW()
+            ''', (note_id, ticker, version, note_md, sources_md, changelog_md, docx_b64,
+                  json.dumps(charts), json.dumps(metadata)))
+
+        return jsonify({'success': True, 'noteId': note_id})
+    except Exception as e:
+        print(f'Error saving agent note: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/agent/health', methods=['GET'])
+def agent_health():
+    """Health check endpoint for the agent."""
+    return jsonify({'status': 'ok', 'timestamp': datetime.utcnow().isoformat()})
+
+
+# ============================================
 # MEETING PREP - MEETING ENDPOINTS
 # ============================================
 
