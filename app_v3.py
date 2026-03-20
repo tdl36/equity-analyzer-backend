@@ -1028,6 +1028,29 @@ def init_db():
             cur.execute('CREATE INDEX IF NOT EXISTS idx_thesis_snapshots_ticker ON thesis_snapshots(ticker)')
             cur.execute('CREATE INDEX IF NOT EXISTS idx_thesis_snapshots_ticker_date ON thesis_snapshots(ticker, created_at DESC)')
 
+            # Research Pipeline Jobs table - batch processing queue
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS research_pipeline_jobs (
+                    id TEXT PRIMARY KEY,
+                    batch_id TEXT,
+                    ticker TEXT NOT NULL,
+                    job_type TEXT NOT NULL DEFAULT 'process',
+                    status TEXT NOT NULL DEFAULT 'queued',
+                    progress INTEGER DEFAULT 0,
+                    current_step TEXT DEFAULT '',
+                    total_steps INTEGER DEFAULT 7,
+                    steps_detail JSONB DEFAULT '[]',
+                    result JSONB,
+                    error TEXT,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP DEFAULT NOW(),
+                    completed_at TIMESTAMP
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_pipeline_jobs_batch ON research_pipeline_jobs(batch_id)')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_pipeline_jobs_ticker ON research_pipeline_jobs(ticker)')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_pipeline_jobs_status ON research_pipeline_jobs(status)')
+
             # Mark stale processing jobs as failed (server restart recovery)
             cur.execute('''
                 UPDATE analysis_jobs
@@ -1040,6 +1063,18 @@ def init_db():
                 DELETE FROM analysis_jobs
                 WHERE (status IN ('complete', 'failed') AND created_at < NOW() - INTERVAL '24 hours')
             ''')
+
+            # Clean up stale pipeline jobs (stuck running for > 30 min)
+            cur.execute("""
+                UPDATE research_pipeline_jobs SET status = 'failed', error = 'Job timed out', updated_at = NOW()
+                WHERE status IN ('queued', 'running') AND created_at < NOW() - INTERVAL '30 minutes'
+            """)
+
+            # Clean up old completed/failed pipeline jobs (older than 7 days)
+            cur.execute("""
+                DELETE FROM research_pipeline_jobs
+                WHERE status IN ('complete', 'failed') AND created_at < NOW() - INTERVAL '7 days'
+            """)
 
         print("Database tables initialized")
     except Exception as e:
@@ -1176,6 +1211,136 @@ def _update_job(job_id, **kwargs):
             cur.execute(f"UPDATE analysis_jobs SET {', '.join(set_clauses)} WHERE id = %s", values)
     except Exception as e:
         print(f"[analysis-job {job_id}] Failed to update: {e}")
+
+
+def _update_pipeline_job(job_id, **kwargs):
+    """Update a pipeline job's fields."""
+    fields = []
+    values = []
+    for k, v in kwargs.items():
+        fields.append(f'{k} = %s')
+        values.append(v)
+    fields.append('updated_at = NOW()')
+    if kwargs.get('status') in ('complete', 'failed'):
+        fields.append('completed_at = NOW()')
+    values.append(job_id)
+    try:
+        with get_db(commit=True) as (conn, cur):
+            cur.execute(f"UPDATE research_pipeline_jobs SET {', '.join(fields)} WHERE id = %s", values)
+    except Exception as e:
+        print(f"[pipeline-job {job_id}] Failed to update: {e}")
+
+
+def _run_pipeline_batch(batch_id, tickers, job_type, api_key):
+    """Background thread: process a batch of tickers through the research pipeline sequentially."""
+    print(f"[pipeline-batch {batch_id}] Starting batch for {len(tickers)} tickers: {tickers}")
+    for ticker in tickers:
+        try:
+            with get_db() as (_, cur):
+                cur.execute('SELECT id, status FROM research_pipeline_jobs WHERE batch_id = %s AND ticker = %s', (batch_id, ticker))
+                job = cur.fetchone()
+            if not job:
+                print(f"[pipeline-batch {batch_id}] No job found for {ticker}, skipping")
+                continue
+            if job['status'] == 'cancelled':
+                print(f"[pipeline-batch {batch_id}] Job {job['id']} for {ticker} was cancelled, skipping")
+                continue
+            _run_single_pipeline_job(job['id'], ticker, job_type, api_key)
+        except Exception as e:
+            print(f"[pipeline-batch {batch_id}] Error processing {ticker}: {e}")
+    print(f"[pipeline-batch {batch_id}] Batch complete")
+
+
+def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
+    """Process a single ticker through the research pipeline."""
+    steps = [
+        'Checking existing analysis',
+        'Scanning for documents',
+        'Processing documents',
+        'Generating analysis',
+        'Building deliverables',
+        'Saving results',
+        'Complete'
+    ]
+    try:
+        _update_pipeline_job(job_id, status='running', current_step=steps[0], progress=0)
+
+        # Step 1: Check existing analysis
+        with get_db() as (_, cur):
+            cur.execute('SELECT * FROM portfolio_analyses WHERE ticker = %s', (ticker,))
+            existing = cur.fetchone()
+        _update_pipeline_job(job_id, current_step=steps[1], progress=14)
+
+        # Step 2: Scan for uploaded documents
+        with get_db() as (_, cur):
+            cur.execute('SELECT * FROM document_files WHERE ticker = %s ORDER BY created_at DESC', (ticker,))
+            docs = cur.fetchall()
+
+        if not docs and not existing:
+            raise Exception(f'No documents or existing analysis found for {ticker}')
+
+        _update_pipeline_job(job_id, current_step=steps[2], progress=28)
+
+        # Step 3: Process documents (if any new ones)
+        # Build document payload for LLM
+        doc_payloads = []
+        for doc in docs:
+            doc_payloads.append({
+                'filename': doc['filename'],
+                'content': doc.get('extracted_text', ''),
+                'size': doc.get('file_size', 0)
+            })
+
+        _update_pipeline_job(job_id, current_step=steps[3], progress=42)
+
+        # Step 4: Generate/update analysis via LLM
+        # Use existing analysis job infrastructure
+        if doc_payloads or (job_type == 'process'):
+            # Create an analysis sub-job
+            sub_job_id = str(uuid.uuid4())
+            with get_db(commit=True) as (conn, cur):
+                cur.execute('''INSERT INTO analysis_jobs (id, ticker, status, progress, created_at, updated_at, api_key, request_payload)
+                    VALUES (%s, %s, 'pending', '', NOW(), NOW(), %s, %s)''',
+                    (sub_job_id, ticker, api_key, json.dumps({
+                        'ticker': ticker,
+                        'documentFilenames': [d['filename'] for d in doc_payloads],
+                        'existingAnalysis': dict(existing) if existing else None,
+                    })))
+
+            # Run the analysis synchronously within this thread
+            _run_analysis_job(sub_job_id)
+
+            # Wait for completion and check result
+            with get_db() as (_, cur):
+                cur.execute('SELECT status, result, error FROM analysis_jobs WHERE id = %s', (sub_job_id,))
+                sub_result = cur.fetchone()
+
+            if sub_result and sub_result['status'] == 'failed':
+                raise Exception(f'Analysis failed: {sub_result.get("error", "Unknown error")}')
+
+        _update_pipeline_job(job_id, current_step=steps[4], progress=71)
+
+        # Step 5: Build deliverables summary
+        with get_db() as (_, cur):
+            cur.execute('SELECT * FROM portfolio_analyses WHERE ticker = %s', (ticker,))
+            final_analysis = cur.fetchone()
+
+        result = {
+            'ticker': ticker,
+            'hasAnalysis': final_analysis is not None,
+            'documentsProcessed': len(doc_payloads),
+            'completedAt': datetime.utcnow().isoformat(),
+        }
+
+        _update_pipeline_job(job_id, current_step=steps[5], progress=85)
+
+        # Step 6: Save results
+        _update_pipeline_job(job_id, status='complete', current_step='Complete', progress=100, result=json.dumps(result))
+        print(f"[pipeline-job {job_id}] Completed successfully for {ticker}")
+
+    except Exception as e:
+        print(f'[pipeline-job {job_id}] Failed for {ticker}: {e}')
+        _update_pipeline_job(job_id, status='failed', error=str(e), current_step='Failed')
 
 
 def _count_pdf_pages(base64_data):
@@ -8473,6 +8638,248 @@ def extract_pdf():
     except Exception as e:
         print(f"PDF extraction error: {e}")
         return jsonify({'error': f'Failed to extract PDF: {str(e)}'}), 500
+
+
+# ============================================
+# RESEARCH PIPELINE
+# ============================================
+
+@app.route('/api/pipeline/start', methods=['POST'])
+def pipeline_start():
+    """Start a research pipeline batch for one or more tickers."""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'Request body required'}), 400
+
+        tickers = data.get('tickers', [])
+        job_type = data.get('jobType', 'process')
+        api_key = data.get('apiKey', '')
+
+        if not tickers:
+            return jsonify({'error': 'At least one ticker is required'}), 400
+        if not api_key:
+            return jsonify({'error': 'API key is required'}), 400
+
+        batch_id = str(uuid.uuid4())
+        jobs = []
+
+        with get_db(commit=True) as (conn, cur):
+            for ticker in tickers:
+                job_id = str(uuid.uuid4())
+                cur.execute('''
+                    INSERT INTO research_pipeline_jobs (id, batch_id, ticker, job_type, status, progress, current_step, total_steps, steps_detail)
+                    VALUES (%s, %s, %s, %s, 'queued', 0, 'Queued', 7, '[]')
+                ''', (job_id, batch_id, ticker.upper(), job_type))
+                jobs.append({'id': job_id, 'ticker': ticker.upper(), 'status': 'queued'})
+
+        # Spawn background thread for the batch
+        threading.Thread(
+            target=_run_pipeline_batch,
+            args=(batch_id, [t.upper() for t in tickers], job_type, api_key),
+            daemon=True
+        ).start()
+
+        return jsonify({'batchId': batch_id, 'jobs': jobs})
+
+    except Exception as e:
+        print(f"Pipeline start error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/pipeline/jobs', methods=['GET'])
+def pipeline_jobs():
+    """List pipeline jobs with optional filters."""
+    try:
+        status_filter = request.args.get('status')
+        ticker_filter = request.args.get('ticker')
+        limit = int(request.args.get('limit', 50))
+
+        conditions = []
+        params = []
+
+        if status_filter:
+            conditions.append('status = %s')
+            params.append(status_filter)
+        if ticker_filter:
+            conditions.append('ticker = %s')
+            params.append(ticker_filter.upper())
+
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ''
+        params.append(limit)
+
+        with get_db() as (_, cur):
+            cur.execute(f'''
+                SELECT id, batch_id, ticker, job_type, status, progress, current_step, total_steps,
+                       steps_detail, error, created_at, updated_at, completed_at
+                FROM research_pipeline_jobs
+                {where_clause}
+                ORDER BY created_at DESC
+                LIMIT %s
+            ''', params)
+            rows = cur.fetchall()
+
+        jobs = []
+        for row in rows:
+            job = dict(row)
+            # Serialize timestamps
+            for ts_field in ('created_at', 'updated_at', 'completed_at'):
+                if job.get(ts_field):
+                    job[ts_field] = job[ts_field].isoformat()
+            # Parse JSONB fields
+            if isinstance(job.get('steps_detail'), str):
+                job['steps_detail'] = json.loads(job['steps_detail'])
+            jobs.append(job)
+
+        return jsonify({'jobs': jobs})
+
+    except Exception as e:
+        print(f"Pipeline jobs list error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/pipeline/job/<job_id>/status', methods=['GET'])
+def pipeline_job_status(job_id):
+    """Get status of a single pipeline job."""
+    try:
+        with get_db() as (_, cur):
+            cur.execute('''
+                SELECT id, batch_id, ticker, job_type, status, progress, current_step, total_steps,
+                       steps_detail, result, error, created_at, updated_at, completed_at
+                FROM research_pipeline_jobs WHERE id = %s
+            ''', (job_id,))
+            row = cur.fetchone()
+
+        if not row:
+            return jsonify({'error': 'Job not found'}), 404
+
+        job = dict(row)
+        for ts_field in ('created_at', 'updated_at', 'completed_at'):
+            if job.get(ts_field):
+                job[ts_field] = job[ts_field].isoformat()
+        if isinstance(job.get('steps_detail'), str):
+            job['steps_detail'] = json.loads(job['steps_detail'])
+        if isinstance(job.get('result'), str):
+            job['result'] = json.loads(job['result'])
+
+        return jsonify(job)
+
+    except Exception as e:
+        print(f"Pipeline job status error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/pipeline/batch-status', methods=['POST'])
+def pipeline_batch_status():
+    """Get status for multiple pipeline jobs at once (efficient bulk poll)."""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'Request body required'}), 400
+
+        job_ids = data.get('jobIds', [])
+        if not job_ids:
+            return jsonify({'jobs': {}})
+
+        placeholders = ','.join(['%s'] * len(job_ids))
+        with get_db() as (_, cur):
+            cur.execute(f'''
+                SELECT id, batch_id, ticker, job_type, status, progress, current_step, total_steps,
+                       steps_detail, result, error, created_at, updated_at, completed_at
+                FROM research_pipeline_jobs WHERE id IN ({placeholders})
+            ''', job_ids)
+            rows = cur.fetchall()
+
+        jobs = {}
+        for row in rows:
+            job = dict(row)
+            for ts_field in ('created_at', 'updated_at', 'completed_at'):
+                if job.get(ts_field):
+                    job[ts_field] = job[ts_field].isoformat()
+            if isinstance(job.get('steps_detail'), str):
+                job['steps_detail'] = json.loads(job['steps_detail'])
+            if isinstance(job.get('result'), str):
+                job['result'] = json.loads(job['result'])
+            jobs[job['id']] = job
+
+        return jsonify({'jobs': jobs})
+
+    except Exception as e:
+        print(f"Pipeline batch status error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/pipeline/job/<job_id>', methods=['DELETE'])
+def pipeline_job_delete(job_id):
+    """Delete or cancel a pipeline job."""
+    try:
+        with get_db() as (_, cur):
+            cur.execute('SELECT id, status FROM research_pipeline_jobs WHERE id = %s', (job_id,))
+            job = cur.fetchone()
+
+        if not job:
+            return jsonify({'error': 'Job not found'}), 404
+
+        if job['status'] == 'running':
+            # Can't delete a running job, mark as cancelled instead
+            with get_db(commit=True) as (conn, cur):
+                cur.execute("UPDATE research_pipeline_jobs SET status = 'cancelled', updated_at = NOW() WHERE id = %s", (job_id,))
+            return jsonify({'message': 'Job cancelled', 'id': job_id, 'status': 'cancelled'})
+        else:
+            # Queued, complete, or failed — delete the row
+            with get_db(commit=True) as (conn, cur):
+                cur.execute('DELETE FROM research_pipeline_jobs WHERE id = %s', (job_id,))
+            return jsonify({'message': 'Job deleted', 'id': job_id})
+
+    except Exception as e:
+        print(f"Pipeline job delete error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/pipeline/universe', methods=['GET'])
+def pipeline_universe():
+    """Return the stock universe with processing status."""
+    try:
+        with get_db() as (_, cur):
+            # Get all tickers from portfolio_analyses
+            cur.execute('''
+                SELECT pa.ticker, pa.company, pa.updated_at as last_analysis_date,
+                       CASE WHEN tsd.ticker IS NOT NULL THEN true ELSE false END as has_scorecard
+                FROM portfolio_analyses pa
+                LEFT JOIN thesis_scorecard_data tsd ON pa.ticker = tsd.ticker
+                ORDER BY pa.ticker
+            ''')
+            analyses = cur.fetchall()
+
+            # Get latest pipeline job per ticker
+            cur.execute('''
+                SELECT DISTINCT ON (ticker) ticker, status as last_status, completed_at as last_processed, updated_at
+                FROM research_pipeline_jobs
+                ORDER BY ticker, created_at DESC
+            ''')
+            pipeline_map = {row['ticker']: row for row in cur.fetchall()}
+
+        universe = []
+        for a in analyses:
+            entry = {
+                'ticker': a['ticker'],
+                'company': a['company'],
+                'lastAnalysisDate': a['last_analysis_date'].isoformat() if a['last_analysis_date'] else None,
+                'hasScorecard': a['has_scorecard'],
+                'lastProcessed': None,
+                'lastStatus': None,
+            }
+            pj = pipeline_map.get(a['ticker'])
+            if pj:
+                entry['lastProcessed'] = pj['last_processed'].isoformat() if pj['last_processed'] else None
+                entry['lastStatus'] = pj['last_status']
+            universe.append(entry)
+
+        return jsonify({'universe': universe, 'total': len(universe)})
+
+    except Exception as e:
+        print(f"Pipeline universe error: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 # ============================================
