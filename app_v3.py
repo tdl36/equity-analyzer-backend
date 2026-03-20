@@ -1271,31 +1271,95 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
             existing = cur.fetchone()
         _update_pipeline_job(job_id, current_step=steps[1], progress=14)
 
-        # Step 2: Scan for uploaded documents
+        # Step 2: Scan for ALL documents (both Thesis and Research storage)
+        thesis_docs = []
+        research_docs = []
         with get_db() as (_, cur):
-            cur.execute('SELECT * FROM document_files WHERE ticker = %s ORDER BY created_at DESC', (ticker,))
-            docs = cur.fetchall()
+            cur.execute('SELECT id, filename, file_data, file_type, mime_type, file_size, metadata FROM document_files WHERE ticker = %s ORDER BY created_at DESC', (ticker,))
+            thesis_docs = [dict(r) for r in cur.fetchall()]
 
-        if not docs and not existing:
+        with get_db() as (_, cur):
+            cur.execute('''
+                SELECT rdf.id, rdf.filename, rdf.file_data, rdf.file_type, rdf.file_size,
+                       rd.name as doc_name
+                FROM research_document_files rdf
+                JOIN research_documents rd ON rdf.document_id = rd.id
+                JOIN research_categories rc ON rd.category_id = rc.id
+                WHERE UPPER(rc.name) = %s
+            ''', (ticker,))
+            research_docs = [dict(r) for r in cur.fetchall()]
+
+        all_available = []
+        for d in thesis_docs:
+            all_available.append({
+                'id': f'thesis_{d["id"]}',
+                'filename': d['filename'],
+                'file_data': d.get('file_data', ''),
+                'file_type': d.get('file_type', 'pdf'),
+                'mime_type': d.get('mime_type', 'application/pdf'),
+                'source': 'thesis',
+                'weight': 1.0,
+            })
+        for d in research_docs:
+            all_available.append({
+                'id': f'research_{d["id"]}',
+                'filename': d['filename'],
+                'file_data': d.get('file_data', ''),
+                'file_type': d.get('file_type', 'pdf'),
+                'mime_type': d.get('mime_type', 'application/pdf'),
+                'source': 'research',
+                'weight': 1.0,
+            })
+
+        if not all_available and not existing:
             raise Exception(f'No documents or existing analysis found for {ticker}')
 
-        _update_pipeline_job(job_id, current_step=steps[2], progress=28)
+        # Apply document config (inclusion/exclusion/weights)
+        doc_config = {}
+        with get_db() as (_, cur):
+            cur.execute('SELECT steps_detail FROM research_pipeline_jobs WHERE id = %s', (job_id,))
+            job_row = cur.fetchone()
+            if job_row and job_row['steps_detail']:
+                sd = job_row['steps_detail']
+                if isinstance(sd, str):
+                    try: sd = json.loads(sd)
+                    except: sd = {}
+                doc_config = sd.get('documentConfig', {})
 
-        # Step 3: Process documents (if any new ones)
-        # Build document payload for LLM
-        doc_payloads = []
-        for doc in docs:
-            doc_payloads.append({
-                'filename': doc['filename'],
-                'content': doc.get('extracted_text', ''),
-                'size': doc.get('file_size', 0)
-            })
+        config_docs = doc_config.get('documents', [])
+        config_map = {cd['id']: cd for cd in config_docs}
+
+        selected_docs = []
+        for doc in all_available:
+            cfg = config_map.get(doc['id'], {})
+            if cfg.get('included') is False:
+                continue  # Explicitly excluded
+            doc['weight'] = cfg.get('weight', doc['weight'])
+            selected_docs.append(doc)
+
+        _update_pipeline_job(job_id, current_step=f'Processing {len(selected_docs)} documents', progress=28)
+
+        # Step 3: Ensure all documents exist in document_files for the analysis job
+        # Research-sourced docs need to be copied to document_files so _run_analysis_job can find them
+        for doc in selected_docs:
+            if doc['source'] == 'research' and doc['file_data']:
+                with get_db(commit=True) as (conn, cur):
+                    cur.execute('''
+                        INSERT INTO document_files (ticker, filename, file_data, file_type, mime_type, file_size, metadata, created_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+                        ON CONFLICT (ticker, filename) DO NOTHING
+                    ''', (ticker, doc['filename'], doc['file_data'], doc['file_type'], doc['mime_type'],
+                          len(doc['file_data']) if doc['file_data'] else 0,
+                          json.dumps({'source': 'research', 'copiedByPipeline': True})))
 
         _update_pipeline_job(job_id, current_step=steps[3], progress=42)
 
         # Step 4: Generate/update analysis via LLM
         # Use existing analysis job infrastructure
-        if doc_payloads or (job_type == 'process'):
+        doc_filenames = [d['filename'] for d in selected_docs]
+        doc_details_list = [{'filename': d['filename'], 'weight': d['weight'], 'isNew': True} for d in selected_docs]
+
+        if doc_filenames or (job_type == 'process'):
             # Create an analysis sub-job
             sub_job_id = str(uuid.uuid4())
             with get_db(commit=True) as (conn, cur):
@@ -1303,7 +1367,8 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
                     VALUES (%s, %s, 'pending', '', NOW(), NOW(), %s, %s)''',
                     (sub_job_id, ticker, api_key, json.dumps({
                         'ticker': ticker,
-                        'documentFilenames': [d['filename'] for d in doc_payloads],
+                        'documentFilenames': doc_filenames,
+                        'documentDetails': doc_details_list,
                         'existingAnalysis': dict(existing) if existing else None,
                     })))
 
@@ -1328,7 +1393,7 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
         result = {
             'ticker': ticker,
             'hasAnalysis': final_analysis is not None,
-            'documentsProcessed': len(doc_payloads),
+            'documentsProcessed': len(selected_docs),
             'completedAt': datetime.utcnow().isoformat(),
         }
 
@@ -8670,6 +8735,7 @@ def pipeline_start():
         tickers = data.get('tickers', [])
         job_type = data.get('jobType', 'process')
         api_key = data.get('apiKey', '')
+        document_config = data.get('documentConfig', {})
 
         if not tickers:
             return jsonify({'error': 'At least one ticker is required'}), 400
@@ -8682,10 +8748,11 @@ def pipeline_start():
         with get_db(commit=True) as (conn, cur):
             for ticker in tickers:
                 job_id = str(uuid.uuid4())
+                doc_config = document_config.get(ticker.upper(), {}) if document_config else {}
                 cur.execute('''
                     INSERT INTO research_pipeline_jobs (id, batch_id, ticker, job_type, status, progress, current_step, total_steps, steps_detail)
-                    VALUES (%s, %s, %s, %s, 'queued', 0, 'Queued', 7, '[]')
-                ''', (job_id, batch_id, ticker.upper(), job_type))
+                    VALUES (%s, %s, %s, %s, 'queued', 0, 'Queued', 7, %s)
+                ''', (job_id, batch_id, ticker.upper(), job_type, json.dumps({'documentConfig': doc_config})))
                 jobs.append({'id': job_id, 'ticker': ticker.upper(), 'status': 'queued'})
 
         # Spawn background thread for the batch
@@ -8946,6 +9013,59 @@ def pipeline_refresh_sector():
     threading.Thread(target=_run_pipeline_batch, args=(batch_id, existing, job_type, api_key), daemon=True).start()
 
     return jsonify({'batchId': batch_id, 'sector': sector, 'jobs': jobs, 'tickerCount': len(existing)})
+
+
+@app.route('/api/pipeline/documents/<ticker>', methods=['GET'])
+def pipeline_documents(ticker):
+    """Return all documents for a ticker from both Thesis and Research storage."""
+    ticker = ticker.upper()
+    try:
+        docs = []
+        # Source 1: document_files (Thesis tab)
+        with get_db() as (_, cur):
+            cur.execute('''
+                SELECT id, filename, file_type, mime_type, file_size, created_at, metadata
+                FROM document_files WHERE ticker = %s ORDER BY created_at DESC
+            ''', (ticker,))
+            for row in cur.fetchall():
+                docs.append({
+                    'id': f'thesis_{row["id"]}',
+                    'source': 'thesis',
+                    'filename': row['filename'],
+                    'fileType': row.get('file_type', ''),
+                    'fileSize': row.get('file_size', 0),
+                    'createdAt': row['created_at'].isoformat() if row['created_at'] else None,
+                    'weight': 1.0,
+                })
+
+        # Source 2: research_document_files (Research tab) — join through research_documents → research_categories
+        with get_db() as (_, cur):
+            cur.execute('''
+                SELECT rdf.id, rdf.filename, rdf.file_type, rdf.file_size, rdf.created_at,
+                       rd.name as doc_name, rd.doc_type, rd.published_date
+                FROM research_document_files rdf
+                JOIN research_documents rd ON rdf.document_id = rd.id
+                JOIN research_categories rc ON rd.category_id = rc.id
+                WHERE UPPER(rc.name) = %s
+                ORDER BY rdf.created_at DESC
+            ''', (ticker,))
+            for row in cur.fetchall():
+                docs.append({
+                    'id': f'research_{row["id"]}',
+                    'source': 'research',
+                    'filename': row['filename'],
+                    'fileType': row.get('file_type', ''),
+                    'fileSize': row.get('file_size', 0),
+                    'createdAt': row['created_at'].isoformat() if row['created_at'] else None,
+                    'docName': row.get('doc_name', ''),
+                    'docType': row.get('doc_type', ''),
+                    'weight': 1.0,
+                })
+
+        return jsonify({'ticker': ticker, 'documents': docs, 'total': len(docs)})
+    except Exception as e:
+        print(f'Error fetching pipeline documents for {ticker}: {e}')
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/pipeline/history', methods=['GET'])
