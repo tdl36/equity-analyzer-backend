@@ -1369,7 +1369,7 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
                         'ticker': ticker,
                         'documentFilenames': doc_filenames,
                         'documentDetails': doc_details_list,
-                        'existingAnalysis': dict(existing) if existing else None,
+                        'existingAnalysis': {k: (v.isoformat() if hasattr(v, 'isoformat') else v) for k, v in dict(existing).items()} if existing else None,
                     })))
 
             # Run the analysis synchronously within this thread
