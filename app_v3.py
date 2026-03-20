@@ -8644,6 +8644,21 @@ def extract_pdf():
 # RESEARCH PIPELINE
 # ============================================
 
+PIPELINE_SECTOR_MAP = {
+    'Pharma': ['MRK', 'LLY', 'JNJ', 'PFE', 'BMY', 'ABBV'],
+    'Biotech': ['GILD', 'REGN', 'VRTX'],
+    'MedTech & Life Sci': ['MDT', 'BDX', 'BSX', 'ABT', 'TMO', 'DHR', 'DGX'],
+    'Managed Care & Distro': ['UNH', 'CI', 'CVS', 'COR', 'CAH'],
+    'Industrials': ['RTX', 'GD', 'CARR', 'ETN', 'DE', 'PH', 'DOV', 'MMM', 'RSG', 'UNP', 'NSC'],
+    'REITs': ['VTR', 'PLD', 'AVB', 'AMT'],
+}
+# Reverse lookup: ticker -> sector
+PIPELINE_TICKER_SECTOR = {}
+for _sec, _tks in PIPELINE_SECTOR_MAP.items():
+    for _tk in _tks:
+        PIPELINE_TICKER_SECTOR[_tk] = _sec
+
+
 @app.route('/api/pipeline/start', methods=['POST'])
 def pipeline_start():
     """Start a research pipeline batch for one or more tickers."""
@@ -8869,16 +8884,147 @@ def pipeline_universe():
                 'lastProcessed': None,
                 'lastStatus': None,
             }
+            # Sector assignment
+            entry['sector'] = PIPELINE_TICKER_SECTOR.get(a['ticker'], 'Other')
+            # Calculate staleness: days since last analysis
+            if a['last_analysis_date']:
+                days_old = (datetime.utcnow() - a['last_analysis_date']).days
+                entry['daysOld'] = days_old
+                entry['freshness'] = 'fresh' if days_old <= 7 else 'stale' if days_old <= 30 else 'outdated'
+            else:
+                entry['daysOld'] = None
+                entry['freshness'] = 'never'
             pj = pipeline_map.get(a['ticker'])
             if pj:
                 entry['lastProcessed'] = pj['last_processed'].isoformat() if pj['last_processed'] else None
                 entry['lastStatus'] = pj['last_status']
             universe.append(entry)
 
-        return jsonify({'universe': universe, 'total': len(universe)})
+        return jsonify({
+            'universe': universe,
+            'total': len(universe),
+            'sectors': list(PIPELINE_SECTOR_MAP.keys()),
+            'sectorMap': PIPELINE_SECTOR_MAP
+        })
 
     except Exception as e:
         print(f"Pipeline universe error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/pipeline/refresh-sector', methods=['POST'])
+def pipeline_refresh_sector():
+    """Trigger pipeline jobs for all stocks in a sector."""
+    data = request.get_json()
+    sector = data.get('sector', '')
+    job_type = data.get('jobType', 'update')
+    api_key = data.get('apiKey', '')
+
+    tickers = PIPELINE_SECTOR_MAP.get(sector, [])
+    if not tickers:
+        return jsonify({'error': f'Unknown sector: {sector}'}), 400
+
+    # Filter to only tickers that exist in portfolio_analyses
+    with get_db() as (_, cur):
+        cur.execute('SELECT ticker FROM portfolio_analyses WHERE ticker = ANY(%s)', (tickers,))
+        existing = [r['ticker'] for r in cur.fetchall()]
+
+    if not existing:
+        return jsonify({'error': f'No analyzed stocks found in sector {sector}'}), 404
+
+    batch_id = str(uuid.uuid4())
+    jobs = []
+    with get_db(commit=True) as (conn, cur):
+        for ticker in existing:
+            job_id = str(uuid.uuid4())
+            cur.execute('''
+                INSERT INTO research_pipeline_jobs (id, batch_id, ticker, job_type, status, progress, current_step, total_steps, steps_detail)
+                VALUES (%s, %s, %s, %s, 'queued', 0, 'Queued', 7, '[]')
+            ''', (job_id, batch_id, ticker, job_type))
+            jobs.append({'id': job_id, 'ticker': ticker, 'status': 'queued'})
+
+    threading.Thread(target=_run_pipeline_batch, args=(batch_id, existing, job_type, api_key), daemon=True).start()
+
+    return jsonify({'batchId': batch_id, 'sector': sector, 'jobs': jobs, 'tickerCount': len(existing)})
+
+
+@app.route('/api/pipeline/history', methods=['GET'])
+def pipeline_history():
+    """Return pipeline job history with analytics."""
+    limit = int(request.args.get('limit', 100))
+    ticker = request.args.get('ticker', '')
+
+    try:
+        with get_db() as (_, cur):
+            if ticker:
+                cur.execute('''
+                    SELECT id, batch_id, ticker, job_type, status, progress, current_step, error,
+                           created_at, updated_at, completed_at
+                    FROM research_pipeline_jobs
+                    WHERE ticker = %s
+                    ORDER BY created_at DESC LIMIT %s
+                ''', (ticker.upper(), limit))
+            else:
+                cur.execute('''
+                    SELECT id, batch_id, ticker, job_type, status, progress, current_step, error,
+                           created_at, updated_at, completed_at
+                    FROM research_pipeline_jobs
+                    ORDER BY created_at DESC LIMIT %s
+                ''', (limit,))
+            jobs = cur.fetchall()
+
+            # Analytics
+            cur.execute('''
+                SELECT
+                    COUNT(*) as total_jobs,
+                    COUNT(*) FILTER (WHERE status = 'complete') as completed,
+                    COUNT(*) FILTER (WHERE status = 'failed') as failed,
+                    COUNT(*) FILTER (WHERE status = 'running') as running,
+                    COUNT(*) FILTER (WHERE status = 'queued') as queued,
+                    COUNT(DISTINCT ticker) as unique_tickers,
+                    AVG(EXTRACT(EPOCH FROM (completed_at - created_at))) FILTER (WHERE status = 'complete') as avg_duration_seconds
+                FROM research_pipeline_jobs
+            ''')
+            analytics = cur.fetchone()
+
+        return jsonify({
+            'jobs': [{
+                'id': j['id'],
+                'batchId': j['batch_id'],
+                'ticker': j['ticker'],
+                'jobType': j['job_type'],
+                'status': j['status'],
+                'progress': j['progress'],
+                'currentStep': j['current_step'],
+                'error': j['error'],
+                'createdAt': j['created_at'].isoformat() if j['created_at'] else None,
+                'completedAt': j['completed_at'].isoformat() if j['completed_at'] else None,
+                'duration': round((j['completed_at'] - j['created_at']).total_seconds()) if j['completed_at'] and j['created_at'] else None,
+            } for j in jobs],
+            'analytics': {
+                'totalJobs': analytics['total_jobs'],
+                'completed': analytics['completed'],
+                'failed': analytics['failed'],
+                'running': analytics['running'],
+                'queued': analytics['queued'],
+                'uniqueTickers': analytics['unique_tickers'],
+                'avgDurationSeconds': round(analytics['avg_duration_seconds']) if analytics['avg_duration_seconds'] else None,
+            }
+        })
+    except Exception as e:
+        print(f'Error fetching pipeline history: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/pipeline/history/clear', methods=['POST'])
+def pipeline_clear_history():
+    """Clear completed/failed pipeline jobs."""
+    try:
+        with get_db(commit=True) as (conn, cur):
+            cur.execute("DELETE FROM research_pipeline_jobs WHERE status IN ('complete', 'failed')")
+            deleted = cur.rowcount
+        return jsonify({'deleted': deleted})
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
