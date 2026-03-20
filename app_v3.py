@@ -9230,7 +9230,20 @@ def pipeline_documents(ticker):
                     'weight': 1.0,
                 })
 
-        return jsonify({'ticker': ticker, 'documents': docs, 'total': len(docs)})
+        # Cross-reference with documentHistory to show which docs were used in existing analysis
+        used_filenames = set()
+        with get_db() as (_, cur):
+            cur.execute('SELECT analysis FROM portfolio_analyses WHERE ticker = %s', (ticker,))
+            pa_row = cur.fetchone()
+        if pa_row and pa_row['analysis']:
+            analysis = pa_row['analysis'] if isinstance(pa_row['analysis'], dict) else json.loads(pa_row['analysis'])
+            for dh in analysis.get('documentHistory', []):
+                used_filenames.add(dh.get('filename', ''))
+
+        for doc in docs:
+            doc['usedInAnalysis'] = doc['filename'] in used_filenames
+
+        return jsonify({'ticker': ticker, 'documents': docs, 'total': len(docs), 'usedCount': len(used_filenames)})
     except Exception as e:
         print(f'Error fetching pipeline documents for {ticker}: {e}')
         return jsonify({'error': str(e)}), 500
