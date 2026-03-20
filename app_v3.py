@@ -896,7 +896,7 @@ def init_db():
             # Analysis Jobs table - background analysis processing
             cur.execute('''
                 CREATE TABLE IF NOT EXISTS analysis_jobs (
-                    id VARCHAR(20) PRIMARY KEY,
+                    id VARCHAR(100) PRIMARY KEY,
                     ticker VARCHAR(20),
                     status VARCHAR(20) DEFAULT 'pending',
                     progress TEXT DEFAULT '',
@@ -910,6 +910,18 @@ def init_db():
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
+            ''')
+
+            # Widen analysis_jobs.id to support UUID (was VARCHAR(20), needs VARCHAR(100))
+            cur.execute('''
+                DO $$ BEGIN
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name='analysis_jobs' AND column_name='id' AND character_maximum_length < 100
+                    ) THEN
+                        ALTER TABLE analysis_jobs ALTER COLUMN id TYPE VARCHAR(100);
+                    END IF;
+                END $$;
             ''')
 
             # Thesis scorecard data (traffic-light thresholds for formatted exports)
