@@ -1369,7 +1369,16 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
         # Step 4: Generate/update analysis via LLM
         # Use existing analysis job infrastructure
         doc_filenames = [d['filename'] for d in selected_docs]
-        doc_details_list = [{'filename': d['filename'], 'weight': d['weight'], 'isNew': True} for d in selected_docs]
+        doc_details_list = [{'filename': d['filename'], 'weight': 1, 'isNew': True} for d in selected_docs]
+
+        # Build weighting config from document config
+        existing_weight = doc_config.get('existingWeight', 70)
+        new_weight = 100 - existing_weight
+        weighting_config = {
+            'mode': 'simple',
+            'existingAnalysisWeight': existing_weight,
+            'newDocsWeight': new_weight
+        }
 
         if doc_filenames or (job_type == 'process'):
             # Create an analysis sub-job
@@ -1382,6 +1391,7 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
                         'documentFilenames': doc_filenames,
                         'documentDetails': doc_details_list,
                         'existingAnalysis': {k: (v.isoformat() if hasattr(v, 'isoformat') else v) for k, v in dict(existing).items()} if existing else None,
+                        'weightingConfig': weighting_config,
                     })))
 
             # Run the analysis synchronously within this thread
