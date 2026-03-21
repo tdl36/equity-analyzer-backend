@@ -387,16 +387,76 @@ def _agent_id() -> str:
     return f"local-{platform.node()}"
 
 
+def push_file_manifest() -> None:
+    """Scan all ticker folders and push file manifest to backend."""
+    manifest = {}
+    for ticker_dir in sorted(STOCKS_DIR.iterdir()):
+        if not ticker_dir.is_dir() or ticker_dir.name.startswith('.') or ticker_dir.name.startswith('_'):
+            continue
+        ticker = ticker_dir.name.upper()
+        files = []
+
+        # Main folder files
+        for f in sorted(ticker_dir.iterdir()):
+            if f.is_dir() or f.name.startswith('.') or f.name.startswith('~$'):
+                continue
+            ext = f.suffix.lower()
+            if ext in ('.pdf', '.xlsx', '.xls', '.csv', '.txt', '.md', '.docx', '.pptx', '.png'):
+                files.append({
+                    'filename': f.name,
+                    'folder': 'main',
+                    'size': f.stat().st_size,
+                    'extension': ext,
+                    'modified': datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
+                })
+
+        # Processed folder files
+        processed_dir = ticker_dir / 'Processed'
+        if processed_dir.exists():
+            for f in sorted(processed_dir.iterdir()):
+                if f.is_dir() or f.name.startswith('.') or f.name.startswith('~$'):
+                    continue
+                ext = f.suffix.lower()
+                if ext in ('.pdf', '.xlsx', '.xls', '.csv', '.txt', '.md', '.docx', '.pptx'):
+                    files.append({
+                        'filename': f.name,
+                        'folder': 'processed',
+                        'size': f.stat().st_size,
+                        'extension': ext,
+                        'modified': datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
+                    })
+
+        if files:
+            manifest[ticker] = files
+
+    try:
+        requests.post(
+            f"{CHARLIE_API}/api/agent/file-manifest",
+            json={'manifest': manifest, 'timestamp': datetime.now().isoformat()},
+            headers=_agent_headers(),
+            timeout=15,
+        )
+    except Exception as e:
+        log.debug(f"Manifest push failed: {e}")
+
+
 # ---------------------------------------------------------------------------
 # File reading
 # ---------------------------------------------------------------------------
 
 
-def read_ticker_files(ticker: str) -> list[dict]:
-    """Read all source files from the ticker's iCloud folder.
+def read_ticker_files(
+    ticker: str,
+    include_processed: bool = False,
+    file_selection: Optional[list[dict]] = None,
+) -> list[dict]:
+    """Read files from the ticker's iCloud folder.
 
-    Skips subdirectories (Processed, Prior Versions, etc.), hidden files,
-    and Office lock files (~$...).
+    Args:
+        ticker: Stock ticker
+        include_processed: If True, also read from Processed/ subfolder
+        file_selection: If provided, only include files matching this list.
+                       Each entry: {'filename': 'name.pdf', 'folder': 'main'|'processed'}
     """
     ticker_dir = STOCKS_DIR / ticker
     if not ticker_dir.exists():
@@ -414,32 +474,57 @@ def read_ticker_files(ticker: str) -> list[dict]:
     }
     ALLOWED_EXTS = set(MIME_MAP.keys())
 
+    # Build a set of (filename, folder) for fast lookup when file_selection is provided
+    selection_set: Optional[set[tuple[str, str]]] = None
+    if file_selection:
+        selection_set = {(entry['filename'], entry.get('folder', 'main')) for entry in file_selection}
+
+    def _should_include(filename: str, folder: str) -> bool:
+        if selection_set is not None:
+            return (filename, folder) in selection_set
+        return True
+
+    def _read_dir(directory: Path, folder_label: str) -> list[dict]:
+        result: list[dict] = []
+        if not directory.exists():
+            return result
+        for f in sorted(directory.iterdir()):
+            if f.is_dir():
+                continue
+            if f.name.startswith(".") or f.name.startswith("~$"):
+                continue
+            ext = f.suffix.lower()
+            if ext not in ALLOWED_EXTS:
+                continue
+            if not _should_include(f.name, folder_label):
+                continue
+            try:
+                raw = f.read_bytes()
+                result.append(
+                    {
+                        "filename": f.name,
+                        "path": str(f),
+                        "folder": folder_label,
+                        "extension": ext,
+                        "size": len(raw),
+                        "data": base64.b64encode(raw).decode("ascii"),
+                        "mime_type": MIME_MAP.get(ext, "application/octet-stream"),
+                    }
+                )
+                log.debug(f"  Read {f.name} ({len(raw):,} bytes) [{folder_label}]")
+            except Exception as e:
+                log.warning(f"  Could not read {f.name}: {e}")
+        return result
+
     files: list[dict] = []
-    for f in sorted(ticker_dir.iterdir()):
-        if f.is_dir():
-            continue
-        if f.name.startswith(".") or f.name.startswith("~$"):
-            continue
 
-        ext = f.suffix.lower()
-        if ext not in ALLOWED_EXTS:
-            continue
+    # Main folder
+    files.extend(_read_dir(ticker_dir, "main"))
 
-        try:
-            raw = f.read_bytes()
-            files.append(
-                {
-                    "filename": f.name,
-                    "path": str(f),
-                    "extension": ext,
-                    "size": len(raw),
-                    "data": base64.b64encode(raw).decode("ascii"),
-                    "mime_type": MIME_MAP.get(ext, "application/octet-stream"),
-                }
-            )
-            log.debug(f"  Read {f.name} ({len(raw):,} bytes)")
-        except Exception as e:
-            log.warning(f"  Could not read {f.name}: {e}")
+    # Processed folder (if requested or if file_selection includes processed files)
+    if include_processed or (selection_set and any(folder == "processed" for _, folder in selection_set)):
+        processed_dir = ticker_dir / "Processed"
+        files.extend(_read_dir(processed_dir, "processed"))
 
     return files
 
@@ -1004,13 +1089,20 @@ def generate_note_docx(
 # ---------------------------------------------------------------------------
 
 
-def organize_files(ticker_dir: Path, source_files: list[dict]) -> None:
+def organize_files(ticker_dir: Path, source_files: list[dict], skip_move: bool = False) -> None:
     """Archive existing deliverables to Prior Versions/, move sources to Processed/.
 
     Follows Tony's memory preferences:
     - Prior versions get date suffix
     - Main folder should only contain latest deliverables
     - Source files go to Processed/
+
+    Args:
+        ticker_dir: Path to the ticker's iCloud folder
+        source_files: List of file dicts that were read as sources
+        skip_move: If True, archive prior deliverables but do NOT move source
+                   files to Processed/ (used for reprocess mode where files
+                   are already in Processed/)
     """
     processed_dir = ticker_dir / "Processed"
     processed_dir.mkdir(exist_ok=True)
@@ -1047,15 +1139,16 @@ def organize_files(ticker_dir: Path, source_files: list[dict]) -> None:
             shutil.move(str(f), str(dest))
             log.info(f"  Archived: {f.name} -> Prior Versions/")
 
-    # 2. Move source files to Processed/
-    for sf in source_files:
-        src = Path(sf["path"])
-        if src.exists() and src.parent == ticker_dir:
-            dest = processed_dir / src.name
-            if dest.exists():
-                dest = processed_dir / f"{src.stem}_{date_suffix}{src.suffix}"
-            shutil.move(str(src), str(dest))
-            log.info(f"  Processed: {src.name}")
+    # 2. Move source files to Processed/ (unless skip_move is set)
+    if not skip_move:
+        for sf in source_files:
+            src = Path(sf["path"])
+            if src.exists() and src.parent == ticker_dir:
+                dest = processed_dir / src.name
+                if dest.exists():
+                    dest = processed_dir / f"{src.stem}_{date_suffix}{src.suffix}"
+                shutil.move(str(src), str(dest))
+                log.info(f"  Processed: {src.name}")
 
 
 # ---------------------------------------------------------------------------
@@ -1133,8 +1226,12 @@ def process_note_job(job: dict, api_key: str) -> None:
         except Exception:
             steps_detail = {}
     mode = steps_detail.get("mode", "new")
+    file_selection = steps_detail.get("fileSelection", [])  # list of {filename, folder}
+    reprocess = steps_detail.get("reprocess", False)
 
-    log.info(f"=== Processing {ticker} (job {job_id[:12]}..., mode={mode}) ===")
+    log.info(f"=== Processing {ticker} (job {job_id[:12]}..., mode={mode}, reprocess={reprocess}) ===")
+    if file_selection:
+        log.info(f"  File selection: {len(file_selection)} files specified")
     notify(f"*Charlie Agent:* Picked up {ticker} note job ({mode})")
 
     try:
@@ -1145,7 +1242,11 @@ def process_note_job(job: dict, api_key: str) -> None:
         if not ticker_dir.exists():
             raise FileNotFoundError(f"No iCloud folder for {ticker} at {ticker_dir}")
 
-        files = read_ticker_files(ticker)
+        files = read_ticker_files(
+            ticker,
+            include_processed=reprocess or bool(file_selection),
+            file_selection=file_selection if file_selection else None,
+        )
         if not files:
             raise RuntimeError(f"No source files found in {ticker_dir}")
 
@@ -1218,7 +1319,7 @@ def process_note_job(job: dict, api_key: str) -> None:
         update_job_progress(job_id, "running", "Organizing files", 75)
         month = datetime.now().strftime("%b%Y")
         version = determine_version(ticker_dir, ticker, mode)
-        organize_files(ticker_dir, files)
+        organize_files(ticker_dir, files, skip_move=reprocess)
 
         # Step 6: Generate charts + DOCX (after archival so new files don't get archived)
         update_job_progress(job_id, "running", "Building .docx", 80)
@@ -1384,9 +1485,22 @@ def main() -> None:
 
     consecutive_errors = 0
     MAX_CONSECUTIVE_ERRORS = 10
+    MANIFEST_INTERVAL = 60  # seconds
+    last_manifest_push = 0.0  # epoch; push immediately on first iteration
 
     while not shutdown.is_set():
         try:
+            # Push file manifest periodically (every 60s)
+            now = time.time()
+            if now - last_manifest_push >= MANIFEST_INTERVAL:
+                try:
+                    push_file_manifest()
+                    last_manifest_push = now
+                    log.debug("File manifest pushed")
+                except Exception as e:
+                    log.debug(f"Manifest push error: {e}")
+                    last_manifest_push = now  # don't retry immediately on error
+
             jobs = poll_for_jobs()
             consecutive_errors = 0  # reset on successful poll
 

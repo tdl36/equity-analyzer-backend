@@ -9397,6 +9397,8 @@ def generate_research_note():
     ticker = data.get('ticker', '').upper()
     api_key = data.get('apiKey', '')
     mode = data.get('mode', 'new')  # 'new' or 'update'
+    file_selection = data.get('fileSelection', [])
+    reprocess = data.get('reprocess', False)
 
     if not ticker:
         return jsonify({'error': 'No ticker provided'}), 400
@@ -9411,7 +9413,7 @@ def generate_research_note():
         cur.execute('''
             INSERT INTO research_pipeline_jobs (id, batch_id, ticker, job_type, status, progress, current_step, total_steps, steps_detail)
             VALUES (%s, %s, %s, 'note', 'queued', 0, 'Waiting for local agent', 6, %s)
-        ''', (job_id, str(uuid.uuid4()), ticker, json.dumps({'mode': mode})))
+        ''', (job_id, str(uuid.uuid4()), ticker, json.dumps({'mode': mode, 'fileSelection': file_selection, 'reprocess': reprocess})))
 
     return jsonify({'jobId': job_id, 'ticker': ticker})
 
@@ -10593,6 +10595,8 @@ Return a JSON array of topic groups:
 Return ONLY valid JSON, no markdown fencing."""
 
 
+_local_file_manifest = {}
+
 # ============================================
 # LOCAL AGENT API
 # ============================================
@@ -10664,6 +10668,30 @@ def agent_save_note():
         print(f'Error saving agent note: {e}')
         return jsonify({'error': str(e)}), 500
 
+
+@app.route('/api/agent/file-manifest', methods=['POST'])
+def agent_file_manifest():
+    """Receive file manifest from local agent."""
+    data = request.get_json()
+    manifest = data.get('manifest', {})
+    global _local_file_manifest
+    _local_file_manifest = {
+        'manifest': manifest,
+        'timestamp': data.get('timestamp', datetime.utcnow().isoformat()),
+    }
+    return jsonify({'success': True, 'tickers': len(manifest)})
+
+@app.route('/api/agent/local-files/<ticker>', methods=['GET'])
+def agent_local_files(ticker):
+    """Get local iCloud files for a ticker from the cached manifest."""
+    ticker = ticker.upper()
+    global _local_file_manifest
+    files = _local_file_manifest.get('manifest', {}).get(ticker, [])
+    return jsonify({
+        'ticker': ticker,
+        'files': files,
+        'lastUpdated': _local_file_manifest.get('timestamp'),
+    })
 
 @app.route('/api/agent/health', methods=['GET'])
 def agent_health():
