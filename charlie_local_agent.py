@@ -534,6 +534,104 @@ def import_existing_notes() -> None:
         log.info(f"Imported {imported} existing notes to Charlie")
 
 
+def import_existing_documents() -> None:
+    """Bulk upload source documents (PDFs, xlsx) from iCloud folders to Charlie.
+
+    Only uploads files not already in Charlie's document_files table.
+    Scans main folder + Processed/ folder for each ticker.
+    Runs once on agent startup.
+    """
+    if not STOCKS_DIR.exists():
+        return
+
+    UPLOAD_EXTS = {".pdf", ".xlsx", ".xls"}
+    uploaded = 0
+    skipped = 0
+
+    for ticker_dir in sorted(STOCKS_DIR.iterdir()):
+        if not ticker_dir.is_dir() or ticker_dir.name.startswith(".") or ticker_dir.name.startswith("_"):
+            continue
+        ticker = ticker_dir.name.upper()
+
+        # Get list of documents already in Charlie for this ticker
+        existing_filenames = set()
+        try:
+            r = requests.get(
+                f"{CHARLIE_API}/api/documents/{ticker}",
+                headers=_agent_headers(),
+                timeout=15,
+            )
+            if r.status_code == 200:
+                for doc in r.json().get("documents", []):
+                    existing_filenames.add(doc.get("filename", ""))
+        except Exception:
+            pass
+
+        # Scan main folder + Processed/ + any subfolders for source docs
+        dirs_to_scan = [ticker_dir]
+        for d in ticker_dir.iterdir():
+            if d.is_dir() and d.name not in ("Prior Versions", ".icloud"):
+                dirs_to_scan.append(d)
+
+        docs_to_upload = []
+        for scan_dir in dirs_to_scan:
+            for f in sorted(scan_dir.iterdir()):
+                if f.is_dir() or f.name.startswith(".") or f.name.startswith("~$"):
+                    continue
+                if f.suffix.lower() not in UPLOAD_EXTS:
+                    continue
+                if f.name in existing_filenames:
+                    skipped += 1
+                    continue
+                if f.stat().st_size > 50 * 1024 * 1024:  # Skip >50MB
+                    continue
+                docs_to_upload.append(f)
+
+        if not docs_to_upload:
+            continue
+
+        # Upload in batches of 3 to avoid overwhelming the backend
+        for i in range(0, len(docs_to_upload), 3):
+            batch = docs_to_upload[i : i + 3]
+            documents = []
+            for f in batch:
+                try:
+                    file_data = base64.b64encode(f.read_bytes()).decode("ascii")
+                    ext = f.suffix.lower()
+                    documents.append(
+                        {
+                            "filename": f.name,
+                            "fileData": file_data,
+                            "fileType": ext.lstrip("."),
+                            "mimeType": {
+                                ".pdf": "application/pdf",
+                                ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                ".xls": "application/vnd.ms-excel",
+                            }.get(ext, "application/octet-stream"),
+                        }
+                    )
+                except Exception as e:
+                    log.warning(f"  Could not read {f.name}: {e}")
+
+            if documents:
+                try:
+                    resp = requests.post(
+                        f"{CHARLIE_API}/api/documents/save",
+                        json={"ticker": ticker, "documents": documents},
+                        headers=_agent_headers(),
+                        timeout=120,
+                    )
+                    if resp.status_code == 200:
+                        uploaded += len(documents)
+                        for d in documents:
+                            log.info(f"  Uploaded: {ticker}/{d['filename']}")
+                except Exception as e:
+                    log.warning(f"  Upload failed for {ticker}: {e}")
+
+    if uploaded:
+        log.info(f"Imported {uploaded} source documents to Charlie ({skipped} already existed)")
+
+
 def auto_unzip_stock_folders() -> None:
     """Find and extract any .zip files in stock ticker folders, then remove the zips."""
     if not STOCKS_DIR.exists():
@@ -1768,11 +1866,15 @@ def main() -> None:
 
     log.info(f"Polling for jobs every {POLL_INTERVAL}s (Ctrl+C to stop)")
 
-    # One-time import of existing notes from iCloud to Charlie
+    # One-time import of existing notes + documents from iCloud to Charlie
     try:
         import_existing_notes()
     except Exception as e:
         log.warning(f"Note import failed: {e}")
+    try:
+        import_existing_documents()
+    except Exception as e:
+        log.warning(f"Document import failed: {e}")
 
     consecutive_errors = 0
     MAX_CONSECUTIVE_ERRORS = 10
