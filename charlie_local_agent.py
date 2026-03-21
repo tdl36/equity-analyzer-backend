@@ -618,6 +618,42 @@ def _extract_xlsx_via_zip(filepath: str) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 
+MAX_TOKENS_PER_BATCH = 170_000  # Leave room for prompt + response under 200K limit
+APPROX_TOKENS_PER_BYTE = 0.4  # rough estimate for PDF base64 -> tokens
+
+
+def _estimate_tokens(files: list[dict]) -> int:
+    """Rough estimate of token count for a set of files."""
+    total = 0
+    for f in files:
+        if f["extension"] == ".pdf":
+            # PDF base64 is ~1.33x raw size, tokens ~ 0.4 per byte of content
+            total += int(f["size"] * APPROX_TOKENS_PER_BYTE)
+        else:
+            total += int(len(f.get("data", "")) * 0.3)
+    return total
+
+
+def _split_into_batches(files: list[dict]) -> list[list[dict]]:
+    """Split files into batches that fit within Claude's context window."""
+    batches: list[list[dict]] = []
+    current_batch: list[dict] = []
+    current_tokens = 0
+
+    for f in files:
+        est = _estimate_tokens([f])
+        if current_tokens + est > MAX_TOKENS_PER_BATCH and current_batch:
+            batches.append(current_batch)
+            current_batch = []
+            current_tokens = 0
+        current_batch.append(f)
+        current_tokens += est
+
+    if current_batch:
+        batches.append(current_batch)
+    return batches if batches else [files]
+
+
 def call_claude(
     files: list[dict],
     ticker: str,
@@ -626,8 +662,50 @@ def call_claude(
     existing_note: Optional[str] = None,
     mode: str = "new",
     api_key: Optional[str] = None,
+    on_progress: Optional[callable] = None,
 ) -> str:
-    """Call Claude API with all source files to generate the research note."""
+    """Call Claude API with source files, auto-batching if too large."""
+    est_tokens = _estimate_tokens(files)
+    batches = _split_into_batches(files)
+
+    if len(batches) > 1:
+        log.info(f"  Documents exceed context limit (~{est_tokens:,} tokens). Splitting into {len(batches)} batches.")
+
+    # Process first batch — generates the full note
+    result_text = _call_claude_single(
+        batches[0], ticker, company, sector, existing_note, mode, api_key
+    )
+
+    # Process subsequent batches — merge additional data into existing note
+    for i, batch in enumerate(batches[1:], 2):
+        log.info(f"  Processing batch {i}/{len(batches)}...")
+        if on_progress:
+            on_progress(f"Processing batch {i}/{len(batches)}")
+
+        # Extract the note from previous result to use as context
+        m = re.search(r'===NOTE_START===\s*(.*?)\s*===NOTE_END===', result_text, re.DOTALL)
+        prev_note = m.group(1).strip() if m else result_text[:8000]
+
+        result_text = _call_claude_single(
+            batch, ticker, company, sector,
+            existing_note=prev_note,
+            mode="update",
+            api_key=api_key,
+        )
+
+    return result_text
+
+
+def _call_claude_single(
+    files: list[dict],
+    ticker: str,
+    company: str,
+    sector: str,
+    existing_note: Optional[str] = None,
+    mode: str = "new",
+    api_key: Optional[str] = None,
+) -> str:
+    """Call Claude API with a single batch of files."""
     client = anthropic.Anthropic(api_key=api_key)
 
     content: list[dict] = []
@@ -1293,7 +1371,7 @@ def process_note_job(job: dict, api_key: str) -> None:
             if existing_note:
                 log.info("  Found existing note for incremental update")
 
-        # Step 2: Call Claude
+        # Step 2: Call Claude (auto-batches if too many documents)
         update_job_progress(job_id, "running", "Generating research note via Claude", 20)
         response_text = call_claude(
             files=files,
@@ -1303,6 +1381,7 @@ def process_note_job(job: dict, api_key: str) -> None:
             existing_note=existing_note,
             mode=mode,
             api_key=api_key,
+            on_progress=lambda msg: update_job_progress(job_id, "running", msg, 40),
         )
 
         # Step 3: Parse response
