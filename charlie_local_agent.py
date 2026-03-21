@@ -491,21 +491,24 @@ def call_claude(
     client = anthropic.Anthropic(api_key=api_key)
 
     content: list[dict] = []
+    pdf_count = 0
 
     # Attach documents
     for f in files:
         if f["extension"] == ".pdf":
-            content.append(
-                {
-                    "type": "document",
-                    "source": {
-                        "type": "base64",
-                        "media_type": "application/pdf",
-                        "data": f["data"],
-                    },
-                    "cache_control": {"type": "ephemeral"},
-                }
-            )
+            doc_block = {
+                "type": "document",
+                "source": {
+                    "type": "base64",
+                    "media_type": "application/pdf",
+                    "data": f["data"],
+                },
+            }
+            # Claude allows max 4 blocks with cache_control
+            if pdf_count < 4:
+                doc_block["cache_control"] = {"type": "ephemeral"}
+            pdf_count += 1
+            content.append(doc_block)
             content.append({"type": "text", "text": f"[Document: {f['filename']}]"})
 
         elif f["extension"] in (".xlsx", ".xls"):
