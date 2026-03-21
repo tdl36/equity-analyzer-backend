@@ -93,46 +93,91 @@ def get_sector(ticker: str) -> str:
 # ---------------------------------------------------------------------------
 
 RESEARCH_NOTE_PLAYBOOK = """
-## NOTE FORMAT RULES
+## NOTE FORMAT — FOLLOW THIS STRUCTURE EXACTLY
 
-### Structure (adapt emphasis per stock, but include all sections):
-1. Executive Summary / Investment Thesis (bull + bear in 3-4 bullets each)
-2. Business Overview & Segment Breakdown
-3. Key Revenue & Earnings Drivers
-4. What the Street Is Debating (the 2-3 key open questions)
-5. Catalyst Calendar (earnings, FDA dates, contract renewals, etc.)
-6. Valuation Context (vs. history, vs. peers)
-7. Risks
-8. Bottom Line: Own / Avoid / Revisit at $X
+### Header (lines 1-4):
+Line 1: # Company Name (TICKER)
+Line 2: Month Year | Version X.X
+Line 3: (blank)
+Line 4: Price: ~$XX | Mkt Cap: ~$XXB | FY26E EPS: ~$X.XX | P/E: ~XXx | FCF Yield: ~X.X%
+Line 5: Conclusion: Own / Avoid / Revisit at $X | Next Catalyst: [specific event + date]
 
-### Sector-specific additions:
-- Pharma/Biotech: Patent cliffs, pipeline table, LOE timeline
-- MedTech: Procedure volume trends, ASP dynamics, new product cycles
-- Managed Care: Membership trends, MLR, PBM reform risk, star ratings
-- Distribution: Drug pricing dynamics, biosimilar opportunity, generic deflation
-- Industrials: Cycle positioning, book-to-bill, aftermarket mix, margin expansion
-- REITs: Same-store NOI, occupancy, cap rates, lease spreads, FFO/AFFO
+### Section structure (numbered, use ## N. Title format):
+
+## 1. Executive Summary / Investment Thesis
+- Start with a 1-paragraph business overview (what the company does, key context)
+- Then **Bull case (3-4 bullets):** with bold headers per bullet
+- Then **Bear case (3-4 bullets):** with bold headers per bullet
+- Then a **Probability-Weighted Scenario Analysis** markdown table:
+  | Scenario | FY27E EPS | Target Price | Implied P/E | Probability | Key Assumptions |
+
+## 2. Business Overview & Segment Breakdown
+- Segment breakdown as a markdown table: | Segment | Revenue | % of Total | Adj OP | Margin |
+- Reference charts inline: ![TICKER Revenue Breakdown](TICKER_Revenue_Breakdown.png)
+- Key sub-business callouts with bold headers
+
+## 3. Key Revenue & Earnings Drivers
+- FY bridge with specific numbers (volume/mix, price, cost, commodity, capital allocation)
+- Growth algorithm if management provides one
+- Use sub-headers for different driver categories
+
+## 4. What the Street Is Debating
+- 2-3 numbered debates as sub-headers: **Debate #1: [question]**
+- For each: state both sides, then "My view:" or "I think:" with a clear stance
+- Be specific with data points supporting each side
+
+## 5. Financial Summary
+- Multi-year markdown table: | Metric | FY2023A | FY2024A | FY2025A | FY2026E | FY2027E |
+- Include: Revenue, YoY Growth, Adj OP, OP Margin, Adj EPS, EPS Growth, FCF, Net Debt/EBITDA, Capital Returned
+
+## 6. Valuation & Catalysts
+- Current trading multiples (P/E, EV/EBITDA)
+- Peer context with specific comparisons
+- "My take:" paragraph with clear assessment
+- Catalyst Calendar as markdown table: | Date | Event | Significance |
+
+## 7. Management & Capital Allocation
+- CEO background and track record
+- Key strategic decisions and execution assessment
+- Capital allocation priorities (buybacks, dividends, M&A, deleveraging)
+
+## 8. Risks
+- 5-7 bullet points, each with bold header and specific quantification where possible
+
+## 9. Bottom Line
+- 2-3 paragraphs with clear actionable conclusion
+- Specific price levels for action
+- Conditions to watch for thesis change
+- Relative positioning vs other names in coverage
 
 ### STRICT RULES:
-- NEVER reference specific analyst names, firms, or broker ratings
-- Synthesize data points from reports but attribute nothing to specific brokers
+- NEVER reference specific analyst names, firms, or broker ratings in the main note
+- Synthesize data points but attribute nothing to specific brokers
 - Hard facts (reported financials, FDA approvals, deals, guidance) = state directly
-- Sellside opinions: include if valuable but do NOT attribute
 - Do NOT use sellside sentiment, consensus ratings, or target ranges as reasons to buy/sell
 - The investment thesis must stand on fundamentals alone
 - NEVER attribute headline YoY EPS growth to a single narrative driver without decomposing the bridge
 - Cross-check every narrative claim against data tables
 - When FY EPS includes >$0.50/share in non-recurring items, flag explicitly
 - Distinguish reported vs underlying/organic growth rates
-- Nudge displayed numbers +/- $200-300M from model to avoid exact replication of broker data
+- Nudge displayed numbers +/- $200-300M from model to avoid exact replication
+- Use markdown tables for ALL tabular data (segments, financials, catalysts, scenarios)
+
+### SECTOR-SPECIFIC ADDITIONS:
+- Pharma/Biotech: Patent cliffs, pipeline table, LOE timeline, stacked revenue charts
+- MedTech: Procedure volume trends, ASP dynamics, new product cycles
+- Managed Care: Membership trends, MLR, PBM reform risk, star ratings
+- Distribution: Drug pricing dynamics, biosimilar opportunity, generic deflation
+- Industrials: Cycle positioning, book-to-bill, aftermarket mix, margin expansion
+- REITs: Same-store NOI, occupancy, cap rates, lease spreads, FFO/AFFO
 
 ### TONE:
-- Write as if the analyst is authoring the note to their PM
-- Confident, concise, first-person where appropriate
-- No hedging language
+- Write as if Tony (the analyst) is authoring the note to his PM
+- Confident, concise, first-person: "I think...", "My view is..."
+- No hedging language like "it could potentially maybe..."
 - Lead with conclusion, support with evidence
-- Use precise numbers, no rounding
-- No emojis, no filler
+- Use precise numbers — don't round $4.69B to "about $5B"
+- No emojis, no filler, no fluff
 """
 
 # ---------------------------------------------------------------------------
