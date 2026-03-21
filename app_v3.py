@@ -9403,15 +9403,15 @@ def generate_research_note():
     if not api_key:
         return jsonify({'error': 'API key required'}), 400
 
-    # Create a pipeline job for tracking
+    # Create a pipeline job for the local agent to pick up
+    # NOTE: Do NOT spawn a backend thread — note generation runs on the local agent
+    # which has access to iCloud files and can call Claude directly
     job_id = str(uuid.uuid4())
     with get_db(commit=True) as (conn, cur):
         cur.execute('''
             INSERT INTO research_pipeline_jobs (id, batch_id, ticker, job_type, status, progress, current_step, total_steps, steps_detail)
-            VALUES (%s, %s, %s, 'note', 'queued', 0, 'Queued', 6, %s)
+            VALUES (%s, %s, %s, 'note', 'queued', 0, 'Waiting for local agent', 6, %s)
         ''', (job_id, str(uuid.uuid4()), ticker, json.dumps({'mode': mode})))
-
-    threading.Thread(target=_generate_research_note, args=(job_id, ticker, api_key, mode), daemon=True).start()
 
     return jsonify({'jobId': job_id, 'ticker': ticker})
 
