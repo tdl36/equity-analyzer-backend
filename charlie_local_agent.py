@@ -388,7 +388,9 @@ def _agent_id() -> str:
 
 
 def push_file_manifest() -> None:
-    """Scan all ticker folders and push file manifest to backend."""
+    """Scan all ticker folders recursively and push file manifest to backend."""
+    SCAN_EXTS = {'.pdf', '.xlsx', '.xls', '.csv', '.txt', '.md', '.docx', '.pptx', '.png'}
+    SKIP_DIRS = {'.icloud'}
     manifest = {}
     for ticker_dir in sorted(STOCKS_DIR.iterdir()):
         if not ticker_dir.is_dir() or ticker_dir.name.startswith('.') or ticker_dir.name.startswith('_'):
@@ -396,35 +398,32 @@ def push_file_manifest() -> None:
         ticker = ticker_dir.name.upper()
         files = []
 
-        # Main folder files
-        for f in sorted(ticker_dir.iterdir()):
-            if f.is_dir() or f.name.startswith('.') or f.name.startswith('~$'):
+        # Recursively scan all files in the ticker folder
+        for f in sorted(ticker_dir.rglob('*')):
+            if f.is_dir():
+                continue
+            if f.name.startswith('.') or f.name.startswith('~$'):
+                continue
+            # Skip files inside .icloud dirs
+            if any(part in SKIP_DIRS for part in f.parts):
                 continue
             ext = f.suffix.lower()
-            if ext in ('.pdf', '.xlsx', '.xls', '.csv', '.txt', '.md', '.docx', '.pptx', '.png'):
-                files.append({
-                    'filename': f.name,
-                    'folder': 'main',
-                    'size': f.stat().st_size,
-                    'extension': ext,
-                    'modified': datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
-                })
-
-        # Processed folder files
-        processed_dir = ticker_dir / 'Processed'
-        if processed_dir.exists():
-            for f in sorted(processed_dir.iterdir()):
-                if f.is_dir() or f.name.startswith('.') or f.name.startswith('~$'):
-                    continue
-                ext = f.suffix.lower()
-                if ext in ('.pdf', '.xlsx', '.xls', '.csv', '.txt', '.md', '.docx', '.pptx'):
-                    files.append({
-                        'filename': f.name,
-                        'folder': 'processed',
-                        'size': f.stat().st_size,
-                        'extension': ext,
-                        'modified': datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
-                    })
+            if ext not in SCAN_EXTS:
+                continue
+            # Determine folder label from relative path
+            rel = f.relative_to(ticker_dir)
+            if len(rel.parts) == 1:
+                folder = 'main'
+            else:
+                folder = str(rel.parent)  # e.g., "Processed", "Prior Versions", "20260320 - Tony Lee..."
+            files.append({
+                'filename': f.name,
+                'folder': folder,
+                'path': str(rel),
+                'size': f.stat().st_size,
+                'extension': ext,
+                'modified': datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
+            })
 
         if files:
             manifest[ticker] = files
@@ -518,13 +517,24 @@ def read_ticker_files(
 
     files: list[dict] = []
 
-    # Main folder
+    # Main folder (always scan)
     files.extend(_read_dir(ticker_dir, "main"))
 
-    # Processed folder (if requested or if file_selection includes processed files)
-    if include_processed or (selection_set and any(folder == "processed" for _, folder in selection_set)):
-        processed_dir = ticker_dir / "Processed"
-        files.extend(_read_dir(processed_dir, "processed"))
+    # Determine which subfolders to scan
+    subfolders_to_scan: set[str] = set()
+    if include_processed:
+        subfolders_to_scan.add("Processed")
+    # If file_selection specifies files from specific folders, scan those too
+    if selection_set:
+        for _, folder in selection_set:
+            if folder != "main":
+                subfolders_to_scan.add(folder)
+
+    # Scan each required subfolder
+    for subfolder in subfolders_to_scan:
+        sub_dir = ticker_dir / subfolder
+        if sub_dir.exists() and sub_dir.is_dir():
+            files.extend(_read_dir(sub_dir, subfolder))
 
     return files
 
