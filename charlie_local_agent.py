@@ -445,6 +445,95 @@ def process_pending_syncs() -> None:
         log.debug(f"Sync check failed: {e}")
 
 
+def import_existing_notes() -> None:
+    """Scan all ticker folders for existing _Note_ .md files and upload to Charlie.
+
+    Only imports notes that don't already exist in Charlie's database.
+    Runs once on agent startup.
+    """
+    if not STOCKS_DIR.exists():
+        return
+    imported = 0
+    for ticker_dir in sorted(STOCKS_DIR.iterdir()):
+        if not ticker_dir.is_dir() or ticker_dir.name.startswith('.') or ticker_dir.name.startswith('_'):
+            continue
+        ticker = ticker_dir.name.upper()
+
+        # Check if Charlie already has a note for this ticker
+        try:
+            r = requests.get(f"{CHARLIE_API}/api/notes/{ticker}", headers=_agent_headers(), timeout=10)
+            if r.status_code == 200:
+                continue  # Already has a note, skip
+        except Exception:
+            continue
+
+        # Find _Note_ .md file
+        note_files = sorted(ticker_dir.glob(f"{ticker}_Note_*.md"))
+        if not note_files:
+            continue
+        note_file = note_files[-1]  # latest
+
+        # Find matching sources and changelog
+        sources_files = sorted(ticker_dir.glob(f"{ticker}_Sources_*.md"))
+        changelog_files = sorted(ticker_dir.glob(f"{ticker}_Changelog*.md"))
+
+        try:
+            note_md = note_file.read_text(encoding="utf-8")
+            sources_md = sources_files[-1].read_text(encoding="utf-8") if sources_files else ""
+            changelog_md = changelog_files[-1].read_text(encoding="utf-8") if changelog_files else ""
+
+            # Find chart PNGs
+            charts_payload = []
+            for cp in sorted(ticker_dir.glob(f"{ticker}_*_Breakdown.png")):
+                chart_type = "revenue" if "Revenue" in cp.name else "profit"
+                charts_payload.append({
+                    "type": chart_type,
+                    "filename": cp.name,
+                    "data": base64.b64encode(cp.read_bytes()).decode("ascii"),
+                })
+
+            # Find docx
+            docx_b64 = ""
+            docx_files = sorted(ticker_dir.glob(f"{ticker}_Note_*.docx"))
+            if docx_files:
+                docx_b64 = base64.b64encode(docx_files[-1].read_bytes()).decode("ascii")
+
+            # Extract version from filename or changelog
+            version = "1.0"
+            if changelog_md:
+                import re as _re
+                ver_match = _re.search(r'Version\s+(\d+\.\d+)', changelog_md)
+                if ver_match:
+                    version = ver_match.group(1)
+
+            # Upload to Charlie
+            resp = requests.post(
+                f"{CHARLIE_API}/api/agent/save-note",
+                json={
+                    "noteId": str(uuid.uuid4()),
+                    "ticker": ticker,
+                    "version": version,
+                    "noteMarkdown": note_md,
+                    "sourcesMarkdown": sources_md,
+                    "changelogMarkdown": changelog_md,
+                    "noteDocx": docx_b64,
+                    "charts": [{"type": c["type"], "filename": c["filename"]} for c in charts_payload],
+                    "chartsData": charts_payload,
+                    "metadata": {"importedFromICloud": True, "sourceFile": note_file.name},
+                },
+                headers=_agent_headers(),
+                timeout=120,
+            )
+            if resp.status_code == 200:
+                imported += 1
+                log.info(f"  Imported existing note: {ticker} (v{version}) from {note_file.name}")
+        except Exception as e:
+            log.warning(f"  Failed to import {ticker} note: {e}")
+
+    if imported:
+        log.info(f"Imported {imported} existing notes to Charlie")
+
+
 def auto_unzip_stock_folders() -> None:
     """Find and extract any .zip files in stock ticker folders, then remove the zips."""
     if not STOCKS_DIR.exists():
@@ -1678,6 +1767,12 @@ def main() -> None:
     signal.signal(signal.SIGTERM, handle_signal)
 
     log.info(f"Polling for jobs every {POLL_INTERVAL}s (Ctrl+C to stop)")
+
+    # One-time import of existing notes from iCloud to Charlie
+    try:
+        import_existing_notes()
+    except Exception as e:
+        log.warning(f"Note import failed: {e}")
 
     consecutive_errors = 0
     MAX_CONSECUTIVE_ERRORS = 10
