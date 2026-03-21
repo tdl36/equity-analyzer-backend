@@ -9157,6 +9157,10 @@ def pipeline_universe():
             cur.execute('SELECT ticker, COUNT(*) as cnt FROM document_files GROUP BY ticker')
             doc_counts = {row['ticker']: row['cnt'] for row in cur.fetchall()}
 
+            # Get which tickers have research notes
+            cur.execute('SELECT DISTINCT ticker FROM research_notes')
+            tickers_with_notes = {row['ticker'] for row in cur.fetchall()}
+
         universe = []
         for a in analyses:
             entry = {
@@ -9178,6 +9182,7 @@ def pipeline_universe():
                 entry['daysOld'] = None
                 entry['freshness'] = 'never'
             entry['docCount'] = doc_counts.get(a['ticker'], 0)
+            entry['hasNote'] = a['ticker'] in tickers_with_notes
             pj = pipeline_map.get(a['ticker'])
             if pj:
                 entry['lastProcessed'] = pj['last_processed'].isoformat() if pj['last_processed'] else None
