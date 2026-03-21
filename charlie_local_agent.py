@@ -942,6 +942,20 @@ def generate_donut_chart(
 # ---------------------------------------------------------------------------
 
 
+def _add_md_runs(paragraph, text: str) -> None:
+    """Add text to a paragraph, converting **bold** and *italic* markdown to Word formatting."""
+    parts = re.split(r"(\*\*.*?\*\*|\*.*?\*)", text)
+    for part in parts:
+        if part.startswith("**") and part.endswith("**"):
+            run = paragraph.add_run(part[2:-2])
+            run.bold = True
+        elif part.startswith("*") and part.endswith("*"):
+            run = paragraph.add_run(part[1:-1])
+            run.italic = True
+        else:
+            paragraph.add_run(part)
+
+
 def generate_note_docx(
     ticker: str,
     company: str,
@@ -983,12 +997,12 @@ def generate_note_docx(
         line = lines[i]
 
         if line.startswith("### "):
-            h = doc.add_heading(line[4:].strip(), level=3)
+            h = doc.add_heading(line[4:].strip().replace('**', ''), level=3)
             for r in h.runs:
                 r.font.color.rgb = RGBColor(0, 0, 0)
 
         elif line.startswith("## "):
-            section_title = line[3:].strip()
+            section_title = line[3:].strip().replace('**', '')
             h = doc.add_heading(section_title, level=2)
             for r in h.runs:
                 r.font.color.rgb = RGBColor(0, 0, 0)
@@ -1006,10 +1020,12 @@ def generate_note_docx(
                 r.font.color.rgb = RGBColor(0, 0, 0)
 
         elif line.startswith("- ") or line.startswith("* "):
-            doc.add_paragraph(line[2:].strip(), style="List Bullet")
+            p = doc.add_paragraph(style="List Bullet")
+            _add_md_runs(p, line[2:].strip())
 
         elif re.match(r"^\d+\.\s", line):
-            doc.add_paragraph(re.sub(r"^\d+\.\s", "", line).strip(), style="List Number")
+            p = doc.add_paragraph(style="List Number")
+            _add_md_runs(p, re.sub(r"^\d+\.\s", "", line).strip())
 
         elif line.startswith("|") and "|" in line[1:]:
             # Simple markdown table handling
@@ -1036,7 +1052,7 @@ def generate_note_docx(
                         for ci, cell_text in enumerate(row_cells):
                             if ci < num_cols:
                                 cell = table.cell(ri, ci)
-                                cell.text = cell_text
+                                cell.text = cell_text.replace('**', '').replace('*', '')
                                 for p in cell.paragraphs:
                                     for r in p.runs:
                                         r.font.size = Pt(10)
@@ -1051,16 +1067,7 @@ def generate_note_docx(
 
         elif line.strip():
             p = doc.add_paragraph()
-            # Handle **bold** and *italic* inline formatting
-            parts = re.split(r"(\*\*.*?\*\*|\*.*?\*)", line)
-            for part in parts:
-                if part.startswith("**") and part.endswith("**"):
-                    run = p.add_run(part[2:-2])
-                    run.bold = True
-                elif part.startswith("*") and part.endswith("*"):
-                    run = p.add_run(part[1:-1])
-                    run.italic = True
-                else:
+            _add_md_runs(p, line)
                     p.add_run(part)
 
         i += 1
