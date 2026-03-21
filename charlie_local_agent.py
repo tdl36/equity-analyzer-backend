@@ -1308,8 +1308,14 @@ def process_note_job(job: dict, api_key: str) -> None:
             f"  Revenue segments: {len(revenue_data)}, Profit segments: {len(profit_data)}"
         )
 
-        # Step 4: Generate charts
-        update_job_progress(job_id, "running", "Generating charts", 70)
+        # Step 4: Archive prior versions + move sources BEFORE creating ANY new files
+        update_job_progress(job_id, "running", "Organizing files", 70)
+        month = datetime.now().strftime("%b%Y")
+        version = determine_version(ticker_dir, ticker, mode)
+        organize_files(ticker_dir, files, skip_move=reprocess)
+
+        # Step 5: Generate charts (AFTER archival so they don't get archived)
+        update_job_progress(job_id, "running", "Generating charts", 75)
         chart_paths: list[Path] = []
 
         if revenue_data:
@@ -1322,13 +1328,7 @@ def process_note_job(job: dict, api_key: str) -> None:
             if cp:
                 chart_paths.append(cp)
 
-        # Step 5: Archive prior versions + move sources BEFORE creating new files
-        update_job_progress(job_id, "running", "Organizing files", 75)
-        month = datetime.now().strftime("%b%Y")
-        version = determine_version(ticker_dir, ticker, mode)
-        organize_files(ticker_dir, files, skip_move=reprocess)
-
-        # Step 6: Generate charts + DOCX (after archival so new files don't get archived)
+        # Step 6: Generate DOCX with embedded charts
         update_job_progress(job_id, "running", "Building .docx", 80)
         docx_path = generate_note_docx(ticker, company, note_md, chart_paths, ticker_dir)
 
