@@ -851,11 +851,13 @@ def generate_donut_chart(
     import matplotlib.pyplot as plt
     import numpy as np
 
-    labels = [d.get("segment", "") for d in data]
-    values = [d.get(value_key, d.get("revenue", d.get("profit", 0))) for d in data]
-
-    if not values or sum(values) == 0:
+    # Filter out segments with negative or zero values (e.g., operating losses)
+    filtered = [(d.get("segment", ""), d.get(value_key, d.get("revenue", d.get("profit", 0)))) for d in data]
+    filtered = [(label, val) for label, val in filtered if val and val > 0]
+    if not filtered:
         return None
+    labels = [f[0] for f in filtered]
+    values = [f[1] for f in filtered]
 
     total = sum(values)
     colors = [
