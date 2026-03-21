@@ -150,6 +150,14 @@ Line 5: Conclusion: Own / Avoid / Revisit at $X | Next Catalyst: [specific event
 - Conditions to watch for thesis change
 - Relative positioning vs other names in coverage
 
+### RECENCY & DATA PRIORITY:
+- When source documents span multiple reporting periods (e.g., Q3 vs Q4 earnings), ALWAYS use the most recent quarter's data for financial metrics, guidance, estimates, and forward targets
+- Explicitly state which quarter/period the data reflects (e.g., "as of Q4 2025 earnings")
+- If prior analysis referenced older data (e.g., Q3 guidance), update ALL relevant metrics to the latest available (revenue, EPS, margins, guidance ranges)
+- Flag material changes from prior period: "Updated from Q3: revenue guidance raised from $X to $Y"
+- Do NOT carry forward stale estimates when newer data is available in the source documents
+- For valuation multiples and price targets, use the most recent earnings/guidance as the basis
+
 ### STRICT RULES:
 - NEVER reference specific analyst names, firms, or broker ratings in the main note
 - Synthesize data points but attribute nothing to specific brokers
