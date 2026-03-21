@@ -423,7 +423,24 @@ def process_pending_syncs() -> None:
                 path = ticker_dir / f"{ticker}_Changelog.md"
                 path.write_text(changelog_md, encoding="utf-8")
                 log.info(f"  Synced: {path.name}")
-            notify(f"*Charlie Agent:* Synced edited {ticker} note to iCloud")
+            # Regenerate .docx from edited markdown
+            if note_md:
+                try:
+                    company = ticker
+                    try:
+                        r = requests.get(f"{CHARLIE_API}/api/analysis/{ticker}", headers=_agent_headers(), timeout=10)
+                        if r.status_code == 200:
+                            company = r.json().get("company", ticker) or ticker
+                    except Exception:
+                        pass
+                    # Find existing chart PNGs in the folder
+                    chart_paths = [f for f in sorted(ticker_dir.glob(f"{ticker}_*_Breakdown.png"))]
+                    docx_path = generate_note_docx(ticker, company, note_md, chart_paths, ticker_dir)
+                    if docx_path:
+                        log.info(f"  Synced: {docx_path.name}")
+                except Exception as e:
+                    log.warning(f"  DOCX regeneration failed: {e}")
+            notify(f"*Charlie Agent:* Synced edited {ticker} note to iCloud (md + docx)")
     except Exception as e:
         log.debug(f"Sync check failed: {e}")
 
