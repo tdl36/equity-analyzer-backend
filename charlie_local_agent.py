@@ -1068,7 +1068,6 @@ def generate_note_docx(
         elif line.strip():
             p = doc.add_paragraph()
             _add_md_runs(p, line)
-                    p.add_run(part)
 
         i += 1
 
