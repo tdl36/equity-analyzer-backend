@@ -1169,17 +1169,15 @@ def process_note_job(job: dict, api_key: str) -> None:
             if cp:
                 chart_paths.append(cp)
 
-        # Step 5: Generate DOCX
-        update_job_progress(job_id, "running", "Building .docx", 80)
-        docx_path = generate_note_docx(ticker, company, note_md, chart_paths, ticker_dir)
-
-        # Step 6: Save markdown files locally
+        # Step 5: Archive prior versions + move sources BEFORE creating new files
+        update_job_progress(job_id, "running", "Organizing files", 75)
         month = datetime.now().strftime("%b%Y")
         version = determine_version(ticker_dir, ticker, mode)
-
-        # Archive prior versions BEFORE saving new ones
-        update_job_progress(job_id, "running", "Organizing files", 85)
         organize_files(ticker_dir, files)
+
+        # Step 6: Generate charts + DOCX (after archival so new files don't get archived)
+        update_job_progress(job_id, "running", "Building .docx", 80)
+        docx_path = generate_note_docx(ticker, company, note_md, chart_paths, ticker_dir)
 
         # Write new deliverables
         note_path = ticker_dir / f"{ticker}_Note_{month}.md"
