@@ -9468,23 +9468,24 @@ def get_research_note_pdf(ticker):
     html_body = re.sub(r'\*(.+?)\*', r'<i>\1</i>', html_body)
     # Bullets
     html_body = re.sub(r'^- (.+)$', r'<p style="margin:2px 0 2px 20px;font-size:10pt;color:#334155;">&bull; \1</p>', html_body, flags=re.MULTILINE)
-    # Horizontal rules
-    html_body = html_body.replace('---', '<hr style="border:none;border-top:1px solid #cbd5e1;margin:12px 0;">')
-    # Markdown tables -> HTML tables
+    # Markdown tables -> HTML tables (BEFORE horizontal rule replacement to avoid breaking separator rows)
     def _md_table_to_html(match):
         lines = match.group(0).strip().split('\n')
-        rows = [l for l in lines if not re.match(r'^\|[\s\-:|]+\|$', l)]
+        # Filter out separator rows (|---|---|---| or |:--|:--:|--:|)
+        rows = [l for l in lines if l.strip() and not re.match(r'^\|[\s\-:|]+\|$', l.strip())]
         if not rows:
-            return match.group(0)
+            return ''
         html = '<table style="border-collapse:collapse;width:100%;margin:8px 0;font-size:9pt;">'
         for ri, row in enumerate(rows):
-            cells = [c.strip() for c in row.strip('|').split('|')]
+            cells = [c.strip().replace('**', '') for c in row.strip('|').split('|')]
             tag = 'th' if ri == 0 else 'td'
-            style = 'padding:5px 8px;border:1px solid #d1d5db;color:#1e293b;' + ('background:#f1f5f9;font-weight:bold;' if ri == 0 else '')
+            style = 'padding:5px 8px;border:1px solid #d1d5db;color:#1e293b;word-wrap:break-word;' + ('background:#f1f5f9;font-weight:bold;' if ri == 0 else '')
             html += '<tr>' + ''.join(f'<{tag} style="{style}">{c}</{tag}>' for c in cells) + '</tr>'
         html += '</table>'
         return html
-    html_body = re.sub(r'(\|.+\|[\n\r]+)+', _md_table_to_html, html_body)
+    html_body = re.sub(r'(\|.+\|[\n\r]*)+', _md_table_to_html, html_body)
+    # Horizontal rules (only standalone --- lines, not inside other content)
+    html_body = re.sub(r'^---+$', '<hr style="border:none;border-top:1px solid #cbd5e1;margin:12px 0;">', html_body, flags=re.MULTILINE)
     # Paragraphs (lines that aren't already HTML)
     lines = html_body.split('\n')
     processed = []
