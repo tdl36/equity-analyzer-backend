@@ -10765,6 +10765,37 @@ def agent_save_note():
         return jsonify({'error': str(e)}), 500
 
 
+_pending_local_syncs = []
+
+@app.route('/api/agent/sync-to-local', methods=['GET'])
+def agent_sync_to_local():
+    """Return pending sync jobs for the local agent to write to iCloud."""
+    syncs = list(_pending_local_syncs)
+    _pending_local_syncs.clear()
+    return jsonify({'syncs': syncs})
+
+
+@app.route('/api/notes/<ticker>/sync', methods=['POST'])
+def sync_note_to_local(ticker):
+    """Queue a note for syncing back to iCloud via the local agent."""
+    ticker = ticker.upper()
+    with get_db() as (_, cur):
+        cur.execute('SELECT * FROM research_notes WHERE ticker = %s ORDER BY created_at DESC LIMIT 1', (ticker,))
+        note = cur.fetchone()
+    if not note:
+        return jsonify({'error': 'No note found'}), 404
+
+    _pending_local_syncs.append({
+        'ticker': ticker,
+        'noteMarkdown': note['note_markdown'],
+        'sourcesMarkdown': note['sources_markdown'],
+        'changelogMarkdown': note['changelog_markdown'],
+        'version': note.get('version', '1.0'),
+        'timestamp': datetime.utcnow().isoformat(),
+    })
+    return jsonify({'success': True, 'ticker': ticker})
+
+
 @app.route('/api/agent/file-manifest', methods=['POST'])
 def agent_file_manifest():
     """Receive file manifest from local agent."""

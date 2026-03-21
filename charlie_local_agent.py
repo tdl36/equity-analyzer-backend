@@ -387,6 +387,47 @@ def _agent_id() -> str:
     return f"local-{platform.node()}"
 
 
+def process_pending_syncs() -> None:
+    """Check for pending sync-to-local jobs and write edited notes back to iCloud."""
+    try:
+        resp = requests.get(
+            f"{CHARLIE_API}/api/agent/sync-to-local",
+            headers=_agent_headers(),
+            timeout=15,
+        )
+        if resp.status_code != 200:
+            return
+        syncs = resp.json().get("syncs", [])
+        for sync in syncs:
+            ticker = sync.get("ticker", "")
+            if not ticker:
+                continue
+            ticker_dir = STOCKS_DIR / ticker
+            if not ticker_dir.exists():
+                log.warning(f"  Sync: no folder for {ticker}, skipping")
+                continue
+            month = datetime.now().strftime("%b%Y")
+            # Write markdown files
+            note_md = sync.get("noteMarkdown", "")
+            if note_md:
+                path = ticker_dir / f"{ticker}_Note_{month}.md"
+                path.write_text(note_md, encoding="utf-8")
+                log.info(f"  Synced: {path.name}")
+            sources_md = sync.get("sourcesMarkdown", "")
+            if sources_md:
+                path = ticker_dir / f"{ticker}_Sources_{month}.md"
+                path.write_text(sources_md, encoding="utf-8")
+                log.info(f"  Synced: {path.name}")
+            changelog_md = sync.get("changelogMarkdown", "")
+            if changelog_md:
+                path = ticker_dir / f"{ticker}_Changelog.md"
+                path.write_text(changelog_md, encoding="utf-8")
+                log.info(f"  Synced: {path.name}")
+            notify(f"*Charlie Agent:* Synced edited {ticker} note to iCloud")
+    except Exception as e:
+        log.debug(f"Sync check failed: {e}")
+
+
 def auto_unzip_stock_folders() -> None:
     """Find and extract any .zip files in stock ticker folders, then remove the zips."""
     if not STOCKS_DIR.exists():
@@ -1634,6 +1675,7 @@ def main() -> None:
                 try:
                     auto_unzip_stock_folders()
                     push_file_manifest()
+                    process_pending_syncs()
                     last_manifest_push = now
                     log.debug("File manifest pushed")
                 except Exception as e:
