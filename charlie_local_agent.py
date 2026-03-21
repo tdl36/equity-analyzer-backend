@@ -1113,7 +1113,10 @@ The note should be 8-12 pages when printed, with these sections:
 
 Also provide:
 - Revenue segment data for donut chart (JSON array: [{{"segment": "name", "revenue": number_in_millions}}])
-- Profit segment data for donut chart (JSON array: [{{"segment": "name", "profit": number_in_millions}}])
+- Profit/Operating Income segment data for donut chart (JSON array: [{{"segment": "name", "profit": number_in_millions}}])
+  IMPORTANT: Revenue and profit MUST be different numbers. Profit means operating income, EBIT, NOI, or segment profit — NOT revenue.
+  If segment-level profit data is not available in the source documents, return an empty array [] instead of reusing revenue numbers.
+  For REITs, use NOI by segment. For industrials, use segment operating profit. For pharma, use segment operating income.
 
 IMPORTANT:
 - Source attributions go in a SEPARATE sources document, NOT in the main note
@@ -1708,9 +1711,15 @@ def process_note_job(job: dict, api_key: str) -> None:
                 chart_paths.append(cp)
 
         if profit_data:
-            cp = generate_donut_chart(ticker, "Profit", profit_data, "profit", ticker_dir)
-            if cp:
-                chart_paths.append(cp)
+            # Validate: skip if profit data is identical to revenue data (LLM reused same numbers)
+            rev_values = sorted([d.get('revenue', d.get('profit', 0)) for d in revenue_data]) if revenue_data else []
+            prof_values = sorted([d.get('profit', d.get('revenue', 0)) for d in profit_data])
+            if rev_values and prof_values and rev_values == prof_values:
+                log.warning("  Profit chart data identical to revenue — skipping profit chart")
+            else:
+                cp = generate_donut_chart(ticker, "Operating Profit", profit_data, "profit", ticker_dir)
+                if cp:
+                    chart_paths.append(cp)
 
         # Step 6: Generate DOCX with embedded charts
         update_job_progress(job_id, "running", "Building .docx", 80)
