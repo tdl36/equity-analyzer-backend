@@ -1520,7 +1520,7 @@ def process_note_job(job: dict, api_key: str) -> None:
             f"## Version {version} -- {now_str}\n"
             f"- {'Updated' if mode == 'update' else 'Initial'} research note generated\n"
             f"- {len(files)} source documents processed\n"
-            f"- Generated via Charlie Local Agent\n"
+            f"- Generated via Charlie\n"
         )
 
         # Append old changelog if this is an update
