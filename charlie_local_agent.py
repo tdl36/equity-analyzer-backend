@@ -45,7 +45,25 @@ POLL_INTERVAL = 5  # seconds
 CONFIG_FILE = Path.home() / ".charlie_agent_config.json"
 AGENT_SECRET_HEADER = "X-Agent-Secret"
 
+# Telegram notifications
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "8487228930:AAHqadJIzFEVGq5TUESrKufD8-nHxcufj7Y")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "465648202")
+
 log = logging.getLogger("charlie_agent")
+
+
+def notify(message: str) -> None:
+    """Send a Telegram notification to the user."""
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+            json={"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"},
+            timeout=10,
+        )
+    except Exception:
+        pass  # Don't let notification failures break the agent
 
 # ---------------------------------------------------------------------------
 # Sector map (mirrors backend PIPELINE_SECTOR_MAP / PIPELINE_TICKER_SECTOR)
@@ -1069,6 +1087,7 @@ def process_note_job(job: dict, api_key: str) -> None:
     mode = steps_detail.get("mode", "new")
 
     log.info(f"=== Processing {ticker} (job {job_id[:12]}..., mode={mode}) ===")
+    notify(f"*Charlie Agent:* Picked up {ticker} note job ({mode})")
 
     try:
         # Step 1: Claim and read files
@@ -1219,6 +1238,7 @@ def process_note_job(job: dict, api_key: str) -> None:
         update_job_progress(job_id, "complete", "Complete", 100)
         complete_job(job_id, {"ticker": ticker, "version": version, "charCount": len(note_md)})
         log.info(f"=== {ticker} complete (v{version}) ===\n")
+        notify(f"*Charlie Agent:* {ticker} note complete (v{version})\n{len(files)} docs processed, {len(note_md):,} chars")
 
     except Exception as e:
         log.error(f"Job {job_id[:12]}... failed: {e}")
@@ -1226,6 +1246,7 @@ def process_note_job(job: dict, api_key: str) -> None:
 
         traceback.print_exc()
         update_job_progress(job_id, "failed", "Failed", None, error=str(e))
+        notify(f"*Charlie Agent:* {ticker} note FAILED\n{str(e)[:200]}")
 
 
 def process_ticker_directly(ticker: str, api_key: str, mode: str = "new") -> None:
