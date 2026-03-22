@@ -1314,16 +1314,75 @@ def _run_trading_agent(run_id, ticker, date_str, provider, model):
 
         try:
             _append_log("system", "Running analysis...")
-            _, decision = ta.propagate(ticker, date_str)
+            final_state, decision_signal = ta.propagate(ticker, date_str)
         finally:
             builtins.print = original_print
 
-        _append_log("system", f"Analysis complete. Decision: {str(decision)[:200]}")
+        # Extract full reports from final_state
+        full_report = f"""# TradingAgents Analysis: {ticker} ({date_str})
+
+## Final Decision: {decision_signal}
+
+## Full Trade Decision
+{final_state.get('final_trade_decision', 'N/A')}
+
+## Investment Plan
+{final_state.get('investment_plan', 'N/A')}
+
+## Trader's Investment Decision
+{final_state.get('trader_investment_plan', 'N/A')}
+
+---
+
+## Market Report
+{final_state.get('market_report', 'N/A')}
+
+## Sentiment Report
+{final_state.get('sentiment_report', 'N/A')}
+
+## News Report
+{final_state.get('news_report', 'N/A')}
+
+## Fundamentals Report
+{final_state.get('fundamentals_report', 'N/A')}
+
+---
+
+## Investment Debate
+
+### Bull Case
+{final_state.get('investment_debate_state', {}).get('bull_history', 'N/A')}
+
+### Bear Case
+{final_state.get('investment_debate_state', {}).get('bear_history', 'N/A')}
+
+### Judge Decision
+{final_state.get('investment_debate_state', {}).get('judge_decision', 'N/A')}
+
+---
+
+## Risk Assessment
+
+### Aggressive View
+{final_state.get('risk_debate_state', {}).get('aggressive_history', 'N/A')}
+
+### Conservative View
+{final_state.get('risk_debate_state', {}).get('conservative_history', 'N/A')}
+
+### Neutral View
+{final_state.get('risk_debate_state', {}).get('neutral_history', 'N/A')}
+
+### Risk Judge Decision
+{final_state.get('risk_debate_state', {}).get('judge_decision', 'N/A')}
+"""
+
+        decision_text = f"{decision_signal}\n\n{final_state.get('final_trade_decision', '')}"
+        _append_log("system", f"Analysis complete. Decision: {decision_signal}")
 
         with get_db(commit=True) as (conn, cur):
             cur.execute('''
-                UPDATE agent_runs SET status = 'complete', decision = %s, completed_at = NOW() WHERE id = %s
-            ''', (str(decision), run_id))
+                UPDATE agent_runs SET status = 'complete', decision = %s, report = %s, completed_at = NOW() WHERE id = %s
+            ''', (decision_text, full_report, run_id))
 
         print(f"[trading-agent {run_id}] Complete: {ticker}")
 
