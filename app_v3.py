@@ -1098,6 +1098,17 @@ def init_db():
             ''')
             cur.execute('CREATE INDEX IF NOT EXISTS idx_agent_runs_ticker ON agent_runs(ticker)')
 
+            # Add cost tracking columns to agent_runs
+            cur.execute('''
+                DO $$ BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='agent_runs' AND column_name='estimated_cost') THEN
+                        ALTER TABLE agent_runs ADD COLUMN estimated_cost NUMERIC(10,4) DEFAULT 0;
+                        ALTER TABLE agent_runs ADD COLUMN input_tokens INTEGER DEFAULT 0;
+                        ALTER TABLE agent_runs ADD COLUMN output_tokens INTEGER DEFAULT 0;
+                    END IF;
+                END $$;
+            ''')
+
             # Mark stale processing jobs as failed (server restart recovery)
             cur.execute('''
                 UPDATE analysis_jobs
@@ -1379,10 +1390,46 @@ def _run_trading_agent(run_id, ticker, date_str, provider, model):
         decision_text = f"{decision_signal}\n\n{final_state.get('final_trade_decision', '')}"
         _append_log("system", f"Analysis complete. Decision: {decision_signal}")
 
+        # Estimate cost based on model
+        cost_per_1k = {
+            'claude-haiku-4-5-20251001': 0.001, 'claude-sonnet-4-6': 0.003, 'claude-opus-4-6': 0.015,
+            'gpt-4.1-mini': 0.0004, 'gpt-4.1': 0.002, 'o4-mini': 0.001,
+            'gemini-2.0-flash': 0.0001, 'gemini-2.5-pro': 0.005,
+        }
+        # Rough estimate from log count (each log ~500 tokens avg)
+        est_tokens = len(logs) * 500 if 'logs' in dir() else 5000
+        rate = cost_per_1k.get(model, 0.001)
+        est_cost = (est_tokens / 1000) * rate
+
         with get_db(commit=True) as (conn, cur):
             cur.execute('''
-                UPDATE agent_runs SET status = 'complete', decision = %s, report = %s, completed_at = NOW() WHERE id = %s
-            ''', (decision_text, full_report, run_id))
+                UPDATE agent_runs SET status = 'complete', decision = %s, report = %s,
+                estimated_cost = %s, completed_at = NOW() WHERE id = %s
+            ''', (decision_text, full_report, est_cost, run_id))
+
+        # Check for thesis conflict and send Telegram alert
+        try:
+            with get_db() as (_, cur2):
+                cur2.execute('SELECT analysis FROM portfolio_analyses WHERE ticker = %s', (ticker,))
+                pa_row = cur2.fetchone()
+            if pa_row and pa_row['analysis']:
+                pa_analysis = pa_row['analysis'] if isinstance(pa_row['analysis'], dict) else json.loads(pa_row['analysis'])
+                conclusion = (pa_analysis.get('conclusion', '') or '').lower()
+                thesis_dir = 'bullish' if any(w in conclusion for w in ['own', 'buy', 'bullish', 'add']) else 'bearish' if any(w in conclusion for w in ['sell', 'avoid', 'underweight']) else 'neutral'
+                agent_dir = decision_signal.upper()
+                if (agent_dir == 'SELL' and thesis_dir == 'bullish') or (agent_dir == 'BUY' and thesis_dir == 'bearish'):
+                    # Conflict — send Telegram alert
+                    try:
+                        import requests as _req
+                        _req.post(
+                            f"https://api.telegram.org/bot8487228930:AAHqadJIzFEVGq5TUESrKufD8-nHxcufj7Y/sendMessage",
+                            json={"chat_id": "465648202", "text": f"*THESIS CONFLICT:* TradingAgents says {agent_dir} on {ticker}, but your thesis is {thesis_dir}. Review?", "parse_mode": "Markdown"},
+                            timeout=10,
+                        )
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
         print(f"[trading-agent {run_id}] Complete: {ticker}")
 
@@ -11085,14 +11132,187 @@ def save_agent_to_research(run_id):
 ```
 """
 
-    note_id = str(uuid.uuid4())
+    # Save to research_documents (Research tab)
+    doc_id = f"agent-{run_id}"
     with get_db(commit=True) as (conn, cur):
-        cur.execute('''
-            INSERT INTO research_notes (id, ticker, version, note_markdown, sources_markdown, changelog_markdown, note_docx, charts, metadata)
-            VALUES (%s, %s, '1.0', %s, '', '', '', '[]', %s)
-        ''', (note_id, ticker, note_md, json.dumps({'source': 'TradingAgents', 'runId': run_id, 'provider': run['llm_provider'], 'model': run['llm_model']})))
+        cur.execute('SELECT id FROM research_categories WHERE UPPER(name) = %s', (ticker,))
+        cat_row = cur.fetchone()
+        if cat_row:
+            category_id = cat_row['id']
+        else:
+            category_id = f"cat-{ticker.lower()}"
+            cur.execute('''
+                INSERT INTO research_categories (id, name, type, created_at)
+                VALUES (%s, %s, 'ticker', NOW())
+                ON CONFLICT (id) DO NOTHING
+            ''', (category_id, ticker))
 
-    return jsonify({'success': True, 'noteId': note_id})
+        doc_name = f"{ticker} -- TradingAgents Analysis ({run['analysis_date']})"
+        full_content = note_md + ("\n\n" + run['report'] if run.get('report') else "")
+        cur.execute('''
+            INSERT INTO research_documents (id, category_id, name, content, file_names, doc_type, published_date, created_at)
+            VALUES (%s, %s, %s, %s, '[]', 'agent_analysis', %s, NOW())
+            ON CONFLICT (id) DO UPDATE SET content = EXCLUDED.content, name = EXCLUDED.name
+        ''', (doc_id, category_id, doc_name, full_content, str(run['analysis_date'])))
+
+    return jsonify({'success': True, 'docId': doc_id})
+
+
+@app.route('/api/agents/batch-run', methods=['POST'])
+def start_agent_batch_run():
+    """Run TradingAgents on multiple tickers."""
+    data = request.get_json()
+    tickers = data.get('tickers', [])
+    date_str = data.get('date', '')
+    provider = data.get('provider', 'anthropic')
+    model = data.get('model', 'claude-haiku-4-5-20251001')
+
+    if not tickers or not date_str:
+        return jsonify({'error': 'tickers and date required'}), 400
+
+    batch_id = str(uuid.uuid4())
+    run_ids = []
+
+    with get_db(commit=True) as (conn, cur):
+        for ticker in tickers:
+            run_id = str(uuid.uuid4())
+            cur.execute('''
+                INSERT INTO agent_runs (id, ticker, analysis_date, llm_provider, llm_model, status, report)
+                VALUES (%s, %s, %s, %s, %s, 'queued', %s)
+            ''', (run_id, ticker.upper().strip(), date_str, provider, model, json.dumps({'batchId': batch_id})))
+            run_ids.append({'id': run_id, 'ticker': ticker.upper().strip()})
+
+    # Process sequentially in background
+    def _run_batch():
+        for run_info in run_ids:
+            try:
+                _run_trading_agent(run_info['id'], run_info['ticker'], date_str, provider, model)
+            except Exception as e:
+                print(f"[agent-batch] Failed {run_info['ticker']}: {e}")
+
+    threading.Thread(target=_run_batch, daemon=True).start()
+
+    return jsonify({'batchId': batch_id, 'runs': run_ids, 'count': len(run_ids)})
+
+
+@app.route('/api/agents/compare/<run_id>', methods=['GET'])
+def compare_agent_vs_thesis(run_id):
+    """Compare an agent run's decision against the existing thesis."""
+    with get_db() as (_, cur):
+        cur.execute('SELECT * FROM agent_runs WHERE id = %s', (run_id,))
+        run = cur.fetchone()
+    if not run:
+        return jsonify({'error': 'not found'}), 404
+
+    ticker = run['ticker']
+
+    # Get thesis
+    with get_db() as (_, cur):
+        cur.execute('SELECT analysis FROM portfolio_analyses WHERE ticker = %s', (ticker,))
+        pa = cur.fetchone()
+
+    thesis_data = {}
+    if pa and pa['analysis']:
+        analysis = pa['analysis'] if isinstance(pa['analysis'], dict) else json.loads(pa['analysis'])
+        thesis = analysis.get('thesis', {})
+        thesis_data = {
+            'summary': thesis.get('summary', ''),
+            'pillars': thesis.get('pillars', []),
+            'conclusion': analysis.get('conclusion', ''),
+        }
+
+    # Extract agent signal
+    decision_text = run['decision'] or ''
+    signal = 'UNKNOWN'
+    for s in ['BUY', 'SELL', 'HOLD']:
+        if s in decision_text.upper().split('\n')[0]:
+            signal = s
+            break
+
+    # Determine thesis direction
+    conclusion = thesis_data.get('conclusion', '').lower()
+    thesis_direction = 'UNKNOWN'
+    if any(w in conclusion for w in ['own', 'buy', 'bullish', 'add', 'overweight']):
+        thesis_direction = 'BUY'
+    elif any(w in conclusion for w in ['sell', 'avoid', 'underweight', 'bearish']):
+        thesis_direction = 'SELL'
+    elif any(w in conclusion for w in ['hold', 'neutral', 'revisit', 'wait']):
+        thesis_direction = 'HOLD'
+
+    conflict = signal != thesis_direction and signal != 'UNKNOWN' and thesis_direction != 'UNKNOWN'
+
+    return jsonify({
+        'ticker': ticker,
+        'agentSignal': signal,
+        'agentDecision': decision_text,
+        'thesisDirection': thesis_direction,
+        'thesisSummary': thesis_data.get('summary', ''),
+        'thesisPillars': thesis_data.get('pillars', []),
+        'thesisConclusion': thesis_data.get('conclusion', ''),
+        'conflict': conflict,
+    })
+
+
+@app.route('/api/agents/dashboard', methods=['GET'])
+def agent_dashboard():
+    """Return agent run analytics and tracking data."""
+    with get_db() as (_, cur):
+        # Summary stats
+        cur.execute('''
+            SELECT
+                COUNT(*) as total_runs,
+                COUNT(*) FILTER (WHERE status = 'complete') as completed,
+                COUNT(*) FILTER (WHERE status = 'error') as failed,
+                COUNT(*) FILTER (WHERE status = 'running' OR status = 'queued') as active,
+                COUNT(DISTINCT ticker) as unique_tickers,
+                SUM(estimated_cost) as total_cost,
+                AVG(EXTRACT(EPOCH FROM (completed_at - created_at))) FILTER (WHERE status = 'complete') as avg_duration
+            FROM agent_runs
+        ''')
+        stats = cur.fetchone()
+
+        # Decision distribution
+        cur.execute('''
+            SELECT
+                CASE
+                    WHEN UPPER(SPLIT_PART(decision, E'\n', 1)) LIKE '%%BUY%%' THEN 'BUY'
+                    WHEN UPPER(SPLIT_PART(decision, E'\n', 1)) LIKE '%%SELL%%' THEN 'SELL'
+                    WHEN UPPER(SPLIT_PART(decision, E'\n', 1)) LIKE '%%HOLD%%' THEN 'HOLD'
+                    ELSE 'OTHER'
+                END as signal,
+                COUNT(*) as count
+            FROM agent_runs WHERE status = 'complete'
+            GROUP BY signal
+        ''')
+        distribution = {r['signal']: r['count'] for r in cur.fetchall()}
+
+        # Per-ticker history (latest decision per ticker)
+        cur.execute('''
+            SELECT DISTINCT ON (ticker) ticker, decision, analysis_date, llm_model, created_at
+            FROM agent_runs WHERE status = 'complete'
+            ORDER BY ticker, created_at DESC
+        ''')
+        latest_by_ticker = [{
+            'ticker': r['ticker'],
+            'decision': r['decision'][:100] if r['decision'] else '',
+            'analysisDate': r['analysis_date'].isoformat() if r['analysis_date'] else None,
+            'model': r['llm_model'],
+            'runDate': r['created_at'].isoformat() if r['created_at'] else None,
+        } for r in cur.fetchall()]
+
+    return jsonify({
+        'stats': {
+            'totalRuns': stats['total_runs'],
+            'completed': stats['completed'],
+            'failed': stats['failed'],
+            'active': stats['active'],
+            'uniqueTickers': stats['unique_tickers'],
+            'totalCost': float(stats['total_cost'] or 0),
+            'avgDurationSeconds': round(stats['avg_duration'] or 0),
+        },
+        'distribution': distribution,
+        'latestByTicker': latest_by_ticker,
+    })
 
 
 # ============================================
