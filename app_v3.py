@@ -1080,6 +1080,24 @@ def init_db():
             ''')
             cur.execute('CREATE INDEX IF NOT EXISTS idx_research_notes_ticker ON research_notes(ticker)')
 
+            # TradingAgents runs
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS agent_runs (
+                    id TEXT PRIMARY KEY,
+                    ticker VARCHAR(20) NOT NULL,
+                    analysis_date DATE NOT NULL,
+                    llm_provider VARCHAR(50) NOT NULL,
+                    llm_model VARCHAR(100) NOT NULL,
+                    status VARCHAR(20) DEFAULT 'running',
+                    logs JSONB DEFAULT '[]',
+                    decision TEXT,
+                    report TEXT,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    completed_at TIMESTAMP
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_agent_runs_ticker ON agent_runs(ticker)')
+
             # Mark stale processing jobs as failed (server restart recovery)
             cur.execute('''
                 UPDATE analysis_jobs
@@ -1258,6 +1276,69 @@ def _update_pipeline_job(job_id, **kwargs):
             cur.execute(f"UPDATE research_pipeline_jobs SET {', '.join(fields)} WHERE id = %s", values)
     except Exception as e:
         print(f"[pipeline-job {job_id}] Failed to update: {e}")
+
+
+def _run_trading_agent(run_id, ticker, date_str, provider, model):
+    """Run TradingAgents analysis in background thread."""
+    try:
+        def _append_log(agent, message):
+            entry = json.dumps([{"ts": datetime.utcnow().isoformat(), "agent": agent, "message": str(message)[:500]}])
+            with get_db(commit=True) as (conn, cur):
+                cur.execute("UPDATE agent_runs SET logs = logs || %s::jsonb WHERE id = %s", (entry, run_id))
+
+        _append_log("system", f"Starting TradingAgents: {ticker} @ {date_str} using {provider}/{model}")
+
+        from tradingagents.graph.trading_graph import TradingAgentsGraph
+        from tradingagents.default_config import DEFAULT_CONFIG
+
+        config = DEFAULT_CONFIG.copy()
+        config["llm_provider"] = provider
+        config["deep_think_llm"] = model
+        config["quick_think_llm"] = model
+
+        _append_log("system", "Initializing agent graph...")
+        ta = TradingAgentsGraph(debug=True, config=config)
+
+        # Capture print output as logs
+        import builtins
+        original_print = builtins.print
+        def capturing_print(*args, **kwargs):
+            msg = " ".join(str(a) for a in args)
+            if msg.strip():
+                try:
+                    _append_log("agent", msg[:500])
+                except Exception:
+                    pass
+            original_print(*args, **kwargs)
+        builtins.print = capturing_print
+
+        try:
+            _append_log("system", "Running analysis...")
+            _, decision = ta.propagate(ticker, date_str)
+        finally:
+            builtins.print = original_print
+
+        _append_log("system", f"Analysis complete. Decision: {str(decision)[:200]}")
+
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('''
+                UPDATE agent_runs SET status = 'complete', decision = %s, completed_at = NOW() WHERE id = %s
+            ''', (str(decision), run_id))
+
+        print(f"[trading-agent {run_id}] Complete: {ticker}")
+
+    except Exception as e:
+        print(f"[trading-agent {run_id}] Failed: {e}")
+        import traceback
+        traceback.print_exc()
+        try:
+            _append_log("error", str(e)[:500])
+        except Exception:
+            pass
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('''
+                UPDATE agent_runs SET status = 'error', decision = %s, completed_at = NOW() WHERE id = %s
+            ''', (f"ERROR: {str(e)}", run_id))
 
 
 def _run_pipeline_batch(batch_id, tickers, job_type, api_key):
@@ -10828,6 +10909,131 @@ def agent_local_files(ticker):
 def agent_health():
     """Health check endpoint for the agent."""
     return jsonify({'status': 'ok', 'timestamp': datetime.utcnow().isoformat()})
+
+
+# ============================================
+# TRADING AGENTS (Multi-Agent Analysis)
+# ============================================
+
+TRADING_AGENT_PROVIDERS = {
+    "anthropic": ["claude-haiku-4-5-20251001", "claude-sonnet-4-6", "claude-opus-4-6"],
+    "openai": ["gpt-4.1-mini", "gpt-4.1", "o4-mini"],
+    "google": ["gemini-2.0-flash", "gemini-2.5-pro"],
+}
+
+@app.route('/api/agents/providers', methods=['GET'])
+def get_agent_providers():
+    return jsonify(TRADING_AGENT_PROVIDERS)
+
+
+@app.route('/api/agents/run', methods=['POST'])
+def start_agent_run():
+    data = request.get_json()
+    ticker = data.get('ticker', '').upper().strip()
+    date_str = data.get('date', '')
+    provider = data.get('provider', 'anthropic')
+    model = data.get('model', 'claude-haiku-4-5-20251001')
+
+    if not ticker or not date_str:
+        return jsonify({'error': 'ticker and date required'}), 400
+
+    run_id = str(uuid.uuid4())
+    with get_db(commit=True) as (conn, cur):
+        cur.execute('''
+            INSERT INTO agent_runs (id, ticker, analysis_date, llm_provider, llm_model, status)
+            VALUES (%s, %s, %s, %s, %s, 'running')
+        ''', (run_id, ticker, date_str, provider, model))
+
+    threading.Thread(target=_run_trading_agent, args=(run_id, ticker, date_str, provider, model), daemon=True).start()
+
+    return jsonify({'runId': run_id, 'ticker': ticker})
+
+
+@app.route('/api/agents/status/<run_id>', methods=['GET'])
+def get_agent_status(run_id):
+    since = request.args.get('since', 0, type=int)
+    with get_db() as (_, cur):
+        cur.execute('SELECT status, logs, decision, report, created_at, completed_at FROM agent_runs WHERE id = %s', (run_id,))
+        row = cur.fetchone()
+    if not row:
+        return jsonify({'error': 'not found'}), 404
+
+    logs = row['logs'] if isinstance(row['logs'], list) else json.loads(row['logs'] or '[]')
+    return jsonify({
+        'status': row['status'],
+        'newLogs': logs[since:],
+        'totalLogs': len(logs),
+        'decision': row['decision'],
+        'report': row['report'],
+        'createdAt': row['created_at'].isoformat() if row['created_at'] else None,
+        'completedAt': row['completed_at'].isoformat() if row['completed_at'] else None,
+    })
+
+
+@app.route('/api/agents/results', methods=['GET'])
+def list_agent_results():
+    limit = request.args.get('limit', 50, type=int)
+    with get_db() as (_, cur):
+        cur.execute('''
+            SELECT id, ticker, analysis_date, llm_provider, llm_model, status, decision, created_at, completed_at
+            FROM agent_runs ORDER BY created_at DESC LIMIT %s
+        ''', (limit,))
+        rows = cur.fetchall()
+    return jsonify({
+        'runs': [{
+            'id': r['id'], 'ticker': r['ticker'],
+            'analysisDate': r['analysis_date'].isoformat() if r['analysis_date'] else None,
+            'provider': r['llm_provider'], 'model': r['llm_model'],
+            'status': r['status'], 'decision': r['decision'],
+            'createdAt': r['created_at'].isoformat() if r['created_at'] else None,
+            'completedAt': r['completed_at'].isoformat() if r['completed_at'] else None,
+        } for r in rows]
+    })
+
+
+@app.route('/api/agents/save/<run_id>', methods=['POST'])
+def save_agent_to_research(run_id):
+    """Save a completed agent run as a research note."""
+    with get_db() as (_, cur):
+        cur.execute('SELECT * FROM agent_runs WHERE id = %s', (run_id,))
+        run = cur.fetchone()
+    if not run:
+        return jsonify({'error': 'not found'}), 404
+    if run['status'] != 'complete':
+        return jsonify({'error': 'run not complete'}), 400
+
+    ticker = run['ticker']
+    logs = run['logs'] if isinstance(run['logs'], list) else json.loads(run['logs'] or '[]')
+    log_text = '\n'.join(f"[{l.get('ts','')[-8:]}] {l.get('agent','')}: {l.get('message','')}" for l in logs)
+
+    note_md = f"""# TradingAgents Analysis: {ticker}
+
+**Date Analyzed:** {run['analysis_date']}
+**Model:** {run['llm_provider']} / {run['llm_model']}
+**Run ID:** {run_id}
+
+---
+
+## Decision
+
+{run['decision'] or 'No decision'}
+
+---
+
+## Agent Log
+```
+{log_text}
+```
+"""
+
+    note_id = str(uuid.uuid4())
+    with get_db(commit=True) as (conn, cur):
+        cur.execute('''
+            INSERT INTO research_notes (id, ticker, version, note_markdown, sources_markdown, changelog_markdown, note_docx, charts, metadata)
+            VALUES (%s, %s, '1.0', %s, '', '', '', '[]', %s)
+        ''', (note_id, ticker, note_md, json.dumps({'source': 'TradingAgents', 'runId': run_id, 'provider': run['llm_provider'], 'model': run['llm_model']})))
+
+    return jsonify({'success': True, 'noteId': note_id})
 
 
 # ============================================
