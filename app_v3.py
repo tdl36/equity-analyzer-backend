@@ -1584,7 +1584,10 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
             'newDocsWeight': new_weight
         }
 
-        if doc_filenames or (job_type == 'process'):
+        if not doc_filenames and not existing:
+            raise Exception(f'No documents found in database for {ticker}. Upload documents first via the Thesis tab.')
+
+        if doc_filenames or (job_type == 'process' and existing):
             # Create an analysis sub-job
             sub_job_id = str(uuid.uuid4())
             with get_db(commit=True) as (conn, cur):
@@ -1898,10 +1901,13 @@ def _run_analysis_job(job_id):
 
         # Load documents from DB
         doc_filenames = payload.get('documentFilenames', [])
-        with get_db() as (conn, cur):
-            placeholders = ','.join(['%s'] * len(doc_filenames))
-            cur.execute(f'SELECT filename, file_data, file_type, mime_type, metadata FROM document_files WHERE ticker = %s AND filename IN ({placeholders})', [ticker] + doc_filenames)
-            docs = cur.fetchall()
+        if doc_filenames:
+            with get_db() as (conn, cur):
+                placeholders = ','.join(['%s'] * len(doc_filenames))
+                cur.execute(f'SELECT filename, file_data, file_type, mime_type, metadata FROM document_files WHERE ticker = %s AND filename IN ({placeholders})', [ticker] + doc_filenames)
+                docs = cur.fetchall()
+        else:
+            docs = []
 
         # Also include any inline documents from the request (new uploads not yet in DB)
         inline_docs = payload.get('inlineDocuments', [])
