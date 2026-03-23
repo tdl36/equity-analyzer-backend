@@ -9750,10 +9750,10 @@ def get_research_note_pdf(ticker):
     # Convert markdown to simple HTML for PDF
     import re
     html_body = note_md
-    # Headers
-    html_body = re.sub(r'^### (.+)$', r'<h3 style="color:#1e293b;font-size:11pt;margin:12px 0 6px 0;">\1</h3>', html_body, flags=re.MULTILINE)
-    html_body = re.sub(r'^## (\d+\.\s+)?(.+)$', r'<h2 style="color:#1e293b;font-size:13pt;font-weight:bold;border-bottom:2px solid #1e3a5f;padding-bottom:4px;margin:18px 0 8px 0;">\1\2</h2>', html_body, flags=re.MULTILINE)
-    html_body = re.sub(r'^# (.+)$', r'<h1 style="color:#1e293b;font-size:18pt;margin:0 0 4px 0;">\1</h1>', html_body, flags=re.MULTILINE)
+    # Headers — -pdf-keep-with-next prevents orphaned headings at page bottom
+    html_body = re.sub(r'^### (.+)$', r'<h3 style="color:#1e293b;font-size:11pt;margin:12px 0 6px 0;-pdf-keep-with-next:true;">\1</h3>', html_body, flags=re.MULTILINE)
+    html_body = re.sub(r'^## (\d+\.\s+)?(.+)$', r'<h2 style="color:#1e293b;font-size:13pt;font-weight:bold;border-bottom:2px solid #1e3a5f;padding-bottom:4px;margin:18px 0 8px 0;-pdf-keep-with-next:true;">\1\2</h2>', html_body, flags=re.MULTILINE)
+    html_body = re.sub(r'^# (.+)$', r'<h1 style="color:#1e293b;font-size:18pt;margin:0 0 4px 0;-pdf-keep-with-next:true;">\1</h1>', html_body, flags=re.MULTILINE)
     # Bold and italic
     html_body = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', html_body)
     html_body = re.sub(r'\*(.+?)\*', r'<i>\1</i>', html_body)
@@ -9766,7 +9766,7 @@ def get_research_note_pdf(ticker):
         rows = [l for l in lines if l.strip() and not re.match(r'^\|[\s\-:|]+\|$', l.strip())]
         if not rows:
             return ''
-        html = '<table style="border-collapse:collapse;width:100%;margin:8px 0;font-size:9pt;">'
+        html = '<table style="border-collapse:collapse;width:100%;margin:8px 0;font-size:9pt;page-break-inside:avoid;">'
         for ri, row in enumerate(rows):
             cells = [c.strip().replace('**', '') for c in row.strip('|').split('|')]
             tag = 'th' if ri == 0 else 'td'
@@ -9805,7 +9805,8 @@ def get_research_note_pdf(ticker):
     html = f"""<html><head><style>
         @page {{ margin: 0.7in; size: letter; }}
         body {{ font-family: Calibri, Arial, sans-serif; font-size: 10pt; color: #1e293b; line-height: 1.5; }}
-        table {{ border-collapse: collapse; width: 100%; }}
+        h1, h2, h3 {{ -pdf-keep-with-next: true; }}
+        table {{ border-collapse: collapse; width: 100%; page-break-inside: avoid; }}
         img {{ max-width: 100%; }}
     </style></head><body>
     {html_body}
