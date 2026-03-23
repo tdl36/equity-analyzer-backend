@@ -34,6 +34,25 @@ CORS(app, origins=[
 
 
 # ============================================
+# TELEGRAM NOTIFICATIONS
+# ============================================
+_TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+_TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+
+def _notify_telegram(message: str) -> None:
+    """Send a Telegram notification. Silently fails if not configured."""
+    if not _TELEGRAM_BOT_TOKEN or not _TELEGRAM_CHAT_ID:
+        return
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{_TELEGRAM_BOT_TOKEN}/sendMessage",
+            json={"chat_id": _TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"},
+            timeout=10,
+        )
+    except Exception:
+        pass
+
+# ============================================
 # IN-MEMORY CACHE
 # ============================================
 import time
@@ -1418,16 +1437,7 @@ def _run_trading_agent(run_id, ticker, date_str, provider, model):
                 thesis_dir = 'bullish' if any(w in conclusion for w in ['own', 'buy', 'bullish', 'add']) else 'bearish' if any(w in conclusion for w in ['sell', 'avoid', 'underweight']) else 'neutral'
                 agent_dir = decision_signal.upper()
                 if (agent_dir == 'SELL' and thesis_dir == 'bullish') or (agent_dir == 'BUY' and thesis_dir == 'bearish'):
-                    # Conflict — send Telegram alert
-                    try:
-                        import requests as _req
-                        _req.post(
-                            f"https://api.telegram.org/bot8487228930:AAHqadJIzFEVGq5TUESrKufD8-nHxcufj7Y/sendMessage",
-                            json={"chat_id": "465648202", "text": f"*THESIS CONFLICT:* TradingAgents says {agent_dir} on {ticker}, but your thesis is {thesis_dir}. Review?", "parse_mode": "Markdown"},
-                            timeout=10,
-                        )
-                    except Exception:
-                        pass
+                    _notify_telegram(f"*THESIS CONFLICT:* TradingAgents says {agent_dir} on {ticker}, but your thesis is {thesis_dir}. Review?")
         except Exception:
             pass
 
@@ -1800,10 +1810,13 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
         # Final step: Save results and mark complete
         _update_pipeline_job(job_id, status='complete', current_step='Complete', progress=100, result=json.dumps(result))
         print(f"[pipeline-job {job_id}] Completed successfully for {ticker}")
+        doc_count = len(result.get('documentHistory', []))
+        _notify_telegram(f"*Pipeline:* {ticker} thesis update complete ({doc_count} docs)")
 
     except Exception as e:
         print(f'[pipeline-job {job_id}] Failed for {ticker}: {e}')
         _update_pipeline_job(job_id, status='failed', error=str(e), current_step='Failed')
+        _notify_telegram(f"*Pipeline:* {ticker} thesis update FAILED\n{str(e)[:200]}")
 
 
 def _count_pdf_pages(base64_data):
@@ -10072,12 +10085,14 @@ Return your response in this exact format:
         _update_pipeline_job(job_id, status='complete', current_step='Complete', progress=100,
                             result=json.dumps({'noteId': note_id, 'version': version, 'ticker': ticker}))
         print(f'[note-gen {job_id}] Complete: {ticker} v{version}')
+        _notify_telegram(f"*Pipeline:* {ticker} note generated (v{version}, {len(note_md):,} chars)")
 
     except Exception as e:
         print(f'[note-gen {job_id}] Failed: {e}')
         import traceback
         traceback.print_exc()
         _update_pipeline_job(job_id, status='failed', error=str(e), current_step='Failed')
+        _notify_telegram(f"*Pipeline:* {ticker} note generation FAILED\n{str(e)[:200]}")
 
 
 def _generate_donut_chart(ticker, chart_type, data, value_key):
