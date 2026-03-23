@@ -1666,8 +1666,8 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
                 _update_pipeline_job(job_id, current_step='Saving analysis to portfolio', progress=57)
                 result_data = sub_result['result'] if isinstance(sub_result['result'], dict) else json.loads(sub_result['result'])
                 analysis_data = result_data.get('analysis', {})
-                # Unwrap double-nested 'analysis' key if LLM wrapped its output
-                if 'analysis' in analysis_data and isinstance(analysis_data['analysis'], dict) and 'thesis' not in analysis_data and 'thesis' in analysis_data['analysis']:
+                # Unwrap any depth of nested 'analysis' keys (LLM sometimes wraps its output)
+                while 'analysis' in analysis_data and isinstance(analysis_data['analysis'], dict) and 'thesis' not in analysis_data:
                     analysis_data = analysis_data['analysis']
                 analysis_changes = result_data.get('changes', [])
                 doc_metadata = result_data.get('documentMetadata', [])
@@ -2106,6 +2106,9 @@ def _run_analysis_job(job_id):
             changes = analysis.pop('changes', [])
             doc_metadata = analysis.pop('documentMetadata', [])
 
+            # Unwrap if LLM wrapped its output in an 'analysis' key
+            while 'analysis' in analysis and isinstance(analysis['analysis'], dict) and 'thesis' not in analysis:
+                analysis = analysis['analysis']
             current_analysis = analysis
             all_changes.extend(changes)
             for meta in doc_metadata:
@@ -2397,10 +2400,16 @@ def get_analysis(ticker):
         if not row:
             return jsonify({'error': 'Analysis not found'}), 404
 
+        # Normalize: unwrap any accidentally nested 'analysis' keys
+        analysis = row['analysis']
+        if isinstance(analysis, dict):
+            while 'analysis' in analysis and isinstance(analysis['analysis'], dict) and 'thesis' not in analysis:
+                analysis = analysis['analysis']
+
         return jsonify({
             'ticker': row['ticker'],
             'company': row['company'],
-            'analysis': row['analysis'],
+            'analysis': analysis,
             'updated': row['updated_at'].isoformat() if row['updated_at'] else None
         })
     except Exception as e:
