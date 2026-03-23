@@ -2117,6 +2117,17 @@ def _run_analysis_job(job_id):
             total_usage['input_tokens'] += usage_data.get('input_tokens', 0)
             total_usage['output_tokens'] += usage_data.get('output_tokens', 0)
 
+        # Merge accumulated document metadata into the final analysis's documentHistory
+        # (multi-batch: each batch only sees its own docs, so last batch's documentHistory is incomplete)
+        if all_metadata and isinstance(current_analysis, dict):
+            existing_dh = current_analysis.get('documentHistory', [])
+            existing_fnames = {d.get('filename') for d in existing_dh}
+            for meta in all_metadata:
+                if meta.get('filename') not in existing_fnames:
+                    existing_dh.append(meta)
+                    existing_fnames.add(meta.get('filename'))
+            current_analysis['documentHistory'] = existing_dh
+
         # Store result
         result = {
             'analysis': current_analysis,
