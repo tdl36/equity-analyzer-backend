@@ -1527,8 +1527,57 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
                 'weight': 1.0,
             })
 
-        if not all_available and not existing:
-            raise Exception(f'No documents or existing analysis found for {ticker}')
+        # If no docs in DB, check local manifest and request upload from local agent
+        if not all_available:
+            local_files = _local_file_manifest.get('manifest', {}).get(ticker, [])
+            source_exts = {'.pdf', '.xlsx', '.xls', '.csv'}
+            local_source_files = [f for f in local_files
+                                  if f.get('extension', '').lower() in source_exts
+                                  and f.get('folder', '') == 'main']
+            if local_source_files:
+                # Request urgent upload from local agent
+                print(f'[pipeline {job_id}] No docs in DB for {ticker}, but {len(local_source_files)} found in iCloud manifest. Requesting upload...')
+                _pending_doc_upload_requests[ticker] = {
+                    'requested_at': datetime.utcnow(),
+                    'job_id': job_id,
+                }
+                _update_pipeline_job(job_id, current_step=f'Waiting for {len(local_source_files)} iCloud docs to upload...', progress=18)
+
+                # Poll for docs to appear in DB (local agent polls every 5s, upload takes a few seconds)
+                max_wait = 60  # seconds
+                poll_interval = 3
+                waited = 0
+                while waited < max_wait:
+                    time.sleep(poll_interval)
+                    waited += poll_interval
+                    with get_db() as (_, cur):
+                        cur.execute('SELECT COUNT(*) as cnt FROM document_files WHERE ticker = %s', (ticker,))
+                        cnt = cur.fetchone()['cnt']
+                    if cnt > 0:
+                        print(f'[pipeline {job_id}] {cnt} docs now available in DB for {ticker} after {waited}s wait')
+                        break
+
+                # Re-query document_files after waiting
+                with get_db() as (_, cur):
+                    cur.execute('SELECT id, filename, file_data, file_type, mime_type, file_size, metadata FROM document_files WHERE ticker = %s ORDER BY created_at DESC', (ticker,))
+                    thesis_docs = [dict(r) for r in cur.fetchall()]
+                all_available = []
+                for d in thesis_docs:
+                    all_available.append({
+                        'id': f'thesis_{d["id"]}',
+                        'filename': d['filename'],
+                        'file_data': d.get('file_data', ''),
+                        'file_type': d.get('file_type', 'pdf'),
+                        'mime_type': d.get('mime_type', 'application/pdf'),
+                        'source': 'thesis',
+                        'weight': 1.0,
+                    })
+                # Clean up request
+                _pending_doc_upload_requests.pop(ticker, None)
+
+            if not all_available and not existing:
+                local_hint = f' ({len(local_source_files)} files seen in iCloud but upload timed out — is the local agent running?)' if local_source_files else ''
+                raise Exception(f'No documents or existing analysis found for {ticker}{local_hint}')
 
         # Apply document config (inclusion/exclusion/weights)
         doc_config = {}
@@ -1585,7 +1634,7 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
         }
 
         if not doc_filenames and not existing:
-            raise Exception(f'No documents found in database for {ticker}. Upload documents first via the Thesis tab.')
+            raise Exception(f'No documents found for {ticker}. Ensure source files exist in iCloud and local agent is running.')
 
         if doc_filenames or (job_type == 'process' and existing):
             # Create an analysis sub-job
@@ -10895,6 +10944,7 @@ Return ONLY valid JSON, no markdown fencing."""
 
 
 _local_file_manifest = {}
+_pending_doc_upload_requests = {}  # ticker -> {'requested_at': timestamp, 'job_id': str}
 
 # ============================================
 # LOCAL AGENT API
@@ -11026,6 +11076,37 @@ def agent_local_files(ticker):
         'files': files,
         'lastUpdated': _local_file_manifest.get('timestamp'),
     })
+
+@app.route('/api/agent/doc-requests', methods=['GET'])
+def agent_doc_requests():
+    """Return tickers that need urgent document upload from local agent."""
+    global _pending_doc_upload_requests
+    # Clean up stale requests (older than 2 minutes)
+    now = datetime.utcnow()
+    stale = [t for t, info in _pending_doc_upload_requests.items()
+             if (now - info['requested_at']).total_seconds() > 120]
+    for t in stale:
+        _pending_doc_upload_requests.pop(t, None)
+
+    requests_list = [
+        {'ticker': t, 'jobId': info['job_id']}
+        for t, info in _pending_doc_upload_requests.items()
+    ]
+    return jsonify({'requests': requests_list})
+
+
+@app.route('/api/agent/doc-upload-complete', methods=['POST'])
+def agent_doc_upload_complete():
+    """Local agent confirms document upload is done for a ticker."""
+    global _pending_doc_upload_requests
+    data = request.get_json() or {}
+    ticker = data.get('ticker', '').upper()
+    count = data.get('count', 0)
+    if ticker in _pending_doc_upload_requests:
+        _pending_doc_upload_requests.pop(ticker, None)
+        print(f'[agent] Document upload complete for {ticker}: {count} files')
+    return jsonify({'success': True})
+
 
 @app.route('/api/agent/health', methods=['GET'])
 def agent_health():

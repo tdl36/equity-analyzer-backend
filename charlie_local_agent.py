@@ -640,6 +640,109 @@ def import_existing_documents() -> None:
         log.info(f"Imported {uploaded} source documents to Charlie ({skipped} already existed)")
 
 
+def check_and_fulfill_doc_requests() -> None:
+    """Check backend for urgent document upload requests and fulfill them."""
+    try:
+        r = requests.get(
+            f"{CHARLIE_API}/api/agent/doc-requests",
+            headers=_agent_headers(),
+            timeout=10,
+        )
+        if r.status_code != 200:
+            return
+        pending = r.json().get('requests', [])
+        if not pending:
+            return
+
+        UPLOAD_EXTS = {".pdf", ".xlsx", ".xls", ".csv"}
+        for req in pending:
+            ticker = req['ticker']
+            log.info(f"Urgent doc upload requested for {ticker}")
+            ticker_dir = STOCKS_DIR / ticker
+            if not ticker_dir.exists():
+                log.warning(f"  Ticker folder not found: {ticker_dir}")
+                continue
+
+            # Get existing docs in Charlie to avoid duplicates
+            existing_filenames = set()
+            try:
+                resp = requests.get(
+                    f"{CHARLIE_API}/api/documents/{ticker}",
+                    headers=_agent_headers(),
+                    timeout=15,
+                )
+                if resp.status_code == 200:
+                    for doc in resp.json().get("documents", []):
+                        existing_filenames.add(doc.get("filename", ""))
+            except Exception:
+                pass
+
+            # Scan main folder for source docs
+            docs_to_upload = []
+            for f in sorted(ticker_dir.iterdir()):
+                if f.is_dir() or f.name.startswith('.') or f.name.startswith('~$'):
+                    continue
+                if f.suffix.lower() not in UPLOAD_EXTS:
+                    continue
+                if f.name in existing_filenames:
+                    continue
+                if f.stat().st_size > 50 * 1024 * 1024:
+                    continue
+                docs_to_upload.append(f)
+
+            uploaded = 0
+            for i in range(0, len(docs_to_upload), 3):
+                batch = docs_to_upload[i : i + 3]
+                documents = []
+                for f in batch:
+                    try:
+                        file_data = base64.b64encode(f.read_bytes()).decode("ascii")
+                        ext = f.suffix.lower()
+                        documents.append({
+                            "filename": f.name,
+                            "fileData": file_data,
+                            "fileType": ext.lstrip("."),
+                            "mimeType": {
+                                ".pdf": "application/pdf",
+                                ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                ".xls": "application/vnd.ms-excel",
+                                ".csv": "text/csv",
+                            }.get(ext, "application/octet-stream"),
+                        })
+                    except Exception as e:
+                        log.warning(f"  Could not read {f.name}: {e}")
+
+                if documents:
+                    try:
+                        resp = requests.post(
+                            f"{CHARLIE_API}/api/documents/save",
+                            json={"ticker": ticker, "documents": documents},
+                            headers=_agent_headers(),
+                            timeout=120,
+                        )
+                        if resp.status_code == 200:
+                            uploaded += len(documents)
+                            for d in documents:
+                                log.info(f"  Uploaded: {ticker}/{d['filename']}")
+                    except Exception as e:
+                        log.warning(f"  Upload failed for {ticker}: {e}")
+
+            # Confirm upload complete
+            try:
+                requests.post(
+                    f"{CHARLIE_API}/api/agent/doc-upload-complete",
+                    json={"ticker": ticker, "count": uploaded},
+                    headers=_agent_headers(),
+                    timeout=10,
+                )
+            except Exception:
+                pass
+            log.info(f"  Uploaded {uploaded} docs for {ticker}")
+
+    except Exception as e:
+        log.debug(f"Doc request check failed: {e}")
+
+
 def auto_unzip_stock_folders() -> None:
     """Find and extract any .zip files in stock ticker folders, then remove the zips."""
     if not STOCKS_DIR.exists():
@@ -1947,6 +2050,12 @@ def main() -> None:
                 except Exception as e:
                     log.debug(f"Manifest push error: {e}")
                     last_manifest_push = now  # don't retry immediately on error
+
+            # Check for urgent document upload requests from pipeline (every cycle)
+            try:
+                check_and_fulfill_doc_requests()
+            except Exception as e:
+                log.debug(f"Doc request check error: {e}")
 
             jobs = poll_for_jobs()
             consecutive_errors = 0  # reset on successful poll
