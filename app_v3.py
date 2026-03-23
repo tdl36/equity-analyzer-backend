@@ -1190,7 +1190,7 @@ from PyPDF2 import PdfReader, PdfWriter
 import io
 
 MAX_PDF_PAGES_PER_CHUNK = 95  # Claude API rejects >100 pages per document
-MAX_PAGES_PER_BATCH = 50      # Dense broker reports avg ~3.5K tokens/page; 50 pages ≈ 175K tokens under 200K limit
+MAX_PAGES_PER_BATCH = 100     # Initial batch hint; auto-split handles token limit errors dynamically
 
 
 def _split_large_pdf(base64_data, max_pages=MAX_PDF_PAGES_PER_CHUNK):
@@ -2032,25 +2032,29 @@ def _run_analysis_job(job_id):
         all_metadata = []
         total_usage = {'input_tokens': 0, 'output_tokens': 0}
 
-        for i, batch in enumerate(batches):
+        batch_idx = 0
+        while batch_idx < len(batches):
+            batch = batches[batch_idx]
             batch_pages = sum(d['_pages'] for d in batch)
-            _update_job(job_id, batch_num=i + 1, chars_received=0,
-                        progress=f'Processing batch {i + 1} of {len(batches)} ({batch_pages} pages)')
+            _update_job(job_id, batch_num=batch_idx + 1, chars_received=0,
+                        progress=f'Processing batch {batch_idx + 1} of {len(batches)} ({batch_pages} pages)')
 
-            content = _build_analysis_content(batch, all_docs, current_analysis, historical_weights, weighting_config, i + 1, len(batches))
+            content = _build_analysis_content(batch, all_docs, current_analysis, historical_weights, weighting_config, batch_idx + 1, len(batches))
             if not content:
+                batch_idx += 1
                 continue
 
             # Retry loop: try up to 2 attempts per batch
             max_attempts = 2
+            batch_split = False
             for attempt in range(1, max_attempts + 1):
                 try:
                     result_text = ""
                     usage_data = {}
                     if attempt > 1:
                         _update_job(job_id, chars_received=0,
-                                    progress=f'Retrying batch {i + 1} of {len(batches)} (attempt {attempt})')
-                        print(f"[analysis-job {job_id}] Retry batch {i + 1}, attempt {attempt}")
+                                    progress=f'Retrying batch {batch_idx + 1} of {len(batches)} (attempt {attempt})')
+                        print(f"[analysis-job {job_id}] Retry batch {batch_idx + 1}, attempt {attempt}")
 
                     with client.messages.stream(
                         model="claude-sonnet-4-5-20250929",
@@ -2085,23 +2089,39 @@ def _run_analysis_job(job_id):
                     break  # success — exit retry loop
 
                 except (httpx.TimeoutException, httpx.ReadTimeout, httpx.ConnectTimeout) as e:
-                    print(f"[analysis-job {job_id}] Batch {i + 1} timeout (attempt {attempt}): {e}")
+                    print(f"[analysis-job {job_id}] Batch {batch_idx + 1} timeout (attempt {attempt}): {e}")
                     if attempt == max_attempts:
-                        raise Exception(f"Batch {i + 1} timed out after {max_attempts} attempts ({batch_pages} pages)")
+                        raise Exception(f"Batch {batch_idx + 1} timed out after {max_attempts} attempts ({batch_pages} pages)")
                     import time
                     time.sleep(5)
                 except json.JSONDecodeError as e:
-                    print(f"[analysis-job {job_id}] Batch {i + 1} JSON parse error (attempt {attempt}): {e}")
+                    print(f"[analysis-job {job_id}] Batch {batch_idx + 1} JSON parse error (attempt {attempt}): {e}")
                     if attempt == max_attempts:
-                        raise Exception(f"Batch {i + 1} returned invalid JSON after {max_attempts} attempts")
+                        raise Exception(f"Batch {batch_idx + 1} returned invalid JSON after {max_attempts} attempts")
                     import time
                     time.sleep(3)
                 except Exception as e:
-                    print(f"[analysis-job {job_id}] Batch {i + 1} error (attempt {attempt}): {e}")
+                    error_str = str(e)
+                    # Auto-split: if prompt too long and batch has >1 doc, split in half and retry
+                    if 'prompt is too long' in error_str and len(batch) > 1:
+                        mid = len(batch) // 2
+                        left, right = batch[:mid], batch[mid:]
+                        left_pages = sum(d['_pages'] for d in left)
+                        right_pages = sum(d['_pages'] for d in right)
+                        print(f"[analysis-job {job_id}] Prompt too long ({batch_pages}p), auto-splitting into {left_pages}p + {right_pages}p")
+                        batches[batch_idx:batch_idx + 1] = [left, right]
+                        _update_job(job_id, total_batches=len(batches),
+                                    progress=f'Auto-split: now {len(batches)} batches')
+                        batch_split = True
+                        break  # exit retry loop — while loop will retry with smaller first half
+                    print(f"[analysis-job {job_id}] Batch {batch_idx + 1} error (attempt {attempt}): {e}")
                     if attempt == max_attempts:
                         raise
                     import time
                     time.sleep(5)
+
+            if batch_split:
+                continue  # retry same index with the smaller first-half batch
 
             changes = analysis.pop('changes', [])
             doc_metadata = analysis.pop('documentMetadata', [])
@@ -2116,6 +2136,7 @@ def _run_analysis_job(job_id):
                     all_metadata.append(meta)
             total_usage['input_tokens'] += usage_data.get('input_tokens', 0)
             total_usage['output_tokens'] += usage_data.get('output_tokens', 0)
+            batch_idx += 1
 
         # Merge accumulated document metadata into the final analysis's documentHistory
         # (multi-batch: each batch only sees its own docs, so last batch's documentHistory is incomplete)
