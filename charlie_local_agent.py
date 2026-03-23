@@ -677,6 +677,7 @@ def check_and_fulfill_doc_requests() -> None:
             except Exception:
                 pass
 
+            log.info(f"  Found {ticker} folder, {len(existing_filenames)} already in DB, scanning...")
             # Scan main folder for source docs
             docs_to_upload = []
             for f in sorted(ticker_dir.iterdir()):
@@ -690,6 +691,7 @@ def check_and_fulfill_doc_requests() -> None:
                     continue
                 docs_to_upload.append(f)
 
+            log.info(f"  {len(docs_to_upload)} docs to upload for {ticker}")
             uploaded = 0
             for i in range(0, len(docs_to_upload), 3):
                 batch = docs_to_upload[i : i + 3]
@@ -740,7 +742,9 @@ def check_and_fulfill_doc_requests() -> None:
             log.info(f"  Uploaded {uploaded} docs for {ticker}")
 
     except Exception as e:
-        log.debug(f"Doc request check failed: {e}")
+        log.error(f"Doc request check failed: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 def auto_unzip_stock_folders() -> None:

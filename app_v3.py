@@ -1190,7 +1190,7 @@ from PyPDF2 import PdfReader, PdfWriter
 import io
 
 MAX_PDF_PAGES_PER_CHUNK = 95  # Claude API rejects >100 pages per document
-MAX_PAGES_PER_BATCH = 150     # generous batch size — Claude handles 200K tokens
+MAX_PAGES_PER_BATCH = 80      # ~80 dense broker report pages ≈ 160K tokens, safely under 200K limit
 
 
 def _split_large_pdf(base64_data, max_pages=MAX_PDF_PAGES_PER_CHUNK):
