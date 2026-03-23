@@ -1356,7 +1356,9 @@ def generate_note_docx(
     """
     try:
         from docx import Document
-        from docx.shared import Inches, Pt, RGBColor
+        from docx.shared import Inches, Pt, RGBColor, Cm
+        from docx.oxml.ns import qn
+        from docx.oxml import OxmlElement
     except ImportError:
         log.error("python-docx not installed -- skipping .docx generation")
         return None
@@ -1385,12 +1387,14 @@ def generate_note_docx(
 
         if line.startswith("### "):
             h = doc.add_heading(line[4:].strip().replace('**', ''), level=3)
+            h.paragraph_format.keep_with_next = True
             for r in h.runs:
                 r.font.color.rgb = RGBColor(0, 0, 0)
 
         elif line.startswith("## "):
             section_title = line[3:].strip().replace('**', '')
             h = doc.add_heading(section_title, level=2)
+            h.paragraph_format.keep_with_next = True
             for r in h.runs:
                 r.font.color.rgb = RGBColor(0, 0, 0)
             # Insert charts after Business Overview section
@@ -1403,6 +1407,7 @@ def generate_note_docx(
 
         elif line.startswith("# "):
             h = doc.add_heading(line[2:].strip(), level=1)
+            h.paragraph_format.keep_with_next = True
             for r in h.runs:
                 r.font.color.rgb = RGBColor(0, 0, 0)
 
@@ -1435,22 +1440,48 @@ def generate_note_docx(
                     num_cols = max(len(r) for r in parsed_rows)
                     table = doc.add_table(rows=len(parsed_rows), cols=num_cols)
                     table.style = "Table Grid"
+                    table.autofit = False
+
+                    # Distribute column widths across page (6.5in usable)
+                    # Give last column extra space for text-heavy content
+                    total_width = 6.5
+                    if num_cols <= 1:
+                        col_widths = [total_width]
+                    elif num_cols <= 3:
+                        col_widths = [total_width / num_cols] * num_cols
+                    else:
+                        # Last column gets 35% of width; rest split evenly
+                        last_w = total_width * 0.35
+                        even_w = (total_width - last_w) / (num_cols - 1)
+                        col_widths = [even_w] * (num_cols - 1) + [last_w]
+
+                    for ci in range(num_cols):
+                        table.columns[ci].width = Inches(col_widths[ci])
+
                     for ri, row_cells in enumerate(parsed_rows):
                         for ci, cell_text in enumerate(row_cells):
                             if ci < num_cols:
                                 cell = table.cell(ri, ci)
+                                cell.width = Inches(col_widths[ci])
                                 cell.text = cell_text.replace('**', '').replace('*', '')
                                 for p in cell.paragraphs:
                                     for r in p.runs:
                                         r.font.size = Pt(10)
                                         r.font.name = "Calibri"
                                         r.font.color.rgb = RGBColor(0, 0, 0)
-                    # Bold header row
+                    # Bold header row with dark background
                     if len(parsed_rows) > 0:
                         for ci in range(num_cols):
-                            for p in table.cell(0, ci).paragraphs:
+                            hdr_cell = table.cell(0, ci)
+                            # Set header background to #2C3E50
+                            shading = OxmlElement('w:shd')
+                            shading.set(qn('w:fill'), '2C3E50')
+                            shading.set(qn('w:val'), 'clear')
+                            hdr_cell._tc.get_or_add_tcPr().append(shading)
+                            for p in hdr_cell.paragraphs:
                                 for r in p.runs:
                                     r.bold = True
+                                    r.font.color.rgb = RGBColor(255, 255, 255)
 
         elif line.strip():
             p = doc.add_paragraph()
@@ -1460,10 +1491,14 @@ def generate_note_docx(
 
     # Embed charts at the end (or after Business Overview if we found it)
     if chart_paths:
-        doc.add_heading("Charts", level=2)
+        ch = doc.add_heading("Charts", level=2)
+        ch.paragraph_format.keep_with_next = True
         for cp in chart_paths:
             if cp and cp.exists():
                 try:
+                    # Add chart title that stays with the image
+                    cap = doc.add_paragraph(cp.stem.replace("_", " "))
+                    cap.paragraph_format.keep_with_next = True
                     doc.add_picture(str(cp), width=Inches(6))
                     doc.add_paragraph("")  # spacing
                 except Exception as e:

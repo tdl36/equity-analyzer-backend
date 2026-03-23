@@ -10049,6 +10049,8 @@ def _generate_note_docx(ticker, company, markdown_text, charts):
         from docx import Document
         from docx.shared import Inches, Pt, RGBColor
         from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
+        from docx.oxml.ns import qn
+        from docx.oxml import OxmlElement
 
         doc = Document()
         style = doc.styles['Normal']
@@ -10076,13 +10078,16 @@ def _generate_note_docx(ticker, company, markdown_text, charts):
             # Headings
             if line.startswith('### '):
                 h = doc.add_heading(line[4:].strip(), level=3)
+                h.paragraph_format.keep_with_next = True
                 h.runs[0].font.color.rgb = RGBColor(0, 0, 0)
             elif line.startswith('## '):
                 section_title = line[3:].strip()
                 h = doc.add_heading(section_title, level=2)
+                h.paragraph_format.keep_with_next = True
                 h.runs[0].font.color.rgb = RGBColor(0, 0, 0)
             elif line.startswith('# '):
                 h = doc.add_heading(line[2:].strip(), level=1)
+                h.paragraph_format.keep_with_next = True
                 h.runs[0].font.color.rgb = RGBColor(0, 0, 0)
             elif line.startswith('- ') or line.startswith('* '):
                 doc.add_paragraph(line[2:].strip(), style='List Bullet')
@@ -10099,13 +10104,18 @@ def _generate_note_docx(ticker, company, markdown_text, charts):
 
         # Add charts at end
         if charts:
-            doc.add_heading('Charts', level=2).runs[0].font.color.rgb = RGBColor(0, 0, 0)
+            ch = doc.add_heading('Charts', level=2)
+            ch.paragraph_format.keep_with_next = True
+            ch.runs[0].font.color.rgb = RGBColor(0, 0, 0)
             for chart in charts:
                 if chart.get('data'):
+                    # Caption stays with chart image
+                    cap = doc.add_paragraph(chart.get('filename', ''))
+                    cap.paragraph_format.keep_with_next = True
                     img_bytes = base64.b64decode(chart['data'])
                     img_buf = io.BytesIO(img_bytes)
                     doc.add_picture(img_buf, width=Inches(6))
-                    doc.add_paragraph(chart.get('filename', ''))
+                    doc.add_paragraph('')  # spacing
 
         # Save to bytes
         buf = io.BytesIO()
