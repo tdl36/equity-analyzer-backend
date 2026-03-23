@@ -1904,9 +1904,28 @@ def _build_analysis_content(batch_docs, all_docs, existing_analysis, historical_
     if existing_analysis:
         batch_note = f"\n\nNote: This is batch {batch_num} of {total_batches}. Incorporate these documents into the existing analysis.\n" if total_batches > 1 else ''
         if simple_mode:
-            weight_instr = f"WEIGHTING: Preserve {existing_weight}% of existing analysis. New documents contribute {new_docs_weight}% changes. Keep most existing content intact, only add minor refinements.\n"
+            weight_instr = f"""CRITICAL WEIGHTING INSTRUCTION:
+You MUST preserve {existing_weight}% of the existing analysis. The new documents can only contribute {new_docs_weight}% worth of changes.
+
+What this means:
+- KEEP {existing_weight}% of the existing thesis, pillars, signposts, and threats UNCHANGED
+- Only make refinements or additions proportional to the {new_docs_weight}% new-document weight
+- Do NOT fundamentally rewrite or replace the existing analysis
+- Do NOT treat the new documents as "primary sources" — they are SUPPLEMENTARY to the existing analysis
+- The new documents should ADD to or REFINE the existing analysis, not replace it
+
+Example of correct behavior with {existing_weight}% existing / {new_docs_weight}% new:
+- If existing thesis has 3 pillars, keep all 3, maybe slightly update wording or add a 4th minor pillar
+- If existing has 5 signposts, keep them mostly intact, maybe add 1-2 new ones or update targets slightly
+- Do NOT remove or majorly rewrite existing content unless it's factually contradicted by the new documents
+
+In the "changes" array, describe what updates were made and why."""
         else:
-            weight_instr = "Give MORE emphasis to higher-weighted documents.\n"
+            weight_instr = """DOCUMENT WEIGHTING:
+- Each document has an assigned weight percentage shown at the start
+- Give MORE emphasis to higher-weighted documents when forming conclusions
+- Higher-weighted documents should have more influence on the thesis, signposts, and threats
+- If documents conflict, prefer the view from the higher-weighted document"""
         # Trim verbose fields to prevent context bloat on multi-batch updates
         trimmed = _trim_analysis_for_context(existing_analysis)
         prompt = f"""Update this existing analysis with new information from the documents.{batch_note}
@@ -1915,13 +1934,13 @@ Existing Analysis:
 {json.dumps(trimmed, indent=2)}
 
 {weight_instr}
+
 Review the new documents and:
 1. Update or confirm the investment thesis
 2. Add any new signposts or update existing ones — consolidate to 4-6 total
 3. Add any new threats or update existing ones — consolidate to 3-5 total
 4. Note what changed in the "changes" array
-5. Extract metadata for ALL documents
-6. TRIM any bloat: if pillars > 5, merge or drop the weakest; if signposts > 6, combine related ones
+5. TRIM any bloat: if pillars > 5, merge or drop the weakest; if signposts > 6, combine related ones
 
 {STYLE_RULES}
 
