@@ -2029,7 +2029,6 @@ def _run_analysis_job(job_id):
         )
         current_analysis = existing_analysis
         all_changes = []
-        all_metadata = []
         total_usage = {'input_tokens': 0, 'output_tokens': 0}
 
         batch_idx = 0
@@ -2124,36 +2123,37 @@ def _run_analysis_job(job_id):
                 continue  # retry same index with the smaller first-half batch
 
             changes = analysis.pop('changes', [])
-            doc_metadata = analysis.pop('documentMetadata', [])
+            analysis.pop('documentMetadata', None)  # discard LLM metadata — we build it deterministically
 
             # Unwrap if LLM wrapped its output in an 'analysis' key
             while 'analysis' in analysis and isinstance(analysis['analysis'], dict) and 'thesis' not in analysis:
                 analysis = analysis['analysis']
             current_analysis = analysis
             all_changes.extend(changes)
-            for meta in doc_metadata:
-                if not any(m.get('filename') == meta.get('filename') for m in all_metadata):
-                    all_metadata.append(meta)
             total_usage['input_tokens'] += usage_data.get('input_tokens', 0)
             total_usage['output_tokens'] += usage_data.get('output_tokens', 0)
             batch_idx += 1
 
-        # Merge accumulated document metadata into the final analysis's documentHistory
-        # (multi-batch: each batch only sees its own docs, so last batch's documentHistory is incomplete)
-        if all_metadata and isinstance(current_analysis, dict):
+        # Build documentHistory deterministically from actual input docs (not LLM output)
+        if isinstance(current_analysis, dict):
             existing_dh = current_analysis.get('documentHistory', [])
             existing_fnames = {d.get('filename') for d in existing_dh}
-            for meta in all_metadata:
-                if meta.get('filename') not in existing_fnames:
-                    existing_dh.append(meta)
-                    existing_fnames.add(meta.get('filename'))
+            for doc in all_docs:
+                fname = doc.get('filename', '')
+                if fname and fname not in existing_fnames:
+                    existing_dh.append({
+                        'filename': fname,
+                        'docType': doc.get('file_type', 'pdf'),
+                        'pages': doc.get('_pages', 0),
+                        'processedAt': datetime.utcnow().isoformat(),
+                    })
+                    existing_fnames.add(fname)
             current_analysis['documentHistory'] = existing_dh
 
         # Store result
         result = {
             'analysis': current_analysis,
             'changes': all_changes,
-            'documentMetadata': all_metadata,
             'usage': total_usage
         }
         _update_job(job_id, status='complete', result=json.dumps(result), progress='Analysis complete', api_key='')
