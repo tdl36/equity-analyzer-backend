@@ -1705,8 +1705,15 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
                             })
                             old_history = old_history[-20:]
                         analysis_data['history'] = old_history
-                    if not analysis_data.get('documentHistory'):
-                        analysis_data['documentHistory'] = old_analysis.get('documentHistory') or []
+                    # Merge old documentHistory into new (don't lose docs from prior runs)
+                    old_dh = old_analysis.get('documentHistory') or []
+                    new_dh = analysis_data.get('documentHistory') or []
+                    new_fnames = {d.get('filename') for d in new_dh}
+                    for old_doc in old_dh:
+                        if old_doc.get('filename') and old_doc['filename'] not in new_fnames:
+                            new_dh.append(old_doc)
+                            new_fnames.add(old_doc['filename'])
+                    analysis_data['documentHistory'] = new_dh
                 analysis_data['updatedAt'] = datetime.utcnow().isoformat()
                 # Inject company + ticker into analysis JSON (frontend reads from here)
                 analysis_data['company'] = company
@@ -2147,10 +2154,20 @@ def _run_analysis_job(job_id):
             total_usage['output_tokens'] += usage_data.get('output_tokens', 0)
             batch_idx += 1
 
-        # Build documentHistory deterministically from actual input docs (not LLM output)
+        # Build documentHistory: seed from prior runs, then add current run's docs
         if isinstance(current_analysis, dict):
-            existing_dh = current_analysis.get('documentHistory', [])
+            # 1. Start with documentHistory from existing analysis (preserves docs from prior runs)
+            prior_dh = []
+            if existing_analysis and isinstance(existing_analysis, dict):
+                prior_dh = list(existing_analysis.get('documentHistory', []))
+            # 2. Also keep any the LLM may have returned in current_analysis
+            existing_dh = list(prior_dh)
             existing_fnames = {d.get('filename') for d in existing_dh}
+            for dh in current_analysis.get('documentHistory', []):
+                if dh.get('filename') and dh['filename'] not in existing_fnames:
+                    existing_dh.append(dh)
+                    existing_fnames.add(dh['filename'])
+            # 3. Add current run's docs deterministically
             for doc in all_docs:
                 fname = doc.get('filename', '')
                 if fname and fname not in existing_fnames:
