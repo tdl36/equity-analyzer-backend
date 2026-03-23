@@ -11316,6 +11316,222 @@ def agent_dashboard():
 
 
 # ============================================
+# MULTI-AI VALIDATION
+# ============================================
+
+VALIDATION_REVIEWERS = {
+    'factual_accuracy': {
+        'provider': 'anthropic',
+        'model': 'claude-sonnet-4-6',
+        'name': 'Factual Accuracy',
+        'prompt': """You are a senior equity research fact-checker. Review this investment analysis for factual accuracy.
+
+CHECK FOR:
+1. Mathematical errors: Do EPS bridges add up? Are YoY growth rates calculated correctly? Do segment revenues sum to total?
+2. Unsupported claims: Is every factual statement (revenue figures, margins, guidance, dates) verifiable from the context?
+3. Contradictions: Does the narrative contradict any data tables or numbers cited elsewhere in the document?
+4. Stale data: Are any metrics clearly outdated or referencing the wrong time period?
+
+For each issue found, provide:
+- SEVERITY: HIGH / MEDIUM / LOW
+- LOCATION: The specific sentence or section
+- ISSUE: What's wrong
+- SUGGESTED FIX: How to correct it
+
+If no issues found for a category, say PASS.
+
+Return as JSON:
+{"score": 0-100, "issues": [{"severity": "HIGH/MEDIUM/LOW", "location": "...", "issue": "...", "fix": "..."}], "summary": "one line overall assessment"}"""
+    },
+    'ai_slop': {
+        'provider': 'openai',
+        'model': 'gpt-4.1-mini',
+        'name': 'AI Language Detection',
+        'prompt': """You are an expert editor who detects AI-generated language patterns. Review this investment analysis and flag any language that sounds AI-generated rather than written by a human analyst.
+
+FLAG THESE PATTERNS:
+1. Filler phrases: "it's worth noting", "in the realm of", "a testament to", "poised to", "delve into", "navigate the landscape", "robust growth trajectory", "at the end of the day"
+2. Hedging language: "it could potentially", "this may or may not", "there is a possibility that"
+3. Generic conclusions: Vague statements that could apply to any company
+4. Repetitive structure: Every paragraph starting the same way, overly symmetrical bullet points
+5. Over-qualification: Adding too many caveats to every statement
+6. Missing voice: The text should sound like a confident analyst writing to their PM with first-person opinions ("I think", "My view is")
+
+For each issue found, provide:
+- SEVERITY: HIGH / MEDIUM / LOW
+- LOCATION: The specific phrase or sentence
+- ISSUE: Why it sounds AI-generated
+- SUGGESTED FIX: A more natural alternative
+
+Return as JSON:
+{"score": 0-100, "issues": [{"severity": "HIGH/MEDIUM/LOW", "location": "...", "issue": "...", "fix": "..."}], "summary": "one line overall assessment"}"""
+    },
+    'attribution_compliance': {
+        'provider': 'gemini',
+        'model': 'gemini-2.0-flash',
+        'name': 'Attribution Compliance',
+        'prompt': """You are a compliance reviewer for an investment research firm. Review this analysis for unauthorized broker/sellside references.
+
+STRICT RULES - FLAG ANY:
+1. Broker/firm names: Goldman Sachs, Morgan Stanley, JP Morgan, RBC, Citi, Barclays, Deutsche Bank, UBS, Bernstein, Wolfe, TD Cowen, etc.
+2. Analyst names: Any reference to specific individuals at research firms
+3. Sellside opinion as thesis support: "the Street is constructive", "consensus targets suggest upside", "analysts have Buy ratings", "most brokers expect"
+4. Rating references: "Buy-rated", "Outperform consensus", "Street estimates suggest"
+5. Price target references: "consensus price target of $X", "average target implies X% upside"
+
+EXCEPTIONS (these are OK):
+- "consensus estimates" as a data-source label in footnotes
+- The analyst's own valuation math (e.g., "applying 11-12x to normalized EPS implies $X")
+- Generic market language ("the market expects", "investors are pricing in")
+
+For each violation found, provide:
+- SEVERITY: HIGH / MEDIUM / LOW
+- LOCATION: The specific phrase
+- ISSUE: What rule it violates
+- SUGGESTED FIX: How to rewrite without attribution
+
+Return as JSON:
+{"score": 0-100, "issues": [{"severity": "HIGH/MEDIUM/LOW", "location": "...", "issue": "...", "fix": "..."}], "summary": "one line overall assessment"}"""
+    },
+}
+
+# Map validation provider names to internal adapter keys
+_VALIDATION_PROVIDER_MAP = {
+    'anthropic': 'anthropic',
+    'openai': 'openai',
+    'google': 'gemini',
+    'gemini': 'gemini',
+}
+
+
+@app.route('/api/validate', methods=['POST'])
+def validate_content():
+    """Run multi-AI validation on thesis or note content."""
+    data = request.get_json()
+    content = data.get('content', '')
+    content_type = data.get('type', 'thesis')  # 'thesis' or 'note'
+    ticker = data.get('ticker', '')
+
+    if not content:
+        return jsonify({'error': 'No content to validate'}), 400
+
+    api_keys = _get_api_keys()
+
+    # Run all 3 reviewers in parallel using threads
+    results = {}
+    errors = {}
+
+    def run_reviewer(key, config):
+        try:
+            review_prompt = config['prompt'] + f"\n\nCONTENT TO REVIEW ({content_type} for {ticker}):\n\n{content[:15000]}"
+
+            provider_key = _VALIDATION_PROVIDER_MAP.get(config['provider'], config['provider'])
+            model = config['model']
+            api_key = api_keys.get(provider_key, '')
+
+            if not api_key:
+                raise ValueError(f"No API key for provider {provider_key}")
+
+            result = _LLM_ADAPTERS[provider_key](
+                messages=[{"role": "user", "content": review_prompt}],
+                system=f"You are the {config['name']} reviewer. Return ONLY valid JSON, no markdown fences.",
+                model=model,
+                max_tokens=4096,
+                timeout=120,
+                api_key=api_key,
+            )
+
+            # Try to parse JSON from response
+            text = result['text'].strip()
+            if text.startswith('```'):
+                text = text.split('\n', 1)[1].rsplit('```', 1)[0]
+            if text.startswith('json'):
+                text = text[4:].strip()
+
+            parsed = json.loads(text)
+            parsed['provider'] = result.get('provider', config['provider'])
+            parsed['model'] = result.get('model', config['model'])
+            parsed['reviewerName'] = config['name']
+            results[key] = parsed
+
+        except json.JSONDecodeError:
+            results[key] = {
+                'score': 50,
+                'issues': [],
+                'summary': f'Review completed but response was not valid JSON: {result["text"][:200]}',
+                'provider': config.get('provider', ''),
+                'model': config.get('model', ''),
+                'reviewerName': config['name'],
+                'raw': result.get('text', '')[:500],
+            }
+        except Exception as e:
+            errors[key] = str(e)
+            results[key] = {
+                'score': 0,
+                'issues': [],
+                'summary': f'Review failed: {str(e)[:200]}',
+                'provider': config.get('provider', ''),
+                'model': config.get('model', ''),
+                'reviewerName': config['name'],
+            }
+
+    threads = []
+    for key, config in VALIDATION_REVIEWERS.items():
+        t = threading.Thread(target=run_reviewer, args=(key, config))
+        t.start()
+        threads.append(t)
+
+    for t in threads:
+        t.join(timeout=120)
+
+    # Calculate overall score
+    scores = [r.get('score', 0) for r in results.values() if isinstance(r.get('score'), (int, float))]
+    overall_score = round(sum(scores) / len(scores)) if scores else 0
+
+    total_issues = sum(len(r.get('issues', [])) for r in results.values())
+    high_issues = sum(1 for r in results.values() for i in r.get('issues', []) if i.get('severity') == 'HIGH')
+
+    return jsonify({
+        'overallScore': overall_score,
+        'totalIssues': total_issues,
+        'highIssues': high_issues,
+        'reviewers': results,
+        'ticker': ticker,
+        'contentType': content_type,
+    })
+
+
+@app.route('/api/validate/auto-fix', methods=['POST'])
+def validate_auto_fix():
+    """Auto-fix flagged issues in content."""
+    data = request.get_json()
+    content = data.get('content', '')
+    issues = data.get('issues', [])
+
+    if not content or not issues:
+        return jsonify({'error': 'Content and issues required'}), 400
+
+    issues_text = '\n'.join(f"- [{i.get('severity')}] {i.get('location')}: {i.get('issue')} -> FIX: {i.get('fix')}" for i in issues)
+
+    result = call_llm(
+        messages=[{"role": "user", "content": f"""Fix the following issues in this investment analysis. Apply ONLY the specific fixes listed below. Do not change anything else. Preserve all formatting, structure, and content that isn't flagged.
+
+ISSUES TO FIX:
+{issues_text}
+
+CONTENT:
+{content}
+
+Return the FULL corrected content with fixes applied. No commentary, just the corrected text."""}],
+        system="You are an expert editor. Apply only the requested fixes. Change nothing else.",
+        tier="standard",
+        max_tokens=16384,
+    )
+
+    return jsonify({'fixedContent': result['text'], 'issuesFixed': len(issues)})
+
+
+# ============================================
 # MEETING PREP - MEETING ENDPOINTS
 # ============================================
 
