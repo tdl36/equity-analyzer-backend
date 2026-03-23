@@ -1601,6 +1601,9 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
                     except: sd = {}
                 doc_config = sd.get('documentConfig', {})
 
+        excluded_historical = doc_config.get('excludedHistoricalDocs', [])
+        rebuild_from_scratch = doc_config.get('rebuildFromScratch', False)
+
         config_docs = doc_config.get('documents', [])
         config_map = {cd['id']: cd for cd in config_docs}
 
@@ -1635,13 +1638,18 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
         doc_details_list = [{'filename': d['filename'], 'weight': 1, 'isNew': True} for d in selected_docs]
 
         # Build weighting config from document config
-        existing_weight = doc_config.get('existingWeight', 70)
+        existing_weight = 0 if rebuild_from_scratch else doc_config.get('existingWeight', 70)
         new_weight = 100 - existing_weight
         weighting_config = {
             'mode': 'simple',
             'existingAnalysisWeight': existing_weight,
-            'newDocsWeight': new_weight
+            'newDocsWeight': new_weight,
+            'excludedHistoricalDocs': excluded_historical,
+            'rebuildFromScratch': rebuild_from_scratch,
         }
+
+        # For rebuild from scratch, don't pass existing analysis to the LLM
+        effective_existing = None if rebuild_from_scratch else existing
 
         if not doc_filenames and not existing:
             raise Exception(f'No documents found for {ticker}. Ensure source files exist in iCloud and local agent is running.')
@@ -1656,7 +1664,7 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
                         'ticker': ticker,
                         'documentFilenames': doc_filenames,
                         'documentDetails': doc_details_list,
-                        'existingAnalysis': {k: (v.isoformat() if hasattr(v, 'isoformat') else v) for k, v in dict(existing).items()} if existing else None,
+                        'existingAnalysis': {k: (v.isoformat() if hasattr(v, 'isoformat') else v) for k, v in dict(effective_existing).items()} if effective_existing else None,
                         'weightingConfig': weighting_config,
                     })))
 
@@ -1687,8 +1695,8 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
                 if analysis_changes:
                     analysis_data['_pipelineChanges'] = analysis_changes
 
-                # Preserve history from existing analysis
-                if existing:
+                # Preserve history from existing analysis (skip on rebuild from scratch)
+                if existing and not rebuild_from_scratch:
                     old_analysis = existing.get('analysis', {})
                     if isinstance(old_analysis, str):
                         try: old_analysis = json.loads(old_analysis)
@@ -1714,6 +1722,14 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
                             new_dh.append(old_doc)
                             new_fnames.add(old_doc['filename'])
                     analysis_data['documentHistory'] = new_dh
+
+                # Remove excluded historical docs from documentHistory
+                if excluded_historical:
+                    excluded_set = set(excluded_historical)
+                    analysis_data['documentHistory'] = [
+                        dh for dh in analysis_data.get('documentHistory', [])
+                        if dh.get('filename') not in excluded_set
+                    ]
                 analysis_data['updatedAt'] = datetime.utcnow().isoformat()
                 # Inject company + ticker into analysis JSON (frontend reads from here)
                 analysis_data['company'] = company
@@ -1926,6 +1942,25 @@ In the "changes" array, describe what updates were made and why."""
 - Give MORE emphasis to higher-weighted documents when forming conclusions
 - Higher-weighted documents should have more influence on the thesis, signposts, and threats
 - If documents conflict, prefer the view from the higher-weighted document"""
+        # Build stale document exclusion instruction if any historical docs are excluded
+        excluded_docs = weighting_config.get('excludedHistoricalDocs', [])
+        stale_doc_instruction = ''
+        if excluded_docs:
+            doc_list_str = '\n'.join(f'  - {fname}' for fname in excluded_docs)
+            stale_doc_instruction = f"""
+
+CRITICAL — STALE DOCUMENT EXCLUSION:
+The existing analysis was partly based on the following document(s) which are now STALE and must be DISREGARDED:
+{doc_list_str}
+
+You MUST actively revise the analysis to:
+1. REMOVE or UPDATE any data points, statistics, or financial figures that originated from these stale documents
+2. REVISE any arguments, conclusions, or thesis pillars that relied primarily on stale data
+3. REMOVE signposts or threats whose basis was the stale document data
+4. If a pillar used stale data as supporting evidence but has other valid support, keep the argument but remove the stale references
+5. In the "changes" array, explicitly note what was removed or revised due to stale document exclusion
+Do NOT simply ignore these documents — actively scrub their influence from the existing analysis."""
+
         # Trim verbose fields to prevent context bloat on multi-batch updates
         trimmed = _trim_analysis_for_context(existing_analysis)
         prompt = f"""Update this existing analysis with new information from the documents.{batch_note}
@@ -1934,6 +1969,7 @@ Existing Analysis:
 {json.dumps(trimmed, indent=2)}
 
 {weight_instr}
+{stale_doc_instruction}
 
 Review the new documents and:
 1. Update or confirm the investment thesis
