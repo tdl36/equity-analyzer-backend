@@ -164,7 +164,7 @@ def _get_api_keys(anthropic_api_key="", gemini_api_key="", openai_api_key=""):
     """Resolve API keys from explicit params or environment variables."""
     return {
         "anthropic": anthropic_api_key or os.environ.get("ANTHROPIC_API_KEY", ""),
-        "gemini":    gemini_api_key or os.environ.get("GEMINI_API_KEY", ""),
+        "gemini":    gemini_api_key or os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", ""),
         "openai":    openai_api_key or os.environ.get("OPENAI_API_KEY", ""),
     }
 
@@ -11441,12 +11441,30 @@ def validate_content():
                 api_key=api_key,
             )
 
-            # Try to parse JSON from response
+            # Try to parse JSON from response — robust extraction
             text = result['text'].strip()
-            if text.startswith('```'):
-                text = text.split('\n', 1)[1].rsplit('```', 1)[0]
-            if text.startswith('json'):
-                text = text[4:].strip()
+            # Strip markdown fences
+            if '```' in text:
+                import re as _re
+                json_match = _re.search(r'```(?:json)?\s*([\s\S]*?)```', text)
+                if json_match:
+                    text = json_match.group(1).strip()
+            # Try to find JSON object in text
+            if not text.startswith('{'):
+                brace_start = text.find('{')
+                if brace_start >= 0:
+                    text = text[brace_start:]
+            # Find matching closing brace
+            brace_count = 0
+            end_pos = 0
+            for ci, ch in enumerate(text):
+                if ch == '{': brace_count += 1
+                elif ch == '}': brace_count -= 1
+                if brace_count == 0 and ci > 0:
+                    end_pos = ci + 1
+                    break
+            if end_pos > 0:
+                text = text[:end_pos]
 
             parsed = json.loads(text)
             parsed['provider'] = result.get('provider', config['provider'])
