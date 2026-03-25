@@ -1128,6 +1128,35 @@ def init_db():
                 END $$;
             ''')
 
+            # Validation history
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS validation_runs (
+                    id TEXT PRIMARY KEY,
+                    ticker VARCHAR(20) NOT NULL,
+                    content_type VARCHAR(20) NOT NULL,
+                    overall_score INTEGER DEFAULT 0,
+                    total_issues INTEGER DEFAULT 0,
+                    high_confidence_issues INTEGER DEFAULT 0,
+                    consensus_issues JSONB DEFAULT '[]',
+                    reviewers JSONB DEFAULT '{}',
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_validation_runs_ticker ON validation_runs(ticker)')
+
+            # Contextual chat
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS content_chats (
+                    id TEXT PRIMARY KEY,
+                    ticker VARCHAR(20) NOT NULL,
+                    content_type VARCHAR(20) NOT NULL,
+                    messages JSONB DEFAULT '[]',
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP DEFAULT NOW()
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_content_chats_ticker ON content_chats(ticker)')
+
             # Mark stale processing jobs as failed (server restart recovery)
             cur.execute('''
                 UPDATE analysis_jobs
@@ -11731,6 +11760,18 @@ def validate_content():
     overall_score = round(sum(scores) / len(scores)) if scores else 0
     high_conf_issues = sum(1 for i in consensus_issues if i['confidence'] == 'HIGH')
 
+    # Save validation run to history
+    val_id = str(uuid.uuid4())
+    try:
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('''
+                INSERT INTO validation_runs (id, ticker, content_type, overall_score, total_issues, high_confidence_issues, consensus_issues, reviewers)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ''', (val_id, ticker, content_type, overall_score, len(consensus_issues), high_conf_issues,
+                  json.dumps(consensus_issues), json.dumps({k: {kk: vv for kk, vv in v.items() if kk != 'issues'} for k, v in model_results.items()})))
+    except Exception as e:
+        print(f'Failed to save validation run: {e}')
+
     return jsonify({
         'overallScore': overall_score,
         'totalIssues': len(consensus_issues),
@@ -11771,6 +11812,120 @@ Return the FULL corrected content with fixes applied. No commentary, just the co
     )
 
     return jsonify({'fixedContent': result['text'], 'issuesFixed': len(issues)})
+
+
+@app.route('/api/validate/history/<ticker>', methods=['GET'])
+def validation_history(ticker):
+    ticker = ticker.upper()
+    with get_db() as (_, cur):
+        cur.execute('''
+            SELECT id, ticker, content_type, overall_score, total_issues, high_confidence_issues, consensus_issues, reviewers, created_at
+            FROM validation_runs WHERE ticker = %s ORDER BY created_at DESC LIMIT 20
+        ''', (ticker,))
+        rows = cur.fetchall()
+    return jsonify({
+        'runs': [{
+            'id': r['id'], 'ticker': r['ticker'], 'contentType': r['content_type'],
+            'overallScore': r['overall_score'], 'totalIssues': r['total_issues'],
+            'highConfidenceIssues': r['high_confidence_issues'],
+            'consensusIssues': r['consensus_issues'] if isinstance(r['consensus_issues'], list) else json.loads(r['consensus_issues'] or '[]'),
+            'reviewers': r['reviewers'] if isinstance(r['reviewers'], dict) else json.loads(r['reviewers'] or '{}'),
+            'createdAt': r['created_at'].isoformat() if r['created_at'] else None,
+        } for r in rows]
+    })
+
+
+@app.route('/api/chat/context', methods=['POST'])
+def context_chat():
+    """Send a message in a contextual chat about thesis/note content."""
+    data = request.get_json()
+    ticker = data.get('ticker', '').upper()
+    content_type = data.get('contentType', 'thesis')
+    content = data.get('content', '')
+    message = data.get('message', '')
+    chat_id = data.get('chatId', '')
+
+    if not ticker or not message:
+        return jsonify({'error': 'ticker and message required'}), 400
+
+    # Load or create chat
+    history = []
+    if chat_id:
+        with get_db() as (_, cur):
+            cur.execute('SELECT messages FROM content_chats WHERE id = %s', (chat_id,))
+            row = cur.fetchone()
+            if row:
+                history = row['messages'] if isinstance(row['messages'], list) else json.loads(row['messages'] or '[]')
+    else:
+        chat_id = str(uuid.uuid4())
+
+    # Build system prompt with content context
+    system = f"""You are a senior equity research analyst reviewing your own work. You generated the following {content_type} for {ticker}.
+
+The user (your PM) is asking questions about this {content_type}, challenging assumptions, or requesting edits.
+
+Answer precisely and honestly. If the user points out an error, acknowledge it. If they ask why you made a choice, explain your reasoning from the source documents. If they request an edit, provide the corrected text clearly marked.
+
+When providing edits, format them as:
+EDIT: [section name]
+BEFORE: [original text]
+AFTER: [corrected text]
+
+CONTENT:
+{content[:12000]}"""
+
+    # Build messages for LLM
+    llm_messages = []
+    for h in history[-10:]:  # Keep last 10 messages for context
+        llm_messages.append({"role": h['role'], "content": h['content']})
+    llm_messages.append({"role": "user", "content": message})
+
+    result = call_llm(
+        messages=llm_messages,
+        system=system,
+        tier="standard",
+        max_tokens=4096,
+    )
+
+    response = result['text']
+
+    # Save to history
+    history.append({"role": "user", "content": message, "ts": datetime.utcnow().isoformat()})
+    history.append({"role": "assistant", "content": response, "ts": datetime.utcnow().isoformat()})
+
+    with get_db(commit=True) as (conn, cur):
+        cur.execute('''
+            INSERT INTO content_chats (id, ticker, content_type, messages, updated_at)
+            VALUES (%s, %s, %s, %s, NOW())
+            ON CONFLICT (id) DO UPDATE SET messages = %s, updated_at = NOW()
+        ''', (chat_id, ticker, content_type, json.dumps(history), json.dumps(history)))
+
+    return jsonify({
+        'chatId': chat_id,
+        'response': response,
+        'provider': result.get('provider', ''),
+        'model': result.get('model', ''),
+    })
+
+
+@app.route('/api/chat/history/<ticker>', methods=['GET'])
+def chat_history(ticker):
+    """Get chat history for a ticker."""
+    ticker = ticker.upper()
+    content_type = request.args.get('type', '')
+    with get_db() as (_, cur):
+        if content_type:
+            cur.execute('SELECT * FROM content_chats WHERE ticker = %s AND content_type = %s ORDER BY updated_at DESC LIMIT 10', (ticker, content_type))
+        else:
+            cur.execute('SELECT * FROM content_chats WHERE ticker = %s ORDER BY updated_at DESC LIMIT 10', (ticker,))
+        rows = cur.fetchall()
+    return jsonify({
+        'chats': [{
+            'id': r['id'], 'ticker': r['ticker'], 'contentType': r['content_type'],
+            'messageCount': len(r['messages'] if isinstance(r['messages'], list) else json.loads(r['messages'] or '[]')),
+            'updatedAt': r['updated_at'].isoformat() if r['updated_at'] else None,
+        } for r in rows]
+    })
 
 
 # ============================================
