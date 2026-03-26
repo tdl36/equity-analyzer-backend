@@ -15477,9 +15477,115 @@ Return ONLY valid JSON array, no markdown fencing."""
                         (str(e), datetime.utcnow(), output_id))
 
 
+def _generate_html_infographic(output_id, source_content, settings, api_keys):
+    """Generate an infographic using HTML rendering for precise layout.
+
+    Uses the source content structure faithfully, renders as styled HTML,
+    then converts to PDF via xhtml2pdf. Returns HTML + PDF as base64.
+    """
+    try:
+        with get_db(commit=True) as (conn, cur):
+            cur.execute("UPDATE studio_outputs SET status='generating', updated_at=%s WHERE id=%s", (datetime.utcnow(), output_id))
+
+        density = settings.get('density', 'balanced')
+        style_instructions = settings.get('style_instructions', '')
+        title = settings.get('title', 'Infographic')
+
+        density_css = {
+            'clean': 'font-size: 16px; line-height: 2; max-width: 1000px;',
+            'balanced': 'font-size: 13px; line-height: 1.6; max-width: 1200px;',
+            'dense': 'font-size: 11px; line-height: 1.4; max-width: 1400px;',
+        }.get(density, 'font-size: 13px; line-height: 1.6;')
+
+        prompt = f"""Convert the following content into a beautiful, well-styled HTML infographic.
+
+CRITICAL RULES:
+1. PRESERVE the EXACT structure, order, and organization of the source content
+2. If the source is a chronological table/list, render it as a styled HTML table or timeline in the SAME order
+3. Every item in the source must appear in the output in the same position
+4. Do NOT reorganize, summarize, or create new groupings
+5. Make it visually beautiful with CSS styling - colors, borders, icons (use Unicode), backgrounds
+6. All text must be perfectly spelled and readable
+7. Do NOT use CSS features unsupported by xhtml2pdf: no border-radius, no gradients, no flexbox, no calc(). Use table layouts with explicit width on every td/th.
+8. Use only simple CSS: solid borders, background-color (hex), padding, margin, text-align, font-weight, font-size, color.
+
+STYLE: {style_instructions or 'Professional, clean design with a dark header and well-organized sections'}
+DENSITY: {density} layout
+
+Return ONLY the complete HTML (no markdown fences, no explanation). The HTML should be a self-contained document with inline CSS.
+Use this base structure:
+<html>
+<head><style>
+body {{ margin: 0; padding: 40px; font-family: Arial, sans-serif; background: #ffffff; color: #1a1a2e; {density_css} }}
+h1 {{ text-align: center; color: white; background-color: #1a1a2e; padding: 24px; margin: -40px -40px 30px -40px; font-size: 28px; }}
+table {{ width: 100%; border-collapse: collapse; margin-bottom: 20px; }}
+th {{ background-color: #16213e; color: white; padding: 10px; text-align: left; }}
+td {{ padding: 8px; border-bottom: 1px solid #cccccc; }}
+</style></head>
+<body>
+<!-- Faithful rendering of source content -->
+</body>
+</html>
+
+SOURCE CONTENT:
+{title}
+
+{source_content[:12000]}"""
+
+        result = call_llm(
+            messages=[{"role": "user", "content": prompt}],
+            system="You are an expert HTML/CSS designer who creates beautiful infographic-style documents. Return ONLY valid HTML. Do NOT use border-radius, gradients, flexbox, or calc() — only simple CSS compatible with xhtml2pdf.",
+            tier="standard",
+            max_tokens=16384,
+            anthropic_api_key=api_keys.get('anthropic', ''),
+            gemini_api_key=api_keys.get('gemini', ''),
+        )
+
+        html_text = result['text'].strip()
+        # Strip markdown fences if present
+        if html_text.startswith('```'):
+            html_text = html_text.split('\n', 1)[1].rsplit('```', 1)[0]
+        if html_text.startswith('html'):
+            html_text = html_text[4:].strip()
+
+        # Convert HTML to PDF using xhtml2pdf
+        from xhtml2pdf import pisa
+        import io
+
+        pdf_buf = io.BytesIO()
+        pisa_status = pisa.CreatePDF(html_text, dest=pdf_buf)
+        pdf_bytes = pdf_buf.getvalue()
+
+        html_b64 = base64.b64encode(html_text.encode('utf-8')).decode('ascii')
+        pdf_b64 = base64.b64encode(pdf_bytes).decode('ascii') if pdf_bytes else ''
+
+        content_json = json.dumps({
+            'render_mode': 'precise',
+            'html': html_b64,
+            'pdf': pdf_b64,
+            'format': 'html',
+            'density': density,
+        })
+
+        with get_db(commit=True) as (conn, cur):
+            cur.execute("UPDATE studio_outputs SET status='ready', content=%s, updated_at=%s WHERE id=%s",
+                        (content_json, datetime.utcnow(), output_id))
+
+    except Exception as e:
+        print(f"Studio HTML infographic error: {e}")
+        with get_db(commit=True) as (conn, cur):
+            cur.execute("UPDATE studio_outputs SET status='error', error_message=%s, updated_at=%s WHERE id=%s",
+                        (str(e), datetime.utcnow(), output_id))
+
+
 def _generate_studio_infographic(output_id, source_content, settings, api_keys):
     """Generate an infographic image."""
     try:
+        # Check render mode — dispatch to HTML renderer if 'precise'
+        render_mode = settings.get('render_mode', 'ai')
+        if render_mode == 'precise':
+            return _generate_html_infographic(output_id, source_content, settings, api_keys)
+
         orientation = settings.get('orientation', 'landscape')
         aspect_map = {'landscape': '16:9', 'portrait': '9:16', 'square': '1:1'}
         aspect = aspect_map.get(orientation, '16:9')
@@ -15858,6 +15964,103 @@ def generate_studio_output(output_id):
         return jsonify({'success': True, 'message': f'Generation started for {output_type}'})
     except Exception as e:
         print(f"Error starting studio generation: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/studio/outputs/<int:output_id>/html', methods=['GET'])
+def get_studio_html(output_id):
+    """Get the HTML version of a studio output for precise rendering.
+
+    If the output was generated with render_mode='precise', returns the stored
+    HTML and PDF. Otherwise, generates a new HTML infographic on the fly from
+    the source content.
+    """
+    try:
+        with get_db() as (_, cur):
+            cur.execute('SELECT settings, source_config, content, title FROM studio_outputs WHERE id = %s', (output_id,))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'error': 'Not found'}), 404
+
+        # If already generated as HTML, return stored data
+        content = row['content'] if isinstance(row['content'], dict) else json.loads(row['content'] or '{}')
+        if content.get('render_mode') == 'precise' and content.get('html'):
+            return jsonify({
+                'html': content['html'],
+                'pdf': content.get('pdf', ''),
+                'format': 'html',
+            })
+
+        # Otherwise, generate on the fly from source content
+        settings = row['settings'] if isinstance(row['settings'], dict) else json.loads(row['settings'] or '{}')
+        source_config = row['source_config'] if isinstance(row['source_config'], dict) else json.loads(row['source_config'] or '{}')
+
+        context_text, _ = _gather_source_content(source_config)
+        if not context_text.strip():
+            context_text = f"Generate content about: {row['title'] or 'Infographic'}"
+        title = settings.get('title', row['title'] or 'Infographic')
+
+        density = settings.get('density', 'balanced')
+        style_instructions = settings.get('style_instructions', '')
+
+        density_css = {
+            'clean': 'font-size: 16px; line-height: 2; max-width: 1000px;',
+            'balanced': 'font-size: 13px; line-height: 1.6; max-width: 1200px;',
+            'dense': 'font-size: 11px; line-height: 1.4; max-width: 1400px;',
+        }.get(density, 'font-size: 13px; line-height: 1.6;')
+
+        prompt = f"""Convert the following content into a beautiful, well-styled HTML infographic.
+
+CRITICAL RULES:
+1. PRESERVE the EXACT structure, order, and organization of the source content
+2. If the source is a chronological table/list, render it as a styled HTML table or timeline in the SAME order
+3. Every item in the source must appear in the output in the same position
+4. Do NOT reorganize, summarize, or create new groupings
+5. Make it visually beautiful with CSS styling - colors, borders, icons (use Unicode), backgrounds
+6. All text must be perfectly spelled and readable
+7. Do NOT use CSS features unsupported by xhtml2pdf: no border-radius, no gradients, no flexbox, no calc(). Use table layouts with explicit width on every td/th.
+8. Use only simple CSS: solid borders, background-color (hex), padding, margin, text-align, font-weight, font-size, color.
+
+STYLE: {style_instructions or 'Professional, clean design with a dark header and well-organized sections'}
+DENSITY: {density} layout
+
+Return ONLY the complete HTML (no markdown fences, no explanation). The HTML should be a self-contained document with inline CSS.
+
+SOURCE CONTENT:
+{title}
+
+{context_text[:12000]}"""
+
+        result = call_llm(
+            messages=[{"role": "user", "content": prompt}],
+            system="You are an expert HTML/CSS designer who creates beautiful infographic-style documents. Return ONLY valid HTML. Do NOT use border-radius, gradients, flexbox, or calc().",
+            tier="standard",
+            max_tokens=16384,
+        )
+
+        html_text = result['text'].strip()
+        if html_text.startswith('```'):
+            html_text = html_text.split('\n', 1)[1].rsplit('```', 1)[0]
+        if html_text.startswith('html'):
+            html_text = html_text[4:].strip()
+
+        from xhtml2pdf import pisa
+        import io
+
+        pdf_buf = io.BytesIO()
+        pisa.CreatePDF(html_text, dest=pdf_buf)
+        pdf_bytes = pdf_buf.getvalue()
+
+        html_b64 = base64.b64encode(html_text.encode('utf-8')).decode('ascii')
+        pdf_b64 = base64.b64encode(pdf_bytes).decode('ascii') if pdf_bytes else ''
+
+        return jsonify({
+            'html': html_b64,
+            'pdf': pdf_b64,
+            'format': 'html',
+        })
+    except Exception as e:
+        print(f"Error generating HTML infographic: {e}")
         return jsonify({'error': str(e)}), 500
 
 
