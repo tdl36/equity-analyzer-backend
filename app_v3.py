@@ -15010,6 +15010,73 @@ def _gather_source_content(source_config):
         if custom_text.strip():
             context_parts.append(custom_text[:10000])
 
+    elif source_type == 'upload':
+        # Handle uploaded files — extract text from binary formats
+        if custom_text.strip():
+            context_parts.append(custom_text[:10000])
+        uploaded_files = source_config.get('uploaded_files', [])
+        for uf in uploaded_files:
+            fname = uf.get('filename', '')
+            ftype = uf.get('type', '')
+            fdata = uf.get('data', '')
+            if not fdata:
+                continue
+            try:
+                raw_bytes = base64.b64decode(fdata)
+                if ftype in ('docx', 'doc') or fname.lower().endswith(('.docx', '.doc')):
+                    # Extract text from DOCX using zipfile + XML
+                    import zipfile as _zf
+                    from xml.etree import ElementTree as _ET
+                    text_parts = []
+                    buf = io.BytesIO(raw_bytes)
+                    try:
+                        with _zf.ZipFile(buf) as z:
+                            if 'word/document.xml' in z.namelist():
+                                tree = _ET.parse(z.open('word/document.xml'))
+                                ns = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
+                                for p in tree.iter(f'{ns}p'):
+                                    texts = [t.text for t in p.iter(f'{ns}t') if t.text]
+                                    if texts:
+                                        text_parts.append(''.join(texts))
+                    except Exception as ze:
+                        text_parts.append(f'[Could not extract DOCX text: {ze}]')
+                    if text_parts:
+                        context_parts.append(f"Document: {fname}\n" + '\n'.join(text_parts))
+                elif ftype in ('xlsx', 'xls') or fname.lower().endswith(('.xlsx', '.xls')):
+                    # Extract text from Excel
+                    try:
+                        import openpyxl
+                        buf = io.BytesIO(raw_bytes)
+                        wb = openpyxl.load_workbook(buf, data_only=True, read_only=True)
+                        text_parts = []
+                        for sheet_name in wb.sheetnames[:5]:
+                            ws = wb[sheet_name]
+                            text_parts.append(f"\n=== Sheet: {sheet_name} ===")
+                            for row in ws.iter_rows(values_only=True):
+                                row_text = '\t'.join(str(c) if c is not None else '' for c in row)
+                                if row_text.strip():
+                                    text_parts.append(row_text)
+                        wb.close()
+                        context_parts.append(f"Spreadsheet: {fname}\n" + '\n'.join(text_parts[:200]))
+                    except Exception:
+                        context_parts.append(f'[Spreadsheet: {fname} — could not extract text]')
+                elif ftype == 'pdf' or fname.lower().endswith('.pdf'):
+                    # PDFs — just note it; Claude can read PDF natively if sent as document block
+                    context_parts.append(f"[PDF uploaded: {fname}]")
+                    metadata['has_pdf'] = True
+                    if 'pdf_files' not in metadata:
+                        metadata['pdf_files'] = []
+                    metadata['pdf_files'].append({'filename': fname, 'data': fdata})
+                elif ftype == 'image' or fname.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
+                    context_parts.append(f"[Image uploaded: {fname}]")
+                    if 'image_files' not in metadata:
+                        metadata['image_files'] = []
+                    metadata['image_files'].append({'filename': fname, 'data': fdata, 'mimeType': uf.get('mimeType', 'image/png')})
+                else:
+                    context_parts.append(f"[File uploaded: {fname}]")
+            except Exception as e:
+                context_parts.append(f"[Error processing {fname}: {str(e)[:100]}]")
+
     elif source_type == 'ticker':
         ticker = source_config.get('ticker', '').upper()
         if ticker:
