@@ -15497,17 +15497,20 @@ def _generate_html_infographic(output_id, source_content, settings, api_keys):
             'dense': 'font-size: 11px; line-height: 1.4; max-width: 1400px;',
         }.get(density, 'font-size: 13px; line-height: 1.6;')
 
-        prompt = f"""Convert the following content into a beautiful, well-styled HTML infographic.
+        prompt = f"""Convert the following SOURCE CONTENT into a beautiful, well-styled HTML infographic.
 
-CRITICAL RULES:
-1. PRESERVE the EXACT structure, order, and organization of the source content
-2. If the source is a chronological table/list, render it as a styled HTML table or timeline in the SAME order
-3. Every item in the source must appear in the output in the same position
-4. Do NOT reorganize, summarize, or create new groupings
-5. Make it visually beautiful with CSS styling - colors, borders, icons (use Unicode), backgrounds
-6. All text must be perfectly spelled and readable
-7. Do NOT use CSS features unsupported by xhtml2pdf: no border-radius, no gradients, no flexbox, no calc(). Use table layouts with explicit width on every td/th.
-8. Use only simple CSS: solid borders, background-color (hex), padding, margin, text-align, font-weight, font-size, color.
+ABSOLUTE RULES:
+1. Use ONLY the data provided in the SOURCE CONTENT below. Do NOT add ANY information from your training data or general knowledge.
+2. If something is not explicitly stated in the source content, do NOT include it.
+3. PRESERVE the EXACT structure, order, and organization of the source content.
+4. If the source is a chronological table/list, render it as a styled HTML table or timeline in the SAME order.
+5. Every item in the source must appear in the output in the same position.
+6. Do NOT reorganize, summarize, or create new groupings that are not in the source.
+7. Do NOT make up or infer additional context, history, or background information.
+8. Make it visually beautiful with CSS styling - colors, borders, icons (use Unicode), backgrounds.
+9. All text must be perfectly spelled and readable.
+10. Do NOT use CSS features unsupported by xhtml2pdf: no border-radius, no gradients, no flexbox, no calc(). Use table layouts with explicit width on every td/th.
+11. Use only simple CSS: solid borders, background-color (hex), padding, margin, text-align, font-weight, font-size, color.
 
 STYLE: {style_instructions or 'Professional, clean design with a dark header and well-organized sections'}
 DENSITY: {density} layout
@@ -16009,17 +16012,20 @@ def get_studio_html(output_id):
             'dense': 'font-size: 11px; line-height: 1.4; max-width: 1400px;',
         }.get(density, 'font-size: 13px; line-height: 1.6;')
 
-        prompt = f"""Convert the following content into a beautiful, well-styled HTML infographic.
+        prompt = f"""Convert the following SOURCE CONTENT into a beautiful, well-styled HTML infographic.
 
-CRITICAL RULES:
-1. PRESERVE the EXACT structure, order, and organization of the source content
-2. If the source is a chronological table/list, render it as a styled HTML table or timeline in the SAME order
-3. Every item in the source must appear in the output in the same position
-4. Do NOT reorganize, summarize, or create new groupings
-5. Make it visually beautiful with CSS styling - colors, borders, icons (use Unicode), backgrounds
-6. All text must be perfectly spelled and readable
-7. Do NOT use CSS features unsupported by xhtml2pdf: no border-radius, no gradients, no flexbox, no calc(). Use table layouts with explicit width on every td/th.
-8. Use only simple CSS: solid borders, background-color (hex), padding, margin, text-align, font-weight, font-size, color.
+ABSOLUTE RULES:
+1. Use ONLY the data provided in the SOURCE CONTENT below. Do NOT add ANY information from your training data or general knowledge.
+2. If something is not explicitly stated in the source content, do NOT include it.
+3. PRESERVE the EXACT structure, order, and organization of the source content.
+4. If the source is a chronological table/list, render it as a styled HTML table or timeline in the SAME order.
+5. Every item in the source must appear in the output in the same position.
+6. Do NOT reorganize, summarize, or create new groupings that are not in the source.
+7. Do NOT make up or infer additional context, history, or background information.
+8. Make it visually beautiful with CSS styling - colors, borders, icons (use Unicode), backgrounds.
+9. All text must be perfectly spelled and readable.
+10. Do NOT use CSS features unsupported by xhtml2pdf: no border-radius, no gradients, no flexbox, no calc(). Use table layouts with explicit width on every td/th.
+11. Use only simple CSS: solid borders, background-color (hex), padding, margin, text-align, font-weight, font-size, color.
 
 STYLE: {style_instructions or 'Professional, clean design with a dark header and well-organized sections'}
 DENSITY: {density} layout
