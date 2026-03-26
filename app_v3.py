@@ -15515,10 +15515,18 @@ def _generate_studio_infographic(output_id, source_content, settings, api_keys):
         # Preserve structure instruction
         preserve_structure = settings.get('preserve_structure', False)
         if preserve_structure:
-            structure_instruction = """CRITICAL: Preserve the EXACT structure and organization of the source document.
-Do NOT reorganize, reinterpret, or summarize the content. Keep the same sections, headings, order, and hierarchy as the original document.
-Your job is to make it visually beautiful as an infographic while keeping the content structure IDENTICAL to the source.
-Think of this as a visual redesign of the document, not a reinterpretation."""
+            structure_instruction = """ABSOLUTE REQUIREMENT - PRESERVE STRUCTURE:
+You MUST preserve the EXACT structure, organization, and order of the source document. This is non-negotiable.
+
+Rules:
+1. If the source is a TABLE (Date | Announcement), render it as a VISUAL TABLE or TIMELINE in the SAME chronological order. Do NOT group by category.
+2. If the source has sections (January, February, March), keep those EXACT section headers in the SAME order.
+3. Every row/item in the source must appear in the output in the SAME position.
+4. Do NOT summarize, combine, or reorganize items. Every item from the source must be individually visible.
+5. Do NOT create new groupings (e.g. Product Categories) that do not exist in the source.
+6. Think of this as: take the source document layout and make it beautiful, but change NOTHING about the order or grouping.
+
+If the source is a chronological list/table, the output MUST be a chronological visual - timeline, dated list, or visual table - NOT a category-grouped summary."""
         else:
             structure_instruction = "Organize the content in the most visually effective way for an infographic. You may reorganize, group, and prioritize information for maximum visual impact."
 
