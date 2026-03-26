@@ -1182,6 +1182,16 @@ def init_db():
                 WHERE status IN ('complete', 'failed') AND created_at < NOW() - INTERVAL '7 days'
             """)
 
+            # Ticker Settings table (custom sector assignments, etc.)
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS ticker_settings (
+                    ticker VARCHAR(20) PRIMARY KEY,
+                    sector VARCHAR(100),
+                    custom_company VARCHAR(255),
+                    updated_at TIMESTAMP DEFAULT NOW()
+                )
+            ''')
+
         print("Database tables initialized")
     except Exception as e:
         print(f"Database init error (may be normal on first run): {e}")
@@ -9533,6 +9543,7 @@ def pipeline_job_delete(job_id):
 @app.route('/api/pipeline/universe', methods=['GET'])
 def pipeline_universe():
     """Return the stock universe with processing status."""
+    sort_by = request.args.get('sort', 'sector')  # 'alpha', 'updated', 'sector'
     try:
         with get_db() as (_, cur):
             # Get all tickers from portfolio_analyses
@@ -9561,6 +9572,10 @@ def pipeline_universe():
             cur.execute('SELECT DISTINCT ticker FROM research_notes')
             tickers_with_notes = {row['ticker'] for row in cur.fetchall()}
 
+            # Get custom sector assignments from ticker_settings
+            cur.execute('SELECT ticker, sector FROM ticker_settings WHERE sector IS NOT NULL')
+            custom_sectors = {row['ticker']: row['sector'] for row in cur.fetchall()}
+
         universe = []
         for a in analyses:
             entry = {
@@ -9571,8 +9586,8 @@ def pipeline_universe():
                 'lastProcessed': None,
                 'lastStatus': None,
             }
-            # Sector assignment
-            entry['sector'] = PIPELINE_TICKER_SECTOR.get(a['ticker'], 'Other')
+            # Sector assignment: custom overrides first, then hardcoded map, then 'Other'
+            entry['sector'] = custom_sectors.get(a['ticker']) or PIPELINE_TICKER_SECTOR.get(a['ticker'], 'Other')
             # Calculate staleness: days since last analysis
             if a['last_analysis_date']:
                 days_old = (datetime.utcnow() - a['last_analysis_date']).days
@@ -9589,16 +9604,97 @@ def pipeline_universe():
                 entry['lastStatus'] = pj['last_status']
             universe.append(entry)
 
+        # Apply sorting
+        if sort_by == 'alpha':
+            universe.sort(key=lambda x: x['ticker'])
+        elif sort_by == 'updated':
+            universe.sort(key=lambda x: x.get('lastAnalysisDate') or '', reverse=True)
+        # 'sector' is the default — already grouped by sector in the frontend
+
+        # Build combined sector list (hardcoded + custom)
+        all_sectors = set(PIPELINE_SECTOR_MAP.keys())
+        for s in custom_sectors.values():
+            if s:
+                all_sectors.add(s)
+
         return jsonify({
             'universe': universe,
             'total': len(universe),
-            'sectors': list(PIPELINE_SECTOR_MAP.keys()),
+            'sectors': sorted(all_sectors),
             'sectorMap': PIPELINE_SECTOR_MAP
         })
 
     except Exception as e:
         print(f"Pipeline universe error: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/ticker/add', methods=['POST'])
+def add_ticker():
+    """Manually add a ticker to the universe."""
+    data = request.get_json()
+    ticker = data.get('ticker', '').upper().strip()
+    company = data.get('company', '').strip()
+    sector = data.get('sector', '').strip()
+
+    if not ticker:
+        return jsonify({'error': 'Ticker required'}), 400
+
+    # Create entry in portfolio_analyses if it doesn't exist
+    with get_db(commit=True) as (conn, cur):
+        cur.execute('''
+            INSERT INTO portfolio_analyses (ticker, company, analysis, updated_at)
+            VALUES (%s, %s, %s, NOW())
+            ON CONFLICT (ticker) DO UPDATE SET
+                company = COALESCE(NULLIF(%s, ''), portfolio_analyses.company),
+                updated_at = NOW()
+        ''', (ticker, company or ticker, json.dumps({}), company))
+
+    # Save sector assignment if provided
+    if sector:
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('''
+                INSERT INTO ticker_settings (ticker, sector, custom_company, updated_at)
+                VALUES (%s, %s, %s, NOW())
+                ON CONFLICT (ticker) DO UPDATE SET
+                    sector = COALESCE(NULLIF(%s, ''), ticker_settings.sector),
+                    custom_company = COALESCE(NULLIF(%s, ''), ticker_settings.custom_company),
+                    updated_at = NOW()
+            ''', (ticker, sector, company, sector, company))
+
+    return jsonify({'success': True, 'ticker': ticker})
+
+
+@app.route('/api/ticker/sector', methods=['POST'])
+def update_ticker_sector():
+    """Update a ticker's sector assignment."""
+    data = request.get_json()
+    ticker = data.get('ticker', '').upper().strip()
+    sector = data.get('sector', '').strip()
+
+    if not ticker or not sector:
+        return jsonify({'error': 'Ticker and sector required'}), 400
+
+    with get_db(commit=True) as (conn, cur):
+        cur.execute('''
+            INSERT INTO ticker_settings (ticker, sector, updated_at)
+            VALUES (%s, %s, NOW())
+            ON CONFLICT (ticker) DO UPDATE SET sector = %s, updated_at = NOW()
+        ''', (ticker, sector, sector))
+
+    return jsonify({'success': True, 'ticker': ticker, 'sector': sector})
+
+
+@app.route('/api/ticker/sectors', methods=['GET'])
+def get_all_sectors():
+    """Return all available sectors (hardcoded + custom)."""
+    sectors = set(PIPELINE_SECTOR_MAP.keys())
+    with get_db() as (_, cur):
+        cur.execute('SELECT DISTINCT sector FROM ticker_settings WHERE sector IS NOT NULL')
+        for row in cur.fetchall():
+            if row['sector']:
+                sectors.add(row['sector'])
+    return jsonify({'sectors': sorted(sectors)})
 
 
 @app.route('/api/pipeline/refresh-sector', methods=['POST'])
