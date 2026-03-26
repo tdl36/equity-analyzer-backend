@@ -15041,6 +15041,8 @@ def _gather_source_content(source_config):
                     except Exception as ze:
                         text_parts.append(f'[Could not extract DOCX text: {ze}]')
                     if text_parts:
+                        # Clean up encoding artifacts
+                        text_parts = [t.replace('\\', '').replace('\x00', '') for t in text_parts]
                         context_parts.append(f"Document: {fname}\n" + '\n'.join(text_parts))
                 elif ftype in ('xlsx', 'xls') or fname.lower().endswith(('.xlsx', '.xls')):
                     # Extract text from Excel
@@ -15502,9 +15504,31 @@ def _generate_studio_infographic(output_id, source_content, settings, api_keys):
             if row and row.get('style_prompt'):
                 theme_style = row['style_prompt']
 
+        # Layout density instruction
+        density = settings.get('density', 'balanced')
+        density_instruction = {
+            'clean': 'Use a MINIMAL, clean layout with lots of white space. Maximum 5-6 key data points. Large fonts, simple icons. Less is more.',
+            'balanced': 'Use a balanced layout with moderate information density. Clear sections with readable text.',
+            'dense': 'Pack as much information as possible into the infographic. Use small fonts, multiple columns, and detailed data tables. Maximize information density.',
+        }.get(density, '')
+
+        # Preserve structure instruction
+        preserve_structure = settings.get('preserve_structure', False)
+        if preserve_structure:
+            structure_instruction = """CRITICAL: Preserve the EXACT structure and organization of the source document.
+Do NOT reorganize, reinterpret, or summarize the content. Keep the same sections, headings, order, and hierarchy as the original document.
+Your job is to make it visually beautiful as an infographic while keeping the content structure IDENTICAL to the source.
+Think of this as a visual redesign of the document, not a reinterpretation."""
+        else:
+            structure_instruction = "Organize the content in the most visually effective way for an infographic. You may reorganize, group, and prioritize information for maximum visual impact."
+
         prompt = f"""Create a beautiful, professional infographic image.
 
 {f'VISUAL STYLE: {theme_style}' if theme_style else 'VISUAL STYLE: Clean, modern infographic with vibrant colors, clear hierarchy, and professional typography.'}
+
+LAYOUT DENSITY: {density_instruction}
+
+CONTENT ORGANIZATION: {structure_instruction}
 
 Aspect ratio: {aspect}
 
@@ -15517,7 +15541,9 @@ Create a visually stunning infographic that presents this information clearly wi
 - Clear sections with icons and illustrations
 - A logical flow from top to bottom
 - Professional color scheme
-ALL text MUST be in English."""
+ALL text MUST be in English.
+
+IMPORTANT: Ensure all text is spelled correctly. Do not add backslashes, special characters, or encoding artifacts to any text. Double-check company names, product names, and titles for accuracy."""
 
         style_instructions = settings.get('style_instructions', '')
         if style_instructions:
