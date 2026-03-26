@@ -9697,6 +9697,105 @@ def get_all_sectors():
     return jsonify({'sectors': sorted(sectors)})
 
 
+@app.route('/api/ticker/delete', methods=['POST'])
+def delete_ticker():
+    """Delete a ticker from the universe (archives, doesn't hard-delete)."""
+    data = request.get_json()
+    ticker = data.get('ticker', '').upper().strip()
+    if not ticker:
+        return jsonify({'error': 'Ticker required'}), 400
+
+    try:
+        with get_db(commit=True) as (conn, cur):
+            # Remove from portfolio_analyses
+            cur.execute('DELETE FROM portfolio_analyses WHERE ticker = %s', (ticker,))
+            # Remove from ticker_settings
+            cur.execute('DELETE FROM ticker_settings WHERE ticker = %s', (ticker,))
+            # Remove scorecard data
+            cur.execute('DELETE FROM thesis_scorecard_data WHERE ticker = %s', (ticker,))
+
+        cache.invalidate('analyses')
+        cache.invalidate('portfolio_dashboard')
+        return jsonify({'success': True, 'ticker': ticker})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/thesis/diff/<ticker>', methods=['GET'])
+def thesis_diff(ticker):
+    """Get diff between current thesis and previous version."""
+    ticker = ticker.upper()
+    with get_db() as (_, cur):
+        cur.execute('SELECT analysis FROM portfolio_analyses WHERE ticker = %s', (ticker,))
+        row = cur.fetchone()
+    if not row or not row['analysis']:
+        return jsonify({'error': 'No analysis found'}), 404
+
+    analysis = row['analysis'] if isinstance(row['analysis'], dict) else json.loads(row['analysis'])
+    history = analysis.get('history', [])
+
+    if not history:
+        return jsonify({'hasDiff': False, 'message': 'No prior versions'})
+
+    prev = history[-1]  # Most recent prior version
+    current = {
+        'summary': analysis.get('thesis', {}).get('summary', ''),
+        'pillars': analysis.get('thesis', {}).get('pillars', []),
+        'signposts': analysis.get('signposts', []),
+        'threats': analysis.get('threats', []),
+        'conclusion': analysis.get('conclusion', ''),
+    }
+    previous = {
+        'summary': prev.get('thesis', {}).get('summary', '') if isinstance(prev.get('thesis'), dict) else '',
+        'pillars': prev.get('thesis', {}).get('pillars', []) if isinstance(prev.get('thesis'), dict) else [],
+        'signposts': prev.get('signposts', []),
+        'threats': prev.get('threats', []),
+        'conclusion': '',
+    }
+
+    changes = []
+    # Compare summary
+    if current['summary'] != previous['summary']:
+        changes.append({'section': 'Summary', 'before': previous['summary'][:500], 'after': current['summary'][:500]})
+
+    # Compare pillars
+    curr_pillar_titles = [p.get('title', p.get('pillar', '')) for p in current['pillars']]
+    prev_pillar_titles = [p.get('title', p.get('pillar', '')) for p in previous['pillars']]
+    added_pillars = [t for t in curr_pillar_titles if t not in prev_pillar_titles]
+    removed_pillars = [t for t in prev_pillar_titles if t not in curr_pillar_titles]
+    if added_pillars:
+        changes.append({'section': 'Pillars Added', 'before': '', 'after': ', '.join(added_pillars)})
+    if removed_pillars:
+        changes.append({'section': 'Pillars Removed', 'before': ', '.join(removed_pillars), 'after': ''})
+
+    # Compare signposts
+    curr_sp = [s.get('metric', s.get('signpost', '')) for s in current['signposts']]
+    prev_sp = [s.get('metric', s.get('signpost', '')) for s in previous['signposts']]
+    added_sp = [s for s in curr_sp if s not in prev_sp]
+    removed_sp = [s for s in prev_sp if s not in curr_sp]
+    if added_sp:
+        changes.append({'section': 'Signposts Added', 'before': '', 'after': ', '.join(added_sp)})
+    if removed_sp:
+        changes.append({'section': 'Signposts Removed', 'before': ', '.join(removed_sp), 'after': ''})
+
+    # Compare threats
+    curr_th = [t.get('threat', '') for t in current['threats']]
+    prev_th = [t.get('threat', '') for t in previous['threats']]
+    added_th = [t for t in curr_th if t not in prev_th]
+    removed_th = [t for t in prev_th if t not in curr_th]
+    if added_th:
+        changes.append({'section': 'Threats Added', 'before': '', 'after': ', '.join(added_th)})
+    if removed_th:
+        changes.append({'section': 'Threats Removed', 'before': ', '.join(removed_th), 'after': ''})
+
+    return jsonify({
+        'hasDiff': len(changes) > 0,
+        'changes': changes,
+        'previousTimestamp': prev.get('timestamp', ''),
+        'totalChanges': len(changes),
+    })
+
+
 @app.route('/api/pipeline/refresh-sector', methods=['POST'])
 def pipeline_refresh_sector():
     """Trigger pipeline jobs for all stocks in a sector."""
@@ -15807,6 +15906,76 @@ def export_studio_output(output_id):
 # ============================================
 # HEALTH CHECK
 # ============================================
+
+@app.route('/api/prices', methods=['GET'])
+def get_stock_prices():
+    """Get current prices for all tickers in the universe."""
+    try:
+        import yfinance as yf
+
+        with get_db() as (_, cur):
+            cur.execute('SELECT ticker FROM portfolio_analyses')
+            tickers = [r['ticker'] for r in cur.fetchall()]
+
+        if not tickers:
+            return jsonify({'prices': {}})
+
+        # Fetch all at once for efficiency
+        data = yf.download(tickers, period='2d', progress=False, threads=True)
+
+        prices = {}
+        for ticker in tickers:
+            try:
+                if len(tickers) == 1:
+                    close = data['Close']
+                else:
+                    close = data['Close'][ticker]
+                if len(close.dropna()) >= 2:
+                    current = float(close.dropna().iloc[-1])
+                    prev = float(close.dropna().iloc[-2])
+                    change_pct = ((current - prev) / prev) * 100
+                    prices[ticker] = {'price': round(current, 2), 'changePct': round(change_pct, 2)}
+                elif len(close.dropna()) >= 1:
+                    prices[ticker] = {'price': round(float(close.dropna().iloc[-1]), 2), 'changePct': 0}
+            except Exception:
+                pass
+
+        return jsonify({'prices': prices})
+    except Exception as e:
+        print(f'Price fetch error: {e}')
+        return jsonify({'prices': {}, 'error': str(e)})
+
+
+@app.route('/api/earnings-calendar', methods=['GET'])
+def earnings_calendar():
+    """Get upcoming earnings dates for stocks in the universe."""
+    try:
+        import yfinance as yf
+
+        with get_db() as (_, cur):
+            cur.execute('SELECT ticker FROM portfolio_analyses')
+            tickers = [r['ticker'] for r in cur.fetchall()]
+
+        earnings = []
+        for ticker in tickers:
+            try:
+                stock = yf.Ticker(ticker)
+                cal = stock.calendar
+                if cal is not None and not cal.empty:
+                    earnings_date = cal.iloc[0].get('Earnings Date', None)
+                    if earnings_date:
+                        earnings.append({
+                            'ticker': ticker,
+                            'earningsDate': str(earnings_date)[:10],
+                        })
+            except Exception:
+                pass
+
+        earnings.sort(key=lambda x: x.get('earningsDate', ''))
+        return jsonify({'earnings': earnings})
+    except Exception as e:
+        return jsonify({'earnings': [], 'error': str(e)})
+
 
 @app.route('/health', methods=['GET'])
 def health():
