@@ -1192,6 +1192,22 @@ def init_db():
                 )
             ''')
 
+            # Deep Research runs
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS research_runs (
+                    id TEXT PRIMARY KEY,
+                    query TEXT NOT NULL,
+                    mode VARCHAR(20) DEFAULT 'topic',
+                    status VARCHAR(20) DEFAULT 'running',
+                    progress INTEGER DEFAULT 0,
+                    current_step TEXT DEFAULT '',
+                    agents JSONB DEFAULT '{}',
+                    synthesis TEXT,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    completed_at TIMESTAMP
+                )
+            ''')
+
         print("Database tables initialized")
     except Exception as e:
         print(f"Database init error (may be normal on first run): {e}")
@@ -11766,6 +11782,289 @@ def agent_dashboard():
         'distribution': distribution,
         'latestByTicker': latest_by_ticker,
     })
+
+
+# ============================================
+# DEEP RESEARCH (Multi-Agent Web Research)
+# ============================================
+
+def _tavily_search(query, max_results=5, search_depth='advanced'):
+    """Search the web using Tavily API."""
+    try:
+        from tavily import TavilyClient
+        api_key = os.environ.get('TAVILY_API_KEY', '')
+        if not api_key:
+            return []
+        client = TavilyClient(api_key=api_key)
+        response = client.search(query, max_results=max_results, search_depth=search_depth)
+        return response.get('results', [])
+    except Exception as e:
+        print(f"Tavily search error: {e}")
+        return []
+
+
+RESEARCH_MODES = {
+    'topic': {
+        'agents': ['official', 'media', 'community', 'background'],
+        'labels': ['Official Sources', 'Media Coverage', 'Community Reaction', 'Background & Competition'],
+    },
+    'company': {
+        'agents': ['company_info', 'financial', 'reputation', 'industry'],
+        'labels': ['Company Overview', 'Financial Analysis', 'Media & Reputation', 'Industry & Competition'],
+    },
+    'person': {
+        'agents': ['career', 'works', 'media', 'influence'],
+        'labels': ['Career & Background', 'Works & Publications', 'Media & Interviews', 'Reputation & Influence'],
+    },
+}
+
+
+@app.route('/api/research/start', methods=['POST'])
+def start_deep_research():
+    data = request.get_json()
+    query = data.get('query', '').strip()
+    mode = data.get('mode', 'topic')
+
+    if not query:
+        return jsonify({'error': 'Query required'}), 400
+    if mode not in RESEARCH_MODES:
+        return jsonify({'error': f'Invalid mode: {mode}'}), 400
+
+    run_id = str(uuid.uuid4())
+    with get_db(commit=True) as (conn, cur):
+        cur.execute('''
+            INSERT INTO research_runs (id, query, mode, status, progress, current_step)
+            VALUES (%s, %s, %s, 'running', 0, 'Starting research...')
+        ''', (run_id, query, mode))
+
+    threading.Thread(target=_run_deep_research, args=(run_id, query, mode), daemon=True).start()
+
+    return jsonify({'runId': run_id, 'query': query, 'mode': mode})
+
+
+@app.route('/api/research/status/<run_id>', methods=['GET'])
+def get_research_status(run_id):
+    with get_db() as (_, cur):
+        cur.execute('SELECT * FROM research_runs WHERE id = %s', (run_id,))
+        row = cur.fetchone()
+    if not row:
+        return jsonify({'error': 'Not found'}), 404
+
+    agents = row['agents'] if isinstance(row['agents'], dict) else json.loads(row['agents'] or '{}')
+    return jsonify({
+        'id': row['id'],
+        'query': row['query'],
+        'mode': row['mode'],
+        'status': row['status'],
+        'progress': row['progress'],
+        'currentStep': row['current_step'],
+        'agents': agents,
+        'synthesis': row['synthesis'],
+        'createdAt': row['created_at'].isoformat() if row['created_at'] else None,
+        'completedAt': row['completed_at'].isoformat() if row['completed_at'] else None,
+    })
+
+
+@app.route('/api/research/history', methods=['GET'])
+def list_research_runs():
+    limit = request.args.get('limit', 20, type=int)
+    with get_db() as (_, cur):
+        cur.execute('SELECT id, query, mode, status, progress, created_at, completed_at FROM research_runs ORDER BY created_at DESC LIMIT %s', (limit,))
+        rows = cur.fetchall()
+    return jsonify({
+        'runs': [{
+            'id': r['id'], 'query': r['query'], 'mode': r['mode'],
+            'status': r['status'], 'progress': r['progress'],
+            'createdAt': r['created_at'].isoformat() if r['created_at'] else None,
+            'completedAt': r['completed_at'].isoformat() if r['completed_at'] else None,
+        } for r in rows]
+    })
+
+
+@app.route('/api/research/save/<run_id>', methods=['POST'])
+def save_research_to_docs(run_id):
+    """Save completed research to research_documents."""
+    with get_db() as (_, cur):
+        cur.execute('SELECT * FROM research_runs WHERE id = %s', (run_id,))
+        run = cur.fetchone()
+    if not run or run['status'] != 'complete':
+        return jsonify({'error': 'Run not found or not complete'}), 404
+
+    agents = run['agents'] if isinstance(run['agents'], dict) else json.loads(run['agents'] or '{}')
+
+    # Build full content
+    content_parts = [f"# Deep Research: {run['query']}\n\nMode: {run['mode']}\nDate: {run['created_at']}\n\n---\n"]
+    if run['synthesis']:
+        content_parts.append(f"## Synthesis\n\n{run['synthesis']}\n\n---\n")
+    for agent_key, agent_data in agents.items():
+        content_parts.append(f"## {agent_data.get('label', agent_key)}\n\n{agent_data.get('content', '')}\n\n---\n")
+
+    full_content = '\n'.join(content_parts)
+
+    # Save to research_documents
+    doc_id = f"research-{run_id}"
+    with get_db(commit=True) as (conn, cur):
+        # Ensure category
+        cat_id = 'cat-deep-research'
+        cur.execute("INSERT INTO research_categories (id, name, type) VALUES (%s, 'Deep Research', 'topic') ON CONFLICT (id) DO NOTHING", (cat_id,))
+
+        doc_name = f"Research: {run['query'][:80]}"
+        cur.execute('''
+            INSERT INTO research_documents (id, category_id, name, content, doc_type, created_at)
+            VALUES (%s, %s, %s, %s, 'deep_research', NOW())
+            ON CONFLICT (id) DO UPDATE SET content = EXCLUDED.content
+        ''', (doc_id, cat_id, doc_name, full_content))
+
+    return jsonify({'success': True, 'docId': doc_id})
+
+
+def _run_deep_research(run_id, query, mode):
+    """Run multi-agent deep research with web search."""
+    try:
+        config = RESEARCH_MODES[mode]
+        agent_names = config['agents']
+        agent_labels = config['labels']
+        agents_data = {}
+
+        def update_progress(step, progress):
+            with get_db(commit=True) as (conn, cur):
+                cur.execute('UPDATE research_runs SET current_step = %s, progress = %s, agents = %s WHERE id = %s',
+                           (step, progress, json.dumps(agents_data), run_id))
+
+        # Phase 1: Parallel web search for each agent
+        update_progress('Searching the web...', 10)
+
+        search_queries = _build_search_queries(query, mode, agent_names)
+        search_results = {}
+
+        def search_for_agent(agent_key, queries):
+            results = []
+            for q in queries[:3]:  # Max 3 searches per agent
+                results.extend(_tavily_search(q, max_results=5))
+            search_results[agent_key] = results
+
+        threads = []
+        for i, agent_key in enumerate(agent_names):
+            t = threading.Thread(target=search_for_agent, args=(agent_key, search_queries[agent_key]))
+            t.start()
+            threads.append(t)
+        for t in threads:
+            t.join(timeout=30)
+
+        update_progress('Analyzing search results...', 30)
+
+        # Phase 2: Each agent analyzes its search results
+        def run_agent(agent_key, label, results):
+            sources_text = '\n\n'.join([
+                f"**{r.get('title', 'Untitled')}** ({r.get('url', '')})\n{r.get('content', '')[:1000]}"
+                for r in results[:10]
+            ])
+
+            prompt = f"""You are a research analyst investigating "{query}".
+Your focus area: {label}
+
+Analyze these search results and write a comprehensive section for a research report.
+Include specific facts, data points, and quotes. Cite sources with URLs.
+
+SEARCH RESULTS:
+{sources_text}
+
+Write a detailed, well-structured analysis (500-1000 words) with source citations."""
+
+            result = call_llm(
+                messages=[{"role": "user", "content": prompt}],
+                system=f"You are an expert research analyst. Write factual, well-sourced analysis. Always cite URLs.",
+                tier="fast",
+                max_tokens=4096,
+            )
+
+            agents_data[agent_key] = {
+                'label': label,
+                'content': result['text'],
+                'sources': [{'title': r.get('title', ''), 'url': r.get('url', '')} for r in results[:10]],
+                'status': 'complete',
+            }
+
+        agent_threads = []
+        for i, (agent_key, label) in enumerate(zip(agent_names, agent_labels)):
+            results = search_results.get(agent_key, [])
+            t = threading.Thread(target=run_agent, args=(agent_key, label, results))
+            t.start()
+            agent_threads.append(t)
+
+        for i, t in enumerate(agent_threads):
+            t.join(timeout=120)
+            update_progress(f'Agent {i+1}/{len(agent_names)} complete...', 30 + (i+1) * 15)
+
+        # Phase 3: Synthesis
+        update_progress('Synthesizing findings...', 85)
+
+        all_findings = '\n\n---\n\n'.join([
+            f"## {data.get('label', key)}\n\n{data.get('content', '')}"
+            for key, data in agents_data.items()
+        ])
+
+        synthesis_result = call_llm(
+            messages=[{"role": "user", "content": f"""You have 4 research agents' findings about "{query}".
+Synthesize them into a cohesive executive summary (300-500 words).
+Highlight key findings, consensus views, and areas of disagreement.
+Include the most important data points and cite sources.
+
+AGENT FINDINGS:
+{all_findings[:12000]}"""}],
+            system="You are a senior research director synthesizing multiple analysts' work into a clear executive summary.",
+            tier="standard",
+            max_tokens=4096,
+        )
+
+        synthesis = synthesis_result['text']
+
+        # Save final results
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('''
+                UPDATE research_runs SET status = 'complete', progress = 100, current_step = 'Complete',
+                agents = %s, synthesis = %s, completed_at = NOW() WHERE id = %s
+            ''', (json.dumps(agents_data), synthesis, run_id))
+
+        print(f"[deep-research {run_id}] Complete: {query}")
+
+    except Exception as e:
+        print(f"[deep-research {run_id}] Failed: {e}")
+        import traceback
+        traceback.print_exc()
+        with get_db(commit=True) as (conn, cur):
+            cur.execute("UPDATE research_runs SET status = 'error', current_step = %s WHERE id = %s",
+                       (f"Failed: {str(e)[:200]}", run_id))
+
+
+def _build_search_queries(query, mode, agent_names):
+    """Build search queries for each agent based on mode."""
+    year = datetime.utcnow().year
+    queries = {}
+
+    if mode == 'topic':
+        queries = {
+            'official': [f'{query} official documentation {year}', f'{query} announcement blog post {year}', f'{query} technical architecture'],
+            'media': [f'{query} news {year}', f'{query} TechCrunch OR Verge OR Wired {year}', f'{query} analysis review'],
+            'community': [f'{query} reddit discussion {year}', f'{query} hacker news {year}', f'{query} twitter opinions'],
+            'background': [f'{query} competitors comparison {year}', f'{query} market analysis industry', f'{query} research paper academic'],
+        }
+    elif mode == 'company':
+        queries = {
+            'company_info': [f'{query} company overview {year}', f'{query} products services', f'{query} CEO leadership team'],
+            'financial': [f'{query} revenue earnings {year}', f'{query} funding valuation investment', f'{query} stock analysis financial'],
+            'reputation': [f'{query} reviews reputation {year}', f'{query} glassdoor employee reviews', f'{query} customer reviews'],
+            'industry': [f'{query} competitors market share {year}', f'{query} industry analysis SWOT', f'{query} market outlook forecast'],
+        }
+    elif mode == 'person':
+        queries = {
+            'career': [f'{query} biography career background', f'{query} education university', f'{query} LinkedIn profile'],
+            'works': [f'{query} achievements publications', f'{query} papers Google Scholar', f'{query} patents awards'],
+            'media': [f'{query} interview podcast {year}', f'{query} keynote conference talk', f'{query} quotes statements'],
+            'influence': [f'{query} influence reputation industry', f'{query} opinions about Reddit Twitter', f'{query} advisory board investments'],
+        }
+
+    return queries
 
 
 # ============================================
