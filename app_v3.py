@@ -1208,6 +1208,24 @@ def init_db():
                 )
             ''')
 
+            # Research exports (research -> slides/infographics)
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS research_exports (
+                    id VARCHAR(100) PRIMARY KEY,
+                    research_run_id TEXT NOT NULL,
+                    slide_project_id INTEGER REFERENCES slide_projects(id) ON DELETE SET NULL,
+                    format VARCHAR(50) NOT NULL,
+                    type VARCHAR(20) NOT NULL,
+                    slide_count INTEGER,
+                    status VARCHAR(20) DEFAULT 'queued',
+                    progress INTEGER DEFAULT 0,
+                    error_message TEXT,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    completed_at TIMESTAMP
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_research_exports_run ON research_exports(research_run_id)')
+
         print("Database tables initialized")
     except Exception as e:
         print(f"Database init error (may be normal on first run): {e}")
@@ -12065,6 +12083,374 @@ def _build_search_queries(query, mode, agent_names):
         }
 
     return queries
+
+
+# ============================================
+# RESEARCH EXPORT TO SLIDES/INFOGRAPHICS
+# ============================================
+
+RESEARCH_EXPORT_FORMATS = {
+    'professional': {
+        'name': 'Professional Presentation',
+        'type': 'deck',
+        'theme': 'general',
+        'style': 'Clean corporate design. White/navy/accent color palette. Data tables and charts where appropriate. Sans-serif headers. Structured grid layout. Professional, polished, board-ready.',
+    },
+    'sketchnote': {
+        'name': 'Sketchnote',
+        'type': 'deck',
+        'theme': 'sketchnote',
+        'style': 'Hand-drawn visual style on warm beige/cream paper. Sketch-like icons and doodles. Warm earthy colors. Playful handwritten typography. Visual metaphors connecting ideas. Fun yet informative.',
+    },
+    'executive_brief': {
+        'name': 'Executive Brief',
+        'type': 'deck',
+        'theme': 'general',
+        'style': 'Dense, information-rich layout. Serif typography. Muted professional colors (dark navy, charcoal, gold accents). Key metrics in large callout boxes. Minimal decoration. Board-ready density.',
+    },
+    'visual_storytelling': {
+        'name': 'Visual Storytelling',
+        'type': 'deck',
+        'theme': 'general',
+        'style': 'Cinematic full-bleed imagery. One key insight per slide. Large bold typography. High contrast. Dramatic visual hierarchy. Minimal text, maximum impact. TED-talk style.',
+    },
+    'research_summary': {
+        'name': 'Research Summary Infographic',
+        'type': 'infographic',
+        'theme': 'general',
+        'style': 'Vertical infographic flow. Sections for key findings, statistics, competitive data, and sources. Professional color palette. Icons for each section. Single comprehensive page.',
+    },
+    'competitive_landscape': {
+        'name': 'Competitive Landscape Map',
+        'type': 'infographic',
+        'theme': 'general',
+        'style': 'Comparison matrix or quadrant layout. Side-by-side competitor columns. Company logos/icons. Strengths in green, weaknesses in red. Clean grid structure. Data-forward.',
+    },
+    'timeline': {
+        'name': 'Timeline / Evolution',
+        'type': 'infographic',
+        'theme': 'general',
+        'style': 'Horizontal or vertical timeline with date markers. Milestone icons. Progressive color gradient from left to right. Key events with brief descriptions. Chronological narrative.',
+    },
+}
+
+SLIDE_COUNT_GUIDANCE = {
+    'compact': {'min': 1, 'max': 3, 'instruction': 'Distill to only the most critical findings. Maximum density per slide. No filler.'},
+    'standard': {'min': 4, 'max': 6, 'instruction': 'Cover key themes with supporting evidence. One major theme per slide.'},
+    'detailed': {'min': 7, 'max': 10, 'instruction': 'Comprehensive coverage with data, quotes, and analysis. Include context and nuance.'},
+    'comprehensive': {'min': 11, 'max': 20, 'instruction': 'Full deep-dive with appendix-level detail. Separate slides for each sub-topic, data deep-dives, and source analysis.'},
+}
+
+
+@app.route('/api/research/<run_id>/export', methods=['POST'])
+def start_research_export(run_id):
+    """Queue research export jobs (slides/infographics)."""
+    try:
+        # Validate research run exists and is complete
+        with get_db() as (_, cur):
+            cur.execute('SELECT * FROM research_runs WHERE id = %s', (run_id,))
+            run = cur.fetchone()
+        if not run:
+            return jsonify({'error': 'Research run not found'}), 404
+        if run['status'] != 'complete':
+            return jsonify({'error': 'Research run not complete yet'}), 400
+
+        data = request.get_json()
+        exports = data.get('exports', [])
+        if not exports:
+            return jsonify({'error': 'No exports specified'}), 400
+
+        export_ids = []
+        with get_db(commit=True) as (conn, cur):
+            for exp in exports:
+                fmt = exp.get('format', '')
+                if fmt not in RESEARCH_EXPORT_FORMATS:
+                    continue
+                fmt_config = RESEARCH_EXPORT_FORMATS[fmt]
+                exp_type = fmt_config['type']
+                slide_count = exp.get('slideCount', 5) if exp_type == 'deck' else 1
+
+                export_id = str(uuid.uuid4())
+                cur.execute('''
+                    INSERT INTO research_exports (id, research_run_id, format, type, slide_count, status, created_at)
+                    VALUES (%s, %s, %s, %s, %s, 'queued', NOW())
+                ''', (export_id, run_id, fmt, exp_type, slide_count))
+                export_ids.append({'id': export_id, 'format': fmt, 'type': exp_type, 'status': 'queued'})
+
+                # Spawn background thread for each export
+                threading.Thread(
+                    target=_run_research_export,
+                    args=(export_id, run_id, fmt, exp_type, slide_count),
+                    daemon=True
+                ).start()
+
+        return jsonify({'exports': export_ids})
+    except Exception as e:
+        print(f"Error starting research export: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/research/<run_id>/exports', methods=['GET'])
+def get_research_exports(run_id):
+    """Get all exports for a research run with status."""
+    try:
+        with get_db() as (_, cur):
+            cur.execute('''
+                SELECT re.*, sp.title as project_title, sp.status as project_status, sp.total_slides
+                FROM research_exports re
+                LEFT JOIN slide_projects sp ON re.slide_project_id = sp.id
+                WHERE re.research_run_id = %s
+                ORDER BY re.created_at
+            ''', (run_id,))
+            rows = cur.fetchall()
+
+        exports = []
+        for r in rows:
+            fmt_config = RESEARCH_EXPORT_FORMATS.get(r['format'], {})
+            # Get thumbnail from first slide if complete
+            thumbnail = None
+            if r['slide_project_id'] and r['status'] == 'complete':
+                with get_db() as (_, cur2):
+                    cur2.execute('SELECT LEFT(image_data, 200) as thumb_check FROM slide_items WHERE project_id = %s AND slide_number = 1 AND image_data IS NOT NULL', (r['slide_project_id'],))
+                    thumb_row = cur2.fetchone()
+                    if thumb_row and thumb_row['thumb_check']:
+                        thumbnail = True  # Just indicate it exists; frontend fetches via slide image endpoint
+
+            exports.append({
+                'id': r['id'],
+                'format': r['format'],
+                'formatName': fmt_config.get('name', r['format']),
+                'type': r['type'],
+                'slideCount': r['slide_count'],
+                'status': r['status'],
+                'progress': r['progress'],
+                'error': r['error_message'],
+                'slideProjectId': r['slide_project_id'],
+                'projectTitle': r.get('project_title'),
+                'projectStatus': r.get('project_status'),
+                'totalSlides': r.get('total_slides'),
+                'hasThumbnail': thumbnail is not None,
+                'createdAt': r['created_at'].isoformat() if r['created_at'] else None,
+                'completedAt': r['completed_at'].isoformat() if r['completed_at'] else None,
+            })
+        return jsonify({'exports': exports})
+    except Exception as e:
+        print(f"Error getting research exports: {e}")
+        return jsonify({'exports': []})
+
+
+def _run_research_export(export_id, run_id, fmt, exp_type, slide_count):
+    """Background worker: generate slides/infographic from research."""
+    try:
+        # Read research data
+        with get_db() as (_, cur):
+            cur.execute('SELECT * FROM research_runs WHERE id = %s', (run_id,))
+            run = cur.fetchone()
+        if not run:
+            raise ValueError("Research run not found")
+
+        agents = run['agents'] if isinstance(run['agents'], dict) else json.loads(run['agents'] or '{}')
+        synthesis = run['synthesis'] or ''
+        query = run['query']
+
+        # Build research content for outline generation
+        research_content = f"# Research: {query}\n\n## Executive Summary\n{synthesis}\n\n"
+        for key, data in agents.items():
+            research_content += f"## {data.get('label', key)}\n{data.get('content', '')}\n\n"
+
+        fmt_config = RESEARCH_EXPORT_FORMATS[fmt]
+
+        def update_export(status=None, progress=None, error=None, project_id=None):
+            updates = []
+            params = []
+            if status:
+                updates.append("status = %s"); params.append(status)
+            if progress is not None:
+                updates.append("progress = %s"); params.append(progress)
+            if error:
+                updates.append("error_message = %s"); params.append(error)
+            if project_id:
+                updates.append("slide_project_id = %s"); params.append(project_id)
+            if status == 'complete':
+                updates.append("completed_at = NOW()")
+            if updates:
+                params.append(export_id)
+                with get_db(commit=True) as (conn, cur):
+                    cur.execute(f"UPDATE research_exports SET {', '.join(updates)} WHERE id = %s", params)
+
+        update_export(status='generating', progress=5)
+
+        # Step 1: Generate outline via LLM
+        if exp_type == 'deck':
+            count_instruction = f"Generate EXACTLY {slide_count} slides."
+            if slide_count <= 3:
+                count_instruction += " " + SLIDE_COUNT_GUIDANCE['compact']['instruction']
+            elif slide_count <= 6:
+                count_instruction += " " + SLIDE_COUNT_GUIDANCE['standard']['instruction']
+            elif slide_count <= 10:
+                count_instruction += " " + SLIDE_COUNT_GUIDANCE['detailed']['instruction']
+            else:
+                count_instruction += " " + SLIDE_COUNT_GUIDANCE['comprehensive']['instruction']
+
+            outline_prompt = f"""Based on this research, create a slide deck outline.
+
+FORMAT STYLE: {fmt_config['name']}
+{count_instruction}
+
+For each slide, provide:
+- title: slide title
+- content: the text content for the slide (key points, data, quotes)
+- illustration_hints: list of 2-3 visual elements to illustrate
+
+RESEARCH CONTENT:
+{research_content[:15000]}
+
+Return ONLY valid JSON in this format:
+{{
+  "slides": [
+    {{"slide_number": 1, "title": "...", "type": "title", "content": "...", "illustration_hints": ["...", "..."]}},
+    {{"slide_number": 2, "title": "...", "type": "content", "content": "...", "illustration_hints": ["...", "..."]}}
+  ]
+}}"""
+        else:
+            # Infographic - single slide
+            infographic_type = {
+                'research_summary': 'a comprehensive research summary infographic showing key findings, statistics, and insights',
+                'competitive_landscape': 'a competitive landscape map showing key players, their strengths/weaknesses, and market positioning',
+                'timeline': 'a timeline/evolution infographic showing key events, milestones, and developments chronologically',
+            }.get(fmt, 'a research summary infographic')
+
+            outline_prompt = f"""Based on this research, create {infographic_type}.
+
+Generate exactly 1 slide that contains ALL the key information in a dense, single-page infographic format.
+
+Provide:
+- title: infographic title
+- content: comprehensive content covering all key data points, findings, comparisons
+- illustration_hints: list of 3-5 visual elements
+
+RESEARCH CONTENT:
+{research_content[:15000]}
+
+Return ONLY valid JSON:
+{{
+  "slides": [
+    {{"slide_number": 1, "title": "...", "type": "infographic", "content": "...", "illustration_hints": ["...", "..."]}}
+  ]
+}}"""
+
+        update_export(progress=15)
+
+        outline_result = call_llm(
+            messages=[{"role": "user", "content": outline_prompt}],
+            system="You are a presentation designer. Generate structured slide outlines from research content. Return ONLY valid JSON, no markdown fences.",
+            tier="standard",
+            max_tokens=8192,
+        )
+
+        # Parse outline JSON
+        outline_text = outline_result['text'].strip()
+        # Strip markdown code fences if present
+        if outline_text.startswith('```'):
+            outline_text = outline_text.split('\n', 1)[1] if '\n' in outline_text else outline_text[3:]
+        if outline_text.endswith('```'):
+            outline_text = outline_text[:-3]
+        outline_text = outline_text.strip()
+        if outline_text.startswith('json'):
+            outline_text = outline_text[4:].strip()
+
+        outline = json.loads(outline_text)
+        slides_data = outline.get('slides', [])
+
+        if not slides_data:
+            raise ValueError("LLM returned empty outline")
+
+        update_export(progress=25)
+
+        # Step 2: Create slide project
+        theme = fmt_config.get('theme', 'general')
+        format_label = fmt_config['name']
+        project_title = f"{query[:60]} -- {format_label} ({len(slides_data)} slides)"
+
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('''
+                INSERT INTO slide_projects (ticker, title, theme, status, total_slides)
+                VALUES (NULL, %s, %s, 'generating', %s)
+                RETURNING id
+            ''', (project_title, theme, len(slides_data)))
+            project_id = cur.fetchone()['id']
+
+        update_export(progress=30, project_id=project_id)
+
+        # Step 3: Populate slides
+        with get_db(commit=True) as (conn, cur):
+            for s in slides_data:
+                content_hash = _compute_content_hash(s)
+                cur.execute('''
+                    INSERT INTO slide_items (project_id, slide_number, title, type, content, illustration_hints, no_header, content_hash, status)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'new')
+                ''', (
+                    project_id, s['slide_number'], s.get('title', ''), s.get('type', 'content'),
+                    s.get('content', ''), json.dumps(s.get('illustration_hints', [])),
+                    s.get('no_header', False), content_hash,
+                ))
+
+        # Step 4: Generate images via Gemini
+        gemini_key = os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY', '')
+        if not gemini_key:
+            # No Gemini key - leave slides as text-only but mark complete
+            with get_db(commit=True) as (conn, cur):
+                cur.execute('UPDATE slide_projects SET status = %s WHERE id = %s', ('ready', project_id))
+            update_export(status='complete', progress=100)
+            print(f"[research-export {export_id}] Complete (text-only, no Gemini key): {fmt}")
+            return
+
+        total_slides = len(slides_data)
+        for idx, slide in enumerate(slides_data):
+            slide_data = {
+                'slide_number': slide['slide_number'],
+                'title': slide.get('title', ''),
+                'type': slide.get('type', 'content'),
+                'content': slide.get('content', ''),
+                'illustration_hints': slide.get('illustration_hints', []),
+                'no_header': slide.get('no_header', False),
+            }
+
+            # Build format-specific prompt
+            style_override = fmt_config['style']
+            base_prompt = _build_slide_prompt(slide_data, theme, project_title, total_slides)
+            full_prompt = f"STYLE OVERRIDE: {style_override}\n\n{base_prompt}"
+
+            image_b64 = _generate_slide_image(full_prompt, api_key=gemini_key)
+            if image_b64:
+                content_hash = _compute_content_hash(slide_data)
+                with get_db(commit=True) as (conn, cur):
+                    cur.execute('''
+                        UPDATE slide_items SET image_data = %s, content_hash = %s, status = 'generated', updated_at = %s
+                        WHERE project_id = %s AND slide_number = %s
+                    ''', (image_b64, content_hash, datetime.utcnow(), project_id, slide['slide_number']))
+
+            progress = 30 + int((idx + 1) / total_slides * 65)
+            update_export(progress=progress)
+            import time; time.sleep(2)  # Rate limit
+
+        # Mark complete
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('UPDATE slide_projects SET status = %s, updated_at = %s WHERE id = %s',
+                        ('ready', datetime.utcnow(), project_id))
+        update_export(status='complete', progress=100)
+        print(f"[research-export {export_id}] Complete: {fmt} ({total_slides} slides) for '{query[:40]}'")
+
+    except Exception as e:
+        print(f"[research-export {export_id}] Failed: {e}")
+        import traceback
+        traceback.print_exc()
+        try:
+            with get_db(commit=True) as (conn, cur):
+                cur.execute("UPDATE research_exports SET status = 'error', error_message = %s WHERE id = %s",
+                           (str(e)[:500], export_id))
+        except:
+            pass
 
 
 # ============================================
