@@ -10796,6 +10796,67 @@ def get_catalyst_docx(job_id):
     return jsonify({'docx': docx_b64, 'filename': f'{ticker}_{topic.replace("/", "_").replace(" ", "_")}_Synthesis.docx'})
 
 
+@app.route('/api/catalysts/result/<job_id>/pdf', methods=['GET'])
+def get_catalyst_pdf(job_id):
+    """Generate and return PDF for a catalyst synthesis."""
+    from xhtml2pdf import pisa
+    with get_db() as (_, cur):
+        cur.execute('SELECT * FROM research_pipeline_jobs WHERE id = %s', (job_id,))
+        job = cur.fetchone()
+    if not job or job['status'] != 'complete':
+        return jsonify({'error': 'Job not found or not complete'}), 404
+
+    result = job['result'] if isinstance(job.get('result'), dict) else json.loads(job['result'] or '{}')
+    markdown = result.get('markdown', '')
+    ticker = job['ticker']
+    detail = job['steps_detail'] if isinstance(job.get('steps_detail'), (dict, list)) else json.loads(job['steps_detail'] or '{}')
+    topic = detail.get('topic', 'Catalyst') if isinstance(detail, dict) else 'Catalyst'
+
+    # Convert markdown to simple HTML for xhtml2pdf
+    import re as _re
+    lines = markdown.split('\n')
+    html_parts = []
+    for line in lines:
+        line = line.rstrip()
+        if line.startswith('### '):
+            html_parts.append(f'<h3>{line[4:]}</h3>')
+        elif line.startswith('## '):
+            html_parts.append(f'<h2>{line[3:]}</h2>')
+        elif line.startswith('# '):
+            html_parts.append(f'<h1>{line[2:]}</h1>')
+        elif line.startswith('- ') or line.startswith('* '):
+            html_parts.append(f'<p style="margin-left:20px;">&#8226; {line[2:]}</p>')
+        elif line.strip() == '':
+            html_parts.append('<br/>')
+        else:
+            # Bold
+            line = _re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', line)
+            line = _re.sub(r'\*(.*?)\*', r'<i>\1</i>', line)
+            html_parts.append(f'<p>{line}</p>')
+
+    body_html = '\n'.join(html_parts)
+    full_html = f"""<html><head><style>
+        body {{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color: #000; margin: 40px; }}
+        h1 {{ font-size: 18pt; margin-bottom: 4px; }}
+        h2 {{ font-size: 14pt; margin-top: 16px; margin-bottom: 4px; border-bottom: 1px solid #ccc; padding-bottom: 2px; }}
+        h3 {{ font-size: 12pt; margin-top: 12px; margin-bottom: 2px; }}
+        p {{ margin: 4px 0; line-height: 1.4; }}
+    </style></head><body>
+        <h1>{ticker} -- {topic}</h1>
+        <p style="color: #666; font-size: 10pt;">Catalyst Synthesis | {datetime.utcnow().strftime('%B %d, %Y')}</p>
+        <hr/>
+        {body_html}
+    </body></html>"""
+
+    pdf_buf = io.BytesIO()
+    pisa_status = pisa.CreatePDF(full_html, dest=pdf_buf)
+    if pisa_status.err:
+        return jsonify({'error': 'PDF generation failed'}), 500
+
+    pdf_b64 = base64.b64encode(pdf_buf.getvalue()).decode('ascii')
+    return jsonify({'pdf': pdf_b64, 'filename': f'{ticker}_{topic.replace("/", "_").replace(" ", "_")}_Synthesis.pdf'})
+
+
 @app.route('/api/catalysts/result/<job_id>/save', methods=['POST'])
 def save_catalyst_to_docs(job_id):
     """Save catalyst synthesis result to research_documents."""
