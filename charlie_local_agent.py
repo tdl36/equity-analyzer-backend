@@ -792,6 +792,44 @@ def auto_unzip_stock_folders() -> None:
                     log.warning(f"  Could not unzip {zf.name}: {e}")
 
 
+def auto_unzip_catalyst_folders() -> None:
+    """Find and extract any .zip files in catalyst topic folders, then remove the zips."""
+    if not CATALYSTS_DIR.exists():
+        return
+    for ticker_dir in sorted(CATALYSTS_DIR.iterdir()):
+        if not ticker_dir.is_dir() or ticker_dir.name.startswith('.'):
+            continue
+        # Check ticker folder and all topic subfolders
+        for search_dir in [ticker_dir] + [d for d in ticker_dir.iterdir() if d.is_dir() and not d.name.startswith('.')]:
+            for zf in sorted(search_dir.glob('*.zip')):
+                if zf.name.startswith('.') or zf.name.startswith('~$'):
+                    continue
+                try:
+                    # Wait for file to finish downloading (iCloud)
+                    prev_size = -1
+                    for _ in range(10):
+                        cur_size = zf.stat().st_size
+                        if cur_size == prev_size and cur_size > 0:
+                            break
+                        prev_size = cur_size
+                        time.sleep(1)
+
+                    with zipfile.ZipFile(zf, 'r') as z:
+                        extracted = []
+                        for member in z.namelist():
+                            if member.startswith('__MACOSX') or member.startswith('.'):
+                                continue
+                            z.extract(member, search_dir)
+                            extracted.append(member)
+                        log.info(f"  Unzipped {zf.name} -> {len(extracted)} files in CATALYSTS/{ticker_dir.name}/{search_dir.name}/")
+                    zf.unlink()
+                    log.info(f"  Removed {zf.name}")
+                except zipfile.BadZipFile:
+                    log.warning(f"  Bad zip file, skipping: {zf.name}")
+                except Exception as e:
+                    log.warning(f"  Could not unzip {zf.name}: {e}")
+
+
 def push_file_manifest() -> None:
     """Scan all ticker folders recursively and push file manifest to backend."""
     SCAN_EXTS = {'.pdf', '.xlsx', '.xls', '.csv', '.txt', '.md', '.docx', '.pptx', '.png'}
@@ -2326,6 +2364,7 @@ def main() -> None:
             if now - last_manifest_push >= MANIFEST_INTERVAL:
                 try:
                     auto_unzip_stock_folders()
+                    auto_unzip_catalyst_folders()
                     push_file_manifest()
                     process_pending_syncs()
                     last_manifest_push = now
