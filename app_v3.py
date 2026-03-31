@@ -10796,6 +10796,36 @@ def get_catalyst_docx(job_id):
     return jsonify({'docx': docx_b64, 'filename': f'{ticker}_{topic.replace("/", "_").replace(" ", "_")}_Synthesis.docx'})
 
 
+@app.route('/api/catalysts/result/<job_id>/save', methods=['POST'])
+def save_catalyst_to_docs(job_id):
+    """Save catalyst synthesis result to research_documents."""
+    with get_db() as (_, cur):
+        cur.execute('SELECT * FROM research_pipeline_jobs WHERE id = %s', (job_id,))
+        job = cur.fetchone()
+    if not job or job['status'] != 'complete':
+        return jsonify({'error': 'Job not found or not complete'}), 404
+
+    result = job['result'] if isinstance(job.get('result'), dict) else json.loads(job['result'] or '{}')
+    markdown = result.get('markdown', '')
+    ticker = job['ticker']
+    detail = job['steps_detail'] if isinstance(job.get('steps_detail'), (dict, list)) else json.loads(job['steps_detail'] or '{}')
+    topic = detail.get('topic', 'Catalyst') if isinstance(detail, dict) else 'Catalyst'
+
+    doc_id = f"catalyst-{job_id}"
+    with get_db(commit=True) as (conn, cur):
+        cat_id = 'cat-catalyst-synthesis'
+        cur.execute("INSERT INTO research_categories (id, name, type) VALUES (%s, 'Catalyst Synthesis', 'topic') ON CONFLICT (id) DO NOTHING", (cat_id,))
+
+        doc_name = f"{ticker} -- {topic}"
+        cur.execute('''
+            INSERT INTO research_documents (id, category_id, name, content, doc_type, created_at)
+            VALUES (%s, %s, %s, %s, 'catalyst', NOW())
+            ON CONFLICT (id) DO UPDATE SET content = EXCLUDED.content
+        ''', (doc_id, cat_id, doc_name, markdown))
+
+    return jsonify({'success': True, 'docId': doc_id})
+
+
 def _run_catalyst_synthesis_backend(job_id, ticker, detail):
     """Backend-side catalyst synthesis when files are uploaded (no local agent needed)."""
     try:
