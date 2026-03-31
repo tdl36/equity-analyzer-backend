@@ -241,8 +241,8 @@ def poll_for_jobs() -> list[dict]:
         )
         if resp.status_code == 200:
             jobs = resp.json().get("jobs", [])
-            # Filter for note-type jobs only
-            return [j for j in jobs if j.get("job_type") == "note"]
+            # Filter for jobs the local agent handles
+            return [j for j in jobs if j.get("job_type") in ("note", "synthesis", "scan_catalysts")]
     except requests.exceptions.ConnectionError:
         log.warning("Backend unreachable -- will retry")
     except Exception as e:
@@ -279,18 +279,22 @@ def update_job_progress(
     step: str,
     progress: Optional[int],
     error: Optional[str] = None,
+    result: Optional[dict] = None,
 ) -> None:
     """Update pipeline job progress on Charlie backend."""
     try:
-        resp = requests.post(
-            f"{CHARLIE_API}/api/agent/update-job",
-            json={
+        payload = {
                 "jobId": job_id,
                 "status": status,
                 "currentStep": step,
                 "progress": progress,
                 "error": error,
-            },
+        }
+        if result:
+            payload["result"] = result
+        resp = requests.post(
+            f"{CHARLIE_API}/api/agent/update-job",
+            json=payload,
             headers=_agent_headers(),
             timeout=15,
         )
@@ -1938,6 +1942,278 @@ def process_note_job(job: dict, api_key: str) -> None:
         notify(f"*Charlie Agent:* {ticker} note FAILED\n{str(e)[:200]}")
 
 
+# ---------------------------------------------------------------------------
+# Catalyst synthesis
+# ---------------------------------------------------------------------------
+
+CATALYSTS_DIR = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/CATALYSTS"
+
+CATALYST_SYNTHESIS_PROMPT = """You are a senior equity research analyst writing a synthesis report for your portfolio manager.
+
+## ATTRIBUTION RULES (CRITICAL)
+- NEVER reference any specific broker, sellside firm, or analyst by name
+- NEVER cite analyst counts, ratings, or consensus targets as arguments
+- NEVER use sellside sentiment as thesis support
+- DO synthesize the factual content, data points, and analysis from the sources
+- You may reference "estimates" or "consensus" as factual data points in valuation sections only
+- Write in FIRST PERSON perspective ("I think", "My view is", "I see the risk-reward as")
+
+## TONE & STYLE
+- Confident, direct analyst voice writing to their PM
+- No AI filler phrases ("it's worth noting", "delve into", "poised to", "navigate the landscape")
+- Lead with conclusions, support with evidence
+- Be specific with numbers, data points, and dates
+
+## LENGTH
+{length_instruction}
+
+## TOPIC
+Ticker: {ticker}
+Topic: {topic}
+{custom_instructions}
+
+## SOURCE DOCUMENTS
+{source_content}
+
+Write the synthesis report now. Start with a clear title line, then the analysis."""
+
+CATALYST_LENGTH_PRESETS = {
+    'quick': 'Write a single paragraph (3-5 sentences) with the headline conclusion and key investment implication.',
+    'summary': 'Write 2-3 paragraphs covering key findings and investment implications. Be concise but substantive.',
+    'standard': 'Write a 1-2 page report balancing positives and negatives with a clear investment conclusion. Include key data points.',
+    'deep': 'Write a detailed 3-4 page analysis with data tables, bull/bear cases, and a comprehensive investment conclusion.',
+    'comprehensive': 'Write a comprehensive 5+ page deep-dive with full analysis, data appendices, competitive context, and detailed investment conclusion.',
+}
+
+
+def ensure_catalyst_folders():
+    """Auto-scaffold CATALYSTS/{TICKER}/ folders for all universe tickers."""
+    CATALYSTS_DIR.mkdir(parents=True, exist_ok=True)
+    all_tickers = []
+    for tickers in PIPELINE_SECTOR_MAP.values():
+        all_tickers.extend(tickers)
+    for ticker in all_tickers:
+        (CATALYSTS_DIR / ticker).mkdir(exist_ok=True)
+    log.info(f"Catalyst folders scaffolded for {len(all_tickers)} tickers in {CATALYSTS_DIR}")
+
+
+def scan_catalyst_topics(ticker: str) -> list[dict]:
+    """Scan CATALYSTS/{ticker}/ for topic subfolders and their file counts."""
+    ticker_dir = CATALYSTS_DIR / ticker.upper()
+    if not ticker_dir.exists():
+        return []
+    folders = []
+    for item in sorted(ticker_dir.iterdir()):
+        if item.is_dir() and not item.name.startswith('.'):
+            files = [f.name for f in item.iterdir() if f.is_file() and not f.name.startswith('.')]
+            folders.append({
+                'name': item.name,
+                'fileCount': len(files),
+                'files': files[:50],  # Cap at 50 filenames
+            })
+    return folders
+
+
+def process_scan_catalysts_job(job: dict) -> None:
+    """Scan catalyst folders and report back to the backend."""
+    job_id = job.get("id", "")
+    ticker = job.get("ticker", "").upper()
+    try:
+        ensure_catalyst_folders()
+
+        if ticker == "ALL":
+            # Scan all tickers
+            all_tickers = []
+            for tickers in PIPELINE_SECTOR_MAP.values():
+                all_tickers.extend(tickers)
+            for tk in all_tickers:
+                folders = scan_catalyst_topics(tk)
+                requests.post(
+                    f"{CHARLIE_API}/api/catalysts/folders",
+                    json={"ticker": tk, "folders": folders},
+                    headers=_agent_headers(),
+                    timeout=15,
+                )
+        else:
+            folders = scan_catalyst_topics(ticker)
+            requests.post(
+                f"{CHARLIE_API}/api/catalysts/folders",
+                json={"ticker": ticker, "folders": folders},
+                headers=_agent_headers(),
+                timeout=15,
+            )
+
+        update_job_progress(job_id, "complete", "Scan complete", 100)
+        log.info(f"Catalyst folder scan complete for {ticker}")
+    except Exception as e:
+        log.error(f"Catalyst scan failed: {e}")
+        update_job_progress(job_id, "failed", "Failed", None, error=str(e))
+
+
+def process_synthesis_job(job: dict, api_key: str) -> None:
+    """Process a catalyst synthesis job -- read local files, call Claude, upload result."""
+    job_id = job.get("id", "")
+    ticker = job.get("ticker", "").upper()
+    steps_detail = job.get("steps_detail", {})
+    if isinstance(steps_detail, str):
+        try:
+            steps_detail = json.loads(steps_detail)
+        except Exception:
+            steps_detail = {}
+
+    topic = steps_detail.get("topic", "")
+    length = steps_detail.get("length", "standard")
+    custom_instructions = steps_detail.get("customInstructions", "")
+
+    try:
+        update_job_progress(job_id, "running", "Reading source files...", 10)
+        notify(f"*Charlie Agent:* Starting synthesis for {ticker}/{topic}")
+
+        # Read files from CATALYSTS/{ticker}/{topic}/
+        topic_dir = CATALYSTS_DIR / ticker / topic
+        if not topic_dir.exists():
+            raise FileNotFoundError(f"Folder not found: {topic_dir}")
+
+        source_parts = []
+        file_count = 0
+        for fpath in sorted(topic_dir.iterdir()):
+            if fpath.is_file() and not fpath.name.startswith('.'):
+                file_count += 1
+                ext = fpath.suffix.lower()
+                try:
+                    if ext == '.pdf':
+                        # Read PDF as base64 for Claude's native PDF support
+                        pdf_b64 = base64.b64encode(fpath.read_bytes()).decode('ascii')
+                        source_parts.append({
+                            'type': 'pdf',
+                            'name': fpath.name,
+                            'data': pdf_b64,
+                        })
+                    elif ext in ('.docx',):
+                        # Extract text from docx
+                        try:
+                            from docx import Document as DocxDocument
+                            doc = DocxDocument(str(fpath))
+                            text = '\n'.join(p.text for p in doc.paragraphs if p.text.strip())
+                            source_parts.append({
+                                'type': 'text',
+                                'name': fpath.name,
+                                'content': text,
+                            })
+                        except Exception as e2:
+                            log.warning(f"Could not read docx {fpath.name}: {e2}")
+                            source_parts.append({'type': 'text', 'name': fpath.name, 'content': f'[Could not read: {e2}]'})
+                    elif ext in ('.xlsx', '.xls'):
+                        # Extract via zipfile+XML or openpyxl
+                        try:
+                            import openpyxl
+                            wb = openpyxl.load_workbook(str(fpath), data_only=True)
+                            text_parts = []
+                            for ws in wb.worksheets:
+                                text_parts.append(f"Sheet: {ws.title}")
+                                for row in ws.iter_rows(values_only=True):
+                                    vals = [str(c) if c is not None else '' for c in row]
+                                    if any(vals):
+                                        text_parts.append('\t'.join(vals))
+                            source_parts.append({'type': 'text', 'name': fpath.name, 'content': '\n'.join(text_parts)})
+                        except Exception as e2:
+                            log.warning(f"Could not read xlsx {fpath.name}: {e2}")
+                    elif ext in ('.txt', '.md', '.csv', '.tsv'):
+                        text = fpath.read_text(errors='replace')
+                        source_parts.append({'type': 'text', 'name': fpath.name, 'content': text})
+                    else:
+                        log.debug(f"Skipping unsupported file type: {fpath.name}")
+                except Exception as e2:
+                    log.warning(f"Error reading {fpath.name}: {e2}")
+
+        if not source_parts:
+            raise ValueError(f"No readable files found in {topic_dir}")
+
+        log.info(f"Read {file_count} files from {topic_dir}")
+        update_job_progress(job_id, "running", f"Read {file_count} files, calling Claude...", 30)
+
+        # Build Claude API call
+        client = anthropic.Anthropic(api_key=api_key)
+        length_instruction = CATALYST_LENGTH_PRESETS.get(length, CATALYST_LENGTH_PRESETS['standard'])
+        custom_block = f"\nAdditional Instructions: {custom_instructions}" if custom_instructions else ""
+
+        # Build message content blocks
+        content_blocks = []
+
+        # Add PDFs as native document blocks (up to 4 with cache_control)
+        pdf_count = 0
+        for sp in source_parts:
+            if sp['type'] == 'pdf':
+                block = {
+                    "type": "document",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "application/pdf",
+                        "data": sp['data'],
+                    },
+                }
+                if pdf_count < 4:
+                    block["cache_control"] = {"type": "ephemeral"}
+                content_blocks.append(block)
+                content_blocks.append({"type": "text", "text": f"[Document: {sp['name']}]"})
+                pdf_count += 1
+
+        # Add text-based sources
+        text_sources = '\n\n---\n\n'.join([
+            f"### Source: {sp['name']}\n{sp['content'][:8000]}"
+            for sp in source_parts if sp['type'] == 'text'
+        ])
+
+        prompt_text = CATALYST_SYNTHESIS_PROMPT.format(
+            length_instruction=length_instruction,
+            ticker=ticker,
+            topic=topic,
+            custom_instructions=custom_block,
+            source_content=text_sources if text_sources else "[See attached PDF documents above]",
+        )
+        content_blocks.append({"type": "text", "text": prompt_text})
+
+        update_job_progress(job_id, "running", "Synthesizing report...", 50)
+
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=8192,
+            system="You are a senior equity research analyst. Follow all instructions precisely.",
+            messages=[{"role": "user", "content": content_blocks}],
+        )
+
+        markdown = response.content[0].text
+        log.info(f"Synthesis generated: {len(markdown)} chars")
+
+        update_job_progress(job_id, "running", "Uploading results...", 85)
+
+        # Upload result to backend
+        result_data = {
+            'markdown': markdown,
+            'topic': topic,
+            'length': length,
+            'fileCount': file_count,
+        }
+
+        requests.post(
+            f"{CHARLIE_API}/api/pipeline/jobs/{job_id}/result",
+            json={"status": "complete", "result": result_data},
+            headers=_agent_headers(),
+            timeout=30,
+        )
+
+        # Fallback: direct DB update via progress endpoint
+        update_job_progress(job_id, "complete", "Complete", 100, result=result_data)
+        notify(f"*Charlie Agent:* {ticker}/{topic} synthesis complete\n{file_count} docs, {len(markdown):,} chars")
+
+    except Exception as e:
+        log.error(f"Synthesis job {job_id[:12]}... failed: {e}")
+        import traceback
+        traceback.print_exc()
+        update_job_progress(job_id, "failed", "Failed", None, error=str(e))
+        notify(f"*Charlie Agent:* {ticker}/{topic} synthesis FAILED\n{str(e)[:200]}")
+
+
 def process_ticker_directly(ticker: str, api_key: str, mode: str = "new") -> None:
     """Process a ticker directly without a backend job (--ticker flag)."""
     fake_job = {
@@ -2003,6 +2279,9 @@ def main() -> None:
     if not STOCKS_DIR.exists():
         log.error(f"iCloud STOCKS directory not found: {STOCKS_DIR}")
         sys.exit(1)
+
+    # Scaffold catalyst folders on startup
+    ensure_catalyst_folders()
 
     log.info("Charlie Local Agent starting")
     log.info(f"  Stocks dir: {STOCKS_DIR}")
@@ -2076,7 +2355,13 @@ def main() -> None:
                     shutdown.wait(timeout=POLL_INTERVAL)
                     continue
 
-                process_note_job(job, api_key)
+                job_type = job.get("job_type", "note")
+                if job_type == "synthesis":
+                    process_synthesis_job(job, api_key)
+                elif job_type == "scan_catalysts":
+                    process_scan_catalysts_job(job)
+                else:
+                    process_note_job(job, api_key)
 
                 if args.once:
                     break

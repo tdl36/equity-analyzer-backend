@@ -1208,6 +1208,15 @@ def init_db():
                 )
             ''')
 
+            # Catalyst folders (local agent reports subfolder contents)
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS catalyst_folders (
+                    ticker VARCHAR(20) PRIMARY KEY,
+                    folders JSONB DEFAULT '[]',
+                    updated_at TIMESTAMP DEFAULT NOW()
+                )
+            ''')
+
             # Research exports (research -> slides/infographics)
             cur.execute('''
                 CREATE TABLE IF NOT EXISTS research_exports (
@@ -10589,6 +10598,281 @@ def _add_formatted_text(paragraph, text):
 
 
 # ============================================
+# CATALYST SYNTHESIS
+# ============================================
+
+CATALYST_LENGTH_PRESETS = {
+    'quick': {'label': 'Quick Take (1 paragraph)', 'words': '50-100', 'instruction': 'Write a single paragraph (3-5 sentences) with the headline conclusion and key investment implication.'},
+    'summary': {'label': 'Summary (2-3 paragraphs)', 'words': '200-400', 'instruction': 'Write 2-3 paragraphs covering key findings and investment implications. Be concise but substantive.'},
+    'standard': {'label': 'Standard (1-2 pages)', 'words': '600-1000', 'instruction': 'Write a 1-2 page report balancing positives and negatives with a clear investment conclusion. Include key data points.'},
+    'deep': {'label': 'Deep Dive (3-4 pages)', 'words': '1500-2500', 'instruction': 'Write a detailed 3-4 page analysis with data tables, bull/bear cases, and a comprehensive investment conclusion.'},
+    'comprehensive': {'label': 'Comprehensive (5+ pages)', 'words': '3000+', 'instruction': 'Write a comprehensive 5+ page deep-dive with full analysis, data appendices, competitive context, and detailed investment conclusion.'},
+}
+
+CATALYST_SYNTHESIS_PROMPT = """You are a senior equity research analyst writing a synthesis report for your portfolio manager.
+
+## ATTRIBUTION RULES (CRITICAL — FOLLOW EXACTLY)
+- NEVER reference any specific broker, sellside firm, or analyst by name (no Goldman Sachs, Morgan Stanley, JPMorgan, Bernstein, etc.)
+- NEVER cite analyst counts, ratings, or consensus targets as arguments
+- NEVER use sellside sentiment as thesis support (e.g., "the Street is constructive", "consensus targets suggest upside")
+- DO synthesize the factual content, data points, and analysis from the sources
+- You may reference "estimates" or "consensus" as factual data points in valuation sections only
+- Write in FIRST PERSON perspective ("I think", "My view is", "I see the risk-reward as")
+
+## TONE & STYLE
+- Confident, direct analyst voice writing to their PM
+- No AI filler phrases ("it's worth noting", "delve into", "poised to", "navigate the landscape")
+- Lead with conclusions, support with evidence
+- Be specific with numbers, data points, and dates
+
+## LENGTH
+{length_instruction}
+
+## TOPIC
+Ticker: {ticker}
+Topic: {topic}
+{custom_instructions}
+
+## SOURCE DOCUMENTS
+The following are source documents to synthesize:
+{source_content}
+
+Write the synthesis report now. Start with a clear title line, then the analysis."""
+
+
+@app.route('/api/catalysts/folders', methods=['GET'])
+def list_catalyst_folders():
+    """List catalyst topic subfolders for a ticker (read by local agent)."""
+    ticker = request.args.get('ticker', '').upper()
+    if not ticker:
+        return jsonify({'error': 'Ticker required'}), 400
+
+    # Check if we have cached folder data from the local agent
+    with get_db() as (_, cur):
+        cur.execute('SELECT folders, updated_at FROM catalyst_folders WHERE ticker = %s', (ticker,))
+        row = cur.fetchone()
+
+    if row:
+        folders = row['folders'] if isinstance(row['folders'], list) else json.loads(row['folders'] or '[]')
+        return jsonify({'ticker': ticker, 'folders': folders, 'updatedAt': row['updated_at'].isoformat() if row['updated_at'] else None})
+    return jsonify({'ticker': ticker, 'folders': []})
+
+
+@app.route('/api/catalysts/folders/refresh', methods=['POST'])
+def refresh_catalyst_folders():
+    """Request the local agent to refresh folder listings."""
+    ticker = request.args.get('ticker') or (request.get_json() or {}).get('ticker', '')
+    ticker = ticker.upper() if ticker else ''
+    # Create a lightweight job for the local agent to scan folders
+    job_id = str(uuid.uuid4())
+    with get_db(commit=True) as (conn, cur):
+        cur.execute('''
+            INSERT INTO research_pipeline_jobs (id, batch_id, ticker, job_type, status, progress, current_step, total_steps, steps_detail)
+            VALUES (%s, %s, %s, 'scan_catalysts', 'queued', 0, 'Waiting for local agent', 1, %s)
+        ''', (job_id, str(uuid.uuid4()), ticker or 'ALL', json.dumps({})))
+    return jsonify({'jobId': job_id, 'message': 'Scan requested'})
+
+
+@app.route('/api/catalysts/folders', methods=['POST'])
+def update_catalyst_folders():
+    """Local agent reports catalyst folder contents."""
+    data = request.get_json()
+    ticker = data.get('ticker', '').upper()
+    folders = data.get('folders', [])
+    if not ticker:
+        return jsonify({'error': 'Ticker required'}), 400
+    with get_db(commit=True) as (conn, cur):
+        cur.execute('''
+            INSERT INTO catalyst_folders (ticker, folders, updated_at)
+            VALUES (%s, %s, NOW())
+            ON CONFLICT (ticker) DO UPDATE SET folders = EXCLUDED.folders, updated_at = NOW()
+        ''', (ticker, json.dumps(folders)))
+    return jsonify({'success': True})
+
+
+@app.route('/api/catalysts/synthesize', methods=['POST'])
+def start_catalyst_synthesis():
+    """Create a catalyst synthesis job for the local agent."""
+    data = request.get_json()
+    ticker = data.get('ticker', '').upper()
+    topic = data.get('topic', '').strip()
+    length = data.get('length', 'standard')
+    custom_instructions = data.get('customInstructions', '')
+    uploaded_files = data.get('uploadedFiles', [])  # [{name, data (base64), type}]
+
+    if not ticker:
+        return jsonify({'error': 'Ticker required'}), 400
+    if not topic and not uploaded_files:
+        return jsonify({'error': 'Topic folder or uploaded files required'}), 400
+    if length not in CATALYST_LENGTH_PRESETS:
+        length = 'standard'
+
+    job_id = str(uuid.uuid4())
+    job_detail = {
+        'topic': topic,
+        'length': length,
+        'customInstructions': custom_instructions,
+        'uploadedFiles': uploaded_files,  # base64 file data included for upload path
+    }
+
+    with get_db(commit=True) as (conn, cur):
+        cur.execute('''
+            INSERT INTO research_pipeline_jobs (id, batch_id, ticker, job_type, status, progress, current_step, total_steps, steps_detail)
+            VALUES (%s, %s, %s, 'synthesis', 'queued', 0, 'Waiting for processing', 4, %s)
+        ''', (job_id, str(uuid.uuid4()), ticker, json.dumps(job_detail)))
+
+    # If files were uploaded (no local agent needed), process on backend
+    if uploaded_files and not topic:
+        threading.Thread(target=_run_catalyst_synthesis_backend, args=(job_id, ticker, job_detail), daemon=True).start()
+
+    return jsonify({'jobId': job_id, 'ticker': ticker})
+
+
+@app.route('/api/catalysts/results/<job_id>', methods=['GET'])
+def get_catalyst_result(job_id):
+    """Get catalyst synthesis result."""
+    with get_db() as (_, cur):
+        cur.execute('SELECT * FROM research_pipeline_jobs WHERE id = %s', (job_id,))
+        job = cur.fetchone()
+    if not job:
+        return jsonify({'error': 'Not found'}), 404
+
+    result = job['result'] if isinstance(job.get('result'), dict) else json.loads(job['result'] or '{}') if job.get('result') else {}
+    steps = job['steps_detail'] if isinstance(job.get('steps_detail'), (dict, list)) else json.loads(job['steps_detail'] or '{}') if job.get('steps_detail') else {}
+
+    return jsonify({
+        'id': job['id'],
+        'ticker': job['ticker'],
+        'status': job['status'],
+        'progress': job['progress'],
+        'currentStep': job['current_step'],
+        'result': result,
+        'detail': steps if isinstance(steps, dict) else {},
+        'createdAt': job['created_at'].isoformat() if job['created_at'] else None,
+        'completedAt': job['completed_at'].isoformat() if job['completed_at'] else None,
+    })
+
+
+@app.route('/api/catalysts/history', methods=['GET'])
+def catalyst_history():
+    """List recent catalyst synthesis jobs."""
+    ticker = request.args.get('ticker', '')
+    limit = request.args.get('limit', 20, type=int)
+    with get_db() as (_, cur):
+        if ticker:
+            cur.execute("SELECT id, ticker, status, progress, current_step, created_at, completed_at, steps_detail FROM research_pipeline_jobs WHERE job_type = 'synthesis' AND ticker = %s ORDER BY created_at DESC LIMIT %s", (ticker.upper(), limit))
+        else:
+            cur.execute("SELECT id, ticker, status, progress, current_step, created_at, completed_at, steps_detail FROM research_pipeline_jobs WHERE job_type = 'synthesis' ORDER BY created_at DESC LIMIT %s", (limit,))
+        rows = cur.fetchall()
+    return jsonify({'jobs': [{
+        'id': r['id'], 'ticker': r['ticker'], 'status': r['status'], 'progress': r['progress'],
+        'currentStep': r['current_step'],
+        'topic': (json.loads(r['steps_detail']) if isinstance(r['steps_detail'], str) else r['steps_detail'] or {}).get('topic', ''),
+        'length': (json.loads(r['steps_detail']) if isinstance(r['steps_detail'], str) else r['steps_detail'] or {}).get('length', ''),
+        'createdAt': r['created_at'].isoformat() if r['created_at'] else None,
+        'completedAt': r['completed_at'].isoformat() if r['completed_at'] else None,
+    } for r in rows]})
+
+
+@app.route('/api/catalysts/result/<job_id>/docx', methods=['GET'])
+def get_catalyst_docx(job_id):
+    """Generate and return docx for a catalyst synthesis."""
+    with get_db() as (_, cur):
+        cur.execute('SELECT * FROM research_pipeline_jobs WHERE id = %s', (job_id,))
+        job = cur.fetchone()
+    if not job or job['status'] != 'complete':
+        return jsonify({'error': 'Job not found or not complete'}), 404
+
+    result = job['result'] if isinstance(job.get('result'), dict) else json.loads(job['result'] or '{}')
+    markdown = result.get('markdown', '')
+    ticker = job['ticker']
+    detail = job['steps_detail'] if isinstance(job.get('steps_detail'), (dict, list)) else json.loads(job['steps_detail'] or '{}')
+    topic = detail.get('topic', 'Catalyst') if isinstance(detail, dict) else 'Catalyst'
+
+    docx_b64 = _generate_note_docx(ticker, topic, markdown, [])
+    if not docx_b64:
+        return jsonify({'error': 'DOCX generation failed'}), 500
+
+    return jsonify({'docx': docx_b64, 'filename': f'{ticker}_{topic.replace("/", "_").replace(" ", "_")}_Synthesis.docx'})
+
+
+def _run_catalyst_synthesis_backend(job_id, ticker, detail):
+    """Backend-side catalyst synthesis when files are uploaded (no local agent needed)."""
+    try:
+        uploaded_files = detail.get('uploadedFiles', [])
+        length = detail.get('length', 'standard')
+        custom_instructions = detail.get('customInstructions', '')
+        topic = detail.get('topic', 'Uploaded Documents')
+
+        def update_job(step, progress, result=None, status='running'):
+            with get_db(commit=True) as (conn, cur):
+                if result:
+                    cur.execute('UPDATE research_pipeline_jobs SET current_step=%s, progress=%s, result=%s, status=%s, completed_at=NOW(), updated_at=NOW() WHERE id=%s',
+                               (step, progress, json.dumps(result), status, job_id))
+                else:
+                    cur.execute('UPDATE research_pipeline_jobs SET current_step=%s, progress=%s, status=%s, updated_at=NOW() WHERE id=%s',
+                               (step, progress, status, job_id))
+
+        update_job('Reading uploaded files...', 10)
+
+        # Build source content from uploaded files
+        source_parts = []
+        for f in uploaded_files:
+            name = f.get('name', 'unnamed')
+            content = f.get('text', '')
+            if not content and f.get('data'):
+                content = f'[Binary file: {name} - content extracted on upload]'
+            source_parts.append(f"### Source: {name}\n{content}\n")
+
+        source_content = '\n---\n'.join(source_parts)
+        if len(source_content) > 80000:
+            source_content = source_content[:80000] + '\n\n[Content truncated for length]'
+
+        update_job('Synthesizing report...', 40)
+
+        length_config = CATALYST_LENGTH_PRESETS.get(length, CATALYST_LENGTH_PRESETS['standard'])
+        custom_block = f"\nAdditional Instructions: {custom_instructions}" if custom_instructions else ""
+
+        prompt = CATALYST_SYNTHESIS_PROMPT.format(
+            length_instruction=length_config['instruction'],
+            ticker=ticker,
+            topic=topic,
+            custom_instructions=custom_block,
+            source_content=source_content,
+        )
+
+        result = call_llm(
+            messages=[{"role": "user", "content": prompt}],
+            system="You are a senior equity research analyst. Follow all instructions precisely.",
+            tier="standard",
+            max_tokens=8192,
+        )
+
+        markdown = result['text']
+
+        update_job('Generating Word document...', 80)
+
+        docx_b64 = _generate_note_docx(ticker, topic, markdown, [])
+
+        update_job('Complete', 100, result={
+            'markdown': markdown,
+            'docx': docx_b64,
+            'topic': topic,
+            'length': length,
+            'fileCount': len(uploaded_files),
+        }, status='complete')
+
+        print(f"[catalyst-synthesis {job_id}] Complete: {ticker}/{topic}")
+
+    except Exception as e:
+        print(f"[catalyst-synthesis {job_id}] Failed: {e}")
+        import traceback; traceback.print_exc()
+        with get_db(commit=True) as (conn, cur):
+            cur.execute("UPDATE research_pipeline_jobs SET status='error', current_step=%s, updated_at=NOW() WHERE id=%s",
+                       (f"Failed: {str(e)[:200]}", job_id))
+
+
+# ============================================
 # RESEARCH ANALYSIS ENDPOINT
 # ============================================
 
@@ -11362,6 +11646,9 @@ def agent_update_job():
         kwargs['progress'] = progress
     if error:
         kwargs['error'] = error
+    result = data.get('result')
+    if result:
+        kwargs['result'] = json.dumps(result) if isinstance(result, dict) else result
 
     if kwargs:
         _update_pipeline_job(job_id, **kwargs)
