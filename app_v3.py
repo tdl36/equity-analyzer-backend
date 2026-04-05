@@ -10827,7 +10827,8 @@ def get_catalyst_pdf(job_id):
         elif line.startswith('- ') or line.startswith('* '):
             html_parts.append(f'<p style="margin-left:20px;">&#8226; {line[2:]}</p>')
         elif line.strip() == '':
-            html_parts.append('<br/>')
+            if html_parts and html_parts[-1] != '<br/>':
+                html_parts.append('<br/>')
         else:
             # Bold
             line = _re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', line)
@@ -10840,7 +10841,7 @@ def get_catalyst_pdf(job_id):
         h1 {{ font-size: 18pt; margin-bottom: 4px; }}
         h2 {{ font-size: 14pt; margin-top: 16px; margin-bottom: 4px; border-bottom: 1px solid #ccc; padding-bottom: 2px; }}
         h3 {{ font-size: 12pt; margin-top: 12px; margin-bottom: 2px; }}
-        p {{ margin: 4px 0; line-height: 1.4; }}
+        p {{ margin: 2px 0; line-height: 1.4; }}
     </style></head><body>
         <h1>{ticker} -- {topic}</h1>
         <p style="color: #666; font-size: 10pt;">Catalyst Synthesis | {datetime.utcnow().strftime('%B %d, %Y')}</p>

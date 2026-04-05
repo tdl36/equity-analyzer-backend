@@ -279,7 +279,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-04T05';
+        const BUILD_VERSION = '2026-04-04T06';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -1578,6 +1578,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [researchHistory, setResearchHistory] = useState([]);
             const [researchDetailRun, setResearchDetailRun] = useState(null);
             const [researchExports, setResearchExports] = useState([]);
+            const [showResearchExportModal, setShowResearchExportModal] = useState(false);
+            const [researchExportRunId, setResearchExportRunId] = useState(null);
+            const [researchExportSelections, setResearchExportSelections] = useState([]);
             const [researchView, setResearchView] = useState('new');
             const researchPollRef = React.useRef(null);
 
@@ -19195,11 +19198,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 }} className="px-2.5 py-1 bg-slate-600 hover:bg-slate-500 text-white text-[10px] font-medium rounded-lg">
                                                                     Download PDF
                                                                 </button>
-                                                                <button onClick={() => {
-                                                                    const subject = `Research Note: ${pipelineNoteResult.ticker}`;
-                                                                    const body = encodeURIComponent(pipelineNoteResult.noteMarkdown || '');
-                                                                    window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${body.slice(0, 2000)}`);
-                                                                }} className="px-2.5 py-1 bg-slate-600 hover:bg-slate-500 text-white text-[10px] font-medium rounded-lg">
+                                                                <button onClick={async () => { try { const creds = JSON.parse(localStorage.getItem('emailCredentials') || '{}'); if (!creds.gmailUser || !creds.gmailPassword) { alert('Configure email in Settings first'); return; } const res = await fetch(`${API_URL}/api/email-research`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: creds.defaultRecipient || creds.gmailUser, subject: `Research Note: ${pipelineNoteResult.ticker}`, content: pipelineNoteResult.noteMarkdown || '', promptName: 'Research Note', ticker: pipelineNoteResult.ticker, smtpConfig: { use_gmail: true, gmail_user: creds.gmailUser, gmail_app_password: creds.gmailPassword, from_email: creds.gmailUser } }) }); if (res.ok) alert('Email sent!'); else alert('Failed to send'); } catch (e) { alert('Email error: ' + e.message); } }} className="px-2.5 py-1 bg-slate-600 hover:bg-slate-500 text-white text-[10px] font-medium rounded-lg">
                                                                     Email
                                                                 </button>
                                                                 <button onClick={async () => {
@@ -19831,11 +19830,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                         } else { alert('Save to Research first, then download PDF'); }
                                                                                     } catch(e) { alert('Save to Research first, then download PDF'); }
                                                                                 }} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Download PDF</button>
-                                                                                <button onClick={() => {
-                                                                                    const subject = `TradingAgents: ${agentTicker}`;
-                                                                                    const body = encodeURIComponent((agentActiveRun.decision || '') + '\n\n' + (agentActiveRun.report || '').slice(0, 2000));
-                                                                                    window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${body}`);
-                                                                                }} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Email</button>
+                                                                                <button onClick={async () => { try { const creds = JSON.parse(localStorage.getItem('emailCredentials') || '{}'); if (!creds.gmailUser || !creds.gmailPassword) { alert('Configure email in Settings first'); return; } const content = (agentActiveRun.decision || '') + '\n\n' + (agentActiveRun.report || ''); const res = await fetch(`${API_URL}/api/email-research`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: creds.defaultRecipient || creds.gmailUser, subject: `TradingAgents: ${agentTicker}`, content, promptName: 'TradingAgents', ticker: agentTicker, smtpConfig: { use_gmail: true, gmail_user: creds.gmailUser, gmail_app_password: creds.gmailPassword, from_email: creds.gmailUser } }) }); if (res.ok) alert('Email sent!'); else alert('Failed to send'); } catch (e) { alert('Email error: ' + e.message); } }} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Email</button>
                                                                             </>
                                                                         )}
                                                                     </div>
@@ -20042,11 +20037,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             a.href = url; a.download = `${agentDetailRun.ticker}_Agent_Analysis.md`; a.click();
                                                             URL.revokeObjectURL(url);
                                                         }} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Download .md</button>
-                                                        <button onClick={() => {
-                                                            const subject = `TradingAgents: ${agentDetailRun.ticker}`;
-                                                            const body = encodeURIComponent((agentDetailRun.decision || '').slice(0, 2000));
-                                                            window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${body}`);
-                                                        }} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Email</button>
+                                                        <button onClick={async () => { try { const creds = JSON.parse(localStorage.getItem('emailCredentials') || '{}'); if (!creds.gmailUser || !creds.gmailPassword) { alert('Configure email in Settings first'); return; } const content = (agentDetailRun.decision || '') + '\n\n' + (agentDetailRun.report || ''); const res = await fetch(`${API_URL}/api/email-research`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: creds.defaultRecipient || creds.gmailUser, subject: `TradingAgents: ${agentDetailRun.ticker}`, content, promptName: 'TradingAgents', ticker: agentDetailRun.ticker, smtpConfig: { use_gmail: true, gmail_user: creds.gmailUser, gmail_app_password: creds.gmailPassword, from_email: creds.gmailUser } }) }); if (res.ok) alert('Email sent!'); else alert('Failed to send'); } catch (e) { alert('Email error: ' + e.message); } }} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Email</button>
                                                     </div>
                                                 )}
                                             </div>
@@ -20138,8 +20129,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 <button onClick={() => saveResearchToDocuments(researchActiveRun.runId)} className="px-2.5 py-1 text-[10px] bg-amber-700 hover:bg-amber-600 text-white rounded-lg">Save to Research</button>
                                                                 <button onClick={() => viewResearchDetail({ id: researchActiveRun.runId })} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">View Full Detail</button>
                                                                 <button onClick={() => { navigator.clipboard.writeText((researchActiveRun.synthesis || '') + '\n\n' + Object.values(researchActiveRun.agents || {}).map(a => `## ${a.label}\n${a.content}`).join('\n\n')); alert('Copied!'); }} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Copy All</button>
-                                                                <button onClick={() => { const subject = `Deep Research: ${researchQuery}`; const body = encodeURIComponent((researchActiveRun.synthesis || '').slice(0, 2000)); window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${body}`); }} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Email</button>
-                                                                <button onClick={() => startResearchExport(researchActiveRun.runId, [{format: 'professional', slideCount: 6}])} className="px-2.5 py-1 text-[10px] bg-purple-700 hover:bg-purple-600 text-white rounded-lg">Export to Slides</button>
+                                                                <button onClick={async () => { try { const creds = JSON.parse(localStorage.getItem('emailCredentials') || '{}'); if (!creds.gmailUser || !creds.gmailPassword) { alert('Configure email in Settings first'); return; } const content = (researchActiveRun.synthesis || '') + '\n\n' + Object.values(researchActiveRun.agents || {}).map(a => `## ${a.label}\n${a.content}`).join('\n\n'); const res = await fetch(`${API_URL}/api/email-research`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: creds.defaultRecipient || creds.gmailUser, subject: `Deep Research: ${researchQuery}`, content, promptName: 'Deep Research', smtpConfig: { use_gmail: true, gmail_user: creds.gmailUser, gmail_app_password: creds.gmailPassword, from_email: creds.gmailUser } }) }); if (res.ok) alert('Email sent!'); else alert('Failed to send'); } catch (e) { alert('Email error: ' + e.message); } }} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Email</button>
+                                                                <button onClick={() => { setResearchExportRunId(researchActiveRun.runId); setShowResearchExportModal(true); setResearchExportSelections([]); }} className="px-2.5 py-1 text-[10px] bg-purple-700 hover:bg-purple-600 text-white rounded-lg">Export to Slides</button>
                                                             </div>
                                                         )}
                                                     </div>
@@ -20187,8 +20178,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     <div className="flex flex-wrap gap-1.5">
                                                         <button onClick={() => saveResearchToDocuments(researchDetailRun.id)} className="px-2.5 py-1 text-[10px] bg-amber-700 hover:bg-amber-600 text-white rounded-lg">Save to Research</button>
                                                         <button onClick={() => { navigator.clipboard.writeText((researchDetailRun.synthesis || '') + '\n\n' + Object.values(researchDetailRun.agents || {}).map(a => `## ${a.label}\n${a.content}`).join('\n\n')); alert('Copied!'); }} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Copy All</button>
-                                                        <button onClick={() => { const subject = `Deep Research: ${researchDetailRun.query}`; const body = encodeURIComponent((researchDetailRun.synthesis || '').slice(0, 2000)); window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${body}`); }} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Email</button>
-                                                        <button onClick={() => startResearchExport(researchDetailRun.id, [{format: 'professional', slideCount: 6}])} className="px-2.5 py-1 text-[10px] bg-purple-700 hover:bg-purple-600 text-white rounded-lg">Export to Slides</button>
+                                                        <button onClick={async () => { try { const creds = JSON.parse(localStorage.getItem('emailCredentials') || '{}'); if (!creds.gmailUser || !creds.gmailPassword) { alert('Configure email in Settings first'); return; } const content = (researchDetailRun.synthesis || '') + '\n\n' + Object.values(researchDetailRun.agents || {}).map(a => `## ${a.label}\n${a.content}`).join('\n\n'); const res = await fetch(`${API_URL}/api/email-research`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: creds.defaultRecipient || creds.gmailUser, subject: `Deep Research: ${researchDetailRun.query}`, content, promptName: 'Deep Research', smtpConfig: { use_gmail: true, gmail_user: creds.gmailUser, gmail_app_password: creds.gmailPassword, from_email: creds.gmailUser } }) }); if (res.ok) alert('Email sent!'); else alert('Failed to send'); } catch (e) { alert('Email error: ' + e.message); } }} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Email</button>
+                                                        <button onClick={() => { setResearchExportRunId(researchDetailRun.id); setShowResearchExportModal(true); setResearchExportSelections([]); }} className="px-2.5 py-1 text-[10px] bg-purple-700 hover:bg-purple-600 text-white rounded-lg">Export to Slides</button>
                                                     </div>
 
                                                     {Object.entries(researchDetailRun.agents || {}).map(([key, agent]) => (
@@ -20204,6 +20195,83 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             <div className="prose prose-invert prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: renderMarkdown(researchDetailRun.synthesis) }} />
                                                         </div>
                                                     )}
+
+                                                    {showResearchExportModal && (() => {
+                                                        const RESEARCH_EXPORT_FORMATS = [
+                                                            { id: 'professional', name: 'Professional Presentation', type: 'deck' },
+                                                            { id: 'sketchnote', name: 'Sketchnote', type: 'deck' },
+                                                            { id: 'executive_brief', name: 'Executive Brief', type: 'deck' },
+                                                            { id: 'visual_storytelling', name: 'Visual Storytelling', type: 'deck' },
+                                                            { id: 'research_summary', name: 'Research Summary Infographic', type: 'infographic' },
+                                                            { id: 'competitive_landscape', name: 'Competitive Landscape', type: 'infographic' },
+                                                            { id: 'timeline', name: 'Timeline / Evolution', type: 'infographic' },
+                                                        ];
+                                                        const toggleFormat = (fmt) => {
+                                                            setResearchExportSelections(prev => {
+                                                                const exists = prev.find(s => s.format === fmt.id);
+                                                                if (exists) return prev.filter(s => s.format !== fmt.id);
+                                                                return [...prev, { format: fmt.id, slideCount: fmt.type === 'deck' ? 6 : 1 }];
+                                                            });
+                                                        };
+                                                        const updateSlideCount = (formatId, count) => {
+                                                            setResearchExportSelections(prev => prev.map(s => s.format === formatId ? { ...s, slideCount: count } : s));
+                                                        };
+                                                        return (
+                                                            <div className="bg-white/[0.04] border border-purple-500/30 rounded-xl p-4 space-y-3">
+                                                                <div className="flex items-center justify-between">
+                                                                    <h3 className="text-sm font-bold text-purple-300">Export to Slides</h3>
+                                                                    <button onClick={() => setShowResearchExportModal(false)} className="text-slate-400 hover:text-white text-xs">Cancel</button>
+                                                                </div>
+                                                                <div className="space-y-1.5">
+                                                                    <p className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">Deck Formats</p>
+                                                                    {RESEARCH_EXPORT_FORMATS.filter(f => f.type === 'deck').map(fmt => {
+                                                                        const sel = researchExportSelections.find(s => s.format === fmt.id);
+                                                                        return (
+                                                                            <div key={fmt.id} className="flex items-center gap-2">
+                                                                                <label className="flex items-center gap-2 flex-1 cursor-pointer">
+                                                                                    <input type="checkbox" checked={!!sel} onChange={() => toggleFormat(fmt)} className="accent-purple-500" />
+                                                                                    <span className="text-xs">{fmt.name}</span>
+                                                                                </label>
+                                                                                {sel && (
+                                                                                    <select value={sel.slideCount} onChange={e => updateSlideCount(fmt.id, parseInt(e.target.value))} className="text-[10px] bg-neutral-800 border border-white/10 rounded px-1.5 py-0.5 text-white">
+                                                                                        <optgroup label="Compact (1-3)">
+                                                                                            {[1,2,3].map(n => <option key={n} value={n}>{n} slides</option>)}
+                                                                                        </optgroup>
+                                                                                        <optgroup label="Standard (4-6)">
+                                                                                            {[4,5,6].map(n => <option key={n} value={n}>{n} slides</option>)}
+                                                                                        </optgroup>
+                                                                                        <optgroup label="Detailed (7-10)">
+                                                                                            {[7,8,9,10].map(n => <option key={n} value={n}>{n} slides</option>)}
+                                                                                        </optgroup>
+                                                                                        <optgroup label="Comprehensive (11-20)">
+                                                                                            {[11,12,15,20].map(n => <option key={n} value={n}>{n} slides</option>)}
+                                                                                        </optgroup>
+                                                                                    </select>
+                                                                                )}
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                    <p className="text-[10px] text-slate-400 uppercase tracking-wider font-bold mt-2">Infographic Formats</p>
+                                                                    {RESEARCH_EXPORT_FORMATS.filter(f => f.type === 'infographic').map(fmt => {
+                                                                        const sel = researchExportSelections.find(s => s.format === fmt.id);
+                                                                        return (
+                                                                            <label key={fmt.id} className="flex items-center gap-2 cursor-pointer">
+                                                                                <input type="checkbox" checked={!!sel} onChange={() => toggleFormat(fmt)} className="accent-purple-500" />
+                                                                                <span className="text-xs">{fmt.name}</span>
+                                                                            </label>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                                <button
+                                                                    disabled={researchExportSelections.length === 0}
+                                                                    onClick={() => { startResearchExport(researchExportRunId, researchExportSelections); setShowResearchExportModal(false); }}
+                                                                    className={`w-full py-1.5 text-xs font-medium rounded-lg ${researchExportSelections.length > 0 ? 'bg-purple-600 hover:bg-purple-500 text-white' : 'bg-neutral-700 text-slate-500 cursor-not-allowed'}`}
+                                                                >
+                                                                    Start Export ({researchExportSelections.length} format{researchExportSelections.length !== 1 ? 's' : ''})
+                                                                </button>
+                                                            </div>
+                                                        );
+                                                    })()}
 
                                                     {researchExports.length > 0 && (
                                                         <div className="space-y-2">
@@ -20343,7 +20411,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 <button onClick={() => downloadCatalystFile(catalystActiveJob.jobId, 'docx')} className="px-2.5 py-1 text-[10px] bg-amber-700 hover:bg-amber-600 text-white rounded-lg">Download DOCX</button>
                                                                 <button onClick={() => downloadCatalystFile(catalystActiveJob.jobId, 'pdf')} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Download PDF</button>
                                                                 <button onClick={() => { navigator.clipboard.writeText(catalystActiveJob.result.markdown || ''); alert('Copied!'); }} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Copy</button>
-                                                                <button onClick={() => { const subject = `Catalyst: ${catalystTicker} - ${catalystTopic || 'General'}`; const body = encodeURIComponent((catalystActiveJob.result.markdown || '').slice(0, 2000)); window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${body}`); }} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Email</button>
+                                                                <button onClick={async () => { try { const creds = JSON.parse(localStorage.getItem('emailCredentials') || '{}'); if (!creds.gmailUser || !creds.gmailPassword) { alert('Configure email in Settings first'); return; } const res = await fetch(`${API_URL}/api/email-research`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: creds.defaultRecipient || creds.gmailUser, subject: `Catalyst: ${catalystTicker} - ${catalystTopic || 'General'}`, content: catalystActiveJob.result.markdown || '', promptName: 'Catalyst Synthesis', ticker: catalystTicker, smtpConfig: { use_gmail: true, gmail_user: creds.gmailUser, gmail_app_password: creds.gmailPassword, from_email: creds.gmailUser } }) }); if (res.ok) alert('Email sent!'); else alert('Failed to send'); } catch (e) { alert('Email error: ' + e.message); } }} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Email</button>
                                                                 <button onClick={() => saveCatalystToResearch(catalystActiveJob.jobId)} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Save to Research</button>
                                                             </div>
                                                         )}
@@ -20387,7 +20455,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         <button onClick={() => downloadCatalystFile(catalystDetailJob.id, 'docx')} className="px-2.5 py-1 text-[10px] bg-amber-700 hover:bg-amber-600 text-white rounded-lg">Download DOCX</button>
                                                         <button onClick={() => downloadCatalystFile(catalystDetailJob.id, 'pdf')} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Download PDF</button>
                                                         <button onClick={() => { navigator.clipboard.writeText(catalystDetailJob.result?.markdown || ''); alert('Copied!'); }} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Copy</button>
-                                                        <button onClick={() => { const subject = `Catalyst: ${catalystDetailJob.ticker} - ${catalystDetailJob.detail?.topic || 'General'}`; const body = encodeURIComponent((catalystDetailJob.result?.markdown || '').slice(0, 2000)); window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${body}`); }} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Email</button>
+                                                        <button onClick={async () => { try { const creds = JSON.parse(localStorage.getItem('emailCredentials') || '{}'); if (!creds.gmailUser || !creds.gmailPassword) { alert('Configure email in Settings first'); return; } const res = await fetch(`${API_URL}/api/email-research`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: creds.defaultRecipient || creds.gmailUser, subject: `Catalyst: ${catalystDetailJob.ticker} - ${catalystDetailJob.detail?.topic || 'General'}`, content: catalystDetailJob.result?.markdown || '', promptName: 'Catalyst Synthesis', ticker: catalystDetailJob.ticker, smtpConfig: { use_gmail: true, gmail_user: creds.gmailUser, gmail_app_password: creds.gmailPassword, from_email: creds.gmailUser } }) }); if (res.ok) alert('Email sent!'); else alert('Failed to send'); } catch (e) { alert('Email error: ' + e.message); } }} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Email</button>
                                                         <button onClick={() => saveCatalystToResearch(catalystDetailJob.id)} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Save to Research</button>
                                                     </div>
 
