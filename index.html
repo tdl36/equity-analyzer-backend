@@ -279,7 +279,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-04T06';
+        const BUILD_VERSION = '2026-04-04T07';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -16445,6 +16445,17 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                     );
                                                                                 })}
                                                                                 
+                                                                                {/* Document content (for deep research / catalyst saves with no analyses) */}
+                                                                                {docAnalyses.length === 0 && doc.content && (
+                                                                                    <div className="bg-white/[0.02] border border-white/5 rounded-lg p-4 max-h-[500px] overflow-y-auto">
+                                                                                        <div className="prose prose-invert prose-sm max-w-none text-slate-300" dangerouslySetInnerHTML={{ __html: renderMarkdown(doc.content) }} />
+                                                                                        <div className="mt-3 flex gap-2 border-t border-white/10 pt-3">
+                                                                                            <button onClick={() => { navigator.clipboard.writeText(doc.content); alert('Copied to clipboard'); }} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Copy</button>
+                                                                                            <button onClick={() => { const blob = new Blob([doc.content], { type: 'text/markdown' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${doc.name || 'research'}.md`; a.click(); URL.revokeObjectURL(url); }} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Download .md</button>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                )}
+
                                                                                 {/* Completed Analyses */}
                                                                                 {docAnalyses.map(analysis => (
                                                                                     <div
