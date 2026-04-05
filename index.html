@@ -279,7 +279,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-04T01';
+        const BUILD_VERSION = '2026-04-04T02';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -6514,11 +6514,19 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     const res = await fetch(`${API_URL}/api/slides/projects/${slideSelectedProject.id}/export/pdf`, { method: 'POST' });
                     if (res.ok) {
                         const data = await res.json();
-                        // Download PDF
+                        // Download PDF using Blob URL (works on mobile browsers)
+                        const byteChars = atob(data.pdf_data);
+                        const byteArray = new Uint8Array(byteChars.length);
+                        for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
+                        const blob = new Blob([byteArray], { type: 'application/pdf' });
+                        const blobUrl = URL.createObjectURL(blob);
                         const link = document.createElement('a');
-                        link.href = `data:application/pdf;base64,${data.pdf_data}`;
+                        link.href = blobUrl;
                         link.download = data.filename;
+                        document.body.appendChild(link);
                         link.click();
+                        document.body.removeChild(link);
+                        URL.revokeObjectURL(blobUrl);
                     } else {
                         const errMsg = await getResError(res, 'Export failed');
                         alert(`Export failed: ${errMsg}`);
