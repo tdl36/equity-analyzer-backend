@@ -279,7 +279,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-03-23T01';
+        const BUILD_VERSION = '2026-04-04T01';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -6508,6 +6508,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
             const exportSlidePdf = async () => {
                 if (!slideSelectedProject) return;
+                setSlideGenerating(true);
+                setSlideGenProgress({ current: 0, total: 1, label: 'Exporting PDF...' });
                 try {
                     const res = await fetch(`${API_URL}/api/slides/projects/${slideSelectedProject.id}/export/pdf`, { method: 'POST' });
                     if (res.ok) {
@@ -6521,7 +6523,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         const errMsg = await getResError(res, 'Export failed');
                         alert(`Export failed: ${errMsg}`);
                     }
-                } catch (err) { console.error('Failed to export PDF:', err); }
+                } catch (err) {
+                    console.error('Failed to export PDF:', err);
+                    alert('Export PDF failed: ' + (err.message || 'Network error or request timed out'));
+                } finally {
+                    setSlideGenerating(false);
+                    setSlideGenProgress(null);
+                }
             };
 
             const generateSlideOutline = async () => {
@@ -16708,7 +16716,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 {/* Progress indicator during generation */}
                                                 {slideGenerating && slideGenProgress && (
                                                     <span className="text-xs text-yellow-300 bg-yellow-600/20 px-2 py-1 rounded-full">
-                                                        Generating {slideGenProgress.current}/{slideGenProgress.total}...
+                                                        {slideGenProgress.label || `Generating ${slideGenProgress.current}/${slideGenProgress.total}...`}
                                                     </span>
                                                 )}
                                                 {slideGenerating && !slideGenProgress && (
