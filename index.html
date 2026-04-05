@@ -279,7 +279,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-04T07';
+        const BUILD_VERSION = '2026-04-04T08';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -1600,6 +1600,29 @@ Regulatory, execution, or macro risks that could derail the thesis:
             // Validation state
             const [validationResult, setValidationResult] = useState(null);
             const [validationLoading, setValidationLoading] = useState(false);
+            const [validationHistory, setValidationHistory] = useState([]);
+            const [showValidationHistory, setShowValidationHistory] = useState(false);
+
+            // Add Ticker modal state
+            const [showAddTickerModal, setShowAddTickerModal] = useState(false);
+            const [newTickerSymbol, setNewTickerSymbol] = useState('');
+            const [newTickerCompany, setNewTickerCompany] = useState('');
+            const [newTickerSector, setNewTickerSector] = useState('');
+            const [availableSectors, setAvailableSectors] = useState([]);
+
+            // Sorting state for pipeline/thesis stock lists
+            const [tickerSortBy, setTickerSortBy] = useState('sector'); // 'sector' | 'alpha' | 'updated'
+
+            // Stock prices & earnings
+            const [stockPrices, setStockPrices] = useState({});
+            const [earningsCalendar, setEarningsCalendar] = useState([]);
+
+            // Ask AI contextual chat
+            const [showAskAI, setShowAskAI] = useState(false);
+            const [askAIMessage, setAskAIMessage] = useState('');
+            const [askAIMessages, setAskAIMessages] = useState([]);
+            const [askAILoading, setAskAILoading] = useState(false);
+            const [askAIChatId, setAskAIChatId] = useState('');
 
             // Research Document Types
             const RESEARCH_DOC_TYPES = [
@@ -5633,6 +5656,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 if (activeTab !== 'pipeline') return;
                 fetchPipelineUniverse();
                 fetchPipelineJobs();
+                fetchStockPrices();
+                fetchSectors();
                 if (pipelineHistoryView) fetchPipelineHistory();
                 const hasActive = pipelineJobs.some(j => j.status === 'queued' || j.status === 'running');
                 const interval = setInterval(async () => {
@@ -6443,6 +6468,102 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 } catch (e) { alert('Auto-fix failed: ' + e.message); }
             };
 
+            // --- Add Ticker / Delete Ticker / Sector / Prices / Earnings / Validation History / Ask AI ---
+            const fetchSectors = async () => {
+                try {
+                    const res = await fetch(`${API_URL}/api/ticker/sectors`);
+                    if (res.ok) { const data = await res.json(); setAvailableSectors(data.sectors || []); }
+                } catch (e) { console.warn('Failed to fetch sectors:', e); }
+            };
+
+            const addTicker = async () => {
+                if (!newTickerSymbol.trim()) return;
+                try {
+                    const res = await fetch(`${API_URL}/api/ticker/add`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ticker: newTickerSymbol.trim().toUpperCase(), company: newTickerCompany.trim(), sector: newTickerSector }),
+                    });
+                    if (res.ok) {
+                        setShowAddTickerModal(false);
+                        setNewTickerSymbol(''); setNewTickerCompany(''); setNewTickerSector('');
+                        fetchPipelineUniverse();
+                        alert('Ticker added!');
+                    } else { const d = await res.json(); alert(d.error || 'Failed'); }
+                } catch (e) { alert('Error: ' + e.message); }
+            };
+
+            const deleteTicker = async (ticker) => {
+                if (!confirm(`Delete ${ticker}? This removes all thesis data.`)) return;
+                try {
+                    const res = await fetch(`${API_URL}/api/ticker/delete`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ticker }),
+                    });
+                    if (res.ok) { fetchPipelineUniverse(); alert(`${ticker} deleted`); }
+                    else alert('Failed to delete');
+                } catch (e) { alert('Error: ' + e.message); }
+            };
+
+            const updateTickerSector = async (ticker, sector) => {
+                try {
+                    const res = await fetch(`${API_URL}/api/ticker/sector`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ticker, sector }),
+                    });
+                    if (res.ok) { fetchPipelineUniverse(); }
+                } catch (e) { console.warn('Sector update failed:', e); }
+            };
+
+            const fetchStockPrices = async () => {
+                try {
+                    const res = await fetch(`${API_URL}/api/prices`);
+                    if (res.ok) { const data = await res.json(); setStockPrices(data.prices || {}); }
+                } catch (e) { console.warn('Price fetch failed:', e); }
+            };
+
+            const fetchEarningsCalendar = async () => {
+                try {
+                    const res = await fetch(`${API_URL}/api/earnings-calendar`);
+                    if (res.ok) { const data = await res.json(); setEarningsCalendar(data.earnings || []); }
+                } catch (e) { console.warn('Earnings fetch failed:', e); }
+            };
+
+            const fetchValidationHistory = async (ticker) => {
+                try {
+                    const res = await fetch(`${API_URL}/api/validate/history/${ticker}`);
+                    if (res.ok) { const data = await res.json(); setValidationHistory(data.runs || []); }
+                } catch (e) { console.warn('Validation history fetch failed:', e); }
+            };
+
+            const sendAskAIMessage = async () => {
+                if (!askAIMessage.trim() || askAILoading) return;
+                const userMsg = askAIMessage.trim();
+                setAskAIMessages(prev => [...prev, { role: 'user', content: userMsg }]);
+                setAskAIMessage('');
+                setAskAILoading(true);
+                try {
+                    const thesisContent = analysis ? `${analysis.thesis?.summary || ''}\n\nPillars:\n${(analysis.thesis?.pillars || []).map(p => `- ${p.title}: ${p.description}`).join('\n')}\n\nSignposts:\n${(analysis.signposts || []).map(s => `- ${s.metric}: ${s.target}`).join('\n')}\n\nThreats:\n${(analysis.threats || []).map(t => `- ${t.threat}: ${t.triggerPoints || ''}`).join('\n')}\n\nConclusion: ${analysis.conclusion || ''}` : '';
+                    const res = await fetch(`${API_URL}/api/chat/context`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ticker: currentTicker, contentType: 'thesis', content: thesisContent, message: userMsg, chatId: askAIChatId }),
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        setAskAIMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
+                        if (data.chatId) setAskAIChatId(data.chatId);
+                    } else {
+                        setAskAIMessages(prev => [...prev, { role: 'assistant', content: 'Failed to get response.' }]);
+                    }
+                } catch (e) {
+                    setAskAIMessages(prev => [...prev, { role: 'assistant', content: 'Error: ' + e.message }]);
+                }
+                setAskAILoading(false);
+            };
+
             // Cross-tab navigation - sync ticker when switching between Portfolio and Overview
             const switchTab = (newTab) => {
                 const prevTab = activeTab;
@@ -6467,10 +6588,16 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         loadAnalysis(currentOverviewTicker);
                     }
                 }
+                // Fetch prices + sectors when switching to portfolio
+                if (newTab === 'portfolio') {
+                    fetchStockPrices();
+                    fetchSectors();
+                }
                 // Lazy load Dashboard data
                 if (newTab === 'dashboard' && !dashboardDataLoaded) {
                     loadDashboardData();
                     loadPortfolioTimeline();
+                    fetchEarningsCalendar();
                     setDashboardDataLoaded(true);
                 }
                 // Lazy load Meeting Prep data
@@ -11255,6 +11382,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             <Folder className="w-5 h-5 text-amber-400" />
                                             <span className="font-semibold text-lg">Thesis</span>
                                             <div className="ml-auto flex items-center gap-1">
+                                                <button
+                                                    onClick={() => { fetchSectors(); setShowAddTickerModal(true); }}
+                                                    className="px-2 py-1 rounded-lg text-[10px] font-medium bg-amber-600 hover:bg-amber-500 text-white transition-colors"
+                                                    title="Add Ticker"
+                                                >+ Add</button>
                                                 {savedAnalyses.length > 1 && !thesisSelectMode && (
                                                     <button
                                                         onClick={() => { setBatchUpdateMode(!batchUpdateMode); setBatchSelectedTickers(new Set()); setBatchUpdatePhase(1); setBatchDocAssign({}); setBatchJobs({}); }}
@@ -11480,10 +11612,98 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                         >
                                             {validationLoading ? <><span className="inline-block w-4 h-4 border border-white/30 border-t-white rounded-full animate-spin" /></> : <><span>Validate</span></>}
                                         </button>
+                                        {currentTicker && (
+                                            <button onClick={() => { fetchValidationHistory(currentTicker); setShowValidationHistory(v => !v); }}
+                                                className={`flex items-center gap-1 px-2 sm:px-3 py-2 backdrop-blur-sm border rounded-lg text-sm font-medium ${showValidationHistory ? 'bg-orange-600 border-orange-400/30 text-white' : 'bg-white/10 border-white/10 text-slate-300 hover:bg-white/15'}`}
+                                                title="Validation History"
+                                            >
+                                                <span>History</span>
+                                            </button>
+                                        )}
+                                        {currentTicker && analysis && (
+                                            <button onClick={() => { setShowAskAI(v => !v); if (!showAskAI) { setAskAIMessages([]); setAskAIChatId(''); } }}
+                                                className={`flex items-center gap-1 px-2 sm:px-3 py-2 backdrop-blur-sm border rounded-lg text-sm font-medium ${showAskAI ? 'bg-blue-600 border-blue-400/30 text-white' : 'bg-white/10 border-white/10 text-slate-300 hover:bg-white/15'}`}
+                                                title="Ask AI about this thesis"
+                                            >
+                                                <span>Ask AI</span>
+                                            </button>
+                                        )}
                                     </>
                                 )}
                             </div>
                         </div>
+
+                        {/* Validation History Panel */}
+                        {showValidationHistory && currentTicker && (
+                            <div className="border-b border-white/[0.08] bg-white/[0.03] px-4 py-3 max-h-48 overflow-y-auto">
+                                <div className="flex items-center justify-between mb-2">
+                                    <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Validation History - {currentTicker}</h4>
+                                    <button onClick={() => setShowValidationHistory(false)} className="text-slate-500 hover:text-white text-xs">Close</button>
+                                </div>
+                                {validationHistory.length === 0 ? (
+                                    <p className="text-xs text-slate-500">No validation runs yet.</p>
+                                ) : (
+                                    <div className="space-y-1.5">
+                                        {validationHistory.map((run, i) => (
+                                            <div key={run.id || i} className="flex items-center justify-between bg-white/[0.04] rounded-lg px-3 py-2 cursor-pointer hover:bg-white/[0.08] transition-colors"
+                                                onClick={() => {
+                                                    if (run.consensusIssues) {
+                                                        setValidationResult({ ...run, _selected: new Set() });
+                                                        setShowValidationHistory(false);
+                                                    }
+                                                }}>
+                                                <div className="flex items-center gap-3">
+                                                    <span className={`text-sm font-bold ${run.overallScore >= 80 ? 'text-green-400' : run.overallScore >= 60 ? 'text-yellow-400' : 'text-red-400'}`}>{run.overallScore}</span>
+                                                    <span className="text-[10px] text-slate-500">{run.totalIssues} issues</span>
+                                                </div>
+                                                <span className="text-[10px] text-slate-600">{run.createdAt ? new Date(run.createdAt).toLocaleDateString() : ''}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Ask AI Chat Panel */}
+                        {showAskAI && currentTicker && analysis && (
+                            <div className="border-b border-white/[0.08] bg-white/[0.03] px-4 py-3">
+                                <div className="flex items-center justify-between mb-2">
+                                    <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Ask AI - {currentTicker}</h4>
+                                    <button onClick={() => setShowAskAI(false)} className="text-slate-500 hover:text-white text-xs">Close</button>
+                                </div>
+                                <div className="max-h-48 overflow-y-auto mb-2 space-y-2">
+                                    {askAIMessages.length === 0 && (
+                                        <p className="text-xs text-slate-500">Ask questions about this thesis. The AI has full context of the current analysis.</p>
+                                    )}
+                                    {askAIMessages.map((msg, i) => (
+                                        <div key={i} className={`text-xs rounded-lg px-3 py-2 ${msg.role === 'user' ? 'bg-amber-600/20 text-amber-200 ml-8' : 'bg-white/[0.06] text-slate-300 mr-8'}`}>
+                                            {msg.content}
+                                        </div>
+                                    ))}
+                                    {askAILoading && (
+                                        <div className="flex items-center gap-2 text-xs text-slate-500">
+                                            <span className="inline-block w-3 h-3 border border-white/30 border-t-amber-400 rounded-full animate-spin" />
+                                            Thinking...
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        value={askAIMessage}
+                                        onChange={(e) => setAskAIMessage(e.target.value)}
+                                        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAskAIMessage(); } }}
+                                        placeholder="Ask about this thesis..."
+                                        className="flex-1 px-3 py-2 bg-white/[0.06] border border-white/10 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                                        style={{ fontSize: '16px' }}
+                                    />
+                                    <button onClick={sendAskAIMessage} disabled={askAILoading || !askAIMessage.trim()}
+                                        className="px-3 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-30 rounded-lg text-sm font-medium transition-colors">
+                                        Send
+                                    </button>
+                                </div>
+                            </div>
+                        )}
 
                         {/* MOBILE ACTION BAR - compact icon row on mobile only */}
                         {analysis && (
@@ -18961,6 +19181,21 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 </div>
                                             </div>
 
+                                            {/* Upcoming Earnings */}
+                                            {earningsCalendar.length > 0 && (
+                                                <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4 mb-4">
+                                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Upcoming Earnings</h3>
+                                                    <div className="space-y-1">
+                                                        {earningsCalendar.slice(0, 10).map(e => (
+                                                            <div key={e.ticker} className="flex justify-between text-xs">
+                                                                <span className="font-mono text-amber-400">{e.ticker}</span>
+                                                                <span className="text-slate-400">{e.earningsDate}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
                                             {/* Stock Cards Grid */}
                                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                                                 {dashboardData.stocks
@@ -19018,12 +19253,18 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                         <div>
                                             <div className="flex items-center justify-between">
                                                 <h1 className="text-xl sm:text-2xl font-bold">Research Pipeline</h1>
-                                                <button
-                                                    onClick={() => { setPipelineHistoryView(v => !v); if (!pipelineHistoryView) fetchPipelineHistory(); }}
-                                                    className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                                                        pipelineHistoryView ? 'bg-slate-600 text-white' : 'bg-white/[0.06] text-slate-400 hover:text-white'
-                                                    }`}
-                                                >{pipelineHistoryView ? 'Back' : 'History'}</button>
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        onClick={() => { fetchSectors(); setShowAddTickerModal(true); }}
+                                                        className="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-amber-600 hover:bg-amber-500 text-white transition-colors"
+                                                    >+ Add</button>
+                                                    <button
+                                                        onClick={() => { setPipelineHistoryView(v => !v); if (!pipelineHistoryView) fetchPipelineHistory(); }}
+                                                        className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                                                            pipelineHistoryView ? 'bg-slate-600 text-white' : 'bg-white/[0.06] text-slate-400 hover:text-white'
+                                                        }`}
+                                                    >{pipelineHistoryView ? 'Back' : 'History'}</button>
+                                                </div>
                                             </div>
 
                                             {/* Tier selector */}
@@ -19329,7 +19570,15 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         />
                                                     </div>
                                                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
-                                                        <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Stock Universe ({pipelineUniverse.length})</h2>
+                                                        <div className="flex items-center gap-3">
+                                                            <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Stock Universe ({pipelineUniverse.length})</h2>
+                                                            <div className="flex gap-1">
+                                                                {[{v: 'sector', label: 'Sector'}, {v: 'alpha', label: 'A-Z'}, {v: 'updated', label: 'Recent'}].map(({v, label}) => (
+                                                                    <button key={v} onClick={() => setTickerSortBy(v)}
+                                                                        className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${tickerSortBy === v ? 'bg-amber-600 text-white' : 'bg-white/[0.06] text-slate-400 hover:text-white'}`}>{label}</button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
                                                         <div className="flex items-center gap-3">
                                                             {/* Sector Filter */}
                                                             <div className="flex flex-wrap gap-1">
@@ -19357,124 +19606,169 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         </div>
                                                     </div>
 
-                                                    {/* Group by sector */}
+                                                    {/* Stock cards with sort modes */}
                                                     {(() => {
                                                         const filtered = pipelineUniverse.filter(s => (pipelineSectorFilter === 'All' || s.sector === pipelineSectorFilter) && (!pipelineSearch || s.ticker.toLowerCase().includes(pipelineSearch.toLowerCase()) || (s.company || '').toLowerCase().includes(pipelineSearch.toLowerCase())));
-                                                        const grouped = {};
-                                                        filtered.forEach(s => {
-                                                            const sec = s.sector || 'Other';
-                                                            if (!grouped[sec]) grouped[sec] = [];
-                                                            grouped[sec].push(s);
-                                                        });
-                                                        return Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).map(([sector, stocks]) => (
-                                                            <div key={sector} className="mb-4">
-                                                                <div className="flex items-center gap-2 mb-2">
-                                                                    <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{sector}</h3>
-                                                                    <div className="flex-1 border-t border-white/5"></div>
-                                                                    <span className="text-[10px] text-slate-600">{stocks.length} stocks</span>
-                                                                </div>
-                                                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
-                                                                    {stocks.map(stock => {
-                                                                        const isSelected = pipelineSelectedTickers.includes(stock.ticker);
-                                                                        const isRunning = pipelineJobs.some(j => j.ticker === stock.ticker && (j.status === 'queued' || j.status === 'running'));
-                                                                        const freshColor = stock.freshness === 'fresh' ? 'text-green-500' :
-                                                                            stock.freshness === 'stale' ? 'text-yellow-500' :
-                                                                            stock.freshness === 'outdated' ? 'text-red-500' : 'text-slate-600';
-                                                                        return (
-                                                                            <button
-                                                                                key={stock.ticker}
-                                                                                onClick={() => {
-                                                                                    if (isRunning) return;
-                                                                                    setPipelineSelectedTickers(prev =>
-                                                                                        isSelected ? prev.filter(t => t !== stock.ticker) : [...prev, stock.ticker]
-                                                                                    );
-                                                                                }}
-                                                                                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setPipelineDragOver(stock.ticker); }}
-                                                                                onDragLeave={(e) => { e.preventDefault(); setPipelineDragOver(null); }}
-                                                                                onDrop={(e) => {
-                                                                                    e.preventDefault();
-                                                                                    e.stopPropagation();
-                                                                                    setPipelineDragOver(null);
-                                                                                    const files = Array.from(e.dataTransfer.files).filter(f => f.name.endsWith('.pdf') || f.name.endsWith('.PDF'));
-                                                                                    if (files.length > 0) uploadPipelineDocuments(stock.ticker, files);
-                                                                                }}
-                                                                                className={`relative text-left rounded-lg p-3 transition-all border ${
-                                                                                    pipelineDragOver === stock.ticker ? 'border-purple-500 bg-purple-500/20 border-2 scale-[1.02]' :
-                                                                                    isRunning ? 'border-blue-500/50 bg-blue-500/10 cursor-not-allowed' :
-                                                                                    isSelected ? 'border-amber-500 bg-amber-500/10' :
-                                                                                    'border-white/10 bg-white/[0.02] hover:border-white/20'
-                                                                                }`}
-                                                                            >
-                                                                                <div className="flex items-center justify-between">
-                                                                                    <div className="font-bold text-sm">{stock.ticker}</div>
-                                                                                    <div className="flex items-center gap-1">
-                                                                                        {stock.hasScorecard && <div className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Has scorecard"></div>}
-                                                                                        {pipelineDocConfig[stock.ticker] && <div className="w-1.5 h-1.5 rounded-full bg-purple-500" title="Custom doc config"></div>}
-                                                                                    </div>
-                                                                                </div>
-                                                                                <div className="text-[10px] text-slate-500 truncate">{stock.company || ''}</div>
-                                                                                <div className="flex items-center gap-1.5 mt-0.5">
-                                                                                    {stock.hasNote && <span className="text-[8px] px-1 py-0.5 rounded bg-purple-500/25 text-purple-300 font-medium">Note</span>}
-                                                                                    {stock.docCount > 0 && <span className="text-[8px] text-slate-600">{stock.docCount} doc{stock.docCount !== 1 ? 's' : ''}</span>}
-                                                                                </div>
-                                                                                <div className="flex items-center justify-between mt-1">
-                                                                                    {stock.lastAnalysisDate && (
-                                                                                        <div className="text-[10px] text-slate-600">{stock.lastAnalysisDate.slice(0, 10)}</div>
-                                                                                    )}
-                                                                                    {stock.freshness && stock.freshness !== 'never' && (
-                                                                                        <div className={`text-[9px] font-medium ${freshColor}`}>
-                                                                                            {stock.daysOld}d
-                                                                                        </div>
-                                                                                    )}
-                                                                                    {stock.freshness === 'never' && (
-                                                                                        <div className="text-[9px] text-slate-600">new</div>
-                                                                                    )}
-                                                                                </div>
-                                                                                <button
-                                                                                    onClick={(e) => {
-                                                                                        e.stopPropagation();
-                                                                                        setPipelineDocModalTicker(stock.ticker);
-                                                                                        fetchPipelineDocuments(stock.ticker);
-                                                                                    }}
-                                                                                    className="absolute bottom-1 right-1 w-5 h-5 rounded bg-white/[0.06] hover:bg-white/[0.12] flex items-center justify-center text-slate-500 hover:text-white transition-colors"
-                                                                                    title="Configure documents"
-                                                                                >
-                                                                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                                                                                </button>
-                                                                                <button
-                                                                                    onClick={(e) => {
-                                                                                        e.stopPropagation();
-                                                                                        fetchResearchNote(stock.ticker);
-                                                                                    }}
-                                                                                    className="absolute bottom-1 right-7 w-5 h-5 rounded bg-white/[0.06] hover:bg-purple-500/20 flex items-center justify-center text-slate-500 hover:text-purple-400 transition-colors"
-                                                                                    title="View research note"
-                                                                                >
-                                                                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                                                                                </button>
-                                                                                {isRunning && (
-                                                                                    <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-blue-400 animate-pulse"></div>
-                                                                                )}
-                                                                                {isSelected && !isRunning && (
-                                                                                    <div className="absolute top-1 right-1 w-4 h-4 bg-amber-500 rounded-full flex items-center justify-center">
-                                                                                        <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                                                                                    </div>
-                                                                                )}
-                                                                                {pipelineUploading === stock.ticker && (
-                                                                                    <div className="absolute inset-0 bg-purple-500/20 rounded-lg flex items-center justify-center">
-                                                                                        <div className="text-[10px] text-purple-300 font-medium animate-pulse">Uploading...</div>
-                                                                                    </div>
-                                                                                )}
-                                                                                {pipelineUploading === `${stock.ticker}_done` && (
-                                                                                    <div className="absolute inset-0 bg-green-500/10 rounded-lg flex items-center justify-center">
-                                                                                        <div className="text-[10px] text-green-400 font-medium">Uploaded</div>
-                                                                                    </div>
-                                                                                )}
-                                                                            </button>
+                                                        const now = new Date();
+                                                        const earningsLookup = {};
+                                                        earningsCalendar.forEach(e => { earningsLookup[e.ticker] = e.earningsDate; });
+
+                                                        const renderStockCard = (stock) => {
+                                                            const isSelected = pipelineSelectedTickers.includes(stock.ticker);
+                                                            const isRunning = pipelineJobs.some(j => j.ticker === stock.ticker && (j.status === 'queued' || j.status === 'running'));
+                                                            const freshColor = stock.freshness === 'fresh' ? 'text-green-500' :
+                                                                stock.freshness === 'stale' ? 'text-yellow-500' :
+                                                                stock.freshness === 'outdated' ? 'text-red-500' : 'text-slate-600';
+                                                            const earningsDate = earningsLookup[stock.ticker];
+                                                            const earningsSoon = earningsDate && ((new Date(earningsDate) - now) / 86400000) <= 14 && ((new Date(earningsDate) - now) / 86400000) >= 0;
+                                                            return (
+                                                                <button
+                                                                    key={stock.ticker}
+                                                                    onClick={() => {
+                                                                        if (isRunning) return;
+                                                                        setPipelineSelectedTickers(prev =>
+                                                                            isSelected ? prev.filter(t => t !== stock.ticker) : [...prev, stock.ticker]
                                                                         );
-                                                                    })}
+                                                                    }}
+                                                                    onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setPipelineDragOver(stock.ticker); }}
+                                                                    onDragLeave={(e) => { e.preventDefault(); setPipelineDragOver(null); }}
+                                                                    onDrop={(e) => {
+                                                                        e.preventDefault();
+                                                                        e.stopPropagation();
+                                                                        setPipelineDragOver(null);
+                                                                        const files = Array.from(e.dataTransfer.files).filter(f => f.name.endsWith('.pdf') || f.name.endsWith('.PDF'));
+                                                                        if (files.length > 0) uploadPipelineDocuments(stock.ticker, files);
+                                                                    }}
+                                                                    className={`relative text-left rounded-lg p-3 transition-all border ${
+                                                                        pipelineDragOver === stock.ticker ? 'border-purple-500 bg-purple-500/20 border-2 scale-[1.02]' :
+                                                                        isRunning ? 'border-blue-500/50 bg-blue-500/10 cursor-not-allowed' :
+                                                                        isSelected ? 'border-amber-500 bg-amber-500/10' :
+                                                                        'border-white/10 bg-white/[0.02] hover:border-white/20'
+                                                                    }`}
+                                                                >
+                                                                    <div className="flex items-center justify-between">
+                                                                        <div className="font-bold text-sm">{stock.ticker}</div>
+                                                                        <div className="flex items-center gap-1">
+                                                                            {earningsSoon && <span className="text-[8px] px-1 py-0.5 rounded bg-blue-500/25 text-blue-300 font-medium" title={`Earnings: ${earningsDate}`}>ER</span>}
+                                                                            {stock.hasScorecard && <div className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Has scorecard"></div>}
+                                                                            {pipelineDocConfig[stock.ticker] && <div className="w-1.5 h-1.5 rounded-full bg-purple-500" title="Custom doc config"></div>}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="text-[10px] text-slate-500 truncate">{stock.company || ''}</div>
+                                                                    {/* Price display */}
+                                                                    {stockPrices[stock.ticker] && (
+                                                                        <div className={`text-[10px] font-mono mt-0.5 ${stockPrices[stock.ticker].changePct >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                                            ${stockPrices[stock.ticker].price} ({stockPrices[stock.ticker].changePct >= 0 ? '+' : ''}{stockPrices[stock.ticker].changePct}%)
+                                                                        </div>
+                                                                    )}
+                                                                    {/* Sector reassignment */}
+                                                                    <select value={stock.sector || ''} onChange={e => { e.stopPropagation(); updateTickerSector(stock.ticker, e.target.value); }}
+                                                                        onClick={e => e.stopPropagation()}
+                                                                        className="text-[9px] bg-transparent border-none text-slate-500 cursor-pointer hover:text-amber-400 p-0 mt-0.5 max-w-full truncate appearance-none"
+                                                                        style={{backgroundImage: 'none', paddingRight: '2px'}}>
+                                                                        {availableSectors.map(s => <option key={s} value={s}>{s}</option>)}
+                                                                        <option value="Other">Other</option>
+                                                                    </select>
+                                                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                                                        {stock.hasNote && <span className="text-[8px] px-1 py-0.5 rounded bg-purple-500/25 text-purple-300 font-medium">Note</span>}
+                                                                        {stock.docCount > 0 && <span className="text-[8px] text-slate-600">{stock.docCount} doc{stock.docCount !== 1 ? 's' : ''}</span>}
+                                                                    </div>
+                                                                    <div className="flex items-center justify-between mt-1">
+                                                                        {stock.lastAnalysisDate && (
+                                                                            <div className="text-[10px] text-slate-600">{stock.lastAnalysisDate.slice(0, 10)}</div>
+                                                                        )}
+                                                                        {stock.freshness && stock.freshness !== 'never' && (
+                                                                            <div className={`text-[9px] font-medium ${freshColor}`}>
+                                                                                {stock.daysOld}d
+                                                                            </div>
+                                                                        )}
+                                                                        {stock.freshness === 'never' && (
+                                                                            <div className="text-[9px] text-slate-600">new</div>
+                                                                        )}
+                                                                    </div>
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setPipelineDocModalTicker(stock.ticker);
+                                                                            fetchPipelineDocuments(stock.ticker);
+                                                                        }}
+                                                                        className="absolute bottom-1 right-1 w-5 h-5 rounded bg-white/[0.06] hover:bg-white/[0.12] flex items-center justify-center text-slate-500 hover:text-white transition-colors"
+                                                                        title="Configure documents"
+                                                                    >
+                                                                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            fetchResearchNote(stock.ticker);
+                                                                        }}
+                                                                        className="absolute bottom-1 right-7 w-5 h-5 rounded bg-white/[0.06] hover:bg-purple-500/20 flex items-center justify-center text-slate-500 hover:text-purple-400 transition-colors"
+                                                                        title="View research note"
+                                                                    >
+                                                                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                                                    </button>
+                                                                    {/* Delete button */}
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); deleteTicker(stock.ticker); }}
+                                                                        className="absolute top-1 left-1 w-4 h-4 rounded bg-white/[0.04] hover:bg-red-500/30 flex items-center justify-center text-transparent hover:text-red-400 transition-colors"
+                                                                        title="Delete ticker"
+                                                                    >
+                                                                        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                                                                    </button>
+                                                                    {isRunning && (
+                                                                        <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-blue-400 animate-pulse"></div>
+                                                                    )}
+                                                                    {isSelected && !isRunning && (
+                                                                        <div className="absolute top-1 right-1 w-4 h-4 bg-amber-500 rounded-full flex items-center justify-center">
+                                                                            <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                                                                        </div>
+                                                                    )}
+                                                                    {pipelineUploading === stock.ticker && (
+                                                                        <div className="absolute inset-0 bg-purple-500/20 rounded-lg flex items-center justify-center">
+                                                                            <div className="text-[10px] text-purple-300 font-medium animate-pulse">Uploading...</div>
+                                                                        </div>
+                                                                    )}
+                                                                    {pipelineUploading === `${stock.ticker}_done` && (
+                                                                        <div className="absolute inset-0 bg-green-500/10 rounded-lg flex items-center justify-center">
+                                                                            <div className="text-[10px] text-green-400 font-medium">Uploaded</div>
+                                                                        </div>
+                                                                    )}
+                                                                </button>
+                                                            );
+                                                        };
+
+                                                        if (tickerSortBy === 'sector') {
+                                                            // Group by sector (original behavior)
+                                                            const grouped = {};
+                                                            filtered.forEach(s => {
+                                                                const sec = s.sector || 'Other';
+                                                                if (!grouped[sec]) grouped[sec] = [];
+                                                                grouped[sec].push(s);
+                                                            });
+                                                            return Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).map(([sector, stocks]) => (
+                                                                <div key={sector} className="mb-4">
+                                                                    <div className="flex items-center gap-2 mb-2">
+                                                                        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{sector}</h3>
+                                                                        <div className="flex-1 border-t border-white/5"></div>
+                                                                        <span className="text-[10px] text-slate-600">{stocks.length} stocks</span>
+                                                                    </div>
+                                                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                                                                        {stocks.map(renderStockCard)}
+                                                                    </div>
                                                                 </div>
-                                                            </div>
-                                                        ));
+                                                            ));
+                                                        } else {
+                                                            // Flat list: alpha or updated
+                                                            const sorted = [...filtered].sort((a, b) => {
+                                                                if (tickerSortBy === 'alpha') return a.ticker.localeCompare(b.ticker);
+                                                                return (new Date(b.lastAnalysisDate || 0)) - (new Date(a.lastAnalysisDate || 0));
+                                                            });
+                                                            return (
+                                                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                                                                    {sorted.map(renderStockCard)}
+                                                                </div>
+                                                            );
+                                                        }
                                                     })()}
 
                                                     {pipelineUniverse.length === 0 && (
@@ -21207,6 +21501,65 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     </div>
                     );
                 })()}
+
+                {/* Add Ticker Modal */}
+                {showAddTickerModal && (
+                    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setShowAddTickerModal(false)}>
+                        <div className="bg-neutral-800 border border-white/10 rounded-xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+                            <div className="p-4 border-b border-white/10">
+                                <h3 className="font-bold text-lg">Add Ticker</h3>
+                                <p className="text-xs text-slate-400 mt-0.5">Add a new stock to your research universe</p>
+                            </div>
+                            <div className="p-4 space-y-3">
+                                <div>
+                                    <label className="text-xs text-slate-400 font-medium block mb-1">Ticker Symbol *</label>
+                                    <input
+                                        type="text"
+                                        value={newTickerSymbol}
+                                        onChange={(e) => setNewTickerSymbol(e.target.value.toUpperCase())}
+                                        placeholder="e.g. AAPL"
+                                        className="w-full px-3 py-2 bg-white/[0.06] border border-white/10 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 font-mono"
+                                        style={{ fontSize: '16px' }}
+                                        autoFocus
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-slate-400 font-medium block mb-1">Company Name</label>
+                                    <input
+                                        type="text"
+                                        value={newTickerCompany}
+                                        onChange={(e) => setNewTickerCompany(e.target.value)}
+                                        placeholder="e.g. Apple Inc."
+                                        className="w-full px-3 py-2 bg-white/[0.06] border border-white/10 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                                        style={{ fontSize: '16px' }}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-slate-400 font-medium block mb-1">Sector</label>
+                                    <select
+                                        value={newTickerSector}
+                                        onChange={(e) => setNewTickerSector(e.target.value)}
+                                        className="w-full px-3 py-2 bg-white/[0.06] border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:border-amber-500"
+                                    >
+                                        <option value="">Select sector...</option>
+                                        {availableSectors.map(s => <option key={s} value={s}>{s}</option>)}
+                                        <option value="Other">Other</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="p-4 border-t border-white/10 flex gap-2 justify-end">
+                                <button onClick={() => setShowAddTickerModal(false)}
+                                    className="px-4 py-2 bg-white/10 hover:bg-white/15 rounded-lg text-sm font-medium transition-colors">
+                                    Cancel
+                                </button>
+                                <button onClick={addTicker} disabled={!newTickerSymbol.trim()}
+                                    className="px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg text-sm font-medium text-white transition-colors">
+                                    Add Ticker
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 </>
             );
