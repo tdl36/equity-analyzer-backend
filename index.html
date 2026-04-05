@@ -279,7 +279,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-04T08';
+        const BUILD_VERSION = '2026-04-04T09';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -1609,6 +1609,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [newTickerCompany, setNewTickerCompany] = useState('');
             const [newTickerSector, setNewTickerSector] = useState('');
             const [availableSectors, setAvailableSectors] = useState([]);
+
+            // Thesis Diff state
+            const [thesisDiff, setThesisDiff] = useState(null);
+            const [showThesisDiff, setShowThesisDiff] = useState(false);
 
             // Sorting state for pipeline/thesis stock lists
             const [tickerSortBy, setTickerSortBy] = useState('sector'); // 'sector' | 'alpha' | 'updated'
@@ -6289,11 +6293,18 @@ Regulatory, execution, or macro risks that could derail the thesis:
             };
 
             const saveResearchToDocuments = async (runId) => {
+                if (!runId) { alert('No research run to save'); return; }
                 try {
                     const res = await fetch(`${API_URL}/api/research/save/${runId}`, { method: 'POST' });
-                    if (res.ok) alert('Saved to Research Documents');
-                    else alert('Failed to save');
-                } catch (e) { alert('Error: ' + e.message); }
+                    if (res.ok) {
+                        const data = await res.json();
+                        alert('Saved to Research Documents! Look under "Deep Research" category.');
+                        loadResearchData();
+                    } else {
+                        const err = await res.json().catch(() => ({}));
+                        alert('Save failed: ' + (err.error || 'Run may not be complete yet. Try again in a moment.'));
+                    }
+                } catch (e) { alert('Save error: ' + e.message); }
             };
 
             const startResearchExport = async (runId, exports) => {
@@ -6420,6 +6431,44 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     if (res.ok) alert('Saved to Research Documents');
                     else alert('Failed to save');
                 } catch (e) { alert('Error: ' + e.message); }
+            };
+
+            const fetchThesisDiff = async (ticker) => {
+                try {
+                    const res = await fetch(`${API_URL}/api/thesis/diff/${ticker}`);
+                    if (res.ok) { const data = await res.json(); setThesisDiff(data); setShowThesisDiff(true); }
+                    else alert('No diff available');
+                } catch (e) { alert('Error: ' + e.message); }
+            };
+
+            const exportCatalystToSlides = async (markdown, ticker, topic) => {
+                if (!markdown) { alert('No content to export'); return; }
+                try {
+                    const createRes = await fetch(`${API_URL}/api/slides/projects`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ title: `${ticker} - ${topic || 'Catalyst'}`, ticker, theme: 'general' }),
+                    });
+                    if (!createRes.ok) { alert('Failed to create slide project'); return; }
+                    const project = await createRes.json();
+
+                    const outlineRes = await fetch(`${API_URL}/api/slides/generate-outline`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ source_type: 'custom', custom_text: markdown, apiKey: loadApiKeyFromStorage() || '' }),
+                    });
+                    if (!outlineRes.ok) { alert('Failed to generate outline'); return; }
+                    const outlineData = await outlineRes.json();
+
+                    const popRes = await fetch(`${API_URL}/api/slides/projects/${project.id}/populate`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ slides: outlineData.slides }),
+                    });
+                    if (popRes.ok) {
+                        alert('Slide project created! Go to the Slides tab to generate images and export.');
+                    }
+                } catch (e) { alert('Export error: ' + e.message); }
             };
 
             const handleCatalystFileUpload = (e) => {
@@ -11628,10 +11677,37 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 <span>Ask AI</span>
                                             </button>
                                         )}
+                                        {currentTicker && (
+                                            <button onClick={() => { if (showThesisDiff) { setShowThesisDiff(false); } else { fetchThesisDiff(currentTicker); } }}
+                                                className={`flex items-center gap-1 px-2 sm:px-3 py-2 backdrop-blur-sm border rounded-lg text-sm font-medium ${showThesisDiff ? 'bg-teal-600 border-teal-400/30 text-white' : 'bg-white/10 border-white/10 text-slate-300 hover:bg-white/15'}`}
+                                                title="Compare thesis versions"
+                                            >
+                                                <span>Diff</span>
+                                            </button>
+                                        )}
                                     </>
                                 )}
                             </div>
                         </div>
+
+                        {/* Thesis Diff Panel */}
+                        {showThesisDiff && thesisDiff && (
+                            <div className="border-b border-white/[0.08] bg-white/[0.03] px-4 py-3 max-h-64 overflow-y-auto">
+                                <div className="flex items-center justify-between mb-2">
+                                    <h3 className="text-xs font-bold text-amber-400 uppercase tracking-wider">Thesis Changes vs Prior Version</h3>
+                                    <button onClick={() => setShowThesisDiff(false)} className="text-xs text-slate-400 hover:text-white">Close</button>
+                                </div>
+                                {!thesisDiff.hasDiff ? (
+                                    <p className="text-xs text-slate-500">{thesisDiff.message || 'No prior versions to compare'}</p>
+                                ) : (thesisDiff.changes || []).map((c, i) => (
+                                    <div key={i} className="border border-white/5 rounded-lg p-3 mb-2">
+                                        <div className="text-[10px] text-slate-400 font-bold uppercase mb-1">{c.section}</div>
+                                        {c.before && <div className="text-xs text-red-400 bg-red-500/10 rounded px-2 py-1 mb-1 line-through">{c.before}</div>}
+                                        {c.after && <div className="text-xs text-green-400 bg-green-500/10 rounded px-2 py-1">{c.after}</div>}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
 
                         {/* Validation History Panel */}
                         {showValidationHistory && currentTicker && (
@@ -20718,6 +20794,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 <button onClick={() => { navigator.clipboard.writeText(catalystActiveJob.result.markdown || ''); alert('Copied!'); }} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Copy</button>
                                                                 <button onClick={async () => { try { const creds = JSON.parse(localStorage.getItem('emailCredentials') || '{}'); if (!creds.gmailUser || !creds.gmailPassword) { alert('Configure email in Settings first'); return; } const res = await fetch(`${API_URL}/api/email-research`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: creds.defaultRecipient || creds.gmailUser, subject: `Catalyst: ${catalystTicker} - ${catalystTopic || 'General'}`, content: catalystActiveJob.result.markdown || '', promptName: 'Catalyst Synthesis', ticker: catalystTicker, smtpConfig: { use_gmail: true, gmail_user: creds.gmailUser, gmail_app_password: creds.gmailPassword, from_email: creds.gmailUser } }) }); if (res.ok) alert('Email sent!'); else alert('Failed to send'); } catch (e) { alert('Email error: ' + e.message); } }} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Email</button>
                                                                 <button onClick={() => saveCatalystToResearch(catalystActiveJob.jobId)} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Save to Research</button>
+                                                                <button onClick={() => exportCatalystToSlides(catalystActiveJob.result?.markdown, catalystTicker, catalystTopic)} className="px-2.5 py-1 text-[10px] bg-purple-700 hover:bg-purple-600 text-white rounded-lg">Export to Slides</button>
                                                             </div>
                                                         )}
                                                     </div>
@@ -20762,6 +20839,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         <button onClick={() => { navigator.clipboard.writeText(catalystDetailJob.result?.markdown || ''); alert('Copied!'); }} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Copy</button>
                                                         <button onClick={async () => { try { const creds = JSON.parse(localStorage.getItem('emailCredentials') || '{}'); if (!creds.gmailUser || !creds.gmailPassword) { alert('Configure email in Settings first'); return; } const res = await fetch(`${API_URL}/api/email-research`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: creds.defaultRecipient || creds.gmailUser, subject: `Catalyst: ${catalystDetailJob.ticker} - ${catalystDetailJob.detail?.topic || 'General'}`, content: catalystDetailJob.result?.markdown || '', promptName: 'Catalyst Synthesis', ticker: catalystDetailJob.ticker, smtpConfig: { use_gmail: true, gmail_user: creds.gmailUser, gmail_app_password: creds.gmailPassword, from_email: creds.gmailUser } }) }); if (res.ok) alert('Email sent!'); else alert('Failed to send'); } catch (e) { alert('Email error: ' + e.message); } }} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Email</button>
                                                         <button onClick={() => saveCatalystToResearch(catalystDetailJob.id)} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Save to Research</button>
+                                                        <button onClick={() => exportCatalystToSlides(catalystDetailJob.result?.markdown, catalystDetailJob.ticker, catalystDetailJob.detail?.topic)} className="px-2.5 py-1 text-[10px] bg-purple-700 hover:bg-purple-600 text-white rounded-lg">Export to Slides</button>
                                                     </div>
 
                                                     {catalystDetailJob.result && (
