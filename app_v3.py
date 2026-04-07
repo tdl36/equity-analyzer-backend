@@ -10816,32 +10816,43 @@ def get_catalyst_pdf(job_id):
     import re as _re
     lines = markdown.split('\n')
     html_parts = []
+    in_list = False
     for line in lines:
         line = line.rstrip()
         if line.startswith('### '):
-            html_parts.append(f'<h3>{line[4:]}</h3>')
+            if in_list: html_parts.append('</ul>'); in_list = False
+            html_parts.append(f'<h3>{_re.sub(r"\*\*(.*?)\*\*", r"<b>\\1</b>", line[4:])}</h3>')
         elif line.startswith('## '):
-            html_parts.append(f'<h2>{line[3:]}</h2>')
+            if in_list: html_parts.append('</ul>'); in_list = False
+            html_parts.append(f'<h2>{_re.sub(r"\*\*(.*?)\*\*", r"<b>\\1</b>", line[3:])}</h2>')
         elif line.startswith('# '):
-            html_parts.append(f'<h1>{line[2:]}</h1>')
+            if in_list: html_parts.append('</ul>'); in_list = False
+            html_parts.append(f'<h1>{_re.sub(r"\*\*(.*?)\*\*", r"<b>\\1</b>", line[2:])}</h1>')
         elif line.startswith('- ') or line.startswith('* '):
-            html_parts.append(f'<p style="margin-left:20px;">&#8226; {line[2:]}</p>')
+            if not in_list: html_parts.append('<ul>'); in_list = True
+            item = _re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', line[2:])
+            item = _re.sub(r'\*(.*?)\*', r'<i>\1</i>', item)
+            html_parts.append(f'<li>{item}</li>')
         elif line.strip() == '':
-            if html_parts and html_parts[-1] != '<br/>':
-                html_parts.append('<br/>')
+            if in_list: html_parts.append('</ul>'); in_list = False
+            # Skip blank lines — paragraph margins handle spacing
+            continue
         else:
-            # Bold
+            if in_list: html_parts.append('</ul>'); in_list = False
             line = _re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', line)
             line = _re.sub(r'\*(.*?)\*', r'<i>\1</i>', line)
             html_parts.append(f'<p>{line}</p>')
+    if in_list: html_parts.append('</ul>')
 
     body_html = '\n'.join(html_parts)
     full_html = f"""<html><head><style>
-        body {{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color: #000; margin: 40px; }}
-        h1 {{ font-size: 18pt; margin-bottom: 4px; }}
-        h2 {{ font-size: 14pt; margin-top: 16px; margin-bottom: 4px; border-bottom: 1px solid #ccc; padding-bottom: 2px; }}
-        h3 {{ font-size: 12pt; margin-top: 12px; margin-bottom: 2px; }}
-        p {{ margin: 2px 0; line-height: 1.4; }}
+        body {{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color: #000; margin: 40px; line-height: 1.5; }}
+        h1 {{ font-size: 18pt; margin: 0 0 4px 0; }}
+        h2 {{ font-size: 14pt; margin: 14px 0 4px 0; border-bottom: 1px solid #ccc; padding-bottom: 2px; }}
+        h3 {{ font-size: 12pt; margin: 10px 0 2px 0; }}
+        p {{ margin: 6px 0; }}
+        ul {{ margin: 4px 0 4px 20px; padding: 0; }}
+        li {{ margin: 2px 0; }}
     </style></head><body>
         <h1>{ticker} -- {topic}</h1>
         <p style="color: #666; font-size: 10pt;">Catalyst Synthesis | {datetime.utcnow().strftime('%B %d, %Y')}</p>
