@@ -2175,43 +2175,70 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
         length_instruction = CATALYST_LENGTH_PRESETS.get(length, CATALYST_LENGTH_PRESETS['standard'])
         custom_block = f"\nAdditional Instructions: {custom_instructions}" if custom_instructions else ""
 
-        # Build message content blocks
-        content_blocks = []
+        # Estimate tokens and split into batches if needed
+        def _estimate_source_tokens(parts):
+            total = 0
+            for sp in parts:
+                if sp['type'] == 'pdf':
+                    total += int(len(sp['data']) * 0.3)  # base64 -> tokens rough estimate
+                else:
+                    total += int(len(sp.get('content', '')) * 0.3)
+            return total
 
-        # Add PDFs as native document blocks (up to 4 with cache_control)
-        pdf_count = 0
-        for sp in source_parts:
-            if sp['type'] == 'pdf':
-                block = {
-                    "type": "document",
-                    "source": {
-                        "type": "base64",
-                        "media_type": "application/pdf",
-                        "data": sp['data'],
-                    },
-                }
-                if pdf_count < 4:
-                    block["cache_control"] = {"type": "ephemeral"}
-                content_blocks.append(block)
-                content_blocks.append({"type": "text", "text": f"[Document: {sp['name']}]"})
-                pdf_count += 1
+        def _split_source_batches(parts, max_tokens=170_000):
+            batches, current, current_tok = [], [], 0
+            for sp in parts:
+                est = _estimate_source_tokens([sp])
+                if current_tok + est > max_tokens and current:
+                    batches.append(current)
+                    current, current_tok = [], 0
+                current.append(sp)
+                current_tok += est
+            if current:
+                batches.append(current)
+            return batches if batches else [parts]
 
-        # Add text-based sources
-        text_sources = '\n\n---\n\n'.join([
-            f"### Source: {sp['name']}\n{sp['content'][:8000]}"
-            for sp in source_parts if sp['type'] == 'text'
-        ])
+        est_tokens = _estimate_source_tokens(source_parts)
+        batches = _split_source_batches(source_parts)
+        total_batches = len(batches)
+
+        if total_batches > 1:
+            log.info(f"Sources exceed context limit (~{est_tokens:,} est tokens). Splitting into {total_batches} batches.")
+
+        def _build_content_blocks(parts, prompt_text):
+            blocks = []
+            pdf_count = 0
+            for sp in parts:
+                if sp['type'] == 'pdf':
+                    block = {
+                        "type": "document",
+                        "source": {"type": "base64", "media_type": "application/pdf", "data": sp['data']},
+                    }
+                    if pdf_count < 4:
+                        block["cache_control"] = {"type": "ephemeral"}
+                    blocks.append(block)
+                    blocks.append({"type": "text", "text": f"[Document: {sp['name']}]"})
+                    pdf_count += 1
+            text_sources = '\n\n---\n\n'.join([
+                f"### Source: {sp['name']}\n{sp['content'][:8000]}"
+                for sp in parts if sp['type'] == 'text'
+            ])
+            if text_sources:
+                blocks.append({"type": "text", "text": text_sources})
+            blocks.append({"type": "text", "text": prompt_text})
+            return blocks
+
+        # Process first batch
+        update_job_progress(job_id, "running", f"Synthesizing report (batch 1/{total_batches})...", 50)
 
         prompt_text = CATALYST_SYNTHESIS_PROMPT.format(
             length_instruction=length_instruction,
             ticker=ticker,
             topic=topic,
             custom_instructions=custom_block,
-            source_content=text_sources if text_sources else "[See attached PDF documents above]",
+            source_content="[See attached documents above]",
         )
-        content_blocks.append({"type": "text", "text": prompt_text})
-
-        update_job_progress(job_id, "running", "Synthesizing report...", 50)
+        content_blocks = _build_content_blocks(batches[0], prompt_text)
 
         response = client.messages.create(
             model="claude-sonnet-4-20250514",
@@ -2219,8 +2246,34 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
             system="You are a senior equity research analyst. Follow all instructions precisely.",
             messages=[{"role": "user", "content": content_blocks}],
         )
-
         markdown = response.content[0].text
+
+        # Process subsequent batches — merge into existing synthesis
+        for i, batch in enumerate(batches[1:], 2):
+            update_job_progress(job_id, "running", f"Synthesizing report (batch {i}/{total_batches})...", 50 + int(30 * i / total_batches))
+            merge_prompt = f"""You previously wrote a synthesis report based on earlier documents. Now incorporate these ADDITIONAL source documents into the existing report.
+
+EXISTING REPORT:
+{markdown[:6000]}
+
+INSTRUCTIONS:
+- Merge new information into the existing report structure
+- Add new findings, update conclusions if warranted
+- Keep the same format and tone
+- {length_instruction}
+{custom_block}
+
+Write the updated, merged synthesis report now."""
+            merge_blocks = _build_content_blocks(batch, merge_prompt)
+            merge_response = client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=8192,
+                system="You are a senior equity research analyst. Follow all instructions precisely.",
+                messages=[{"role": "user", "content": merge_blocks}],
+            )
+            markdown = merge_response.content[0].text
+            log.info(f"Batch {i}/{total_batches} merged: {len(markdown)} chars")
+
         log.info(f"Synthesis generated: {len(markdown)} chars")
 
         update_job_progress(job_id, "running", "Uploading results...", 85)
