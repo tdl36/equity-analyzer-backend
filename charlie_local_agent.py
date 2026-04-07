@@ -1986,15 +1986,22 @@ def process_note_job(job: dict, api_key: str) -> None:
 
 CATALYSTS_DIR = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/CATALYSTS"
 
-CATALYST_SYNTHESIS_PROMPT = """You are a senior equity research analyst writing a synthesis report for your portfolio manager.
+CATALYST_SYNTHESIS_PROMPT = """You are a senior equity research analyst writing a PROPRIETARY synthesis report for your portfolio manager. This must read as YOUR OWN original work product.
 
-## ATTRIBUTION RULES (CRITICAL)
-- NEVER reference any specific broker, sellside firm, or analyst by name
-- NEVER cite analyst counts, ratings, or consensus targets as arguments
-- NEVER use sellside sentiment as thesis support
-- DO synthesize the factual content, data points, and analysis from the sources
-- You may reference "estimates" or "consensus" as factual data points in valuation sections only
-- Write in FIRST PERSON perspective ("I think", "My view is", "I see the risk-reward as")
+## ATTRIBUTION RULES — ABSOLUTE, NO EXCEPTIONS
+- ZERO references to any broker, bank, sellside firm, or analyst by name. Not "Wolfe Research", not "Goldman Sachs", not "JPMorgan", not "Morgan Stanley", not ANY firm. If you write a firm name, you have FAILED.
+- ZERO phrases like "Wolfe estimates", "according to [firm]", "[firm] notes", "[firm] identifies", "[firm] describes". Replace ALL such attributions with first-person voice: "I estimate", "my analysis shows", "I note".
+- ZERO analyst counts, ratings, consensus targets, or price targets used as arguments.
+- ZERO sellside sentiment used as thesis support ("the Street is constructive", "analysts favor").
+- You may use "consensus estimates" or "street estimates" as a DATA LABEL in valuation math only.
+- Write ENTIRELY in FIRST PERSON: "I think", "My view is", "I see the risk-reward as", "I estimate".
+- Present all data, analysis, and conclusions as YOUR OWN proprietary work.
+
+## SYNTHESIS RULES — USE ALL SOURCES EQUALLY
+- You are receiving MULTIPLE source documents. Synthesize insights from ALL of them, not just the first or longest one.
+- Weight each source proportionally. If 5 documents are provided, each should contribute meaningfully.
+- When sources disagree, note the divergence and state YOUR view.
+- Extract the BEST data points from EACH source and weave them into a unified narrative.
 
 ## TONE & STYLE
 - Confident, direct analyst voice writing to their PM
@@ -2013,7 +2020,7 @@ Topic: {topic}
 ## SOURCE DOCUMENTS
 {source_content}
 
-Write the synthesis report now. Start with a clear title line, then the analysis."""
+Write the synthesis report now. Start with a clear title line, then the analysis. Remember: ZERO firm names, ALL first person, synthesize ALL documents equally."""
 
 CATALYST_LENGTH_PRESETS = {
     'quick': 'Write a single paragraph (3-5 sentences) with the headline conclusion and key investment implication.',
@@ -2256,14 +2263,21 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
 EXISTING REPORT:
 {markdown[:6000]}
 
-INSTRUCTIONS:
-- Merge new information into the existing report structure
-- Add new findings, update conclusions if warranted
-- Keep the same format and tone
+## ATTRIBUTION RULES — ABSOLUTE, NO EXCEPTIONS
+- ZERO references to any broker, bank, sellside firm, or analyst by name. Not "Wolfe Research", not "Goldman Sachs", not "JPMorgan", not ANY firm.
+- Replace ALL firm attributions with first-person voice: "I estimate", "my analysis shows".
+- Write ENTIRELY in FIRST PERSON as YOUR OWN proprietary work.
+- If the existing report accidentally contains firm names, REMOVE them in this pass.
+
+## MERGE INSTRUCTIONS
+- Integrate new findings into the existing report structure
+- Give EQUAL WEIGHT to new documents — do not let earlier batch dominate
+- Add new data points, update conclusions if warranted
+- Keep the same format, tone, and length
 - {length_instruction}
 {custom_block}
 
-Write the updated, merged synthesis report now."""
+Write the complete, updated synthesis report now. ZERO firm names, ALL first person."""
             merge_blocks = _build_content_blocks(batch, merge_prompt)
             merge_response = client.messages.create(
                 model="claude-sonnet-4-20250514",
