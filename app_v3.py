@@ -11594,15 +11594,18 @@ def email_research():
         except:
             content_html = f"<pre style='white-space: pre-wrap;'>{content}</pre>"
 
-        # Build charts HTML if provided
+        # Build charts HTML if provided (using cid: references for email embedding)
         charts_html = ''
+        chart_attachments = []  # list of (cid, base64_data)
         if charts:
-            for chart in charts:
+            for idx, chart in enumerate(charts):
                 if isinstance(chart, dict) and chart.get('data'):
                     chart_type = chart.get('type', 'chart').title()
                     label = f'{ticker} {chart_type} Breakdown' if ticker else f'{chart_type} Breakdown'
+                    cid = f'chart_{idx}'
                     charts_html += f'<p style="margin:16px 0 4px 0;font-weight:bold;font-size:11pt;color:#1e293b;">{label}</p>'
-                    charts_html += f'<img src="data:image/png;base64,{chart["data"]}" style="width:100%;max-width:500px;margin:0 0 16px 0;" />'
+                    charts_html += f'<img src="cid:{cid}" style="width:100%;max-width:500px;margin:0 0 16px 0;" />'
+                    chart_attachments.append((cid, chart['data']))
 
         if minimal:
             # Clean email — just content with basic styling, no header/footer
@@ -11673,14 +11676,26 @@ def email_research():
             """
         
         # Send email
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = subject
-        msg['To'] = recipient
-        
-        # Plain text version
-        msg.attach(MIMEText(content, 'plain'))
-        # HTML version
-        msg.attach(MIMEText(html_body, 'html'))
+        if chart_attachments:
+            from email.mime.image import MIMEImage
+            msg = MIMEMultipart('related')
+            msg['Subject'] = subject
+            msg['To'] = recipient
+            alt_part = MIMEMultipart('alternative')
+            alt_part.attach(MIMEText(content, 'plain'))
+            alt_part.attach(MIMEText(html_body, 'html'))
+            msg.attach(alt_part)
+            for cid, b64_data in chart_attachments:
+                img = MIMEImage(base64.b64decode(b64_data), _subtype='png')
+                img.add_header('Content-ID', f'<{cid}>')
+                img.add_header('Content-Disposition', 'inline')
+                msg.attach(img)
+        else:
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = subject
+            msg['To'] = recipient
+            msg.attach(MIMEText(content, 'plain'))
+            msg.attach(MIMEText(html_body, 'html'))
         
         if smtp_config.get('use_gmail') and smtp_config.get('gmail_user') and smtp_config.get('gmail_app_password'):
             msg['From'] = smtp_config['gmail_user']

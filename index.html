@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-14T10';
+        const BUILD_VERSION = '2026-04-14T11';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -20146,12 +20146,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                             const data = await res.json();
                                                                             const blob = new Blob([Uint8Array.from(atob(data.fileData), c => c.charCodeAt(0))], { type: 'application/pdf' });
                                                                             const url = URL.createObjectURL(blob);
-                                                                            const a = document.createElement('a');
-                                                                            a.href = url;
-                                                                            a.download = data.filename;
-                                                                            a.click();
-                                                                            // Delay revoke to avoid crashing mobile Safari PWA
-                                                                            setTimeout(() => URL.revokeObjectURL(url), 30000);
+                                                                            // Use window.open for mobile Safari PWA compatibility (a.click() crashes PWA on close)
+                                                                            window.open(url, '_blank');
                                                                         }
                                                                     } catch(e) { alert('PDF generation failed: ' + e.message); }
                                                                 }} className="px-2.5 py-1 bg-slate-600 hover:bg-slate-500 text-white text-[10px] font-medium rounded-lg">
