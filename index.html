@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-14T04';
+        const BUILD_VERSION = '2026-04-14T05';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -1462,8 +1462,22 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 }
             }, []);
 
-            // Verify token on load — check if backend accepts it
+            const [authClientId, setAuthClientId] = useState(() => localStorage.getItem('google_oauth_client_id') || '');
+
+            // Fetch Google client ID from backend (public endpoint) and verify existing token
             React.useEffect(() => {
+                // Fetch client ID for login screen
+                _originalFetch(`${API_URL || DIRECT_API_URL}/api/auth/config`)
+                    .then(r => r.ok ? r.json() : {})
+                    .then(data => {
+                        if (data.googleClientId) {
+                            setAuthClientId(data.googleClientId);
+                            localStorage.setItem('google_oauth_client_id', data.googleClientId);
+                        }
+                    })
+                    .catch(() => {});
+
+                // Verify existing token
                 const token = getAuthToken();
                 if (!token) { setAuthLoading(false); return; }
                 fetch(`${API_URL}/api/settings`)
@@ -1481,8 +1495,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
             // Initialize Google Sign-In
             React.useEffect(() => {
                 if (authToken) return; // Already signed in
-                const clientId = localStorage.getItem('google_oauth_client_id') || '';
-                if (!clientId || !window.google?.accounts?.id) return;
+                if (!authClientId || !window.google?.accounts?.id) return;
+                const clientId = authClientId;
                 try {
                     window.google.accounts.id.initialize({
                         client_id: clientId,
@@ -1490,7 +1504,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         auto_select: true,
                     });
                 } catch(e) { console.warn('GSI init failed:', e); }
-            }, [authToken, handleSignIn]);
+            }, [authToken, authClientId, handleSignIn]);
 
             // Login screen
             if (authLoading) {
@@ -1502,7 +1516,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
             }
 
             if (!authToken) {
-                const clientId = localStorage.getItem('google_oauth_client_id') || '';
+                const clientId = authClientId;
                 return (
                     <div className="min-h-screen bg-[#0f0f0f] flex items-center justify-center p-4">
                         <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-8 max-w-sm w-full text-center space-y-6">

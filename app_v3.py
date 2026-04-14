@@ -92,7 +92,7 @@ AUTHORIZED_EMAILS = [e.strip().lower() for e in os.environ.get('AUTHORIZED_EMAIL
 CHARLIE_API_KEY = os.environ.get('CHARLIE_API_KEY', '')
 
 # Public paths that don't require auth
-AUTH_EXEMPT_PATHS = {'/health', '/api/agent/health'}
+AUTH_EXEMPT_PATHS = {'/health', '/api/agent/health', '/api/auth/config'}
 
 def _verify_google_token(token):
     """Verify a Google ID token and return the email if valid."""
@@ -152,6 +152,19 @@ def require_auth():
     if AUTHORIZED_EMAILS:
         return jsonify({'error': 'Authentication required'}), 401
     return None
+
+
+@app.route('/api/auth/config', methods=['GET'])
+def auth_config():
+    """Public endpoint: returns Google OAuth client ID for the login screen."""
+    try:
+        with get_db() as (_, cur):
+            cur.execute("SELECT value FROM app_settings WHERE key = 'googleClientId'")
+            row = cur.fetchone()
+        client_id = row['value'] if row else ''
+    except Exception:
+        client_id = ''
+    return jsonify({'googleClientId': client_id, 'authRequired': bool(AUTHORIZED_EMAILS)})
 
 
 # ============================================
