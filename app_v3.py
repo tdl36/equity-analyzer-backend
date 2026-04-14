@@ -11577,6 +11577,7 @@ def email_research():
         topic = data.get('topic', '')
         smtp_config = data.get('smtpConfig', {})
         minimal = data.get('minimal', False)
+        charts = data.get('charts', [])
 
         if not recipient:
             return jsonify({'error': 'Recipient email is required'}), 400
@@ -11593,6 +11594,16 @@ def email_research():
         except:
             content_html = f"<pre style='white-space: pre-wrap;'>{content}</pre>"
 
+        # Build charts HTML if provided
+        charts_html = ''
+        if charts:
+            for chart in charts:
+                if isinstance(chart, dict) and chart.get('data'):
+                    chart_type = chart.get('type', 'chart').title()
+                    label = f'{ticker} {chart_type} Breakdown' if ticker else f'{chart_type} Breakdown'
+                    charts_html += f'<p style="margin:16px 0 4px 0;font-weight:bold;font-size:11pt;color:#1e293b;">{label}</p>'
+                    charts_html += f'<img src="data:image/png;base64,{chart["data"]}" style="width:100%;max-width:500px;margin:0 0 16px 0;" />'
+
         if minimal:
             # Clean email — just content with basic styling, no header/footer
             html_body = f"""
@@ -11607,10 +11618,12 @@ def email_research():
                 p {{ margin: 0.8em 0; }}
                 strong {{ color: #1e293b; }}
                 hr {{ border: none; border-top: 1px solid #e2e8f0; margin: 1.5em 0; }}
+                img {{ max-width: 100%; height: auto; }}
             </style>
         </head>
         <body>
             {content_html}
+            {charts_html}
         </body>
         </html>
             """
