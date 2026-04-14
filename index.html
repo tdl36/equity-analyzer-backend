@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-14T05';
+        const BUILD_VERSION = '2026-04-14T06';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -1492,19 +1492,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     .catch(() => setAuthLoading(false));
             }, []);
 
-            // Initialize Google Sign-In
-            React.useEffect(() => {
-                if (authToken) return; // Already signed in
-                if (!authClientId || !window.google?.accounts?.id) return;
-                const clientId = authClientId;
-                try {
-                    window.google.accounts.id.initialize({
-                        client_id: clientId,
-                        callback: handleSignIn,
-                        auto_select: true,
-                    });
-                } catch(e) { console.warn('GSI init failed:', e); }
-            }, [authToken, authClientId, handleSignIn]);
+            // (Google Sign-In initialization is handled in the login screen useEffect below)
 
             // Login screen
             if (authLoading) {
@@ -1515,8 +1503,29 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 );
             }
 
+            // Render Google Sign-In button when on login screen
+            const googleBtnRef = React.useRef(null);
+            React.useEffect(() => {
+                if (authToken || authLoading || !authClientId) return;
+                if (!googleBtnRef.current || !window.google?.accounts?.id) return;
+                try {
+                    window.google.accounts.id.initialize({
+                        client_id: authClientId,
+                        callback: handleSignIn,
+                        auto_select: true,
+                    });
+                    googleBtnRef.current.innerHTML = '';
+                    window.google.accounts.id.renderButton(googleBtnRef.current, {
+                        theme: 'filled_black',
+                        size: 'large',
+                        width: 280,
+                        text: 'signin_with',
+                        shape: 'rectangular',
+                    });
+                } catch(e) { console.warn('GSI render failed:', e); }
+            }, [authToken, authLoading, authClientId, handleSignIn]);
+
             if (!authToken) {
-                const clientId = authClientId;
                 return (
                     <div className="min-h-screen bg-[#0f0f0f] flex items-center justify-center p-4">
                         <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-8 max-w-sm w-full text-center space-y-6">
@@ -1527,20 +1536,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             {authError && (
                                 <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-xs text-red-400">{authError}</div>
                             )}
-                            {clientId ? (
+                            {authClientId ? (
                                 <div>
-                                    <div id="google-signin-btn" ref={el => {
-                                        if (el && window.google?.accounts?.id) {
-                                            el.innerHTML = '';
-                                            window.google.accounts.id.renderButton(el, {
-                                                theme: 'filled_black',
-                                                size: 'large',
-                                                width: 280,
-                                                text: 'signin_with',
-                                                shape: 'rectangular',
-                                            });
-                                        }
-                                    }}></div>
+                                    <div ref={googleBtnRef}></div>
                                 </div>
                             ) : (
                                 <div className="space-y-3">
