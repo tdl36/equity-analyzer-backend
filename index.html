@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-14T03';
+        const BUILD_VERSION = '2026-04-14T04';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -286,6 +286,42 @@
             : '';
         // Direct backend URL for long-running requests (bypasses Cloudflare 100s timeout)
         const DIRECT_API_URL = 'https://equity-analyzer-backend.onrender.com';
+
+        // Auth token management
+        const getAuthToken = () => {
+            try { return localStorage.getItem('charlie_auth_token') || ''; } catch(e) { return ''; }
+        };
+        const setAuthToken = (token) => {
+            try { localStorage.setItem('charlie_auth_token', token); } catch(e) {}
+        };
+        const clearAuthToken = () => {
+            try { localStorage.removeItem('charlie_auth_token'); localStorage.removeItem('charlie_auth_email'); } catch(e) {}
+        };
+        const getAuthEmail = () => {
+            try { return localStorage.getItem('charlie_auth_email') || ''; } catch(e) { return ''; }
+        };
+
+        // Wrap global fetch to inject auth header on API requests
+        const _originalFetch = window.fetch;
+        window.fetch = function(url, options = {}) {
+            const urlStr = typeof url === 'string' ? url : url?.url || '';
+            // Only inject auth for API calls (relative /api/ or full backend URL)
+            if (urlStr.includes('/api/') || urlStr.includes('equity-analyzer-backend')) {
+                const token = getAuthToken();
+                if (token) {
+                    options = { ...options };
+                    options.headers = { ...(options.headers || {}), 'Authorization': 'Bearer ' + token };
+                }
+            }
+            return _originalFetch.call(window, url, options).then(res => {
+                // Auto sign-out on auth failure (but only if we had a token — avoids loop during initial check)
+                if (res.status === 401 && urlStr.includes('/api/') && getAuthToken() && !urlStr.includes('/api/settings')) {
+                    clearAuthToken();
+                    window.location.reload();
+                }
+                return res;
+            });
+        };
 
         // Safe helper to extract error message from a non-OK fetch response
         const getResError = async (res, fallback) => {
@@ -1395,6 +1431,123 @@ Regulatory, execution, or macro risks that could derail the thesis:
         };
 
         const App = () => {
+            // Auth state
+            const [authToken, setAuthTokenState] = useState(() => getAuthToken());
+            const [authEmail, setAuthEmail] = useState(() => getAuthEmail());
+            const [authLoading, setAuthLoading] = useState(true);
+            const [authError, setAuthError] = useState('');
+
+            const handleSignIn = React.useCallback((credentialResponse) => {
+                const token = credentialResponse.credential;
+                if (!token) { setAuthError('Sign-in failed — no credential received'); return; }
+                // Decode JWT to get email (payload is second segment)
+                try {
+                    const payload = JSON.parse(atob(token.split('.')[1]));
+                    const email = payload.email || '';
+                    setAuthToken(token);
+                    setAuthTokenState(token);
+                    localStorage.setItem('charlie_auth_email', email);
+                    setAuthEmail(email);
+                    setAuthError('');
+                } catch(e) { setAuthError('Failed to parse sign-in token'); }
+            }, []);
+
+            const handleSignOut = React.useCallback(() => {
+                clearAuthToken();
+                setAuthTokenState('');
+                setAuthEmail('');
+                // Revoke Google session
+                if (window.google?.accounts?.id) {
+                    window.google.accounts.id.disableAutoSelect();
+                }
+            }, []);
+
+            // Verify token on load — check if backend accepts it
+            React.useEffect(() => {
+                const token = getAuthToken();
+                if (!token) { setAuthLoading(false); return; }
+                fetch(`${API_URL}/api/settings`)
+                    .then(res => {
+                        if (res.status === 401 || res.status === 403) {
+                            clearAuthToken();
+                            setAuthTokenState('');
+                            setAuthEmail('');
+                        }
+                        setAuthLoading(false);
+                    })
+                    .catch(() => setAuthLoading(false));
+            }, []);
+
+            // Initialize Google Sign-In
+            React.useEffect(() => {
+                if (authToken) return; // Already signed in
+                const clientId = localStorage.getItem('google_oauth_client_id') || '';
+                if (!clientId || !window.google?.accounts?.id) return;
+                try {
+                    window.google.accounts.id.initialize({
+                        client_id: clientId,
+                        callback: handleSignIn,
+                        auto_select: true,
+                    });
+                } catch(e) { console.warn('GSI init failed:', e); }
+            }, [authToken, handleSignIn]);
+
+            // Login screen
+            if (authLoading) {
+                return (
+                    <div className="min-h-screen bg-[#0f0f0f] flex items-center justify-center">
+                        <div className="animate-pulse text-amber-500 text-lg font-semibold">Loading...</div>
+                    </div>
+                );
+            }
+
+            if (!authToken) {
+                const clientId = localStorage.getItem('google_oauth_client_id') || '';
+                return (
+                    <div className="min-h-screen bg-[#0f0f0f] flex items-center justify-center p-4">
+                        <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-8 max-w-sm w-full text-center space-y-6">
+                            <div>
+                                <h1 className="text-2xl font-bold text-white tracking-tight">Charlie</h1>
+                                <p className="text-xs text-slate-500 mt-1">Equity Research Platform</p>
+                            </div>
+                            {authError && (
+                                <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-xs text-red-400">{authError}</div>
+                            )}
+                            {clientId ? (
+                                <div>
+                                    <div id="google-signin-btn" ref={el => {
+                                        if (el && window.google?.accounts?.id) {
+                                            el.innerHTML = '';
+                                            window.google.accounts.id.renderButton(el, {
+                                                theme: 'filled_black',
+                                                size: 'large',
+                                                width: 280,
+                                                text: 'signin_with',
+                                                shape: 'rectangular',
+                                            });
+                                        }
+                                    }}></div>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    <p className="text-xs text-slate-400">Enter your Google OAuth Client ID to enable sign-in.</p>
+                                    <input type="text" placeholder="Google OAuth Client ID"
+                                        className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                                        onKeyDown={e => {
+                                            if (e.key === 'Enter' && e.target.value.trim()) {
+                                                localStorage.setItem('google_oauth_client_id', e.target.value.trim());
+                                                window.location.reload();
+                                            }
+                                        }} />
+                                    <p className="text-[9px] text-slate-600">Press Enter to save. Get one at console.cloud.google.com</p>
+                                </div>
+                            )}
+                            <p className="text-[9px] text-slate-600">Access restricted to authorized users only.</p>
+                        </div>
+                    </div>
+                );
+            }
+
             // Generic fetch-with-retry for background resilience (no UI side-effects unlike the overview fetchWithRetry)
             const fetchRetry = async (url, opts, retries = 2) => {
                 for (let i = 0; i <= retries; i++) {
@@ -21438,6 +21591,24 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     </div>
                                 
                                     <div className="space-y-6 max-w-lg">
+                                    {/* Account Section */}
+                                    <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl p-4 border border-white/10">
+                                        <h3 className="font-semibold mb-3 flex items-center gap-2">
+                                            <Key className="w-4 h-4 text-amber-400" />
+                                            Account
+                                        </h3>
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <div className="text-sm text-white">{authEmail || 'Signed in'}</div>
+                                                <div className="text-[10px] text-slate-500">Google Account</div>
+                                            </div>
+                                            <button onClick={handleSignOut}
+                                                className="px-3 py-1.5 text-xs bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 text-red-400 rounded-lg transition-colors">
+                                                Sign Out
+                                            </button>
+                                        </div>
+                                    </div>
+
                                     {/* API Key Section */}
                                     <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl p-4 border border-white/10">
                                         <h3 className="font-semibold mb-3 flex items-center gap-2">

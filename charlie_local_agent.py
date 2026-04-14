@@ -227,6 +227,10 @@ def _agent_headers() -> dict:
     headers = {"Content-Type": "application/json"}
     if secret:
         headers[AGENT_SECRET_HEADER] = secret
+    # API key auth for backend authentication
+    api_key = os.environ.get("CHARLIE_API_KEY", "")
+    if api_key:
+        headers["Authorization"] = f"ApiKey {api_key}"
     return headers
 
 

@@ -85,6 +85,76 @@ class SimpleCache:
 cache = SimpleCache()
 
 # ============================================
+# AUTHENTICATION
+# ============================================
+
+AUTHORIZED_EMAILS = [e.strip().lower() for e in os.environ.get('AUTHORIZED_EMAILS', '').split(',') if e.strip()]
+CHARLIE_API_KEY = os.environ.get('CHARLIE_API_KEY', '')
+
+# Public paths that don't require auth
+AUTH_EXEMPT_PATHS = {'/health', '/api/agent/health'}
+
+def _verify_google_token(token):
+    """Verify a Google ID token and return the email if valid."""
+    try:
+        from google.oauth2 import id_token as google_id_token
+        from google.auth.transport import requests as google_requests
+        idinfo = google_id_token.verify_oauth2_token(token, google_requests.Request())
+        email = idinfo.get('email', '').lower()
+        if not email:
+            return None
+        return email
+    except Exception as e:
+        print(f"[auth] Google token verification failed: {e}")
+        return None
+
+def is_authorized(email):
+    """Check if an email is in the authorized list. Easy to swap to DB query later."""
+    if not AUTHORIZED_EMAILS:
+        return True  # No restriction if env var not set (dev mode)
+    return email.lower() in AUTHORIZED_EMAILS
+
+@app.before_request
+def require_auth():
+    """Global auth gate — runs before every request."""
+    # Skip auth for exempt paths and CORS preflight
+    if request.method == 'OPTIONS':
+        return None
+    if request.path in AUTH_EXEMPT_PATHS:
+        return None
+
+    # No auth configured = dev mode, allow all
+    if not AUTHORIZED_EMAILS and not CHARLIE_API_KEY:
+        return None
+
+    auth_header = request.headers.get('Authorization', '')
+
+    # API key auth (for local agent)
+    if auth_header.startswith('ApiKey ') and CHARLIE_API_KEY:
+        key = auth_header[7:]
+        if key == CHARLIE_API_KEY:
+            return None
+        return jsonify({'error': 'Invalid API key'}), 401
+
+    # Google token auth
+    if auth_header.startswith('Bearer '):
+        token = auth_header[7:]
+        email = _verify_google_token(token)
+        if not email:
+            return jsonify({'error': 'Invalid or expired token'}), 401
+        if not is_authorized(email):
+            return jsonify({'error': 'Not authorized', 'email': email}), 403
+        # Store email on request for downstream use
+        request.auth_email = email
+        return None
+
+    # No auth header
+    if AUTHORIZED_EMAILS:
+        return jsonify({'error': 'Authentication required'}), 401
+    return None
+
+
+# ============================================
 # MULTI-MODEL LLM FALLBACK
 # ============================================
 
