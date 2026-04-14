@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-14T06';
+        const BUILD_VERSION = '2026-04-14T07';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -1494,16 +1494,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
             // (Google Sign-In initialization is handled in the login screen useEffect below)
 
-            // Login screen
-            if (authLoading) {
-                return (
-                    <div className="min-h-screen bg-[#0f0f0f] flex items-center justify-center">
-                        <div className="animate-pulse text-amber-500 text-lg font-semibold">Loading...</div>
-                    </div>
-                );
-            }
-
-            // Render Google Sign-In button when on login screen
+            // Google Sign-In button ref and effect (must be before any early returns)
             const googleBtnRef = React.useRef(null);
             React.useEffect(() => {
                 if (authToken || authLoading || !authClientId) return;
@@ -1524,6 +1515,15 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     });
                 } catch(e) { console.warn('GSI render failed:', e); }
             }, [authToken, authLoading, authClientId, handleSignIn]);
+
+            // Login screen
+            if (authLoading) {
+                return (
+                    <div className="min-h-screen bg-[#0f0f0f] flex items-center justify-center">
+                        <div className="animate-pulse text-amber-500 text-lg font-semibold">Loading...</div>
+                    </div>
+                );
+            }
 
             if (!authToken) {
                 return (
