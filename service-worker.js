@@ -1,5 +1,8 @@
 // Charlie - Equity Analyzer Service Worker
-const CACHE_NAME = 'charlie-v22';
+// BUILD_VERSION is updated on each deploy to trigger cache invalidation
+const BUILD_VERSION = '20260414-1';
+const CACHE_NAME = 'charlie-' + BUILD_VERSION;
+
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -13,7 +16,7 @@ const STATIC_ASSETS = [
 
 // Install event - cache static assets
 self.addEventListener('install', (event) => {
-  console.log('Service Worker: Installing...');
+  console.log('Service Worker: Installing', BUILD_VERSION);
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
@@ -26,7 +29,7 @@ self.addEventListener('install', (event) => {
 
 // Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
-  console.log('Service Worker: Activating...');
+  console.log('Service Worker: Activating', BUILD_VERSION);
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
@@ -41,20 +44,14 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Listen for skip waiting message from the page
-self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
-});
-
 // Fetch event - network first, fallback to cache
 self.addEventListener('fetch', (event) => {
   // Skip non-GET requests
   if (event.request.method !== 'GET') return;
-  
-  // Skip API calls and external requests
-  if (event.request.url.includes('/api/') || 
+
+  // Skip API calls, version checks, and external requests
+  if (event.request.url.includes('/api/') ||
+      event.request.url.includes('/version') ||
       !event.request.url.startsWith(self.location.origin)) {
     return;
   }

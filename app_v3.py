@@ -9831,10 +9831,29 @@ def thesis_diff(ticker):
     if removed_th:
         changes.append({'section': 'Threats Removed', 'before': ', '.join(removed_th), 'after': ''})
 
+    # Build full side-by-side sections for the diff modal
+    def format_pillars(pillars):
+        return '\n\n'.join([f"**{p.get('title', p.get('pillar', ''))}**\n{p.get('detail', p.get('description', ''))}" for p in pillars]) if pillars else ''
+
+    def format_signposts(items):
+        return '\n'.join([f"- {s.get('metric', s.get('signpost', ''))}: {s.get('target', s.get('threshold', ''))}" for s in items]) if items else ''
+
+    def format_threats(items):
+        return '\n'.join([f"- {t.get('threat', '')}: {t.get('detail', t.get('mitigation', ''))}" for t in items]) if items else ''
+
+    sections = [
+        {'name': 'Summary', 'previous': previous['summary'], 'current': current['summary'], 'changed': current['summary'] != previous['summary']},
+        {'name': 'Pillars', 'previous': format_pillars(previous['pillars']), 'current': format_pillars(current['pillars']), 'changed': curr_pillar_titles != prev_pillar_titles},
+        {'name': 'Signposts', 'previous': format_signposts(previous['signposts']), 'current': format_signposts(current['signposts']), 'changed': curr_sp != prev_sp},
+        {'name': 'Threats', 'previous': format_threats(previous['threats']), 'current': format_threats(current['threats']), 'changed': curr_th != prev_th},
+    ]
+
     return jsonify({
         'hasDiff': len(changes) > 0,
         'changes': changes,
+        'sections': sections,
         'previousTimestamp': prev.get('timestamp', ''),
+        'currentTimestamp': analysis.get('updated', ''),
         'totalChanges': len(changes),
     })
 
@@ -10896,6 +10915,7 @@ def save_catalyst_to_docs(job_id):
             ON CONFLICT (id) DO UPDATE SET content = EXCLUDED.content
         ''', (doc_id, cat_id, doc_name, markdown))
 
+    cache.invalidate('research_categories')
     return jsonify({'success': True, 'docId': doc_id})
 
 
@@ -12323,6 +12343,7 @@ def save_research_to_docs(run_id):
             ON CONFLICT (id) DO UPDATE SET content = EXCLUDED.content
         ''', (doc_id, cat_id, doc_name, full_content))
 
+    cache.invalidate('research_categories')
     return jsonify({'success': True, 'docId': doc_id})
 
 
@@ -12580,6 +12601,58 @@ def start_research_export(run_id):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/catalysts/<job_id>/export', methods=['POST'])
+def start_catalyst_export(job_id):
+    """Queue catalyst synthesis export jobs (slides/infographics) — reuses research export infrastructure."""
+    try:
+        with get_db() as (_, cur):
+            cur.execute('SELECT * FROM research_pipeline_jobs WHERE id = %s', (job_id,))
+            job = cur.fetchone()
+        if not job:
+            return jsonify({'error': 'Catalyst job not found'}), 404
+        if job['status'] != 'complete':
+            return jsonify({'error': 'Catalyst job not complete yet'}), 400
+
+        result = job['result'] if isinstance(job.get('result'), dict) else json.loads(job['result'] or '{}')
+        markdown = result.get('markdown', '')
+        detail = job['steps_detail'] if isinstance(job.get('steps_detail'), (dict, list)) else json.loads(job['steps_detail'] or '{}')
+        topic = detail.get('topic', 'Catalyst') if isinstance(detail, dict) else 'Catalyst'
+        query = f"{job['ticker']} -- {topic}"
+
+        data = request.get_json()
+        exports = data.get('exports', [])
+        if not exports:
+            return jsonify({'error': 'No exports specified'}), 400
+
+        export_ids = []
+        with get_db(commit=True) as (conn, cur):
+            for exp in exports:
+                fmt = exp.get('format', '')
+                if fmt not in RESEARCH_EXPORT_FORMATS:
+                    continue
+                fmt_config = RESEARCH_EXPORT_FORMATS[fmt]
+                exp_type = fmt_config['type']
+                slide_count = exp.get('slideCount', 5) if exp_type == 'deck' else 1
+
+                export_id = str(uuid.uuid4())
+                cur.execute('''
+                    INSERT INTO research_exports (id, research_run_id, format, type, slide_count, status, created_at)
+                    VALUES (%s, %s, %s, %s, %s, 'queued', NOW())
+                ''', (export_id, job_id, fmt, exp_type, slide_count))
+                export_ids.append({'id': export_id, 'format': fmt, 'type': exp_type, 'status': 'queued'})
+
+                threading.Thread(
+                    target=_run_content_export,
+                    args=(export_id, job_id, fmt, exp_type, slide_count, markdown, query),
+                    daemon=True
+                ).start()
+
+        return jsonify({'exports': export_ids})
+    except Exception as e:
+        print(f"Error starting catalyst export: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/research/<run_id>/exports', methods=['GET'])
 def get_research_exports(run_id):
     """Get all exports for a research run with status."""
@@ -12648,6 +12721,20 @@ def _run_research_export(export_id, run_id, fmt, exp_type, slide_count):
         for key, data in agents.items():
             research_content += f"## {data.get('label', key)}\n{data.get('content', '')}\n\n"
 
+        _run_content_export(export_id, fmt, exp_type, slide_count, research_content, query)
+    except Exception as e:
+        print(f"[research-export {export_id}] Failed: {e}")
+        try:
+            with get_db(commit=True) as (conn, cur):
+                cur.execute("UPDATE research_exports SET status = 'error', error_message = %s WHERE id = %s",
+                           (str(e)[:500], export_id))
+        except:
+            pass
+
+
+def _run_content_export(export_id, fmt, exp_type, slide_count, research_content, query):
+    """Background worker: generate slides/infographic from content string. Used by both research and catalyst exports."""
+    try:
         fmt_config = RESEARCH_EXPORT_FORMATS[fmt]
 
         def update_export(status=None, progress=None, error=None, project_id=None):
