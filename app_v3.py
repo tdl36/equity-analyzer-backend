@@ -9949,6 +9949,7 @@ def pipeline_refresh_sector():
     job_type = data.get('jobType', 'update')
     api_key = data.get('apiKey', '')
     generate_tiers = data.get('generateTiers', 'detailed')
+    document_config = data.get('documentConfig', {})
 
     tickers = PIPELINE_SECTOR_MAP.get(sector, [])
     if not tickers:
@@ -9974,10 +9975,15 @@ def pipeline_refresh_sector():
     with get_db(commit=True) as (conn, cur):
         for ticker in existing:
             job_id = str(uuid.uuid4())
+            # Include per-ticker document config if available
+            ticker_doc_config = document_config.get(ticker, {})
+            steps_detail = {'generateTiers': generate_tiers}
+            if ticker_doc_config:
+                steps_detail['documentConfig'] = ticker_doc_config
             cur.execute('''
                 INSERT INTO research_pipeline_jobs (id, batch_id, ticker, job_type, status, progress, current_step, total_steps, steps_detail)
                 VALUES (%s, %s, %s, %s, 'queued', 0, 'Queued', %s, %s)
-            ''', (job_id, batch_id, ticker, job_type, total_steps, json.dumps({'generateTiers': generate_tiers})))
+            ''', (job_id, batch_id, ticker, job_type, total_steps, json.dumps(steps_detail)))
             jobs.append({'id': job_id, 'ticker': ticker, 'status': 'queued'})
 
     threading.Thread(target=_run_pipeline_batch, args=(batch_id, existing, job_type, api_key), daemon=True).start()

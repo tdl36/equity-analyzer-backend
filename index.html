@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-14T11';
+        const BUILD_VERSION = '2026-04-14T12';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -6087,7 +6087,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     const res = await fetch(`${API_URL}/api/pipeline/refresh-sector`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ sector, jobType: 'update', apiKey: apiKeySaved, generateTiers: pipelineTierMode }),
+                        body: JSON.stringify({ sector, jobType: 'update', apiKey: apiKeySaved, documentConfig: pipelineDocConfig, generateTiers: pipelineTierMode }),
                     });
                     if (res.ok) {
                         const data = await res.json();
