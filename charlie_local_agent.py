@@ -2095,6 +2095,39 @@ def process_scan_catalysts_job(job: dict) -> None:
         update_job_progress(job_id, "failed", "Failed", None, error=str(e))
 
 
+def _generate_source_provenance_local(client, source_names, synthesis_markdown, ticker, topic):
+    """Generate source provenance summary using Claude directly (local agent path)."""
+    if not source_names:
+        return None
+    try:
+        file_list = '\n'.join([f"- {name}" for name in source_names])
+        prompt = f"""You just produced a synthesis report for {ticker} on the topic "{topic}". Below are the source documents you had access to and the synthesis you wrote.
+
+SOURCE DOCUMENTS PROVIDED:
+{file_list}
+
+SYNTHESIS OUTPUT (first 3000 chars):
+{synthesis_markdown[:3000]}
+
+Now write a brief SOURCE PROVENANCE summary for the analyst's own reference. For each source document:
+1. State the document name
+2. Describe in 1-2 sentences what key information or data points from that document were used in the synthesis
+3. If a document was not materially used (e.g., duplicate content, irrelevant), note that
+
+Keep it concise and factual. Use markdown formatting with bullet points. This is an internal reference, not part of the analysis."""
+
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=2048,
+            system="You are an analyst documenting your research process. Be specific about which data points came from which sources.",
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return response.content[0].text
+    except Exception as e:
+        log.warning(f"Source provenance generation failed: {e}")
+        return f"Source provenance generation failed. {len(source_names)} files were provided: {', '.join(source_names)}"
+
+
 def process_synthesis_job(job: dict, api_key: str) -> None:
     """Process a catalyst synthesis job -- read local files, call Claude, upload result."""
     job_id = job.get("id", "")
@@ -2290,7 +2323,12 @@ Write the complete, updated synthesis report now. ZERO firm names, ALL first per
 
         log.info(f"Synthesis generated: {len(markdown)} chars")
 
-        update_job_progress(job_id, "running", "Uploading results...", 85)
+        # Generate source provenance
+        update_job_progress(job_id, "running", "Analyzing source contributions...", 80)
+        source_names = [sp['name'] for sp in source_parts]
+        provenance = _generate_source_provenance_local(client, source_names, markdown, ticker, topic)
+
+        update_job_progress(job_id, "running", "Uploading results...", 90)
 
         # Upload result to backend
         result_data = {
@@ -2298,6 +2336,8 @@ Write the complete, updated synthesis report now. ZERO firm names, ALL first per
             'topic': topic,
             'length': length,
             'fileCount': file_count,
+            'sourceFiles': source_names,
+            'sourceProvenance': provenance,
         }
 
         requests.post(

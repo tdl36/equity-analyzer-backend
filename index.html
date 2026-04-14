@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-14T01';
+        const BUILD_VERSION = '2026-04-14T02';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -20946,6 +20946,34 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                         <div className="prose prose-invert prose-sm max-w-none text-slate-300" dangerouslySetInnerHTML={{ __html: renderMarkdown(catalystActiveJob.result.markdown) }} />
                                                                     </div>
                                                                 </details>
+
+                                                                {/* Source Provenance */}
+                                                                {(catalystActiveJob.result?.sourceProvenance || catalystActiveJob.result?.sourceFiles) && (
+                                                                    <details className="mt-2 bg-blue-950/30 border border-blue-500/20 rounded-lg">
+                                                                        <summary className="px-3 py-2 cursor-pointer text-[10px] text-blue-400 uppercase tracking-wider font-semibold hover:text-blue-300 flex items-center justify-between">
+                                                                            <span>Source Provenance ({catalystActiveJob.result?.sourceFiles?.length || catalystActiveJob.result?.fileCount || '?'} documents)</span>
+                                                                            <span className="text-[9px] text-blue-500/60 font-normal">Internal reference only</span>
+                                                                        </summary>
+                                                                        <div className="px-3 pb-3 max-h-[400px] overflow-y-auto">
+                                                                            {catalystActiveJob.result?.sourceFiles && (
+                                                                                <div className="mb-2 pb-2 border-b border-blue-500/10">
+                                                                                    <div className="text-[9px] text-blue-400/60 uppercase tracking-wider mb-1">Documents Provided</div>
+                                                                                    <div className="space-y-0.5">
+                                                                                        {catalystActiveJob.result.sourceFiles.map((f, i) => (
+                                                                                            <div key={i} className="text-[11px] text-blue-300/80 font-mono">{i+1}. {f}</div>
+                                                                                        ))}
+                                                                                    </div>
+                                                                                </div>
+                                                                            )}
+                                                                            {catalystActiveJob.result?.sourceProvenance && (
+                                                                                <div>
+                                                                                    <div className="text-[9px] text-blue-400/60 uppercase tracking-wider mb-1">How Each Source Contributed</div>
+                                                                                    <div className="prose prose-invert prose-sm max-w-none text-blue-200/70 text-[11px]" dangerouslySetInnerHTML={{ __html: renderMarkdown(catalystActiveJob.result.sourceProvenance) }} />
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    </details>
+                                                                )}
 
                                                                 {/* Action Toolbar */}
                                                                 <div className="mt-3 flex items-center gap-1.5 flex-wrap bg-white/[0.03] border border-white/10 rounded-xl p-2">

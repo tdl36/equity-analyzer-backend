@@ -10919,6 +10919,39 @@ def save_catalyst_to_docs(job_id):
     return jsonify({'success': True, 'docId': doc_id})
 
 
+def _generate_source_provenance(source_names, synthesis_markdown, ticker, topic):
+    """Generate a source provenance summary explaining which documents contributed what to the synthesis."""
+    if not source_names:
+        return None
+    try:
+        file_list = '\n'.join([f"- {name}" for name in source_names])
+        prompt = f"""You just produced a synthesis report for {ticker} on the topic "{topic}". Below are the source documents you had access to and the synthesis you wrote.
+
+SOURCE DOCUMENTS PROVIDED:
+{file_list}
+
+SYNTHESIS OUTPUT (first 3000 chars):
+{synthesis_markdown[:3000]}
+
+Now write a brief SOURCE PROVENANCE summary for the analyst's own reference. For each source document:
+1. State the document name
+2. Describe in 1-2 sentences what key information or data points from that document were used in the synthesis
+3. If a document was not materially used (e.g., duplicate content, irrelevant), note that
+
+Keep it concise and factual. Use markdown formatting with bullet points. This is an internal reference, not part of the analysis."""
+
+        result = call_llm(
+            messages=[{"role": "user", "content": prompt}],
+            system="You are an analyst documenting your research process. Be specific about which data points came from which sources.",
+            tier="fast",
+            max_tokens=2048,
+        )
+        return result['text']
+    except Exception as e:
+        print(f"[source-provenance] Failed to generate: {e}")
+        return f"Source provenance generation failed. {len(source_names)} files were provided: {', '.join(source_names)}"
+
+
 def _run_catalyst_synthesis_backend(job_id, ticker, detail):
     """Backend-side catalyst synthesis when files are uploaded (no local agent needed)."""
     try:
@@ -10973,7 +11006,12 @@ def _run_catalyst_synthesis_backend(job_id, ticker, detail):
 
         markdown = result['text']
 
-        update_job('Generating Word document...', 80)
+        # Generate source provenance (separate from synthesis)
+        update_job('Analyzing source contributions...', 70)
+        source_names = [f.get('name', 'unnamed') for f in uploaded_files]
+        provenance = _generate_source_provenance(source_names, markdown, ticker, topic)
+
+        update_job('Generating Word document...', 85)
 
         docx_b64 = _generate_note_docx(ticker, topic, markdown, [])
 
@@ -10983,6 +11021,8 @@ def _run_catalyst_synthesis_backend(job_id, ticker, detail):
             'topic': topic,
             'length': length,
             'fileCount': len(uploaded_files),
+            'sourceFiles': source_names,
+            'sourceProvenance': provenance,
         }, status='complete')
 
         print(f"[catalyst-synthesis {job_id}] Complete: {ticker}/{topic}")
