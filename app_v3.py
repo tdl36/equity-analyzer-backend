@@ -10038,20 +10038,32 @@ def pipeline_documents(ticker):
                     'weight': 1.0,
                 })
 
-        # Cross-reference with documentHistory to show which docs were used in existing analysis
-        used_filenames = set()
+        # Cross-reference with documentHistory to show which docs were used in thesis
+        used_in_thesis = set()
         with get_db() as (_, cur):
             cur.execute('SELECT analysis FROM portfolio_analyses WHERE ticker = %s', (ticker,))
             pa_row = cur.fetchone()
         if pa_row and pa_row['analysis']:
             analysis = pa_row['analysis'] if isinstance(pa_row['analysis'], dict) else json.loads(pa_row['analysis'])
             for dh in analysis.get('documentHistory', []):
-                used_filenames.add(dh.get('filename', ''))
+                used_in_thesis.add(dh.get('filename', ''))
+
+        # Cross-reference with research_notes metadata to show which docs were used in notes
+        used_in_note = set()
+        with get_db() as (_, cur):
+            cur.execute('SELECT metadata FROM research_notes WHERE ticker = %s ORDER BY created_at DESC LIMIT 1', (ticker,))
+            note_row = cur.fetchone()
+        if note_row and note_row['metadata']:
+            meta = note_row['metadata'] if isinstance(note_row['metadata'], dict) else json.loads(note_row['metadata'] or '{}')
+            for fn in meta.get('documentFilenames', []):
+                used_in_note.add(fn)
 
         for doc in docs:
-            doc['usedInAnalysis'] = doc['filename'] in used_filenames
+            doc['usedInAnalysis'] = doc['filename'] in used_in_thesis
+            doc['usedInThesis'] = doc['filename'] in used_in_thesis
+            doc['usedInNote'] = doc['filename'] in used_in_note
 
-        return jsonify({'ticker': ticker, 'documents': docs, 'total': len(docs), 'usedCount': len(used_filenames)})
+        return jsonify({'ticker': ticker, 'documents': docs, 'total': len(docs), 'usedInThesisCount': len(used_in_thesis), 'usedInNoteCount': len(used_in_note)})
     except Exception as e:
         print(f'Error fetching pipeline documents for {ticker}: {e}')
         return jsonify({'error': str(e)}), 500
@@ -10524,6 +10536,7 @@ Return your response in this exact format:
                   json.dumps({
                       'mode': mode,
                       'documentsProcessed': len(docs),
+                      'documentFilenames': [d['filename'] for d in docs],
                       'provider': result.get('provider', ''),
                       'model': result.get('model', ''),
                       'charCount': len(note_md),

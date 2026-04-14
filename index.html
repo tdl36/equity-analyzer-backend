@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-14T12';
+        const BUILD_VERSION = '2026-04-14T13';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -6243,6 +6243,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             inCharlie: true,
                             inICloud: false,
                             usedInAnalysis: d.usedInAnalysis || false,
+                            usedInThesis: d.usedInThesis || false,
+                            usedInNote: d.usedInNote || false,
                             source: d.source,
                             charlieId: d.id,
                             fileSize: d.fileSize || 0,
@@ -6269,6 +6271,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 inCharlie: false,
                                 inICloud: true,
                                 usedInAnalysis: false,
+                                usedInThesis: false,
+                                usedInNote: false,
                                 source: null,
                                 charlieId: null,
                                 fileSize: f.size || 0,
@@ -20583,8 +20587,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                     <div className="flex-1 min-w-0">
                                                                                         <div className="text-[10px] font-medium truncate">{doc.filename}</div>
                                                                                         <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                                                                                            {doc.usedInAnalysis && <span className="text-[8px] px-1 py-0.5 rounded bg-green-500/20 text-green-400 font-medium">In Thesis</span>}
-                                                                                            {doc.inCharlie && !doc.usedInAnalysis && <span className="text-[8px] px-1 py-0.5 rounded bg-orange-500/20 text-orange-400 font-medium">New</span>}
+                                                                                            {doc.usedInThesis && doc.usedInNote && <span className="text-[8px] px-1 py-0.5 rounded bg-green-500/20 text-green-400 font-medium">Thesis + Note</span>}
+                                                                                            {doc.usedInThesis && !doc.usedInNote && <span className="text-[8px] px-1 py-0.5 rounded bg-green-500/20 text-green-400 font-medium">Thesis</span>}
+                                                                                            {!doc.usedInThesis && doc.usedInNote && <span className="text-[8px] px-1 py-0.5 rounded bg-blue-500/20 text-blue-400 font-medium">Note</span>}
+                                                                                            {doc.inCharlie && !doc.usedInThesis && !doc.usedInNote && <span className="text-[8px] px-1 py-0.5 rounded bg-orange-500/20 text-orange-400 font-medium">New</span>}
                                                                                             {!doc.inCharlie && doc.inICloud && <span className="text-[8px] px-1 py-0.5 rounded bg-cyan-500/20 text-cyan-400 font-medium">iCloud Only</span>}
                                                                                             <span className="text-[8px] text-slate-600">{doc.fileSize > 0 ? `${Math.round(doc.fileSize / 1024)}KB` : ''}</span>
                                                                                         </div>
