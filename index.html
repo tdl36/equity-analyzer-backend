@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-14T02';
+        const BUILD_VERSION = '2026-04-14T03';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -20908,9 +20908,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
                                                     {/* Synthesize button */}
                                                     <button onClick={startCatalystSynthesis}
-                                                        disabled={!catalystTicker || (!catalystTopic && !catalystUploadedFiles.length)}
+                                                        disabled={!catalystTicker || (!catalystTopic && !catalystUploadedFiles.length) || (catalystActiveJob && (catalystActiveJob.status === 'queued' || catalystActiveJob.status === 'running'))}
                                                         className="w-full py-2.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl transition-all">
-                                                        Synthesize
+                                                        {catalystActiveJob && catalystActiveJob.status === 'running' ? `Synthesizing... ${catalystActiveJob.progress || 0}%` :
+                                                         catalystActiveJob && catalystActiveJob.status === 'queued' ? 'Queued -- Waiting for Agent...' :
+                                                         'Synthesize'}
                                                     </button>
                                                 </div>
 
