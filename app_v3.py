@@ -10962,12 +10962,15 @@ def get_catalyst_pdf(job_id):
             if not in_table:
                 in_table = True
                 is_header_row = True
-                html_parts.append('<table width="100%" cellpadding="4" cellspacing="0" style="border-collapse: collapse; margin: 8px 0; font-size: 9pt;">')
+                table_col_count = len(cells)
+                font_size = '7pt' if table_col_count >= 7 else '8pt' if table_col_count >= 5 else '9pt'
+                col_width = f'{int(100 / max(table_col_count, 1))}%'
+                html_parts.append(f'<table width="100%" cellpadding="3" cellspacing="0" style="border-collapse: collapse; margin: 8px 0; font-size: {font_size}; word-wrap: break-word;">')
             if is_header_row:
-                html_parts.append('<tr>' + ''.join(f'<th style="border: 1px solid #999; background-color: #e8e8e8; padding: 4px 6px; font-weight: bold; text-align: left;">{_inline_fmt(c)}</th>' for c in cells) + '</tr>')
+                html_parts.append('<tr>' + ''.join(f'<th width="{col_width}" style="border: 1px solid #999; background-color: #e8e8e8; padding: 3px 4px; font-weight: bold; text-align: left;">{_inline_fmt(c)}</th>' for c in cells) + '</tr>')
                 is_header_row = False
             else:
-                html_parts.append('<tr>' + ''.join(f'<td style="border: 1px solid #ccc; padding: 4px 6px;">{_inline_fmt(c)}</td>' for c in cells) + '</tr>')
+                html_parts.append('<tr>' + ''.join(f'<td width="{col_width}" style="border: 1px solid #ccc; padding: 3px 4px;">{_inline_fmt(c)}</td>' for c in cells) + '</tr>')
             continue
         else:
             if in_table:
