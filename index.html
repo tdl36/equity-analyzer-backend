@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-16T02';
+        const BUILD_VERSION = '2026-04-16T03';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -21215,7 +21215,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                                                                                 body: JSON.stringify({ email: creds.email, subject: `${catalystActiveJob.ticker} -- ${detail.topic || 'Catalyst Synthesis'}`, content: catalystActiveJob.result.markdown, promptName: 'Catalyst Synthesis', ticker: catalystActiveJob.ticker, minimal: true, smtpConfig: { use_gmail: creds.useGmail, gmail_user: creds.gmailUser, gmail_app_password: creds.gmailPassword, from_email: creds.gmailUser } })
                                                                             });
-                                                                            if (res.ok) alert('Email sent!'); else { const err = await res.json(); alert('Failed: ' + (err.error || 'Unknown')); }
+                                                                            if (res.ok) alert('Email sent!'); else { let msg = `HTTP ${res.status}`; try { const err = await res.json(); msg = err.error || msg; } catch(x) {} alert('Failed: ' + msg); }
                                                                         } catch (e) { alert('Error: ' + e.message); }
                                                                     }} className="p-2 bg-amber-600/80 hover:bg-amber-600 rounded-lg" title="Quick Email">
                                                                         <Send className="w-4 h-4" />
