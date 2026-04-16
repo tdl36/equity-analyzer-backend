@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-14T13';
+        const BUILD_VERSION = '2026-04-16T01';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -1496,9 +1496,21 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
             // Google Sign-In button ref and effect (must be before any early returns)
             const googleBtnRef = React.useRef(null);
+            const [gsiReady, setGsiReady] = useState(!!window.google?.accounts?.id);
             React.useEffect(() => {
-                if (authToken || authLoading || !authClientId) return;
-                if (!googleBtnRef.current || !window.google?.accounts?.id) return;
+                if (gsiReady || authToken) return;
+                // Poll for GSI library to load (async script may not be ready yet)
+                const interval = setInterval(() => {
+                    if (window.google?.accounts?.id) {
+                        setGsiReady(true);
+                        clearInterval(interval);
+                    }
+                }, 200);
+                return () => clearInterval(interval);
+            }, [gsiReady, authToken]);
+            React.useEffect(() => {
+                if (authToken || authLoading || !authClientId || !gsiReady) return;
+                if (!googleBtnRef.current) return;
                 try {
                     window.google.accounts.id.initialize({
                         client_id: authClientId,
@@ -1514,7 +1526,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         shape: 'rectangular',
                     });
                 } catch(e) { console.warn('GSI render failed:', e); }
-            }, [authToken, authLoading, authClientId, handleSignIn]);
+            }, [authToken, authLoading, authClientId, gsiReady, handleSignIn]);
 
             // (Login screen is rendered conditionally in the main return JSX — no early returns to avoid hooks ordering issues)
 
