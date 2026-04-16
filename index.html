@@ -79,7 +79,7 @@
             new Promise(resolve => setTimeout(() => { window.pdfjsLib = null; resolve(); }, 8000))
         ]).catch(() => { window.pdfjsLib = null; });
     </script>
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://accounts.google.com/gsi/client"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-16T03';
+        const BUILD_VERSION = '2026-04-16T04';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -11512,6 +11512,15 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 {authClientId ? (
                                     <div>
                                         <div ref={googleBtnRef}></div>
+                                        {!gsiReady && (
+                                            <p className="text-[10px] text-slate-500 mt-2 animate-pulse">Loading Google Sign-In...</p>
+                                        )}
+                                        {gsiReady && googleBtnRef.current && !googleBtnRef.current.innerHTML && (
+                                            <button onClick={() => window.location.reload()}
+                                                className="mt-3 px-4 py-2 text-xs bg-amber-600 hover:bg-amber-500 text-white rounded-lg">
+                                                Retry Sign-In
+                                            </button>
+                                        )}
                                     </div>
                                 ) : (
                                     <div className="space-y-3">
