@@ -2156,10 +2156,11 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
         if not topic_dir.exists():
             raise FileNotFoundError(f"Folder not found: {topic_dir}")
 
+        excluded_files = set(steps_detail.get('excludedFiles', []))
         source_parts = []
         file_count = 0
         for fpath in sorted(topic_dir.iterdir()):
-            if fpath.is_file() and not fpath.name.startswith('.'):
+            if fpath.is_file() and not fpath.name.startswith('.') and fpath.name not in excluded_files:
                 file_count += 1
                 ext = fpath.suffix.lower()
                 try:

@@ -10828,12 +10828,15 @@ def start_catalyst_synthesis():
     if length not in CATALYST_LENGTH_PRESETS:
         length = 'standard'
 
+    excluded_files = data.get('excludedFiles', [])
+
     job_id = str(uuid.uuid4())
     job_detail = {
         'topic': topic,
         'length': length,
         'customInstructions': custom_instructions,
         'uploadedFiles': uploaded_files,  # base64 file data included for upload path
+        'excludedFiles': excluded_files,
     }
 
     with get_db(commit=True) as (conn, cur):
