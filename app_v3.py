@@ -11640,6 +11640,11 @@ def email_research():
         except:
             content_html = f"<pre style='white-space: pre-wrap;'>{content}</pre>"
 
+        # Inject inline styles on table elements for email client compatibility
+        content_html = content_html.replace('<table>', '<table style="border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 13px;">')
+        content_html = content_html.replace('<th>', '<th style="border: 1px solid #999; background-color: #e8e8e8; padding: 6px 8px; font-weight: bold; text-align: left;">')
+        content_html = content_html.replace('<td>', '<td style="border: 1px solid #ccc; padding: 6px 8px;">')
+
         # Build charts HTML if provided (using cid: references for email embedding)
         charts_html = ''
         chart_attachments = []  # list of (cid, base64_data)
@@ -11668,6 +11673,9 @@ def email_research():
                 strong {{ color: #1e293b; }}
                 hr {{ border: none; border-top: 1px solid #e2e8f0; margin: 1.5em 0; }}
                 img {{ max-width: 100%; height: auto; }}
+                table {{ border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 13px; }}
+                th {{ border: 1px solid #999; background-color: #e8e8e8; padding: 6px 8px; font-weight: bold; text-align: left; }}
+                td {{ border: 1px solid #ccc; padding: 6px 8px; }}
             </style>
         </head>
         <body>
