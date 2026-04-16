@@ -10938,32 +10938,59 @@ def get_catalyst_pdf(job_id):
     lines = markdown.split('\n')
     html_parts = []
     in_list = False
+    in_table = False
+    is_header_row = True
+
+    def _inline_fmt(text):
+        text = _re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', text)
+        text = _re.sub(r'\*(.*?)\*', r'<i>\1</i>', text)
+        return text
+
     for line in lines:
         line = line.rstrip()
+
+        # Table detection: lines starting and ending with |
+        if line.strip().startswith('|') and line.strip().endswith('|'):
+            if in_list: html_parts.append('</ul>'); in_list = False
+            # Skip separator rows (|---|---|)
+            if _re.match(r'^\|[\s\-:|]+\|$', line.strip()):
+                continue
+            cells = [c.strip() for c in line.strip().strip('|').split('|')]
+            if not in_table:
+                in_table = True
+                is_header_row = True
+                html_parts.append('<table width="100%" cellpadding="4" cellspacing="0" style="border-collapse: collapse; margin: 8px 0; font-size: 9pt;">')
+            if is_header_row:
+                html_parts.append('<tr>' + ''.join(f'<th style="border: 1px solid #999; background-color: #e8e8e8; padding: 4px 6px; font-weight: bold; text-align: left;">{_inline_fmt(c)}</th>' for c in cells) + '</tr>')
+                is_header_row = False
+            else:
+                html_parts.append('<tr>' + ''.join(f'<td style="border: 1px solid #ccc; padding: 4px 6px;">{_inline_fmt(c)}</td>' for c in cells) + '</tr>')
+            continue
+        else:
+            if in_table:
+                html_parts.append('</table>')
+                in_table = False
+
         if line.startswith('### '):
             if in_list: html_parts.append('</ul>'); in_list = False
-            html_parts.append(f'<h3>{_re.sub(r"\*\*(.*?)\*\*", r"<b>\\1</b>", line[4:])}</h3>')
+            html_parts.append(f'<h3>{_inline_fmt(line[4:])}</h3>')
         elif line.startswith('## '):
             if in_list: html_parts.append('</ul>'); in_list = False
-            html_parts.append(f'<h2>{_re.sub(r"\*\*(.*?)\*\*", r"<b>\\1</b>", line[3:])}</h2>')
+            html_parts.append(f'<h2>{_inline_fmt(line[3:])}</h2>')
         elif line.startswith('# '):
             if in_list: html_parts.append('</ul>'); in_list = False
-            html_parts.append(f'<h1>{_re.sub(r"\*\*(.*?)\*\*", r"<b>\\1</b>", line[2:])}</h1>')
+            html_parts.append(f'<h1>{_inline_fmt(line[2:])}</h1>')
         elif line.startswith('- ') or line.startswith('* '):
             if not in_list: html_parts.append('<ul>'); in_list = True
-            item = _re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', line[2:])
-            item = _re.sub(r'\*(.*?)\*', r'<i>\1</i>', item)
-            html_parts.append(f'<li>{item}</li>')
+            html_parts.append(f'<li>{_inline_fmt(line[2:])}</li>')
         elif line.strip() == '':
             if in_list: html_parts.append('</ul>'); in_list = False
-            # Skip blank lines — paragraph margins handle spacing
             continue
         else:
             if in_list: html_parts.append('</ul>'); in_list = False
-            line = _re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', line)
-            line = _re.sub(r'\*(.*?)\*', r'<i>\1</i>', line)
-            html_parts.append(f'<p>{line}</p>')
+            html_parts.append(f'<p>{_inline_fmt(line)}</p>')
     if in_list: html_parts.append('</ul>')
+    if in_table: html_parts.append('</table>')
 
     body_html = '\n'.join(html_parts)
     full_html = f"""<html><head><style>
