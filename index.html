@@ -79,7 +79,15 @@
             new Promise(resolve => setTimeout(() => { window.pdfjsLib = null; resolve(); }, 8000))
         ]).catch(() => { window.pdfjsLib = null; });
     </script>
-    <script src="https://accounts.google.com/gsi/client"></script>
+    <script>
+        // Load Google Sign-In library with onload callback
+        window._gsiLoaded = false;
+        window._onGsiLoad = function() { window._gsiLoaded = true; };
+        var s = document.createElement('script');
+        s.src = 'https://accounts.google.com/gsi/client';
+        s.onload = window._onGsiLoad;
+        document.head.appendChild(s);
+    </script>
     <script>
         tailwind.config = {
             theme: {
@@ -278,7 +286,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-16T04';
+        const BUILD_VERSION = '2026-04-17T01';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -1499,13 +1507,17 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [gsiReady, setGsiReady] = useState(!!window.google?.accounts?.id);
             React.useEffect(() => {
                 if (gsiReady || authToken) return;
-                // Poll for GSI library to load (async script may not be ready yet)
+                // Check immediately, then poll
+                if (window.google?.accounts?.id) { setGsiReady(true); return; }
                 const interval = setInterval(() => {
-                    if (window.google?.accounts?.id) {
+                    if (window.google?.accounts?.id || window._gsiLoaded) {
                         setGsiReady(true);
                         clearInterval(interval);
                     }
-                }, 200);
+                }, 300);
+                // Also listen for the onload callback
+                const origCb = window._onGsiLoad;
+                window._onGsiLoad = function() { origCb?.(); setGsiReady(true); };
                 return () => clearInterval(interval);
             }, [gsiReady, authToken]);
             React.useEffect(() => {
