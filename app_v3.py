@@ -5226,8 +5226,17 @@ def email_analyses_bulk():
                 analysis['threats'] = tier_data.get('threats', analysis.get('threats', []))
 
             thesis = analysis.get('thesis', {})
+            if isinstance(thesis, str):
+                try: thesis = json.loads(thesis)
+                except: thesis = {'summary': thesis}
             signposts = analysis.get('signposts', [])
+            if isinstance(signposts, str):
+                try: signposts = json.loads(signposts)
+                except: signposts = []
             threats = analysis.get('threats', [])
+            if isinstance(threats, str):
+                try: threats = json.loads(threats)
+                except: threats = []
 
             if idx > 0:
                 html_body += '<hr style="border:none;border-top:2px solid #ccc;margin:30px 0;"/>'
