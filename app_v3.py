@@ -5221,14 +5221,21 @@ def email_analyses_bulk():
             # Overlay tier data if available
             if thesis_tier in ('full', 'condensed') and ticker in tier_map:
                 tier_data = tier_map[ticker]
-                analysis['thesis'] = tier_data.get('thesis', analysis.get('thesis', {}))
-                analysis['signposts'] = tier_data.get('signposts', analysis.get('signposts', []))
-                analysis['threats'] = tier_data.get('threats', analysis.get('threats', []))
+                if isinstance(tier_data, str):
+                    try: tier_data = json.loads(tier_data)
+                    except: tier_data = {}
+                if isinstance(tier_data, dict):
+                    analysis['thesis'] = tier_data.get('thesis', analysis.get('thesis', {}))
+                    analysis['signposts'] = tier_data.get('signposts', analysis.get('signposts', []))
+                    analysis['threats'] = tier_data.get('threats', analysis.get('threats', []))
 
-            thesis = analysis.get('thesis', {})
-            if isinstance(thesis, str):
-                try: thesis = json.loads(thesis)
-                except: thesis = {'summary': thesis}
+            def _ensure_dict(val, fallback_key=None):
+                if isinstance(val, str):
+                    try: return json.loads(val)
+                    except: return {fallback_key: val} if fallback_key else {}
+                return val if isinstance(val, (dict, list)) else {}
+
+            thesis = _ensure_dict(analysis.get('thesis', {}), 'summary')
             signposts = analysis.get('signposts', [])
             if isinstance(signposts, str):
                 try: signposts = json.loads(signposts)
@@ -5252,6 +5259,7 @@ def email_analyses_bulk():
                 if thesis.get('pillars'):
                     html_body += '<ul style="margin-left: 20px;">'
                     for pillar in thesis['pillars']:
+                        if isinstance(pillar, str): pillar = {'pillar': pillar}
                         t = pillar.get('pillar', pillar.get('title', ''))
                         d = pillar.get('detail', pillar.get('description', ''))
                         html_body += f'<li style="margin-bottom: 8px;"><strong>{t}:</strong> {d}</li>'
@@ -5263,6 +5271,7 @@ def email_analyses_bulk():
                 html_body += '<h2 style="color: #2c5282; margin-top: 25px;">2. Signposts (What We\'re Watching)</h2><ul style="margin-left: 20px;">'
                 plain_text += "2. SIGNPOSTS\n"
                 for sp in signposts:
+                    if isinstance(sp, str): sp = {'metric': sp}
                     m = sp.get('metric', sp.get('signpost', ''))
                     tgt = sp.get('target', '')
                     tf = sp.get('timeframe', '')
@@ -5279,6 +5288,7 @@ def email_analyses_bulk():
                 html_body += '<h2 style="color: #2c5282; margin-top: 25px;">3. Thesis Threats (Where We Can Be Wrong)</h2><ul style="margin-left: 20px;">'
                 plain_text += "3. THESIS THREATS\n"
                 for threat in threats:
+                    if isinstance(threat, str): threat = {'threat': threat}
                     td = threat.get('threat', '')
                     triggers = threat.get('triggerPoints', '')
                     html_body += f'<li style="margin-bottom: 10px;"><strong>{td}</strong>'
