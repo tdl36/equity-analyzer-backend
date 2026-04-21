@@ -286,7 +286,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-17T01';
+        const BUILD_VERSION = '2026-04-21T01';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -2024,8 +2024,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
             
             // Load chat histories on mount
             useEffect(() => {
+                if (!authToken || authLoading) return;
                 loadChatHistories();
-            }, []);
+            }, [authToken, authLoading]);
             
             // Summary Notes state
             const [savedSummaries, setSavedSummaries] = useState([]);
@@ -4516,17 +4517,19 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 return researchAnalyses.filter(a => a.documentId === docId);
             };
             
-            // Load research data on mount
+            // Load research data once auth is ready
             useEffect(() => {
+                if (!authToken || authLoading) return;
                 loadResearchData();
-            }, []);
-            
+            }, [authToken, authLoading]);
+
             // ========== END RESEARCH FUNCTIONS ==========
-            
-            // Load summaries on mount
+
+            // Load summaries once auth is ready
             useEffect(() => {
+                if (!authToken || authLoading) return;
                 loadSummaries();
-            }, []);
+            }, [authToken, authLoading]);
             
             // Click outside handler for summary search
             useEffect(() => {
@@ -5614,6 +5617,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
             }, []);
 
             useEffect(() => {
+                if (!authToken || authLoading) return;
                 loadSavedAnalyses();
 
                 // Check if we already have a saved key locally
@@ -5696,8 +5700,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 } catch(e) {
                     loadFromBackend();
                 }
-            }, []);
-            
+            }, [authToken, authLoading]);
+
             // Reconnect to background analysis job on mount
             useEffect(() => {
                 try {
