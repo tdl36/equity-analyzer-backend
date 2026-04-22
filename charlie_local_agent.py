@@ -1989,6 +1989,7 @@ def process_note_job(job: dict, api_key: str) -> None:
 # ---------------------------------------------------------------------------
 
 CATALYSTS_DIR = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/CATALYSTS"
+SUMMARIES_DIR = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/SUMMARIES"
 
 CATALYST_SYNTHESIS_PROMPT = """You are a senior equity research analyst writing a PROPRIETARY synthesis report for your portfolio manager. This must read as YOUR OWN original work product.
 
@@ -2044,6 +2045,9 @@ def ensure_catalyst_folders():
     for ticker in all_tickers:
         (CATALYSTS_DIR / ticker).mkdir(exist_ok=True)
     log.info(f"Catalyst folders scaffolded for {len(all_tickers)} tickers in {CATALYSTS_DIR}")
+    # Also scaffold SUMMARIES folder for audio auto-processing
+    SUMMARIES_DIR.mkdir(parents=True, exist_ok=True)
+    (SUMMARIES_DIR / "Processed").mkdir(exist_ok=True)
 
 
 def scan_catalyst_topics(ticker: str) -> list[dict]:
@@ -2158,6 +2162,64 @@ def check_for_new_files():
             pass  # iCloud folder not accessible
     if alerts_created:
         log.info(f"Created {alerts_created} new file alert(s)")
+
+
+_known_audio_files = set()
+_audio_initialized = False
+AUDIO_EXTS = {'.mp3', '.mp4', '.m4a', '.wav', '.webm', '.ogg', '.flac'}
+
+def check_for_new_audio():
+    """Scan SUMMARIES/ folder for new audio files, auto-process them."""
+    global _known_audio_files, _audio_initialized
+    if not SUMMARIES_DIR.exists():
+        return
+    try:
+        current_files = set()
+        for f in SUMMARIES_DIR.iterdir():
+            if f.is_file() and not f.name.startswith('.') and f.suffix.lower() in AUDIO_EXTS:
+                current_files.add(f.name)
+
+        if not _audio_initialized:
+            _known_audio_files = current_files
+            _audio_initialized = True
+            return
+
+        new_files = current_files - _known_audio_files
+        if not new_files:
+            return
+
+        _known_audio_files = current_files
+        for fname in new_files:
+            fpath = SUMMARIES_DIR / fname
+            log.info(f"New audio file detected: {fname}, auto-processing...")
+            try:
+                with open(fpath, 'rb') as af:
+                    file_data = af.read()
+                # Upload to backend auto-process endpoint
+                res = requests.post(
+                    f"{CHARLIE_API}/api/auto-process-audio",
+                    files={'file': (fname, file_data)},
+                    data={'detailLevel': 'standard'},
+                    headers={'Authorization': f'ApiKey {os.environ.get("CHARLIE_API_KEY", "")}'},
+                    timeout=30,
+                )
+                if res.ok:
+                    data = res.json()
+                    log.info(f"Audio auto-process started: {fname} (job {data.get('jobId', '?')})")
+                    # Move to Processed/
+                    processed_dir = SUMMARIES_DIR / "Processed"
+                    processed_dir.mkdir(exist_ok=True)
+                    try:
+                        fpath.rename(processed_dir / fname)
+                        log.info(f"Moved {fname} to Processed/")
+                    except Exception as e:
+                        log.warning(f"Could not move {fname} to Processed/: {e}")
+                else:
+                    log.warning(f"Audio auto-process failed for {fname}: {res.status_code}")
+            except Exception as e:
+                log.warning(f"Error auto-processing audio {fname}: {e}")
+    except PermissionError:
+        pass
 
 
 def process_scan_catalysts_job(job: dict) -> None:
@@ -2577,6 +2639,7 @@ def main() -> None:
                     push_file_manifest()
                     process_pending_syncs()
                     check_for_new_files()
+                    check_for_new_audio()
                     last_manifest_push = now
                     log.debug("File manifest pushed")
                 except Exception as e:

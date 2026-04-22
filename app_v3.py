@@ -4510,6 +4510,126 @@ def transcribe_audio():
         return jsonify({'error': f'Failed to start transcription: {str(e)}'}), 500
 
 
+@app.route('/api/auto-process-audio', methods=['POST'])
+def auto_process_audio():
+    """Auto-process audio: transcribe + summarize + save. Used by local agent for iCloud auto-detection."""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No audio file provided'}), 400
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+
+        gemini_api_key = os.environ.get('GEMINI_API_KEY', '') or request.form.get('geminiApiKey', '')
+        if not gemini_api_key:
+            return jsonify({'error': 'Gemini API key required'}), 400
+
+        allowed_extensions = ('.mp3', '.mp4', '.mpeg', '.mpga', '.m4a', '.wav', '.webm', '.ogg', '.flac')
+        if not file.filename.lower().endswith(allowed_extensions):
+            return jsonify({'error': f'Unsupported audio format'}), 400
+
+        file_content = file.read()
+        filename = file.filename
+        detail_level = request.form.get('detailLevel', 'standard')
+        anthropic_api_key = request.form.get('apiKey', '') or os.environ.get('ANTHROPIC_API_KEY', '')
+
+        mime_map = {'.mp3': 'audio/mpeg', '.mp4': 'audio/mp4', '.m4a': 'audio/mp4', '.wav': 'audio/wav', '.webm': 'audio/webm', '.ogg': 'audio/ogg', '.flac': 'audio/flac'}
+        file_ext = '.' + filename.lower().rsplit('.', 1)[-1]
+        mime_type = mime_map.get(file_ext, 'audio/mpeg')
+
+        job_id = str(uuid.uuid4())[:8]
+        _transcription_jobs[job_id] = {'status': 'starting', 'filename': filename, 'autoProcess': True}
+
+        thread = threading.Thread(
+            target=_run_auto_process_audio,
+            args=(job_id, file_content, filename, mime_type, gemini_api_key, anthropic_api_key, detail_level),
+            daemon=True
+        )
+        thread.start()
+
+        print(f"[auto-audio {job_id}] Started for {filename}")
+        return jsonify({'success': True, 'jobId': job_id, 'filename': filename})
+    except Exception as e:
+        print(f"Error auto-processing audio: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+def _run_auto_process_audio(job_id, file_content, filename, mime_type, gemini_api_key, anthropic_api_key, detail_level):
+    """Background: transcribe audio, generate summary, save to DB, create alert."""
+    try:
+        # Step 1: Transcribe (reuse existing function)
+        _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key, '', anthropic_api_key)
+
+        job = _transcription_jobs.get(job_id, {})
+        transcript = job.get('transcript', '')
+        if not transcript:
+            print(f"[auto-audio {job_id}] Transcription failed or empty")
+            return
+
+        # Step 2: Generate summary
+        _transcription_jobs[job_id]['status'] = 'summarizing'
+        print(f"[auto-audio {job_id}] Transcription done ({len(transcript)} chars), generating summary...")
+
+        html_format = """OUTPUT FORMAT — Return raw HTML. No markdown. No code fences.
+Use: <h2>Section Title</h2>, <p><strong>Topic:</strong> Description.</p>, <ul><li>Sub-point</li></ul>"""
+
+        summary_instruction = f"""Generate a clear, well-structured summary of the following transcript.
+Include key points, decisions, action items, and important details.
+{html_format}"""
+
+        if detail_level == 'concise':
+            summary_instruction = f"""Generate a SHORT, CONCISE summary. Maximum 300-500 words. Only critical takeaways.
+{html_format}"""
+        elif detail_level == 'detailed':
+            summary_instruction = f"""Generate an EXTREMELY DETAILED summary. Preserve all content, numbers, quotes.
+{html_format}"""
+
+        keys = _get_api_keys(anthropic_api_key=anthropic_api_key, gemini_api_key=gemini_api_key)
+        summary_result = call_llm(
+            messages=[{"role": "user", "content": f"{summary_instruction}\n\nTRANSCRIPT:\n{transcript[:50000]}"}],
+            system="You are a meeting notes analyst. Generate structured HTML summaries.",
+            tier="standard",
+            max_tokens=8192,
+        )
+        summary_html = summary_result.get('text', '')
+
+        questions_result = call_llm(
+            messages=[{"role": "user", "content": f"Based on this transcript, generate 3-5 key follow-up questions.\nReturn raw HTML: <ol><li>Question?</li></ol>\n\nTRANSCRIPT:\n{transcript[:20000]}"}],
+            system="Generate insightful follow-up questions.",
+            tier="fast",
+            max_tokens=2048,
+        )
+        questions_html = questions_result.get('text', '')
+
+        # Step 3: Save to DB
+        title = os.path.splitext(filename)[0].replace('_', ' ').replace('-', ' ')
+        summary_id = str(uuid.uuid4())
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('''
+                INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, source_type, doc_type, created_at)
+                VALUES (%s, %s, %s, %s, %s, 'audio_recording', 'audio_recording', NOW())
+            ''', (summary_id, title, transcript, summary_html, questions_html))
+
+        # Step 4: Create alert
+        with get_db(commit=True) as (conn, cur):
+            alert_id = str(uuid.uuid4())
+            cur.execute('''
+                INSERT INTO agent_alerts (id, alert_type, ticker, title, detail, status, created_at)
+                VALUES (%s, 'audio_summary', '', %s, %s, 'new', NOW())
+            ''', (alert_id, f'Summary generated: {title}',
+                  json.dumps({'filename': filename, 'summaryId': summary_id, 'detailLevel': detail_level, 'transcriptLength': len(transcript)})))
+
+        _transcription_jobs[job_id]['status'] = 'complete'
+        _transcription_jobs[job_id]['summaryId'] = summary_id
+        print(f"[auto-audio {job_id}] Complete: {title} saved as {summary_id}")
+
+    except Exception as e:
+        print(f"[auto-audio {job_id}] Failed: {e}")
+        import traceback; traceback.print_exc()
+        _transcription_jobs[job_id]['status'] = 'error'
+        _transcription_jobs[job_id]['error'] = str(e)
+
+
 @app.route('/api/transcribe-audio/<job_id>', methods=['GET'])
 def transcribe_audio_status(job_id):
     """Poll for transcription job status."""
