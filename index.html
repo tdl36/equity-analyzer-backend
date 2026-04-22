@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-22T02';
+        const BUILD_VERSION = '2026-04-22T03';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -22204,14 +22204,17 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     : 'bg-white/5 hover:bg-white/10 border border-transparent'
                                             }`}
                                         >
-                                            <Bell className="w-5 h-5 text-amber-400" />
-                                            <div className="text-left flex-1">
-                                                <div className="font-medium">Alerts</div>
+                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center relative ${activeTab === 'alerts' ? 'bg-amber-600' : 'bg-white/10'}`}>
+                                                <Bell className="w-5 h-5" />
+                                                {alertBadgeCount > 0 && (
+                                                    <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center">{alertBadgeCount > 9 ? '9+' : alertBadgeCount}</span>
+                                                )}
+                                            </div>
+                                            <div className="text-left">
+                                                <div className="font-semibold">Alerts</div>
                                                 <div className="text-xs text-slate-400">Agent notifications</div>
                                             </div>
-                                            {alertBadgeCount > 0 && (
-                                                <span className="px-2 py-0.5 rounded-full bg-red-500 text-white text-[10px] font-bold">{alertBadgeCount}</span>
-                                            )}
+                                            <ChevronRight className="w-5 h-5 text-slate-500 ml-auto" />
                                         </button>
                                         <button
                                             onClick={() => {
