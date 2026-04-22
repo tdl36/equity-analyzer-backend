@@ -79,15 +79,7 @@
             new Promise(resolve => setTimeout(() => { window.pdfjsLib = null; resolve(); }, 8000))
         ]).catch(() => { window.pdfjsLib = null; });
     </script>
-    <script>
-        // Load Google Sign-In library with onload callback
-        window._gsiLoaded = false;
-        window._onGsiLoad = function() { window._gsiLoaded = true; };
-        var s = document.createElement('script');
-        s.src = 'https://accounts.google.com/gsi/client';
-        s.onload = window._onGsiLoad;
-        document.head.appendChild(s);
-    </script>
+    <!-- Google Sign-In removed — using password auth -->
     <script>
         tailwind.config = {
             theme: {
@@ -286,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-21T02';
+        const BUILD_VERSION = '2026-04-22T01';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -1445,102 +1437,63 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [authLoading, setAuthLoading] = useState(true);
             const [authError, setAuthError] = useState('');
 
-            const handleSignIn = React.useCallback((credentialResponse) => {
-                const token = credentialResponse.credential;
-                if (!token) { setAuthError('Sign-in failed — no credential received'); return; }
-                // Decode JWT to get email (payload is second segment)
+            const [loginPassword, setLoginPassword] = useState('');
+            const [loginSubmitting, setLoginSubmitting] = useState(false);
+
+            const handlePasswordLogin = React.useCallback(async () => {
+                if (!loginPassword.trim()) return;
+                setLoginSubmitting(true);
+                setAuthError('');
                 try {
-                    const payload = JSON.parse(atob(token.split('.')[1]));
-                    const email = payload.email || '';
-                    setAuthToken(token);
-                    setAuthTokenState(token);
-                    localStorage.setItem('charlie_auth_email', email);
-                    setAuthEmail(email);
-                    setAuthError('');
-                } catch(e) { setAuthError('Failed to parse sign-in token'); }
-            }, []);
+                    const res = await _originalFetch(`${API_URL || DIRECT_API_URL}/api/auth/login`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ password: loginPassword }),
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        setAuthToken(data.token);
+                        setAuthTokenState(data.token);
+                        setAuthError('');
+                        setLoginPassword('');
+                    } else {
+                        setAuthError('Incorrect password');
+                    }
+                } catch (e) {
+                    setAuthError('Connection failed. Try again.');
+                } finally {
+                    setLoginSubmitting(false);
+                }
+            }, [loginPassword]);
 
             const handleSignOut = React.useCallback(() => {
                 clearAuthToken();
                 setAuthTokenState('');
                 setAuthEmail('');
-                // Revoke Google session
-                if (window.google?.accounts?.id) {
-                    window.google.accounts.id.disableAutoSelect();
-                }
             }, []);
 
-            const [authClientId, setAuthClientId] = useState(() => localStorage.getItem('google_oauth_client_id') || '');
-
-            // Fetch Google client ID from backend (public endpoint) and verify existing token
+            // Verify existing token on load
             React.useEffect(() => {
-                // Fetch client ID for login screen
-                _originalFetch(`${API_URL || DIRECT_API_URL}/api/auth/config`)
-                    .then(r => r.ok ? r.json() : {})
-                    .then(data => {
-                        if (data.googleClientId) {
-                            setAuthClientId(data.googleClientId);
-                            localStorage.setItem('google_oauth_client_id', data.googleClientId);
-                        }
-                    })
-                    .catch(() => {});
-
-                // Verify existing token
                 const token = getAuthToken();
                 if (!token) { setAuthLoading(false); return; }
-                fetch(`${API_URL}/api/settings`)
+                _originalFetch(`${API_URL || DIRECT_API_URL}/api/auth/config`)
+                    .then(r => {
+                        if (r.ok) {
+                            // Token works (wasn't rejected by before_request)
+                            // Actually auth/config is exempt, so verify with a real endpoint
+                            return fetch(`${API_URL}/api/settings`);
+                        }
+                        throw new Error('unreachable');
+                    })
                     .then(res => {
-                        if (res.status === 401 || res.status === 403) {
+                        if (res.status === 401) {
                             clearAuthToken();
                             setAuthTokenState('');
-                            setAuthEmail('');
                         }
                         setAuthLoading(false);
                     })
                     .catch(() => setAuthLoading(false));
             }, []);
-
-            // (Google Sign-In initialization is handled in the login screen useEffect below)
-
-            // Google Sign-In button ref and effect (must be before any early returns)
-            const googleBtnRef = React.useRef(null);
-            const [gsiReady, setGsiReady] = useState(!!window.google?.accounts?.id);
-            React.useEffect(() => {
-                if (gsiReady || authToken) return;
-                // Check immediately, then poll
-                if (window.google?.accounts?.id) { setGsiReady(true); return; }
-                const interval = setInterval(() => {
-                    if (window.google?.accounts?.id || window._gsiLoaded) {
-                        setGsiReady(true);
-                        clearInterval(interval);
-                    }
-                }, 300);
-                // Also listen for the onload callback
-                const origCb = window._onGsiLoad;
-                window._onGsiLoad = function() { origCb?.(); setGsiReady(true); };
-                return () => clearInterval(interval);
-            }, [gsiReady, authToken]);
-            React.useEffect(() => {
-                if (authToken || authLoading || !authClientId || !gsiReady) return;
-                if (!googleBtnRef.current) return;
-                try {
-                    window.google.accounts.id.initialize({
-                        client_id: authClientId,
-                        callback: handleSignIn,
-                        auto_select: true,
-                    });
-                    googleBtnRef.current.innerHTML = '';
-                    window.google.accounts.id.renderButton(googleBtnRef.current, {
-                        theme: 'filled_black',
-                        size: 'large',
-                        width: 280,
-                        text: 'signin_with',
-                        shape: 'rectangular',
-                    });
-                } catch(e) { console.warn('GSI render failed:', e); }
-            }, [authToken, authLoading, authClientId, gsiReady, handleSignIn]);
-
-            // (Login screen is rendered conditionally in the main return JSX — no early returns to avoid hooks ordering issues)
 
             // Generic fetch-with-retry for background resilience (no UI side-effects unlike the overview fetchWithRetry)
             const fetchRetry = async (url, opts, retries = 2) => {
@@ -11529,42 +11482,32 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     {/* Login Screen */}
                     {!authLoading && !authToken && (
                         <div className="fixed inset-0 z-[200] min-h-screen bg-[#0f0f0f] flex items-center justify-center p-4">
-                            <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-8 max-w-sm w-full text-center space-y-6">
+                            <div className="max-w-sm w-full text-center space-y-8">
                                 <div>
-                                    <h1 className="text-2xl font-bold text-white tracking-tight">Charlie</h1>
-                                    <p className="text-xs text-slate-500 mt-1">Equity Research Platform</p>
+                                    <h1 className="text-4xl font-bold text-amber-500 tracking-tight" style={{fontFamily: 'Georgia, serif'}}>CHARLIE</h1>
+                                    <p className="text-xs text-slate-500 mt-2 tracking-widest uppercase">Equity Research Platform</p>
+                                </div>
+                                <div className="space-y-3">
+                                    <input
+                                        type="password"
+                                        placeholder="Password"
+                                        value={loginPassword}
+                                        onChange={e => setLoginPassword(e.target.value)}
+                                        onKeyDown={e => { if (e.key === 'Enter') handlePasswordLogin(); }}
+                                        autoFocus
+                                        className="w-full bg-transparent border border-white/20 rounded-none px-4 py-3 text-sm text-white text-center placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors"
+                                    />
+                                    <button
+                                        onClick={handlePasswordLogin}
+                                        disabled={loginSubmitting || !loginPassword.trim()}
+                                        className="w-full py-3 bg-white text-black text-sm font-semibold tracking-widest uppercase hover:bg-amber-500 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                                    >
+                                        {loginSubmitting ? 'Verifying...' : 'ENTER'}
+                                    </button>
                                 </div>
                                 {authError && (
-                                    <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-xs text-red-400">{authError}</div>
+                                    <p className="text-xs text-red-400">{authError}</p>
                                 )}
-                                {authClientId ? (
-                                    <div>
-                                        <div ref={googleBtnRef}></div>
-                                        {!gsiReady && (
-                                            <p className="text-[10px] text-slate-500 mt-2 animate-pulse">Loading Google Sign-In...</p>
-                                        )}
-                                        {gsiReady && googleBtnRef.current && !googleBtnRef.current.innerHTML && (
-                                            <button onClick={() => window.location.reload()}
-                                                className="mt-3 px-4 py-2 text-xs bg-amber-600 hover:bg-amber-500 text-white rounded-lg">
-                                                Retry Sign-In
-                                            </button>
-                                        )}
-                                    </div>
-                                ) : (
-                                    <div className="space-y-3">
-                                        <p className="text-xs text-slate-400">Enter your Google OAuth Client ID to enable sign-in.</p>
-                                        <input type="text" placeholder="Google OAuth Client ID"
-                                            className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
-                                            onKeyDown={e => {
-                                                if (e.key === 'Enter' && e.target.value.trim()) {
-                                                    localStorage.setItem('google_oauth_client_id', e.target.value.trim());
-                                                    window.location.reload();
-                                                }
-                                            }} />
-                                        <p className="text-[9px] text-slate-600">Press Enter to save. Get one at console.cloud.google.com</p>
-                                    </div>
-                                )}
-                                <p className="text-[9px] text-slate-600">Access restricted to authorized users only.</p>
                             </div>
                         </div>
                     )}
@@ -21708,7 +21651,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                         <div className="flex items-center justify-between">
                                             <div>
                                                 <div className="text-sm text-white">{authEmail || 'Signed in'}</div>
-                                                <div className="text-[10px] text-slate-500">Google Account</div>
+                                                <div className="text-[10px] text-slate-500">Authenticated Session</div>
                                             </div>
                                             <button onClick={handleSignOut}
                                                 className="px-3 py-1.5 text-xs bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 text-red-400 rounded-lg transition-colors">

@@ -88,43 +88,35 @@ cache = SimpleCache()
 # AUTHENTICATION
 # ============================================
 
-AUTHORIZED_EMAILS = [e.strip().lower() for e in os.environ.get('AUTHORIZED_EMAILS', '').split(',') if e.strip()]
+import hashlib, hmac, uuid
+CHARLIE_PASSWORD = os.environ.get('CHARLIE_PASSWORD', '')
 CHARLIE_API_KEY = os.environ.get('CHARLIE_API_KEY', '')
+_AUTH_SECRET = os.environ.get('CHARLIE_AUTH_SECRET', CHARLIE_API_KEY or 'charlie-default-secret')
 
 # Public paths that don't require auth
-AUTH_EXEMPT_PATHS = {'/health', '/api/agent/health', '/api/auth/config'}
+AUTH_EXEMPT_PATHS = {'/health', '/api/agent/health', '/api/auth/config', '/api/auth/login'}
 
-def _verify_google_token(token):
-    """Verify a Google ID token and return the email if valid."""
-    try:
-        from google.oauth2 import id_token as google_id_token
-        from google.auth.transport import requests as google_requests
-        idinfo = google_id_token.verify_oauth2_token(token, google_requests.Request())
-        email = idinfo.get('email', '').lower()
-        if not email:
-            return None
-        return email
-    except Exception as e:
-        print(f"[auth] Google token verification failed: {e}")
-        return None
+def _make_session_token(password):
+    """Create an HMAC session token from the password."""
+    return hmac.new(_AUTH_SECRET.encode(), password.encode(), hashlib.sha256).hexdigest()
 
-def is_authorized(email):
-    """Check if an email is in the authorized list. Easy to swap to DB query later."""
-    if not AUTHORIZED_EMAILS:
-        return True  # No restriction if env var not set (dev mode)
-    return email.lower() in AUTHORIZED_EMAILS
+def _verify_session_token(token):
+    """Verify a session token matches the expected password hash."""
+    if not CHARLIE_PASSWORD:
+        return True
+    expected = _make_session_token(CHARLIE_PASSWORD)
+    return hmac.compare_digest(token, expected)
 
 @app.before_request
 def require_auth():
     """Global auth gate — runs before every request."""
-    # Skip auth for exempt paths and CORS preflight
     if request.method == 'OPTIONS':
         return None
     if request.path in AUTH_EXEMPT_PATHS:
         return None
 
     # No auth configured = dev mode, allow all
-    if not AUTHORIZED_EMAILS and not CHARLIE_API_KEY:
+    if not CHARLIE_PASSWORD and not CHARLIE_API_KEY:
         return None
 
     auth_header = request.headers.get('Authorization', '')
@@ -136,35 +128,36 @@ def require_auth():
             return None
         return jsonify({'error': 'Invalid API key'}), 401
 
-    # Google token auth
+    # Session token auth (password-based)
     if auth_header.startswith('Bearer '):
         token = auth_header[7:]
-        email = _verify_google_token(token)
-        if not email:
-            return jsonify({'error': 'Invalid or expired token'}), 401
-        if not is_authorized(email):
-            return jsonify({'error': 'Not authorized', 'email': email}), 403
-        # Store email on request for downstream use
-        request.auth_email = email
-        return None
+        if _verify_session_token(token):
+            return None
+        return jsonify({'error': 'Invalid or expired session'}), 401
 
     # No auth header
-    if AUTHORIZED_EMAILS:
+    if CHARLIE_PASSWORD:
         return jsonify({'error': 'Authentication required'}), 401
     return None
 
 
 @app.route('/api/auth/config', methods=['GET'])
 def auth_config():
-    """Public endpoint: returns Google OAuth client ID for the login screen."""
-    try:
-        with get_db() as (_, cur):
-            cur.execute("SELECT value FROM app_settings WHERE key = 'googleClientId'")
-            row = cur.fetchone()
-        client_id = row['value'] if row else ''
-    except Exception:
-        client_id = ''
-    return jsonify({'googleClientId': client_id, 'authRequired': bool(AUTHORIZED_EMAILS)})
+    """Public endpoint: returns whether auth is required."""
+    return jsonify({'authRequired': bool(CHARLIE_PASSWORD)})
+
+
+@app.route('/api/auth/login', methods=['POST'])
+def auth_login():
+    """Public endpoint: verify password and return session token."""
+    data = request.get_json() or {}
+    password = data.get('password', '')
+    if not CHARLIE_PASSWORD:
+        return jsonify({'token': 'no-auth', 'message': 'Auth not configured'})
+    if password == CHARLIE_PASSWORD:
+        token = _make_session_token(password)
+        return jsonify({'token': token})
+    return jsonify({'error': 'Incorrect password'}), 401
 
 
 # ============================================
