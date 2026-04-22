@@ -1,5 +1,5 @@
 const BACKEND_URL = 'https://equity-analyzer-backend.onrender.com';
-const BUILD_VERSION = '2026-04-21T01';
+const BUILD_VERSION = '2026-04-21T02';
 
 export default {
   async fetch(request, env) {

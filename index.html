@@ -286,7 +286,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-21T01';
+        const BUILD_VERSION = '2026-04-21T02';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -2147,15 +2147,22 @@ Regulatory, execution, or macro risks that could derail the thesis:
             };
 
             // Load summaries from database
-            const loadSummaries = async () => {
+            const loadSummaries = async (retries = 2) => {
                 try {
                     const response = await fetch(`${API_URL}/api/summaries`);
                     if (response.ok) {
                         const dbSummaries = await response.json();
                         setSavedSummaries(dbSummaries);
+                    } else if (retries > 0) {
+                        setTimeout(() => loadSummaries(retries - 1), 3000);
+                        return;
                     }
                 } catch (err) {
                     console.error('Failed to load summaries:', err);
+                    if (retries > 0) {
+                        setTimeout(() => loadSummaries(retries - 1), 3000);
+                        return;
+                    }
                 } finally {
                     setSummariesLoaded(true);
                 }
@@ -4525,11 +4532,16 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
             // ========== END RESEARCH FUNCTIONS ==========
 
-            // Load summaries once auth is ready
+            // Load summaries once auth is ready, and reload on tab switch
             useEffect(() => {
                 if (!authToken || authLoading) return;
                 loadSummaries();
             }, [authToken, authLoading]);
+            useEffect(() => {
+                if (!authToken || authLoading) return;
+                if (activeTab === 'summary') loadSummaries();
+                if (activeTab === 'research') loadResearchData();
+            }, [activeTab]);
             
             // Click outside handler for summary search
             useEffect(() => {
@@ -14830,6 +14842,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 <div className="bg-white/[0.04] backdrop-blur-lg border-b border-white/[0.08] flex-shrink-0">
                                     <div className="flex items-center gap-2 p-3">
                                         <ClipboardList className="w-5 h-5 text-amber-400 flex-shrink-0" />
+                                        <button onClick={() => loadSummaries()} className="p-1.5 hover:bg-white/10 rounded flex-shrink-0" title="Refresh">
+                                            <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
+                                        </button>
                                         <div className="flex-1 overflow-x-auto scrollbar-hide">
                                             <div className="flex gap-2">
                                                 {/* Add Topic Button - First */}
@@ -16435,6 +16450,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     <div className="flex items-center gap-3">
                                                         <Microscope className="w-6 h-6 text-amber-400" />
                                                         <h1 className="text-xl font-bold">Research</h1>
+                                                        <button onClick={() => loadResearchData()} className="p-1.5 hover:bg-white/10 rounded" title="Refresh">
+                                                            <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
+                                                        </button>
                                                     </div>
                                                     {getCurrentCategoryDocs().length > 0 && (
                                                         <button
