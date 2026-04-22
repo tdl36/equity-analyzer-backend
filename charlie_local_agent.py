@@ -2063,6 +2063,103 @@ def scan_catalyst_topics(ticker: str) -> list[dict]:
     return folders
 
 
+_known_files = {}  # key: folder path, value: set of filenames
+
+def check_for_new_files():
+    """Scan CATALYSTS and STOCKS folders for new files, create alerts for any found."""
+    global _known_files
+    SOURCE_EXTS = {'.pdf', '.xlsx', '.xls', '.csv', '.txt', '.md', '.docx'}
+    alerts_created = 0
+
+    for base_dir, folder_type in [(CATALYSTS_DIR, 'catalysts'), (STOCKS_DIR, 'stocks')]:
+        if not base_dir.exists():
+            continue
+        try:
+            for ticker_dir in sorted(base_dir.iterdir()):
+                if not ticker_dir.is_dir() or ticker_dir.name.startswith('.'):
+                    continue
+                ticker = ticker_dir.name.upper()
+
+                if folder_type == 'catalysts':
+                    # Scan topic subfolders
+                    for topic_dir in sorted(ticker_dir.iterdir()):
+                        if not topic_dir.is_dir() or topic_dir.name.startswith('.'):
+                            continue
+                        folder_key = str(topic_dir)
+                        current_files = set()
+                        for f in topic_dir.iterdir():
+                            if f.is_file() and not f.name.startswith('.') and f.suffix.lower() in SOURCE_EXTS:
+                                current_files.add(f.name)
+
+                        if folder_key not in _known_files:
+                            _known_files[folder_key] = current_files
+                            continue  # First scan — don't alert on existing files
+
+                        new_files = current_files - _known_files[folder_key]
+                        if new_files:
+                            _known_files[folder_key] = current_files
+                            try:
+                                requests.post(
+                                    f"{CHARLIE_API}/api/alerts",
+                                    json={
+                                        'alertType': 'new_files',
+                                        'ticker': ticker,
+                                        'title': f"{len(new_files)} new file{'s' if len(new_files) > 1 else ''} in {ticker}/{topic_dir.name}",
+                                        'detail': {
+                                            'folder': f'CATALYSTS/{ticker}/{topic_dir.name}',
+                                            'folderType': 'catalysts',
+                                            'topic': topic_dir.name,
+                                            'newFiles': sorted(new_files),
+                                            'totalFiles': len(current_files),
+                                        },
+                                    },
+                                    headers=_agent_headers(),
+                                    timeout=10,
+                                )
+                                alerts_created += 1
+                            except Exception as e:
+                                log.debug(f"Alert creation failed: {e}")
+                else:
+                    # Scan main STOCKS folder (not Processed/ or Prior Versions/)
+                    folder_key = str(ticker_dir)
+                    current_files = set()
+                    for f in ticker_dir.iterdir():
+                        if f.is_file() and not f.name.startswith('.') and f.suffix.lower() in SOURCE_EXTS:
+                            current_files.add(f.name)
+
+                    if folder_key not in _known_files:
+                        _known_files[folder_key] = current_files
+                        continue
+
+                    new_files = current_files - _known_files[folder_key]
+                    if new_files:
+                        _known_files[folder_key] = current_files
+                        try:
+                            requests.post(
+                                f"{CHARLIE_API}/api/alerts",
+                                json={
+                                    'alertType': 'new_files',
+                                    'ticker': ticker,
+                                    'title': f"{len(new_files)} new file{'s' if len(new_files) > 1 else ''} in {ticker}",
+                                    'detail': {
+                                        'folder': f'STOCKS/{ticker}',
+                                        'folderType': 'stocks',
+                                        'newFiles': sorted(new_files),
+                                        'totalFiles': len(current_files),
+                                    },
+                                },
+                                headers=_agent_headers(),
+                                timeout=10,
+                            )
+                            alerts_created += 1
+                        except Exception as e:
+                            log.debug(f"Alert creation failed: {e}")
+        except PermissionError:
+            pass  # iCloud folder not accessible
+    if alerts_created:
+        log.info(f"Created {alerts_created} new file alert(s)")
+
+
 def process_scan_catalysts_job(job: dict) -> None:
     """Scan catalyst folders and report back to the backend."""
     job_id = job.get("id", "")
@@ -2479,6 +2576,7 @@ def main() -> None:
                     auto_unzip_catalyst_folders()
                     push_file_manifest()
                     process_pending_syncs()
+                    check_for_new_files()
                     last_manifest_push = now
                     log.debug("File manifest pushed")
                 except Exception as e:

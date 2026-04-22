@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-22T01';
+        const BUILD_VERSION = '2026-04-22T02';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -752,6 +752,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
         const X = ({className = "w-4 h-4"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
         const Check = ({className = "w-4 h-4"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>;
         const Mail = ({className = "w-4 h-4"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>;
+        const Bell = ({className = "w-4 h-4"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>;
         const Menu = ({className = "w-6 h-6"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>;
         const History = ({className = "w-4 h-4"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
         const RotateCcw = ({className = "w-4 h-4"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>;
@@ -1695,6 +1696,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [catalystLength, setCatalystLength] = useState('standard');
             const [catalystInstructions, setCatalystInstructions] = useState('');
             const [catalystActiveJob, setCatalystActiveJob] = useState(null);
+
+            // Agent Alerts state
+            const [agentAlerts, setAgentAlerts] = useState([]);
+            const [alertBadgeCount, setAlertBadgeCount] = useState(0);
             const [catalystHistory, setCatalystHistory] = useState([]);
             const [catalystUploadedFiles, setCatalystUploadedFiles] = useState([]);
             const catalystPollRef = React.useRef(null);
@@ -4494,7 +4499,20 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 if (!authToken || authLoading) return;
                 if (activeTab === 'summary') loadSummaries();
                 if (activeTab === 'research') loadResearchData();
+                if (activeTab === 'alerts') fetchAlerts();
             }, [activeTab]);
+
+            // Poll alert badge count every 30s
+            useEffect(() => {
+                if (!authToken || authLoading) return;
+                fetchAlerts();
+                const interval = setInterval(() => {
+                    fetch(`${API_URL}/api/alerts/count`).then(r => r.ok ? r.json() : {}).then(d => {
+                        if (d.count !== undefined) setAlertBadgeCount(d.count);
+                    }).catch(() => {});
+                }, 30000);
+                return () => clearInterval(interval);
+            }, [authToken, authLoading]);
             
             // Click outside handler for summary search
             useEffect(() => {
@@ -6680,6 +6698,39 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         const data = await res.json();
                         setCatalystHistory(data.jobs || []);
                     }
+                } catch (e) {}
+            };
+
+            // Agent Alerts functions
+            const fetchAlerts = async () => {
+                try {
+                    const res = await fetch(`${API_URL}/api/alerts?limit=50`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        setAgentAlerts(data.alerts || []);
+                        setAlertBadgeCount((data.alerts || []).filter(a => a.status === 'new').length);
+                    }
+                } catch (e) {}
+            };
+            const dismissAlert = async (alertId) => {
+                try {
+                    await fetch(`${API_URL}/api/alerts/${alertId}/dismiss`, { method: 'POST' });
+                    setAgentAlerts(prev => prev.map(a => a.id === alertId ? { ...a, status: 'dismissed' } : a));
+                    setAlertBadgeCount(prev => Math.max(0, prev - 1));
+                } catch (e) {}
+            };
+            const dismissAllAlerts = async () => {
+                try {
+                    await fetch(`${API_URL}/api/alerts/dismiss-all`, { method: 'POST' });
+                    setAgentAlerts(prev => prev.map(a => a.status === 'new' ? { ...a, status: 'dismissed' } : a));
+                    setAlertBadgeCount(0);
+                } catch (e) {}
+            };
+            const actionAlert = async (alertId) => {
+                try {
+                    await fetch(`${API_URL}/api/alerts/${alertId}/action`, { method: 'POST' });
+                    setAgentAlerts(prev => prev.map(a => a.id === alertId ? { ...a, status: 'actioned' } : a));
+                    setAlertBadgeCount(prev => Math.max(0, prev - 1));
                 } catch (e) {}
             };
 
@@ -11695,6 +11746,22 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 <span className="flex items-center gap-2">
                                     <Bot className="w-4 h-4" />
                                     Agents
+                                </span>
+                            </button>
+                            <button
+                                onClick={() => switchTab('alerts')}
+                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all relative ${
+                                    activeTab === 'alerts'
+                                        ? 'bg-amber-600 text-white shadow-lg glow-teal'
+                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
+                                }`}
+                            >
+                                <span className="flex items-center gap-2">
+                                    <Bell className="w-4 h-4" />
+                                    Alerts
+                                    {alertBadgeCount > 0 && (
+                                        <span className="px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[9px] font-bold leading-none">{alertBadgeCount}</span>
+                                    )}
                                 </span>
                             </button>
                             <button
@@ -21633,6 +21700,95 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         )}
 
                         {/* SETTINGS TAB */}
+                        {activeTab === 'alerts' && (
+                            <div className="flex-1 flex flex-col bg-white/[0.02] overflow-y-auto pb-24 md:pb-0" onScroll={(e) => { setShowScrollTop(e.target.scrollTop > 300); scrollContainerRef.current = e.target; }}>
+                                <div className="p-6 pb-8">
+                                    <div className="flex items-center justify-between mb-6">
+                                        <div className="flex items-center gap-3">
+                                            <Bell className="w-6 h-6 text-amber-400" />
+                                            <h1 className="text-xl font-bold">Alerts</h1>
+                                            {alertBadgeCount > 0 && (
+                                                <span className="px-2 py-0.5 rounded-full bg-red-500 text-white text-xs font-bold">{alertBadgeCount}</span>
+                                            )}
+                                            <button onClick={fetchAlerts} className="p-1.5 hover:bg-white/10 rounded" title="Refresh">
+                                                <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
+                                            </button>
+                                        </div>
+                                        {agentAlerts.some(a => a.status === 'new') && (
+                                            <button onClick={dismissAllAlerts} className="text-xs text-slate-400 hover:text-white">Dismiss All</button>
+                                        )}
+                                    </div>
+
+                                    {agentAlerts.length === 0 ? (
+                                        <div className="text-center py-16">
+                                            <Bell className="w-12 h-12 mx-auto mb-3 text-slate-700" />
+                                            <p className="text-slate-500 text-sm">No alerts yet</p>
+                                            <p className="text-slate-600 text-xs mt-1">Agents will notify you when new files are detected or material changes found</p>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-2 max-w-2xl">
+                                            {agentAlerts.map(alert => (
+                                                <div key={alert.id} className={`border rounded-xl p-4 transition-all ${
+                                                    alert.status === 'new' ? 'bg-amber-500/5 border-amber-500/30' :
+                                                    alert.status === 'actioned' ? 'bg-green-500/5 border-green-500/20 opacity-60' :
+                                                    'bg-white/[0.02] border-white/5 opacity-50'
+                                                }`}>
+                                                    <div className="flex items-start gap-3">
+                                                        <div className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 ${
+                                                            alert.status === 'new' ? 'bg-amber-400' :
+                                                            alert.status === 'actioned' ? 'bg-green-400' : 'bg-slate-600'
+                                                        }`} />
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center gap-2 mb-1">
+                                                                {alert.ticker && (
+                                                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-mono font-medium">{alert.ticker}</span>
+                                                                )}
+                                                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-slate-400">{alert.alertType === 'new_files' ? 'New Files' : alert.alertType === 'web_sweep' ? 'Web Sweep' : alert.alertType}</span>
+                                                                <span className="text-[9px] text-slate-600 ml-auto">{alert.createdAt ? new Date(alert.createdAt + 'Z').toLocaleString('en-US', { timeZone: 'America/New_York', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                                                            </div>
+                                                            <p className="text-sm text-slate-200 font-medium">{alert.title}</p>
+                                                            {alert.detail?.newFiles && (
+                                                                <div className="mt-1.5 space-y-0.5">
+                                                                    {alert.detail.newFiles.map((f, i) => (
+                                                                        <div key={i} className="text-[10px] text-slate-400 font-mono truncate">{f}</div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                            {alert.status === 'new' && (
+                                                                <div className="flex items-center gap-2 mt-3">
+                                                                    {alert.alertType === 'new_files' && alert.detail?.folderType === 'catalysts' && (
+                                                                        <button onClick={() => {
+                                                                            actionAlert(alert.id);
+                                                                            setCatalystTicker(alert.ticker);
+                                                                            setCatalystTopic(alert.detail.topic || '');
+                                                                            switchTab('agents');
+                                                                        }} className="px-3 py-1.5 text-[10px] bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-medium">
+                                                                            Synthesize
+                                                                        </button>
+                                                                    )}
+                                                                    {alert.alertType === 'new_files' && alert.detail?.folderType === 'stocks' && (
+                                                                        <button onClick={() => {
+                                                                            actionAlert(alert.id);
+                                                                            switchTab('pipeline');
+                                                                        }} className="px-3 py-1.5 text-[10px] bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium">
+                                                                            View in Pipeline
+                                                                        </button>
+                                                                    )}
+                                                                    <button onClick={() => dismissAlert(alert.id)} className="px-3 py-1.5 text-[10px] bg-white/10 hover:bg-white/15 text-slate-300 rounded-lg">
+                                                                        Dismiss
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
                         {activeTab === 'settings' && (
                             <div className="flex-1 flex flex-col bg-white/[0.02] overflow-y-auto pb-24 md:pb-0" onScroll={(e) => { setShowScrollTop(e.target.scrollTop > 300); scrollContainerRef.current = e.target; }}>
                                 <div className="p-6 pb-8">
@@ -22008,13 +22164,18 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 <button
                                     onClick={() => setShowMoreMenu(true)}
                                     className={`flex flex-col items-center justify-center gap-1 min-w-[56px] py-2 rounded-xl transition-all ${
-                                        activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents'
+                                        activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents'
                                             ? 'text-amber-400'
                                             : 'text-slate-400 active:text-slate-200'
                                     }`}
                                 >
-                                    <MoreHorizontal className={`w-5 h-5 ${activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' ? 'stroke-[2.5]' : 'stroke-[1.5]'}`} />
-                                    <span className={`text-[9px] ${activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' ? 'font-semibold' : 'font-medium'}`}>More</span>
+                                    <div className="relative">
+                                        <MoreHorizontal className={`w-5 h-5 ${activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' ? 'stroke-[2.5]' : 'stroke-[1.5]'}`} />
+                                        {alertBadgeCount > 0 && (
+                                            <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center">{alertBadgeCount > 9 ? '9+' : alertBadgeCount}</span>
+                                        )}
+                                    </div>
+                                    <span className={`text-[9px] ${activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' ? 'font-semibold' : 'font-medium'}`}>More</span>
                                 </button>
                             </div>
                         </div>
@@ -22032,6 +22193,26 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 <div className="p-4 pb-[calc(env(safe-area-inset-bottom)+16px)]">
                                     <h3 className="text-lg font-semibold mb-4 text-center">More Options</h3>
                                     <div className="space-y-2">
+                                        <button
+                                            onClick={() => {
+                                                setShowMoreMenu(false);
+                                                switchTab('alerts');
+                                            }}
+                                            className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
+                                                activeTab === 'alerts'
+                                                    ? 'bg-amber-600/20 border border-amber-500/50'
+                                                    : 'bg-white/5 hover:bg-white/10 border border-transparent'
+                                            }`}
+                                        >
+                                            <Bell className="w-5 h-5 text-amber-400" />
+                                            <div className="text-left flex-1">
+                                                <div className="font-medium">Alerts</div>
+                                                <div className="text-xs text-slate-400">Agent notifications</div>
+                                            </div>
+                                            {alertBadgeCount > 0 && (
+                                                <span className="px-2 py-0.5 rounded-full bg-red-500 text-white text-[10px] font-bold">{alertBadgeCount}</span>
+                                            )}
+                                        </button>
                                         <button
                                             onClick={() => {
                                                 setShowMoreMenu(false);

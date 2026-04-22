@@ -161,6 +161,110 @@ def auth_login():
 
 
 # ============================================
+# AGENT ALERTS
+# ============================================
+
+@app.route('/api/alerts', methods=['GET'])
+def get_alerts():
+    """Get all alerts, optionally filtered by status."""
+    status = request.args.get('status', '')
+    limit = int(request.args.get('limit', 50))
+    try:
+        with get_db() as (_, cur):
+            if status:
+                cur.execute('SELECT * FROM agent_alerts WHERE status = %s ORDER BY created_at DESC LIMIT %s', (status, limit))
+            else:
+                cur.execute('SELECT * FROM agent_alerts ORDER BY created_at DESC LIMIT %s', (limit,))
+            rows = cur.fetchall()
+        return jsonify({'alerts': [{
+            'id': r['id'],
+            'alertType': r['alert_type'],
+            'ticker': r['ticker'],
+            'title': r['title'],
+            'detail': r['detail'] if isinstance(r['detail'], dict) else json.loads(r['detail'] or '{}'),
+            'status': r['status'],
+            'createdAt': r['created_at'].isoformat() if r['created_at'] else None,
+        } for r in rows], 'total': len(rows)})
+    except Exception as e:
+        print(f"Error fetching alerts: {e}")
+        return jsonify({'alerts': [], 'total': 0})
+
+
+@app.route('/api/alerts', methods=['POST'])
+def create_alert():
+    """Create a new alert (called by local agent or backend jobs)."""
+    data = request.get_json()
+    alert_type = data.get('alertType', 'general')
+    ticker = data.get('ticker', '')
+    title = data.get('title', '')
+    detail = data.get('detail', {})
+    if not title:
+        return jsonify({'error': 'Title required'}), 400
+
+    alert_id = str(uuid.uuid4())
+    try:
+        with get_db(commit=True) as (conn, cur):
+            # Deduplicate: don't create if same type+ticker+title exists and is still 'new'
+            cur.execute("SELECT id FROM agent_alerts WHERE alert_type = %s AND ticker = %s AND title = %s AND status = 'new'",
+                       (alert_type, ticker, title))
+            if cur.fetchone():
+                return jsonify({'id': None, 'message': 'Duplicate alert exists'})
+            cur.execute('''
+                INSERT INTO agent_alerts (id, alert_type, ticker, title, detail, status, created_at)
+                VALUES (%s, %s, %s, %s, %s, 'new', NOW())
+            ''', (alert_id, alert_type, ticker, title, json.dumps(detail)))
+        return jsonify({'id': alert_id})
+    except Exception as e:
+        print(f"Error creating alert: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/alerts/<alert_id>/dismiss', methods=['POST'])
+def dismiss_alert(alert_id):
+    """Dismiss an alert."""
+    try:
+        with get_db(commit=True) as (conn, cur):
+            cur.execute("UPDATE agent_alerts SET status = 'dismissed' WHERE id = %s", (alert_id,))
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/alerts/<alert_id>/action', methods=['POST'])
+def action_alert(alert_id):
+    """Mark alert as actioned (e.g., synthesis triggered)."""
+    try:
+        with get_db(commit=True) as (conn, cur):
+            cur.execute("UPDATE agent_alerts SET status = 'actioned' WHERE id = %s", (alert_id,))
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/alerts/dismiss-all', methods=['POST'])
+def dismiss_all_alerts():
+    """Dismiss all new alerts."""
+    try:
+        with get_db(commit=True) as (conn, cur):
+            cur.execute("UPDATE agent_alerts SET status = 'dismissed' WHERE status = 'new'")
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/alerts/count', methods=['GET'])
+def alert_count():
+    """Get count of new alerts (for badge)."""
+    try:
+        with get_db() as (_, cur):
+            cur.execute("SELECT COUNT(*) as cnt FROM agent_alerts WHERE status = 'new'")
+            cnt = cur.fetchone()['cnt']
+        return jsonify({'count': cnt})
+    except Exception:
+        return jsonify({'count': 0})
+
+
+# ============================================
 # MULTI-MODEL LLM FALLBACK
 # ============================================
 
@@ -1310,6 +1414,21 @@ def init_db():
                 )
             ''')
             cur.execute('CREATE INDEX IF NOT EXISTS idx_research_exports_run ON research_exports(research_run_id)')
+
+            # Agent alerts
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS agent_alerts (
+                    id VARCHAR(100) PRIMARY KEY,
+                    alert_type VARCHAR(50) NOT NULL,
+                    ticker VARCHAR(20),
+                    title TEXT NOT NULL,
+                    detail JSONB DEFAULT '{}',
+                    status VARCHAR(20) DEFAULT 'new',
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_agent_alerts_status ON agent_alerts(status)')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_agent_alerts_created ON agent_alerts(created_at DESC)')
 
         print("Database tables initialized")
     except Exception as e:
