@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-22T03';
+        const BUILD_VERSION = '2026-04-22T04';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -22188,9 +22188,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 className="fixed inset-0 bg-black/60 z-50 backdrop-blur-sm"
                                 onClick={() => setShowMoreMenu(false)}
                             />
-                            <div className="fixed bottom-0 left-0 right-0 z-50 bg-neutral-900/95 backdrop-blur-2xl rounded-t-3xl border-t border-white/10 shadow-2xl animate-slide-up">
-                                <div className="w-12 h-1 bg-white/20 rounded-full mx-auto mt-3 mb-2" />
-                                <div className="p-4 pb-[calc(env(safe-area-inset-bottom)+16px)]">
+                            <div className="fixed bottom-0 left-0 right-0 z-50 bg-neutral-900/95 backdrop-blur-2xl rounded-t-3xl border-t border-white/10 shadow-2xl animate-slide-up max-h-[85vh] flex flex-col">
+                                <div className="w-12 h-1 bg-white/20 rounded-full mx-auto mt-3 mb-2 flex-shrink-0" />
+                                <div className="p-4 pb-[calc(env(safe-area-inset-bottom)+16px)] overflow-y-auto flex-1">
                                     <h3 className="text-lg font-semibold mb-4 text-center">More Options</h3>
                                     <div className="space-y-2">
                                         <button
