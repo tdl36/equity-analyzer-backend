@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-23T15';
+        const BUILD_VERSION = '2026-04-23T16';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -21585,6 +21585,12 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 {/* Active job / results */}
                                                 {catalystActiveJob && (
                                                     <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4">
+                                                        <button
+                                                            onClick={() => setCatalystActiveJob(null)}
+                                                            className="mb-3 text-[11px] text-slate-400 hover:text-white flex items-center gap-1"
+                                                        >
+                                                            <span>←</span><span>Back to list</span>
+                                                        </button>
                                                         <div className="flex items-center justify-between mb-2">
                                                             <h3 className="text-sm font-semibold text-white">{catalystActiveJob.ticker} Synthesis</h3>
                                                             <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
