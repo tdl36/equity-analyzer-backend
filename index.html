@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-23T18';
+        const BUILD_VERSION = '2026-04-23T19';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -22098,16 +22098,16 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     </div>
                                                 </div>
                                                 <div>
-                                                    <div className="flex items-center justify-between mb-2">
-                                                        <label className="text-[10px] text-slate-500 uppercase tracking-wider">Select Stocks ({agentBatchTickers.length})</label>
-                                                        <div className="flex gap-2">
-                                                            <button onClick={() => setAgentBatchTickers(pipelineUniverse.map(s => s.ticker))} className="text-[9px] text-amber-400">All</button>
-                                                            <button onClick={() => setAgentBatchTickers([])} className="text-[9px] text-slate-400">None</button>
+                                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                                                        <label className="text-[10px] text-slate-500 uppercase tracking-wider shrink-0">Select Stocks ({agentBatchTickers.length})</label>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            <button onClick={() => setAgentBatchTickers(pipelineUniverse.map(s => s.ticker))} className="text-[9px] text-amber-400 shrink-0">All</button>
+                                                            <button onClick={() => setAgentBatchTickers([])} className="text-[9px] text-slate-400 shrink-0">None</button>
                                                             {pipelineSectors.map(s => (
                                                                 <button key={s} onClick={() => setAgentBatchTickers(prev => {
                                                                     const sectorTickers = (pipelineSectorMap[s] || []);
                                                                     return [...new Set([...prev, ...sectorTickers])];
-                                                                })} className="text-[9px] text-slate-400 hover:text-amber-400">+{s.split(' ')[0]}</button>
+                                                                })} className="text-[9px] text-slate-400 hover:text-amber-400 shrink-0">+{s.split(' ')[0]}</button>
                                                             ))}
                                                         </div>
                                                     </div>
