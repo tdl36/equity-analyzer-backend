@@ -14705,6 +14705,51 @@ def _mp_build_user_content(filename, file_data, extracted_text):
     return f"Document: {filename}\n\n{txt}"
 
 
+def _is_transient_llm_error(exc) -> bool:
+    """Transient = worth retrying. Covers Anthropic 500s, rate limits, timeouts,
+    connection drops, and the entire LLMError chain-failed wrapper (since the
+    whole chain can fail transiently)."""
+    import anthropic as _a
+    if isinstance(exc, (LLMError, _a.RateLimitError, _a.APIConnectionError, _a.APITimeoutError)):
+        return True
+    if isinstance(exc, _a.APIStatusError):
+        return exc.status_code in (408, 429, 500, 502, 503, 504, 529)
+    s = str(exc).lower()
+    return any(needle in s for needle in (
+        'internal server error', 'api_error', '500', '502', '503', '504',
+        'timeout', 'timed out', 'connection', 'temporarily unavailable',
+        'overloaded', 'rate limit', 'rate_limit',
+    ))
+
+
+def _call_llm_stream_with_retry(*, messages, system, tier, max_tokens, api_key,
+                                max_attempts=3, base_backoff_s=4.0, label='LLM call'):
+    """Consume call_llm_stream (which internally handles provider fallback) and
+    retry the entire call on transient errors with exponential backoff."""
+    import time as _time
+    last_exc = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            result = None
+            for chunk in call_llm_stream(
+                messages=messages, system=system, tier=tier,
+                max_tokens=max_tokens, anthropic_api_key=api_key,
+            ):
+                if isinstance(chunk, dict):
+                    result = chunk
+            if result is None:
+                raise Exception(f"{label}: no result from LLM stream")
+            return result
+        except Exception as e:
+            last_exc = e
+            if attempt >= max_attempts or not _is_transient_llm_error(e):
+                raise
+            backoff = base_backoff_s * (2 ** (attempt - 1))
+            print(f"{label} attempt {attempt}/{max_attempts} failed ({type(e).__name__}: {str(e)[:200]}); retrying in {backoff}s")
+            _time.sleep(backoff)
+    raise last_exc  # unreachable but appeases the linter
+
+
 def _mp_analyze_one_doc(api_key, ticker, company_name, doc):
     """Run analyze-document logic inline (no sub-job). Returns analysis dict + tokens."""
     prompt = MP_ANALYSIS_PROMPT.format(
@@ -14723,15 +14768,11 @@ def _mp_analyze_one_doc(api_key, ticker, company_name, doc):
         except Exception as e:
             print(f"pipeline: could not fetch file_data for doc {doc_id}: {e}")
     user_content = _mp_build_user_content(doc.get('filename', ''), file_data, doc.get('extractedText', ''))
-    llm_result = None
-    for chunk in call_llm_stream(
+    llm_result = _call_llm_stream_with_retry(
         messages=[{"role": "user", "content": user_content}],
-        system=prompt, tier="standard", max_tokens=16384, anthropic_api_key=api_key,
-    ):
-        if isinstance(chunk, dict):
-            llm_result = chunk
-    if llm_result is None:
-        raise Exception(f"Analyze failed for {doc.get('filename','?')}: no LLM result")
+        system=prompt, tier="standard", max_tokens=16384, api_key=api_key,
+        label=f"Analyze {doc.get('filename','?')}",
+    )
     analysis = parse_mp_json(llm_result["text"])
     tokens = llm_result["usage"]["input_tokens"] + llm_result["usage"]["output_tokens"]
     analysis['_source_filename'] = doc.get('filename', '')
@@ -14760,15 +14801,11 @@ def _mp_synthesize_inline(api_key, ticker, company_name, sector, analyses, past_
         doc_count=len(analyses), timeframe=timeframe,
         analyses_text=analyses_text, past_questions_text=past_q_text,
     )
-    llm_result = None
-    for chunk in call_llm_stream(
+    llm_result = _call_llm_stream_with_retry(
         messages=[{"role": "user", "content": "Synthesize the above document analyses."}],
-        system=prompt, tier="standard", max_tokens=16384, anthropic_api_key=api_key,
-    ):
-        if isinstance(chunk, dict):
-            llm_result = chunk
-    if llm_result is None:
-        raise Exception("Synth failed: no LLM result")
+        system=prompt, tier="standard", max_tokens=16384, api_key=api_key,
+        label="Synthesize",
+    )
     synthesis = parse_mp_json(llm_result["text"])
     tokens = llm_result["usage"]["input_tokens"] + llm_result["usage"]["output_tokens"]
     return synthesis, tokens
@@ -14783,15 +14820,11 @@ def _mp_questions_inline(api_key, ticker, company_name, sector, synthesis, unres
         ticker=ticker, company_name=company_name, sector=sector,
         synthesis_text=json.dumps(synthesis, indent=2), unresolved_text=unresolved_text,
     )
-    llm_result = None
-    for chunk in call_llm_stream(
+    llm_result = _call_llm_stream_with_retry(
         messages=[{"role": "user", "content": "Generate the meeting preparation questions."}],
-        system=prompt, tier="standard", max_tokens=16384, anthropic_api_key=api_key,
-    ):
-        if isinstance(chunk, dict):
-            llm_result = chunk
-    if llm_result is None:
-        raise Exception("Questions failed: no LLM result")
+        system=prompt, tier="standard", max_tokens=16384, api_key=api_key,
+        label="Generate questions",
+    )
     topics = parse_mp_json(llm_result["text"])
     tokens = llm_result["usage"]["input_tokens"] + llm_result["usage"]["output_tokens"]
     return topics, tokens
