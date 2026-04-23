@@ -14410,12 +14410,35 @@ def mp_delete_document(meeting_id, doc_id):
 # MEETING PREP - PIPELINE ENDPOINTS
 # ============================================
 
+def _run_mp_analyze_document_job(job_id, api_key, prompt, user_content, filename):
+    try:
+        llm_result = None
+        for chunk in call_llm_stream(
+            messages=[{"role": "user", "content": user_content}],
+            system=prompt,
+            tier="standard",
+            max_tokens=16384,
+            anthropic_api_key=api_key,
+        ):
+            if isinstance(chunk, dict):
+                llm_result = chunk
+        if llm_result is None:
+            raise Exception("No result from LLM stream")
+        analysis = parse_mp_json(llm_result["text"])
+        tokens_used = llm_result["usage"]["input_tokens"] + llm_result["usage"]["output_tokens"]
+        _mp_update_job(job_id, status='done',
+                       result={'analysis': analysis, 'filename': filename},
+                       tokens_used=tokens_used)
+    except Exception as e:
+        print(f"MP analyze-document job {job_id} error: {e}")
+        _mp_update_job(job_id, status='failed', error=str(e)[:2000])
+
+
 @app.route('/api/mp/analyze-document', methods=['POST'])
 def mp_analyze_document():
-    """Step 1: Analyze a single document. Uses native PDF document blocks when available
-    so Claude can see charts, graphs, tables, and images — not just extracted text."""
+    """Step 1 (async): analyze one document. Returns {jobId}. Native PDF support preserved."""
     try:
-        data = request.json
+        data = request.json or {}
         api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('apiKey', '')
         if not api_key:
             return jsonify({'error': 'No API key provided. Please add your API key in Settings.'}), 400
@@ -14443,10 +14466,8 @@ def mp_analyze_document():
             doc_type=doc_type, ticker=ticker, company_name=company_name
         )
 
-        # Build content: prefer native document blocks for PDFs/images
         fname_lower = (filename or '').lower()
         if file_data and fname_lower.endswith('.pdf'):
-            # Native PDF — Claude can see charts, graphs, tables, images
             user_content = [
                 {"type": "text", "text": f"Document: {filename}"},
                 {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": file_data}},
@@ -14461,43 +14482,24 @@ def mp_analyze_document():
                 {"type": "text", "text": "Analyze this image thoroughly, including all charts, graphs, tables, and visual data."}
             ]
         else:
-            # Fallback to extracted text
             if not extracted_text:
                 return jsonify({'error': 'No document text or file data available'}), 400
             if len(extracted_text) > 400000:
                 extracted_text = extracted_text[:400000] + "\n\n[... document truncated for length ...]"
             user_content = f"Document: {filename}\n\n{extracted_text}"
 
-        def generate():
-            try:
-                llm_result = None
-                for chunk in call_llm_stream(
-                    messages=[{"role": "user", "content": user_content}],
-                    system=prompt,
-                    tier="standard",
-                    max_tokens=16384,
-                    anthropic_api_key=api_key,
-                ):
-                    if isinstance(chunk, dict):
-                        llm_result = chunk
-                    else:
-                        yield chunk
-
-                if llm_result is None:
-                    raise Exception("No result from LLM")
-
-                analysis = parse_mp_json(llm_result["text"])
-                tokens_used = llm_result["usage"]["input_tokens"] + llm_result["usage"]["output_tokens"]
-                yield "\n" + json.dumps({'analysis': analysis, 'tokensUsed': tokens_used, 'filename': filename})
-            except LLMError as e:
-                print(f"MP analyze LLM error: {e}")
-                yield "\n" + json.dumps({'error': str(e)})
-            except Exception as e:
-                print(f"MP analyze stream error: {e}")
-                yield "\n" + json.dumps({'error': str(e)})
-
-        resp = app.response_class(generate(), mimetype='text/plain'); resp.headers['X-Accel-Buffering'] = 'no'; resp.headers['Cache-Control'] = 'no-cache, no-transform'; return resp
-
+        job_id = str(uuid.uuid4())
+        with get_db(commit=True) as (_c, cur):
+            cur.execute('''
+                INSERT INTO mp_jobs (id, stage, ticker, status)
+                VALUES (%s, 'analyze-document', %s, 'running')
+            ''', (job_id, ticker))
+        threading.Thread(
+            target=_run_mp_analyze_document_job,
+            args=(job_id, api_key, prompt, user_content, filename),
+            daemon=True,
+        ).start()
+        return jsonify({'jobId': job_id}), 202
     except Exception as e:
         print(f"MP analyze error: {e}")
         return jsonify({'error': str(e)}), 500
