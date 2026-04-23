@@ -832,26 +832,61 @@ def call_llm_stream(*, messages, system="", tier="standard", max_tokens=16384,
         try:
             print(f"[LLM Stream Fallback] Trying {provider}/{model}...")
             if provider == "anthropic":
+                # Run stream in a thread with a heartbeat so time-to-first-token
+                # doesn't exceed Cloudflare's 100s idle timeout on large prompts.
+                import queue as _queue
+                import time as _time
                 client = anthropic.Anthropic(api_key=key, timeout=300)
-                result_text = ""
                 kwargs = {"model": model, "max_tokens": max_tokens, "messages": messages}
                 if system:
                     kwargs["system"] = system
-                with client.messages.stream(**kwargs) as stream:
-                    for text in stream.text_stream:
-                        result_text += text
+                q: _queue.Queue = _queue.Queue()
+                final_holder: dict = {}
+                SENTINEL = object()
+
+                def _consume():
+                    try:
+                        result_text = ""
+                        with client.messages.stream(**kwargs) as stream:
+                            for text in stream.text_stream:
+                                result_text += text
+                                q.put(text)
+                            response = stream.get_final_message()
+                        final_holder["result"] = {
+                            "text": result_text,
+                            "usage": {
+                                "input_tokens": response.usage.input_tokens,
+                                "output_tokens": response.usage.output_tokens,
+                            },
+                            "provider": provider,
+                            "model": model,
+                        }
+                    except Exception as exc:
+                        final_holder["error"] = exc
+                    finally:
+                        q.put(SENTINEL)
+
+                thread = threading.Thread(target=_consume, daemon=True)
+                thread.start()
+                last_ping = _time.time()
+                while True:
+                    try:
+                        item = q.get(timeout=3.0)
+                    except _queue.Empty:
                         yield " "
-                    response = stream.get_final_message()
+                        last_ping = _time.time()
+                        continue
+                    if item is SENTINEL:
+                        break
+                    yield " "
+                    # heartbeat while tokens still flowing in case of bursts
+                    if _time.time() - last_ping > 3.0:
+                        last_ping = _time.time()
+
+                if "error" in final_holder:
+                    raise final_holder["error"]
                 print(f"[LLM Stream Fallback] Success with {provider}/{model}")
-                yield {
-                    "text": result_text,
-                    "usage": {
-                        "input_tokens": response.usage.input_tokens,
-                        "output_tokens": response.usage.output_tokens,
-                    },
-                    "provider": provider,
-                    "model": model,
-                }
+                yield final_holder["result"]
                 return
             else:
                 # Gemini/OpenAI: run non-streaming in background thread, yield keep-alive
