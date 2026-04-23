@@ -546,17 +546,17 @@ class LLMError(Exception):
 MODEL_TIERS = {
     "fast": [
         ("anthropic", "claude-haiku-4-5-20251001"),
-        ("gemini",    "gemini-2.0-flash"),
+        ("gemini",    "gemini-2.5-flash"),
         ("openai",    "gpt-4o-mini"),
     ],
     "standard": [
         ("anthropic", "claude-sonnet-4-5-20250929"),
-        ("gemini",    "gemini-2.0-flash"),
+        ("gemini",    "gemini-2.5-flash"),
         ("openai",    "gpt-4o"),
     ],
     "advanced": [
         ("anthropic", "claude-opus-4-6"),
-        ("gemini",    "gemini-2.0-pro"),
+        ("gemini",    "gemini-2.5-pro"),
         ("openai",    "gpt-4o"),
     ],
 }
@@ -14548,13 +14548,19 @@ def _run_mp_synthesize_job(job_id, api_key, ticker, company_name, sector,
             analyses_text=analyses_text, past_questions_text=past_q_text,
         )
 
-        llm_result = call_llm(
+        # Use streaming internally — keeps Anthropic connection alive on long prompts.
+        llm_result = None
+        for chunk in call_llm_stream(
             messages=[{"role": "user", "content": "Synthesize the above document analyses."}],
             system=prompt,
             tier="standard",
             max_tokens=16384,
             anthropic_api_key=api_key,
-        )
+        ):
+            if isinstance(chunk, dict):
+                llm_result = chunk
+        if llm_result is None:
+            raise Exception("No result from LLM stream")
         synthesis = parse_mp_json(llm_result["text"])
         tokens_used = llm_result["usage"]["input_tokens"] + llm_result["usage"]["output_tokens"]
         _mp_update_job(job_id, status='done', result={'synthesis': synthesis},
@@ -14579,13 +14585,18 @@ def _run_mp_generate_questions_job(job_id, api_key, ticker, company_name, sector
             synthesis_text=synthesis_text, unresolved_text=unresolved_text,
         )
 
-        llm_result = call_llm(
+        llm_result = None
+        for chunk in call_llm_stream(
             messages=[{"role": "user", "content": "Generate the meeting preparation questions."}],
             system=prompt,
             tier="standard",
             max_tokens=16384,
             anthropic_api_key=api_key,
-        )
+        ):
+            if isinstance(chunk, dict):
+                llm_result = chunk
+        if llm_result is None:
+            raise Exception("No result from LLM stream")
         topics = parse_mp_json(llm_result["text"])
         tokens_used = llm_result["usage"]["input_tokens"] + llm_result["usage"]["output_tokens"]
         _mp_update_job(job_id, status='done', result={'topics': topics},
