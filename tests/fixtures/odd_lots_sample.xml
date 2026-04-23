@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+  <title>Odd Lots</title>
+  <item>
+    <title>The GLP-1 Supply Crunch</title>
+    <guid isPermaLink="false">odd-lots-2026-04-20</guid>
+    <pubDate>Mon, 20 Apr 2026 10:00:00 GMT</pubDate>
+    <link>https://www.bloomberg.com/podcasts/oddlots/glp1</link>
+    <enclosure url="https://cdn.example.com/odd-lots-20260420.mp3" type="audio/mpeg"/>
+    <description>Tracy and Joe talk to a Lilly exec about Zepbound supply.</description>
+    <itunes:duration xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">3720</itunes:duration>
+  </item>
+  <item>
+    <title>Fed Minutes Deep Dive</title>
+    <guid>odd-lots-2026-04-18</guid>
+    <pubDate>Fri, 18 Apr 2026 10:00:00 GMT</pubDate>
+    <link>https://www.bloomberg.com/podcasts/oddlots/fed</link>
+    <enclosure url="https://cdn.example.com/odd-lots-20260418.mp3" type="audio/mpeg"/>
+    <description>Unpacking the April FOMC minutes.</description>
+  </item>
+</channel>
+</rss>
