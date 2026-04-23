@@ -265,6 +265,84 @@ def alert_count():
 
 
 # ============================================
+# MEDIA TRACKER FEEDS — CRUD
+# ============================================
+
+def _row_to_feed(r):
+    return {
+        'id': r['id'],
+        'sourceType': r['source_type'],
+        'name': r['name'],
+        'feedUrl': r['feed_url'],
+        'sectorTags': r['sector_tags'] or [],
+        'muted': r['muted'],
+        'lastPolledAt': r['last_polled_at'].isoformat() if r['last_polled_at'] else None,
+        'lastEpisodeAt': r['last_episode_at'].isoformat() if r['last_episode_at'] else None,
+        'pollIntervalMin': r['poll_interval_min'],
+        'errorCount': r['error_count'],
+        'lastError': r['last_error'],
+        'createdAt': r['created_at'].isoformat() if r['created_at'] else None,
+    }
+
+
+@app.route('/api/media/feeds', methods=['GET'])
+def media_feeds_list():
+    with get_db() as (_c, cur):
+        cur.execute("SELECT * FROM media_feeds ORDER BY name ASC")
+        rows = cur.fetchall()
+    feeds = [_row_to_feed(r) for r in rows]
+    return jsonify({'feeds': feeds, 'total': len(feeds)})
+
+
+@app.route('/api/media/feeds', methods=['POST'])
+def media_feeds_create():
+    data = request.get_json() or {}
+    name = (data.get('name') or '').strip()
+    feed_url = (data.get('feedUrl') or '').strip()
+    source_type = (data.get('sourceType') or 'podcast').strip()
+    sector_tags = data.get('sectorTags') or []
+    poll_interval = int(data.get('pollIntervalMin') or 30)
+    if not name or not feed_url:
+        return jsonify({'error': 'name and feedUrl required'}), 400
+    feed_id = str(uuid.uuid4())
+    with get_db(commit=True) as (_c, cur):
+        cur.execute('''
+            INSERT INTO media_feeds (id, source_type, name, feed_url, sector_tags, poll_interval_min)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING *
+        ''', (feed_id, source_type, name, feed_url, sector_tags, poll_interval))
+        row = cur.fetchone()
+    return jsonify({'feed': _row_to_feed(row)})
+
+
+@app.route('/api/media/feeds/<feed_id>', methods=['PATCH'])
+def media_feeds_update(feed_id):
+    data = request.get_json() or {}
+    fields, values = [], []
+    for k, col in [('muted', 'muted'), ('name', 'name'), ('feedUrl', 'feed_url'),
+                   ('sectorTags', 'sector_tags'), ('pollIntervalMin', 'poll_interval_min')]:
+        if k in data:
+            fields.append(f"{col} = %s")
+            values.append(data[k])
+    if not fields:
+        return jsonify({'error': 'no updatable fields'}), 400
+    values.append(feed_id)
+    with get_db(commit=True) as (_c, cur):
+        cur.execute(f"UPDATE media_feeds SET {', '.join(fields)} WHERE id = %s RETURNING *", values)
+        row = cur.fetchone()
+    if not row:
+        return jsonify({'error': 'not found'}), 404
+    return jsonify({'feed': _row_to_feed(row)})
+
+
+@app.route('/api/media/feeds/<feed_id>', methods=['DELETE'])
+def media_feeds_delete(feed_id):
+    with get_db(commit=True) as (_c, cur):
+        cur.execute("DELETE FROM media_feeds WHERE id = %s", (feed_id,))
+    return jsonify({'success': True})
+
+
+# ============================================
 # MULTI-MODEL LLM FALLBACK
 # ============================================
 
