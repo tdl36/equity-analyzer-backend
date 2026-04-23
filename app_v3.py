@@ -14723,7 +14723,7 @@ def _is_transient_llm_error(exc) -> bool:
 
 
 def _call_llm_stream_with_retry(*, messages, system, tier, max_tokens, api_key,
-                                max_attempts=5, base_backoff_s=3.0, label='LLM call'):
+                                max_attempts=5, base_backoff_s=1.5, label='LLM call'):
     """Consume call_llm_stream (provider fallback internally) and retry on
     transient errors with exponential backoff + jitter."""
     import time as _time, random as _random
