@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-23T05';
+        const BUILD_VERSION = '2026-04-23T06';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -4501,6 +4501,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 if (activeTab === 'research') loadResearchData();
                 if (activeTab === 'alerts') fetchAlerts();
                 if (activeTab === 'feed') fetchFeed();
+                if (activeTab === 'settings') loadMediaTrackerSettings();
             }, [activeTab]);
 
             // Poll alert badge count every 30s
@@ -6756,6 +6757,41 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     setFeedLoading(false);
                 }
             }, [feedFilters]);
+
+            // Media Trackers settings state (M7)
+            const [mtFeeds, setMtFeeds] = useState([]);
+            const [mtSignals, setMtSignals] = useState([]);
+            const [mtMutedCoverage, setMtMutedCoverage] = useState([]); // array of ticker strings
+            const [mtChannels, setMtChannels] = useState({tab: true, push: false, telegram: false, email: false});
+            const [mtSection, setMtSection] = useState('feeds'); // 'feeds' | 'watchlist' | 'coverage' | 'channels'
+            const [mtLoading, setMtLoading] = useState(false);
+            const [mtError, setMtError] = useState(null);
+            const [mtAddFeedOpen, setMtAddFeedOpen] = useState(false);
+            const [mtNewFeed, setMtNewFeed] = useState({name: '', feedUrl: '', sectorTags: '', pollIntervalMin: 30});
+            const [mtAddSignalOpen, setMtAddSignalOpen] = useState(false);
+            const [mtNewSignal, setMtNewSignal] = useState({kind: 'ticker', value: '', associatedTicker: '', note: ''});
+
+            const loadMediaTrackerSettings = useCallback(async () => {
+                setMtLoading(true);
+                setMtError(null);
+                try {
+                    const [f, s, st] = await Promise.all([
+                        fetch('/api/media/feeds').then(r => r.json()),
+                        fetch('/api/media/watchlist').then(r => r.json()),
+                        fetch('/api/settings').then(r => r.json()),
+                    ]);
+                    setMtFeeds(f.feeds || []);
+                    setMtSignals(s.signals || []);
+                    setMtMutedCoverage(Array.isArray(st.media_muted_coverage_tickers) ? st.media_muted_coverage_tickers : []);
+                    setMtChannels(typeof st.media_notification_channels === 'object' && st.media_notification_channels
+                        ? st.media_notification_channels : {tab: true, push: false, telegram: false, email: false});
+                } catch (e) {
+                    setMtError(String(e));
+                } finally {
+                    setMtLoading(false);
+                }
+            }, []);
+
             const dismissAlert = async (alertId) => {
                 try {
                     await fetch(`${API_URL}/api/alerts/${alertId}/dismiss`, { method: 'POST' });
@@ -22278,6 +22314,245 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                         <p className="text-xs text-slate-500 mt-1">Powered by Claude Sonnet 4</p>
                                     </div>
                                 </div>
+
+                                {/* Media Trackers Section (M7) */}
+                                <div className="mt-8 bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 p-5 max-w-5xl">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div>
+                                            <h2 className="text-lg font-semibold text-slate-100">Media Trackers</h2>
+                                            <p className="text-xs text-slate-400 mt-0.5">Podcasts, signals watchlist, coverage mutes, and notification preferences</p>
+                                        </div>
+                                        <button onClick={loadMediaTrackerSettings} className="text-xs text-slate-400 hover:text-white">Refresh</button>
+                                    </div>
+
+                                    {/* Sub-section pills */}
+                                    <div className="flex gap-1 mb-4 bg-black/20 rounded-lg p-1 w-fit">
+                                        {[
+                                            {id: 'feeds', label: 'Feeds', count: mtFeeds.length},
+                                            {id: 'watchlist', label: 'Signals', count: mtSignals.length},
+                                            {id: 'coverage', label: 'Coverage mutes', count: mtMutedCoverage.length},
+                                            {id: 'channels', label: 'Notifications'},
+                                        ].map(s => (
+                                            <button
+                                                key={s.id}
+                                                onClick={() => setMtSection(s.id)}
+                                                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                                                    mtSection === s.id ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-white'
+                                                }`}
+                                            >
+                                                {s.label}{typeof s.count === 'number' ? ` (${s.count})` : ''}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {mtError && <div className="text-sm text-rose-400 mb-3">Error: {mtError}</div>}
+                                    {mtLoading && <div className="text-sm text-slate-400 mb-3">Loading…</div>}
+
+                                    {/* FEEDS */}
+                                    {mtSection === 'feeds' && (
+                                        <div>
+                                            <div className="flex justify-end mb-3">
+                                                <button onClick={() => setMtAddFeedOpen(true)} className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 rounded-md text-xs font-medium">+ Add feed</button>
+                                            </div>
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full text-sm">
+                                                    <thead className="text-xs text-slate-400 uppercase">
+                                                        <tr><th className="text-left py-2">Mute</th><th className="text-left py-2">Name</th><th className="text-left py-2">Sector tags</th><th className="text-left py-2">Last episode</th><th className="text-left py-2">Errors</th><th></th></tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {mtFeeds.map(f => (
+                                                            <tr key={f.id} className="border-t border-white/5">
+                                                                <td className="py-2">
+                                                                    <input type="checkbox" checked={!!f.muted} onChange={async (e) => {
+                                                                        await fetch(`/api/media/feeds/${f.id}`, {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({muted: e.target.checked})});
+                                                                        loadMediaTrackerSettings();
+                                                                    }} />
+                                                                </td>
+                                                                <td className="py-2">
+                                                                    <div className="font-medium text-slate-200">{f.name}</div>
+                                                                    <div className="text-xs text-slate-500 truncate max-w-xs">{f.feedUrl}</div>
+                                                                </td>
+                                                                <td className="py-2 text-xs text-slate-400">{(f.sectorTags || []).join(', ')}</td>
+                                                                <td className="py-2 text-xs text-slate-400">{f.lastEpisodeAt ? new Date(f.lastEpisodeAt).toLocaleDateString() : '—'}</td>
+                                                                <td className="py-2 text-xs">{f.errorCount > 0 ? <span className="text-rose-400">{f.errorCount}</span> : <span className="text-emerald-500">0</span>}</td>
+                                                                <td className="py-2 text-right">
+                                                                    <button onClick={async () => {
+                                                                        if (!confirm(`Delete feed "${f.name}"?`)) return;
+                                                                        await fetch(`/api/media/feeds/${f.id}`, {method: 'DELETE'});
+                                                                        loadMediaTrackerSettings();
+                                                                    }} className="text-xs text-rose-400 hover:text-rose-300">Delete</button>
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                                {!mtLoading && mtFeeds.length === 0 && (
+                                                    <div className="text-sm text-slate-500 py-4 text-center">No feeds yet.</div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* WATCHLIST */}
+                                    {mtSection === 'watchlist' && (
+                                        <div>
+                                            <div className="flex justify-end mb-3">
+                                                <button onClick={() => setMtAddSignalOpen(true)} className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 rounded-md text-xs font-medium">+ Add signal</button>
+                                            </div>
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full text-sm">
+                                                    <thead className="text-xs text-slate-400 uppercase">
+                                                        <tr><th className="text-left py-2">Mute</th><th className="text-left py-2">Kind</th><th className="text-left py-2">Value</th><th className="text-left py-2">Associated ticker</th><th className="text-left py-2">Note</th><th></th></tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {mtSignals.map(s => (
+                                                            <tr key={s.id} className="border-t border-white/5">
+                                                                <td className="py-2">
+                                                                    <input type="checkbox" checked={!!s.muted} onChange={async (e) => {
+                                                                        await fetch(`/api/media/watchlist/${s.id}`, {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({muted: e.target.checked})});
+                                                                        loadMediaTrackerSettings();
+                                                                    }} />
+                                                                </td>
+                                                                <td className="py-2"><span className="px-1.5 py-0.5 rounded bg-slate-700 text-xs">{s.kind}</span></td>
+                                                                <td className="py-2 font-medium text-slate-200">{s.value}</td>
+                                                                <td className="py-2 text-xs text-slate-400">{s.associatedTicker || '—'}</td>
+                                                                <td className="py-2 text-xs text-slate-400">{s.note || '—'}</td>
+                                                                <td className="py-2 text-right">
+                                                                    <button onClick={async () => {
+                                                                        if (!confirm(`Delete signal "${s.value}"?`)) return;
+                                                                        await fetch(`/api/media/watchlist/${s.id}`, {method: 'DELETE'});
+                                                                        loadMediaTrackerSettings();
+                                                                    }} className="text-xs text-rose-400 hover:text-rose-300">Delete</button>
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                                {!mtLoading && mtSignals.length === 0 && (
+                                                    <div className="text-sm text-slate-500 py-4 text-center">No signals yet.</div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* COVERAGE MUTES */}
+                                    {mtSection === 'coverage' && (
+                                        <div>
+                                            <p className="text-xs text-slate-400 mb-3">Mute media-tracker alerts for specific covered tickers without removing them from your universe.</p>
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                                {(savedAnalyses || []).map(a => {
+                                                    const muted = mtMutedCoverage.includes(a.ticker);
+                                                    return (
+                                                        <label key={a.ticker} className={`flex items-center gap-2 p-2 rounded-md border ${muted ? 'bg-amber-600/20 border-amber-500/50' : 'bg-white/5 border-white/10'} cursor-pointer`}>
+                                                            <input type="checkbox" checked={muted} onChange={async (e) => {
+                                                                const next = e.target.checked
+                                                                    ? Array.from(new Set([...mtMutedCoverage, a.ticker]))
+                                                                    : mtMutedCoverage.filter(t => t !== a.ticker);
+                                                                setMtMutedCoverage(next);
+                                                                await fetch('/api/settings', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({media_muted_coverage_tickers: next})});
+                                                            }} />
+                                                            <span className="text-sm font-medium text-slate-200">{a.ticker}</span>
+                                                        </label>
+                                                    );
+                                                })}
+                                            </div>
+                                            {(savedAnalyses || []).length === 0 && (
+                                                <div className="text-sm text-slate-500 py-4 text-center">No covered tickers yet.</div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* CHANNELS */}
+                                    {mtSection === 'channels' && (
+                                        <div className="space-y-3">
+                                            <p className="text-xs text-slate-400 mb-3">Where material alerts should surface. M8 will wire these to actually fire; for now the preferences are saved.</p>
+                                            {[
+                                                {id: 'tab', label: 'In-app Alerts tab'},
+                                                {id: 'push', label: 'Web push (this device)'},
+                                                {id: 'telegram', label: 'Telegram'},
+                                                {id: 'email', label: 'Email digest (7am)'},
+                                            ].map(c => (
+                                                <label key={c.id} className="flex items-center gap-3 p-3 rounded-md bg-white/5 border border-white/10 cursor-pointer">
+                                                    <input type="checkbox" checked={!!mtChannels[c.id]} onChange={async (e) => {
+                                                        const next = {...mtChannels, [c.id]: e.target.checked};
+                                                        setMtChannels(next);
+                                                        await fetch('/api/settings', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({media_notification_channels: next})});
+                                                    }} />
+                                                    <span className="text-sm text-slate-200">{c.label}</span>
+                                                </label>
+                                            ))}
+                                            <div className="text-xs text-slate-500 mt-4 p-3 rounded-md bg-black/20 border border-white/5">
+                                                Cost tracking dashboard lights up in M8.
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Add-feed modal */}
+                                {mtAddFeedOpen && (
+                                    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setMtAddFeedOpen(false)}>
+                                        <div className="bg-neutral-900 border border-white/10 rounded-2xl p-5 w-full max-w-md" onClick={e => e.stopPropagation()}>
+                                            <h3 className="font-semibold text-slate-100 mb-4">Add feed</h3>
+                                            <div className="space-y-3">
+                                                <input placeholder="Feed name" value={mtNewFeed.name} onChange={e => setMtNewFeed({...mtNewFeed, name: e.target.value})} className="w-full px-3 py-2 rounded-md bg-black/30 border border-white/10 text-slate-100 text-sm" />
+                                                <input placeholder="RSS URL" value={mtNewFeed.feedUrl} onChange={e => setMtNewFeed({...mtNewFeed, feedUrl: e.target.value})} className="w-full px-3 py-2 rounded-md bg-black/30 border border-white/10 text-slate-100 text-sm" />
+                                                <input placeholder="Sector tags (comma-separated)" value={mtNewFeed.sectorTags} onChange={e => setMtNewFeed({...mtNewFeed, sectorTags: e.target.value})} className="w-full px-3 py-2 rounded-md bg-black/30 border border-white/10 text-slate-100 text-sm" />
+                                            </div>
+                                            <div className="flex justify-end gap-2 mt-5">
+                                                <button onClick={() => setMtAddFeedOpen(false)} className="px-3 py-1.5 text-sm text-slate-400 hover:text-white">Cancel</button>
+                                                <button
+                                                    onClick={async () => {
+                                                        if (!mtNewFeed.name.trim() || !mtNewFeed.feedUrl.trim()) return;
+                                                        const tags = mtNewFeed.sectorTags.split(',').map(s => s.trim()).filter(Boolean);
+                                                        const r = await fetch('/api/media/feeds', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name: mtNewFeed.name.trim(), feedUrl: mtNewFeed.feedUrl.trim(), sourceType: 'podcast', sectorTags: tags, pollIntervalMin: 30})});
+                                                        if (!r.ok) { setMtError(`Add feed failed: HTTP ${r.status}`); return; }
+                                                        setMtAddFeedOpen(false);
+                                                        setMtNewFeed({name: '', feedUrl: '', sectorTags: '', pollIntervalMin: 30});
+                                                        loadMediaTrackerSettings();
+                                                    }}
+                                                    className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 rounded-md text-sm font-medium"
+                                                >Add</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Add-signal modal */}
+                                {mtAddSignalOpen && (
+                                    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setMtAddSignalOpen(false)}>
+                                        <div className="bg-neutral-900 border border-white/10 rounded-2xl p-5 w-full max-w-md" onClick={e => e.stopPropagation()}>
+                                            <h3 className="font-semibold text-slate-100 mb-4">Add signal</h3>
+                                            <div className="space-y-3">
+                                                <select value={mtNewSignal.kind} onChange={e => setMtNewSignal({...mtNewSignal, kind: e.target.value})} className="w-full px-3 py-2 rounded-md bg-black/30 border border-white/10 text-slate-100 text-sm">
+                                                    <option value="ticker">Ticker (alert if mentioned in episode)</option>
+                                                    <option value="keyword">Keyword / theme</option>
+                                                    <option value="exec">Exec name</option>
+                                                </select>
+                                                <input placeholder="Value (e.g., ISRG or GLP-1 or Jensen Huang)" value={mtNewSignal.value} onChange={e => setMtNewSignal({...mtNewSignal, value: e.target.value})} className="w-full px-3 py-2 rounded-md bg-black/30 border border-white/10 text-slate-100 text-sm" />
+                                                <input placeholder="Associated covered ticker (optional, e.g., BSX)" value={mtNewSignal.associatedTicker} onChange={e => setMtNewSignal({...mtNewSignal, associatedTicker: e.target.value.toUpperCase()})} className="w-full px-3 py-2 rounded-md bg-black/30 border border-white/10 text-slate-100 text-sm" />
+                                                <input placeholder="Note (optional)" value={mtNewSignal.note} onChange={e => setMtNewSignal({...mtNewSignal, note: e.target.value})} className="w-full px-3 py-2 rounded-md bg-black/30 border border-white/10 text-slate-100 text-sm" />
+                                            </div>
+                                            <div className="flex justify-end gap-2 mt-5">
+                                                <button onClick={() => setMtAddSignalOpen(false)} className="px-3 py-1.5 text-sm text-slate-400 hover:text-white">Cancel</button>
+                                                <button
+                                                    onClick={async () => {
+                                                        if (!mtNewSignal.value.trim()) return;
+                                                        const r = await fetch('/api/media/watchlist', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({kind: mtNewSignal.kind, value: mtNewSignal.value.trim(), associatedTicker: mtNewSignal.associatedTicker.trim() || null, note: mtNewSignal.note.trim() || null})});
+                                                        if (!r.ok) {
+                                                            const body = await r.text().catch(() => '');
+                                                            setMtError(`Add signal failed: ${r.status === 409 ? 'already exists' : body.slice(0,100)}`);
+                                                            return;
+                                                        }
+                                                        setMtAddSignalOpen(false);
+                                                        setMtNewSignal({kind: 'ticker', value: '', associatedTicker: '', note: ''});
+                                                        loadMediaTrackerSettings();
+                                                    }}
+                                                    className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 rounded-md text-sm font-medium"
+                                                >Add</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                                 </div>
                             </div>
                         )}
