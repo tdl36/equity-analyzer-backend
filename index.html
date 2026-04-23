@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-23T13';
+        const BUILD_VERSION = '2026-04-23T14';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -22152,11 +22152,32 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             {alert.status === 'new' && (
                                                                 <div className="flex items-center gap-2 mt-3">
                                                                     {alert.alertType === 'new_files' && alert.detail?.folderType === 'catalysts' && (
-                                                                        <button onClick={() => {
-                                                                            actionAlert(alert.id);
-                                                                            setCatalystTicker(alert.ticker);
-                                                                            setCatalystTopic(alert.detail.topic || '');
-                                                                            switchTab('agents');
+                                                                        <button onClick={async () => {
+                                                                            const ticker = alert.ticker;
+                                                                            const topic = alert.detail?.topic || '';
+                                                                            if (!ticker || !topic) {
+                                                                                alert && console.warn('Synthesize click missing ticker/topic', alert);
+                                                                                return;
+                                                                            }
+                                                                            try {
+                                                                                const resp = await fetch(`${API_URL}/api/catalysts/synthesize`, {
+                                                                                    method: 'POST',
+                                                                                    headers: {'Content-Type': 'application/json'},
+                                                                                    body: JSON.stringify({ticker, topic, length: 'standard'}),
+                                                                                });
+                                                                                if (!resp.ok) throw new Error(`${resp.status} ${await resp.text().catch(() => '')}`);
+                                                                                const {jobId} = await resp.json();
+                                                                                actionAlert(alert.id);
+                                                                                setCatalystTicker(ticker);
+                                                                                setCatalystTopic(topic);
+                                                                                setAgentView('catalysts');
+                                                                                switchTab('agents');
+                                                                                // Attach active job so progress renders
+                                                                                if (jobId) setCatalystActiveJob({id: jobId, ticker, status: 'queued', progress: 0});
+                                                                            } catch (e) {
+                                                                                console.error('Synthesize failed:', e);
+                                                                                window.alert(`Synthesize failed: ${e.message || e}`);
+                                                                            }
                                                                         }} className="px-3 py-1.5 text-[10px] bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-medium">
                                                                             Synthesize
                                                                         </button>
