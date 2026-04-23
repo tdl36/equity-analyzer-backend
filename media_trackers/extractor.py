@@ -20,16 +20,28 @@ def _call_haiku(content: str) -> dict:
 
 
 def _parse_json(raw) -> dict:
-    # call_llm may return str or dict depending on provider; normalize.
+    # call_llm returns {text, usage, provider, model} — extract the text.
     if isinstance(raw, dict):
-        return raw
+        if 'points' in raw:
+            return raw  # already-parsed result
+        raw = raw.get('text') or raw.get('content') or ''
     if not isinstance(raw, str):
         raw = str(raw)
+    # Strip markdown code fence if Haiku wrapped the JSON.
+    stripped = raw.strip()
+    if stripped.startswith('```'):
+        # Remove opening fence (```json or ```)
+        first_nl = stripped.find('\n')
+        if first_nl > 0:
+            stripped = stripped[first_nl + 1:]
+        # Remove closing fence
+        if stripped.endswith('```'):
+            stripped = stripped[:-3].rstrip()
     try:
-        return json.loads(raw)
+        return json.loads(stripped)
     except json.JSONDecodeError:
         try:
-            repaired = app_v3._repair_truncated_json(raw)
+            repaired = app_v3._repair_truncated_json(stripped)
             return json.loads(repaired)
         except Exception:
             return {'points': []}

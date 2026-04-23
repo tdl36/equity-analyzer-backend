@@ -82,3 +82,35 @@ def test_extract_skips_episode_with_no_show_notes(clean_db):
         row = cur.fetchone()
     assert row['status'] == 'skipped'
     assert 'no content' in row['error_message'].lower()
+
+
+# _parse_json unit tests — real call_llm shape + code-fence handling
+def test_parse_json_handles_call_llm_dict_with_code_fence():
+    raw = {
+        'text': '```json\n{"points": [{"text": "Test", "tickers": ["NVDA"]}]}\n```',
+        'usage': {'input_tokens': 10, 'output_tokens': 20},
+        'provider': 'anthropic',
+        'model': 'claude-haiku-4-5-20251001',
+    }
+    result = extractor._parse_json(raw)
+    assert result == {'points': [{'text': 'Test', 'tickers': ['NVDA']}]}
+
+
+def test_parse_json_handles_plain_json_string():
+    result = extractor._parse_json('{"points": []}')
+    assert result == {'points': []}
+
+
+def test_parse_json_handles_bare_code_fence_no_lang():
+    result = extractor._parse_json('```\n{"points": [{"text": "X"}]}\n```')
+    assert result == {'points': [{'text': 'X'}]}
+
+
+def test_parse_json_handles_already_parsed_dict():
+    result = extractor._parse_json({'points': [{'text': 'already'}]})
+    assert result == {'points': [{'text': 'already'}]}
+
+
+def test_parse_json_returns_empty_on_junk():
+    result = extractor._parse_json('not json at all')
+    assert result == {'points': []}
