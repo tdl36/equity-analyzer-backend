@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-23T02';
+        const BUILD_VERSION = '2026-04-23T03';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -11791,6 +11791,19 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 <span className="flex items-center gap-2">
                                     <Bot className="w-4 h-4" />
                                     Agents
+                                </span>
+                            </button>
+                            <button
+                                onClick={() => switchTab('feed')}
+                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                                    activeTab === 'feed'
+                                        ? 'bg-amber-600 text-white shadow-lg glow-teal'
+                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
+                                }`}
+                            >
+                                <span className="flex items-center gap-2">
+                                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>
+                                    Feed
                                 </span>
                             </button>
                             <button
