@@ -14676,6 +14676,314 @@ def mp_generate_questions():
         return jsonify({'error': str(e)}), 500
 
 
+# ============================================
+# MP FULL PIPELINE — server-side orchestration of analyze+synth+questions+save
+# Runs entirely on Render; survives browser close/reload. Frontend polls
+# /api/mp/jobs/:id and reads result.stage + result.progress for UI.
+# ============================================
+
+def _mp_build_user_content(filename, file_data, extracted_text):
+    """Shape a doc into Claude's user_content — mirrors mp_analyze_document logic."""
+    fname_lower = (filename or '').lower()
+    if file_data and fname_lower.endswith('.pdf'):
+        return [
+            {"type": "text", "text": f"Document: {filename}"},
+            {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": file_data}},
+            {"type": "text", "text": "Analyze this document thoroughly, including all charts, graphs, tables, and visual data."}
+        ]
+    if file_data and any(fname_lower.endswith(ext) for ext in ('.png', '.jpg', '.jpeg', '.gif', '.webp')):
+        ext = fname_lower.rsplit('.', 1)[-1]
+        mime_map = {'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'gif': 'image/gif', 'webp': 'image/webp'}
+        return [
+            {"type": "text", "text": f"Document: {filename}"},
+            {"type": "image", "source": {"type": "base64", "media_type": mime_map.get(ext, 'image/png'), "data": file_data}},
+            {"type": "text", "text": "Analyze this image thoroughly, including all charts, graphs, tables, and visual data."}
+        ]
+    txt = extracted_text or ''
+    if len(txt) > 400000:
+        txt = txt[:400000] + "\n\n[... document truncated for length ...]"
+    return f"Document: {filename}\n\n{txt}"
+
+
+def _mp_analyze_one_doc(api_key, ticker, company_name, doc):
+    """Run analyze-document logic inline (no sub-job). Returns analysis dict + tokens."""
+    prompt = MP_ANALYSIS_PROMPT.format(
+        doc_type=doc.get('docType', 'document'), ticker=ticker, company_name=company_name
+    )
+    # Pull file_data from DB if docId provided
+    file_data = None
+    doc_id = doc.get('id')
+    if doc_id:
+        try:
+            with get_db() as (_, cur):
+                cur.execute('SELECT file_data FROM mp_documents WHERE id = %s', (doc_id,))
+                row = cur.fetchone()
+                if row and row['file_data']:
+                    file_data = row['file_data']
+        except Exception as e:
+            print(f"pipeline: could not fetch file_data for doc {doc_id}: {e}")
+    user_content = _mp_build_user_content(doc.get('filename', ''), file_data, doc.get('extractedText', ''))
+    llm_result = None
+    for chunk in call_llm_stream(
+        messages=[{"role": "user", "content": user_content}],
+        system=prompt, tier="standard", max_tokens=16384, anthropic_api_key=api_key,
+    ):
+        if isinstance(chunk, dict):
+            llm_result = chunk
+    if llm_result is None:
+        raise Exception(f"Analyze failed for {doc.get('filename','?')}: no LLM result")
+    analysis = parse_mp_json(llm_result["text"])
+    tokens = llm_result["usage"]["input_tokens"] + llm_result["usage"]["output_tokens"]
+    analysis['_source_filename'] = doc.get('filename', '')
+    analysis['_source_id'] = doc_id
+    analysis['_tokensUsed'] = tokens
+    return analysis, tokens
+
+
+def _mp_synthesize_inline(api_key, ticker, company_name, sector, analyses, past_questions, timeframe):
+    analyses_parts = []
+    for i, a in enumerate(analyses):
+        analyses_parts.append(f"### Document {i+1}: {a.get('_source_filename', 'unknown')}\n{json.dumps(a, indent=2)}")
+    analyses_text = "\n\n".join(analyses_parts)
+
+    past_q_text = ""
+    if past_questions:
+        pq_items = []
+        for pq in past_questions[:30]:
+            status_note = f" [STATUS: {pq.get('status', '')}]" if pq.get('status') != 'asked' else ""
+            response = f" — Response: {pq.get('response_notes', '')}" if pq.get('response_notes') else ""
+            pq_items.append(f"- [{pq.get('meeting_date', '?')}] {pq.get('question', '')}{status_note}{response}")
+        past_q_text = "PAST QUESTIONS FROM PRIOR MEETINGS (reference these and flag unresolved items):\n" + "\n".join(pq_items)
+
+    prompt = MP_SYNTHESIS_PROMPT.format(
+        ticker=ticker, company_name=company_name, sector=sector,
+        doc_count=len(analyses), timeframe=timeframe,
+        analyses_text=analyses_text, past_questions_text=past_q_text,
+    )
+    llm_result = None
+    for chunk in call_llm_stream(
+        messages=[{"role": "user", "content": "Synthesize the above document analyses."}],
+        system=prompt, tier="standard", max_tokens=16384, anthropic_api_key=api_key,
+    ):
+        if isinstance(chunk, dict):
+            llm_result = chunk
+    if llm_result is None:
+        raise Exception("Synth failed: no LLM result")
+    synthesis = parse_mp_json(llm_result["text"])
+    tokens = llm_result["usage"]["input_tokens"] + llm_result["usage"]["output_tokens"]
+    return synthesis, tokens
+
+
+def _mp_questions_inline(api_key, ticker, company_name, sector, synthesis, unresolved):
+    unresolved_text = ""
+    if unresolved:
+        items = [f"- {q.get('question', '')} (from {q.get('meeting_date', '?')})" for q in unresolved[:15]]
+        unresolved_text = "UNRESOLVED QUESTIONS FROM PRIOR MEETINGS (include follow-ups for these):\n" + "\n".join(items)
+    prompt = MP_QUESTION_PROMPT.format(
+        ticker=ticker, company_name=company_name, sector=sector,
+        synthesis_text=json.dumps(synthesis, indent=2), unresolved_text=unresolved_text,
+    )
+    llm_result = None
+    for chunk in call_llm_stream(
+        messages=[{"role": "user", "content": "Generate the meeting preparation questions."}],
+        system=prompt, tier="standard", max_tokens=16384, anthropic_api_key=api_key,
+    ):
+        if isinstance(chunk, dict):
+            llm_result = chunk
+    if llm_result is None:
+        raise Exception("Questions failed: no LLM result")
+    topics = parse_mp_json(llm_result["text"])
+    tokens = llm_result["usage"]["input_tokens"] + llm_result["usage"]["output_tokens"]
+    return topics, tokens
+
+
+def _mp_save_results_inline(meeting_id, topics, synthesis_json, total_tokens, model):
+    """Mirror of /api/mp/save-results logic, inlined for use from the orchestrator."""
+    with get_db(commit=True) as (_, cur):
+        cur.execute('SELECT COALESCE(MAX(version), 0) + 1 AS next_ver FROM mp_question_sets WHERE meeting_id = %s', (meeting_id,))
+        version = cur.fetchone()['next_ver']
+        cur.execute('''
+            INSERT INTO mp_question_sets (meeting_id, version, status, topics_json, synthesis_json, generation_model, generation_tokens)
+            VALUES (%s, %s, 'ready', %s, %s, %s, %s)
+            RETURNING id, version
+        ''', (meeting_id, version, json.dumps(topics),
+              json.dumps(synthesis_json) if synthesis_json else None, model, total_tokens))
+        qs = dict(cur.fetchone())
+        cur.execute("UPDATE mp_meetings SET status = 'ready', updated_at = CURRENT_TIMESTAMP WHERE id = %s", (meeting_id,))
+        cur.execute('SELECT company_id FROM mp_meetings WHERE id = %s', (meeting_id,))
+        company_row = cur.fetchone()
+        if company_row:
+            company_id = company_row['company_id']
+            for topic in (topics if isinstance(topics, list) else []):
+                topic_name = topic.get('topic', '') if isinstance(topic, dict) else ''
+                questions = topic.get('questions', []) if isinstance(topic, dict) else []
+                for q in questions:
+                    q_text = q.get('question', '') if isinstance(q, dict) else ''
+                    if q_text:
+                        cur.execute('''
+                            INSERT INTO mp_past_questions (company_id, meeting_id, question, topic, status)
+                            VALUES (%s, %s, %s, %s, 'asked')
+                        ''', (company_id, meeting_id, q_text, topic_name))
+    return qs
+
+
+def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sector,
+                         docs, past_questions, timeframe, unresolved, model):
+    """Run the full MP pipeline server-side in one thread. Writes progress to
+    mp_jobs.result as it goes so the UI can show stage + counts."""
+    try:
+        n_docs = len(docs)
+        _mp_update_job(job_id, result={'stage': 'analyzing', 'completed': 0, 'total': n_docs})
+
+        # Stage 1: analyze all docs in parallel (cap at 4 concurrent Claude calls)
+        analyses = [None] * n_docs
+        tokens_total = 0
+        lock = threading.Lock()
+        completed_counter = [0]
+
+        sem = threading.Semaphore(4)
+        threads = []
+        errors = []
+
+        def _worker(i, doc):
+            with sem:
+                try:
+                    analysis, tokens = _mp_analyze_one_doc(api_key, ticker, company_name, doc)
+                    with lock:
+                        analyses[i] = analysis
+                        nonlocal_tokens = tokens
+                        completed_counter[0] += 1
+                        _mp_update_job(job_id, result={
+                            'stage': 'analyzing', 'completed': completed_counter[0], 'total': n_docs,
+                        })
+                    return tokens
+                except Exception as e:
+                    with lock:
+                        errors.append((doc.get('filename', '?'), str(e)))
+                    return 0
+
+        results_tokens = [0] * n_docs
+        def _launch(i, doc):
+            def _t():
+                results_tokens[i] = _worker(i, doc) or 0
+            th = threading.Thread(target=_t, daemon=True)
+            th.start()
+            return th
+        for i, doc in enumerate(docs):
+            threads.append(_launch(i, doc))
+        for th in threads:
+            th.join()
+        if errors:
+            raise Exception(f"Analyze errors: {errors[0][0]} — {errors[0][1]}")
+        tokens_total += sum(results_tokens)
+
+        # Stage 2: synthesize
+        _mp_update_job(job_id, result={
+            'stage': 'synthesizing', 'completed': n_docs, 'total': n_docs,
+        })
+        synthesis, synth_tokens = _mp_synthesize_inline(
+            api_key, ticker, company_name, sector, analyses, past_questions, timeframe
+        )
+        tokens_total += synth_tokens
+
+        # Stage 3: generate questions
+        _mp_update_job(job_id, result={
+            'stage': 'generating', 'completed': n_docs, 'total': n_docs,
+        })
+        topics, q_tokens = _mp_questions_inline(
+            api_key, ticker, company_name, sector, synthesis, unresolved
+        )
+        tokens_total += q_tokens
+
+        # Stage 4: save
+        _mp_update_job(job_id, result={
+            'stage': 'saving', 'completed': n_docs, 'total': n_docs,
+        })
+        qs = _mp_save_results_inline(meeting_id, topics, synthesis, tokens_total, model)
+
+        _mp_update_job(job_id, status='done', tokens_used=tokens_total, result={
+            'stage': 'done',
+            'questionSetId': qs['id'], 'version': qs['version'],
+            'topics': topics, 'synthesis': synthesis,
+            'totalTokens': tokens_total,
+        })
+    except Exception as e:
+        print(f"MP pipeline job {job_id} error: {e}")
+        _mp_update_job(job_id, status='failed', error=str(e)[:2000])
+
+
+@app.route('/api/mp/run-pipeline', methods=['POST'])
+def mp_run_pipeline():
+    """Kick off the full MP pipeline server-side. Returns {jobId}. Poll
+    /api/mp/jobs/:id for stage + progress. Runs even if browser closes."""
+    try:
+        data = request.json or {}
+        api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('apiKey', '')
+        if not api_key:
+            return jsonify({'error': 'No API key provided.'}), 400
+
+        meeting_id = data.get('meetingId')
+        docs = data.get('docs') or []
+        if not meeting_id:
+            return jsonify({'error': 'meetingId required'}), 400
+        if not docs:
+            return jsonify({'error': 'docs (list of {id, filename, extractedText, docType}) required'}), 400
+
+        ticker = data.get('ticker', '')
+        company_name = data.get('companyName', ticker)
+        sector = data.get('sector', 'unknown')
+        past_questions = data.get('pastQuestions') or []
+        timeframe = data.get('timeframe', 'recent')
+        unresolved = data.get('unresolvedQuestions') or []
+        model = data.get('model', 'claude-sonnet-4-5-20250929')
+
+        job_id = str(uuid.uuid4())
+        with get_db(commit=True) as (_c, cur):
+            cur.execute('''
+                INSERT INTO mp_jobs (id, stage, ticker, status, input)
+                VALUES (%s, 'pipeline', %s, 'running', %s::jsonb)
+            ''', (job_id, ticker, json.dumps({'meetingId': meeting_id, 'docCount': len(docs)})))
+
+        threading.Thread(
+            target=_run_mp_pipeline_job,
+            args=(job_id, api_key, meeting_id, ticker, company_name, sector,
+                  docs, past_questions, timeframe, unresolved, model),
+            daemon=True,
+        ).start()
+        return jsonify({'jobId': job_id}), 202
+    except Exception as e:
+        print(f"MP run-pipeline error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/mp/pipeline/latest', methods=['GET'])
+def mp_pipeline_latest():
+    """Return the most recent pipeline job for a given meeting (if still running
+    or recently done). Used for tab-open auto-resume."""
+    meeting_id = request.args.get('meetingId', type=int)
+    if not meeting_id:
+        return jsonify({'error': 'meetingId required'}), 400
+    with get_db() as (_c, cur):
+        cur.execute('''
+            SELECT id, stage, status, result, error, tokens_used, created_at, updated_at
+            FROM mp_jobs
+            WHERE stage = 'pipeline'
+              AND input->>'meetingId' = %s
+              AND (status = 'running' OR updated_at > NOW() - INTERVAL '1 hour')
+            ORDER BY created_at DESC LIMIT 1
+        ''', (str(meeting_id),))
+        row = cur.fetchone()
+    if not row:
+        return jsonify({'job': None})
+    result = row['result'] if isinstance(row['result'], dict) else (json.loads(row['result']) if row['result'] else None)
+    return jsonify({'job': {
+        'id': row['id'], 'stage': row['stage'], 'status': row['status'],
+        'result': result, 'error': row['error'], 'tokensUsed': row['tokens_used'] or 0,
+        'createdAt': row['created_at'].isoformat() if row['created_at'] else None,
+        'updatedAt': row['updated_at'].isoformat() if row['updated_at'] else None,
+    }})
+
+
 @app.route('/api/mp/jobs/<job_id>', methods=['GET'])
 def mp_job_status(job_id):
     """Poll an MP job. Returns {status, stage, result, error, tokensUsed}."""

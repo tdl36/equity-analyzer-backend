@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-23T06';
+        const BUILD_VERSION = '2026-04-23T07';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -7843,23 +7843,96 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 } catch (err) { alert('Delete failed: ' + err.message); }
             };
 
+            // MP pipeline — server-side orchestrated. Backend runs all 4 stages
+            // (analyze 6 docs → synth → questions → save) autonomously on Render.
+            // Frontend only kicks it off + polls one jobId; survives tab close.
+            const MP_PIPELINE_KEY = 'charlie_mp_pipeline_job';
+            const saveMpPipelineJob = (meetingId, jobId) => {
+                try { localStorage.setItem(MP_PIPELINE_KEY, JSON.stringify({ meetingId, jobId, startedAt: Date.now() })); } catch {}
+            };
+            const loadMpPipelineJob = () => {
+                try {
+                    const raw = localStorage.getItem(MP_PIPELINE_KEY);
+                    if (!raw) return null;
+                    const s = JSON.parse(raw);
+                    if (s.startedAt && Date.now() - s.startedAt > 60 * 60 * 1000) return null; // 1h TTL
+                    return s;
+                } catch { return null; }
+            };
+            const clearMpPipelineJob = () => { try { localStorage.removeItem(MP_PIPELINE_KEY); } catch {} };
+
+            const renderMpStageProgress = (result) => {
+                if (!result) return { step: 'analyzing', progress: 'Starting pipeline…' };
+                const stage = result.stage || 'analyzing';
+                const { completed, total } = result;
+                if (stage === 'analyzing') {
+                    return { step: 'analyzing', progress: `Analyzing ${total || ''} documents (${completed || 0}/${total || '?'} done)…` };
+                }
+                if (stage === 'synthesizing') return { step: 'synthesizing', progress: 'Synthesizing insights across all documents…' };
+                if (stage === 'generating')   return { step: 'generating',   progress: 'Generating meeting questions…' };
+                if (stage === 'saving')       return { step: 'saving',       progress: 'Saving results…' };
+                if (stage === 'done')         return { step: '',             progress: '' };
+                return { step: stage, progress: '' };
+            };
+
+            // Poll a server-side pipeline job until it completes. Updates UI from result.stage.
+            const pollMpPipelineJob = async (jobId, meetingId) => {
+                setMpPipelineRunning(true);
+                setMpPipelineError(null);
+                const pollIntervalMs = 3000;
+                try {
+                    while (true) {
+                        let j;
+                        try {
+                            const r = await fetch(`${API_URL}/api/mp/jobs/${jobId}`);
+                            if (!r.ok) throw new Error(`Poll HTTP ${r.status}`);
+                            j = await r.json();
+                        } catch (e) {
+                            // Tolerate transient network errors — retry next tick
+                            console.warn('Pipeline poll blip:', e);
+                            await new Promise(res => setTimeout(res, pollIntervalMs));
+                            continue;
+                        }
+                        const { step, progress } = renderMpStageProgress(j.result);
+                        setMpPipelineStep(step);
+                        setMpPipelineProgress(progress);
+                        if (j.status === 'done') {
+                            clearMpPipelineJob();
+                            await loadMpMeeting(meetingId);
+                            await loadMpMeetings();
+                            break;
+                        }
+                        if (j.status === 'failed') {
+                            clearMpPipelineJob();
+                            throw new Error(j.error || 'Pipeline failed');
+                        }
+                        await new Promise(res => setTimeout(res, pollIntervalMs));
+                    }
+                } catch (err) {
+                    console.error('Pipeline error:', err);
+                    setMpPipelineError(err.message);
+                } finally {
+                    setMpPipelineRunning(false);
+                    setMpPipelineStep('');
+                    setMpPipelineProgress('');
+                }
+            };
+
             const runMpPipeline = async () => {
                 const apiKey = loadApiKeyFromStorage();
                 if (!apiKey) { alert('Please add your API key in Settings first.'); return; }
                 if (!mpSelectedMeeting || !mpDocuments.length) return;
 
+                const meeting = mpSelectedMeeting;
+                const meetingId = meeting.id;
+
                 setMpPipelineRunning(true);
                 setMpPipelineError(null);
+                setMpPipelineStep('analyzing');
+                setMpPipelineProgress('Loading documents…');
 
                 try {
-                    const meeting = mpSelectedMeeting;
-                    const meetingId = meeting.id;
-                    const ticker = meeting.ticker;
-                    localStorage.setItem('charlie_mp_pipeline', JSON.stringify({ ticker, stage: 'analyzing', startTime: Date.now() }));
-
-                    // Fetch document info for all documents in parallel
-                    setMpPipelineStep('analyzing');
-                    setMpPipelineProgress('Loading documents...');
+                    // Fetch doc texts (client-side, lightweight — same as before)
                     const textResults = await Promise.all(
                         mpDocuments.map(async (doc) => {
                             try {
@@ -7875,150 +7948,57 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     const docsWithText = textResults.filter(Boolean);
                     if (!docsWithText.length) throw new Error('No analyzable documents found');
 
-                    // Step 1: Analyze documents with concurrency limit (2 at a time to avoid backend overload)
-                    let totalTokens = 0;
-                    const parseStreamResponse = async (resp, stepName) => {
-                        const text = await resp.text();
-                        const trimmed = text.trim();
-                        if (!trimmed) throw new Error(`${stepName}: Empty response from server (possible timeout)`);
-                        const lastNewline = trimmed.lastIndexOf('\n');
-                        const jsonStr = lastNewline >= 0 ? trimmed.substring(lastNewline + 1) : trimmed;
-                        try {
-                            const data = JSON.parse(jsonStr);
-                            if (data.error) throw new Error(`${stepName}: ${data.error}`);
-                            return data;
-                        } catch (parseErr) {
-                            throw new Error(`${stepName}: Invalid response (server may have timed out). Got: ${jsonStr.substring(0, 100)}`);
-                        }
-                    };
-
-                    let completedCount = 0;
-                    setMpPipelineProgress(`Analyzing ${docsWithText.length} documents (0/${docsWithText.length} done)...`);
-
-                    // Helper: poll an async MP job until done or failed (no Cloudflare timeout).
-                    const waitForMpJob = async (jobId, stageLabel) => {
-                        const pollIntervalMs = 3000;
-                        const maxWaitMs = 10 * 60 * 1000;
-                        const started = Date.now();
-                        while (true) {
-                            if (Date.now() - started > maxWaitMs) {
-                                throw new Error(`${stageLabel} timed out after 10 min`);
-                            }
-                            const pollResp = await fetch(`${API_URL}/api/mp/jobs/${jobId}`);
-                            if (!pollResp.ok) {
-                                const t = await pollResp.text().catch(() => '');
-                                throw new Error(`${stageLabel} poll HTTP ${pollResp.status}: ${t.slice(0, 200)}`);
-                            }
-                            const j = await pollResp.json();
-                            if (j.status === 'done') return j;
-                            if (j.status === 'failed') throw new Error(`${stageLabel} failed: ${j.error || 'unknown'}`);
-                            await new Promise(r => setTimeout(r, pollIntervalMs));
-                        }
-                    };
-
-                    // Concurrency-limited parallel execution (async jobs, polled to completion)
-                    const CONCURRENCY = 4;
-                    const analysisResults = [];
-                    const queue = [...docsWithText];
-                    const runOne = async () => {
-                        while (queue.length > 0) {
-                            const d = queue.shift();
-                            const resp = await fetchRetry(`${API_URL}/api/mp/analyze-document`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    apiKey, ticker: meeting.ticker, companyName: meeting.company_name,
-                                    docId: d.id, extractedText: d.extractedText, docType: d.docType, filename: d.filename
-                                })
-                            }, 2);
-                            if (!resp.ok) {
-                                const errText = await resp.text().catch(() => '');
-                                throw new Error(`Analysis failed to queue for ${d.filename}: ${errText}`);
-                            }
-                            const { jobId } = await resp.json();
-                            const job = await waitForMpJob(jobId, `Analysis of ${d.filename}`);
-                            completedCount++;
-                            setMpPipelineProgress(`Analyzing ${docsWithText.length} documents (${completedCount}/${docsWithText.length} done)...`);
-                            analysisResults.push({ ...job.result.analysis, _source_filename: d.filename, _source_id: d.id, _tokensUsed: job.tokensUsed || 0 });
-                        }
-                    };
-                    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, docsWithText.length) }, () => runOne()));
-
-                    const analyses = analysisResults;
-                    totalTokens = analysisResults.reduce((sum, a) => sum + (a._tokensUsed || 0), 0);
-
-                    // Step 2: Synthesize
-                    setMpPipelineStep('synthesizing');
-                    setMpPipelineProgress('Synthesizing insights across all documents...');
-                    localStorage.setItem('charlie_mp_pipeline', JSON.stringify({ ticker, stage: 'synthesizing', startTime: Date.now() }));
                     const docDates = mpDocuments.map(d => d.doc_date).filter(Boolean).sort();
                     const timeframe = docDates.length >= 2 ? `${docDates[0]} to ${docDates[docDates.length - 1]}` : docDates.length === 1 ? `around ${docDates[0]}` : 'recent';
+                    const unresolved = (mpPastQuestions || []).filter(pq => ['asked', 'unresolved', 'follow_up'].includes(pq.status));
 
-                    const synthResp = await fetchRetry(`${API_URL}/api/mp/synthesize`, {
+                    // One POST kicks off the server-side pipeline — runs independent of browser.
+                    const resp = await fetchRetry(`${API_URL}/api/mp/run-pipeline`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            apiKey, ticker: meeting.ticker, companyName: meeting.company_name,
-                            sector: meeting.sector || '', analyses, pastQuestions: mpPastQuestions, timeframe
+                            apiKey,
+                            meetingId,
+                            ticker: meeting.ticker,
+                            companyName: meeting.company_name,
+                            sector: meeting.sector || '',
+                            docs: docsWithText,
+                            pastQuestions: mpPastQuestions || [],
+                            timeframe,
+                            unresolvedQuestions: unresolved,
                         })
                     }, 2);
-                    if (!synthResp.ok) {
-                        const errText = await synthResp.text().catch(() => '');
-                        throw new Error(`Synthesis failed to queue: ${errText}`);
+                    if (!resp.ok) {
+                        const errText = await resp.text().catch(() => '');
+                        throw new Error(`Pipeline failed to queue: ${errText}`);
                     }
-                    const { jobId: synthJobId } = await synthResp.json();
-                    const synthJob = await waitForMpJob(synthJobId, 'Synthesis');
-                    const synthData = { synthesis: synthJob.result?.synthesis, tokensUsed: synthJob.tokensUsed };
-                    totalTokens += synthData.tokensUsed || 0;
-
-                    // Step 3: Generate questions
-                    setMpPipelineStep('generating');
-                    setMpPipelineProgress('Generating meeting questions...');
-                    localStorage.setItem('charlie_mp_pipeline', JSON.stringify({ ticker, stage: 'generating', startTime: Date.now() }));
-                    const unresolved = mpPastQuestions.filter(pq => ['asked', 'unresolved', 'follow_up'].includes(pq.status));
-
-                    const qResp = await fetchRetry(`${API_URL}/api/mp/generate-questions`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            apiKey, ticker: meeting.ticker, companyName: meeting.company_name,
-                            sector: meeting.sector || '', synthesis: synthData.synthesis, unresolvedQuestions: unresolved
-                        })
-                    }, 2);
-                    if (!qResp.ok) {
-                        const errText = await qResp.text().catch(() => '');
-                        throw new Error(`Question generation failed to queue: ${errText}`);
-                    }
-                    const { jobId: qJobId } = await qResp.json();
-                    const qJob = await waitForMpJob(qJobId, 'Question generation');
-                    const qData = { topics: qJob.result?.topics, tokensUsed: qJob.tokensUsed };
-                    totalTokens += qData.tokensUsed || 0;
-
-                    // Step 4: Save
-                    setMpPipelineStep('saving');
-                    setMpPipelineProgress('Saving results...');
-                    localStorage.setItem('charlie_mp_pipeline', JSON.stringify({ ticker, stage: 'saving', startTime: Date.now() }));
-                    await fetchRetry(`${API_URL}/api/mp/save-results`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            meetingId, topics: qData.topics, synthesisJson: synthData.synthesis, totalTokens, model: 'claude-sonnet-4-20250514'
-                        })
-                    });
-
-                    await loadMpMeeting(meetingId);
-                    await loadMpMeetings();
-
+                    const { jobId } = await resp.json();
+                    saveMpPipelineJob(meetingId, jobId);
+                    // Hand off to poller; it manages the spinner + state and clears localStorage on done.
+                    await pollMpPipelineJob(jobId, meetingId);
                 } catch (err) {
-                    console.error('Pipeline error:', err);
+                    console.error('Pipeline kickoff error:', err);
                     setMpPipelineError(err.message);
-                } finally {
-                    localStorage.removeItem('charlie_mp_pipeline');
                     setMpPipelineRunning(false);
                     setMpPipelineStep('');
                     setMpPipelineProgress('');
                 }
             };
+
+            // Auto-resume: if a pipeline was running in a prior session, pick up polling
+            // as soon as the user opens the Meeting Prep tab.
+            useEffect(() => {
+                if (activeTab !== 'meetingprep') return;
+                const inflight = loadMpPipelineJob();
+                if (!inflight) return;
+                if (mpPipelineRunning) return;
+                // Switch to the right meeting if needed
+                if (!mpSelectedMeeting || mpSelectedMeeting.id !== inflight.meetingId) {
+                    const m = (mpMeetings || []).find(x => x.id === inflight.meetingId);
+                    if (m) setMpSelectedMeeting(m);
+                }
+                pollMpPipelineJob(inflight.jobId, inflight.meetingId);
+            }, [activeTab, mpMeetings]);
 
             const toggleMpTopic = (index) => {
                 setMpExpandedTopics(prev => {
