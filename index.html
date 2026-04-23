@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-23T03';
+        const BUILD_VERSION = '2026-04-23T04';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -7896,6 +7896,27 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     const docDates = mpDocuments.map(d => d.doc_date).filter(Boolean).sort();
                     const timeframe = docDates.length >= 2 ? `${docDates[0]} to ${docDates[docDates.length - 1]}` : docDates.length === 1 ? `around ${docDates[0]}` : 'recent';
 
+                    // Helper: poll an async MP job until done or failed (no Cloudflare timeout).
+                    const waitForMpJob = async (jobId, stageLabel) => {
+                        const pollIntervalMs = 3000;
+                        const maxWaitMs = 10 * 60 * 1000; // 10 min cap per job
+                        const started = Date.now();
+                        while (true) {
+                            if (Date.now() - started > maxWaitMs) {
+                                throw new Error(`${stageLabel} timed out after 10 min — check backend logs`);
+                            }
+                            const pollResp = await fetch(`${API_URL}/api/mp/jobs/${jobId}`);
+                            if (!pollResp.ok) {
+                                const t = await pollResp.text().catch(() => '');
+                                throw new Error(`${stageLabel} poll HTTP ${pollResp.status}: ${t.slice(0, 200)}`);
+                            }
+                            const j = await pollResp.json();
+                            if (j.status === 'done') return j;
+                            if (j.status === 'failed') throw new Error(`${stageLabel} failed: ${j.error || 'unknown'}`);
+                            await new Promise(r => setTimeout(r, pollIntervalMs));
+                        }
+                    };
+
                     const synthResp = await fetchRetry(`${API_URL}/api/mp/synthesize`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -7906,9 +7927,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     }, 2);
                     if (!synthResp.ok) {
                         const errText = await synthResp.text().catch(() => '');
-                        throw new Error(`Synthesis failed: ${errText}`);
+                        throw new Error(`Synthesis failed to queue: ${errText}`);
                     }
-                    const synthData = await parseStreamResponse(synthResp, 'Synthesis');
+                    const { jobId: synthJobId } = await synthResp.json();
+                    const synthJob = await waitForMpJob(synthJobId, 'Synthesis');
+                    const synthData = { synthesis: synthJob.result?.synthesis, tokensUsed: synthJob.tokensUsed };
                     totalTokens += synthData.tokensUsed || 0;
 
                     // Step 3: Generate questions
@@ -7927,9 +7950,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     }, 2);
                     if (!qResp.ok) {
                         const errText = await qResp.text().catch(() => '');
-                        throw new Error(`Question generation failed: ${errText}`);
+                        throw new Error(`Question generation failed to queue: ${errText}`);
                     }
-                    const qData = await parseStreamResponse(qResp, 'Question generation');
+                    const { jobId: qJobId } = await qResp.json();
+                    const qJob = await waitForMpJob(qJobId, 'Question generation');
+                    const qData = { topics: qJob.result?.topics, tokensUsed: qJob.tokensUsed };
                     totalTokens += qData.tokensUsed || 0;
 
                     // Step 4: Save

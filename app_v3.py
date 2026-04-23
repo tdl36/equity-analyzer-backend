@@ -1734,6 +1734,23 @@ def init_db():
             cur.execute('CREATE INDEX IF NOT EXISTS idx_agent_alerts_created ON agent_alerts(created_at DESC)')
 
             cur.execute('''
+                CREATE TABLE IF NOT EXISTS mp_jobs (
+                    id          VARCHAR(100) PRIMARY KEY,
+                    stage       VARCHAR(30) NOT NULL,
+                    ticker      VARCHAR(20),
+                    status      VARCHAR(20) DEFAULT 'running',
+                    input       JSONB,
+                    result      JSONB,
+                    error       TEXT,
+                    tokens_used INT DEFAULT 0,
+                    created_at  TIMESTAMP DEFAULT NOW(),
+                    updated_at  TIMESTAMP DEFAULT NOW()
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_mp_jobs_status ON mp_jobs(status, created_at DESC)')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_mp_jobs_ticker ON mp_jobs(ticker, created_at DESC)')
+
+            cur.execute('''
                 CREATE TABLE IF NOT EXISTS media_feeds (
                     id                VARCHAR(100) PRIMARY KEY,
                     source_type       VARCHAR(20) NOT NULL,
@@ -14486,25 +14503,31 @@ def mp_analyze_document():
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/mp/synthesize', methods=['POST'])
-def mp_synthesize():
-    """Step 2: Cross-reference all document analyses. Uses streaming to avoid timeout."""
+# ============================================
+# MP JOB HELPERS (async background jobs — frontend polls /api/mp/jobs/:id)
+# ============================================
+
+def _mp_update_job(job_id, **kwargs):
+    """Update an mp_jobs row. Stores result/input as JSONB when provided."""
+    if not kwargs:
+        return
+    fields, values = [], []
+    for k, v in kwargs.items():
+        if k in ('result', 'input') and v is not None:
+            fields.append(f"{k} = %s::jsonb")
+            values.append(json.dumps(v))
+        else:
+            fields.append(f"{k} = %s")
+            values.append(v)
+    fields.append("updated_at = NOW()")
+    values.append(job_id)
+    with get_db(commit=True) as (_c, cur):
+        cur.execute(f"UPDATE mp_jobs SET {', '.join(fields)} WHERE id = %s", values)
+
+
+def _run_mp_synthesize_job(job_id, api_key, ticker, company_name, sector,
+                           analyses, past_questions, timeframe):
     try:
-        data = request.json
-        api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('apiKey', '')
-        if not api_key:
-            return jsonify({'error': 'No API key provided.'}), 400
-
-        ticker = data.get('ticker', '')
-        company_name = data.get('companyName', ticker)
-        sector = data.get('sector', 'unknown')
-        analyses = data.get('analyses', [])
-        past_questions = data.get('pastQuestions', [])
-        timeframe = data.get('timeframe', 'recent')
-
-        if not analyses:
-            return jsonify({'error': 'No analyses provided'}), 400
-
         analyses_parts = []
         for i, a in enumerate(analyses):
             analyses_parts.append(f"### Document {i+1}: {a.get('_source_filename', 'unknown')}\n{json.dumps(a, indent=2)}")
@@ -14525,59 +14548,25 @@ def mp_synthesize():
             analyses_text=analyses_text, past_questions_text=past_q_text,
         )
 
-        def generate():
-            try:
-                llm_result = None
-                for chunk in call_llm_stream(
-                    messages=[{"role": "user", "content": "Synthesize the above document analyses."}],
-                    system=prompt,
-                    tier="standard",
-                    max_tokens=16384,
-                    anthropic_api_key=api_key,
-                ):
-                    if isinstance(chunk, dict):
-                        llm_result = chunk
-                    else:
-                        yield chunk
-
-                if llm_result is None:
-                    raise Exception("No result from LLM")
-
-                synthesis = parse_mp_json(llm_result["text"])
-                tokens_used = llm_result["usage"]["input_tokens"] + llm_result["usage"]["output_tokens"]
-                yield "\n" + json.dumps({'synthesis': synthesis, 'tokensUsed': tokens_used})
-            except LLMError as e:
-                print(f"MP synthesize LLM error: {e}")
-                yield "\n" + json.dumps({'error': str(e)})
-            except Exception as e:
-                print(f"MP synthesize stream error: {e}")
-                yield "\n" + json.dumps({'error': str(e)})
-
-        resp = app.response_class(generate(), mimetype='text/plain'); resp.headers['X-Accel-Buffering'] = 'no'; resp.headers['Cache-Control'] = 'no-cache, no-transform'; return resp
-
+        llm_result = call_llm(
+            messages=[{"role": "user", "content": "Synthesize the above document analyses."}],
+            system=prompt,
+            tier="standard",
+            max_tokens=16384,
+            anthropic_api_key=api_key,
+        )
+        synthesis = parse_mp_json(llm_result["text"])
+        tokens_used = llm_result["usage"]["input_tokens"] + llm_result["usage"]["output_tokens"]
+        _mp_update_job(job_id, status='done', result={'synthesis': synthesis},
+                       tokens_used=tokens_used)
     except Exception as e:
-        print(f"MP synthesize error: {e}")
-        return jsonify({'error': str(e)}), 500
+        print(f"MP synthesize job {job_id} error: {e}")
+        _mp_update_job(job_id, status='failed', error=str(e)[:2000])
 
 
-@app.route('/api/mp/generate-questions', methods=['POST'])
-def mp_generate_questions():
-    """Step 3: Generate questions from synthesis. Uses streaming to avoid timeout."""
+def _run_mp_generate_questions_job(job_id, api_key, ticker, company_name, sector,
+                                   synthesis, unresolved):
     try:
-        data = request.json
-        api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('apiKey', '')
-        if not api_key:
-            return jsonify({'error': 'No API key provided.'}), 400
-
-        ticker = data.get('ticker', '')
-        company_name = data.get('companyName', ticker)
-        sector = data.get('sector', 'unknown')
-        synthesis = data.get('synthesis', {})
-        unresolved = data.get('unresolvedQuestions', [])
-
-        if not synthesis:
-            return jsonify({'error': 'No synthesis provided'}), 400
-
         synthesis_text = json.dumps(synthesis, indent=2)
 
         unresolved_text = ""
@@ -14590,39 +14579,110 @@ def mp_generate_questions():
             synthesis_text=synthesis_text, unresolved_text=unresolved_text,
         )
 
-        def generate():
-            try:
-                llm_result = None
-                for chunk in call_llm_stream(
-                    messages=[{"role": "user", "content": "Generate the meeting preparation questions."}],
-                    system=prompt,
-                    tier="standard",
-                    max_tokens=16384,
-                    anthropic_api_key=api_key,
-                ):
-                    if isinstance(chunk, dict):
-                        llm_result = chunk
-                    else:
-                        yield chunk
+        llm_result = call_llm(
+            messages=[{"role": "user", "content": "Generate the meeting preparation questions."}],
+            system=prompt,
+            tier="standard",
+            max_tokens=16384,
+            anthropic_api_key=api_key,
+        )
+        topics = parse_mp_json(llm_result["text"])
+        tokens_used = llm_result["usage"]["input_tokens"] + llm_result["usage"]["output_tokens"]
+        _mp_update_job(job_id, status='done', result={'topics': topics},
+                       tokens_used=tokens_used)
+    except Exception as e:
+        print(f"MP generate-questions job {job_id} error: {e}")
+        _mp_update_job(job_id, status='failed', error=str(e)[:2000])
 
-                if llm_result is None:
-                    raise Exception("No result from LLM")
 
-                topics = parse_mp_json(llm_result["text"])
-                tokens_used = llm_result["usage"]["input_tokens"] + llm_result["usage"]["output_tokens"]
-                yield "\n" + json.dumps({'topics': topics, 'tokensUsed': tokens_used})
-            except LLMError as e:
-                print(f"MP generate questions LLM error: {e}")
-                yield "\n" + json.dumps({'error': str(e)})
-            except Exception as e:
-                print(f"MP generate questions stream error: {e}")
-                yield "\n" + json.dumps({'error': str(e)})
+@app.route('/api/mp/synthesize', methods=['POST'])
+def mp_synthesize():
+    """Step 2 (async): queue cross-reference job. Returns {jobId}. Poll /api/mp/jobs/:id."""
+    try:
+        data = request.json or {}
+        api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('apiKey', '')
+        if not api_key:
+            return jsonify({'error': 'No API key provided.'}), 400
 
-        resp = app.response_class(generate(), mimetype='text/plain'); resp.headers['X-Accel-Buffering'] = 'no'; resp.headers['Cache-Control'] = 'no-cache, no-transform'; return resp
+        ticker = data.get('ticker', '')
+        analyses = data.get('analyses', [])
+        if not analyses:
+            return jsonify({'error': 'No analyses provided'}), 400
 
+        job_id = str(uuid.uuid4())
+        with get_db(commit=True) as (_c, cur):
+            cur.execute('''
+                INSERT INTO mp_jobs (id, stage, ticker, status)
+                VALUES (%s, 'synthesize', %s, 'running')
+            ''', (job_id, ticker))
+
+        threading.Thread(
+            target=_run_mp_synthesize_job,
+            args=(job_id, api_key, ticker, data.get('companyName', ticker),
+                  data.get('sector', 'unknown'), analyses,
+                  data.get('pastQuestions', []), data.get('timeframe', 'recent')),
+            daemon=True,
+        ).start()
+        return jsonify({'jobId': job_id}), 202
+    except Exception as e:
+        print(f"MP synthesize error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/mp/generate-questions', methods=['POST'])
+def mp_generate_questions():
+    """Step 3 (async): queue question-generation job. Returns {jobId}."""
+    try:
+        data = request.json or {}
+        api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('apiKey', '')
+        if not api_key:
+            return jsonify({'error': 'No API key provided.'}), 400
+
+        ticker = data.get('ticker', '')
+        synthesis = data.get('synthesis', {})
+        if not synthesis:
+            return jsonify({'error': 'No synthesis provided'}), 400
+
+        job_id = str(uuid.uuid4())
+        with get_db(commit=True) as (_c, cur):
+            cur.execute('''
+                INSERT INTO mp_jobs (id, stage, ticker, status)
+                VALUES (%s, 'generate-questions', %s, 'running')
+            ''', (job_id, ticker))
+
+        threading.Thread(
+            target=_run_mp_generate_questions_job,
+            args=(job_id, api_key, ticker, data.get('companyName', ticker),
+                  data.get('sector', 'unknown'), synthesis,
+                  data.get('unresolvedQuestions', [])),
+            daemon=True,
+        ).start()
+        return jsonify({'jobId': job_id}), 202
     except Exception as e:
         print(f"MP generate questions error: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/mp/jobs/<job_id>', methods=['GET'])
+def mp_job_status(job_id):
+    """Poll an MP job. Returns {status, stage, result, error, tokensUsed}."""
+    with get_db() as (_c, cur):
+        cur.execute("SELECT * FROM mp_jobs WHERE id = %s", (job_id,))
+        row = cur.fetchone()
+    if not row:
+        return jsonify({'error': 'not found'}), 404
+    result = row['result'] if isinstance(row['result'], dict) else (json.loads(row['result']) if row['result'] else None)
+    return jsonify({
+        'id': row['id'],
+        'stage': row['stage'],
+        'status': row['status'],
+        'ticker': row['ticker'],
+        'result': result,
+        'error': row['error'],
+        'tokensUsed': row['tokens_used'] or 0,
+        'createdAt': row['created_at'].isoformat() if row['created_at'] else None,
+        'updatedAt': row['updated_at'].isoformat() if row['updated_at'] else None,
+    })
 
 
 @app.route('/api/mp/save-results', methods=['POST'])
