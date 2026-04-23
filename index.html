@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-23T19';
+        const BUILD_VERSION = '2026-04-23T20';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -22415,19 +22415,23 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             onChange={e => setFeedFilters({...feedFilters, ticker: e.target.value.toUpperCase()})}
                                             className="w-24 px-2 py-1.5 rounded-lg border border-slate-300"
                                         />
+                                        <select
+                                            value={feedFilters.feedName || ''}
+                                            onChange={e => setFeedFilters({...feedFilters, feedName: e.target.value})}
+                                            className="px-2 py-1.5 rounded-lg border border-slate-300 bg-white max-w-[200px]"
+                                        >
+                                            <option value="">All podcasts</option>
+                                            {[...new Set(feedEpisodes.map(ep => ep.feedName).filter(Boolean))].sort().map(name => (
+                                                <option key={name} value={name}>{name}</option>
+                                            ))}
+                                        </select>
                                         <input
                                             type="text"
-                                            list="feed-podcast-list"
-                                            placeholder="Podcast"
+                                            placeholder="or type to search"
                                             value={feedFilters.feedName || ''}
                                             onChange={e => setFeedFilters({...feedFilters, feedName: e.target.value})}
                                             className="w-40 px-2 py-1.5 rounded-lg border border-slate-300"
                                         />
-                                        <datalist id="feed-podcast-list">
-                                            {[...new Set(feedEpisodes.map(ep => ep.feedName).filter(Boolean))].sort().map(name => (
-                                                <option key={name} value={name} />
-                                            ))}
-                                        </datalist>
                                         <label className="flex items-center gap-1">
                                             <input
                                                 type="checkbox"
