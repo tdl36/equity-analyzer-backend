@@ -416,6 +416,105 @@ def media_watchlist_delete(signal_id):
 
 
 # ============================================
+# MEDIA TRACKER — FEED (firehose) + SCANNER
+# ============================================
+
+_scanner_runs = {}  # in-memory scan status; OK to lose across deploys
+
+
+@app.route('/api/media/feed', methods=['GET'])
+def media_feed_read():
+    source  = request.args.get('source')
+    ticker  = request.args.get('ticker')
+    sector  = request.args.get('sector')
+    days    = int(request.args.get('days', 7))
+    q       = request.args.get('q', '').strip()
+    material_only = request.args.get('material') == 'true'
+    limit   = int(request.args.get('limit', 100))
+
+    where = ["e.created_at > NOW() - %s::interval"]
+    params = [f'{days} days']
+    if source:
+        where.append("f.source_type = %s"); params.append(source)
+    if material_only:
+        where.append("EXISTS (SELECT 1 FROM media_digest_points p2 WHERE p2.episode_id=e.id AND p2.material)")
+    if q:
+        where.append("(e.title ILIKE %s OR e.show_notes ILIKE %s)")
+        params.extend([f'%{q}%', f'%{q}%'])
+
+    with get_db() as (_c, cur):
+        cur.execute(f'''
+            SELECT e.*, f.name AS feed_name, f.sector_tags AS feed_sector_tags
+              FROM media_episodes e
+              JOIN media_feeds f ON f.id = e.feed_id
+             WHERE {' AND '.join(where)}
+               AND e.status = 'done'
+             ORDER BY e.published_at DESC NULLS LAST
+             LIMIT %s
+        ''', params + [limit])
+        episodes = cur.fetchall()
+
+        episode_ids = [e['id'] for e in episodes]
+        points = []
+        if episode_ids:
+            pq = "SELECT * FROM media_digest_points WHERE episode_id = ANY(%s)"
+            pparams = [episode_ids]
+            if ticker:
+                pq += " AND %s = ANY(tickers)"; pparams.append(ticker)
+            if sector:
+                pq += " AND %s = ANY(sector_tags)"; pparams.append(sector)
+            pq += " ORDER BY episode_id, point_order"
+            cur.execute(pq, pparams)
+            points = cur.fetchall()
+
+    by_ep = {}
+    for p in points:
+        by_ep.setdefault(p['episode_id'], []).append({
+            'id': p['id'], 'text': p['text'], 'tickers': p['tickers'] or [],
+            'sectorTags': p['sector_tags'] or [], 'themeTags': p['theme_tags'] or [],
+            'material': p['material'], 'timestampSec': p['timestamp_sec'],
+        })
+
+    result = []
+    for e in episodes:
+        pts = by_ep.get(e['id'], [])
+        if (ticker or sector) and not pts:
+            continue  # filtered all points out — hide the episode
+        result.append({
+            'id': e['id'], 'feedId': e['feed_id'], 'feedName': e['feed_name'],
+            'title': e['title'],
+            'publishedAt': e['published_at'].isoformat() if e['published_at'] else None,
+            'sourceUrl': e['source_url'], 'points': pts,
+        })
+    return jsonify({'episodes': result, 'total': len(result)})
+
+
+@app.route('/api/media/run-scanner', methods=['POST'])
+def media_run_scanner():
+    scan_id = str(uuid.uuid4())
+    _scanner_runs[scan_id] = {'status': 'running', 'started_at': datetime.utcnow().isoformat()}
+
+    def _run():
+        try:
+            from media_trackers import poller
+            poller.poll_all_feeds()
+            _scanner_runs[scan_id]['status'] = 'done'
+        except Exception as e:
+            _scanner_runs[scan_id]['status'] = 'failed'
+            _scanner_runs[scan_id]['error'] = str(e)
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({'scanId': scan_id}), 202
+
+
+@app.route('/api/media/scan/<scan_id>', methods=['GET'])
+def media_scan_status(scan_id):
+    rec = _scanner_runs.get(scan_id)
+    if not rec:
+        return jsonify({'error': 'unknown scan id'}), 404
+    return jsonify(rec)
+
+
+# ============================================
 # MULTI-MODEL LLM FALLBACK
 # ============================================
 
