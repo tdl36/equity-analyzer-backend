@@ -2226,6 +2226,128 @@ def check_for_new_audio():
         pass
 
 
+# ------------------------------------------------------------------------------
+# AUTOMATED CATALYST SYNTHESIS
+# Watches CATALYSTS/{TICKER}/{topic}/ folders and auto-fires a synthesis job
+# when docs are added/updated, with debounce + per-topic cooldown.
+# ------------------------------------------------------------------------------
+
+CATALYST_AUTO_STATE_FILE = Path.home() / "Library/Application Support/charlie-agent/auto-catalyst-state.json"
+CATALYST_AUTO_DEBOUNCE_S = 120     # wait this long after last file change before firing
+CATALYST_AUTO_COOLDOWN_S = 15 * 60 # don't re-fire same topic within this window
+CATALYST_SOURCE_EXTS = {'.pdf', '.xlsx', '.xls', '.csv', '.txt', '.md', '.docx', '.doc', '.pptx', '.ppt', '.html'}
+
+
+def _load_catalyst_auto_state() -> dict:
+    try:
+        if CATALYST_AUTO_STATE_FILE.exists():
+            return json.loads(CATALYST_AUTO_STATE_FILE.read_text())
+    except Exception as e:
+        log.debug(f"auto-catalyst state load failed: {e}")
+    return {}
+
+
+def _save_catalyst_auto_state(state: dict) -> None:
+    try:
+        CATALYST_AUTO_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        CATALYST_AUTO_STATE_FILE.write_text(json.dumps(state, indent=2))
+    except Exception as e:
+        log.debug(f"auto-catalyst state save failed: {e}")
+
+
+def check_for_catalyst_auto_synth() -> None:
+    """Scan CATALYSTS/{TICKER}/{topic}/ folders and auto-fire synthesis jobs
+    when files change. Uses a debounce + cooldown to avoid firing while the
+    user is still dropping files, and to avoid duplicate synths."""
+    if not CATALYSTS_DIR.exists():
+        return
+    now = time.time()
+    state = _load_catalyst_auto_state()
+
+    try:
+        for ticker_dir in CATALYSTS_DIR.iterdir():
+            if not ticker_dir.is_dir() or ticker_dir.name.startswith('.'):
+                continue
+            ticker = ticker_dir.name.upper()
+
+            for topic_dir in ticker_dir.iterdir():
+                if not topic_dir.is_dir() or topic_dir.name.startswith('.') or topic_dir.name.lower() == 'processed':
+                    continue
+                topic = topic_dir.name
+
+                # Collect source docs in this topic folder
+                source_files = []
+                max_mtime = 0.0
+                try:
+                    for f in topic_dir.iterdir():
+                        if f.is_file() and not f.name.startswith('.') and f.suffix.lower() in CATALYST_SOURCE_EXTS:
+                            source_files.append(f.name)
+                            try:
+                                max_mtime = max(max_mtime, f.stat().st_mtime)
+                            except Exception:
+                                pass
+                except PermissionError:
+                    continue
+
+                if not source_files:
+                    continue
+
+                key = f"{ticker}::{topic}"
+                entry = state.get(key, {})
+                prior_mtime = entry.get('last_seen_mtime', 0.0)
+                prior_fired = entry.get('last_fired_at', 0.0)
+                prior_fingerprint = entry.get('fingerprint', '')
+                fingerprint = f"{len(source_files)}@{int(max_mtime)}"
+
+                # Keep state fresh so we don't lose track of what's there
+                state[key] = {
+                    'last_seen_mtime': max_mtime,
+                    'last_fired_at': prior_fired,
+                    'fingerprint': fingerprint,
+                    'last_file_count': len(source_files),
+                }
+
+                # Skip if fingerprint hasn't changed AND we've already fired for it
+                if fingerprint == prior_fingerprint and prior_fired > 0:
+                    continue
+
+                # Debounce: wait until files have been quiet for DEBOUNCE_S
+                if now - max_mtime < CATALYST_AUTO_DEBOUNCE_S:
+                    continue
+
+                # Cooldown: don't re-fire same topic within COOLDOWN_S
+                if now - prior_fired < CATALYST_AUTO_COOLDOWN_S:
+                    continue
+
+                # Fire!
+                log.info(f"Auto-catalyst: firing synthesis for {ticker}/{topic} ({len(source_files)} files)")
+                try:
+                    res = requests.post(
+                        f"{CHARLIE_API}/api/catalysts/synthesize",
+                        json={
+                            'ticker': ticker,
+                            'topic': topic,
+                            'length': 'standard',
+                            'customInstructions': '',
+                        },
+                        headers=_agent_headers(),
+                        timeout=15,
+                    )
+                    if res.ok:
+                        job_id = res.json().get('jobId', '?')
+                        log.info(f"Auto-catalyst: queued {ticker}/{topic} (job {job_id})")
+                        state[key]['last_fired_at'] = now
+                        state[key]['fingerprint'] = fingerprint
+                    else:
+                        log.warning(f"Auto-catalyst POST failed for {ticker}/{topic}: {res.status_code} {res.text[:200]}")
+                except Exception as e:
+                    log.warning(f"Auto-catalyst error for {ticker}/{topic}: {e}")
+
+        _save_catalyst_auto_state(state)
+    except Exception as e:
+        log.debug(f"Auto-catalyst scan error: {e}")
+
+
 def process_scan_catalysts_job(job: dict) -> None:
     """Scan catalyst folders and report back to the backend."""
     job_id = job.get("id", "")
@@ -2646,6 +2768,7 @@ def main() -> None:
                     process_pending_syncs()
                     check_for_new_files()
                     check_for_new_audio()
+                    check_for_catalyst_auto_synth()
                     last_manifest_push = now
                     log.debug("File manifest pushed")
                 except Exception as e:
