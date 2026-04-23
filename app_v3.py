@@ -514,6 +514,24 @@ def media_scan_status(scan_id):
     return jsonify(rec)
 
 
+@app.route('/api/media/admin/reextract-empty', methods=['POST'])
+def media_reextract_empty():
+    """Reset episodes that are 'done' but have zero digest points back to 'new'
+    so the extract worker picks them up on the next tick. Used after a fix
+    to the extractor when live episodes were silently extracted to nothing.
+    """
+    with get_db(commit=True) as (_c, cur):
+        cur.execute('''
+            UPDATE media_episodes
+               SET status = 'new'
+             WHERE status = 'done'
+               AND NOT EXISTS (SELECT 1 FROM media_digest_points p WHERE p.episode_id = media_episodes.id)
+            RETURNING id
+        ''')
+        reset = cur.rowcount
+    return jsonify({'reset': reset})
+
+
 # ============================================
 # MULTI-MODEL LLM FALLBACK
 # ============================================
