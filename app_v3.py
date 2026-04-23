@@ -4938,7 +4938,17 @@ def auto_process_audio():
 
         gemini_api_key = os.environ.get('GEMINI_API_KEY', '') or request.form.get('geminiApiKey', '')
         if not gemini_api_key:
-            return jsonify({'error': 'Gemini API key required'}), 400
+            # Fall back to app_settings.geminiApiKey (set via Settings UI)
+            try:
+                with get_db() as (_, cur):
+                    cur.execute("SELECT value FROM app_settings WHERE key = 'geminiApiKey'")
+                    row = cur.fetchone()
+                    if row and row['value']:
+                        gemini_api_key = row['value']
+            except Exception as e:
+                print(f"auto-process-audio: app_settings lookup failed: {e}")
+        if not gemini_api_key:
+            return jsonify({'error': 'Gemini API key required — add it in Settings or set GEMINI_API_KEY env var'}), 400
 
         allowed_extensions = ('.mp3', '.mp4', '.mpeg', '.mpga', '.m4a', '.wav', '.webm', '.ogg', '.flac')
         if not file.filename.lower().endswith(allowed_extensions):
