@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-23T14';
+        const BUILD_VERSION = '2026-04-23T15';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -22257,6 +22257,19 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             onChange={e => setFeedFilters({...feedFilters, ticker: e.target.value.toUpperCase()})}
                                             className="w-24 px-2 py-1.5 rounded-lg border border-slate-300"
                                         />
+                                        <input
+                                            type="text"
+                                            list="feed-podcast-list"
+                                            placeholder="Podcast"
+                                            value={feedFilters.feedName || ''}
+                                            onChange={e => setFeedFilters({...feedFilters, feedName: e.target.value})}
+                                            className="w-40 px-2 py-1.5 rounded-lg border border-slate-300"
+                                        />
+                                        <datalist id="feed-podcast-list">
+                                            {[...new Set(feedEpisodes.map(ep => ep.feedName).filter(Boolean))].sort().map(name => (
+                                                <option key={name} value={name} />
+                                            ))}
+                                        </datalist>
                                         <label className="flex items-center gap-1">
                                             <input
                                                 type="checkbox"
@@ -22274,7 +22287,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 No episodes yet. Click "Run Scanner" to trigger a fresh poll.
                                             </div>
                                         )}
-                                        {feedEpisodes.map(ep => (
+                                        {feedEpisodes.filter(ep => !feedFilters.feedName || (ep.feedName || '').toLowerCase().includes(feedFilters.feedName.toLowerCase())).map(ep => (
                                             <div key={ep.id} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
                                                 <div className="flex items-baseline justify-between mb-1">
                                                     <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
