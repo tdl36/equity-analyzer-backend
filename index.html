@@ -236,7 +236,7 @@
 <body style="background-color: #0f0f0f; margin: 0;">
     <div id="root"></div>
     <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
+        const { useState, useEffect, useRef, useCallback } = React;
 
         // Safe string helper - prevents "Objects are not valid as React child" errors
         const safeStr = (value, fallback = '') => {
@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-23T01';
+        const BUILD_VERSION = '2026-04-23T02';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -1567,7 +1567,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [mobileMenuOpen, setMobileMenuOpen] = useState(false); // Mobile sidebar toggle
             const [showHistory, setShowHistory] = useState(false); // Show version history panel
             const [selectedHistoryVersion, setSelectedHistoryVersion] = useState(null); // Currently viewed history version
-            const [activeTab, setActiveTab] = useState('chat'); // Bottom nav: 'portfolio', 'overview', 'chat', 'summary', 'research', 'settings'
+            const [activeTab, setActiveTab] = useState('chat'); // Bottom nav: 'portfolio', 'overview', 'chat', 'summary', 'research', 'settings', 'feed'
             const [showMoreMenu, setShowMoreMenu] = useState(false); // More menu bottom sheet
             const [showScrollTop, setShowScrollTop] = useState(false); // Show scroll to top button
             const scrollContainerRef = useRef(null);
@@ -4500,6 +4500,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 if (activeTab === 'summary') loadSummaries();
                 if (activeTab === 'research') loadResearchData();
                 if (activeTab === 'alerts') fetchAlerts();
+                if (activeTab === 'feed') fetchFeed();
             }, [activeTab]);
 
             // Poll alert badge count every 30s
@@ -4513,6 +4514,20 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 }, 30000);
                 return () => clearInterval(interval);
             }, [authToken, authLoading]);
+
+            // Poll the Feed tab every 60s while active
+            useEffect(() => {
+                if (activeTab !== 'feed') return;
+                const id = setInterval(fetchFeed, 60000);
+                return () => clearInterval(id);
+            }, [activeTab, fetchFeed]);
+
+            // Debounced refetch when feed filters change
+            useEffect(() => {
+                if (activeTab !== 'feed') return;
+                const debounce = setTimeout(fetchFeed, 250);
+                return () => clearTimeout(debounce);
+            }, [feedFilters]);
             
             // Click outside handler for summary search
             useEffect(() => {
@@ -6712,6 +6727,35 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     }
                 } catch (e) {}
             };
+
+            // Feed tab state
+            const [feedEpisodes, setFeedEpisodes] = useState([]);
+            const [feedLoading, setFeedLoading] = useState(false);
+            const [feedError, setFeedError] = useState(null);
+            const [feedFilters, setFeedFilters] = useState({
+                source: 'podcast', ticker: '', sector: '', days: 7, q: '', material: false,
+            });
+
+            const fetchFeed = useCallback(async () => {
+                setFeedLoading(true);
+                setFeedError(null);
+                try {
+                    const params = new URLSearchParams();
+                    if (feedFilters.source)   params.set('source', feedFilters.source);
+                    if (feedFilters.ticker)   params.set('ticker', feedFilters.ticker);
+                    if (feedFilters.sector)   params.set('sector', feedFilters.sector);
+                    if (feedFilters.days)     params.set('days', String(feedFilters.days));
+                    if (feedFilters.q)        params.set('q', feedFilters.q);
+                    if (feedFilters.material) params.set('material', 'true');
+                    const resp = await fetch(`/api/media/feed?${params}`);
+                    const data = await resp.json();
+                    setFeedEpisodes(data.episodes || []);
+                } catch (e) {
+                    setFeedError(String(e));
+                } finally {
+                    setFeedLoading(false);
+                }
+            }, [feedFilters]);
             const dismissAlert = async (alertId) => {
                 try {
                     await fetch(`${API_URL}/api/alerts/${alertId}/dismiss`, { method: 'POST' });
@@ -21798,6 +21842,100 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             </div>
                         )}
 
+                        {activeTab === 'feed' && (
+                            <div className="min-h-screen bg-slate-50 p-4">
+                                <div className="max-w-5xl mx-auto">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div>
+                                            <h1 className="text-2xl font-semibold text-slate-900">Feed</h1>
+                                            <p className="text-sm text-slate-500">Podcasts — firehose</p>
+                                        </div>
+                                        <button
+                                            onClick={async () => {
+                                                try {
+                                                    await fetch('/api/media/run-scanner', { method: 'POST' });
+                                                    setTimeout(fetchFeed, 3000);
+                                                } catch (e) { setFeedError(String(e)); }
+                                            }}
+                                            className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm hover:bg-slate-700"
+                                        >
+                                            Run Scanner
+                                        </button>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2 mb-4 text-sm">
+                                        <input
+                                            type="text"
+                                            placeholder="Search episodes, tickers, topics…"
+                                            value={feedFilters.q}
+                                            onChange={e => setFeedFilters({...feedFilters, q: e.target.value})}
+                                            className="flex-1 min-w-[200px] px-3 py-1.5 rounded-lg border border-slate-300"
+                                        />
+                                        <select
+                                            value={feedFilters.days}
+                                            onChange={e => setFeedFilters({...feedFilters, days: Number(e.target.value)})}
+                                            className="px-2 py-1.5 rounded-lg border border-slate-300"
+                                        >
+                                            <option value={1}>Today</option>
+                                            <option value={7}>7 days</option>
+                                            <option value={30}>30 days</option>
+                                        </select>
+                                        <input
+                                            type="text"
+                                            placeholder="Ticker"
+                                            value={feedFilters.ticker}
+                                            onChange={e => setFeedFilters({...feedFilters, ticker: e.target.value.toUpperCase()})}
+                                            className="w-24 px-2 py-1.5 rounded-lg border border-slate-300"
+                                        />
+                                        <label className="flex items-center gap-1">
+                                            <input
+                                                type="checkbox"
+                                                checked={feedFilters.material}
+                                                onChange={e => setFeedFilters({...feedFilters, material: e.target.checked})}
+                                            />
+                                            <span className="text-xs">Material only</span>
+                                        </label>
+                                    </div>
+                                    <div className="space-y-4">
+                                        {feedLoading && <div className="text-sm text-slate-500">Loading…</div>}
+                                        {feedError && <div className="text-sm text-rose-600">Error: {feedError}</div>}
+                                        {!feedLoading && feedEpisodes.length === 0 && (
+                                            <div className="text-sm text-slate-400 text-center py-12">
+                                                No episodes yet. Click "Run Scanner" to trigger a fresh poll.
+                                            </div>
+                                        )}
+                                        {feedEpisodes.map(ep => (
+                                            <div key={ep.id} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                                                <div className="flex items-baseline justify-between mb-1">
+                                                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                        {ep.feedName} · {ep.publishedAt ? new Date(ep.publishedAt).toLocaleDateString() : ''}
+                                                        {ep.sourceUrl && (
+                                                            <a href={ep.sourceUrl} target="_blank" rel="noopener" className="ml-2 text-indigo-600 hover:underline">
+                                                                SOURCE ↗
+                                                            </a>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <h3 className="font-semibold text-slate-900 mb-3">{ep.title}</h3>
+                                                <ul className="space-y-2">
+                                                    {(ep.points || []).map(p => (
+                                                        <li key={p.id} className="flex items-start gap-2 text-sm text-slate-700">
+                                                            {(p.sectorTags || []).map(t => (
+                                                                <span key={t} className="shrink-0 px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 text-[10px] font-semibold">
+                                                                    {t}
+                                                                </span>
+                                                            ))}
+                                                            {p.material && <span className="shrink-0 text-amber-500">★</span>}
+                                                            <span>{p.text}</span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         {activeTab === 'settings' && (
                             <div className="flex-1 flex flex-col bg-white/[0.02] overflow-y-auto pb-24 md:pb-0" onScroll={(e) => { setShowScrollTop(e.target.scrollTop > 300); scrollContainerRef.current = e.target; }}>
                                 <div className="p-6 pb-8">
@@ -22173,18 +22311,18 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 <button
                                     onClick={() => setShowMoreMenu(true)}
                                     className={`flex flex-col items-center justify-center gap-1 min-w-[56px] py-2 rounded-xl transition-all ${
-                                        activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents'
+                                        activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' || activeTab === 'feed'
                                             ? 'text-amber-400'
                                             : 'text-slate-400 active:text-slate-200'
                                     }`}
                                 >
                                     <div className="relative">
-                                        <MoreHorizontal className={`w-5 h-5 ${activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' ? 'stroke-[2.5]' : 'stroke-[1.5]'}`} />
+                                        <MoreHorizontal className={`w-5 h-5 ${activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' || activeTab === 'feed' ? 'stroke-[2.5]' : 'stroke-[1.5]'}`} />
                                         {alertBadgeCount > 0 && (
                                             <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center">{alertBadgeCount > 9 ? '9+' : alertBadgeCount}</span>
                                         )}
                                     </div>
-                                    <span className={`text-[9px] ${activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' ? 'font-semibold' : 'font-medium'}`}>More</span>
+                                    <span className={`text-[9px] ${activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' || activeTab === 'feed' ? 'font-semibold' : 'font-medium'}`}>More</span>
                                 </button>
                             </div>
                         </div>
@@ -22202,6 +22340,30 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 <div className="p-4 pb-[calc(env(safe-area-inset-bottom)+16px)] overflow-y-auto flex-1">
                                     <h3 className="text-lg font-semibold mb-4 text-center">More Options</h3>
                                     <div className="space-y-2">
+                                        <button
+                                            onClick={() => {
+                                                setShowMoreMenu(false);
+                                                switchTab('feed');
+                                            }}
+                                            className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
+                                                activeTab === 'feed'
+                                                    ? 'bg-amber-600/20 border border-amber-500/50'
+                                                    : 'bg-white/5 hover:bg-white/10 border border-transparent'
+                                            }`}
+                                        >
+                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${activeTab === 'feed' ? 'bg-amber-600' : 'bg-white/10'}`}>
+                                                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                    <path d="M4 11a9 9 0 0 1 9 9"/>
+                                                    <path d="M4 4a16 16 0 0 1 16 16"/>
+                                                    <circle cx="5" cy="19" r="1"/>
+                                                </svg>
+                                            </div>
+                                            <div className="text-left">
+                                                <div className="font-semibold">Feed</div>
+                                                <div className="text-xs text-slate-400">Podcasts — firehose</div>
+                                            </div>
+                                            <ChevronRight className="w-5 h-5 text-slate-500 ml-auto" />
+                                        </button>
                                         <button
                                             onClick={() => {
                                                 setShowMoreMenu(false);
