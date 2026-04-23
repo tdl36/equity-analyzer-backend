@@ -14723,10 +14723,10 @@ def _is_transient_llm_error(exc) -> bool:
 
 
 def _call_llm_stream_with_retry(*, messages, system, tier, max_tokens, api_key,
-                                max_attempts=3, base_backoff_s=4.0, label='LLM call'):
-    """Consume call_llm_stream (which internally handles provider fallback) and
-    retry the entire call on transient errors with exponential backoff."""
-    import time as _time
+                                max_attempts=5, base_backoff_s=3.0, label='LLM call'):
+    """Consume call_llm_stream (provider fallback internally) and retry on
+    transient errors with exponential backoff + jitter."""
+    import time as _time, random as _random
     last_exc = None
     for attempt in range(1, max_attempts + 1):
         try:
@@ -14739,15 +14739,65 @@ def _call_llm_stream_with_retry(*, messages, system, tier, max_tokens, api_key,
                     result = chunk
             if result is None:
                 raise Exception(f"{label}: no result from LLM stream")
+            if not (result.get('text') or '').strip():
+                raise Exception(f"{label}: empty text in LLM result")
             return result
         except Exception as e:
             last_exc = e
-            if attempt >= max_attempts or not _is_transient_llm_error(e):
+            is_transient = _is_transient_llm_error(e) or 'empty text' in str(e).lower()
+            if attempt >= max_attempts or not is_transient:
                 raise
-            backoff = base_backoff_s * (2 ** (attempt - 1))
-            print(f"{label} attempt {attempt}/{max_attempts} failed ({type(e).__name__}: {str(e)[:200]}); retrying in {backoff}s")
+            backoff = base_backoff_s * (2 ** (attempt - 1)) + _random.uniform(0, 2)
+            print(f"{label} attempt {attempt}/{max_attempts} failed ({type(e).__name__}: {str(e)[:200]}); retry in {backoff:.1f}s")
             _time.sleep(backoff)
-    raise last_exc  # unreachable but appeases the linter
+    raise last_exc
+
+
+def _parse_mp_json_self_heal(text, max_attempts=3, label='parse'):
+    """Try parse_mp_json; if it returns non-dict/list or throws, attempt cleanup."""
+    import re as _re
+    try:
+        return parse_mp_json(text)
+    except Exception:
+        pass
+    # Strip everything before first { or [
+    cleaned = text
+    for opener in ('{', '['):
+        idx = cleaned.find(opener)
+        if idx >= 0:
+            cleaned = cleaned[idx:]
+            break
+    # Strip markdown fences
+    cleaned = _re.sub(r'```(?:json)?\s*', '', cleaned, flags=_re.IGNORECASE)
+    cleaned = cleaned.rstrip('`').strip()
+    try:
+        return parse_mp_json(cleaned)
+    except Exception as e:
+        raise Exception(f"{label} JSON parse failed after cleanup: {str(e)[:200]}; first 300 chars: {text[:300]!r}")
+
+
+def _llm_json_call_self_heal(*, system, messages, tier, max_tokens, api_key, label):
+    """Call LLM with retry; if JSON parse fails, retry the LLM call once with a
+    strict JSON reminder appended. Combined = ~5 transient retries per attempt x 2
+    parse-retry attempts."""
+    for parse_attempt in range(2):
+        sys_prompt = system if parse_attempt == 0 else (
+            system + "\n\nIMPORTANT: Respond with ONLY valid JSON. No prose, no markdown fences, no preamble. Start with { or [."
+        )
+        result = _call_llm_stream_with_retry(
+            messages=messages, system=sys_prompt, tier=tier,
+            max_tokens=max_tokens, api_key=api_key, label=label,
+        )
+        try:
+            parsed = _parse_mp_json_self_heal(result['text'], label=label)
+            if parsed is None:
+                raise Exception(f"{label}: parsed JSON was None")
+            return parsed, result
+        except Exception as e:
+            if parse_attempt >= 1:
+                raise
+            print(f"{label}: JSON parse failed on first LLM call ({str(e)[:150]}); retrying with strict-JSON reminder")
+    raise Exception(f"{label}: unreachable")
 
 
 def _mp_analyze_one_doc(api_key, ticker, company_name, doc):
@@ -14768,12 +14818,11 @@ def _mp_analyze_one_doc(api_key, ticker, company_name, doc):
         except Exception as e:
             print(f"pipeline: could not fetch file_data for doc {doc_id}: {e}")
     user_content = _mp_build_user_content(doc.get('filename', ''), file_data, doc.get('extractedText', ''))
-    llm_result = _call_llm_stream_with_retry(
-        messages=[{"role": "user", "content": user_content}],
-        system=prompt, tier="standard", max_tokens=16384, api_key=api_key,
+    analysis, llm_result = _llm_json_call_self_heal(
+        system=prompt, messages=[{"role": "user", "content": user_content}],
+        tier="standard", max_tokens=16384, api_key=api_key,
         label=f"Analyze {doc.get('filename','?')}",
     )
-    analysis = parse_mp_json(llm_result["text"])
     tokens = llm_result["usage"]["input_tokens"] + llm_result["usage"]["output_tokens"]
     analysis['_source_filename'] = doc.get('filename', '')
     analysis['_source_id'] = doc_id
@@ -14801,12 +14850,10 @@ def _mp_synthesize_inline(api_key, ticker, company_name, sector, analyses, past_
         doc_count=len(analyses), timeframe=timeframe,
         analyses_text=analyses_text, past_questions_text=past_q_text,
     )
-    llm_result = _call_llm_stream_with_retry(
-        messages=[{"role": "user", "content": "Synthesize the above document analyses."}],
-        system=prompt, tier="standard", max_tokens=16384, api_key=api_key,
-        label="Synthesize",
+    synthesis, llm_result = _llm_json_call_self_heal(
+        system=prompt, messages=[{"role": "user", "content": "Synthesize the above document analyses."}],
+        tier="standard", max_tokens=16384, api_key=api_key, label="Synthesize",
     )
-    synthesis = parse_mp_json(llm_result["text"])
     tokens = llm_result["usage"]["input_tokens"] + llm_result["usage"]["output_tokens"]
     return synthesis, tokens
 
@@ -14820,12 +14867,10 @@ def _mp_questions_inline(api_key, ticker, company_name, sector, synthesis, unres
         ticker=ticker, company_name=company_name, sector=sector,
         synthesis_text=json.dumps(synthesis, indent=2), unresolved_text=unresolved_text,
     )
-    llm_result = _call_llm_stream_with_retry(
-        messages=[{"role": "user", "content": "Generate the meeting preparation questions."}],
-        system=prompt, tier="standard", max_tokens=16384, api_key=api_key,
-        label="Generate questions",
+    topics, llm_result = _llm_json_call_self_heal(
+        system=prompt, messages=[{"role": "user", "content": "Generate the meeting preparation questions."}],
+        tier="standard", max_tokens=16384, api_key=api_key, label="Generate questions",
     )
-    topics = parse_mp_json(llm_result["text"])
     tokens = llm_result["usage"]["input_tokens"] + llm_result["usage"]["output_tokens"]
     return topics, tokens
 
@@ -14861,77 +14906,156 @@ def _mp_save_results_inline(meeting_id, topics, synthesis_json, total_tokens, mo
 
 
 def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sector,
-                         docs, past_questions, timeframe, unresolved, model):
-    """Run the full MP pipeline server-side in one thread. Writes progress to
-    mp_jobs.result as it goes so the UI can show stage + counts."""
+                         docs, past_questions, timeframe, unresolved, model,
+                         resume_from=None):
+    """Run the full MP pipeline server-side with stage-level checkpointing.
+    After each stage succeeds, writes its output to mp_jobs.result so retries
+    resume from the failure point instead of redoing successful work.
+
+    Checkpoint keys in mp_jobs.result:
+      - stage: current stage name (analyzing|synthesizing|generating|saving|done)
+      - completed / total: for the analyze stage's progress bar
+      - analyses:   list of per-doc analysis dicts (written when stage 1 finishes)
+      - synthesis:  synth output dict                 (written when stage 2 finishes)
+      - topics:     question-topics list              (written when stage 3 finishes)
+      - tokensTotal: running token count
+      - questionSetId / version: set when stage 4 saves to DB
+    """
     try:
         n_docs = len(docs)
-        _mp_update_job(job_id, result={'stage': 'analyzing', 'completed': 0, 'total': n_docs})
+        # Carry forward any checkpoint from a prior (failed) run
+        cp = resume_from or {}
+        tokens_total = int(cp.get('tokensTotal') or 0)
 
-        # Stage 1: analyze all docs in parallel (cap at 4 concurrent Claude calls)
-        analyses = [None] * n_docs
-        tokens_total = 0
-        lock = threading.Lock()
-        completed_counter = [0]
+        # -------- Stage 1: analyze --------
+        analyses = cp.get('analyses')
+        if not analyses or len(analyses) != n_docs:
+            # Prior run either didn't get here or finished partially. Start/restart
+            # analyze for any docs that don't yet have a completed analysis.
+            prior = cp.get('analyses') or []
+            analyses = [None] * n_docs
+            for i, a in enumerate(prior):
+                if i < n_docs and a:
+                    analyses[i] = a
 
-        sem = threading.Semaphore(4)
-        threads = []
-        errors = []
+            _mp_update_job(job_id, result={
+                'stage': 'analyzing',
+                'completed': sum(1 for a in analyses if a),
+                'total': n_docs,
+                'analyses': [a for a in analyses],
+                'tokensTotal': tokens_total,
+            })
 
-        def _worker(i, doc):
-            with sem:
-                try:
-                    analysis, tokens = _mp_analyze_one_doc(api_key, ticker, company_name, doc)
-                    with lock:
-                        analyses[i] = analysis
-                        nonlocal_tokens = tokens
-                        completed_counter[0] += 1
-                        _mp_update_job(job_id, result={
-                            'stage': 'analyzing', 'completed': completed_counter[0], 'total': n_docs,
-                        })
-                    return tokens
-                except Exception as e:
-                    with lock:
-                        errors.append((doc.get('filename', '?'), str(e)))
-                    return 0
+            lock = threading.Lock()
+            sem = threading.Semaphore(4)
+            errors = []
+            results_tokens = [0] * n_docs
 
-        results_tokens = [0] * n_docs
-        def _launch(i, doc):
-            def _t():
-                results_tokens[i] = _worker(i, doc) or 0
-            th = threading.Thread(target=_t, daemon=True)
-            th.start()
-            return th
-        for i, doc in enumerate(docs):
-            threads.append(_launch(i, doc))
-        for th in threads:
-            th.join()
-        if errors:
-            raise Exception(f"Analyze errors: {errors[0][0]} — {errors[0][1]}")
-        tokens_total += sum(results_tokens)
+            def _worker(i, doc):
+                with sem:
+                    try:
+                        analysis, tokens = _mp_analyze_one_doc(api_key, ticker, company_name, doc)
+                        with lock:
+                            analyses[i] = analysis
+                            results_tokens[i] = tokens
+                            done_count = sum(1 for a in analyses if a)
+                            _mp_update_job(job_id, result={
+                                'stage': 'analyzing', 'completed': done_count, 'total': n_docs,
+                                'analyses': analyses, 'tokensTotal': tokens_total + sum(results_tokens),
+                            })
+                    except Exception as e:
+                        with lock:
+                            errors.append((doc.get('filename', '?'), str(e)))
 
-        # Stage 2: synthesize
-        _mp_update_job(job_id, result={
-            'stage': 'synthesizing', 'completed': n_docs, 'total': n_docs,
-        })
-        synthesis, synth_tokens = _mp_synthesize_inline(
-            api_key, ticker, company_name, sector, analyses, past_questions, timeframe
-        )
-        tokens_total += synth_tokens
+            threads = []
+            for i, doc in enumerate(docs):
+                if analyses[i] is not None:
+                    continue  # already done in a prior run
+                th = threading.Thread(target=_worker, args=(i, doc), daemon=True)
+                th.start()
+                threads.append(th)
+            for th in threads:
+                th.join()
 
-        # Stage 3: generate questions
-        _mp_update_job(job_id, result={
-            'stage': 'generating', 'completed': n_docs, 'total': n_docs,
-        })
-        topics, q_tokens = _mp_questions_inline(
-            api_key, ticker, company_name, sector, synthesis, unresolved
-        )
-        tokens_total += q_tokens
+            if errors:
+                # Persist whatever analyses DID succeed so retry can resume past them
+                _mp_update_job(job_id, status='failed',
+                               error=f"Analyze errors: {errors[0][0]} — {errors[0][1]}",
+                               result={
+                                   'stage': 'analyzing',
+                                   'completed': sum(1 for a in analyses if a),
+                                   'total': n_docs,
+                                   'analyses': analyses,
+                                   'tokensTotal': tokens_total + sum(results_tokens),
+                                   'failedAt': 'analyzing',
+                               })
+                return
+            tokens_total += sum(results_tokens)
+            _mp_update_job(job_id, result={
+                'stage': 'synthesizing', 'completed': n_docs, 'total': n_docs,
+                'analyses': analyses, 'tokensTotal': tokens_total,
+            })
+        else:
+            print(f"[MP pipeline {job_id}] resume: analyze already complete ({n_docs} docs)")
 
-        # Stage 4: save
-        _mp_update_job(job_id, result={
-            'stage': 'saving', 'completed': n_docs, 'total': n_docs,
-        })
+        # -------- Stage 2: synthesize --------
+        synthesis = cp.get('synthesis')
+        if not synthesis:
+            _mp_update_job(job_id, result={
+                'stage': 'synthesizing', 'completed': n_docs, 'total': n_docs,
+                'analyses': analyses, 'tokensTotal': tokens_total,
+            })
+            try:
+                synthesis, synth_tokens = _mp_synthesize_inline(
+                    api_key, ticker, company_name, sector, analyses, past_questions, timeframe
+                )
+                tokens_total += synth_tokens
+            except Exception as e:
+                _mp_update_job(job_id, status='failed',
+                               error=f"Synthesize failed: {str(e)[:1000]}",
+                               result={
+                                   'stage': 'synthesizing', 'completed': n_docs, 'total': n_docs,
+                                   'analyses': analyses,
+                                   'tokensTotal': tokens_total, 'failedAt': 'synthesizing',
+                               })
+                return
+            _mp_update_job(job_id, result={
+                'stage': 'generating', 'completed': n_docs, 'total': n_docs,
+                'analyses': analyses, 'synthesis': synthesis, 'tokensTotal': tokens_total,
+            })
+        else:
+            print(f"[MP pipeline {job_id}] resume: synthesis already complete")
+
+        # -------- Stage 3: generate questions --------
+        topics = cp.get('topics')
+        if not topics:
+            _mp_update_job(job_id, result={
+                'stage': 'generating', 'completed': n_docs, 'total': n_docs,
+                'analyses': analyses, 'synthesis': synthesis, 'tokensTotal': tokens_total,
+            })
+            try:
+                topics, q_tokens = _mp_questions_inline(
+                    api_key, ticker, company_name, sector, synthesis, unresolved
+                )
+                tokens_total += q_tokens
+            except Exception as e:
+                _mp_update_job(job_id, status='failed',
+                               error=f"Generate questions failed: {str(e)[:1000]}",
+                               result={
+                                   'stage': 'generating', 'completed': n_docs, 'total': n_docs,
+                                   'analyses': analyses, 'synthesis': synthesis,
+                                   'tokensTotal': tokens_total, 'failedAt': 'generating',
+                               })
+                return
+            _mp_update_job(job_id, result={
+                'stage': 'saving', 'completed': n_docs, 'total': n_docs,
+                'analyses': analyses, 'synthesis': synthesis, 'topics': topics,
+                'tokensTotal': tokens_total,
+            })
+        else:
+            print(f"[MP pipeline {job_id}] resume: topics already complete")
+
+        # -------- Stage 4: save --------
         qs = _mp_save_results_inline(meeting_id, topics, synthesis, tokens_total, model)
 
         _mp_update_job(job_id, status='done', tokens_used=tokens_total, result={
@@ -14948,7 +15072,11 @@ def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sect
 @app.route('/api/mp/run-pipeline', methods=['POST'])
 def mp_run_pipeline():
     """Kick off the full MP pipeline server-side. Returns {jobId}. Poll
-    /api/mp/jobs/:id for stage + progress. Runs even if browser closes."""
+    /api/mp/jobs/:id for stage + progress. Runs even if browser closes.
+
+    Full input (minus API key) is persisted to mp_jobs.input so failed jobs
+    can be retried from their last successful stage via /api/mp/jobs/:id/retry.
+    """
     try:
         data = request.json or {}
         api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('apiKey', '')
@@ -14970,12 +15098,19 @@ def mp_run_pipeline():
         unresolved = data.get('unresolvedQuestions') or []
         model = data.get('model', 'claude-sonnet-4-5-20250929')
 
+        # Persist full input (excluding API key) so retries have everything needed
+        persisted_input = {
+            'meetingId': meeting_id, 'ticker': ticker, 'companyName': company_name,
+            'sector': sector, 'docs': docs, 'pastQuestions': past_questions,
+            'timeframe': timeframe, 'unresolvedQuestions': unresolved, 'model': model,
+        }
+
         job_id = str(uuid.uuid4())
         with get_db(commit=True) as (_c, cur):
             cur.execute('''
                 INSERT INTO mp_jobs (id, stage, ticker, status, input)
                 VALUES (%s, 'pipeline', %s, 'running', %s::jsonb)
-            ''', (job_id, ticker, json.dumps({'meetingId': meeting_id, 'docCount': len(docs)})))
+            ''', (job_id, ticker, json.dumps(persisted_input)))
 
         threading.Thread(
             target=_run_mp_pipeline_job,
@@ -14986,6 +15121,52 @@ def mp_run_pipeline():
         return jsonify({'jobId': job_id}), 202
     except Exception as e:
         print(f"MP run-pipeline error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/mp/jobs/<job_id>/retry', methods=['POST'])
+def mp_job_retry(job_id):
+    """Retry a failed (or running-but-stuck) MP pipeline job from its last
+    successful stage. Reuses the same job_id; orchestrator reads the existing
+    result field as a checkpoint. Requires apiKey in the request body (not
+    persisted)."""
+    try:
+        data = request.get_json(silent=True) or {}
+        api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('apiKey', '')
+        if not api_key:
+            return jsonify({'error': 'No API key provided.'}), 400
+
+        with get_db() as (_c, cur):
+            cur.execute("SELECT input, result, status FROM mp_jobs WHERE id = %s", (job_id,))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'error': 'Job not found'}), 404
+
+        inp = row['input'] if isinstance(row['input'], dict) else (json.loads(row['input']) if row['input'] else None)
+        if not inp or not inp.get('meetingId') or not inp.get('docs'):
+            return jsonify({'error': 'Job input missing — cannot retry (pre-checkpoint job)'}), 400
+        checkpoint = row['result'] if isinstance(row['result'], dict) else (json.loads(row['result']) if row['result'] else None)
+
+        # Mark running again + clear previous error (keep result as checkpoint)
+        with get_db(commit=True) as (_c, cur):
+            cur.execute('UPDATE mp_jobs SET status = %s, error = NULL, updated_at = NOW() WHERE id = %s',
+                        ('running', job_id))
+
+        threading.Thread(
+            target=_run_mp_pipeline_job,
+            args=(job_id, api_key,
+                  inp['meetingId'], inp.get('ticker', ''),
+                  inp.get('companyName', ''), inp.get('sector', 'unknown'),
+                  inp['docs'], inp.get('pastQuestions') or [],
+                  inp.get('timeframe', 'recent'),
+                  inp.get('unresolvedQuestions') or [],
+                  inp.get('model', 'claude-sonnet-4-5-20250929')),
+            kwargs={'resume_from': checkpoint},
+            daemon=True,
+        ).start()
+        return jsonify({'jobId': job_id, 'resuming': True}), 202
+    except Exception as e:
+        print(f"MP job retry error: {e}")
         return jsonify({'error': str(e)}), 500
 
 
