@@ -14479,7 +14479,7 @@ def mp_analyze_document():
                 print(f"MP analyze stream error: {e}")
                 yield "\n" + json.dumps({'error': str(e)})
 
-        return app.response_class(generate(), mimetype='text/plain')
+        resp = app.response_class(generate(), mimetype='text/plain'); resp.headers['X-Accel-Buffering'] = 'no'; resp.headers['Cache-Control'] = 'no-cache, no-transform'; return resp
 
     except Exception as e:
         print(f"MP analyze error: {e}")
@@ -14553,7 +14553,7 @@ def mp_synthesize():
                 print(f"MP synthesize stream error: {e}")
                 yield "\n" + json.dumps({'error': str(e)})
 
-        return app.response_class(generate(), mimetype='text/plain')
+        resp = app.response_class(generate(), mimetype='text/plain'); resp.headers['X-Accel-Buffering'] = 'no'; resp.headers['Cache-Control'] = 'no-cache, no-transform'; return resp
 
     except Exception as e:
         print(f"MP synthesize error: {e}")
@@ -14618,7 +14618,7 @@ def mp_generate_questions():
                 print(f"MP generate questions stream error: {e}")
                 yield "\n" + json.dumps({'error': str(e)})
 
-        return app.response_class(generate(), mimetype='text/plain')
+        resp = app.response_class(generate(), mimetype='text/plain'); resp.headers['X-Accel-Buffering'] = 'no'; resp.headers['Cache-Control'] = 'no-cache, no-transform'; return resp
 
     except Exception as e:
         print(f"MP generate questions error: {e}")
