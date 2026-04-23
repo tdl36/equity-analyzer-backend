@@ -265,6 +265,256 @@ def alert_count():
 
 
 # ============================================
+# MEDIA TRACKER FEEDS — CRUD
+# ============================================
+
+def _row_to_feed(r):
+    return {
+        'id': r['id'],
+        'sourceType': r['source_type'],
+        'name': r['name'],
+        'feedUrl': r['feed_url'],
+        'sectorTags': r['sector_tags'] or [],
+        'muted': r['muted'],
+        'lastPolledAt': r['last_polled_at'].isoformat() if r['last_polled_at'] else None,
+        'lastEpisodeAt': r['last_episode_at'].isoformat() if r['last_episode_at'] else None,
+        'pollIntervalMin': r['poll_interval_min'],
+        'errorCount': r['error_count'],
+        'lastError': r['last_error'],
+        'createdAt': r['created_at'].isoformat() if r['created_at'] else None,
+    }
+
+
+@app.route('/api/media/feeds', methods=['GET'])
+def media_feeds_list():
+    with get_db() as (_c, cur):
+        cur.execute("SELECT * FROM media_feeds ORDER BY name ASC")
+        rows = cur.fetchall()
+    feeds = [_row_to_feed(r) for r in rows]
+    return jsonify({'feeds': feeds, 'total': len(feeds)})
+
+
+@app.route('/api/media/feeds', methods=['POST'])
+def media_feeds_create():
+    data = request.get_json() or {}
+    name = (data.get('name') or '').strip()
+    feed_url = (data.get('feedUrl') or '').strip()
+    source_type = (data.get('sourceType') or 'podcast').strip()
+    sector_tags = data.get('sectorTags') or []
+    poll_interval = int(data.get('pollIntervalMin') or 30)
+    if not name or not feed_url:
+        return jsonify({'error': 'name and feedUrl required'}), 400
+    feed_id = str(uuid.uuid4())
+    with get_db(commit=True) as (_c, cur):
+        cur.execute('''
+            INSERT INTO media_feeds (id, source_type, name, feed_url, sector_tags, poll_interval_min)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING *
+        ''', (feed_id, source_type, name, feed_url, sector_tags, poll_interval))
+        row = cur.fetchone()
+    return jsonify({'feed': _row_to_feed(row)})
+
+
+@app.route('/api/media/feeds/<feed_id>', methods=['PATCH'])
+def media_feeds_update(feed_id):
+    data = request.get_json() or {}
+    fields, values = [], []
+    for k, col in [('muted', 'muted'), ('name', 'name'), ('feedUrl', 'feed_url'),
+                   ('sectorTags', 'sector_tags'), ('pollIntervalMin', 'poll_interval_min')]:
+        if k in data:
+            fields.append(f"{col} = %s")
+            values.append(data[k])
+    if not fields:
+        return jsonify({'error': 'no updatable fields'}), 400
+    values.append(feed_id)
+    with get_db(commit=True) as (_c, cur):
+        cur.execute(f"UPDATE media_feeds SET {', '.join(fields)} WHERE id = %s RETURNING *", values)
+        row = cur.fetchone()
+    if not row:
+        return jsonify({'error': 'not found'}), 404
+    return jsonify({'feed': _row_to_feed(row)})
+
+
+@app.route('/api/media/feeds/<feed_id>', methods=['DELETE'])
+def media_feeds_delete(feed_id):
+    with get_db(commit=True) as (_c, cur):
+        cur.execute("DELETE FROM media_feeds WHERE id = %s", (feed_id,))
+    return jsonify({'success': True})
+
+
+# ============================================
+# MEDIA TRACKER — SIGNALS WATCHLIST
+# ============================================
+
+def _row_to_signal(r):
+    return {
+        'id': r['id'],
+        'kind': r['kind'],
+        'value': r['value'],
+        'associatedTicker': r['associated_ticker'],
+        'muted': r['muted'],
+        'note': r['note'],
+        'createdAt': r['created_at'].isoformat() if r['created_at'] else None,
+    }
+
+
+@app.route('/api/media/watchlist', methods=['GET'])
+def media_watchlist_list():
+    with get_db() as (_c, cur):
+        cur.execute("SELECT * FROM signals_watchlist ORDER BY kind, value")
+        rows = cur.fetchall()
+    return jsonify({'signals': [_row_to_signal(r) for r in rows], 'total': len(rows)})
+
+
+@app.route('/api/media/watchlist', methods=['POST'])
+def media_watchlist_create():
+    data = request.get_json() or {}
+    kind = (data.get('kind') or '').strip()
+    value = (data.get('value') or '').strip()
+    if kind not in ('ticker', 'keyword', 'exec') or not value:
+        return jsonify({'error': 'kind must be ticker|keyword|exec; value required'}), 400
+    sid = str(uuid.uuid4())
+    try:
+        with get_db(commit=True) as (_c, cur):
+            cur.execute('''
+                INSERT INTO signals_watchlist (id, kind, value, associated_ticker, note)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING *
+            ''', (sid, kind, value, data.get('associatedTicker'), data.get('note')))
+            row = cur.fetchone()
+    except Exception as e:
+        if 'duplicate key' in str(e).lower() or 'unique' in str(e).lower():
+            return jsonify({'error': 'already exists'}), 409
+        raise
+    return jsonify({'signal': _row_to_signal(row)})
+
+
+@app.route('/api/media/watchlist/<signal_id>', methods=['PATCH'])
+def media_watchlist_update(signal_id):
+    data = request.get_json() or {}
+    fields, values = [], []
+    for k, col in [('muted', 'muted'), ('note', 'note'), ('associatedTicker', 'associated_ticker')]:
+        if k in data:
+            fields.append(f"{col} = %s")
+            values.append(data[k])
+    if not fields:
+        return jsonify({'error': 'no updatable fields'}), 400
+    values.append(signal_id)
+    with get_db(commit=True) as (_c, cur):
+        cur.execute(f"UPDATE signals_watchlist SET {', '.join(fields)} WHERE id = %s RETURNING *", values)
+        row = cur.fetchone()
+    if not row:
+        return jsonify({'error': 'not found'}), 404
+    return jsonify({'signal': _row_to_signal(row)})
+
+
+@app.route('/api/media/watchlist/<signal_id>', methods=['DELETE'])
+def media_watchlist_delete(signal_id):
+    with get_db(commit=True) as (_c, cur):
+        cur.execute("DELETE FROM signals_watchlist WHERE id = %s", (signal_id,))
+    return jsonify({'success': True})
+
+
+# ============================================
+# MEDIA TRACKER — FEED (firehose) + SCANNER
+# ============================================
+
+_scanner_runs = {}  # in-memory scan status; OK to lose across deploys
+
+
+@app.route('/api/media/feed', methods=['GET'])
+def media_feed_read():
+    source  = request.args.get('source')
+    ticker  = request.args.get('ticker')
+    sector  = request.args.get('sector')
+    days    = int(request.args.get('days', 7))
+    q       = request.args.get('q', '').strip()
+    material_only = request.args.get('material') == 'true'
+    limit   = int(request.args.get('limit', 100))
+
+    where = ["e.created_at > NOW() - %s::interval"]
+    params = [f'{days} days']
+    if source:
+        where.append("f.source_type = %s"); params.append(source)
+    if material_only:
+        where.append("EXISTS (SELECT 1 FROM media_digest_points p2 WHERE p2.episode_id=e.id AND p2.material)")
+    if q:
+        where.append("(e.title ILIKE %s OR e.show_notes ILIKE %s)")
+        params.extend([f'%{q}%', f'%{q}%'])
+
+    with get_db() as (_c, cur):
+        cur.execute(f'''
+            SELECT e.*, f.name AS feed_name, f.sector_tags AS feed_sector_tags
+              FROM media_episodes e
+              JOIN media_feeds f ON f.id = e.feed_id
+             WHERE {' AND '.join(where)}
+               AND e.status = 'done'
+             ORDER BY e.published_at DESC NULLS LAST
+             LIMIT %s
+        ''', params + [limit])
+        episodes = cur.fetchall()
+
+        episode_ids = [e['id'] for e in episodes]
+        points = []
+        if episode_ids:
+            pq = "SELECT * FROM media_digest_points WHERE episode_id = ANY(%s)"
+            pparams = [episode_ids]
+            if ticker:
+                pq += " AND %s = ANY(tickers)"; pparams.append(ticker)
+            if sector:
+                pq += " AND %s = ANY(sector_tags)"; pparams.append(sector)
+            pq += " ORDER BY episode_id, point_order"
+            cur.execute(pq, pparams)
+            points = cur.fetchall()
+
+    by_ep = {}
+    for p in points:
+        by_ep.setdefault(p['episode_id'], []).append({
+            'id': p['id'], 'text': p['text'], 'tickers': p['tickers'] or [],
+            'sectorTags': p['sector_tags'] or [], 'themeTags': p['theme_tags'] or [],
+            'material': p['material'], 'timestampSec': p['timestamp_sec'],
+        })
+
+    result = []
+    for e in episodes:
+        pts = by_ep.get(e['id'], [])
+        if (ticker or sector) and not pts:
+            continue  # filtered all points out — hide the episode
+        result.append({
+            'id': e['id'], 'feedId': e['feed_id'], 'feedName': e['feed_name'],
+            'title': e['title'],
+            'publishedAt': e['published_at'].isoformat() if e['published_at'] else None,
+            'sourceUrl': e['source_url'], 'points': pts,
+        })
+    return jsonify({'episodes': result, 'total': len(result)})
+
+
+@app.route('/api/media/run-scanner', methods=['POST'])
+def media_run_scanner():
+    scan_id = str(uuid.uuid4())
+    _scanner_runs[scan_id] = {'status': 'running', 'started_at': datetime.utcnow().isoformat()}
+
+    def _run():
+        try:
+            from media_trackers import poller
+            poller.poll_all_feeds()
+            _scanner_runs[scan_id]['status'] = 'done'
+        except Exception as e:
+            _scanner_runs[scan_id]['status'] = 'failed'
+            _scanner_runs[scan_id]['error'] = str(e)
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({'scanId': scan_id}), 202
+
+
+@app.route('/api/media/scan/<scan_id>', methods=['GET'])
+def media_scan_status(scan_id):
+    rec = _scanner_runs.get(scan_id)
+    if not rec:
+        return jsonify({'error': 'unknown scan id'}), 404
+    return jsonify(rec)
+
+
+# ============================================
 # MULTI-MODEL LLM FALLBACK
 # ============================================
 
@@ -1430,6 +1680,93 @@ def init_db():
             cur.execute('CREATE INDEX IF NOT EXISTS idx_agent_alerts_status ON agent_alerts(status)')
             cur.execute('CREATE INDEX IF NOT EXISTS idx_agent_alerts_created ON agent_alerts(created_at DESC)')
 
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS media_feeds (
+                    id                VARCHAR(100) PRIMARY KEY,
+                    source_type       VARCHAR(20) NOT NULL,
+                    name              TEXT NOT NULL,
+                    feed_url          TEXT NOT NULL,
+                    sector_tags       TEXT[] DEFAULT '{}',
+                    muted             BOOLEAN DEFAULT FALSE,
+                    last_polled_at    TIMESTAMP,
+                    last_episode_at   TIMESTAMP,
+                    poll_interval_min INT DEFAULT 30,
+                    error_count       INT DEFAULT 0,
+                    last_error        TEXT,
+                    created_at        TIMESTAMP DEFAULT NOW()
+                )
+            ''')
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS media_episodes (
+                    id                VARCHAR(100) PRIMARY KEY,
+                    feed_id           VARCHAR(100) REFERENCES media_feeds(id) ON DELETE CASCADE,
+                    guid              TEXT NOT NULL,
+                    title             TEXT NOT NULL,
+                    published_at      TIMESTAMP,
+                    audio_url         TEXT,
+                    source_url        TEXT,
+                    show_notes        TEXT,
+                    duration_sec      INT,
+                    transcript        TEXT,
+                    transcript_source VARCHAR(20),
+                    status            VARCHAR(20) DEFAULT 'new',
+                    error_message     TEXT,
+                    cost_usd          NUMERIC(10,4) DEFAULT 0,
+                    created_at        TIMESTAMP DEFAULT NOW(),
+                    UNIQUE(feed_id, guid)
+                )
+            ''')
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS media_digest_points (
+                    id            VARCHAR(100) PRIMARY KEY,
+                    episode_id    VARCHAR(100) REFERENCES media_episodes(id) ON DELETE CASCADE,
+                    point_order   INT NOT NULL,
+                    text          TEXT NOT NULL,
+                    tickers       TEXT[] DEFAULT '{}',
+                    sector_tags   TEXT[] DEFAULT '{}',
+                    theme_tags    TEXT[] DEFAULT '{}',
+                    timestamp_sec INT,
+                    material      BOOLEAN DEFAULT FALSE,
+                    cluster_id    VARCHAR(100),
+                    created_at    TIMESTAMP DEFAULT NOW()
+                )
+            ''')
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS signals_watchlist (
+                    id                VARCHAR(100) PRIMARY KEY,
+                    kind              VARCHAR(20) NOT NULL,
+                    value             TEXT NOT NULL,
+                    associated_ticker VARCHAR(20),
+                    muted             BOOLEAN DEFAULT FALSE,
+                    note              TEXT,
+                    created_at        TIMESTAMP DEFAULT NOW(),
+                    UNIQUE(kind, value)
+                )
+            ''')
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS media_theme_clusters (
+                    id              VARCHAR(100) PRIMARY KEY,
+                    theme           TEXT NOT NULL,
+                    summary         TEXT,
+                    point_ids       TEXT[] DEFAULT '{}',
+                    primary_tickers TEXT[] DEFAULT '{}',
+                    week_start      DATE NOT NULL,
+                    created_at      TIMESTAMP DEFAULT NOW()
+                )
+            ''')
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS notification_prefs (
+                    key   VARCHAR(50) PRIMARY KEY,
+                    value JSONB
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_episodes_status ON media_episodes(status)')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_episodes_feed_published ON media_episodes(feed_id, published_at DESC)')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_points_episode ON media_digest_points(episode_id, point_order)')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_points_tickers_gin ON media_digest_points USING GIN(tickers)')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_points_material ON media_digest_points(material, created_at DESC)')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_points_cluster ON media_digest_points(cluster_id)')
+
         print("Database tables initialized")
     except Exception as e:
         print(f"Database init error (may be normal on first run): {e}")
@@ -1439,6 +1776,15 @@ try:
     init_db()
 except:
     pass  # Will init when DATABASE_URL is available
+
+# Start APScheduler for media trackers (unless APSCHEDULER_DISABLED set)
+if not os.environ.get('APSCHEDULER_DISABLED'):
+    try:
+        import scheduler as _media_scheduler
+        _media_scheduler.start()
+        print("Media tracker scheduler started")
+    except Exception as e:
+        print(f"Scheduler start failed (non-fatal): {e}")
 
 
 # ============================================
