@@ -439,8 +439,13 @@ def media_feed_read():
     if material_only:
         where.append("EXISTS (SELECT 1 FROM media_digest_points p2 WHERE p2.episode_id=e.id AND p2.material)")
     if q:
-        where.append("(e.title ILIKE %s OR e.show_notes ILIKE %s)")
-        params.extend([f'%{q}%', f'%{q}%'])
+        # Match q against title, show_notes, transcript, OR point text
+        where.append(
+            "(e.title ILIKE %s OR e.show_notes ILIKE %s OR e.transcript ILIKE %s "
+            "OR EXISTS (SELECT 1 FROM media_digest_points p2 WHERE p2.episode_id=e.id AND p2.text ILIKE %s))"
+        )
+        like = f'%{q}%'
+        params.extend([like, like, like, like])
 
     with get_db() as (_c, cur):
         cur.execute(f'''
@@ -475,18 +480,174 @@ def media_feed_read():
             'material': p['material'], 'timestampSec': p['timestamp_sec'],
         })
 
+    # Compute match context / source when q is present
+    def _match_info(ep_row, pts):
+        if not q:
+            return None, None
+        q_lower = q.lower()
+        title = (ep_row.get('title') or '')
+        notes = (ep_row.get('show_notes') or '')
+        transcript = (ep_row.get('transcript') or '')
+        # Prefer transcript match
+        if q_lower in transcript.lower():
+            idx = transcript.lower().find(q_lower)
+            start = max(0, idx - 80)
+            end = min(len(transcript), idx + len(q) + 120)
+            snippet = transcript[start:end].strip()
+            if start > 0:
+                snippet = '…' + snippet
+            if end < len(transcript):
+                snippet = snippet + '…'
+            return 'transcript', snippet
+        # Check point text
+        for p in pts:
+            if q_lower in (p.get('text') or '').lower():
+                return 'point', p.get('text')
+        if q_lower in title.lower():
+            return 'title', None
+        if q_lower in notes.lower():
+            idx = notes.lower().find(q_lower)
+            start = max(0, idx - 80)
+            end = min(len(notes), idx + len(q) + 120)
+            snippet = notes[start:end].strip()
+            if start > 0:
+                snippet = '…' + snippet
+            if end < len(notes):
+                snippet = snippet + '…'
+            return 'notes', snippet
+        return None, None
+
     result = []
     for e in episodes:
         pts = by_ep.get(e['id'], [])
         if (ticker or sector) and not pts:
             continue  # filtered all points out — hide the episode
+        match_source, match_ctx = _match_info(e, pts)
         result.append({
             'id': e['id'], 'feedId': e['feed_id'], 'feedName': e['feed_name'],
             'title': e['title'],
             'publishedAt': e['published_at'].isoformat() if e['published_at'] else None,
             'sourceUrl': e['source_url'], 'points': pts,
+            'matchSource': match_source,
+            'matchContext': match_ctx,
         })
     return jsonify({'episodes': result, 'total': len(result)})
+
+
+@app.route('/api/media/ticker-heatmap', methods=['GET'])
+def media_ticker_heatmap():
+    """Count media_digest_points rows per ticker within N days."""
+    try:
+        days = int(request.args.get('days', 7))
+    except (ValueError, TypeError):
+        days = 7
+    days = max(1, min(days, 90))
+    try:
+        with get_db() as (_c, cur):
+            cur.execute(
+                """
+                SELECT t AS ticker, COUNT(*)::int AS count
+                  FROM media_digest_points p,
+                       UNNEST(COALESCE(p.tickers, ARRAY[]::text[])) AS t
+                 WHERE p.created_at > NOW() - %s::interval
+                   AND t IS NOT NULL AND t <> ''
+                 GROUP BY t
+                 ORDER BY count DESC, t ASC
+                 LIMIT 30
+                """,
+                (f'{days} days',),
+            )
+            rows = cur.fetchall()
+        heatmap = [{'ticker': r['ticker'], 'count': r['count']} for r in rows]
+    except Exception as exc:
+        print(f'ticker-heatmap error: {exc}')
+        heatmap = []
+    return jsonify({'heatmap': heatmap, 'days': days})
+
+
+@app.route('/api/media/theme-clusters', methods=['GET'])
+def media_theme_clusters():
+    """Return weekly theme clusters with associated points joined in.
+
+    Query param: ?week=current (most recent Monday) — default.
+    """
+    week_arg = (request.args.get('week') or 'current').lower()
+    try:
+        with get_db() as (_c, cur):
+            # Find most recent week_start
+            if week_arg == 'current':
+                cur.execute("SELECT MAX(week_start) AS ws FROM media_theme_clusters")
+                row = cur.fetchone()
+                week_start = row['ws'] if row and row.get('ws') else None
+            else:
+                # Expect YYYY-MM-DD
+                week_start = week_arg
+            if not week_start:
+                return jsonify({'weekStart': None, 'clusters': []})
+
+            cur.execute(
+                """
+                SELECT id, theme, summary, point_ids, primary_tickers, week_start
+                  FROM media_theme_clusters
+                 WHERE week_start = %s
+                 ORDER BY array_length(point_ids, 1) DESC NULLS LAST, theme ASC
+                """,
+                (week_start,),
+            )
+            clusters = cur.fetchall()
+
+            # Collect all point_ids
+            all_pids = []
+            for c in clusters:
+                for pid in (c.get('point_ids') or []):
+                    all_pids.append(pid)
+
+            points_by_id = {}
+            if all_pids:
+                cur.execute(
+                    """
+                    SELECT p.id, p.text, p.episode_id, p.tickers, p.sector_tags,
+                           p.theme_tags, p.material, e.title AS episode_title,
+                           e.source_url, f.name AS feed_name
+                      FROM media_digest_points p
+                      LEFT JOIN media_episodes e ON e.id = p.episode_id
+                      LEFT JOIN media_feeds f    ON f.id = e.feed_id
+                     WHERE p.id = ANY(%s)
+                    """,
+                    (all_pids,),
+                )
+                for r in cur.fetchall():
+                    points_by_id[r['id']] = {
+                        'id': r['id'],
+                        'text': r['text'],
+                        'episodeId': r['episode_id'],
+                        'episodeTitle': r.get('episode_title'),
+                        'feedName': r.get('feed_name'),
+                        'sourceUrl': r.get('source_url'),
+                        'tickers': r.get('tickers') or [],
+                        'sectorTags': r.get('sector_tags') or [],
+                        'themeTags': r.get('theme_tags') or [],
+                        'material': r.get('material'),
+                    }
+
+        out_clusters = []
+        for c in clusters:
+            pids = c.get('point_ids') or []
+            pts = [points_by_id[p] for p in pids if p in points_by_id]
+            out_clusters.append({
+                'id': c['id'],
+                'theme': c['theme'],
+                'summary': c.get('summary') or '',
+                'primaryTickers': c.get('primary_tickers') or [],
+                'pointCount': len(pids),
+                'pointIds': pids,
+                'points': pts,
+            })
+        ws_str = week_start.isoformat() if hasattr(week_start, 'isoformat') else str(week_start)
+        return jsonify({'weekStart': ws_str, 'clusters': out_clusters})
+    except Exception as exc:
+        print(f'theme-clusters error: {exc}')
+        return jsonify({'weekStart': None, 'clusters': []})
 
 
 @app.route('/api/media/run-scanner', methods=['POST'])

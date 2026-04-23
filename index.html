@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-23T21';
+        const BUILD_VERSION = '2026-04-23T22';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -4547,7 +4547,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 if (activeTab === 'summary') loadSummaries();
                 if (activeTab === 'research') loadResearchData();
                 if (activeTab === 'alerts') fetchAlerts();
-                if (activeTab === 'feed') fetchFeed();
+                if (activeTab === 'feed') { fetchFeed(); fetchTickerHeatmap(); fetchThemeClusters(); }
                 if (activeTab === 'settings') loadMediaTrackerSettings();
             }, [activeTab]);
 
@@ -6782,7 +6782,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [feedError, setFeedError] = useState(null);
             const [feedFilters, setFeedFilters] = useState({
                 source: 'podcast', ticker: '', sector: '', days: 7, q: '', material: false,
+                sectorBundle: null,
             });
+            const [feedTickerHeatmap, setFeedTickerHeatmap] = useState([]);
+            const [feedThemeClusters, setFeedThemeClusters] = useState({ weekStart: null, clusters: [] });
+            const [feedHeatmapOpen, setFeedHeatmapOpen] = useState(true);
+            const [feedThemesOpen, setFeedThemesOpen] = useState(false);
+            const feedHeatmapCacheRef = useRef({ loadedAt: 0, data: [] });
 
             const fetchFeed = useCallback(async () => {
                 setFeedLoading(true);
@@ -6804,6 +6810,34 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     setFeedLoading(false);
                 }
             }, [feedFilters]);
+
+            const fetchTickerHeatmap = useCallback(async () => {
+                const now = Date.now();
+                // 5 minute client-side cache
+                if (now - feedHeatmapCacheRef.current.loadedAt < 5 * 60 * 1000
+                        && feedHeatmapCacheRef.current.data.length > 0) {
+                    setFeedTickerHeatmap(feedHeatmapCacheRef.current.data);
+                    return;
+                }
+                try {
+                    const resp = await fetch('/api/media/ticker-heatmap?days=7');
+                    const data = await resp.json();
+                    const list = data.heatmap || [];
+                    feedHeatmapCacheRef.current = { loadedAt: now, data: list };
+                    setFeedTickerHeatmap(list);
+                } catch (e) {}
+            }, []);
+
+            const fetchThemeClusters = useCallback(async () => {
+                try {
+                    const resp = await fetch('/api/media/theme-clusters?week=current');
+                    const data = await resp.json();
+                    setFeedThemeClusters({
+                        weekStart: data.weekStart || null,
+                        clusters: data.clusters || [],
+                    });
+                } catch (e) {}
+            }, []);
 
             // Media Trackers settings state (M7)
             const [mtFeeds, setMtFeeds] = useState([]);
@@ -22391,6 +22425,171 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             Run Scanner
                                         </button>
                                     </div>
+
+                                    {/* Feature 4 — Weekly theme digest (collapsible, default collapsed) */}
+                                    <div className="mb-4 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                                        <button
+                                            onClick={() => setFeedThemesOpen(!feedThemesOpen)}
+                                            className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-slate-50"
+                                        >
+                                            <div>
+                                                <div className="text-sm font-semibold text-slate-900">This Week's Themes</div>
+                                                <div className="text-[11px] text-slate-500">
+                                                    {feedThemeClusters.weekStart
+                                                        ? `Week of ${feedThemeClusters.weekStart} · ${feedThemeClusters.clusters.length} ${feedThemeClusters.clusters.length === 1 ? 'cluster' : 'clusters'}`
+                                                        : 'Weekly themes compile every Sunday — check back soon.'}
+                                                </div>
+                                            </div>
+                                            <span className="text-slate-400 text-sm">{feedThemesOpen ? '▾' : '▸'}</span>
+                                        </button>
+                                        {feedThemesOpen && (
+                                            <div className="px-4 pb-4 border-t border-slate-100">
+                                                {feedThemeClusters.clusters.length === 0 ? (
+                                                    <div className="text-xs text-slate-400 py-3">
+                                                        Weekly themes compile every Sunday — check back soon.
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-3 pt-3">
+                                                        {feedThemeClusters.clusters.map(c => (
+                                                            <details key={c.id} className="bg-slate-50 rounded-lg border border-slate-200 p-3">
+                                                                <summary className="cursor-pointer list-none">
+                                                                    <div className="flex items-baseline justify-between gap-2">
+                                                                        <div className="font-semibold text-sm text-slate-900">{c.theme}</div>
+                                                                        <div className="text-[11px] text-slate-500 shrink-0">{c.pointCount} {c.pointCount === 1 ? 'point' : 'points'}</div>
+                                                                    </div>
+                                                                    {c.summary && (
+                                                                        <div className="text-xs text-slate-600 mt-1">{c.summary}</div>
+                                                                    )}
+                                                                    {(c.primaryTickers || []).length > 0 && (
+                                                                        <div className="flex flex-wrap gap-1 mt-2">
+                                                                            {c.primaryTickers.map(t => (
+                                                                                <button
+                                                                                    key={t}
+                                                                                    onClick={(e) => { e.preventDefault(); setFeedFilters({...feedFilters, ticker: t}); }}
+                                                                                    className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-200 text-[10px] font-semibold hover:bg-amber-200"
+                                                                                >
+                                                                                    {t}
+                                                                                </button>
+                                                                            ))}
+                                                                        </div>
+                                                                    )}
+                                                                </summary>
+                                                                {(c.points || []).length > 0 && (
+                                                                    <ul className="mt-3 space-y-1.5 border-t border-slate-200 pt-3">
+                                                                        {c.points.map(p => (
+                                                                            <li key={p.id} className="text-xs text-slate-700 flex items-start gap-2">
+                                                                                <span className="text-slate-400 shrink-0">•</span>
+                                                                                <span className="flex-1">
+                                                                                    {p.text}
+                                                                                    {p.sourceUrl && (
+                                                                                        <a href={p.sourceUrl} target="_blank" rel="noopener" className="ml-1 text-indigo-600 hover:underline">
+                                                                                            [{p.feedName || 'source'} ↗]
+                                                                                        </a>
+                                                                                    )}
+                                                                                </span>
+                                                                            </li>
+                                                                        ))}
+                                                                    </ul>
+                                                                )}
+                                                            </details>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Feature 3 — Ticker heatmap sidebar (collapsible panel) */}
+                                    <div className="mb-4 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                                        <button
+                                            onClick={() => setFeedHeatmapOpen(!feedHeatmapOpen)}
+                                            className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-slate-50"
+                                        >
+                                            <div>
+                                                <div className="text-sm font-semibold text-slate-900">Top tickers this week</div>
+                                                <div className="text-[11px] text-slate-500">
+                                                    {feedTickerHeatmap.length > 0
+                                                        ? `${feedTickerHeatmap.length} tickers · last 7 days`
+                                                        : 'Loading…'}
+                                                </div>
+                                            </div>
+                                            <span className="text-slate-400 text-sm">{feedHeatmapOpen ? '▾' : '▸'}</span>
+                                        </button>
+                                        {feedHeatmapOpen && (
+                                            <div className="px-4 pb-4 border-t border-slate-100">
+                                                {feedTickerHeatmap.length === 0 ? (
+                                                    <div className="text-xs text-slate-400 py-3">No ticker mentions in the last 7 days yet.</div>
+                                                ) : (() => {
+                                                    const maxCount = Math.max(...feedTickerHeatmap.map(t => t.count));
+                                                    return (
+                                                        <div className="flex flex-wrap gap-2 pt-3">
+                                                            {feedTickerHeatmap.slice(0, 20).map(t => {
+                                                                const isActive = feedFilters.ticker === t.ticker;
+                                                                const intensity = t.count / maxCount; // 0..1
+                                                                // Size: 10px..14px; color intensity via opacity
+                                                                const fontSize = 11 + Math.round(intensity * 3);
+                                                                const bg = isActive
+                                                                    ? 'bg-amber-500 text-white border-amber-600'
+                                                                    : intensity > 0.66
+                                                                        ? 'bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200'
+                                                                        : intensity > 0.33
+                                                                            ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+                                                                            : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200';
+                                                                return (
+                                                                    <button
+                                                                        key={t.ticker}
+                                                                        onClick={() => setFeedFilters({...feedFilters, ticker: isActive ? '' : t.ticker})}
+                                                                        className={`px-2.5 py-1 rounded-full border font-semibold transition-colors ${bg}`}
+                                                                        style={{ fontSize: `${fontSize}px` }}
+                                                                        title={`${t.ticker} — ${t.count} mention${t.count === 1 ? '' : 's'} in last 7 days`}
+                                                                    >
+                                                                        {t.ticker}
+                                                                        <span className="ml-1 opacity-70 font-normal">{t.count}</span>
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    );
+                                                })()}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Feature 1 — Quick filter chips */}
+                                    {(() => {
+                                        const f = feedFilters;
+                                        const isAll = !f.material && f.days === 7 && !f.ticker && !f.q && !f.sectorBundle;
+                                        const isMaterialToday = f.material === true && f.days === 1 && !f.sectorBundle;
+                                        const isLast24h = f.days === 1 && !f.material && !f.sectorBundle;
+                                        const isCovered = f.material === true && f.days === 7 && !f.sectorBundle;
+                                        const chips = [
+                                            { key: 'all',       label: 'All',                   active: isAll,           apply: () => setFeedFilters({...feedFilters, material: false, days: 7, ticker: '', q: '', sectorBundle: null}) },
+                                            { key: 'mat_today', label: 'Material only today',   active: isMaterialToday, apply: () => setFeedFilters({...feedFilters, material: true, days: 1, sectorBundle: null}) },
+                                            { key: 'last24h',   label: 'Last 24h',              active: isLast24h,       apply: () => setFeedFilters({...feedFilters, days: 1, material: false, sectorBundle: null}) },
+                                            { key: 'covered',   label: 'Covered mentioned',     active: isCovered,       apply: () => setFeedFilters({...feedFilters, material: true, days: 7, sectorBundle: null}) },
+                                            { key: 'healthcare',label: 'Healthcare',            active: f.sectorBundle === 'healthcare', apply: () => setFeedFilters({...feedFilters, sectorBundle: f.sectorBundle === 'healthcare' ? null : 'healthcare'}) },
+                                            { key: 'tech',      label: 'Tech',                  active: f.sectorBundle === 'tech',       apply: () => setFeedFilters({...feedFilters, sectorBundle: f.sectorBundle === 'tech' ? null : 'tech'}) },
+                                            { key: 'macro',     label: 'Macro',                 active: f.sectorBundle === 'macro',      apply: () => setFeedFilters({...feedFilters, sectorBundle: f.sectorBundle === 'macro' ? null : 'macro'}) },
+                                        ];
+                                        return (
+                                            <div className="flex flex-wrap gap-2 mb-3">
+                                                {chips.map(c => (
+                                                    <button
+                                                        key={c.key}
+                                                        onClick={c.apply}
+                                                        className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
+                                                            c.active
+                                                                ? 'bg-amber-500 text-white border-amber-600 shadow-sm'
+                                                                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                                                        }`}
+                                                    >
+                                                        {c.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        );
+                                    })()}
+
                                     <div className="flex flex-wrap items-center gap-2 mb-4 text-sm">
                                         <input
                                             type="text"
@@ -22463,6 +22662,17 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                         )}
                                         {(() => {
                                             let list = feedEpisodes.filter(ep => !feedFilters.feedName || (ep.feedName || '').toLowerCase().includes(feedFilters.feedName.toLowerCase()));
+                                            // Feature 1 — client-side sectorBundle filter
+                                            const bundleMap = {
+                                                healthcare: ['PHARMA', 'BIOTECH', 'MEDTECH', 'HEALTHCARE'],
+                                                tech:       ['TECH', 'AI', 'SEMIS'],
+                                                macro:      ['MACRO', 'CREDIT', 'ENERGY'],
+                                            };
+                                            const bundleTags = bundleMap[feedFilters.sectorBundle];
+                                            if (bundleTags) {
+                                                const want = new Set(bundleTags);
+                                                list = list.filter(ep => (ep.points || []).some(p => (p.sectorTags || []).some(t => want.has(String(t).toUpperCase()))));
+                                            }
                                             const sort = feedFilters.sort || 'date_desc';
                                             const key = (ep, k) => (ep && ep[k]) || '';
                                             if (sort === 'date_desc') list = [...list].sort((a, b) => (b.publishedAt || '').localeCompare(a.publishedAt || ''));
@@ -22479,7 +22689,33 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 return bm - am;
                                             });
                                             return list;
-                                        })().map(ep => (
+                                        })().map(ep => {
+                                            // Feature 2 — render match context with <mark> highlight
+                                            const q = (feedFilters.q || '').trim();
+                                            const ms = ep.matchSource;
+                                            const mc = ep.matchContext;
+                                            let matchLabel = null;
+                                            if (q && ms && ms !== 'title') {
+                                                if (ms === 'transcript')   matchLabel = 'matched in transcript';
+                                                else if (ms === 'point')   matchLabel = 'matched in point';
+                                                else if (ms === 'notes')   matchLabel = 'matched in show notes';
+                                            }
+                                            const renderHighlighted = (text) => {
+                                                if (!q || !text) return text;
+                                                const qLower = q.toLowerCase();
+                                                const tLower = text.toLowerCase();
+                                                const parts = [];
+                                                let i = 0;
+                                                while (i < text.length) {
+                                                    const idx = tLower.indexOf(qLower, i);
+                                                    if (idx === -1) { parts.push(text.slice(i)); break; }
+                                                    if (idx > i) parts.push(text.slice(i, idx));
+                                                    parts.push(<mark key={parts.length} className="bg-amber-200 text-slate-900 rounded px-0.5">{text.slice(idx, idx + q.length)}</mark>);
+                                                    i = idx + q.length;
+                                                }
+                                                return parts;
+                                            };
+                                            return (
                                             <div key={ep.id} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
                                                 <div className="flex items-baseline justify-between mb-1">
                                                     <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -22489,9 +22725,20 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 SOURCE ↗
                                                             </a>
                                                         )}
+                                                        {matchLabel && (
+                                                            <span className="ml-2 inline-block px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-semibold normal-case tracking-normal">
+                                                                {matchLabel}
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </div>
-                                                <h3 className="font-semibold text-slate-900 mb-3">{ep.title}</h3>
+                                                <h3 className="font-semibold text-slate-900 mb-1">{ep.title}</h3>
+                                                {q && mc && (
+                                                    <p className="text-xs italic text-slate-500 mb-3 leading-relaxed">
+                                                        {renderHighlighted(mc)}
+                                                    </p>
+                                                )}
+                                                {!(q && mc) && <div className="mb-2"></div>}
                                                 <ul className="space-y-2">
                                                     {(ep.points || []).map(p => (
                                                         <li key={p.id} className="flex items-start gap-2 text-sm text-slate-700">
@@ -22501,12 +22748,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 </span>
                                                             ))}
                                                             {p.material && <span className="shrink-0 text-amber-500">★</span>}
-                                                            <span>{p.text}</span>
+                                                            <span>{q ? renderHighlighted(p.text) : p.text}</span>
                                                         </li>
                                                     ))}
                                                 </ul>
                                             </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             </div>
