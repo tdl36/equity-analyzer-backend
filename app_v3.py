@@ -11713,6 +11713,21 @@ def catalyst_propose_synth():
             INSERT INTO research_pipeline_jobs (id, batch_id, ticker, job_type, status, progress, current_step, total_steps, steps_detail)
             VALUES (%s, %s, %s, 'synthesis', 'proposed', 0, 'Awaiting approval', 4, %s)
         ''', (job_id, str(uuid.uuid4()), ticker, json.dumps(job_detail)))
+
+    # Also fire an agent_alert so the Alerts tab badge + notification feed picks it up
+    try:
+        with get_db(commit=True) as (_, cur):
+            cur.execute('''
+                INSERT INTO agent_alerts (id, alert_type, ticker, title, detail, status, created_at)
+                VALUES (%s, 'catalyst_proposal', %s, %s, %s, 'new', NOW())
+                ON CONFLICT DO NOTHING
+            ''', (str(uuid.uuid4()), ticker,
+                   f'Catalyst synthesis ready: {ticker} / {topic}',
+                   json.dumps({'jobId': job_id, 'topic': topic, 'fileCount': file_count,
+                               'tab': 'agents', 'view': 'catalysts'})))
+    except Exception as e:
+        print(f'alert for catalyst proposal failed: {e}')
+
     return jsonify({'jobId': job_id, 'proposed': True})
 
 
@@ -11753,6 +11768,12 @@ def catalyst_proposals_approve():
              WHERE id = ANY(%s) AND status='proposed'
         ''', (job_ids,))
         n = cur.rowcount
+        # Mark matching alerts as actioned so the Alerts badge clears
+        cur.execute('''
+            UPDATE agent_alerts SET status='actioned'
+             WHERE alert_type='catalyst_proposal' AND status='new'
+               AND (detail->>'jobId') = ANY(%s)
+        ''', (job_ids,))
     return jsonify({'approved': n})
 
 
@@ -11765,6 +11786,11 @@ def catalyst_proposals_dismiss():
     with get_db(commit=True) as (_, cur):
         cur.execute("DELETE FROM research_pipeline_jobs WHERE id = ANY(%s) AND status='proposed'", (job_ids,))
         n = cur.rowcount
+        cur.execute('''
+            UPDATE agent_alerts SET status='dismissed'
+             WHERE alert_type='catalyst_proposal' AND status='new'
+               AND (detail->>'jobId') = ANY(%s)
+        ''', (job_ids,))
     return jsonify({'dismissed': n})
 
 
