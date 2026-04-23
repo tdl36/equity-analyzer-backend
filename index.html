@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-22T05';
+        const BUILD_VERSION = '2026-04-23T01';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -7770,11 +7770,12 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
                 setMpPipelineRunning(true);
                 setMpPipelineError(null);
-                localStorage.setItem('charlie_mp_pipeline', JSON.stringify({ ticker: mpTicker, stage: 'analyzing', startTime: Date.now() }));
 
                 try {
                     const meeting = mpSelectedMeeting;
                     const meetingId = meeting.id;
+                    const ticker = meeting.ticker;
+                    localStorage.setItem('charlie_mp_pipeline', JSON.stringify({ ticker, stage: 'analyzing', startTime: Date.now() }));
 
                     // Fetch document info for all documents in parallel
                     setMpPipelineStep('analyzing');
@@ -7847,7 +7848,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     // Step 2: Synthesize
                     setMpPipelineStep('synthesizing');
                     setMpPipelineProgress('Synthesizing insights across all documents...');
-                    localStorage.setItem('charlie_mp_pipeline', JSON.stringify({ ticker: mpTicker, stage: 'synthesizing', startTime: Date.now() }));
+                    localStorage.setItem('charlie_mp_pipeline', JSON.stringify({ ticker, stage: 'synthesizing', startTime: Date.now() }));
                     const docDates = mpDocuments.map(d => d.doc_date).filter(Boolean).sort();
                     const timeframe = docDates.length >= 2 ? `${docDates[0]} to ${docDates[docDates.length - 1]}` : docDates.length === 1 ? `around ${docDates[0]}` : 'recent';
 
@@ -7869,7 +7870,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     // Step 3: Generate questions
                     setMpPipelineStep('generating');
                     setMpPipelineProgress('Generating meeting questions...');
-                    localStorage.setItem('charlie_mp_pipeline', JSON.stringify({ ticker: mpTicker, stage: 'generating', startTime: Date.now() }));
+                    localStorage.setItem('charlie_mp_pipeline', JSON.stringify({ ticker, stage: 'generating', startTime: Date.now() }));
                     const unresolved = mpPastQuestions.filter(pq => ['asked', 'unresolved', 'follow_up'].includes(pq.status));
 
                     const qResp = await fetchRetry(`${API_URL}/api/mp/generate-questions`, {
@@ -7890,7 +7891,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     // Step 4: Save
                     setMpPipelineStep('saving');
                     setMpPipelineProgress('Saving results...');
-                    localStorage.setItem('charlie_mp_pipeline', JSON.stringify({ ticker: mpTicker, stage: 'saving', startTime: Date.now() }));
+                    localStorage.setItem('charlie_mp_pipeline', JSON.stringify({ ticker, stage: 'saving', startTime: Date.now() }));
                     await fetchRetry(`${API_URL}/api/mp/save-results`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
