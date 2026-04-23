@@ -89,6 +89,13 @@ def extract_from_episode(episode_id: str) -> None:
             ))
         cur.execute("UPDATE media_episodes SET status='done' WHERE id=%s", (episode_id,))
 
+    # Material gating + alerts (non-fatal: episode is already marked done)
+    try:
+        from media_trackers.material import gate_and_alert_for_episode
+        gate_and_alert_for_episode(episode_id)
+    except Exception as e:
+        print(f'material gating failed for {episode_id}: {e}')
+
 
 def process_extract_batch() -> None:
     with app_v3.get_db() as (_c, cur):

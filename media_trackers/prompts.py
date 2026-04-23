@@ -25,3 +25,21 @@ SCHEMA:
 
 If no investment signal, return {"points": []}.
 """
+
+
+MATERIAL_JUDGE_PROMPT = """You're a buy-side analyst screening research signals. Decide if this podcast bullet point is MATERIAL (a buy-side PM would want to see this) or BOILERPLATE (generic market commentary, no specific actionable info).
+
+Material criteria (ANY one):
+- Specific number, guidance change, data point about a public company
+- Concrete strategic/operational detail (new product, leadership change, material contract)
+- Management or insider quote that reveals intent or outlook
+- Material competitive / industry dynamic (pricing pressure, share shift, regulatory change)
+
+Boilerplate (NOT material):
+- Generic sector commentary ("AI is transforming finance")
+- Well-known consensus views with no new angle
+- Cliche recaps ("the company continues to dominate")
+
+Respond with JSON only:
+{"material": true|false, "reason": "<one short sentence>"}
+"""
