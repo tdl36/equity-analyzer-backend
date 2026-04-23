@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-23T08';
+        const BUILD_VERSION = '2026-04-23T09';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -7844,6 +7844,48 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 } catch (err) { alert('Delete failed: ' + err.message); }
             };
 
+            // Module-scope helper: poll any mp_jobs-backed job until done/failed.
+            // Used by background jobs for thesis tiers, etc. Survives tab close because
+            // the server runs the job; any tab that has the jobId can resume polling.
+            const waitForMpJob = async (jobId, stageLabel) => {
+                const pollIntervalMs = 3000;
+                const maxWaitMs = 15 * 60 * 1000;
+                const started = Date.now();
+                while (true) {
+                    if (Date.now() - started > maxWaitMs) throw new Error(`${stageLabel} timed out after 15 min`);
+                    let r;
+                    try {
+                        r = await fetch(`${API_URL}/api/mp/jobs/${jobId}`);
+                    } catch (e) {
+                        // Tolerate transient network errors — retry next tick
+                        await new Promise(res => setTimeout(res, pollIntervalMs));
+                        continue;
+                    }
+                    if (!r.ok) throw new Error(`${stageLabel} poll HTTP ${r.status}`);
+                    const j = await r.json();
+                    if (j.status === 'done') return j;
+                    if (j.status === 'failed') throw new Error(`${stageLabel} failed: ${j.error || 'unknown'}`);
+                    await new Promise(res => setTimeout(res, pollIntervalMs));
+                }
+            };
+
+            // Persist tier-generation jobIds so a tab close + reopen can resume polling.
+            // TTL matches the MP pipeline (60 min).
+            const tierJobKey = (ticker, tier) => `charlie_tier_job_${ticker}_${tier}`;
+            const saveTierJob = (ticker, tier, jobId) => {
+                try { localStorage.setItem(tierJobKey(ticker, tier), JSON.stringify({ jobId, startedAt: Date.now() })); } catch {}
+            };
+            const loadTierJob = (ticker, tier) => {
+                try {
+                    const raw = localStorage.getItem(tierJobKey(ticker, tier));
+                    if (!raw) return null;
+                    const s = JSON.parse(raw);
+                    if (s.startedAt && Date.now() - s.startedAt > 60 * 60 * 1000) return null;
+                    return s;
+                } catch { return null; }
+            };
+            const clearTierJob = (ticker, tier) => { try { localStorage.removeItem(tierJobKey(ticker, tier)); } catch {} };
+
             // MP pipeline — server-side orchestrated. Backend runs all 4 stages
             // (analyze 6 docs → synth → questions → save) autonomously on Render.
             // Frontend only kicks it off + polls one jobId; survives tab close.
@@ -8775,26 +8817,31 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const generateTier = async (tier) => {
                 if (!analysis?.ticker) return;
                 setTierLoading(true);
+                const ticker = analysis.ticker;
                 try {
                     const endpoint = tier === 'full' ? 'thesis-full/generate' : 'thesis-condensed/generate';
-                    const res = await fetchT(`${DIRECT_API_URL}/api/${endpoint}`, {
+                    const stageLabel = tier === 'full' ? 'Full tier' : 'Condensed tier';
+                    const resp = await fetch(`${DIRECT_API_URL}/api/${endpoint}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            ticker: analysis.ticker,
+                            ticker,
                             apiKey: apiKeySaved,
                             geminiApiKey: localStorage.getItem('charlie_gemini_key') || '',
                         }),
-                    }, 180000);
-                    if (res.ok) {
-                        const json = await res.json();
-                        const tierData = json[tier] || json.full || json.condensed;
-                        if (tier === 'full') setFullThesisData({ ...tierData, history: json.history || [], updatedAt: json.updatedAt || new Date().toISOString() });
-                        else setCondensedThesisData({ ...tierData, history: json.history || [], updatedAt: json.updatedAt || new Date().toISOString() });
-                    } else {
-                        const errJson = await res.json().catch(() => ({}));
-                        alert(`Failed to generate ${tier} tier: ${errJson.error || res.statusText}`);
+                    });
+                    if (!resp.ok) {
+                        const errText = await resp.text();
+                        throw new Error(`Queue failed: ${errText || resp.statusText}`);
                     }
+                    const { jobId } = await resp.json();
+                    saveTierJob(ticker, tier, jobId);
+                    const job = await waitForMpJob(jobId, stageLabel);
+                    clearTierJob(ticker, tier);
+                    const json = job.result || {};
+                    const tierData = json[tier] || json.full || json.condensed;
+                    if (tier === 'full') setFullThesisData({ ...tierData, history: json.history || [], updatedAt: json.updatedAt || new Date().toISOString() });
+                    else setCondensedThesisData({ ...tierData, history: json.history || [], updatedAt: json.updatedAt || new Date().toISOString() });
                 } catch (err) {
                     alert(`Error generating ${tier} tier: ${err.message}`);
                 } finally {
@@ -8805,26 +8852,30 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const generateAllTiers = async () => {
                 if (!analysis?.ticker) return;
                 setTierLoading(true);
+                const ticker = analysis.ticker;
                 try {
-                    const res = await fetchT(`${DIRECT_API_URL}/api/thesis-tiers/generate-all`, {
+                    const resp = await fetch(`${DIRECT_API_URL}/api/thesis-tiers/generate-all`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            ticker: analysis.ticker,
+                            ticker,
                             apiKey: apiKeySaved,
                             geminiApiKey: localStorage.getItem('charlie_gemini_key') || '',
                         }),
-                    }, 300000);
-                    if (res.ok) {
-                        const json = await res.json();
-                        if (json.full) setFullThesisData({ ...json.full, history: json.fullHistory || [], updatedAt: json.fullUpdatedAt || new Date().toISOString() });
-                        if (json.condensed) setCondensedThesisData({ ...json.condensed, history: json.condensedHistory || [], updatedAt: json.condensedUpdatedAt || new Date().toISOString() });
-                        if (json.partialSuccess) {
-                            alert(`Full tier generated successfully. Condensed tier failed: ${json.condensedError || 'Unknown error'}. You can retry from the Condensed tab.`);
-                        }
-                    } else {
-                        const errJson = await res.json().catch(() => ({}));
-                        alert(`Failed to generate thesis tiers: ${errJson.error || res.statusText}`);
+                    });
+                    if (!resp.ok) {
+                        const errText = await resp.text();
+                        throw new Error(`Queue failed: ${errText || resp.statusText}`);
+                    }
+                    const { jobId } = await resp.json();
+                    saveTierJob(ticker, 'all', jobId);
+                    const job = await waitForMpJob(jobId, 'Thesis tiers (Full + Condensed)');
+                    clearTierJob(ticker, 'all');
+                    const json = job.result || {};
+                    if (json.full) setFullThesisData({ ...json.full, history: json.fullHistory || [], updatedAt: json.fullUpdatedAt || new Date().toISOString() });
+                    if (json.condensed) setCondensedThesisData({ ...json.condensed, history: json.condensedHistory || [], updatedAt: json.condensedUpdatedAt || new Date().toISOString() });
+                    if (json.partialSuccess) {
+                        alert(`Full tier generated successfully. Condensed tier failed: ${json.condensedError || 'Unknown error'}. You can retry from the Condensed tab.`);
                     }
                 } catch (err) {
                     alert(`Error generating thesis tiers: ${err.message}`);

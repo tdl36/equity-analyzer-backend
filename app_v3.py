@@ -7502,23 +7502,16 @@ Source data:
     return condensed
 
 
-@app.route('/api/thesis-condensed/generate', methods=['POST'])
-def generate_condensed_thesis():
-    """Generate a condensed version of a thesis using LLM."""
+def _run_condensed_thesis_job(job_id, ticker, anthropic_key, gemini_key):
+    """Background worker for /api/thesis-condensed/generate. Writes result to mp_jobs."""
     try:
-        data = request.get_json()
-        ticker = data.get('ticker', '').upper()
-        anthropic_key = data.get('apiKey', '')
-        gemini_key = data.get('geminiApiKey', '')
-        if not ticker:
-            return jsonify({'error': 'No ticker provided'}), 400
-
         # Load analysis — prefer thesis_full (curated) if it exists, else raw detailed
         with get_db() as (_, cur):
             cur.execute('SELECT * FROM portfolio_analyses WHERE ticker = %s', (ticker,))
             row = cur.fetchone()
         if not row:
-            return jsonify({'error': 'No analysis found for this ticker'}), 404
+            _mp_update_job(job_id, status='failed', error='No analysis found for this ticker')
+            return
 
         analysis = row['analysis'] if isinstance(row['analysis'], dict) else json.loads(row['analysis'])
 
@@ -7556,16 +7549,42 @@ def generate_condensed_thesis():
             cur.execute('SELECT history, updated_at FROM thesis_condensed WHERE ticker = %s', (ticker,))
             meta = cur.fetchone()
 
-        return jsonify({
+        _mp_update_job(job_id, status='done', result={
             'success': True, 'ticker': ticker, 'condensed': condensed,
             'history': (meta.get('history') or []) if meta else [],
             'updatedAt': meta['updated_at'].isoformat() if meta and meta.get('updated_at') else None,
         })
-    except json.JSONDecodeError as je:
-        print(f"Error parsing condensed thesis JSON: {je}")
-        return jsonify({'error': 'Failed to parse condensed thesis from Claude'}), 500
     except Exception as e:
-        print(f"Error generating condensed thesis: {e}")
+        print(f"Condensed thesis job {job_id} error: {e}")
+        _mp_update_job(job_id, status='failed', error=str(e)[:2000])
+
+
+@app.route('/api/thesis-condensed/generate', methods=['POST'])
+def generate_condensed_thesis():
+    """Queue a background job to generate a condensed thesis. Returns {jobId}. Poll /api/mp/jobs/:id."""
+    try:
+        data = request.get_json()
+        ticker = data.get('ticker', '').upper()
+        anthropic_key = data.get('apiKey', '')
+        gemini_key = data.get('geminiApiKey', '')
+        if not ticker:
+            return jsonify({'error': 'No ticker provided'}), 400
+
+        job_id = str(uuid.uuid4())
+        with get_db(commit=True) as (_c, cur):
+            cur.execute('''
+                INSERT INTO mp_jobs (id, stage, ticker, status)
+                VALUES (%s, 'thesis-condensed', %s, 'running')
+            ''', (job_id, ticker))
+
+        threading.Thread(
+            target=_run_condensed_thesis_job,
+            args=(job_id, ticker, anthropic_key, gemini_key),
+            daemon=True,
+        ).start()
+        return jsonify({'jobId': job_id}), 202
+    except Exception as e:
+        print(f"Error queueing condensed thesis job: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/thesis-condensed/<ticker>', methods=['GET'])
@@ -7723,22 +7742,15 @@ Original conclusion:
     return full_data
 
 
-@app.route('/api/thesis-full/generate', methods=['POST'])
-def generate_full_thesis():
-    """Generate a curated Full version by selecting top items from detailed analysis."""
+def _run_full_thesis_job(job_id, ticker, anthropic_key, gemini_key):
+    """Background worker for /api/thesis-full/generate. Writes result to mp_jobs."""
     try:
-        data = request.get_json()
-        ticker = data.get('ticker', '').upper()
-        anthropic_key = data.get('apiKey', '')
-        gemini_key = data.get('geminiApiKey', '')
-        if not ticker:
-            return jsonify({'error': 'No ticker provided'}), 400
-
         with get_db() as (_, cur):
             cur.execute('SELECT * FROM portfolio_analyses WHERE ticker = %s', (ticker,))
             row = cur.fetchone()
         if not row:
-            return jsonify({'error': 'No analysis found for this ticker'}), 404
+            _mp_update_job(job_id, status='failed', error='No analysis found for this ticker')
+            return
 
         analysis = row['analysis'] if isinstance(row['analysis'], dict) else json.loads(row['analysis'])
 
@@ -7767,16 +7779,42 @@ def generate_full_thesis():
             cur.execute('SELECT history, updated_at FROM thesis_full WHERE ticker = %s', (ticker,))
             meta = cur.fetchone()
 
-        return jsonify({
+        _mp_update_job(job_id, status='done', result={
             'success': True, 'ticker': ticker, 'full': full_data,
             'history': (meta.get('history') or []) if meta else [],
             'updatedAt': meta['updated_at'].isoformat() if meta and meta.get('updated_at') else None,
         })
-    except json.JSONDecodeError as je:
-        print(f"Error parsing full thesis JSON: {je}")
-        return jsonify({'error': 'Failed to parse full thesis from LLM'}), 500
     except Exception as e:
-        print(f"Error generating full thesis: {e}")
+        print(f"Full thesis job {job_id} error: {e}")
+        _mp_update_job(job_id, status='failed', error=str(e)[:2000])
+
+
+@app.route('/api/thesis-full/generate', methods=['POST'])
+def generate_full_thesis():
+    """Queue a background job to generate a curated Full thesis. Returns {jobId}. Poll /api/mp/jobs/:id."""
+    try:
+        data = request.get_json()
+        ticker = data.get('ticker', '').upper()
+        anthropic_key = data.get('apiKey', '')
+        gemini_key = data.get('geminiApiKey', '')
+        if not ticker:
+            return jsonify({'error': 'No ticker provided'}), 400
+
+        job_id = str(uuid.uuid4())
+        with get_db(commit=True) as (_c, cur):
+            cur.execute('''
+                INSERT INTO mp_jobs (id, stage, ticker, status)
+                VALUES (%s, 'thesis-full', %s, 'running')
+            ''', (job_id, ticker))
+
+        threading.Thread(
+            target=_run_full_thesis_job,
+            args=(job_id, ticker, anthropic_key, gemini_key),
+            daemon=True,
+        ).start()
+        return jsonify({'jobId': job_id}), 202
+    except Exception as e:
+        print(f"Error queueing full thesis job: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -7850,23 +7888,19 @@ def update_full_thesis(ticker):
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/thesis-tiers/generate-all', methods=['POST'])
-def generate_all_thesis_tiers():
-    """Generate Full then Condensed thesis tiers sequentially."""
-    try:
-        data = request.get_json()
-        ticker = data.get('ticker', '').upper()
-        anthropic_key = data.get('apiKey', '')
-        gemini_key = data.get('geminiApiKey', '')
-        if not ticker:
-            return jsonify({'error': 'No ticker provided'}), 400
+def _run_all_thesis_tiers_job(job_id, ticker, anthropic_key, gemini_key):
+    """Background worker for /api/thesis-tiers/generate-all. Writes result to mp_jobs.
 
+    Builds Full tier first, then Condensed tier from Full. If Condensed fails,
+    reports partialSuccess with Full completed."""
+    try:
         # Load detailed analysis
         with get_db() as (_, cur):
             cur.execute('SELECT * FROM portfolio_analyses WHERE ticker = %s', (ticker,))
             row = cur.fetchone()
         if not row:
-            return jsonify({'error': 'No analysis found for this ticker'}), 404
+            _mp_update_job(job_id, status='failed', error='No analysis found for this ticker')
+            return
 
         analysis = row['analysis'] if isinstance(row['analysis'], dict) else json.loads(row['analysis'])
 
@@ -7924,12 +7958,38 @@ def generate_all_thesis_tiers():
             result['condensedHistory'] = (crow.get('history') or []) if crow else []
             result['condensedUpdatedAt'] = crow['updated_at'].isoformat() if crow and crow.get('updated_at') else None
 
-        return jsonify(result)
-    except json.JSONDecodeError as je:
-        print(f"Error parsing thesis JSON in generate-all: {je}")
-        return jsonify({'error': 'Failed to parse thesis from LLM'}), 500
+        _mp_update_job(job_id, status='done', result=result)
     except Exception as e:
-        print(f"Error in generate-all thesis tiers: {e}")
+        print(f"All-tiers thesis job {job_id} error: {e}")
+        _mp_update_job(job_id, status='failed', error=str(e)[:2000])
+
+
+@app.route('/api/thesis-tiers/generate-all', methods=['POST'])
+def generate_all_thesis_tiers():
+    """Queue a background job to generate Full then Condensed thesis tiers. Returns {jobId}. Poll /api/mp/jobs/:id."""
+    try:
+        data = request.get_json()
+        ticker = data.get('ticker', '').upper()
+        anthropic_key = data.get('apiKey', '')
+        gemini_key = data.get('geminiApiKey', '')
+        if not ticker:
+            return jsonify({'error': 'No ticker provided'}), 400
+
+        job_id = str(uuid.uuid4())
+        with get_db(commit=True) as (_c, cur):
+            cur.execute('''
+                INSERT INTO mp_jobs (id, stage, ticker, status)
+                VALUES (%s, 'thesis-tiers-all', %s, 'running')
+            ''', (job_id, ticker))
+
+        threading.Thread(
+            target=_run_all_thesis_tiers_job,
+            args=(job_id, ticker, anthropic_key, gemini_key),
+            daemon=True,
+        ).start()
+        return jsonify({'jobId': job_id}), 202
+    except Exception as e:
+        print(f"Error queueing all-tiers thesis job: {e}")
         return jsonify({'error': str(e)}), 500
 
 
