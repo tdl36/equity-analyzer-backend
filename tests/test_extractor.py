@@ -7,7 +7,7 @@ from media_trackers import extractor
 FIXTURE = (Path(__file__).parent / 'fixtures' / 'shownotes_sample.txt').read_text()
 
 
-def _seed_episode(show_notes=FIXTURE, status='new', episode_id='e1'):
+def _seed_episode(show_notes=FIXTURE, status='extracting', episode_id='e1'):
     with app_v3.get_db(commit=True) as (_c, cur):
         cur.execute('''
             INSERT INTO media_feeds (id, source_type, name, feed_url)
@@ -64,7 +64,7 @@ def test_process_extract_batch_picks_up_to_3(clean_db):
         for i in range(5):
             cur.execute('''
                 INSERT INTO media_episodes (id, feed_id, guid, title, show_notes, status)
-                VALUES (%s, 'f1', %s, 't', %s, 'new')
+                VALUES (%s, 'f1', %s, 't', %s, 'extracting')
             ''', (f'e{i}', f'g{i}', FIXTURE))
     with patch.object(extractor, '_call_haiku', return_value=FAKE_LLM_RESPONSE):
         extractor.process_extract_batch()

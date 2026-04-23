@@ -20,6 +20,7 @@ xhtml2pdf>=0.2,<1
 tradingagents @ git+https://github.com/TauricResearch/TradingAgents.git
 tavily-python
 feedparser>=6.0,<7
+beautifulsoup4>=4.12,<5
 apscheduler>=3.10,<4
 sqlalchemy>=2.0,<3
 pytest>=8.0,<9

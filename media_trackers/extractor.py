@@ -50,7 +50,7 @@ def _parse_json(raw) -> dict:
 def extract_from_episode(episode_id: str) -> None:
     with app_v3.get_db(commit=True) as (_c, cur):
         cur.execute(
-            "UPDATE media_episodes SET status='extracting' WHERE id=%s AND status='new' RETURNING *",
+            "UPDATE media_episodes SET status='extracting' WHERE id=%s AND status='extracting' RETURNING *",
             (episode_id,))
         ep = cur.fetchone()
     if not ep:
@@ -94,7 +94,7 @@ def process_extract_batch() -> None:
     with app_v3.get_db() as (_c, cur):
         cur.execute('''
             SELECT id FROM media_episodes
-             WHERE status = 'new'
+             WHERE status = 'extracting'
              ORDER BY published_at DESC NULLS LAST
              LIMIT %s
         ''', (MAX_EPISODES_PER_BATCH,))

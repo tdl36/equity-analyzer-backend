@@ -10,7 +10,7 @@ from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.jobstores.memory import MemoryJobStore
 
 import app_v3
-from media_trackers import poller, extractor
+from media_trackers import poller, extractor, transcribe
 
 
 def _kill_switch_on() -> bool:
@@ -32,6 +32,12 @@ def run_feed_poller():
     poller.poll_all_feeds()
 
 
+def run_transcribe_worker():
+    if not _kill_switch_on():
+        return
+    transcribe.process_transcribe_batch()
+
+
 def run_extract_worker():
     if not _kill_switch_on():
         return
@@ -47,8 +53,9 @@ def build_scheduler(use_memory_jobstore: bool = False) -> BackgroundScheduler:
         jobstores={'default': jobstore},
         job_defaults={'coalesce': True, 'max_instances': 1, 'misfire_grace_time': 300},
     )
-    sched.add_job(run_feed_poller,    'interval', minutes=30, id='feed_poller', replace_existing=True)
-    sched.add_job(run_extract_worker, 'interval', minutes=2,  id='extract_worker', replace_existing=True)
+    sched.add_job(run_feed_poller,        'interval', minutes=30, id='feed_poller',        replace_existing=True)
+    sched.add_job(run_transcribe_worker,  'interval', minutes=2,  id='transcribe_worker',  replace_existing=True)
+    sched.add_job(run_extract_worker,     'interval', minutes=2,  id='extract_worker',     replace_existing=True)
     return sched
 
 
