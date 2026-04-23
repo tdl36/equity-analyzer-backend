@@ -2179,16 +2179,20 @@ def check_for_new_audio():
             if f.is_file() and not f.name.startswith('.') and f.suffix.lower() in AUDIO_EXTS:
                 current_files.add(f.name)
 
+        # On first tick, treat files already present as NEW so pre-existing
+        # audio gets processed. Processed files move to SUMMARIES/Processed/
+        # so restart doesn't re-trigger them.
         if not _audio_initialized:
+            new_files = current_files
             _known_audio_files = current_files
             _audio_initialized = True
-            return
-
-        new_files = current_files - _known_audio_files
-        if not new_files:
-            return
-
-        _known_audio_files = current_files
+            if not new_files:
+                return
+        else:
+            new_files = current_files - _known_audio_files
+            if not new_files:
+                return
+            _known_audio_files = current_files
         for fname in new_files:
             fpath = SUMMARIES_DIR / fname
             log.info(f"New audio file detected: {fname}, auto-processing...")
@@ -2578,10 +2582,12 @@ def main() -> None:
         sys.exit(1)
 
     # Configure logging
+    _log_path = os.path.expanduser("~/Library/Logs/charlie-agent.log")
     logging.basicConfig(
         level=logging.DEBUG if args.debug else logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
+        handlers=[logging.StreamHandler(), logging.FileHandler(_log_path)],
     )
 
     # Validate iCloud directory
