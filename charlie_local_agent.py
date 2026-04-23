@@ -2255,6 +2255,24 @@ def _save_catalyst_auto_state(state: dict) -> None:
         log.debug(f"auto-catalyst state save failed: {e}")
 
 
+_catalyst_auto_mode_cache = {'checked_at': 0.0, 'value': {'enabled': False, 'expires_at': None}}
+
+def _fetch_catalyst_auto_mode() -> dict:
+    """Cached fetch of /api/catalysts/auto-mode. Refreshes every 30s."""
+    now_t = time.time()
+    if now_t - _catalyst_auto_mode_cache['checked_at'] < 30:
+        return _catalyst_auto_mode_cache['value']
+    try:
+        r = requests.get(f"{CHARLIE_API}/api/catalysts/auto-mode",
+                         headers=_agent_headers(), timeout=8)
+        if r.ok:
+            _catalyst_auto_mode_cache['value'] = r.json()
+            _catalyst_auto_mode_cache['checked_at'] = now_t
+    except Exception as e:
+        log.debug(f"auto-mode fetch failed: {e}")
+    return _catalyst_auto_mode_cache['value']
+
+
 def check_for_catalyst_auto_synth() -> None:
     """Scan CATALYSTS/{TICKER}/{topic}/ folders and auto-fire synthesis jobs
     when files change. Uses a debounce + cooldown to avoid firing while the
@@ -2319,23 +2337,28 @@ def check_for_catalyst_auto_synth() -> None:
                 if now - prior_fired < CATALYST_AUTO_COOLDOWN_S:
                     continue
 
-                # Fire!
-                log.info(f"Auto-catalyst: firing synthesis for {ticker}/{topic} ({len(source_files)} files)")
+                # Decide: auto-fire or just propose?
+                auto_mode = _fetch_catalyst_auto_mode()
+                endpoint = 'synthesize' if auto_mode.get('enabled') else 'propose-synth'
+                action_word = 'firing' if auto_mode.get('enabled') else 'proposing'
+                log.info(f"Auto-catalyst: {action_word} {ticker}/{topic} ({len(source_files)} files)")
                 try:
                     res = requests.post(
-                        f"{CHARLIE_API}/api/catalysts/synthesize",
+                        f"{CHARLIE_API}/api/catalysts/{endpoint}",
                         json={
                             'ticker': ticker,
                             'topic': topic,
                             'length': 'standard',
                             'customInstructions': '',
+                            'fingerprint': fingerprint,
+                            'fileCount': len(source_files),
                         },
                         headers=_agent_headers(),
                         timeout=15,
                     )
                     if res.ok:
                         job_id = res.json().get('jobId', '?')
-                        log.info(f"Auto-catalyst: queued {ticker}/{topic} (job {job_id})")
+                        log.info(f"Auto-catalyst: {action_word} done for {ticker}/{topic} (job {job_id})")
                         state[key]['last_fired_at'] = now
                         state[key]['fingerprint'] = fingerprint
                     else:

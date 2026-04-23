@@ -11615,6 +11615,159 @@ def start_catalyst_synthesis():
     return jsonify({'jobId': job_id, 'ticker': ticker})
 
 
+# ============================================
+# AUTO-CATALYST: auto-fire toggle + proposals (checklist) API
+# Default: OFF (local agent creates 'proposed' jobs, user approves in UI).
+# When ON (with optional expiry), agent creates 'queued' jobs directly.
+# ============================================
+
+def _get_catalyst_auto_mode():
+    """Returns {'enabled': bool, 'expires_at': iso_str_or_none} merged with expiry check."""
+    try:
+        with get_db() as (_, cur):
+            cur.execute("SELECT value FROM app_settings WHERE key = 'catalyst_auto_mode'")
+            row = cur.fetchone()
+        if row and row['value']:
+            val = row['value'] if isinstance(row['value'], dict) else json.loads(row['value'])
+            enabled = bool(val.get('enabled'))
+            expires_at = val.get('expires_at')
+            if enabled and expires_at:
+                try:
+                    if datetime.fromisoformat(expires_at.replace('Z', '+00:00')) < datetime.utcnow().replace(tzinfo=None):
+                        enabled = False  # expired
+                except Exception:
+                    pass
+            return {'enabled': enabled, 'expires_at': expires_at}
+    except Exception as e:
+        print(f"catalyst_auto_mode read error: {e}")
+    return {'enabled': False, 'expires_at': None}
+
+
+@app.route('/api/catalysts/auto-mode', methods=['GET'])
+def catalyst_auto_mode_get():
+    return jsonify(_get_catalyst_auto_mode())
+
+
+@app.route('/api/catalysts/auto-mode', methods=['PUT'])
+def catalyst_auto_mode_set():
+    data = request.get_json() or {}
+    enabled = bool(data.get('enabled'))
+    duration_min = int(data.get('durationMin', 60))  # default 60 min
+    expires_at = None
+    if enabled:
+        from datetime import timedelta as _td
+        expires_at = (datetime.utcnow() + _td(minutes=max(1, min(720, duration_min)))).isoformat()
+    payload = {'enabled': enabled, 'expires_at': expires_at}
+    with get_db(commit=True) as (_, cur):
+        cur.execute('''
+            INSERT INTO app_settings (key, value) VALUES ('catalyst_auto_mode', %s::jsonb)
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+        ''', (json.dumps(payload),))
+    return jsonify(payload)
+
+
+@app.route('/api/catalysts/propose-synth', methods=['POST'])
+def catalyst_propose_synth():
+    """Local agent posts here when it detects new docs but auto-mode is OFF.
+    Creates a row in research_pipeline_jobs with status='proposed'. User can
+    later approve via /api/catalysts/proposals/approve."""
+    data = request.get_json() or {}
+    ticker = (data.get('ticker') or '').upper()
+    topic = (data.get('topic') or '').strip()
+    fingerprint = data.get('fingerprint', '')
+    file_count = int(data.get('fileCount') or 0)
+    if not ticker or not topic:
+        return jsonify({'error': 'ticker + topic required'}), 400
+
+    # Dedup: if there's already a 'proposed' job for this ticker+topic with
+    # the same fingerprint, skip creating a duplicate.
+    with get_db() as (_, cur):
+        cur.execute('''
+            SELECT id, steps_detail FROM research_pipeline_jobs
+             WHERE ticker=%s AND job_type='synthesis' AND status='proposed'
+             ORDER BY created_at DESC LIMIT 5
+        ''', (ticker,))
+        rows = cur.fetchall()
+    for r in rows or []:
+        sd = r['steps_detail'] if isinstance(r.get('steps_detail'), dict) else (json.loads(r['steps_detail']) if r.get('steps_detail') else {})
+        if sd.get('topic') == topic:
+            if sd.get('fingerprint') == fingerprint:
+                return jsonify({'jobId': r['id'], 'deduped': True})
+            # Same topic, different fingerprint — dismiss old proposal + create new
+            with get_db(commit=True) as (_, cur):
+                cur.execute("DELETE FROM research_pipeline_jobs WHERE id=%s", (r['id'],))
+
+    job_id = str(uuid.uuid4())
+    job_detail = {
+        'topic': topic,
+        'length': data.get('length', 'standard'),
+        'customInstructions': data.get('customInstructions', ''),
+        'uploadedFiles': [],
+        'excludedFiles': [],
+        'fingerprint': fingerprint,
+        'fileCount': file_count,
+        'proposedAt': datetime.utcnow().isoformat(),
+    }
+    with get_db(commit=True) as (_, cur):
+        cur.execute('''
+            INSERT INTO research_pipeline_jobs (id, batch_id, ticker, job_type, status, progress, current_step, total_steps, steps_detail)
+            VALUES (%s, %s, %s, 'synthesis', 'proposed', 0, 'Awaiting approval', 4, %s)
+        ''', (job_id, str(uuid.uuid4()), ticker, json.dumps(job_detail)))
+    return jsonify({'jobId': job_id, 'proposed': True})
+
+
+@app.route('/api/catalysts/proposals', methods=['GET'])
+def catalyst_proposals_list():
+    with get_db() as (_, cur):
+        cur.execute('''
+            SELECT id, ticker, steps_detail, created_at
+              FROM research_pipeline_jobs
+             WHERE job_type='synthesis' AND status='proposed'
+             ORDER BY created_at DESC LIMIT 100
+        ''')
+        rows = cur.fetchall()
+    proposals = []
+    for r in rows:
+        sd = r['steps_detail'] if isinstance(r.get('steps_detail'), dict) else (json.loads(r['steps_detail']) if r.get('steps_detail') else {})
+        proposals.append({
+            'jobId': r['id'], 'ticker': r['ticker'],
+            'topic': sd.get('topic'),
+            'fileCount': sd.get('fileCount'),
+            'fingerprint': sd.get('fingerprint'),
+            'length': sd.get('length', 'standard'),
+            'proposedAt': sd.get('proposedAt') or (r['created_at'].isoformat() if r.get('created_at') else None),
+        })
+    return jsonify({'proposals': proposals, 'autoMode': _get_catalyst_auto_mode()})
+
+
+@app.route('/api/catalysts/proposals/approve', methods=['POST'])
+def catalyst_proposals_approve():
+    """Flip selected proposed jobs to 'queued' so the local agent picks them up."""
+    data = request.get_json() or {}
+    job_ids = data.get('jobIds') or []
+    if not job_ids:
+        return jsonify({'approved': 0})
+    with get_db(commit=True) as (_, cur):
+        cur.execute('''
+            UPDATE research_pipeline_jobs SET status='queued', current_step='Waiting for processing'
+             WHERE id = ANY(%s) AND status='proposed'
+        ''', (job_ids,))
+        n = cur.rowcount
+    return jsonify({'approved': n})
+
+
+@app.route('/api/catalysts/proposals/dismiss', methods=['POST'])
+def catalyst_proposals_dismiss():
+    data = request.get_json() or {}
+    job_ids = data.get('jobIds') or []
+    if not job_ids:
+        return jsonify({'dismissed': 0})
+    with get_db(commit=True) as (_, cur):
+        cur.execute("DELETE FROM research_pipeline_jobs WHERE id = ANY(%s) AND status='proposed'", (job_ids,))
+        n = cur.rowcount
+    return jsonify({'dismissed': n})
+
+
 @app.route('/api/catalysts/results/<job_id>', methods=['GET'])
 def get_catalyst_result(job_id):
     """Get catalyst synthesis result."""

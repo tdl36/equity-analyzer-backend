@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-23T09';
+        const BUILD_VERSION = '2026-04-23T10';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -1696,6 +1696,28 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [catalystLength, setCatalystLength] = useState('standard');
             const [catalystInstructions, setCatalystInstructions] = useState('');
             const [catalystActiveJob, setCatalystActiveJob] = useState(null);
+            // Auto-catalyst: proposals + auto-fire mode toggle
+            const [catalystProposals, setCatalystProposals] = useState([]);
+            const [catalystAutoMode, setCatalystAutoMode] = useState({enabled: false, expires_at: null});
+            const [catalystSelectedProposals, setCatalystSelectedProposals] = useState(new Set());
+            const [catalystAutoDurationMin, setCatalystAutoDurationMin] = useState(60);
+            const loadCatalystProposals = async () => {
+                try {
+                    const r = await fetch(`${API_URL}/api/catalysts/proposals`);
+                    if (r.ok) {
+                        const d = await r.json();
+                        setCatalystProposals(d.proposals || []);
+                        setCatalystAutoMode(d.autoMode || {enabled: false, expires_at: null});
+                    }
+                } catch (e) { console.warn('loadCatalystProposals:', e); }
+            };
+            // Poll for proposals while Catalysts view is open
+            useEffect(() => {
+                if (activeTab !== 'agents' || agentView !== 'catalysts') return;
+                loadCatalystProposals();
+                const id = setInterval(loadCatalystProposals, 30000);
+                return () => clearInterval(id);
+            }, [activeTab, agentView]);
 
             // Agent Alerts state
             const [agentAlerts, setAgentAlerts] = useState([]);
@@ -21253,6 +21275,136 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
                                         {agentView === 'catalysts' && (
                                             <>
+                                                {/* Auto-Pilot Toggle + Pending Proposals */}
+                                                <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4 space-y-3 mb-3">
+                                                    <div className="flex items-center justify-between">
+                                                        <div>
+                                                            <h3 className="text-sm font-semibold text-white">Auto-Pilot</h3>
+                                                            <p className="text-[10px] text-slate-400">
+                                                                Local agent watches CATALYSTS/{`{TICKER}`}/{`{topic}`}/ folders. Default: proposes syntheses you approve. Toggle on to auto-fire without approval (expires after duration).
+                                                            </p>
+                                                        </div>
+                                                        <div className="flex items-center gap-2 shrink-0">
+                                                            <select
+                                                                value={catalystAutoDurationMin}
+                                                                onChange={e => setCatalystAutoDurationMin(Number(e.target.value))}
+                                                                disabled={catalystAutoMode.enabled}
+                                                                className="px-2 py-1 bg-black/30 border border-white/10 rounded-md text-xs text-slate-200 disabled:opacity-40"
+                                                            >
+                                                                <option value={15}>15 min</option>
+                                                                <option value={60}>1 hr</option>
+                                                                <option value={180}>3 hr</option>
+                                                                <option value={480}>8 hr</option>
+                                                            </select>
+                                                            <button
+                                                                onClick={async () => {
+                                                                    const next = !catalystAutoMode.enabled;
+                                                                    await fetch(`${API_URL}/api/catalysts/auto-mode`, {
+                                                                        method: 'PUT',
+                                                                        headers: {'Content-Type': 'application/json'},
+                                                                        body: JSON.stringify({enabled: next, durationMin: catalystAutoDurationMin}),
+                                                                    });
+                                                                    loadCatalystProposals();
+                                                                }}
+                                                                className={`px-4 py-1.5 rounded-md text-xs font-semibold ${catalystAutoMode.enabled ? 'bg-amber-500 text-black hover:bg-amber-400' : 'bg-white/10 text-slate-300 hover:bg-white/20'}`}
+                                                            >
+                                                                {catalystAutoMode.enabled ? 'Auto-fire: ON' : 'Auto-fire: OFF'}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                    {catalystAutoMode.enabled && catalystAutoMode.expires_at && (
+                                                        <div className="text-[10px] text-amber-300/80 -mt-1">
+                                                            Auto-fire expires at {new Date(catalystAutoMode.expires_at + 'Z').toLocaleString()}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Pending Proposals */}
+                                                    <div className="border-t border-white/10 pt-3">
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <h4 className="text-xs font-semibold text-white">Pending Proposals ({catalystProposals.length})</h4>
+                                                            <button onClick={loadCatalystProposals} className="text-[10px] text-slate-400 hover:text-white">Refresh</button>
+                                                        </div>
+                                                        {catalystProposals.length === 0 ? (
+                                                            <p className="text-[10px] text-slate-500 italic">No proposals yet. Drop docs into CATALYSTS/{`{TICKER}`}/{`{topic}`}/ and the agent will detect them after a 2-min quiet period.</p>
+                                                        ) : (
+                                                            <div className="space-y-1.5">
+                                                                {catalystProposals.map(p => (
+                                                                    <label key={p.jobId} className="flex items-start gap-2 p-2 rounded-md bg-black/20 border border-white/5 hover:bg-white/5 cursor-pointer">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={catalystSelectedProposals.has(p.jobId)}
+                                                                            onChange={e => {
+                                                                                const next = new Set(catalystSelectedProposals);
+                                                                                if (e.target.checked) next.add(p.jobId); else next.delete(p.jobId);
+                                                                                setCatalystSelectedProposals(next);
+                                                                            }}
+                                                                            className="mt-0.5"
+                                                                        />
+                                                                        <div className="flex-1 min-w-0">
+                                                                            <div className="text-xs font-medium text-slate-200">
+                                                                                <span className="text-amber-400">{p.ticker}</span>
+                                                                                <span className="text-slate-500 mx-1">·</span>
+                                                                                <span>{p.topic}</span>
+                                                                            </div>
+                                                                            <div className="text-[10px] text-slate-500">
+                                                                                {p.fileCount} file{p.fileCount !== 1 ? 's' : ''} · detected {p.proposedAt ? new Date(p.proposedAt + 'Z').toLocaleString() : 'recently'}
+                                                                            </div>
+                                                                        </div>
+                                                                    </label>
+                                                                ))}
+                                                                <div className="flex items-center justify-end gap-2 pt-1">
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            if (catalystSelectedProposals.size === catalystProposals.length) {
+                                                                                setCatalystSelectedProposals(new Set());
+                                                                            } else {
+                                                                                setCatalystSelectedProposals(new Set(catalystProposals.map(p => p.jobId)));
+                                                                            }
+                                                                        }}
+                                                                        className="text-[10px] text-slate-400 hover:text-white"
+                                                                    >
+                                                                        {catalystSelectedProposals.size === catalystProposals.length ? 'Clear all' : 'Select all'}
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={async () => {
+                                                                            if (!catalystSelectedProposals.size) return;
+                                                                            const ids = [...catalystSelectedProposals];
+                                                                            await fetch(`${API_URL}/api/catalysts/proposals/dismiss`, {
+                                                                                method: 'POST',
+                                                                                headers: {'Content-Type': 'application/json'},
+                                                                                body: JSON.stringify({jobIds: ids}),
+                                                                            });
+                                                                            setCatalystSelectedProposals(new Set());
+                                                                            loadCatalystProposals();
+                                                                        }}
+                                                                        disabled={catalystSelectedProposals.size === 0}
+                                                                        className="px-3 py-1 rounded-md text-[11px] font-medium bg-white/5 hover:bg-white/10 text-slate-300 disabled:opacity-40"
+                                                                    >
+                                                                        Dismiss
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={async () => {
+                                                                            if (!catalystSelectedProposals.size) return;
+                                                                            const ids = [...catalystSelectedProposals];
+                                                                            await fetch(`${API_URL}/api/catalysts/proposals/approve`, {
+                                                                                method: 'POST',
+                                                                                headers: {'Content-Type': 'application/json'},
+                                                                                body: JSON.stringify({jobIds: ids}),
+                                                                            });
+                                                                            setCatalystSelectedProposals(new Set());
+                                                                            loadCatalystProposals();
+                                                                        }}
+                                                                        disabled={catalystSelectedProposals.size === 0}
+                                                                        className="px-3 py-1 rounded-md text-[11px] font-semibold bg-amber-600 hover:bg-amber-500 text-white disabled:opacity-40"
+                                                                    >
+                                                                        Approve ({catalystSelectedProposals.size})
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+
                                                 {/* Catalyst Synthesis */}
                                                 <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4 space-y-3">
                                                     <div>
