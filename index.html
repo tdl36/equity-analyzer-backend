@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-23T16';
+        const BUILD_VERSION = '2026-04-23T17';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -1723,6 +1723,23 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [agentAlerts, setAgentAlerts] = useState([]);
             const [alertBadgeCount, setAlertBadgeCount] = useState(0);
             const [catalystHistory, setCatalystHistory] = useState([]);
+            const [catalystListTicker, setCatalystListTicker] = useState(null);  // null = show recent across all
+            const [catalystListSort, setCatalystListSort] = useState('alpha');   // 'alpha' | 'recent'
+            const [catalystListSearch, setCatalystListSearch] = useState('');
+            const catalystHistoryByTicker = React.useMemo(() => {
+                const map = {};
+                (catalystHistory || []).forEach(h => {
+                    const t = (h.ticker || '?').toUpperCase();
+                    if (!map[t]) map[t] = [];
+                    map[t].push(h);
+                });
+                Object.values(map).forEach(arr => arr.sort((a, b) => {
+                    const av = a.created_at || a.createdAt || '';
+                    const bv = b.created_at || b.createdAt || '';
+                    return String(bv).localeCompare(String(av));
+                }));
+                return map;
+            }, [catalystHistory]);
             const [catalystUploadedFiles, setCatalystUploadedFiles] = useState([]);
             const catalystPollRef = React.useRef(null);
             const catalystFileRef = React.useRef(null);
@@ -21765,23 +21782,158 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     </div>
                                                 )}
 
-                                                {/* History */}
-                                                {catalystHistory.length > 0 && !catalystActiveJob && (
+                                                {/* History: ticker-organized list */}
+                                                {!catalystActiveJob && (
                                                     <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4">
-                                                        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Recent Syntheses</h3>
-                                                        <div className="space-y-1.5">
-                                                            {catalystHistory.map(j => (
-                                                                <div key={j.id} onClick={async () => {
-                                                                    const res = await fetch(`${API_URL}/api/catalysts/results/${j.id}`);
-                                                                    if (res.ok) setCatalystActiveJob(await res.json());
-                                                                }} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.02] border border-white/5 hover:border-white/15 cursor-pointer">
-                                                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-medium">{j.ticker}</span>
-                                                                    <span className="text-xs text-slate-300 flex-1 truncate">{j.topic || 'Synthesis'}</span>
-                                                                    <span className="text-[10px] text-slate-500">{j.length}</span>
-                                                                    <span className={`text-[10px] ${j.status === 'complete' ? 'text-green-400' : 'text-red-400'}`}>{j.status}</span>
-                                                                </div>
-                                                            ))}
+                                                        <div className="flex items-center justify-between mb-3">
+                                                            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Synthesis Library</h3>
+                                                            <span className="text-[10px] text-slate-500">{(catalystHistory || []).length} total</span>
                                                         </div>
+                                                        {catalystHistory.length === 0 ? (
+                                                            <div className="text-xs text-slate-500 text-center py-8 leading-relaxed">
+                                                                No syntheses yet — drop docs in <span className="font-mono text-amber-400/80">iCloud/CATALYSTS/{'{TICKER}'}/{'{topic}'}/</span> or use the form above to start.
+                                                            </div>
+                                                        ) : (
+                                                            <div className="grid grid-cols-12 gap-3">
+                                                                {/* Left rail: ticker list */}
+                                                                <div className="col-span-4 border-r border-white/10 pr-3 flex flex-col">
+                                                                    <div className="flex items-center gap-1.5 mb-2">
+                                                                        <input
+                                                                            type="text"
+                                                                            value={catalystListSearch}
+                                                                            onChange={e => setCatalystListSearch(e.target.value)}
+                                                                            placeholder="Search..."
+                                                                            className="flex-1 min-w-0 bg-black/30 border border-white/10 rounded-md px-2 py-1 text-[11px] text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50"
+                                                                        />
+                                                                        <button
+                                                                            onClick={() => setCatalystListSort(prev => prev === 'alpha' ? 'recent' : 'alpha')}
+                                                                            className={`p-1.5 rounded transition-all ${catalystListSort === 'recent' ? 'bg-amber-600 text-white' : 'bg-white/5 hover:bg-white/10 text-slate-400'}`}
+                                                                            title={catalystListSort === 'recent' ? 'Sorted by recent — click for A-Z' : 'Sorted A-Z — click for recent'}
+                                                                        >
+                                                                            {catalystListSort === 'recent' ? <Clock className="w-3.5 h-3.5" /> : <ArrowDownAZ className="w-3.5 h-3.5" />}
+                                                                        </button>
+                                                                    </div>
+                                                                    <div className="space-y-1 overflow-y-auto max-h-[360px]">
+                                                                        {(() => {
+                                                                            const q = (catalystListSearch || '').trim().toLowerCase();
+                                                                            let tickers = Object.keys(catalystHistoryByTicker);
+                                                                            if (q) {
+                                                                                tickers = tickers.filter(t => {
+                                                                                    if (t.toLowerCase().includes(q)) return true;
+                                                                                    return (catalystHistoryByTicker[t] || []).some(h => (h.topic || '').toLowerCase().includes(q));
+                                                                                });
+                                                                            }
+                                                                            if (catalystListSort === 'recent') {
+                                                                                tickers.sort((a, b) => {
+                                                                                    const av = (catalystHistoryByTicker[a][0] || {});
+                                                                                    const bv = (catalystHistoryByTicker[b][0] || {});
+                                                                                    const as = String(av.created_at || av.createdAt || '');
+                                                                                    const bs = String(bv.created_at || bv.createdAt || '');
+                                                                                    return bs.localeCompare(as);
+                                                                                });
+                                                                            } else {
+                                                                                tickers.sort((a, b) => a.localeCompare(b));
+                                                                            }
+                                                                            if (tickers.length === 0) {
+                                                                                return <div className="text-[10px] text-slate-500 text-center py-4">No matches</div>;
+                                                                            }
+                                                                            return tickers.map(t => (
+                                                                                <div
+                                                                                    key={t}
+                                                                                    onClick={() => setCatalystListTicker(t === catalystListTicker ? null : t)}
+                                                                                    className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg cursor-pointer transition-all ${
+                                                                                        catalystListTicker === t
+                                                                                            ? 'bg-amber-600 text-white shadow-md shadow-amber-500/20'
+                                                                                            : 'bg-white/[0.02] hover:bg-white/[0.08] border border-white/5 hover:border-white/15'
+                                                                                    }`}
+                                                                                >
+                                                                                    <span className={`font-mono font-bold text-xs ${catalystListTicker === t ? 'text-white' : 'text-slate-200'}`}>{t}</span>
+                                                                                    <span className={`text-[10px] ${catalystListTicker === t ? 'text-amber-100' : 'text-slate-500'}`}>
+                                                                                        ({(catalystHistoryByTicker[t] || []).length})
+                                                                                    </span>
+                                                                                </div>
+                                                                            ));
+                                                                        })()}
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Right: synthesis list */}
+                                                                <div className="col-span-8">
+                                                                    {(() => {
+                                                                        const q = (catalystListSearch || '').trim().toLowerCase();
+                                                                        let rows = [];
+                                                                        let heading = '';
+                                                                        if (catalystListTicker && catalystHistoryByTicker[catalystListTicker]) {
+                                                                            rows = catalystHistoryByTicker[catalystListTicker];
+                                                                            heading = `${catalystListTicker} — ${rows.length} ${rows.length === 1 ? 'synthesis' : 'syntheses'}`;
+                                                                        } else {
+                                                                            // Cross-ticker recent view (top 5)
+                                                                            rows = [...(catalystHistory || [])].sort((a, b) => {
+                                                                                const as = String(a.created_at || a.createdAt || '');
+                                                                                const bs = String(b.created_at || b.createdAt || '');
+                                                                                return bs.localeCompare(as);
+                                                                            }).slice(0, 5);
+                                                                            heading = 'Most Recent';
+                                                                        }
+                                                                        if (q) {
+                                                                            rows = rows.filter(h =>
+                                                                                (h.topic || '').toLowerCase().includes(q) ||
+                                                                                (h.ticker || '').toLowerCase().includes(q)
+                                                                            );
+                                                                        }
+                                                                        if (!catalystListTicker && rows.length === 0 && !q) {
+                                                                            return (
+                                                                                <div className="text-xs text-slate-500 text-center py-8 leading-relaxed">
+                                                                                    Pick a ticker to browse syntheses, or use the form above to start a new one.
+                                                                                </div>
+                                                                            );
+                                                                        }
+                                                                        return (
+                                                                            <>
+                                                                                <div className="flex items-center justify-between mb-2">
+                                                                                    <h4 className="text-[11px] font-semibold text-slate-300 uppercase tracking-wider">{heading}</h4>
+                                                                                    {catalystListTicker && (
+                                                                                        <button
+                                                                                            onClick={() => setCatalystListTicker(null)}
+                                                                                            className="text-[10px] text-slate-400 hover:text-amber-400"
+                                                                                        >
+                                                                                            Clear
+                                                                                        </button>
+                                                                                    )}
+                                                                                </div>
+                                                                                <div className="space-y-1.5 overflow-y-auto max-h-[360px]">
+                                                                                    {rows.length === 0 ? (
+                                                                                        <div className="text-[10px] text-slate-500 text-center py-4">No matches</div>
+                                                                                    ) : rows.map(j => {
+                                                                                        const ts = j.created_at || j.createdAt;
+                                                                                        const statusColor = j.status === 'complete' ? 'bg-green-500/20 text-green-400' :
+                                                                                            j.status === 'running' || j.status === 'queued' ? 'bg-amber-500/20 text-amber-400' :
+                                                                                            'bg-red-500/20 text-red-400';
+                                                                                        return (
+                                                                                            <div
+                                                                                                key={j.id}
+                                                                                                onClick={async () => {
+                                                                                                    const res = await fetch(`${API_URL}/api/catalysts/results/${j.id}`);
+                                                                                                    if (res.ok) setCatalystActiveJob(await res.json());
+                                                                                                }}
+                                                                                                className="group flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.02] border border-white/5 hover:border-amber-500/30 hover:bg-white/[0.05] cursor-pointer transition-all"
+                                                                                            >
+                                                                                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-mono font-medium shrink-0">{j.ticker}</span>
+                                                                                                <div className="flex-1 min-w-0">
+                                                                                                    <div className="text-xs text-slate-200 truncate">{j.topic || 'Synthesis'}</div>
+                                                                                                    {ts && <div className="text-[10px] text-slate-500">{formatNYTime(ts)}</div>}
+                                                                                                </div>
+                                                                                                <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${statusColor}`}>{j.status}</span>
+                                                                                            </div>
+                                                                                        );
+                                                                                    })}
+                                                                                </div>
+                                                                            </>
+                                                                        );
+                                                                    })()}
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 )}
                                             </>
