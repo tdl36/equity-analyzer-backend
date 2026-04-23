@@ -25,7 +25,7 @@ MAX_DURATION_SEC = 7200            # 2 hour cap on Gemini fallback
 MAX_AUDIO_BYTES = 150 * 1024 * 1024  # 150 MB download cap
 DOWNLOAD_TIMEOUT_SEC = 120
 
-# Conservative per-second cost for gemini-2.0-flash audio input, rounded to
+# Conservative per-second cost for gemini-2.5-flash audio input, rounded to
 # 4 decimals on insert. The spec says use a safe conservative estimate.
 COST_PER_AUDIO_SEC = 0.0000001
 
@@ -104,7 +104,7 @@ def _gemini_transcribe_audio(audio_bytes: bytes, mime_type: str) -> str:
             audio_content = genai_types.Part.from_bytes(data=audio_bytes, mime_type=mime_type)
 
         response = client.models.generate_content(
-            model='gemini-2.0-flash',
+            model='gemini-2.5-flash',
             contents=[audio_content, TRANSCRIBE_PROMPT],
             config=genai_types.GenerateContentConfig(max_output_tokens=65536),
         )
