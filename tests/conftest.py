@@ -35,7 +35,16 @@ def clean_db():
                          signals_watchlist, media_theme_clusters, notification_prefs,
                          agent_alerts RESTART IDENTITY CASCADE
             """)
-            cur.execute("DELETE FROM app_settings WHERE key = 'media_scheduler_enabled'")
+            cur.execute("""
+                DELETE FROM app_settings WHERE key IN (
+                    'media_scheduler_enabled',
+                    'media_notification_channels',
+                    'media_email_digest_to',
+                    'telegram_chat_id',
+                    'media_cost_weekly_warn_usd',
+                    'media_muted_coverage_tickers'
+                )
+            """)
     except Exception:
         pass  # media_* tables don't exist until Task 2; agent_alerts does
     yield

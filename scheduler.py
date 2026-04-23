@@ -10,7 +10,7 @@ from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.jobstores.memory import MemoryJobStore
 
 import app_v3
-from media_trackers import poller, extractor, transcribe
+from media_trackers import poller, extractor, transcribe, clustering, cost_watch, notifications
 
 
 def _kill_switch_on() -> bool:
@@ -44,6 +44,24 @@ def run_extract_worker():
     extractor.process_extract_batch()
 
 
+def run_cluster_weekly():
+    if not _kill_switch_on():
+        return
+    clustering.run_weekly_clustering()
+
+
+def run_email_digest_daily():
+    if not _kill_switch_on():
+        return
+    notifications.send_daily_email_digest()
+
+
+def run_cost_watch_daily():
+    if not _kill_switch_on():
+        return
+    cost_watch.check_cost_warning()
+
+
 def build_scheduler(use_memory_jobstore: bool = False) -> BackgroundScheduler:
     if use_memory_jobstore or not os.environ.get('DATABASE_URL'):
         jobstore = MemoryJobStore()
@@ -56,6 +74,12 @@ def build_scheduler(use_memory_jobstore: bool = False) -> BackgroundScheduler:
     sched.add_job(run_feed_poller,        'interval', minutes=30, id='feed_poller',        replace_existing=True)
     sched.add_job(run_transcribe_worker,  'interval', minutes=2,  id='transcribe_worker',  replace_existing=True)
     sched.add_job(run_extract_worker,     'interval', minutes=2,  id='extract_worker',     replace_existing=True)
+    sched.add_job(run_cluster_weekly,     'cron', day_of_week='sun', hour=5, minute=0,
+                  id='cluster_weekly',     replace_existing=True)
+    sched.add_job(run_email_digest_daily, 'cron', hour=7,  minute=0,
+                  id='email_digest_daily', replace_existing=True)
+    sched.add_job(run_cost_watch_daily,   'cron', hour=23, minute=0,
+                  id='cost_watch_daily',   replace_existing=True)
     return sched
 
 

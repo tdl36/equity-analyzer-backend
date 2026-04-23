@@ -6,7 +6,14 @@ import scheduler
 def test_scheduler_registers_expected_jobs(clean_db):
     sched = scheduler.build_scheduler(use_memory_jobstore=True)
     job_ids = {j.id for j in sched.get_jobs()}
-    assert {'feed_poller', 'transcribe_worker', 'extract_worker'} <= job_ids
+    assert {
+        'feed_poller',
+        'transcribe_worker',
+        'extract_worker',
+        'cluster_weekly',
+        'email_digest_daily',
+        'cost_watch_daily',
+    } <= job_ids
 
 
 def test_kill_switch_skips_job_body(clean_db, monkeypatch):

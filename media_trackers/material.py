@@ -287,3 +287,15 @@ def gate_and_alert_for_episode(episode_id):
                     """,
                     (alert_id, primary, title, json.dumps(detail)),
                 )
+            # Fire push/telegram if enabled. Email digest is batched at 7am.
+            try:
+                from media_trackers.notifications import notify_new_material_alert
+                notify_new_material_alert(
+                    ticker=primary,
+                    point_text=point['text'],
+                    episode_title=episode.get('title') or '',
+                    feed_name=feed.get('name') or '',
+                    source_url=episode.get('source_url') or '',
+                )
+            except Exception as e:
+                print(f'notify_new_material_alert failed: {e}')

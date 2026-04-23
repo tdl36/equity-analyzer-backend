@@ -514,6 +514,111 @@ def media_scan_status(scan_id):
     return jsonify(rec)
 
 
+@app.route('/api/media/notification-prefs', methods=['GET'])
+def media_notification_prefs_get():
+    """Return current media-tracker notification settings + related config."""
+    keys = [
+        'media_notification_channels',
+        'media_email_digest_to',
+        'telegram_chat_id',
+        'media_cost_weekly_warn_usd',
+    ]
+    out = {
+        'channels': {'tab': True, 'push': False, 'telegram': False, 'email': False},
+        'emailDigestTo': '',
+        'telegramChatId': '',
+        'costWeeklyWarnUsd': 15.0,
+    }
+    try:
+        with get_db() as (_c, cur):
+            cur.execute(
+                "SELECT key, value FROM app_settings WHERE key = ANY(%s)", (keys,)
+            )
+            rows = cur.fetchall()
+        for r in rows:
+            v = r['value']
+            if r['key'] == 'media_notification_channels' and v:
+                val = v if isinstance(v, dict) else json.loads(v)
+                out['channels'] = {**out['channels'], **(val or {})}
+            elif r['key'] == 'media_email_digest_to' and v:
+                out['emailDigestTo'] = v if isinstance(v, str) else str(v)
+            elif r['key'] == 'telegram_chat_id' and v:
+                out['telegramChatId'] = v if isinstance(v, str) else str(v)
+            elif r['key'] == 'media_cost_weekly_warn_usd' and v not in (None, ''):
+                try:
+                    out['costWeeklyWarnUsd'] = float(v) if isinstance(v, (int, float)) else float(str(v).strip('"'))
+                except (ValueError, TypeError):
+                    pass
+    except Exception as e:
+        print(f'notification-prefs GET error: {e}')
+    return jsonify(out)
+
+
+@app.route('/api/media/notification-prefs', methods=['PUT'])
+def media_notification_prefs_put():
+    """Upsert notification settings. Accepts any subset of:
+    channels, emailDigestTo, telegramChatId, costWeeklyWarnUsd.
+    """
+    data = request.json or {}
+    updates = []  # list of (key, value)
+    if 'channels' in data and isinstance(data['channels'], dict):
+        updates.append(('media_notification_channels', json.dumps(data['channels'])))
+    if 'emailDigestTo' in data:
+        updates.append(('media_email_digest_to', str(data['emailDigestTo'] or '')))
+    if 'telegramChatId' in data:
+        updates.append(('telegram_chat_id', str(data['telegramChatId'] or '')))
+    if 'costWeeklyWarnUsd' in data:
+        try:
+            updates.append(('media_cost_weekly_warn_usd', str(float(data['costWeeklyWarnUsd']))))
+        except (ValueError, TypeError):
+            pass
+    if not updates:
+        return jsonify({'success': True, 'updated': 0})
+    with get_db(commit=True) as (_c, cur):
+        for key, value in updates:
+            cur.execute(
+                '''
+                INSERT INTO app_settings (key, value, updated_at)
+                VALUES (%s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP
+                ''',
+                (key, value),
+            )
+    return jsonify({'success': True, 'updated': len(updates)})
+
+
+@app.route('/api/media/notification-prefs/test', methods=['POST'])
+def media_notification_prefs_test():
+    """Fire a test message via the chosen channel. Body: {channel: 'telegram'|'push'|'email'}."""
+    data = request.json or {}
+    channel = (data.get('channel') or '').lower()
+    try:
+        from media_trackers import notifications as _notif
+    except Exception as e:
+        return jsonify({'error': f'notifications module not importable: {e}'}), 500
+    subject = 'Charlie test ping'
+    body = 'This is a test notification from Charlie media trackers.'
+    if channel == 'telegram':
+        _notif._telegram_send(f'*{subject}*\n{body}')
+    elif channel == 'push':
+        _notif._push_send(subject, body, url='/#alerts')
+    elif channel == 'email':
+        to = ''
+        try:
+            with get_db() as (_c, cur):
+                cur.execute("SELECT value FROM app_settings WHERE key='media_email_digest_to'")
+                row = cur.fetchone()
+            if row and row['value']:
+                to = row['value'] if isinstance(row['value'], str) else str(row['value'])
+        except Exception:
+            pass
+        html = f'<div style="font-family:sans-serif;"><h3>{subject}</h3><p>{body}</p></div>'
+        _notif._email_send(subject, html, to=to)
+    else:
+        return jsonify({'error': 'channel must be one of: telegram, push, email'}), 400
+    return jsonify({'success': True, 'channel': channel})
+
+
 @app.route('/api/media/admin/reextract-empty', methods=['POST'])
 def media_reextract_empty():
     """Reset episodes that are 'done' but have zero digest points back to 'new'
