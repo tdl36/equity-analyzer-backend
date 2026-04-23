@@ -5047,6 +5047,9 @@ Include key points, decisions, action items, and important details.
                 INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, source_type, doc_type, created_at)
                 VALUES (%s, %s, %s, %s, %s, 'audio', 'audio', NOW())
             ''', (summary_id, title, transcript, summary_html, questions_html))
+        # Invalidate cache so the new entry shows up immediately in /api/summaries
+        try: cache.invalidate('summaries')
+        except Exception: pass
 
         # Step 4: Create success alert
         with get_db(commit=True) as (conn, cur):
