@@ -4987,7 +4987,7 @@ def _run_auto_process_audio(job_id, file_content, filename, mime_type, gemini_ap
         _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key, '', anthropic_api_key)
 
         job = _transcription_jobs.get(job_id, {})
-        transcript = job.get('transcript', '')
+        transcript = job.get('text', '')
         if not transcript:
             print(f"[auto-audio {job_id}] Transcription failed or empty")
             return
