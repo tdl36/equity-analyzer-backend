@@ -343,6 +343,79 @@ def media_feeds_delete(feed_id):
 
 
 # ============================================
+# MEDIA TRACKER — SIGNALS WATCHLIST
+# ============================================
+
+def _row_to_signal(r):
+    return {
+        'id': r['id'],
+        'kind': r['kind'],
+        'value': r['value'],
+        'associatedTicker': r['associated_ticker'],
+        'muted': r['muted'],
+        'note': r['note'],
+        'createdAt': r['created_at'].isoformat() if r['created_at'] else None,
+    }
+
+
+@app.route('/api/media/watchlist', methods=['GET'])
+def media_watchlist_list():
+    with get_db() as (_c, cur):
+        cur.execute("SELECT * FROM signals_watchlist ORDER BY kind, value")
+        rows = cur.fetchall()
+    return jsonify({'signals': [_row_to_signal(r) for r in rows], 'total': len(rows)})
+
+
+@app.route('/api/media/watchlist', methods=['POST'])
+def media_watchlist_create():
+    data = request.get_json() or {}
+    kind = (data.get('kind') or '').strip()
+    value = (data.get('value') or '').strip()
+    if kind not in ('ticker', 'keyword', 'exec') or not value:
+        return jsonify({'error': 'kind must be ticker|keyword|exec; value required'}), 400
+    sid = str(uuid.uuid4())
+    try:
+        with get_db(commit=True) as (_c, cur):
+            cur.execute('''
+                INSERT INTO signals_watchlist (id, kind, value, associated_ticker, note)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING *
+            ''', (sid, kind, value, data.get('associatedTicker'), data.get('note')))
+            row = cur.fetchone()
+    except Exception as e:
+        if 'duplicate key' in str(e).lower() or 'unique' in str(e).lower():
+            return jsonify({'error': 'already exists'}), 409
+        raise
+    return jsonify({'signal': _row_to_signal(row)})
+
+
+@app.route('/api/media/watchlist/<signal_id>', methods=['PATCH'])
+def media_watchlist_update(signal_id):
+    data = request.get_json() or {}
+    fields, values = [], []
+    for k, col in [('muted', 'muted'), ('note', 'note'), ('associatedTicker', 'associated_ticker')]:
+        if k in data:
+            fields.append(f"{col} = %s")
+            values.append(data[k])
+    if not fields:
+        return jsonify({'error': 'no updatable fields'}), 400
+    values.append(signal_id)
+    with get_db(commit=True) as (_c, cur):
+        cur.execute(f"UPDATE signals_watchlist SET {', '.join(fields)} WHERE id = %s RETURNING *", values)
+        row = cur.fetchone()
+    if not row:
+        return jsonify({'error': 'not found'}), 404
+    return jsonify({'signal': _row_to_signal(row)})
+
+
+@app.route('/api/media/watchlist/<signal_id>', methods=['DELETE'])
+def media_watchlist_delete(signal_id):
+    with get_db(commit=True) as (_c, cur):
+        cur.execute("DELETE FROM signals_watchlist WHERE id = %s", (signal_id,))
+    return jsonify({'success': True})
+
+
+# ============================================
 # MULTI-MODEL LLM FALLBACK
 # ============================================
 
