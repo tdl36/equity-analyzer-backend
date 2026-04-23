@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-23T20';
+        const BUILD_VERSION = '2026-04-23T21';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -22440,6 +22440,18 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             />
                                             <span className="text-xs">Material only</span>
                                         </label>
+                                        <select
+                                            value={feedFilters.sort || 'date_desc'}
+                                            onChange={e => setFeedFilters({...feedFilters, sort: e.target.value})}
+                                            className="px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-xs"
+                                            title="Sort"
+                                        >
+                                            <option value="date_desc">Newest first</option>
+                                            <option value="date_asc">Oldest first</option>
+                                            <option value="podcast">Podcast A-Z</option>
+                                            <option value="tickers">Most tickers</option>
+                                            <option value="material_count">Most material</option>
+                                        </select>
                                     </div>
                                     <div className="space-y-4">
                                         {feedLoading && <div className="text-sm text-slate-500">Loading…</div>}
@@ -22449,7 +22461,25 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 No episodes yet. Click "Run Scanner" to trigger a fresh poll.
                                             </div>
                                         )}
-                                        {feedEpisodes.filter(ep => !feedFilters.feedName || (ep.feedName || '').toLowerCase().includes(feedFilters.feedName.toLowerCase())).map(ep => (
+                                        {(() => {
+                                            let list = feedEpisodes.filter(ep => !feedFilters.feedName || (ep.feedName || '').toLowerCase().includes(feedFilters.feedName.toLowerCase()));
+                                            const sort = feedFilters.sort || 'date_desc';
+                                            const key = (ep, k) => (ep && ep[k]) || '';
+                                            if (sort === 'date_desc') list = [...list].sort((a, b) => (b.publishedAt || '').localeCompare(a.publishedAt || ''));
+                                            else if (sort === 'date_asc')  list = [...list].sort((a, b) => (a.publishedAt || '').localeCompare(b.publishedAt || ''));
+                                            else if (sort === 'podcast')   list = [...list].sort((a, b) => key(a,'feedName').localeCompare(key(b,'feedName')) || (b.publishedAt || '').localeCompare(a.publishedAt || ''));
+                                            else if (sort === 'tickers')   list = [...list].sort((a, b) => {
+                                                const at = new Set((a.points || []).flatMap(p => p.tickers || []));
+                                                const bt = new Set((b.points || []).flatMap(p => p.tickers || []));
+                                                return bt.size - at.size;
+                                            });
+                                            else if (sort === 'material_count') list = [...list].sort((a, b) => {
+                                                const am = (a.points || []).filter(p => p.material).length;
+                                                const bm = (b.points || []).filter(p => p.material).length;
+                                                return bm - am;
+                                            });
+                                            return list;
+                                        })().map(ep => (
                                             <div key={ep.id} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
                                                 <div className="flex items-baseline justify-between mb-1">
                                                     <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
