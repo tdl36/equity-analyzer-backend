@@ -1086,6 +1086,10 @@ def init_db():
                                   WHERE table_name='meeting_summaries' AND column_name='categories') THEN
                         ALTER TABLE meeting_summaries ADD COLUMN categories JSONB DEFAULT '[]';
                     END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                  WHERE table_name='meeting_summaries' AND column_name='meeting_summary') THEN
+                        ALTER TABLE meeting_summaries ADD COLUMN meeting_summary TEXT DEFAULT '';
+                    END IF;
                 END $$;
             ''')
 
@@ -3721,7 +3725,7 @@ def get_summaries():
 
         with get_db() as (conn, cur):
             cur.execute('''
-                SELECT id, title, raw_notes, summary, questions, assessment, topic, topic_type, source_type, source_files, doc_type, has_stored_files, categories, created_at
+                SELECT id, title, raw_notes, summary, questions, assessment, meeting_summary, topic, topic_type, source_type, source_files, doc_type, has_stored_files, categories, created_at
                 FROM meeting_summaries
                 ORDER BY created_at DESC
             ''')
@@ -3736,6 +3740,7 @@ def get_summaries():
                 'summary': row['summary'],
                 'questions': row['questions'],
                 'assessment': row.get('assessment') or '',
+                'meetingSummary': row.get('meeting_summary') or '',
                 'topic': row.get('topic') or 'General',
                 'topicType': row.get('topic_type') or 'other',
                 'sourceType': row.get('source_type') or 'paste',
@@ -3774,8 +3779,8 @@ def save_summary():
 
         with get_db(commit=True) as (conn, cur):
             cur.execute('''
-                INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, assessment, topic, topic_type, source_type, source_files, doc_type, categories, created_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, assessment, meeting_summary, topic, topic_type, source_type, source_files, doc_type, categories, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (id)
                 DO UPDATE SET
                     title = EXCLUDED.title,
@@ -3783,6 +3788,7 @@ def save_summary():
                     summary = EXCLUDED.summary,
                     questions = EXCLUDED.questions,
                     assessment = EXCLUDED.assessment,
+                    meeting_summary = EXCLUDED.meeting_summary,
                     topic = EXCLUDED.topic,
                     topic_type = EXCLUDED.topic_type,
                     source_type = EXCLUDED.source_type,
@@ -3797,6 +3803,7 @@ def save_summary():
                 data.get('summary', ''),
                 data.get('questions', ''),
                 data.get('assessment', ''),
+                data.get('meetingSummary', ''),
                 data.get('topic', 'General'),
                 data.get('topicType', 'other'),
                 data.get('sourceType', 'paste'),
@@ -4185,6 +4192,15 @@ Be conversational and direct — write as if you're giving your honest debrief t
 
 {html_format}"""
 
+        # Meeting Summary instruction — narrative topic-grouped summary (distinct from Key Takeaways)
+        meeting_summary_instruction = f"""Generate a clear, well-structured narrative summary of the following notes/transcript.
+Include key points, decisions, action items, context, and important details. This is a NARRATIVE summary grouped by logical topic sections — NOT a bullet list of takeaways and NOT a Q&A log.
+
+OUTPUT FORMAT — Return raw HTML. No markdown. No code fences.
+Use: <h2>Section Title</h2>, <p><strong>Topic:</strong> Description text here.</p>, <ul><li>Sub-point</li></ul>
+Organize into 3-6 logical sections (e.g., Business Update, Strategic Priorities, Risks, Q&A Highlights).
+"""
+
         def call_llm(system, user_text):
             """Call Gemini or Claude and return raw text response."""
             if keys.get('gemini'):
@@ -4219,13 +4235,14 @@ Be conversational and direct — write as if you're giving your honest debrief t
 
             return None
 
-        # Generate summary, questions, and assessment
+        # Generate summary, questions, assessment, and meeting summary
         summary_html = call_llm(summary_instruction, notes)
         if not summary_html:
             return jsonify({'error': 'All LLM providers failed. Check your API keys.'}), 500
 
         questions_html = call_llm(questions_instruction, notes) or ''
         assessment_html = call_llm(assessment_instruction, notes) or ''
+        meeting_summary_html = call_llm(meeting_summary_instruction, notes) or ''
 
         # Strip code fences if LLM wraps output anyway
         def strip_fences(text):
@@ -4239,7 +4256,8 @@ Be conversational and direct — write as if you're giving your honest debrief t
         return jsonify({
             'summary': strip_fences(summary_html),
             'questions': strip_fences(questions_html),
-            'assessment': strip_fences(assessment_html)
+            'assessment': strip_fences(assessment_html),
+            'meetingSummary': strip_fences(meeting_summary_html) if meeting_summary_html else '',
         })
 
     except Exception as e:
@@ -4322,7 +4340,17 @@ Be conversational and direct — write as if you're giving your honest debrief t
                     print(f"Anthropic assessment failed: {e}")
             return None
 
+        # Meeting Summary instruction — narrative topic-grouped summary
+        meeting_summary_instruction = f"""Generate a clear, well-structured narrative summary of the following notes/transcript.
+Include key points, decisions, action items, context, and important details. This is a NARRATIVE summary grouped by logical topic sections — NOT a bullet list of takeaways and NOT a Q&A log.
+
+OUTPUT FORMAT — Return raw HTML. No markdown. No code fences.
+Use: <h2>Section Title</h2>, <p><strong>Topic:</strong> Description text here.</p>, <ul><li>Sub-point</li></ul>
+Organize into 3-6 logical sections (e.g., Business Update, Strategic Priorities, Risks, Q&A Highlights).
+"""
+
         assessment_html = call_llm(assessment_instruction, notes) or ''
+        meeting_summary_html = call_llm(meeting_summary_instruction, notes) or ''
 
         def strip_fences(text):
             t = text.strip()
@@ -4332,7 +4360,10 @@ Be conversational and direct — write as if you're giving your honest debrief t
                 t = t[:-3]
             return t.strip()
 
-        return jsonify({'assessment': strip_fences(assessment_html)})
+        return jsonify({
+            'assessment': strip_fences(assessment_html),
+            'meetingSummary': strip_fences(meeting_summary_html) if meeting_summary_html else '',
+        })
 
     except Exception as e:
         print(f"Generate assessment error: {e}")
@@ -4999,15 +5030,46 @@ def _run_auto_process_audio(job_id, file_content, filename, mime_type, gemini_ap
         html_format = """OUTPUT FORMAT — Return raw HTML. No markdown. No code fences.
 Use: <h2>Section Title</h2>, <p><strong>Topic:</strong> Description.</p>, <ul><li>Sub-point</li></ul>"""
 
-        summary_instruction = f"""Generate a clear, well-structured summary of the following transcript.
-Include key points, decisions, action items, and important details.
-{html_format}"""
-
+        # Key Takeaways summary (summary column) — takeaways + Q&A format
         if detail_level == 'concise':
-            summary_instruction = f"""Generate a SHORT, CONCISE summary. Maximum 300-500 words. Only critical takeaways.
+            summary_instruction = f"""Generate a SHORT, CONCISE summary of Key Takeaways from the following transcript.
+Maximum 300-500 words. Only critical takeaways, decisions, action items. Be ruthlessly brief.
 {html_format}"""
         elif detail_level == 'detailed':
-            summary_instruction = f"""Generate an EXTREMELY DETAILED summary. Preserve all content, numbers, quotes.
+            summary_instruction = f"""Generate an EXTREMELY DETAILED Key Takeaways summary of the following transcript.
+Preserve all content, numbers, quotes, names, examples. Include Q&A exchanges verbatim where relevant.
+{html_format}"""
+        else:
+            summary_instruction = f"""Generate a clear, well-structured Key Takeaways summary of the following transcript.
+Include key points, decisions, action items, and important details. Cover Q&A exchanges where relevant.
+{html_format}"""
+
+        # Narrative Meeting Summary (meeting_summary column) — topic-grouped
+        meeting_summary_instruction = f"""Generate a clear, well-structured narrative summary of the following transcript.
+Include key points, decisions, action items, context, and important details. This is a NARRATIVE summary grouped by logical topic sections — NOT a bullet list of takeaways and NOT a Q&A log.
+
+OUTPUT FORMAT — Return raw HTML. No markdown. No code fences.
+Use: <h2>Section Title</h2>, <p><strong>Topic:</strong> Description text here.</p>, <ul><li>Sub-point</li></ul>
+Organize into 3-6 logical sections (e.g., Business Update, Strategic Priorities, Risks, Q&A Highlights).
+"""
+
+        # Assessment — candid advisor take
+        assessment_instruction = f"""You are a sharp, experienced advisor giving your CANDID, UNFILTERED assessment of this call/meeting.
+
+This is NOT a summary — the summaries are generated separately. Provide your HONEST OPINION on how things went.
+
+Cover whichever of these are relevant:
+- **Overall assessment:** Productive, waste of time, or in between?
+- **Quality of answers:** Substantive and credible, or vague and evasive?
+- **Red flags / BS detection:** Anyone dodge questions, give non-answers, contradict themselves?
+- **Meeting flow and dynamics:** Well-structured? On-track? Tension or alignment?
+- **What was most effective:** What landed well?
+- **What could have been better:** What questions should have been asked?
+- **Credibility assessment:** Rate overall credibility of key claims.
+- **Bottom line:** One sentence on your overall take.
+
+Be conversational and direct. Don't hedge.
+
 {html_format}"""
 
         keys = _get_api_keys(anthropic_api_key=anthropic_api_key, gemini_api_key=gemini_api_key)
@@ -5037,6 +5099,30 @@ Include key points, decisions, action items, and important details.
             print(f"[auto-audio {job_id}] questions step failed (non-fatal): {e}")
             questions_html = ''
 
+        try:
+            assessment_result = _call_llm_stream_with_retry(
+                messages=[{"role": "user", "content": f"{assessment_instruction}\n\nTRANSCRIPT:\n{transcript[:50000]}"}],
+                system="You are a sharp advisor giving candid meeting assessments.",
+                tier="standard", max_tokens=4096, api_key=anthropic_api_key,
+                label=f"audio assessment ({filename})",
+            )
+            assessment_html = assessment_result.get('text', '') or ''
+        except Exception as e:
+            print(f"[auto-audio {job_id}] assessment step failed (non-fatal): {e}")
+            assessment_html = ''
+
+        try:
+            meeting_summary_result = _call_llm_stream_with_retry(
+                messages=[{"role": "user", "content": f"{meeting_summary_instruction}\n\nTRANSCRIPT:\n{transcript[:50000]}"}],
+                system="You are a meeting notes analyst. Generate narrative topic-grouped HTML summaries.",
+                tier="standard", max_tokens=8192, api_key=anthropic_api_key,
+                label=f"audio meeting_summary ({filename})",
+            )
+            meeting_summary_html = meeting_summary_result.get('text', '') or ''
+        except Exception as e:
+            print(f"[auto-audio {job_id}] meeting_summary step failed (non-fatal): {e}")
+            meeting_summary_html = ''
+
         # Step 3: Save to DB. Use source_type='audio' to match existing bucket
         # the Summary tab already displays (prior version wrote 'audio_recording'
         # which Summary tab filters would miss).
@@ -5044,9 +5130,9 @@ Include key points, decisions, action items, and important details.
         summary_id = str(uuid.uuid4())
         with get_db(commit=True) as (conn, cur):
             cur.execute('''
-                INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, source_type, doc_type, created_at)
-                VALUES (%s, %s, %s, %s, %s, 'audio', 'audio', NOW())
-            ''', (summary_id, title, transcript, summary_html, questions_html))
+                INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, assessment, meeting_summary, source_type, doc_type, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 'audio', 'audio', NOW())
+            ''', (summary_id, title, transcript, summary_html, questions_html, assessment_html, meeting_summary_html))
         # Invalidate cache so the new entry shows up immediately in /api/summaries
         try: cache.invalidate('summaries')
         except Exception: pass

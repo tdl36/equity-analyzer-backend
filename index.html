@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-23T11';
+        const BUILD_VERSION = '2026-04-23T12';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -2053,6 +2053,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [geminiApiKey, setGeminiApiKey] = useState(loadGeminiKeyFromStorage() || '');
             const [transcriptExpanded, setTranscriptExpanded] = useState(false);
             const [assessmentExpanded, setAssessmentExpanded] = useState(true);
+            const [meetingSummaryExpanded, setMeetingSummaryExpanded] = useState(true);
             const [editingAssessment, setEditingAssessment] = useState(false);
             const [editAssessmentValue, setEditAssessmentValue] = useState('');
             const [bgTranscriptionJob, setBgTranscriptionJob] = useState(null); // { jobId, files, title, topic, topicType, docType, detailLevel, startTime, progress }
@@ -2108,8 +2109,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     if (!res.ok) throw new Error(await getResError(res, 'Summary generation failed'));
                     data = await res.json();
                 }
-                // Generate assessment if not already present (e.g. standard mode via N8N webhook)
-                if (!data.assessment) {
+                // Generate assessment + meeting summary if not already present (e.g. standard mode via N8N webhook)
+                if (!data.assessment || !data.meetingSummary) {
                     try {
                         const assessRes = await fetch(`${DIRECT_API_URL}/api/generate-assessment`, {
                             method: 'POST',
@@ -2118,7 +2119,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         });
                         if (assessRes.ok) {
                             const assessData = await assessRes.json();
-                            data.assessment = assessData.assessment || '';
+                            if (!data.assessment) data.assessment = assessData.assessment || '';
+                            if (!data.meetingSummary) data.meetingSummary = assessData.meetingSummary || '';
                         }
                     } catch (e) {
                         console.error('Assessment generation failed:', e);
@@ -2197,6 +2199,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         summary: data.summary,
                         questions: data.questions,
                         assessment: data.assessment || '',
+                        meetingSummary: data.meetingSummary || '',
                         topic: newTopicName || currentSummaryTopic || 'General',
                         topicType: newTopicType || 'other',
                         createdAt: new Date().toISOString()
@@ -2826,6 +2829,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         summary: data.summary,
                         questions: data.questions,
                         assessment: data.assessment || '',
+                        meetingSummary: data.meetingSummary || '',
                         topic: newTopicName || currentSummaryTopic || 'General',
                         topicType: newTopicType || 'other',
                         docType: summaryDocType || 'other',
@@ -3186,8 +3190,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         data = await res.json();
                     }
 
-                    // Generate assessment if not already present (e.g. standard mode via N8N webhook)
-                    if (!data.assessment) {
+                    // Generate assessment + meeting summary if not already present (e.g. standard mode via N8N webhook)
+                    if (!data.assessment || !data.meetingSummary) {
                         try {
                             setBgTranscriptionJob(prev => prev ? { ...prev, progress: 'Generating assessment...' } : null);
                             const assessRes = await fetch(`${DIRECT_API_URL}/api/generate-assessment`, {
@@ -3197,7 +3201,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             });
                             if (assessRes.ok) {
                                 const assessData = await assessRes.json();
-                                data.assessment = assessData.assessment || '';
+                                if (!data.assessment) data.assessment = assessData.assessment || '';
+                                if (!data.meetingSummary) data.meetingSummary = assessData.meetingSummary || '';
                             }
                         } catch (e) {
                             console.error('Assessment generation failed:', e);
@@ -3219,6 +3224,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         summary: data.summary,
                         questions: data.questions,
                         assessment: data.assessment || '',
+                        meetingSummary: data.meetingSummary || '',
                         topic: jobMeta.topic,
                         topicType: jobMeta.topicType,
                         docType: jobMeta.docType,
@@ -3318,6 +3324,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             summary: data.summary,
                             questions: data.questions,
                             assessment: data.assessment || '',
+                            meetingSummary: data.meetingSummary || '',
                             topic: newTopicName || currentSummaryTopic || 'General',
                             topicType: newTopicType || 'other',
                             docType: summaryDocType || 'other',
@@ -8405,6 +8412,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         summary: data.summary,
                         questions: data.questions,
                         assessment: data.assessment || '',
+                        meetingSummary: data.meetingSummary || '',
                         topic: newTopicName || currentSummaryTopic || 'General',
                         topicType: newTopicType || 'other',
                         docType: summaryDocType || 'other',
@@ -15689,6 +15697,37 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         </>
                                                     )}
                                                 </div>
+
+                                                {/* MEETING SUMMARY Section - Collapsible (narrative topic-grouped summary) */}
+                                                {currentSummary.meetingSummary && (
+                                                <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl border border-white/10 overflow-hidden">
+                                                    <div className="bg-sky-500/15 backdrop-blur-lg border-b border-sky-400/20 px-4 py-3 flex items-center gap-2">
+                                                        <button
+                                                            onClick={() => setMeetingSummaryExpanded(!meetingSummaryExpanded)}
+                                                            className="flex items-center gap-2 hover:opacity-80 transition-opacity flex-1 min-w-0"
+                                                        >
+                                                            <span className="text-lg flex-shrink-0">📝</span>
+                                                            <h3 className="font-semibold text-sky-400 whitespace-nowrap">Meeting Summary</h3>
+                                                            <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform flex-shrink-0 ${meetingSummaryExpanded ? 'rotate-180' : ''}`} />
+                                                        </button>
+                                                        <div className="flex items-center gap-1 flex-shrink-0">
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); try { navigator.clipboard.writeText((currentSummary.meetingSummary || '').replace(/<[^>]*>/g, '')); alert('Meeting Summary copied!'); } catch (_) {} }}
+                                                                className="p-1.5 bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/10 rounded-lg transition-colors"
+                                                                title="Copy All"
+                                                            >
+                                                                <Copy className="w-4 h-4" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                    {meetingSummaryExpanded && (
+                                                        <div
+                                                            className="p-6 summary-content"
+                                                            dangerouslySetInnerHTML={{ __html: typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(currentSummary.meetingSummary) : currentSummary.meetingSummary }}
+                                                        />
+                                                    )}
+                                                </div>
+                                                )}
 
                                                 {/* FOLLOW-UP QUESTIONS Section - Collapsible */}
                                                 <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl border border-white/10 overflow-hidden">
