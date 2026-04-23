@@ -5011,32 +5011,44 @@ Include key points, decisions, action items, and important details.
 {html_format}"""
 
         keys = _get_api_keys(anthropic_api_key=anthropic_api_key, gemini_api_key=gemini_api_key)
-        summary_result = call_llm(
-            messages=[{"role": "user", "content": f"{summary_instruction}\n\nTRANSCRIPT:\n{transcript[:50000]}"}],
-            system="You are a meeting notes analyst. Generate structured HTML summaries.",
-            tier="standard",
-            max_tokens=8192,
-        )
-        summary_html = summary_result.get('text', '')
+        # Use the retry helper for transient-error resilience. Pass api_key
+        # explicitly so Anthropic is actually callable (prior version created
+        # `keys` but never passed them, falling back to env vars only).
+        try:
+            summary_result = _call_llm_stream_with_retry(
+                messages=[{"role": "user", "content": f"{summary_instruction}\n\nTRANSCRIPT:\n{transcript[:50000]}"}],
+                system="You are a meeting notes analyst. Generate structured HTML summaries.",
+                tier="standard", max_tokens=8192, api_key=anthropic_api_key,
+                label=f"audio summary ({filename})",
+            )
+        except Exception as e:
+            raise Exception(f"summary LLM failed: {e}") from e
+        summary_html = summary_result.get('text', '') or ''
 
-        questions_result = call_llm(
-            messages=[{"role": "user", "content": f"Based on this transcript, generate 3-5 key follow-up questions.\nReturn raw HTML: <ol><li>Question?</li></ol>\n\nTRANSCRIPT:\n{transcript[:20000]}"}],
-            system="Generate insightful follow-up questions.",
-            tier="fast",
-            max_tokens=2048,
-        )
-        questions_html = questions_result.get('text', '')
+        try:
+            questions_result = _call_llm_stream_with_retry(
+                messages=[{"role": "user", "content": f"Based on this transcript, generate 3-5 key follow-up questions.\nReturn raw HTML: <ol><li>Question?</li></ol>\n\nTRANSCRIPT:\n{transcript[:20000]}"}],
+                system="Generate insightful follow-up questions.",
+                tier="fast", max_tokens=2048, api_key=anthropic_api_key,
+                label=f"audio questions ({filename})",
+            )
+            questions_html = questions_result.get('text', '') or ''
+        except Exception as e:
+            print(f"[auto-audio {job_id}] questions step failed (non-fatal): {e}")
+            questions_html = ''
 
-        # Step 3: Save to DB
+        # Step 3: Save to DB. Use source_type='audio' to match existing bucket
+        # the Summary tab already displays (prior version wrote 'audio_recording'
+        # which Summary tab filters would miss).
         title = os.path.splitext(filename)[0].replace('_', ' ').replace('-', ' ')
         summary_id = str(uuid.uuid4())
         with get_db(commit=True) as (conn, cur):
             cur.execute('''
                 INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, source_type, doc_type, created_at)
-                VALUES (%s, %s, %s, %s, %s, 'audio_recording', 'audio_recording', NOW())
+                VALUES (%s, %s, %s, %s, %s, 'audio', 'audio', NOW())
             ''', (summary_id, title, transcript, summary_html, questions_html))
 
-        # Step 4: Create alert
+        # Step 4: Create success alert
         with get_db(commit=True) as (conn, cur):
             alert_id = str(uuid.uuid4())
             cur.execute('''
@@ -5054,6 +5066,17 @@ Include key points, decisions, action items, and important details.
         import traceback; traceback.print_exc()
         _transcription_jobs[job_id]['status'] = 'error'
         _transcription_jobs[job_id]['error'] = str(e)
+        # Surface failure as an alert so the user sees it in-app
+        try:
+            with get_db(commit=True) as (conn, cur):
+                cur.execute('''
+                    INSERT INTO agent_alerts (id, alert_type, ticker, title, detail, status, created_at)
+                    VALUES (%s, 'audio_error', '', %s, %s, 'new', NOW())
+                ''', (str(uuid.uuid4()),
+                      f'Audio processing failed: {filename}',
+                      json.dumps({'filename': filename, 'error': str(e)[:1000], 'jobId': job_id})))
+        except Exception as alert_err:
+            print(f"[auto-audio {job_id}] Could not record failure alert: {alert_err}")
 
 
 @app.route('/api/transcribe-audio/<job_id>', methods=['GET'])
