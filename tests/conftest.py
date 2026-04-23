@@ -8,6 +8,7 @@ import os
 
 os.environ.setdefault('CHARLIE_PASSWORD', '')
 os.environ.setdefault('CHARLIE_API_KEY', '')
+os.environ.setdefault('APSCHEDULER_DISABLED', '1')
 os.environ.setdefault('DATABASE_URL', os.environ.get('TEST_DATABASE_URL', 'postgres://localhost:5432/charlie_test'))
 
 import pytest
@@ -34,6 +35,7 @@ def clean_db():
                          signals_watchlist, media_theme_clusters, notification_prefs,
                          agent_alerts RESTART IDENTITY CASCADE
             """)
+            cur.execute("DELETE FROM app_settings WHERE key = 'media_scheduler_enabled'")
     except Exception:
         pass  # media_* tables don't exist until Task 2; agent_alerts does
     yield

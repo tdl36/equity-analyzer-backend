@@ -1678,6 +1678,15 @@ try:
 except:
     pass  # Will init when DATABASE_URL is available
 
+# Start APScheduler for media trackers (unless APSCHEDULER_DISABLED set)
+if not os.environ.get('APSCHEDULER_DISABLED'):
+    try:
+        import scheduler as _media_scheduler
+        _media_scheduler.start()
+        print("Media tracker scheduler started")
+    except Exception as e:
+        print(f"Scheduler start failed (non-fatal): {e}")
+
 
 # ============================================
 # APP SETTINGS ENDPOINTS (API key persistence)
