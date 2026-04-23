@@ -1430,6 +1430,93 @@ def init_db():
             cur.execute('CREATE INDEX IF NOT EXISTS idx_agent_alerts_status ON agent_alerts(status)')
             cur.execute('CREATE INDEX IF NOT EXISTS idx_agent_alerts_created ON agent_alerts(created_at DESC)')
 
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS media_feeds (
+                    id                VARCHAR(100) PRIMARY KEY,
+                    source_type       VARCHAR(20) NOT NULL,
+                    name              TEXT NOT NULL,
+                    feed_url          TEXT NOT NULL,
+                    sector_tags       TEXT[] DEFAULT '{}',
+                    muted             BOOLEAN DEFAULT FALSE,
+                    last_polled_at    TIMESTAMP,
+                    last_episode_at   TIMESTAMP,
+                    poll_interval_min INT DEFAULT 30,
+                    error_count       INT DEFAULT 0,
+                    last_error        TEXT,
+                    created_at        TIMESTAMP DEFAULT NOW()
+                )
+            ''')
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS media_episodes (
+                    id                VARCHAR(100) PRIMARY KEY,
+                    feed_id           VARCHAR(100) REFERENCES media_feeds(id) ON DELETE CASCADE,
+                    guid              TEXT NOT NULL,
+                    title             TEXT NOT NULL,
+                    published_at      TIMESTAMP,
+                    audio_url         TEXT,
+                    source_url        TEXT,
+                    show_notes        TEXT,
+                    duration_sec      INT,
+                    transcript        TEXT,
+                    transcript_source VARCHAR(20),
+                    status            VARCHAR(20) DEFAULT 'new',
+                    error_message     TEXT,
+                    cost_usd          NUMERIC(10,4) DEFAULT 0,
+                    created_at        TIMESTAMP DEFAULT NOW(),
+                    UNIQUE(feed_id, guid)
+                )
+            ''')
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS media_digest_points (
+                    id            VARCHAR(100) PRIMARY KEY,
+                    episode_id    VARCHAR(100) REFERENCES media_episodes(id) ON DELETE CASCADE,
+                    point_order   INT NOT NULL,
+                    text          TEXT NOT NULL,
+                    tickers       TEXT[] DEFAULT '{}',
+                    sector_tags   TEXT[] DEFAULT '{}',
+                    theme_tags    TEXT[] DEFAULT '{}',
+                    timestamp_sec INT,
+                    material      BOOLEAN DEFAULT FALSE,
+                    cluster_id    VARCHAR(100),
+                    created_at    TIMESTAMP DEFAULT NOW()
+                )
+            ''')
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS signals_watchlist (
+                    id                VARCHAR(100) PRIMARY KEY,
+                    kind              VARCHAR(20) NOT NULL,
+                    value             TEXT NOT NULL,
+                    associated_ticker VARCHAR(20),
+                    muted             BOOLEAN DEFAULT FALSE,
+                    note              TEXT,
+                    created_at        TIMESTAMP DEFAULT NOW(),
+                    UNIQUE(kind, value)
+                )
+            ''')
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS media_theme_clusters (
+                    id              VARCHAR(100) PRIMARY KEY,
+                    theme           TEXT NOT NULL,
+                    summary         TEXT,
+                    point_ids       TEXT[] DEFAULT '{}',
+                    primary_tickers TEXT[] DEFAULT '{}',
+                    week_start      DATE NOT NULL,
+                    created_at      TIMESTAMP DEFAULT NOW()
+                )
+            ''')
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS notification_prefs (
+                    key   VARCHAR(50) PRIMARY KEY,
+                    value JSONB
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_episodes_status ON media_episodes(status)')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_episodes_feed_published ON media_episodes(feed_id, published_at DESC)')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_points_episode ON media_digest_points(episode_id, point_order)')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_points_tickers_gin ON media_digest_points USING GIN(tickers)')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_points_material ON media_digest_points(material, created_at DESC)')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_points_cluster ON media_digest_points(cluster_id)')
+
         print("Database tables initialized")
     except Exception as e:
         print(f"Database init error (may be normal on first run): {e}")
