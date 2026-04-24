@@ -1954,8 +1954,18 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ title: 'Charlie test', body: 'Web push is working.', url: '/' }),
                     });
-                    if (r.ok) alert('Test push sent — check your notifications');
-                    else alert('Test failed: backend may be missing VAPID keys');
+                    const j = await r.json().catch(() => ({}));
+                    if (!r.ok) { alert('Test failed: ' + (j.error || 'backend error')); return; }
+                    const { total = 0, sent = 0, failed = 0, reason = null, errors = [] } = j;
+                    if (sent > 0 && failed === 0) {
+                        alert(`Test push sent to ${sent} device${sent === 1 ? '' : 's'} — check your notifications.`);
+                    } else if (total === 0) {
+                        alert('No push subscriptions saved on the backend. Tap Unsubscribe then Enable push again, then retry.');
+                    } else if (failed > 0) {
+                        alert(`Push failed for ${failed}/${total} subscription(s). First error:\n${(errors[0] || '').slice(0, 200)}`);
+                    } else {
+                        alert('Test push returned: ' + (reason || 'no-op'));
+                    }
                 } catch (e) { alert('Test error: ' + e.message); }
             };
             useEffect(() => {
