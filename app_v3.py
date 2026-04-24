@@ -339,34 +339,21 @@ def media_admin_kick():
             )
             reset['failed'] = len(cur.fetchall())
 
-    # Run the batches synchronously so we see immediate results
-    transcribed = []
-    extract_errors = []
-    try:
-        from media_trackers import transcribe as _tr
-        # Collect ids ourselves so we can report what was picked
-        with get_db() as (_c, cur):
-            scope = f"AND feed_id = %s" if feed_id else ''
-            cur.execute(
-                f"SELECT id FROM media_episodes WHERE status='new' {scope} "
-                f"ORDER BY published_at DESC NULLS LAST LIMIT 10",
-                feed_params,
-            )
-            target_ids = [r['id'] for r in cur.fetchall()]
-        for eid in target_ids:
-            try:
-                _tr.transcribe_episode(eid)
-                transcribed.append(eid)
-            except Exception as e:
-                extract_errors.append({'id': eid, 'stage': 'transcribe', 'error': str(e)})
-    except Exception as e:
-        extract_errors.append({'stage': 'transcribe_batch_setup', 'error': str(e)})
-
-    try:
-        from media_trackers import extractor as _ex
-        _ex.process_extract_batch()
-    except Exception as e:
-        extract_errors.append({'stage': 'extract_batch', 'error': str(e)})
+    # Fire the batches in a background thread so the HTTP request
+    # returns in <1s (transcription can take minutes per episode and
+    # Cloudflare/Render proxies would time out).
+    def _kick_worker():
+        try:
+            from media_trackers import transcribe as _tr
+            _tr.process_transcribe_batch()
+        except Exception as e:
+            print(f'kick transcribe_batch error: {e}')
+        try:
+            from media_trackers import extractor as _ex
+            _ex.process_extract_batch()
+        except Exception as e:
+            print(f'kick extract_batch error: {e}')
+    threading.Thread(target=_kick_worker, daemon=True).start()
 
     status_after = {}
     with get_db() as (_c, cur):
@@ -378,9 +365,9 @@ def media_admin_kick():
 
     return jsonify({
         'reset': reset,
-        'transcribed': transcribed,
-        'extractErrors': extract_errors,
         'statusAfter': status_after,
+        'backgroundPipelineStarted': True,
+        'note': 'Transcribe + extract running in background. Poll /api/media/feeds/{id}/episodes in a minute or two.',
     })
 
 
