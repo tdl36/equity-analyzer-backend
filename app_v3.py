@@ -2884,6 +2884,27 @@ def init_db():
             cur.execute('CREATE INDEX IF NOT EXISTS idx_analyst_activities_ticker ON analyst_activities(ticker)')
             cur.execute("CREATE INDEX IF NOT EXISTS idx_analyst_activities_pending ON analyst_activities(status, created_at DESC) WHERE status='pending_review'")
 
+            # Transcription job persistence — the in-memory _transcription_jobs
+            # dict got wiped on every backend deploy, orphaning in-flight audio
+            # transcriptions. Mirror state here so the local agent can see if a
+            # job succeeded and only move the source file to Processed/ on
+            # confirmed completion.
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS transcription_jobs (
+                    id VARCHAR(100) PRIMARY KEY,
+                    filename TEXT,
+                    status VARCHAR(30) DEFAULT 'starting',
+                    progress TEXT,
+                    error TEXT,
+                    summary_id VARCHAR(100),
+                    auto_process BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP DEFAULT NOW(),
+                    completed_at TIMESTAMP
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_transcription_jobs_status ON transcription_jobs(status, created_at DESC)')
+
             # Phase 3d: earnings calendar + per-ticker IR/PR/transcript config.
             cur.execute('''
                 CREATE TABLE IF NOT EXISTS earnings_calendar (
@@ -5640,6 +5661,72 @@ def extract_summary_text():
 # In-memory store for async transcription jobs
 _transcription_jobs = {}
 
+
+def _mirror_transcription_state(job_id: str) -> None:
+    """Persist the current in-memory transcription job state to Postgres.
+    Cheap upsert — called at major status transitions so that if the Python
+    process dies, the local agent + UI can still see what happened."""
+    if not job_id:
+        return
+    job = _transcription_jobs.get(job_id) or {}
+    status = (job.get('status') or 'starting').strip()
+    progress = str(job.get('progress') or '')[:500]
+    error = str(job.get('error') or '')[:2000] if job.get('error') else None
+    filename = str(job.get('filename') or '')[:500]
+    summary_id = job.get('summaryId') or job.get('summary_id')
+    auto_process = bool(job.get('autoProcess'))
+    completed = status in ('complete', 'error', 'failed')
+    try:
+        with get_db(commit=True) as (_c, cur):
+            cur.execute('''
+                INSERT INTO transcription_jobs
+                    (id, filename, status, progress, error, summary_id, auto_process, completed_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, CASE WHEN %s THEN NOW() ELSE NULL END, NOW())
+                ON CONFLICT (id) DO UPDATE SET
+                    status = EXCLUDED.status,
+                    progress = EXCLUDED.progress,
+                    error = COALESCE(EXCLUDED.error, transcription_jobs.error),
+                    summary_id = COALESCE(EXCLUDED.summary_id, transcription_jobs.summary_id),
+                    completed_at = COALESCE(EXCLUDED.completed_at, transcription_jobs.completed_at),
+                    updated_at = NOW()
+            ''', (job_id, filename, status, progress, error, summary_id, auto_process, completed))
+    except Exception as e:
+        # Don't crash the transcription thread if DB mirror fails; dict is
+        # still authoritative at runtime.
+        print(f'_mirror_transcription_state({job_id}): {e}')
+
+
+def _cleanup_orphaned_transcription_jobs() -> int:
+    """On backend startup, any row still marked as in-flight is orphaned
+    (the Python process that owned it is gone). Mark them failed so the
+    local agent can retry. Returns the count of rows flipped."""
+    try:
+        with get_db(commit=True) as (_c, cur):
+            cur.execute('''
+                UPDATE transcription_jobs
+                   SET status='failed',
+                       error=COALESCE(error, 'orphaned by backend restart before completion'),
+                       completed_at=NOW(),
+                       updated_at=NOW()
+                 WHERE status NOT IN ('complete', 'error', 'failed')
+                   AND created_at < NOW() - INTERVAL '10 minutes'
+                RETURNING id
+            ''')
+            rows = cur.fetchall() or []
+        if rows:
+            print(f'[startup] Flipped {len(rows)} orphaned transcription jobs to failed')
+        return len(rows)
+    except Exception as e:
+        print(f'_cleanup_orphaned_transcription_jobs error: {e}')
+        return 0
+
+
+# Run once at import — right after init_db creates the table.
+try:
+    _cleanup_orphaned_transcription_jobs()
+except Exception:
+    pass
+
 # In-memory store for async infographic generation jobs
 _infographic_jobs = {}
 
@@ -5762,6 +5849,7 @@ def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key
     try:
         file_size_mb = len(file_content) / (1024 * 1024)
         _transcription_jobs[job_id]['status'] = 'transcribing'
+        _mirror_transcription_state(job_id)
         print(f"[Job {job_id}] Starting transcription: {filename} ({file_size_mb:.1f}MB)")
 
         client = genai.Client(api_key=gemini_api_key)
@@ -6020,6 +6108,7 @@ def transcribe_audio():
         import uuid, threading
         job_id = str(uuid.uuid4())[:8]
         _transcription_jobs[job_id] = {'status': 'starting', 'filename': file.filename}
+        _mirror_transcription_state(job_id)
 
         topic = request.form.get('topic', '')
         anthropic_api_key = request.form.get('apiKey', '')
@@ -6074,6 +6163,7 @@ def auto_process_audio():
 
         job_id = str(uuid.uuid4())[:8]
         _transcription_jobs[job_id] = {'status': 'starting', 'filename': filename, 'autoProcess': True}
+        _mirror_transcription_state(job_id)
 
         thread = threading.Thread(
             target=_run_auto_process_audio,
@@ -6103,6 +6193,7 @@ def _run_auto_process_audio(job_id, file_content, filename, mime_type, gemini_ap
 
         # Step 2: Generate summary
         _transcription_jobs[job_id]['status'] = 'summarizing'
+        _mirror_transcription_state(job_id)
         print(f"[auto-audio {job_id}] Transcription done ({len(transcript)} chars), generating summary...")
 
         html_format = """OUTPUT FORMAT — Return raw HTML. No markdown. No code fences.
@@ -6226,6 +6317,7 @@ Be conversational and direct. Don't hedge.
 
         _transcription_jobs[job_id]['status'] = 'complete'
         _transcription_jobs[job_id]['summaryId'] = summary_id
+        _mirror_transcription_state(job_id)
         print(f"[auto-audio {job_id}] Complete: {title} saved as {summary_id}")
 
     except Exception as e:
@@ -6233,6 +6325,7 @@ Be conversational and direct. Don't hedge.
         import traceback; traceback.print_exc()
         _transcription_jobs[job_id]['status'] = 'error'
         _transcription_jobs[job_id]['error'] = str(e)
+        _mirror_transcription_state(job_id)
         # Surface failure as an alert so the user sees it in-app
         try:
             with get_db(commit=True) as (conn, cur):
@@ -6248,9 +6341,27 @@ Be conversational and direct. Don't hedge.
 
 @app.route('/api/transcribe-audio/<job_id>', methods=['GET'])
 def transcribe_audio_status(job_id):
-    """Poll for transcription job status."""
+    """Poll for transcription job status. Falls back to the DB mirror when
+    the in-memory dict doesn't have the job (happens after backend restarts
+    mid-run)."""
     job = _transcription_jobs.get(job_id)
     if not job:
+        # DB fallback — surfaces status for jobs whose owning Python process is gone
+        try:
+            with get_db() as (_c, cur):
+                cur.execute('SELECT * FROM transcription_jobs WHERE id=%s', (job_id,))
+                row = cur.fetchone()
+            if row:
+                return jsonify({
+                    'status': row.get('status') or 'unknown',
+                    'progress': row.get('progress') or '',
+                    'error': row.get('error') or '',
+                    'filename': row.get('filename') or '',
+                    'summaryId': row.get('summary_id'),
+                    'persisted': True,
+                })
+        except Exception as e:
+            print(f'transcribe_audio_status DB fallback: {e}')
         return jsonify({'error': 'Job not found'}), 404
     if job['status'] == 'done':
         result = dict(job)

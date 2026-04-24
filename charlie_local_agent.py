@@ -2243,6 +2243,71 @@ _known_audio_files = set()
 _audio_initialized = False
 AUDIO_EXTS = {'.mp3', '.mp4', '.m4a', '.wav', '.webm', '.ogg', '.flac'}
 
+def _wait_for_audio_job_and_move(fname: str, fpath: Path, job_id: str) -> None:
+    """Poll the transcription job status. Move to Processed/ only if the
+    backend reports 'complete'. If the job ends up 'error'/'failed', leave
+    the file in place so the next tick re-uploads (useful after backend
+    deploys that kill in-flight transcriptions)."""
+    if not job_id or job_id == '?':
+        return
+    import threading as _t
+
+    def _poll():
+        import time as _time
+        processed_dir = SUMMARIES_DIR / "Processed"
+        processed_dir.mkdir(exist_ok=True)
+        max_iters = 120  # 120 * 10s = 20 min max
+        for i in range(max_iters):
+            _time.sleep(10)
+            try:
+                r = requests.get(
+                    f"{CHARLIE_API}/api/transcribe-audio/{job_id}",
+                    headers=_agent_headers(),
+                    timeout=15,
+                )
+                if r.status_code == 404:
+                    # Job id never landed (or rolled off) — treat as failure.
+                    log.warning(f"Audio job {job_id} not found (backend restart?); leaving {fname} for next tick retry")
+                    return
+                if not r.ok:
+                    continue
+                js = r.json()
+                status = (js.get('status') or '').lower()
+                if status == 'complete' or js.get('summaryId'):
+                    try:
+                        if fpath.exists():
+                            fpath.rename(processed_dir / fname)
+                            log.info(f"Audio complete: {fname} (job {job_id}); moved to Processed/")
+                        else:
+                            log.info(f"Audio complete: {fname} (job {job_id})")
+                    except Exception as e:
+                        log.warning(f"Move to Processed/ failed for {fname}: {e}")
+                    # Also remove from known-files so a re-dropped version
+                    # next time will fire a fresh job
+                    try:
+                        _known_audio_files.discard(fname)
+                    except Exception:
+                        pass
+                    return
+                if status in ('error', 'failed'):
+                    err = js.get('error') or 'unknown'
+                    log.warning(f"Audio job {job_id} failed for {fname}: {err[:200]}. Leaving file for next-tick retry.")
+                    try:
+                        _known_audio_files.discard(fname)
+                    except Exception:
+                        pass
+                    return
+            except Exception as e:
+                log.debug(f"Audio poll ({job_id}) error: {e}")
+        log.warning(f"Audio job {job_id} for {fname} still running after 20 min — leaving file in place for next tick to re-check")
+        try:
+            _known_audio_files.discard(fname)
+        except Exception:
+            pass
+
+    _t.Thread(target=_poll, daemon=True).start()
+
+
 def check_for_new_audio():
     """Scan SUMMARIES/ folder for new audio files, auto-process them."""
     global _known_audio_files, _audio_initialized
@@ -2284,15 +2349,12 @@ def check_for_new_audio():
                 )
                 if res.ok:
                     data = res.json()
-                    log.info(f"Audio auto-process started: {fname} (job {data.get('jobId', '?')})")
-                    # Move to Processed/
-                    processed_dir = SUMMARIES_DIR / "Processed"
-                    processed_dir.mkdir(exist_ok=True)
-                    try:
-                        fpath.rename(processed_dir / fname)
-                        log.info(f"Moved {fname} to Processed/")
-                    except Exception as e:
-                        log.warning(f"Could not move {fname} to Processed/: {e}")
+                    job_id = data.get('jobId', '?')
+                    log.info(f"Audio auto-process started: {fname} (job {job_id})")
+                    # Poll job status for up to 20 min. Only move to Processed/
+                    # on confirmed 'complete'. On 'error' / 'failed' leave the
+                    # file in place so the next agent tick retries it.
+                    _wait_for_audio_job_and_move(fname, fpath, job_id)
                 else:
                     log.warning(f"Audio auto-process failed for {fname}: {res.status_code}")
             except Exception as e:
