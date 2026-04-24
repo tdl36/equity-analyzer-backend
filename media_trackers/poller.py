@@ -4,6 +4,7 @@ poll_feed(feed_id) — fetches one feed, upserts episodes, updates feed metadata
 poll_all_feeds()   — iterates non-muted feeds due for polling.
 backfill_feed(id)  — first-time add helper; poll once ignoring backoff window.
 """
+import re
 import uuid
 import time
 import requests
@@ -12,6 +13,27 @@ from datetime import datetime, timezone, timedelta
 from email.utils import parsedate_to_datetime
 
 import app_v3
+
+
+_STYLESHEET_PI_RE = re.compile(rb'<\?xml-stylesheet[^?]*\?>', re.DOTALL)
+
+
+def _parse_feed_robust(body: bytes):
+    """Wrap feedparser.parse with a retry that strips xml-stylesheet PIs.
+    Some publishers (e.g. Market Huddle via Seriously Simple Podcasting
+    plugin) emit a stylesheet PI on the same line as the XML declaration
+    with no whitespace before <rss>, which feedparser's strict parser
+    rejects as not-well-formed even though the feed parses fine otherwise.
+    If the first parse comes back bozo with zero entries, strip the PI
+    and try again.
+    """
+    parsed = feedparser.parse(body)
+    if parsed.bozo and not parsed.entries and _STYLESHEET_PI_RE.search(body):
+        cleaned = _STYLESHEET_PI_RE.sub(b'', body, count=1)
+        retry = feedparser.parse(cleaned)
+        if retry.entries:
+            return retry
+    return parsed
 
 
 MAX_ERRORS_BEFORE_MUTE = 5
@@ -88,7 +110,7 @@ def poll_feed(feed_id: str) -> None:
         _record_error(feed_id, f"HTTP: {e}")
         return
 
-    parsed = feedparser.parse(resp.content)
+    parsed = _parse_feed_robust(resp.content)
     if parsed.bozo and not parsed.entries:
         _record_error(feed_id, f"parse: {parsed.bozo_exception}")
         return

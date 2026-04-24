@@ -294,6 +294,23 @@ def media_feeds_list():
     return jsonify({'feeds': feeds, 'total': len(feeds)})
 
 
+@app.route('/api/media/feeds/<feed_id>/reset', methods=['POST'])
+def media_feeds_reset(feed_id):
+    """Clear error_count + last_error and unmute a feed. Used after
+    fixing a parser issue that had caused auto-mute."""
+    with get_db(commit=True) as (_c, cur):
+        cur.execute('''
+            UPDATE media_feeds
+               SET muted = FALSE, error_count = 0, last_error = NULL
+             WHERE id = %s
+             RETURNING id, name, muted, error_count
+        ''', (feed_id,))
+        row = cur.fetchone()
+    if not row:
+        return jsonify({'error': 'not found'}), 404
+    return jsonify({'ok': True, 'feed': dict(row)})
+
+
 @app.route('/api/media/feeds/reseed', methods=['POST'])
 def media_feeds_reseed():
     """Re-run seed_feeds.seed() against the current DB. Idempotent via
