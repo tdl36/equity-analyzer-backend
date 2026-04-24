@@ -306,16 +306,18 @@ def send_event_recap_briefing(activity_id: str) -> dict:
         topic = inp.get('topic') or row.get('activity_type') or 'Earnings Recap'
         subject = f'[Charlie] {row.get("ticker")} {topic} — recap ready'
         _email_send(subject, html, to=_recipient_for(pb))
-        # Also fire a web push so the user gets an instant ping
+        # Also fire an instant alert on any enabled channel
         try:
-            from media_trackers.notifications import _push_send
-            _push_send(
-                title=f"Recap ready · {row.get('ticker')}",
-                body=f"{topic} — tap to review",
-                url='/#analysts',
-            )
+            from media_trackers.notifications import _push_send, _telegram_send, _load_channels
+            title = f"Recap ready · {row.get('ticker')}"
+            body = f"{topic} — tap to review"
+            ch = _load_channels()
+            if ch.get('push'):
+                _push_send(title=title, body=body, url='/#analysts')
+            if ch.get('telegram'):
+                _telegram_send(f"*{title}*\n{body}")
         except Exception as _e:
-            print(f'recap push send failed: {_e}')
+            print(f'recap alert send failed: {_e}')
         return {'sent': True}
     except Exception as e:
         print(f'send_event_recap_briefing error: {e}')

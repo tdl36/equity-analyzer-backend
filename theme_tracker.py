@@ -142,16 +142,18 @@ def run_theme_scan() -> dict:
                               'windowHours': WINDOW_HOURS,
                           })))
                 stats['alerts_created'] += 1
-                # Fire a web push so the analyst sees it immediately
+                # Fire an instant alert on any enabled channel
                 try:
-                    from media_trackers.notifications import _push_send
-                    _push_send(
-                        title=f"Theme alert · {a.get('name') or 'Analyst'}",
-                        body=f"{q['theme']} · {q['bulletCount']} bullets across {', '.join(q['tickers'])}",
-                        url='/#analysts',
-                    )
+                    from media_trackers.notifications import _push_send, _telegram_send, _load_channels
+                    title = f"Theme alert · {a.get('name') or 'Analyst'}"
+                    body = f"{q['theme']} · {q['bulletCount']} bullets across {', '.join(q['tickers'])}"
+                    ch = _load_channels()
+                    if ch.get('push'):
+                        _push_send(title=title, body=body, url='/#analysts')
+                    if ch.get('telegram'):
+                        _telegram_send(f"*{title}*\n{body}")
                 except Exception as _e:
-                    print(f'theme push send failed: {_e}')
+                    print(f'theme alert send failed: {_e}')
             except Exception as e:
                 print(f'theme_tracker: insert failed for analyst {a["id"]}: {e}')
     return stats
