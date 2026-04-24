@@ -54,7 +54,7 @@ if (typeof window !== 'undefined') {
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-24T22';
+        const BUILD_VERSION = '2026-04-24T23';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -1883,6 +1883,81 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [finnhubSyncStart, setFinnhubSyncStart] = useState(null);
             const [finnhubSyncElapsed, setFinnhubSyncElapsed] = useState(0);
             const [finnhubSyncResult, setFinnhubSyncResult] = useState(null);
+            // Web Push state + helpers
+            const [pushStatus, setPushStatus] = useState('unknown');
+            useEffect(() => {
+                (async () => {
+                    if (typeof window === 'undefined') return;
+                    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+                        setPushStatus('unsupported'); return;
+                    }
+                    if (Notification.permission === 'denied') { setPushStatus('denied'); return; }
+                    try {
+                        const reg = await navigator.serviceWorker.ready;
+                        const sub = await reg.pushManager.getSubscription();
+                        setPushStatus(sub ? 'subscribed' : 'unsubscribed');
+                    } catch (e) { setPushStatus('error'); console.warn('push init:', e); }
+                })();
+            }, []);
+            const urlBase64ToUint8Array = (base64String) => {
+                const padding = '='.repeat((4 - base64String.length % 4) % 4);
+                const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+                const raw = atob(base64);
+                const out = new Uint8Array(raw.length);
+                for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+                return out;
+            };
+            const enableWebPush = async () => {
+                try {
+                    if (Notification.permission !== 'granted') {
+                        const p = await Notification.requestPermission();
+                        if (p !== 'granted') { setPushStatus(p === 'denied' ? 'denied' : 'unsubscribed'); return; }
+                    }
+                    const keyRes = await fetch(`${API_URL}/api/push/vapid-public-key`);
+                    if (!keyRes.ok) { alert('Backend push not configured (VAPID_PUBLIC_KEY missing)'); return; }
+                    const { publicKey } = await keyRes.json();
+                    const reg = await navigator.serviceWorker.ready;
+                    const sub = await reg.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: urlBase64ToUint8Array(publicKey),
+                    });
+                    const r = await fetch(`${API_URL}/api/push/subscribe`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ subscription: sub.toJSON() }),
+                    });
+                    if (!r.ok) throw new Error('subscribe save failed');
+                    setPushStatus('subscribed');
+                    alert('Web push enabled on this device');
+                } catch (e) { setPushStatus('error'); alert('Push enable failed: ' + e.message); }
+            };
+            const disableWebPush = async () => {
+                try {
+                    const reg = await navigator.serviceWorker.ready;
+                    const sub = await reg.pushManager.getSubscription();
+                    if (sub) {
+                        const endpoint = sub.endpoint;
+                        await sub.unsubscribe();
+                        await fetch(`${API_URL}/api/push/unsubscribe`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ endpoint }),
+                        });
+                    }
+                    setPushStatus('unsubscribed');
+                } catch (e) { alert('Unsubscribe failed: ' + e.message); }
+            };
+            const sendTestPush = async () => {
+                try {
+                    const r = await fetch(`${API_URL}/api/push/test`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ title: 'Charlie test', body: 'Web push is working.', url: '/' }),
+                    });
+                    if (r.ok) alert('Test push sent — check your notifications');
+                    else alert('Test failed: backend may be missing VAPID keys');
+                } catch (e) { alert('Test error: ' + e.message); }
+            };
             useEffect(() => {
                 if (!finnhubSyncing || !finnhubSyncStart) return;
                 const tick = () => setFinnhubSyncElapsed(Math.floor((Date.now() - finnhubSyncStart) / 1000));
@@ -24939,6 +25014,34 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             </button>
                                         </div>
                                         <p className="text-xs text-slate-500 mt-2">Per-symbol fetch (1 req/sec) across all covered tickers — a 36-ticker sync takes ~40s. Nightly at 08:00 UTC. Free key at <a href="https://finnhub.io/register" target="_blank" rel="noreferrer" className="text-emerald-400 underline">finnhub.io</a>.</p>
+                                    </div>
+
+                                    {/* Web Push Notifications */}
+                                    <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl p-4 border border-white/10">
+                                        <h3 className="font-semibold mb-3 flex items-center gap-2">
+                                            <Key className="w-4 h-4 text-pink-400" />
+                                            Web Push Notifications
+                                        </h3>
+                                        <p className="text-xs text-slate-400 mb-2">Get a push alert on this device the moment: (a) an Auto-Mode earnings recap completes, (b) a cross-stock theme hits threshold, (c) a material podcast bullet mentions a covered ticker.</p>
+                                        <div className="flex items-center gap-2">
+                                            <span className={`text-[10px] px-2 py-1 rounded ${pushStatus === 'subscribed' ? 'bg-emerald-500/20 text-emerald-300' : pushStatus === 'denied' ? 'bg-red-500/20 text-red-300' : 'bg-white/10 text-slate-400'}`}>
+                                                {pushStatus === 'subscribed' ? 'Subscribed ✓'
+                                                    : pushStatus === 'denied' ? 'Permission denied (check browser settings)'
+                                                    : pushStatus === 'unsupported' ? 'Not supported on this browser'
+                                                    : pushStatus === 'error' ? 'Error — see console'
+                                                    : 'Not subscribed'}
+                                            </span>
+                                            {pushStatus !== 'subscribed' && pushStatus !== 'unsupported' && (
+                                                <button onClick={enableWebPush} className="px-3 py-1 bg-pink-600 hover:bg-pink-500 rounded text-xs font-medium">Enable push</button>
+                                            )}
+                                            {pushStatus === 'subscribed' && (
+                                                <>
+                                                    <button onClick={sendTestPush} className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded text-xs">Send test</button>
+                                                    <button onClick={disableWebPush} className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded text-xs">Unsubscribe</button>
+                                                </>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-slate-500 mt-2">Requires VAPID_PUBLIC_KEY + VAPID_PRIVATE_KEY set on the backend. iOS needs Charlie installed as a PWA (Share → Add to Home Screen) before push is allowed.</p>
                                     </div>
 
                                     {/* Google Drive OAuth Client ID Section */}

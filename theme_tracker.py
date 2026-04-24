@@ -142,6 +142,16 @@ def run_theme_scan() -> dict:
                               'windowHours': WINDOW_HOURS,
                           })))
                 stats['alerts_created'] += 1
+                # Fire a web push so the analyst sees it immediately
+                try:
+                    from media_trackers.notifications import _push_send
+                    _push_send(
+                        title=f"Theme alert · {a.get('name') or 'Analyst'}",
+                        body=f"{q['theme']} · {q['bulletCount']} bullets across {', '.join(q['tickers'])}",
+                        url='/#analysts',
+                    )
+                except Exception as _e:
+                    print(f'theme push send failed: {_e}')
             except Exception as e:
                 print(f'theme_tracker: insert failed for analyst {a["id"]}: {e}')
     return stats

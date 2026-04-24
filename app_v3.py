@@ -21527,6 +21527,97 @@ def earnings_config_put(ticker):
 _finnhub_sync_state = {'running': False, 'started_at': None}
 
 
+@app.route('/api/push/vapid-public-key', methods=['GET'])
+def push_vapid_public_key():
+    """Return the VAPID application public key so the browser can
+    subscribe. Set VAPID_PUBLIC_KEY on Render (paired with
+    VAPID_PRIVATE_KEY used by pywebpush)."""
+    key = os.environ.get('VAPID_PUBLIC_KEY', '')
+    if not key:
+        return jsonify({'error': 'VAPID_PUBLIC_KEY not set on backend'}), 503
+    return jsonify({'publicKey': key})
+
+
+@app.route('/api/push/subscribe', methods=['POST'])
+def push_subscribe():
+    """Persist a browser push subscription. Body: the PushSubscription
+    JSON object (endpoint + keys.p256dh + keys.auth). We store the list
+    in app_settings under notification_prefs.push_subscriptions."""
+    try:
+        data = request.json or {}
+        sub = data.get('subscription') or data
+        endpoint = (sub or {}).get('endpoint')
+        keys = (sub or {}).get('keys') or {}
+        if not endpoint or not keys.get('p256dh') or not keys.get('auth'):
+            return jsonify({'error': 'subscription missing endpoint/keys'}), 400
+        sub_record = {'endpoint': endpoint, 'keys': keys, 'saved_at': datetime.utcnow().isoformat()}
+        with get_db(commit=True) as (_c, cur):
+            cur.execute("SELECT value FROM notification_prefs WHERE key='push_subscriptions'")
+            row = cur.fetchone()
+            existing = []
+            if row and row.get('value'):
+                val = row['value']
+                if isinstance(val, str):
+                    try:
+                        existing = json.loads(val)
+                    except Exception:
+                        existing = []
+                elif isinstance(val, list):
+                    existing = val
+            # Dedup on endpoint
+            existing = [s for s in existing if (s or {}).get('endpoint') != endpoint]
+            existing.append(sub_record)
+            cur.execute('''
+                INSERT INTO notification_prefs (key, value, updated_at)
+                VALUES ('push_subscriptions', %s::jsonb, NOW())
+                ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()
+            ''', (json.dumps(existing),))
+        return jsonify({'ok': True, 'subscriptionCount': len(existing)})
+    except Exception as e:
+        print(f'push_subscribe error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/push/unsubscribe', methods=['POST'])
+def push_unsubscribe():
+    try:
+        data = request.json or {}
+        endpoint = (data.get('subscription') or data).get('endpoint') or data.get('endpoint')
+        if not endpoint:
+            return jsonify({'error': 'endpoint required'}), 400
+        with get_db(commit=True) as (_c, cur):
+            cur.execute("SELECT value FROM notification_prefs WHERE key='push_subscriptions'")
+            row = cur.fetchone()
+            val = row.get('value') if row else None
+            if isinstance(val, str):
+                try: val = json.loads(val)
+                except Exception: val = []
+            val = [s for s in (val or []) if (s or {}).get('endpoint') != endpoint]
+            cur.execute('''
+                INSERT INTO notification_prefs (key, value, updated_at)
+                VALUES ('push_subscriptions', %s::jsonb, NOW())
+                ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()
+            ''', (json.dumps(val),))
+        return jsonify({'ok': True, 'remaining': len(val)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/push/test', methods=['POST'])
+def push_test():
+    """Fire a test push to all saved subscriptions."""
+    try:
+        data = request.json or {}
+        title = data.get('title') or 'Charlie test push'
+        body = data.get('body') or 'If you see this, push is wired correctly.'
+        url = data.get('url') or '/'
+        from media_trackers import notifications as _nt
+        _nt._push_send(title, body, url=url)
+        return jsonify({'ok': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/themes/scan', methods=['POST'])
 def themes_scan_trigger():
     """Manually fire the theme-tracker scan for all analysts. Normally runs

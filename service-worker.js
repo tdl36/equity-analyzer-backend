@@ -1,6 +1,6 @@
 // Charlie - Equity Analyzer Service Worker
 // BUILD_VERSION is updated on each deploy to trigger cache invalidation
-const BUILD_VERSION = '20260424-22';
+const BUILD_VERSION = '20260424-23';
 const CACHE_NAME = 'charlie-' + BUILD_VERSION;
 
 const STATIC_ASSETS = [
@@ -42,6 +42,51 @@ self.addEventListener('activate', (event) => {
       );
     }).then(() => self.clients.claim())
   );
+});
+
+// Web push — show native notification for payloads the backend sends.
+// Payload shape (from media_trackers/notifications._push_send):
+//   { title, body, url }
+self.addEventListener('push', (event) => {
+  let data = { title: 'Charlie', body: 'You have a new alert', url: '/' };
+  try {
+    if (event.data) {
+      const raw = event.data.text();
+      try { data = { ...data, ...JSON.parse(raw) }; }
+      catch { data.body = raw; }
+    }
+  } catch (e) { console.warn('push parse error', e); }
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body || '',
+      icon: '/icon-192.png',
+      badge: '/icon-152.png',
+      data: { url: data.url || '/' },
+      tag: data.url || 'charlie-alert',
+      renotify: true,
+    })
+  );
+});
+
+// Clicking the notification focuses the existing Charlie tab if open, or
+// opens a new one at the payload's url.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = (event.notification.data && event.notification.data.url) || '/';
+  event.waitUntil((async () => {
+    const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of all) {
+      if ('focus' in client) {
+        try {
+          if (client.url.includes(self.location.origin)) {
+            await client.navigate(targetUrl);
+            return client.focus();
+          }
+        } catch {}
+      }
+    }
+    if (self.clients.openWindow) return self.clients.openWindow(targetUrl);
+  })());
 });
 
 // Fetch event - network first, fallback to cache
