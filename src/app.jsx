@@ -1961,6 +1961,21 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     alert('Web push enabled on this device');
                 } catch (e) { setPushStatus('error'); alert('Push enable failed: ' + e.message); }
             };
+            const showLocalTest = async () => {
+                try {
+                    if (Notification.permission !== 'granted') {
+                        alert('Notification permission not granted — tap Enable push first.');
+                        return;
+                    }
+                    const reg = await waitForActiveSW();
+                    await reg.showNotification('Charlie local test', {
+                        body: 'If you see this banner, the service worker can show notifications. Push pipeline is broken if Send-test does not.',
+                        icon: '/icon-192.png',
+                        data: { url: '/' },
+                    });
+                    alert('Local notification fired. Lock your phone and check for a banner within 5 seconds.');
+                } catch (e) { alert('Local test failed: ' + e.message); }
+            };
             const disableWebPush = async () => {
                 try {
                     const reg = await navigator.serviceWorker.ready;
@@ -25078,6 +25093,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             {pushStatus === 'subscribed' && (
                                                 <>
                                                     <button onClick={sendTestPush} className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded text-xs">Send test</button>
+                                                    <button onClick={showLocalTest} className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded text-xs">Local test</button>
                                                     <button onClick={disableWebPush} className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded text-xs">Unsubscribe</button>
                                                 </>
                                             )}
