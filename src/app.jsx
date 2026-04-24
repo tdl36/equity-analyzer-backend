@@ -54,7 +54,7 @@ if (typeof window !== 'undefined') {
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-24T05';
+        const BUILD_VERSION = '2026-04-24T06';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -23324,6 +23324,35 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                             switchTab('pipeline');
                                                                         }} className="px-3 py-1.5 text-[10px] bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium">
                                                                             View in Pipeline
+                                                                        </button>
+                                                                    )}
+                                                                    {alert.alertType === 'catalyst_proposal' && alert.ticker && alert.detail?.jobId && alert.detail?.topic && (
+                                                                        <button onClick={async () => {
+                                                                            try {
+                                                                                const resp = await fetch(`${API_URL}/api/analysts/queue-catalyst-activity`, {
+                                                                                    method: 'POST',
+                                                                                    headers: {'Content-Type': 'application/json'},
+                                                                                    body: JSON.stringify({
+                                                                                        ticker: alert.ticker,
+                                                                                        topic: alert.detail.topic,
+                                                                                        fingerprint: alert.detail.fingerprint || `manual-${Date.now()}`,
+                                                                                        fileCount: alert.detail.fileCount || 0,
+                                                                                        catalystJobId: alert.detail.jobId,
+                                                                                    }),
+                                                                                });
+                                                                                const j = await resp.json();
+                                                                                if (!resp.ok) throw new Error(j.error || resp.status);
+                                                                                const count = j.count || 0;
+                                                                                window.alert(count > 0
+                                                                                    ? `Routed to ${count} analyst(s) as ${j.activityType}. Check Analysts → Inbox.`
+                                                                                    : `No analyst covers ${alert.ticker}. Add the ticker to an analyst's coverage first, then click Re-route again.`);
+                                                                                if (count > 0 && typeof fetchAnalystInbox === 'function') fetchAnalystInbox();
+                                                                            } catch (e) {
+                                                                                console.error('Re-route failed:', e);
+                                                                                window.alert(`Re-route failed: ${e.message || e}`);
+                                                                            }
+                                                                        }} className="px-3 py-1.5 text-[10px] bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-medium">
+                                                                            Re-route to analysts
                                                                         </button>
                                                                     )}
                                                                     {alert.alertType === 'audio_summary' && (

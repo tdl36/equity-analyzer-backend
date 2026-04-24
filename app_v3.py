@@ -12902,6 +12902,7 @@ def catalyst_propose_synth():
             ''', (str(uuid.uuid4()), ticker,
                    f'Catalyst synthesis ready: {ticker} / {topic}',
                    json.dumps({'jobId': job_id, 'topic': topic, 'fileCount': file_count,
+                               'fingerprint': fingerprint,
                                'tab': 'agents', 'view': 'catalysts'})))
     except Exception as e:
         print(f'alert for catalyst proposal failed: {e}')

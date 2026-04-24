@@ -2368,6 +2368,8 @@ def check_for_catalyst_auto_synth() -> None:
                 prior_mtime = entry.get('last_seen_mtime', 0.0)
                 prior_fired = entry.get('last_fired_at', 0.0)
                 prior_fingerprint = entry.get('fingerprint', '')
+                prior_job_id = entry.get('catalyst_job_id')
+                prior_routed = bool(entry.get('analyst_routed'))
                 fingerprint = f"{len(source_files)}@{int(max_mtime)}"
 
                 # Keep state fresh so we don't lose track of what's there
@@ -2376,9 +2378,32 @@ def check_for_catalyst_auto_synth() -> None:
                     'last_fired_at': prior_fired,
                     'fingerprint': fingerprint,
                     'last_file_count': len(source_files),
+                    'catalyst_job_id': prior_job_id,
+                    'analyst_routed': prior_routed,
                 }
 
-                # Skip if fingerprint hasn't changed AND we've already fired for it
+                # Already-fired but unrouted: retry the analyst-routing call only.
+                # Handles the case where the user adds coverage AFTER we fired.
+                if fingerprint == prior_fingerprint and prior_fired > 0 and not prior_routed and prior_job_id:
+                    try:
+                        rr = requests.post(
+                            f"{CHARLIE_API}/api/analysts/queue-catalyst-activity",
+                            json={
+                                'ticker': ticker, 'topic': topic,
+                                'fingerprint': fingerprint,
+                                'fileCount': len(source_files),
+                                'catalystJobId': prior_job_id,
+                            },
+                            headers=_agent_headers(), timeout=10,
+                        )
+                        if rr.ok and int(rr.json().get('count') or 0) > 0:
+                            state[key]['analyst_routed'] = True
+                            log.info(f"Auto-catalyst: retried routing for {ticker}/{topic} -> {rr.json().get('count')} analyst(s)")
+                    except Exception as e:
+                        log.debug(f"Auto-catalyst retry-route error: {e}")
+                    continue
+
+                # Skip if fingerprint hasn't changed AND we've already fired+routed for it
                 if fingerprint == prior_fingerprint and prior_fired > 0:
                     continue
 
@@ -2414,6 +2439,8 @@ def check_for_catalyst_auto_synth() -> None:
                         log.info(f"Auto-catalyst: {action_word} done for {ticker}/{topic} (job {job_id})")
                         state[key]['last_fired_at'] = now
                         state[key]['fingerprint'] = fingerprint
+                        state[key]['catalyst_job_id'] = job_id
+                        state[key]['analyst_routed'] = False
                         # Phase 3b: also route to covering analysts' inboxes
                         try:
                             analyst_resp = requests.post(
@@ -2430,7 +2457,10 @@ def check_for_catalyst_auto_synth() -> None:
                             )
                             if analyst_resp.ok:
                                 j = analyst_resp.json()
-                                log.info(f"Auto-catalyst: routed {ticker}/{topic} to {j.get('count',0)} analyst(s) as {j.get('activityType')}")
+                                matched = int(j.get('count') or 0)
+                                state[key]['analyst_routed'] = matched > 0
+                                log.info(f"Auto-catalyst: routed {ticker}/{topic} to {matched} analyst(s) as {j.get('activityType')}"
+                                         + ("" if matched else " (no coverage match — will retry on next sweep if coverage changes)"))
                             else:
                                 log.warning(f"Analyst routing failed for {ticker}/{topic}: {analyst_resp.status_code} {analyst_resp.text[:200]}")
                         except Exception as e:
