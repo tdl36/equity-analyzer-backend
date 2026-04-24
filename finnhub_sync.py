@@ -162,11 +162,14 @@ def sync(days_ahead: int = 120, days_back: int = 7) -> dict:
     all_entries: list[dict] = []
     matched: list[str] = []
     unmatched: list[str] = []
+    raw_sample: list[dict] = []  # diagnostic: first 3 raw entries Finnhub returns
     for i, t in enumerate(tickers):
         rows = fetch_for_symbol(t, days_ahead=days_ahead, days_back=days_back, api_key=key)
         if rows:
             all_entries.extend(rows)
             matched.append(t)
+            if len(raw_sample) < 3:
+                raw_sample.extend(rows[:max(0, 3 - len(raw_sample))])
         else:
             unmatched.append(t)
         # Pace: stay under 60/min. 1.1s between calls.
@@ -174,6 +177,12 @@ def sync(days_ahead: int = 120, days_back: int = 7) -> dict:
             _time.sleep(1.1)
 
     stats = upsert_entries(all_entries, only_tickers=set(tickers))
+    # Diagnostic fields surfaced in the /sync-finnhub response + status UI
+    stats['raw_entries_total'] = len(all_entries)
+    stats['raw_sample'] = raw_sample
+    stats['fetched_symbols_sample'] = sorted({
+        (e.get('symbol') or '').upper() for e in all_entries
+    })[:10]
     stats['coverage_tickers'] = len(tickers)
     stats['window_days'] = days_ahead + days_back
     stats['days_ahead'] = days_ahead

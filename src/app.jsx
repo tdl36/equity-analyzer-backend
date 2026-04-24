@@ -54,7 +54,7 @@ if (typeof window !== 'undefined') {
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-24T16';
+        const BUILD_VERSION = '2026-04-24T17';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -24793,7 +24793,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         const r = await fetch(`${API_URL}/api/earnings/sync-finnhub`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
                                                         const j = await r.json();
                                                         if (j.error) alert('Sync failed: ' + j.error);
-                                                        else alert(`Synced: ${j.upserted || 0} earnings dates across ${j.covered_matched?.length || 0} / ${j.coverage_tickers || 0} covered tickers`);
+                                                        else {
+                                                            const rawInfo = j.raw_entries_total ? `\n\nRaw Finnhub entries: ${j.raw_entries_total}\nSample symbols returned: ${(j.fetched_symbols_sample || []).join(', ')}` : '\n\nFinnhub returned no entries for any covered ticker. Either the free tier has coverage gaps for these names, or the symbol format differs. Share this summary with me to diagnose.';
+                                                            alert(`Synced: ${j.upserted || 0} earnings dates across ${j.covered_matched?.length || 0} / ${j.coverage_tickers || 0} covered tickers.${rawInfo}`);
+                                                        }
                                                         loadFinnhubStatus();
                                                     } catch (e) { alert('Sync error: ' + e.message); }
                                                 }}
