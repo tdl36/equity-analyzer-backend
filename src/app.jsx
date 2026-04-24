@@ -54,7 +54,7 @@ if (typeof window !== 'undefined') {
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-24T13';
+        const BUILD_VERSION = '2026-04-24T14';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -23789,22 +23789,37 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         {activeTab === 'feed' && (
                             <div className="flex-1 flex flex-col bg-slate-50 overflow-y-auto pb-24 md:pb-0">
                                 <div className="max-w-5xl mx-auto w-full p-4">
-                                    <div className="flex items-center justify-between mb-4">
+                                    <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
                                         <div>
                                             <h1 className="text-2xl font-semibold text-slate-900">Feed</h1>
                                             <p className="text-sm text-slate-500">Podcasts — firehose</p>
                                         </div>
-                                        <button
-                                            onClick={async () => {
-                                                try {
-                                                    await fetch('/api/media/run-scanner', { method: 'POST' });
-                                                    setTimeout(fetchFeed, 3000);
-                                                } catch (e) { setFeedError(String(e)); }
-                                            }}
-                                            className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm hover:bg-slate-700"
-                                        >
-                                            Run Scanner
-                                        </button>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={() => {
+                                                    setMtSearchQ(''); setMtSearchResults([]);
+                                                    switchTab('settings');
+                                                    setMtSection('feeds');
+                                                    loadMediaTrackerSettings();
+                                                    setMtSearchOpen(true);
+                                                }}
+                                                className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-500"
+                                                title="Search Apple Podcasts and add a new feed"
+                                            >
+                                                🔎 Add podcast
+                                            </button>
+                                            <button
+                                                onClick={async () => {
+                                                    try {
+                                                        await fetch('/api/media/run-scanner', { method: 'POST' });
+                                                        setTimeout(fetchFeed, 3000);
+                                                    } catch (e) { setFeedError(String(e)); }
+                                                }}
+                                                className="px-3 py-2 bg-slate-900 text-white rounded-lg text-sm hover:bg-slate-700"
+                                            >
+                                                Run Scanner
+                                            </button>
+                                        </div>
                                     </div>
 
                                     {/* Feature 4 — Weekly theme digest (collapsible, default collapsed) */}
