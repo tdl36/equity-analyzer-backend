@@ -166,9 +166,21 @@ def test_finnhub_quarter_label_helper():
 def test_sync_finnhub_endpoint_returns_error_without_key(client, clean_db):
     client.post('/api/analysts', json={'name': 't', 'coverageTickers': ['MDT']})
     r = client.post('/api/earnings/sync-finnhub', json={})
-    assert r.status_code == 500
+    assert r.status_code == 400
     body = r.get_json()
     assert 'Finnhub API key' in (body.get('error') or '')
+
+
+def test_sync_finnhub_endpoint_starts_async_with_key(client, clean_db):
+    client.post('/api/analysts', json={'name': 't', 'coverageTickers': ['MDT']})
+    client.post('/api/settings', json={'finnhub_api_key': 'testkey'})
+    # Patch the background thread's sync call so it doesn't actually fetch
+    with patch.object(finnhub_sync, 'sync', return_value={'ok': True}):
+        r = client.post('/api/earnings/sync-finnhub', json={})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body['started'] is True
+    assert body['daysAhead'] == 70
 
 
 def test_finnhub_status_endpoint(client, clean_db):

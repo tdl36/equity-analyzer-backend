@@ -57,7 +57,7 @@ def _quarter_label(dt: date) -> str:
     return f"{q}Q{dt.year % 100:02d}"
 
 
-def fetch_upcoming(days_ahead: int = 120, days_back: int = 7, api_key: str | None = None) -> list[dict]:
+def fetch_upcoming(days_ahead: int = 70, days_back: int = 7, api_key: str | None = None) -> list[dict]:
     """Bulk calendar fetch — returns whatever Finnhub has for the window.
     Free tier occasionally under-returns names here, so sync() prefers
     per-symbol fetches (see fetch_for_symbol). Kept for backwards compat."""
@@ -78,7 +78,7 @@ def fetch_upcoming(days_ahead: int = 120, days_back: int = 7, api_key: str | Non
     return data.get('earningsCalendar') or []
 
 
-def fetch_for_symbol(symbol: str, days_ahead: int = 120, days_back: int = 7,
+def fetch_for_symbol(symbol: str, days_ahead: int = 70, days_back: int = 7,
                       api_key: str | None = None) -> list[dict]:
     """Per-symbol calendar fetch — more reliable than the bulk endpoint on
     the free tier. Returns Finnhub's earningsCalendar entries for this
@@ -144,13 +144,15 @@ def upsert_entries(entries: list[dict], only_tickers: set[str] | None = None) ->
     return stats
 
 
-def sync(days_ahead: int = 120, days_back: int = 7) -> dict:
+def sync(days_ahead: int = 70, days_back: int = 7) -> dict:
     """Full sync: iterate covered tickers and fetch each individually from
     Finnhub (more reliable than the bulk endpoint on free tier). Paces
     requests at ~1 rps to stay under 60 calls/min.
 
-    Default 127-day window catches the full next-quarter cycle plus
-    recently-reported names for backfill."""
+    Default 77-day window (70 fwd + 7 back) — companies typically don't
+    announce exact next-quarter earnings dates until mid-quarter, so
+    looking too far forward returns empty results. 70 days catches the
+    current earnings cycle plus the first half of the next one."""
     import time as _time
     tickers = sorted(set(_covered_tickers()))
     if not tickers:

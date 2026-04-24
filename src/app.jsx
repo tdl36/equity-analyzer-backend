@@ -54,7 +54,7 @@ if (typeof window !== 'undefined') {
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-24T17';
+        const BUILD_VERSION = '2026-04-24T18';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -24748,16 +24748,24 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             <Key className="w-4 h-4 text-emerald-400" />
                                             Finnhub API Key (Earnings Calendar)
                                         </h3>
-                                        <div className="flex gap-2">
+                                        <div className="flex gap-2 items-center">
                                             <input
                                                 type="password"
                                                 value={finnhubApiKey}
                                                 onChange={(e) => setFinnhubApiKey(e.target.value)}
-                                                placeholder="Free tier key from finnhub.io"
+                                                placeholder={finnhubStatus?.hasKey ? '••• saved — paste new key to replace' : 'Free tier key from finnhub.io'}
                                                 className="flex-1 px-4 py-2 bg-white/5 border border-white/10 backdrop-blur-md rounded-lg text-sm"
                                             />
+                                            {finnhubStatus?.hasKey && !finnhubApiKey && (
+                                                <span className="text-[10px] px-2 py-1 bg-emerald-500/20 text-emerald-300 rounded whitespace-nowrap">Saved ✓</span>
+                                            )}
                                             <button
                                                 onClick={async () => {
+                                                    if (!finnhubApiKey.trim()) {
+                                                        if (!finnhubStatus?.hasKey) { alert('Paste your Finnhub API key first'); return; }
+                                                        alert('Key already saved. Paste a new one to replace.');
+                                                        return;
+                                                    }
                                                     try {
                                                         await fetch(`${API_URL}/api/settings`, {
                                                             method: 'POST',
@@ -24765,6 +24773,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             body: JSON.stringify({ finnhub_api_key: finnhubApiKey }),
                                                         });
                                                         alert('Finnhub API key saved!');
+                                                        setFinnhubApiKey(''); // clear input so 'Saved ✓' shows
                                                         loadFinnhubStatus();
                                                     } catch (e) { alert('Save failed: ' + e.message); }
                                                 }}
@@ -24792,12 +24801,20 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     try {
                                                         const r = await fetch(`${API_URL}/api/earnings/sync-finnhub`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
                                                         const j = await r.json();
-                                                        if (j.error) alert('Sync failed: ' + j.error);
-                                                        else {
-                                                            const rawInfo = j.raw_entries_total ? `\n\nRaw Finnhub entries: ${j.raw_entries_total}\nSample symbols returned: ${(j.fetched_symbols_sample || []).join(', ')}` : '\n\nFinnhub returned no entries for any covered ticker. Either the free tier has coverage gaps for these names, or the symbol format differs. Share this summary with me to diagnose.';
-                                                            alert(`Synced: ${j.upserted || 0} earnings dates across ${j.covered_matched?.length || 0} / ${j.coverage_tickers || 0} covered tickers.${rawInfo}`);
+                                                        if (j.error) { alert('Sync failed: ' + j.error); return; }
+                                                        if (!j.started) {
+                                                            alert(j.reason || 'Sync already running');
+                                                            return;
                                                         }
-                                                        loadFinnhubStatus();
+                                                        alert('Sync running in background (~40s for 36 tickers). Last-synced timestamp below will update when it finishes. You can leave this screen.');
+                                                        // Poll status every 5s for up to 2 minutes
+                                                        const prevRanAt = finnhubStatus?.lastSync?.ran_at;
+                                                        for (let i = 0; i < 24; i++) {
+                                                            await new Promise(res => setTimeout(res, 5000));
+                                                            await loadFinnhubStatus();
+                                                            const now = (await (await fetch(`${API_URL}/api/earnings/finnhub-status`)).json()).lastSync?.ran_at;
+                                                            if (now && now !== prevRanAt) break;
+                                                        }
                                                     } catch (e) { alert('Sync error: ' + e.message); }
                                                 }}
                                                 className="px-3 py-1 bg-emerald-700 hover:bg-emerald-600 rounded text-xs flex-shrink-0"

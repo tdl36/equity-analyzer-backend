@@ -21400,20 +21400,46 @@ def earnings_config_put(ticker):
         return jsonify({'error': str(e)}), 500
 
 
+_finnhub_sync_state = {'running': False, 'started_at': None}
+
+
 @app.route('/api/earnings/sync-finnhub', methods=['POST'])
 def earnings_sync_finnhub():
-    """Fetch upcoming earnings dates from Finnhub and upsert into
-    earnings_calendar (only for tickers covered by at least one analyst)."""
+    """Kick off a Finnhub sync in the background and return immediately.
+    Per-symbol fetches are rate-limited (1.1s each), so a 36-ticker sync
+    runs ~40s — too long to hold an HTTP connection. Poll
+    /api/earnings/finnhub-status for completion (reads finnhub_last_sync)."""
     try:
         import finnhub_sync as _fh
         body = request.json or {}
-        days_ahead = int(body.get('daysAhead', 120))
-        days_back = int(body.get('daysBack', 7))
-        stats = _fh.sync(
-            days_ahead=max(1, min(days_ahead, 365)),
-            days_back=max(0, min(days_back, 30)),
-        )
-        return jsonify(stats)
+        days_ahead = max(1, min(int(body.get('daysAhead', 70)), 365))
+        days_back = max(0, min(int(body.get('daysBack', 7)), 30))
+
+        if _finnhub_sync_state.get('running'):
+            return jsonify({'started': False, 'reason': 'sync already running',
+                            'startedAt': _finnhub_sync_state.get('started_at')})
+        # Validate we have a key upfront so the UI gets an immediate error
+        # (instead of discovering it during the async run).
+        with get_db() as (_c, cur):
+            cur.execute("SELECT value FROM app_settings WHERE key='finnhub_api_key'")
+            row = cur.fetchone()
+        if not row or not row.get('value'):
+            return jsonify({'error': 'Finnhub API key not set. Save to Settings -> API Keys -> Finnhub.'}), 400
+
+        def _run():
+            _finnhub_sync_state['running'] = True
+            _finnhub_sync_state['started_at'] = datetime.utcnow().isoformat()
+            try:
+                _fh.sync(days_ahead=days_ahead, days_back=days_back)
+            except Exception as exc:
+                print(f'finnhub sync thread failed: {exc}')
+            finally:
+                _finnhub_sync_state['running'] = False
+
+        threading.Thread(target=_run, daemon=True).start()
+        return jsonify({'started': True, 'startedAt': _finnhub_sync_state['started_at'],
+                        'daysAhead': days_ahead, 'daysBack': days_back,
+                        'message': 'Sync running in background. Poll /api/earnings/finnhub-status for results.'})
     except Exception as e:
         print(f'earnings_sync_finnhub error: {e}')
         return jsonify({'error': str(e)}), 500
