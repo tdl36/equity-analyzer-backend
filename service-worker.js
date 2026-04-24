@@ -1,6 +1,6 @@
 // Charlie - Equity Analyzer Service Worker
 // BUILD_VERSION is updated on each deploy to trigger cache invalidation
-const BUILD_VERSION = '20260423-27';
+const BUILD_VERSION = '20260423-29';
 const CACHE_NAME = 'charlie-' + BUILD_VERSION;
 
 const STATIC_ASSETS = [
@@ -11,9 +11,7 @@ const STATIC_ASSETS = [
   '/icon-167.png',
   '/icon-180.png',
   '/icon-192.png',
-  '/icon-512.png',
-  '/dist/app.js',
-  '/dist/tailwind.css'
+  '/icon-512.png'
 ];
 
 // Install event - cache static assets
