@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-23T23';
+        const BUILD_VERSION = '2026-04-23T24';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -6922,6 +6922,240 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 } catch (e) {
                     setFeedToast({ text: `Attach failed: ${e.message || e}`, kind: 'err' });
                 }
+            }, []);
+
+            // ---- Feature 9: Share / export helpers ----
+            const feedBulletAsMarkdown = useCallback((ep, p) => {
+                const ticker = (p.tickers || [])[0] || '';
+                const dateStr = ep.publishedAt ? new Date(ep.publishedAt).toLocaleDateString() : '';
+                const tag = ticker ? `**${ticker}**` : '**(no ticker)**';
+                return `- ${tag} — ${p.text || ''}  \n  _source: ${ep.feedName || ''} · ${ep.title || ''} (${dateStr})_`;
+            }, []);
+
+            const feedCopyBulletMd = useCallback(async (ep, p) => {
+                const md = feedBulletAsMarkdown(ep, p);
+                try {
+                    await navigator.clipboard.writeText(md);
+                    setFeedToast({ text: 'Bullet copied as markdown', kind: 'ok' });
+                } catch (e) {
+                    setFeedToast({ text: 'Clipboard unavailable — see console', kind: 'warn' });
+                    console.log(md);
+                }
+            }, [feedBulletAsMarkdown]);
+
+            const feedEmailBullet = useCallback(async (ep, p) => {
+                // Try backend first; if SMTP misconfigured, fall back to mailto:
+                try {
+                    const resp = await fetch('/api/media/email-bullet', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            ticker: (p.tickers || [])[0] || '',
+                            pointText: p.text || '',
+                            feedName: ep.feedName || '',
+                            episodeTitle: ep.title || '',
+                            sourceUrl: ep.sourceUrl || '',
+                        }),
+                    });
+                    const data = await resp.json();
+                    if (data.sent) {
+                        setFeedToast({ text: 'Email sent', kind: 'ok' });
+                        return;
+                    }
+                } catch (e) { /* fall through */ }
+                // Fallback to mailto
+                const subj = encodeURIComponent(`Charlie — ${(p.tickers || [])[0] || ''}: ${(p.text || '').slice(0, 60)}`);
+                const body = encodeURIComponent(
+                    `${p.text || ''}\n\nSource: ${ep.feedName || ''} — ${ep.title || ''}\n${ep.sourceUrl || ''}`
+                );
+                window.location.href = `mailto:?subject=${subj}&body=${body}`;
+            }, []);
+
+            const feedCopyEpisodeMd = useCallback(async (ep) => {
+                const dateStr = ep.publishedAt ? new Date(ep.publishedAt).toLocaleDateString() : '';
+                const header = `## ${ep.title || ''}\n_${ep.feedName || ''} · ${dateStr}${ep.sourceUrl ? ` · [source](${ep.sourceUrl})` : ''}_\n\n`;
+                const bullets = (ep.points || []).map(p => {
+                    const tic = (p.tickers || [])[0] || '';
+                    return `- ${tic ? `**${tic}** — ` : ''}${p.text || ''}`;
+                }).join('\n');
+                const md = header + bullets;
+                try {
+                    await navigator.clipboard.writeText(md);
+                    setFeedToast({ text: 'Episode copied as markdown', kind: 'ok' });
+                } catch (e) {
+                    setFeedToast({ text: 'Clipboard unavailable — see console', kind: 'warn' });
+                    console.log(md);
+                }
+            }, []);
+
+            const feedEmailEpisode = useCallback(async (ep) => {
+                try {
+                    const resp = await fetch('/api/media/email-episode', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ episodeId: ep.id }),
+                    });
+                    const data = await resp.json();
+                    if (data.sent) {
+                        setFeedToast({ text: 'Episode emailed', kind: 'ok' });
+                    } else {
+                        setFeedToast({ text: `Email not sent: ${data.reason || 'smtp not configured'}`, kind: 'warn' });
+                    }
+                } catch (e) {
+                    setFeedToast({ text: `Email failed: ${e.message || e}`, kind: 'err' });
+                }
+            }, []);
+
+            const feedCopyTickerMd = useCallback(async (ticker, days = 7) => {
+                // Build markdown from current loaded feed bullets for the ticker (within days window)
+                const cutoff = Date.now() - days * 86400000;
+                const lines = [`## Charlie — ${ticker} — last ${days}d`, ''];
+                let count = 0;
+                (feedEpisodes || []).forEach(ep => {
+                    const tMs = ep.publishedAt ? Date.parse(ep.publishedAt) : 0;
+                    if (!tMs || tMs < cutoff) return;
+                    const matching = (ep.points || []).filter(p => (p.tickers || []).includes(ticker));
+                    if (!matching.length) return;
+                    const dateStr = new Date(ep.publishedAt).toLocaleDateString();
+                    lines.push(`### ${ep.title} — _${ep.feedName} · ${dateStr}_`);
+                    matching.forEach(p => { lines.push(`- ${p.text}`); count++; });
+                    lines.push('');
+                });
+                if (count === 0) lines.push(`_(no ${ticker} bullets in the last ${days}d)_`);
+                const md = lines.join('\n');
+                try {
+                    await navigator.clipboard.writeText(md);
+                    setFeedToast({ text: `${ticker}: ${count} bullets copied`, kind: 'ok' });
+                } catch (e) {
+                    setFeedToast({ text: 'Clipboard unavailable — see console', kind: 'warn' });
+                    console.log(md);
+                }
+            }, [feedEpisodes]);
+
+            const feedEmailTickerDigest = useCallback(async (ticker, days = 7) => {
+                try {
+                    const resp = await fetch('/api/media/email-ticker-digest', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ticker, days }),
+                    });
+                    const data = await resp.json();
+                    if (data.sent) {
+                        setFeedToast({ text: `${ticker} digest emailed (${data.bullets || 0} bullets)`, kind: 'ok' });
+                    } else {
+                        setFeedToast({ text: `Email not sent: ${data.reason || 'smtp not configured'}`, kind: 'warn' });
+                    }
+                } catch (e) {
+                    setFeedToast({ text: `Email failed: ${e.message || e}`, kind: 'err' });
+                }
+            }, []);
+
+            // ---- Feature 10: inline notes ----
+            const [feedNotesState, setFeedNotesState] = useState({}); // point_id -> {open, notes, draft}
+
+            const feedToggleNotes = useCallback(async (pointId) => {
+                const cur = feedNotesState[pointId] || {};
+                if (cur.open) {
+                    setFeedNotesState(prev => ({ ...prev, [pointId]: { ...cur, open: false } }));
+                    return;
+                }
+                // Load notes
+                try {
+                    const resp = await fetch(`/api/media/points/${pointId}/notes`);
+                    const data = await resp.json();
+                    setFeedNotesState(prev => ({ ...prev, [pointId]: { open: true, notes: data.notes || [], draft: '' } }));
+                } catch (e) {
+                    setFeedNotesState(prev => ({ ...prev, [pointId]: { open: true, notes: [], draft: '' } }));
+                }
+            }, [feedNotesState]);
+
+            const feedSaveNote = useCallback(async (pointId) => {
+                const cur = feedNotesState[pointId] || {};
+                const text = (cur.draft || '').trim();
+                if (!text) return;
+                try {
+                    const resp = await fetch(`/api/media/points/${pointId}/notes`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ noteText: text }),
+                    });
+                    if (!resp.ok) throw new Error((await resp.json()).error || 'save failed');
+                    const data = await resp.json();
+                    setFeedNotesState(prev => ({
+                        ...prev,
+                        [pointId]: {
+                            ...cur,
+                            notes: [...(cur.notes || []), data.note],
+                            draft: '',
+                        },
+                    }));
+                    // Update noteCount inline on the point in feedEpisodes
+                    setFeedEpisodes(prev => prev.map(ep => ({
+                        ...ep,
+                        points: (ep.points || []).map(p => p.id === pointId
+                            ? { ...p, noteCount: (p.noteCount || 0) + 1 }
+                            : p),
+                    })));
+                    setFeedToast({ text: 'Note saved', kind: 'ok' });
+                } catch (e) {
+                    setFeedToast({ text: `Save failed: ${e.message || e}`, kind: 'err' });
+                }
+            }, [feedNotesState]);
+
+            const feedDeleteNote = useCallback(async (pointId, noteId) => {
+                try {
+                    const resp = await fetch(`/api/media/point-notes/${noteId}`, { method: 'DELETE' });
+                    if (!resp.ok) throw new Error('delete failed');
+                    setFeedNotesState(prev => ({
+                        ...prev,
+                        [pointId]: {
+                            ...(prev[pointId] || {}),
+                            notes: ((prev[pointId] || {}).notes || []).filter(n => n.id !== noteId),
+                        },
+                    }));
+                    setFeedEpisodes(prev => prev.map(ep => ({
+                        ...ep,
+                        points: (ep.points || []).map(p => p.id === pointId
+                            ? { ...p, noteCount: Math.max(0, (p.noteCount || 1) - 1) }
+                            : p),
+                    })));
+                } catch (e) {
+                    setFeedToast({ text: `Delete failed: ${e.message || e}`, kind: 'err' });
+                }
+            }, []);
+
+            // ---- Feature 11: related episodes (cluster modal) ----
+            const [feedClusterModal, setFeedClusterModal] = useState(null); // {clusterId, theme, episodes: [], loading: bool}
+
+            const feedOpenCluster = useCallback(async (clusterId, theme) => {
+                setFeedClusterModal({ clusterId, theme, episodes: [], loading: true });
+                try {
+                    const resp = await fetch(`/api/media/clusters/${clusterId}/episodes`);
+                    if (!resp.ok) throw new Error('cluster not found');
+                    const data = await resp.json();
+                    setFeedClusterModal({
+                        clusterId,
+                        theme: data.theme || theme,
+                        summary: data.summary,
+                        episodes: data.episodes || [],
+                        loading: false,
+                    });
+                } catch (e) {
+                    setFeedClusterModal({ clusterId, theme, episodes: [], loading: false, error: String(e) });
+                }
+            }, []);
+
+            const feedJumpToEpisode = useCallback((episodeId) => {
+                setFeedClusterModal(null);
+                // Try to scroll an already-rendered card into view
+                setTimeout(() => {
+                    const node = document.getElementById(`feed-ep-${episodeId}`);
+                    if (node && typeof node.scrollIntoView === 'function') {
+                        node.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        node.classList.add('ring-2', 'ring-amber-400');
+                        setTimeout(() => { try { node.classList.remove('ring-2', 'ring-amber-400'); } catch {} }, 2000);
+                    }
+                }, 50);
             }, []);
 
             const feedMuteTheme = useCallback(async (p) => {
@@ -22735,16 +22969,50 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                             ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
                                                                             : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200';
                                                                 return (
-                                                                    <button
-                                                                        key={t.ticker}
-                                                                        onClick={() => setFeedFilters({...feedFilters, ticker: isActive ? '' : t.ticker})}
-                                                                        className={`px-2.5 py-1 rounded-full border font-semibold transition-colors ${bg}`}
-                                                                        style={{ fontSize: `${fontSize}px` }}
-                                                                        title={`${t.ticker} — ${t.count} mention${t.count === 1 ? '' : 's'} in last 7 days`}
-                                                                    >
-                                                                        {t.ticker}
-                                                                        <span className="ml-1 opacity-70 font-normal">{t.count}</span>
-                                                                    </button>
+                                                                    <span key={t.ticker} className="group/tic relative inline-flex">
+                                                                        <button
+                                                                            onClick={() => setFeedFilters({...feedFilters, ticker: isActive ? '' : t.ticker})}
+                                                                            className={`px-2.5 py-1 rounded-full border font-semibold transition-colors ${bg}`}
+                                                                            style={{ fontSize: `${fontSize}px` }}
+                                                                            title={`${t.ticker} — ${t.count} mention${t.count === 1 ? '' : 's'} in last 7 days`}
+                                                                        >
+                                                                            {t.ticker}
+                                                                            <span className="ml-1 opacity-70 font-normal">{t.count}</span>
+                                                                        </button>
+                                                                        {/* Feature 9: per-ticker Export all menu */}
+                                                                        <span className="relative opacity-0 group-hover/tic:opacity-100 focus-within:opacity-100 transition-opacity">
+                                                                            <button
+                                                                                onClick={(e) => {
+                                                                                    const menu = e.currentTarget.nextElementSibling;
+                                                                                    if (menu) menu.classList.toggle('hidden');
+                                                                                }}
+                                                                                onBlur={(e) => {
+                                                                                    setTimeout(() => {
+                                                                                        const menu = e.currentTarget && e.currentTarget.nextElementSibling;
+                                                                                        if (menu) menu.classList.add('hidden');
+                                                                                    }, 200);
+                                                                                }}
+                                                                                className="ml-1 px-1.5 py-0.5 rounded border border-slate-300 bg-white hover:bg-slate-100 text-[10px] text-slate-600"
+                                                                                title={`Export all ${t.ticker} bullets`}
+                                                                            >
+                                                                                ⤴
+                                                                            </button>
+                                                                            <div className="hidden absolute left-0 mt-1 z-20 w-40 bg-white border border-slate-200 rounded-lg shadow-lg text-xs overflow-hidden">
+                                                                                <button
+                                                                                    onMouseDown={() => feedCopyTickerMd(t.ticker, feedFilters.days || 7)}
+                                                                                    className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-slate-700"
+                                                                                >
+                                                                                    Copy as markdown
+                                                                                </button>
+                                                                                <button
+                                                                                    onMouseDown={() => feedEmailTickerDigest(t.ticker, feedFilters.days || 7)}
+                                                                                    className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-slate-700 border-t border-slate-100"
+                                                                                >
+                                                                                    Email digest
+                                                                                </button>
+                                                                            </div>
+                                                                        </span>
+                                                                    </span>
                                                                 );
                                                             })}
                                                         </div>
@@ -22975,7 +23243,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             const isNew = ep.publishedAt && Date.parse(ep.publishedAt) > (Date.parse(feedLastSeen) || 0);
                                             const summaryJob = feedSummaryJobs[ep.id];
                                             return (
-                                            <div key={ep.id} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                                            <div key={ep.id} id={`feed-ep-${ep.id}`} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm transition-shadow">
                                                 <div className="flex items-baseline justify-between mb-1 gap-2">
                                                     <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 flex-1">
                                                         {ep.feedName} · {ep.publishedAt ? new Date(ep.publishedAt).toLocaleDateString() : ''}
@@ -22995,21 +23263,68 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             </span>
                                                         )}
                                                     </div>
-                                                    {ep.hasTranscript && (
-                                                        <button
-                                                            onClick={() => feedGenerateFullSummary(ep)}
-                                                            disabled={summaryJob && (summaryJob.status === 'running' || summaryJob.status === 'starting')}
-                                                            className="shrink-0 text-[11px] px-2 py-1 rounded border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 disabled:opacity-50"
-                                                            title="Generate a full 4-section Meeting Summary from this transcript"
-                                                        >
-                                                            {summaryJob && summaryJob.status === 'running' ? 'Generating…'
-                                                             : summaryJob && summaryJob.status === 'starting' ? 'Queuing…'
-                                                             : summaryJob && summaryJob.status === 'done' ? '✓ Saved'
-                                                             : '📝 Full Summary'}
-                                                        </button>
-                                                    )}
+                                                    <div className="shrink-0 flex items-center gap-1">
+                                                        {/* Feature 9: episode export menu */}
+                                                        <div className="relative">
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    const menu = e.currentTarget.nextElementSibling;
+                                                                    if (menu) menu.classList.toggle('hidden');
+                                                                }}
+                                                                onBlur={(e) => {
+                                                                    setTimeout(() => {
+                                                                        const menu = e.currentTarget && e.currentTarget.nextElementSibling;
+                                                                        if (menu) menu.classList.add('hidden');
+                                                                    }, 200);
+                                                                }}
+                                                                className="text-[11px] px-2 py-1 rounded border border-slate-300 bg-white hover:bg-slate-100 text-slate-700"
+                                                                title="Export episode"
+                                                            >
+                                                                ⤴ Export
+                                                            </button>
+                                                            <div className="hidden absolute right-0 mt-1 z-20 w-48 bg-white border border-slate-200 rounded-lg shadow-lg text-xs overflow-hidden">
+                                                                <button
+                                                                    onMouseDown={() => feedCopyEpisodeMd(ep)}
+                                                                    className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-slate-700"
+                                                                >
+                                                                    Copy all bullets
+                                                                </button>
+                                                                <button
+                                                                    onMouseDown={() => feedEmailEpisode(ep)}
+                                                                    className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-slate-700 border-t border-slate-100"
+                                                                >
+                                                                    Email episode
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                        {ep.hasTranscript && (
+                                                            <button
+                                                                onClick={() => feedGenerateFullSummary(ep)}
+                                                                disabled={summaryJob && (summaryJob.status === 'running' || summaryJob.status === 'starting')}
+                                                                className="shrink-0 text-[11px] px-2 py-1 rounded border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 disabled:opacity-50"
+                                                                title="Generate a full 4-section Meeting Summary from this transcript"
+                                                            >
+                                                                {summaryJob && summaryJob.status === 'running' ? 'Generating…'
+                                                                 : summaryJob && summaryJob.status === 'starting' ? 'Queuing…'
+                                                                 : summaryJob && summaryJob.status === 'done' ? '✓ Saved'
+                                                                 : '📝 Full Summary'}
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
                                                 <h3 className="font-semibold text-slate-900 mb-1">{ep.title}</h3>
+                                                {/* Feature 11: related episodes link */}
+                                                {ep.clusterTheme && ep.clusterEpisodeCount && ep.clusterEpisodeCount > 1 && (
+                                                    <button
+                                                        onClick={() => feedOpenCluster(ep.clusterId, ep.clusterTheme)}
+                                                        className="mb-2 inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200"
+                                                        title="Related episodes this week"
+                                                    >
+                                                        <span>🔗</span>
+                                                        <span className="font-medium">{ep.clusterTheme}</span>
+                                                        <span className="text-indigo-500">· {ep.clusterEpisodeCount} related episode{ep.clusterEpisodeCount === 1 ? '' : 's'} this week</span>
+                                                    </button>
+                                                )}
                                                 {q && mc && (
                                                     <p className="text-xs italic text-slate-500 mb-3 leading-relaxed">
                                                         {renderHighlighted(mc)}
@@ -23017,15 +23332,31 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 )}
                                                 {!(q && mc) && <div className="mb-2"></div>}
                                                 <ul className="space-y-2">
-                                                    {(ep.points || []).map(p => (
-                                                        <li key={p.id} className="group flex items-start gap-2 text-sm text-slate-700">
+                                                    {(ep.points || []).map(p => {
+                                                        const notesState = feedNotesState[p.id] || {};
+                                                        const notesOpen = !!notesState.open;
+                                                        const noteCount = p.noteCount || 0;
+                                                        return (
+                                                        <li key={p.id} className="group text-sm text-slate-700">
+                                                          <div className="flex items-start gap-2">
                                                             {(p.sectorTags || []).map(t => (
                                                                 <span key={t} className="shrink-0 px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 text-[10px] font-semibold">
                                                                     {t}
                                                                 </span>
                                                             ))}
                                                             {p.material && <span className="shrink-0 text-amber-500">★</span>}
-                                                            <span className="flex-1">{q ? renderHighlighted(p.text) : p.text}</span>
+                                                            <span className="flex-1">
+                                                                {q ? renderHighlighted(p.text) : p.text}
+                                                                {noteCount > 0 && (
+                                                                    <button
+                                                                        onClick={() => feedToggleNotes(p.id)}
+                                                                        className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-medium hover:bg-slate-200 align-middle"
+                                                                        title={`${noteCount} note${noteCount === 1 ? '' : 's'}`}
+                                                                    >
+                                                                        <span>💬</span><span>{noteCount}</span>
+                                                                    </button>
+                                                                )}
+                                                            </span>
                                                             <span className="shrink-0 flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                                                                 <button
                                                                     onClick={() => feedAskCharlie(ep, p)}
@@ -23048,15 +23379,158 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 >
                                                                     Mute
                                                                 </button>
+                                                                <button
+                                                                    onClick={() => feedToggleNotes(p.id)}
+                                                                    className={`text-[10px] px-1.5 py-0.5 rounded border hover:bg-amber-50 hover:border-amber-300 ${notesOpen ? 'bg-amber-50 border-amber-300 text-amber-800' : 'border-slate-200 bg-white text-slate-600'}`}
+                                                                    title="Add/view notes"
+                                                                >
+                                                                    📝
+                                                                </button>
+                                                                <div className="relative">
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            const menu = e.currentTarget.nextElementSibling;
+                                                                            if (menu) menu.classList.toggle('hidden');
+                                                                        }}
+                                                                        onBlur={(e) => {
+                                                                            setTimeout(() => {
+                                                                                const menu = e.currentTarget && e.currentTarget.nextElementSibling;
+                                                                                if (menu) menu.classList.add('hidden');
+                                                                            }, 200);
+                                                                        }}
+                                                                        className="text-[10px] px-1.5 py-0.5 rounded border border-slate-200 bg-white hover:bg-slate-50 text-slate-600"
+                                                                        title="Export bullet"
+                                                                    >
+                                                                        ⤴
+                                                                    </button>
+                                                                    <div className="hidden absolute right-0 mt-1 z-20 w-44 bg-white border border-slate-200 rounded-lg shadow-lg text-xs overflow-hidden">
+                                                                        <button
+                                                                            onMouseDown={() => feedCopyBulletMd(ep, p)}
+                                                                            className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-slate-700"
+                                                                        >
+                                                                            Copy as markdown
+                                                                        </button>
+                                                                        <button
+                                                                            onMouseDown={() => feedEmailBullet(ep, p)}
+                                                                            className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-slate-700 border-t border-slate-100"
+                                                                        >
+                                                                            Email this bullet
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
                                                             </span>
+                                                          </div>
+                                                          {notesOpen && (
+                                                            <div className="ml-6 mt-2 mb-1 p-2 rounded border border-amber-200 bg-amber-50/50">
+                                                                {(notesState.notes || []).length === 0 && (
+                                                                    <div className="text-[11px] text-slate-500 italic mb-2">No notes yet — add the first one below.</div>
+                                                                )}
+                                                                {(notesState.notes || []).map(n => (
+                                                                    <div key={n.id} className="flex items-start gap-2 py-1 border-b border-amber-100 last:border-0">
+                                                                        <div className="flex-1 text-[12px] text-slate-800 whitespace-pre-wrap">{n.noteText}</div>
+                                                                        <div className="text-[10px] text-slate-400 shrink-0">
+                                                                            {n.createdAt ? new Date(n.createdAt).toLocaleDateString() : ''}
+                                                                        </div>
+                                                                        <button
+                                                                            onClick={() => feedDeleteNote(p.id, n.id)}
+                                                                            className="shrink-0 text-[10px] text-rose-600 hover:underline"
+                                                                        >delete</button>
+                                                                    </div>
+                                                                ))}
+                                                                <div className="mt-2 flex gap-2">
+                                                                    <textarea
+                                                                        value={notesState.draft || ''}
+                                                                        onChange={e => setFeedNotesState(prev => ({
+                                                                            ...prev,
+                                                                            [p.id]: { ...(prev[p.id] || {}), draft: e.target.value },
+                                                                        }))}
+                                                                        onKeyDown={e => {
+                                                                            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                                                                                e.preventDefault();
+                                                                                feedSaveNote(p.id);
+                                                                            }
+                                                                        }}
+                                                                        placeholder="Add a note… (Cmd/Ctrl+Enter to save)"
+                                                                        rows={2}
+                                                                        className="flex-1 text-[12px] px-2 py-1 rounded border border-slate-300 resize-y"
+                                                                    />
+                                                                    <button
+                                                                        onClick={() => feedSaveNote(p.id)}
+                                                                        disabled={!(notesState.draft || '').trim()}
+                                                                        className="shrink-0 self-end px-3 py-1 rounded bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600 disabled:opacity-40"
+                                                                    >Save</button>
+                                                                </div>
+                                                            </div>
+                                                          )}
                                                         </li>
-                                                    ))}
+                                                        );
+                                                    })}
                                                 </ul>
                                             </div>
                                             );
                                         })}
                                     </div>
                                 </div>
+                                {/* Feature 11: related episodes modal */}
+                                {feedClusterModal && (
+                                    <div
+                                        className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+                                        onClick={() => setFeedClusterModal(null)}
+                                    >
+                                        <div
+                                            className="bg-white rounded-xl shadow-2xl max-w-xl w-full max-h-[80vh] overflow-hidden flex flex-col"
+                                            onClick={e => e.stopPropagation()}
+                                        >
+                                            <div className="p-4 border-b border-slate-200 flex items-start justify-between gap-3">
+                                                <div>
+                                                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Related episodes this week</div>
+                                                    <h3 className="font-semibold text-slate-900 mt-0.5">🔗 {feedClusterModal.theme}</h3>
+                                                    {feedClusterModal.summary && (
+                                                        <p className="text-xs text-slate-600 mt-1">{feedClusterModal.summary}</p>
+                                                    )}
+                                                </div>
+                                                <button
+                                                    onClick={() => setFeedClusterModal(null)}
+                                                    className="shrink-0 text-slate-400 hover:text-slate-700 text-lg leading-none"
+                                                >×</button>
+                                            </div>
+                                            <div className="flex-1 overflow-y-auto p-4">
+                                                {feedClusterModal.loading && (
+                                                    <div className="text-xs text-slate-500">Loading…</div>
+                                                )}
+                                                {feedClusterModal.error && (
+                                                    <div className="text-xs text-rose-600">Error: {feedClusterModal.error}</div>
+                                                )}
+                                                {!feedClusterModal.loading && !feedClusterModal.error && (
+                                                    <ul className="space-y-2">
+                                                        {(feedClusterModal.episodes || []).map(e => (
+                                                            <li key={e.id} className="border border-slate-200 rounded-lg p-3 hover:bg-slate-50">
+                                                                <div className="text-[11px] text-slate-500 font-semibold uppercase tracking-wide">
+                                                                    {e.feedName} · {e.publishedAt ? new Date(e.publishedAt).toLocaleDateString() : ''}
+                                                                </div>
+                                                                <div className="font-medium text-slate-900 mt-0.5">{e.title}</div>
+                                                                <div className="flex items-center gap-3 mt-1.5 text-xs">
+                                                                    <span className="text-slate-500">{e.bulletCount} bullet{e.bulletCount === 1 ? '' : 's'}</span>
+                                                                    {e.sourceUrl && (
+                                                                        <a href={e.sourceUrl} target="_blank" rel="noopener" className="text-indigo-600 hover:underline">source ↗</a>
+                                                                    )}
+                                                                    <button
+                                                                        onClick={() => feedJumpToEpisode(e.id)}
+                                                                        className="ml-auto text-amber-700 font-semibold hover:underline"
+                                                                    >Jump to episode →</button>
+                                                                </div>
+                                                            </li>
+                                                        ))}
+                                                        {(!feedClusterModal.episodes || feedClusterModal.episodes.length === 0) && (
+                                                            <div className="text-xs text-slate-500 italic">No episodes in this cluster.</div>
+                                                        )}
+                                                    </ul>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* Feature 5-8 toast */}
                                 {feedToast && (
                                     <div className="fixed bottom-20 md:bottom-6 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg text-sm font-medium flex items-center gap-3 bg-slate-900 text-white max-w-[90vw]">

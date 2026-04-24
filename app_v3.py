@@ -545,12 +545,93 @@ def media_feed_read():
             cur.execute(pq, pparams)
             points = cur.fetchall()
 
+    # Feature 10: note counts per point; Feature 11: cluster data per episode
+    point_ids = [p['id'] for p in points]
+    note_counts = {}
+    cluster_counts_by_cluster = {}
+    cluster_themes = {}
+    episode_cluster = {}  # episode_id -> cluster_id (most-common among material points)
+    if point_ids:
+        with get_db() as (_c2, cur2):
+            try:
+                cur2.execute(
+                    """
+                    SELECT point_id, COUNT(*)::int AS cnt
+                      FROM media_point_notes
+                     WHERE point_id = ANY(%s)
+                     GROUP BY point_id
+                    """,
+                    (point_ids,),
+                )
+                for r in cur2.fetchall():
+                    note_counts[r['point_id']] = r['cnt']
+            except Exception as _e:
+                # media_point_notes may not exist on older DBs — graceful fallback
+                pass
+
+    # Cluster metadata: pick most-common cluster_id per episode (from material points)
+    if episode_ids:
+        ep_cluster_candidates = {}
+        for p in points:
+            cid = p.get('cluster_id')
+            if not cid:
+                continue
+            if not p.get('material'):
+                # prefer material points but fall back to any
+                ep_cluster_candidates.setdefault(p['episode_id'], {}).setdefault('any', {}).setdefault(cid, 0)
+                ep_cluster_candidates[p['episode_id']]['any'][cid] += 1
+            else:
+                ep_cluster_candidates.setdefault(p['episode_id'], {}).setdefault('material', {}).setdefault(cid, 0)
+                ep_cluster_candidates[p['episode_id']]['material'][cid] += 1
+        for eid, groups in ep_cluster_candidates.items():
+            pool = groups.get('material') or groups.get('any') or {}
+            if pool:
+                top_cid = max(pool.items(), key=lambda kv: kv[1])[0]
+                episode_cluster[eid] = top_cid
+
+        all_cluster_ids = list({cid for cid in episode_cluster.values() if cid})
+        if all_cluster_ids:
+            with get_db() as (_c3, cur3):
+                # Fetch theme + total episode counts per cluster_id
+                try:
+                    cur3.execute(
+                        """
+                        SELECT c.id, c.theme, c.point_ids
+                          FROM media_theme_clusters c
+                         WHERE c.id = ANY(%s)
+                        """,
+                        (all_cluster_ids,),
+                    )
+                    clusters_meta = cur3.fetchall()
+                    cluster_point_ids = {}
+                    for cm in clusters_meta:
+                        cluster_themes[cm['id']] = cm.get('theme') or ''
+                        cluster_point_ids[cm['id']] = cm.get('point_ids') or []
+                    # Count distinct episodes per cluster
+                    all_cluster_points = [pid for pids in cluster_point_ids.values() for pid in pids]
+                    if all_cluster_points:
+                        cur3.execute(
+                            """
+                            SELECT cluster_id, COUNT(DISTINCT episode_id)::int AS cnt
+                              FROM media_digest_points
+                             WHERE cluster_id = ANY(%s)
+                             GROUP BY cluster_id
+                            """,
+                            (all_cluster_ids,),
+                        )
+                        for r in cur3.fetchall():
+                            cluster_counts_by_cluster[r['cluster_id']] = r['cnt']
+                except Exception as _e:
+                    pass
+
     by_ep = {}
     for p in points:
         by_ep.setdefault(p['episode_id'], []).append({
             'id': p['id'], 'text': p['text'], 'tickers': p['tickers'] or [],
             'sectorTags': p['sector_tags'] or [], 'themeTags': p['theme_tags'] or [],
             'material': p['material'], 'timestampSec': p['timestamp_sec'],
+            'noteCount': note_counts.get(p['id'], 0),
+            'clusterId': p.get('cluster_id'),
         })
 
     # Compute match context / source when q is present
@@ -596,6 +677,7 @@ def media_feed_read():
         if (ticker or sector) and not pts:
             continue  # filtered all points out — hide the episode
         match_source, match_ctx = _match_info(e, pts)
+        cid = episode_cluster.get(e['id'])
         result.append({
             'id': e['id'], 'feedId': e['feed_id'], 'feedName': e['feed_name'],
             'title': e['title'],
@@ -604,6 +686,9 @@ def media_feed_read():
             'matchSource': match_source,
             'matchContext': match_ctx,
             'hasTranscript': bool(e.get('transcript')),
+            'clusterId': cid,
+            'clusterTheme': cluster_themes.get(cid) if cid else None,
+            'clusterEpisodeCount': cluster_counts_by_cluster.get(cid) if cid else None,
         })
     return jsonify({'episodes': result, 'total': len(result)})
 
@@ -722,6 +807,323 @@ def media_theme_clusters():
     except Exception as exc:
         print(f'theme-clusters error: {exc}')
         return jsonify({'weekStart': None, 'clusters': []})
+
+
+# ============================================
+# FEATURE 9 — Share / export (email endpoints)
+# ============================================
+
+def _smtp_configured() -> bool:
+    return bool(os.environ.get('SMTP_HOST') and os.environ.get('SMTP_USER') and os.environ.get('SMTP_PASSWORD'))
+
+
+def _resolve_digest_to() -> str:
+    try:
+        with get_db() as (_c, cur):
+            cur.execute("SELECT value FROM app_settings WHERE key='media_email_digest_to'")
+            row = cur.fetchone()
+        if row and row['value']:
+            val = row['value']
+            if isinstance(val, str):
+                return val
+            return str(val)
+    except Exception:
+        pass
+    return os.environ.get('SMTP_TO') or 'tonydlee@gmail.com'
+
+
+@app.route('/api/media/email-bullet', methods=['POST'])
+def media_email_bullet():
+    """Email a single bullet. Body: {ticker, pointText, feedName, episodeTitle, sourceUrl}."""
+    data = request.get_json() or {}
+    ticker = (data.get('ticker') or '').strip()
+    point_text = (data.get('pointText') or '').strip()
+    feed_name = (data.get('feedName') or '').strip()
+    episode_title = (data.get('episodeTitle') or '').strip()
+    source_url = (data.get('sourceUrl') or '').strip()
+    if not point_text:
+        return jsonify({'sent': False, 'reason': 'pointText required'}), 400
+    if not _smtp_configured():
+        return jsonify({'sent': False, 'reason': 'smtp not configured'})
+    ticker_html = f'<span style="color:#b45309;font-weight:600;">{ticker}</span> — ' if ticker else ''
+    src_html = f'<p style="margin-top:12px;"><a href="{source_url}">Source</a></p>' if source_url else ''
+    html = (
+        '<div style="font-family:sans-serif;max-width:680px;">'
+        f'<h3 style="margin:0 0 8px;">Charlie — Bullet</h3>'
+        f'<p style="margin:4px 0 12px;">{ticker_html}{point_text}</p>'
+        f'<p style="color:#666;font-size:12px;margin:0;">{feed_name}{" · " if feed_name and episode_title else ""}{episode_title}</p>'
+        f'{src_html}'
+        '</div>'
+    )
+    try:
+        from media_trackers.notifications import _email_send
+        subj = f'Charlie — {ticker}: {point_text[:60]}' if ticker else f'Charlie — {point_text[:80]}'
+        _email_send(subj, html, to=_resolve_digest_to())
+        return jsonify({'sent': True})
+    except Exception as exc:
+        print(f'email-bullet error: {exc}')
+        return jsonify({'sent': False, 'reason': str(exc)})
+
+
+@app.route('/api/media/email-ticker-digest', methods=['POST'])
+def media_email_ticker_digest():
+    """Email all bullets for a ticker in the last N days. Body: {ticker, days}."""
+    data = request.get_json() or {}
+    ticker = (data.get('ticker') or '').strip().upper()
+    try:
+        days = int(data.get('days', 7))
+    except (TypeError, ValueError):
+        days = 7
+    days = max(1, min(days, 90))
+    if not ticker:
+        return jsonify({'sent': False, 'reason': 'ticker required'}), 400
+    if not _smtp_configured():
+        return jsonify({'sent': False, 'reason': 'smtp not configured'})
+    try:
+        with get_db() as (_c, cur):
+            cur.execute(
+                """
+                SELECT p.id, p.text, p.material, p.theme_tags, e.title AS ep_title,
+                       e.source_url AS ep_url, e.published_at, f.name AS feed_name
+                  FROM media_digest_points p
+                  JOIN media_episodes e ON e.id = p.episode_id
+                  JOIN media_feeds f    ON f.id = e.feed_id
+                 WHERE %s = ANY(p.tickers)
+                   AND p.created_at > NOW() - %s::interval
+                 ORDER BY e.published_at DESC NULLS LAST, p.point_order ASC
+                """,
+                (ticker, f'{days} days'),
+            )
+            rows = cur.fetchall()
+        by_ep = {}
+        order = []
+        for r in rows:
+            key = r['ep_title'] or '(untitled)'
+            if key not in by_ep:
+                by_ep[key] = {'title': key, 'feed': r['feed_name'], 'url': r['ep_url'],
+                              'published': r['published_at'], 'bullets': []}
+                order.append(key)
+            by_ep[key]['bullets'].append({'text': r['text'], 'material': r['material']})
+        html_parts = [
+            '<div style="font-family:sans-serif;max-width:720px;">',
+            f'<h2 style="margin:0 0 4px;">Charlie — {ticker} digest</h2>',
+            f'<p style="color:#666;font-size:12px;margin:0 0 16px;">Last {days} day{"s" if days != 1 else ""} · {len(rows)} bullet{"s" if len(rows) != 1 else ""} across {len(order)} episode{"s" if len(order) != 1 else ""}</p>',
+        ]
+        if not order:
+            html_parts.append(f'<p style="color:#666;">No mentions of {ticker} in the last {days} days.</p>')
+        for key in order:
+            ep = by_ep[key]
+            date_str = ep['published'].strftime('%Y-%m-%d') if ep['published'] else ''
+            url = ep['url'] or ''
+            url_html = f' · <a href="{url}">source</a>' if url else ''
+            html_parts.append(
+                f'<h3 style="margin:14px 0 4px;font-size:14px;">{ep["title"]}</h3>'
+                f'<p style="color:#666;font-size:12px;margin:0 0 6px;">{ep["feed"]} · {date_str}{url_html}</p>'
+                '<ul style="margin:0 0 10px 20px;padding:0;">'
+            )
+            for b in ep['bullets']:
+                star = '★ ' if b.get('material') else ''
+                html_parts.append(f'<li style="margin:3px 0;">{star}{b["text"]}</li>')
+            html_parts.append('</ul>')
+        html_parts.append('</div>')
+        html = '\n'.join(html_parts)
+        from media_trackers.notifications import _email_send
+        subj = f'Charlie — {ticker} digest ({len(rows)} bullets, {days}d)'
+        _email_send(subj, html, to=_resolve_digest_to())
+        return jsonify({'sent': True, 'ticker': ticker, 'bullets': len(rows), 'episodes': len(order)})
+    except Exception as exc:
+        print(f'email-ticker-digest error: {exc}')
+        return jsonify({'sent': False, 'reason': str(exc)})
+
+
+@app.route('/api/media/email-episode', methods=['POST'])
+def media_email_episode():
+    """Email an entire episode's bullets. Body: {episodeId}."""
+    data = request.get_json() or {}
+    episode_id = (data.get('episodeId') or '').strip()
+    if not episode_id:
+        return jsonify({'sent': False, 'reason': 'episodeId required'}), 400
+    if not _smtp_configured():
+        return jsonify({'sent': False, 'reason': 'smtp not configured'})
+    try:
+        with get_db() as (_c, cur):
+            cur.execute(
+                """
+                SELECT e.id, e.title, e.source_url, e.published_at, f.name AS feed_name
+                  FROM media_episodes e JOIN media_feeds f ON f.id = e.feed_id
+                 WHERE e.id = %s
+                """,
+                (episode_id,),
+            )
+            ep = cur.fetchone()
+            if not ep:
+                return jsonify({'sent': False, 'reason': 'episode not found'}), 404
+            cur.execute(
+                """
+                SELECT id, text, tickers, material
+                  FROM media_digest_points
+                 WHERE episode_id = %s
+                 ORDER BY point_order ASC
+                """,
+                (episode_id,),
+            )
+            points = cur.fetchall()
+        date_str = ep['published_at'].strftime('%Y-%m-%d') if ep['published_at'] else ''
+        url = ep['source_url'] or ''
+        url_html = f' · <a href="{url}">source</a>' if url else ''
+        html_parts = [
+            '<div style="font-family:sans-serif;max-width:720px;">',
+            f'<h2 style="margin:0 0 4px;">{ep["title"]}</h2>',
+            f'<p style="color:#666;font-size:12px;margin:0 0 14px;">{ep["feed_name"]} · {date_str}{url_html}</p>',
+            '<ul style="margin:0 0 0 20px;padding:0;">',
+        ]
+        for p in points:
+            star = '★ ' if p.get('material') else ''
+            tics = ''
+            if p.get('tickers'):
+                tics = ' <span style="color:#b45309;font-weight:600;">[' + ', '.join(p['tickers']) + ']</span>'
+            html_parts.append(f'<li style="margin:4px 0;">{star}{p["text"]}{tics}</li>')
+        html_parts.append('</ul></div>')
+        html = '\n'.join(html_parts)
+        from media_trackers.notifications import _email_send
+        subj = f'Charlie — {ep["feed_name"]}: {ep["title"][:60]}'
+        _email_send(subj, html, to=_resolve_digest_to())
+        return jsonify({'sent': True, 'episodeId': episode_id, 'bullets': len(points)})
+    except Exception as exc:
+        print(f'email-episode error: {exc}')
+        return jsonify({'sent': False, 'reason': str(exc)})
+
+
+# ============================================
+# FEATURE 10 — Inline notes on bullets
+# ============================================
+
+@app.route('/api/media/points/<point_id>/notes', methods=['GET'])
+def media_point_notes_list(point_id):
+    try:
+        with get_db() as (_c, cur):
+            cur.execute(
+                """
+                SELECT id, note_text, created_at, updated_at
+                  FROM media_point_notes
+                 WHERE point_id = %s
+                 ORDER BY created_at ASC
+                """,
+                (point_id,),
+            )
+            rows = cur.fetchall()
+        notes = [{
+            'id': r['id'],
+            'noteText': r['note_text'],
+            'createdAt': r['created_at'].isoformat() if r['created_at'] else None,
+            'updatedAt': r['updated_at'].isoformat() if r['updated_at'] else None,
+        } for r in rows]
+        return jsonify({'notes': notes})
+    except Exception as exc:
+        print(f'point-notes list error: {exc}')
+        return jsonify({'notes': [], 'error': str(exc)}), 500
+
+
+@app.route('/api/media/points/<point_id>/notes', methods=['POST'])
+def media_point_notes_create(point_id):
+    data = request.get_json() or {}
+    note_text = (data.get('noteText') or '').strip()
+    if not note_text:
+        return jsonify({'error': 'noteText required'}), 400
+    try:
+        nid = str(uuid.uuid4())
+        with get_db(commit=True) as (_c, cur):
+            # Verify the point exists
+            cur.execute('SELECT id FROM media_digest_points WHERE id = %s', (point_id,))
+            if not cur.fetchone():
+                return jsonify({'error': 'point not found'}), 404
+            cur.execute(
+                """
+                INSERT INTO media_point_notes (id, point_id, note_text)
+                VALUES (%s, %s, %s)
+                RETURNING id, note_text, created_at, updated_at
+                """,
+                (nid, point_id, note_text),
+            )
+            r = cur.fetchone()
+        return jsonify({'note': {
+            'id': r['id'],
+            'noteText': r['note_text'],
+            'createdAt': r['created_at'].isoformat() if r['created_at'] else None,
+            'updatedAt': r['updated_at'].isoformat() if r['updated_at'] else None,
+        }})
+    except Exception as exc:
+        print(f'point-notes create error: {exc}')
+        return jsonify({'error': str(exc)}), 500
+
+
+@app.route('/api/media/point-notes/<note_id>', methods=['DELETE'])
+def media_point_notes_delete(note_id):
+    try:
+        with get_db(commit=True) as (_c, cur):
+            cur.execute('DELETE FROM media_point_notes WHERE id = %s RETURNING id', (note_id,))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'deleted': False, 'error': 'note not found'}), 404
+        return jsonify({'deleted': True})
+    except Exception as exc:
+        print(f'point-notes delete error: {exc}')
+        return jsonify({'deleted': False, 'error': str(exc)}), 500
+
+
+# ============================================
+# FEATURE 11 — Related episodes (cluster lookup)
+# ============================================
+
+@app.route('/api/media/clusters/<cluster_id>/episodes', methods=['GET'])
+def media_cluster_episodes(cluster_id):
+    try:
+        with get_db() as (_c, cur):
+            cur.execute(
+                """
+                SELECT id, theme, summary, point_ids, week_start
+                  FROM media_theme_clusters
+                 WHERE id = %s
+                """,
+                (cluster_id,),
+            )
+            cluster = cur.fetchone()
+            if not cluster:
+                return jsonify({'error': 'cluster not found'}), 404
+
+            cur.execute(
+                """
+                SELECT e.id, e.title, e.published_at, e.source_url,
+                       f.name AS feed_name,
+                       COUNT(p.id)::int AS bullet_count
+                  FROM media_digest_points p
+                  JOIN media_episodes e ON e.id = p.episode_id
+                  JOIN media_feeds f    ON f.id = e.feed_id
+                 WHERE p.cluster_id = %s
+                 GROUP BY e.id, e.title, e.published_at, e.source_url, f.name
+                 ORDER BY e.published_at DESC NULLS LAST
+                """,
+                (cluster_id,),
+            )
+            rows = cur.fetchall()
+        episodes = [{
+            'id': r['id'],
+            'title': r['title'],
+            'feedName': r['feed_name'],
+            'publishedAt': r['published_at'].isoformat() if r['published_at'] else None,
+            'sourceUrl': r['source_url'],
+            'bulletCount': r['bullet_count'],
+        } for r in rows]
+        return jsonify({
+            'clusterId': cluster['id'],
+            'theme': cluster['theme'],
+            'summary': cluster.get('summary'),
+            'weekStart': cluster['week_start'].isoformat() if cluster.get('week_start') and hasattr(cluster['week_start'], 'isoformat') else None,
+            'episodes': episodes,
+        })
+    except Exception as exc:
+        print(f'cluster episodes error: {exc}')
+        return jsonify({'error': str(exc)}), 500
 
 
 @app.route('/api/media/run-scanner', methods=['POST'])
@@ -2361,6 +2763,18 @@ def init_db():
             cur.execute('CREATE INDEX IF NOT EXISTS idx_points_tickers_gin ON media_digest_points USING GIN(tickers)')
             cur.execute('CREATE INDEX IF NOT EXISTS idx_points_material ON media_digest_points(material, created_at DESC)')
             cur.execute('CREATE INDEX IF NOT EXISTS idx_points_cluster ON media_digest_points(cluster_id)')
+
+            # Feature 10: inline notes on bullets
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS media_point_notes (
+                    id         VARCHAR(100) PRIMARY KEY,
+                    point_id   VARCHAR(100) REFERENCES media_digest_points(id) ON DELETE CASCADE,
+                    note_text  TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP DEFAULT NOW()
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_point_notes_point ON media_point_notes(point_id, created_at DESC)')
 
         print("Database tables initialized")
     except Exception as e:
