@@ -5,7 +5,7 @@ import uuid
 import app_v3
 from media_trackers.prompts import EXTRACTION_PROMPT
 
-MAX_EPISODES_PER_BATCH = 3
+MAX_EPISODES_PER_BATCH = 10
 
 
 def _call_haiku(content: str) -> dict:

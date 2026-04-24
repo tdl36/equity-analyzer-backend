@@ -85,7 +85,7 @@ def build_scheduler(use_memory_jobstore: bool = False) -> BackgroundScheduler:
     )
     sched.add_job(run_feed_poller,        'interval', minutes=30, id='feed_poller',        replace_existing=True)
     sched.add_job(run_transcribe_worker,  'interval', minutes=2,  id='transcribe_worker',  replace_existing=True)
-    sched.add_job(run_extract_worker,     'interval', minutes=2,  id='extract_worker',     replace_existing=True)
+    sched.add_job(run_extract_worker,     'interval', minutes=1,  id='extract_worker',     replace_existing=True)
     sched.add_job(run_cluster_weekly,     'cron', day_of_week='sun', hour=5, minute=0,
                   id='cluster_weekly',     replace_existing=True)
     sched.add_job(run_email_digest_daily, 'cron', hour=7,  minute=0,

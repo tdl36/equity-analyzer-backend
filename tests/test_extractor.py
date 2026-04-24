@@ -55,13 +55,13 @@ def test_extract_marks_episode_done(clean_db):
         assert cur.fetchone()['status'] == 'done'
 
 
-def test_process_extract_batch_picks_up_to_3(clean_db):
+def test_process_extract_batch_respects_max(clean_db):
     with app_v3.get_db(commit=True) as (_c, cur):
         cur.execute('''
             INSERT INTO media_feeds (id, source_type, name, feed_url)
             VALUES ('f1','podcast','X','u') ON CONFLICT DO NOTHING
         ''')
-        for i in range(5):
+        for i in range(15):
             cur.execute('''
                 INSERT INTO media_episodes (id, feed_id, guid, title, show_notes, status)
                 VALUES (%s, 'f1', %s, 't', %s, 'extracting')
@@ -70,7 +70,7 @@ def test_process_extract_batch_picks_up_to_3(clean_db):
         extractor.process_extract_batch()
     with app_v3.get_db() as (_c, cur):
         cur.execute("SELECT COUNT(*) AS n FROM media_episodes WHERE status='done'")
-        assert cur.fetchone()['n'] == 3
+        assert cur.fetchone()['n'] == extractor.MAX_EPISODES_PER_BATCH
 
 
 def test_extract_skips_episode_with_no_show_notes(clean_db):
