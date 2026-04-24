@@ -54,7 +54,7 @@ if (typeof window !== 'undefined') {
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-24T06';
+        const BUILD_VERSION = '2026-04-24T07';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -1514,6 +1514,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [earningsLoading, setEarningsLoading] = useState(false);
             const [earningsForm, setEarningsForm] = useState({ ticker: '', quarterLabel: '', confirmedDate: '', timing: '', prUrl: '', transcriptUrl: '' });
             const [earningsFormOpen, setEarningsFormOpen] = useState(false);
+            // Phase 3c: per-activity live progress for running earnings recaps
+            const [activityProgress, setActivityProgress] = useState({});
             const [newAnalystOpen, setNewAnalystOpen] = useState(false);
             const [newAnalystForm, setNewAnalystForm] = useState({ name: '', sector: '', subsector: '', coverageCsv: '' });
             const [analystToast, setAnalystToast] = useState(null);
@@ -6758,6 +6760,40 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 const id = setInterval(fetchAnalystInbox, 60000);
                 return () => clearInterval(id);
             }, []);
+
+            // Phase 3c: poll pipeline job progress for any running activity, every 3s.
+            // Auto-refreshes inbox when a job completes so the recap markdown lands in the UI.
+            useEffect(() => {
+                const running = (analystInbox || []).filter(a => a.status === 'running' && a.output?.catalystJobId);
+                if (running.length === 0) return;
+                let cancelled = false;
+                const tick = async () => {
+                    const next = { ...activityProgress };
+                    let anyComplete = false;
+                    await Promise.all(running.map(async (act) => {
+                        const jobId = act.output.catalystJobId;
+                        try {
+                            const r = await fetch(`${API_URL}/api/pipeline/job/${jobId}/status`);
+                            if (!r.ok) return;
+                            const j = await r.json();
+                            next[act.id] = {
+                                progress: j.progress ?? 0,
+                                currentStep: j.current_step || '',
+                                status: j.status,
+                                startedAt: j.created_at,
+                                updatedAt: j.updated_at,
+                            };
+                            if (j.status === 'complete' || j.status === 'failed') anyComplete = true;
+                        } catch (e) { /* ignore */ }
+                    }));
+                    if (cancelled) return;
+                    setActivityProgress(next);
+                    if (anyComplete) fetchAnalystInbox();
+                };
+                tick();
+                const id = setInterval(tick, 3000);
+                return () => { cancelled = true; clearInterval(id); };
+            }, [analystInbox.map(a => a.id + ':' + a.status).join('|')]);
             // Auto-dismiss analyst toast
             useEffect(() => {
                 if (!analystToast) return;
@@ -23096,11 +23132,34 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                             className="px-3 py-1 bg-amber-600 hover:bg-amber-500 rounded text-xs font-medium"
                                                                         >Run earnings recap</button>
                                                                     )}
-                                                                    {item.status === 'running' && (
-                                                                        <span className="px-3 py-1 bg-amber-500/20 border border-amber-500/30 text-amber-300 rounded text-xs font-medium">
-                                                                            Generating…
-                                                                        </span>
-                                                                    )}
+                                                                    {item.status === 'running' && (() => {
+                                                                        const p = activityProgress[item.id];
+                                                                        const pct = typeof p?.progress === 'number' ? Math.max(0, Math.min(100, p.progress)) : null;
+                                                                        const elapsed = p?.startedAt ? Math.max(0, Math.round((Date.now() - new Date(p.startedAt).getTime()) / 1000)) : null;
+                                                                        const elapsedStr = elapsed !== null ? (elapsed < 60 ? `${elapsed}s` : `${Math.floor(elapsed/60)}m ${elapsed%60}s`) : '';
+                                                                        return (
+                                                                            <div className="w-full mt-1">
+                                                                                <div className="flex items-center justify-between mb-1 text-[11px]">
+                                                                                    <span className="text-amber-300 font-medium">
+                                                                                        {p?.currentStep || 'Generating earnings recap…'}
+                                                                                    </span>
+                                                                                    <span className="text-slate-400">
+                                                                                        {pct !== null ? `${pct}%` : ''}{elapsedStr ? ` · ${elapsedStr}` : ''}
+                                                                                    </span>
+                                                                                </div>
+                                                                                <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+                                                                                    <div
+                                                                                        className="h-full bg-amber-500 transition-all duration-500"
+                                                                                        style={{ width: pct !== null ? `${pct}%` : '10%' }}
+                                                                                    />
+                                                                                </div>
+                                                                                <p className="mt-1 text-[10px] text-slate-500">
+                                                                                    Job {item.output?.catalystJobId?.slice(0, 8) || '—'}
+                                                                                    {p?.updatedAt ? ` · updated ${new Date(p.updatedAt).toLocaleTimeString()}` : ''}
+                                                                                </p>
+                                                                            </div>
+                                                                        );
+                                                                    })()}
                                                                     {isCatalystFolder && input.catalystJobId && !item.output?.synthesisMarkdown && (
                                                                         <button
                                                                             onClick={async () => {
