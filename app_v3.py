@@ -294,6 +294,29 @@ def media_feeds_list():
     return jsonify({'feeds': feeds, 'total': len(feeds)})
 
 
+@app.route('/api/media/feeds/<feed_id>/episodes', methods=['GET'])
+def media_feeds_episodes(feed_id):
+    """All episodes for a feed regardless of status, plus a status
+    histogram. Admin/debug endpoint — the main /api/media/feed route
+    only returns status='done'."""
+    limit = int(request.args.get('limit', 50))
+    with get_db() as (_c, cur):
+        cur.execute('''
+            SELECT id, title, status, published_at, created_at, updated_at,
+                   audio_url IS NOT NULL AS has_audio,
+                   transcript IS NOT NULL AS has_transcript,
+                   COALESCE(LENGTH(transcript), 0) AS transcript_len
+              FROM media_episodes
+             WHERE feed_id = %s
+             ORDER BY published_at DESC NULLS LAST
+             LIMIT %s
+        ''', (feed_id, limit))
+        eps = [dict(r) for r in cur.fetchall()]
+        cur.execute("SELECT status, COUNT(*) AS c FROM media_episodes WHERE feed_id = %s GROUP BY status", (feed_id,))
+        status_counts = {r['status']: r['c'] for r in cur.fetchall()}
+    return jsonify({'episodes': eps, 'statusCounts': status_counts, 'total': sum(status_counts.values())})
+
+
 @app.route('/api/media/feeds/<feed_id>/reset', methods=['POST'])
 def media_feeds_reset(feed_id):
     """Clear error_count + last_error and unmute a feed. Used after
