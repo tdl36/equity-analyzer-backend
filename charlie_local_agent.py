@@ -418,6 +418,25 @@ def process_pending_syncs() -> None:
             ticker = sync.get("ticker", "")
             if not ticker:
                 continue
+            # Phase 3c: earnings recap sync -> CATALYSTS/{ticker}/{topic}/RECAP_*.md
+            if sync.get("kind") == "earnings_recap":
+                try:
+                    topic = (sync.get("topic") or "").strip()
+                    filename = sync.get("filename") or "RECAP.md"
+                    md = sync.get("markdown") or ""
+                    if not topic or not md:
+                        log.warning(f"  Recap sync: missing topic/markdown for {ticker}, skipping")
+                        continue
+                    topic_dir = CATALYSTS_DIR / ticker / topic
+                    topic_dir.mkdir(parents=True, exist_ok=True)
+                    safe_name = "".join(c for c in filename if c not in "/\\:")[:120] or "RECAP.md"
+                    path = topic_dir / safe_name
+                    path.write_text(md, encoding="utf-8")
+                    log.info(f"  Recap synced: {ticker}/{topic}/{path.name} ({len(md):,} chars)")
+                    notify(f"*Charlie Agent:* Earnings recap saved to iCloud\n{ticker}/{topic}/{path.name}")
+                except Exception as e:
+                    log.warning(f"  Recap sync failed for {ticker}: {e}")
+                continue
             ticker_dir = STOCKS_DIR / ticker
             if not ticker_dir.exists():
                 log.warning(f"  Sync: no folder for {ticker}, skipping")

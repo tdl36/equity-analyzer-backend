@@ -144,6 +144,64 @@ def test_agent_update_job_propagates_failure_to_activity(client, clean_db):
     assert 'transient' in (row['error'] or '').lower()
 
 
+def test_approve_saves_to_research_and_queues_icloud(client, clean_db):
+    _create_analyst(client, ['MDT'])
+    activity_id = _queue_earnings_activity(client)
+    run_body = client.post(f'/api/analyst-activities/{activity_id}/run', json={}).get_json()
+    job_id = run_body['catalystJobId']
+    client.post('/api/agent/update-job', json={
+        'jobId': job_id, 'status': 'complete',
+        'result': {'markdown': '# MDT 4Q26 Earnings Recap\n\n### 1. Results vs. Expectations\nRev beat.'},
+    })
+
+    # Approve
+    r = client.post(f'/api/analyst-activities/{activity_id}/approve', json={})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body['ok'] is True
+    assert body['savedTo']['research'] is not None
+    assert body['savedTo']['research']['docId'] == f'earnings-recap-{activity_id}'
+    assert body['savedTo']['icloud'] is not None
+    assert body['savedTo']['icloud']['path'].startswith('CATALYSTS/MDT/')
+
+    # Status flipped
+    with app_v3.get_db() as (_c, cur):
+        cur.execute('SELECT status, reviewed_at FROM analyst_activities WHERE id=%s', (activity_id,))
+        row = cur.fetchone()
+    assert row['status'] == 'approved'
+    assert row['reviewed_at'] is not None
+
+    # Research document created
+    with app_v3.get_db() as (_c, cur):
+        cur.execute('SELECT name, content FROM research_documents WHERE id=%s', (f'earnings-recap-{activity_id}',))
+        doc = cur.fetchone()
+    assert doc is not None
+    assert 'MDT' in doc['name']
+    assert 'Earnings Recap' in doc['name']
+    assert doc['content'].startswith('# MDT 4Q26 Earnings Recap')
+
+    # iCloud sync queued
+    syncs = client.get('/api/agent/sync-to-local').get_json().get('syncs', [])
+    assert any(s.get('kind') == 'earnings_recap' and s.get('ticker') == 'MDT' for s in syncs)
+
+
+def test_archived_endpoint_returns_approved_activities(client, clean_db):
+    _create_analyst(client, ['MDT'])
+    activity_id = _queue_earnings_activity(client)
+    run_body = client.post(f'/api/analyst-activities/{activity_id}/run', json={}).get_json()
+    client.post('/api/agent/update-job', json={
+        'jobId': run_body['catalystJobId'], 'status': 'complete',
+        'result': {'markdown': '# recap'},
+    })
+    client.post(f'/api/analyst-activities/{activity_id}/approve', json={})
+
+    body = client.get('/api/analyst-activities/archived').get_json()
+    ids = [a['id'] for a in body['activities']]
+    assert activity_id in ids
+    approved = [a for a in body['activities'] if a['id'] == activity_id][0]
+    assert approved['status'] == 'approved'
+
+
 def test_pending_inbox_includes_running_activities(client, clean_db):
     _create_analyst(client, ['MDT'])
     activity_id = _queue_earnings_activity(client)

@@ -36,7 +36,8 @@ def clean_db():
                          agent_alerts, mp_jobs, portfolio_analyses,
                          analyst_activities, analysts,
                          earnings_calendar, ticker_earnings_config,
-                         research_pipeline_jobs
+                         research_pipeline_jobs,
+                         research_documents
                 RESTART IDENTITY CASCADE
             """)
             cur.execute("""

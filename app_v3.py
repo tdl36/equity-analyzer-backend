@@ -20690,6 +20690,137 @@ def analyst_activities_retry(activity_id):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/analyst-activities/<activity_id>/approve', methods=['POST'])
+def analyst_activities_approve(activity_id):
+    """Approve an earnings-recap (or other) analyst activity. Flips status to
+    'approved' and, for recaps with synthesisMarkdown, also:
+      (A) Queues an iCloud sync so the recap lands in CATALYSTS/{ticker}/{topic}/
+      (B) Files the recap under the Catalyst Synthesis category in Research
+    Returns a summary of what was saved where."""
+    try:
+        data = request.json or {}
+        with get_db() as (_c, cur):
+            cur.execute('SELECT * FROM analyst_activities WHERE id=%s', (activity_id,))
+            act = cur.fetchone()
+        if not act:
+            return jsonify({'error': 'activity not found'}), 404
+
+        out = act.get('output') or {}
+        if isinstance(out, str):
+            try:
+                out = json.loads(out)
+            except Exception:
+                out = {}
+        inp = act.get('input') or {}
+        if isinstance(inp, str):
+            try:
+                inp = json.loads(inp)
+            except Exception:
+                inp = {}
+
+        ticker = (act.get('ticker') or inp.get('ticker') or '').upper()
+        topic = (inp.get('topic') or '').strip()
+        markdown = out.get('synthesisMarkdown') or ''
+
+        savings = {'icloud': None, 'research': None}
+
+        # (B) Save to Research tab under Catalyst Synthesis if we have markdown
+        if markdown and ticker:
+            try:
+                doc_id = f"earnings-recap-{activity_id}"
+                with get_db(commit=True) as (_c, cur):
+                    cat_id = 'cat-catalyst-synthesis'
+                    cur.execute("INSERT INTO research_categories (id, name, type) VALUES (%s, 'Catalyst Synthesis', 'topic') ON CONFLICT (id) DO NOTHING", (cat_id,))
+                    doc_name = f"{ticker} -- {topic} (Earnings Recap)" if topic else f"{ticker} -- Earnings Recap"
+                    cur.execute('''
+                        INSERT INTO research_documents (id, category_id, name, content, doc_type, created_at)
+                        VALUES (%s, %s, %s, %s, 'earnings_recap', NOW())
+                        ON CONFLICT (id) DO UPDATE SET
+                            name = EXCLUDED.name,
+                            content = EXCLUDED.content
+                    ''', (doc_id, cat_id, doc_name, markdown))
+                try:
+                    cache.invalidate('research_categories')
+                except Exception:
+                    pass
+                savings['research'] = {'docId': doc_id, 'category': 'Catalyst Synthesis'}
+            except Exception as e:
+                print(f'approve -> research save failed: {e}')
+
+        # (A) Queue iCloud sync so the local agent writes the recap file
+        if markdown and ticker and topic:
+            try:
+                safe_topic = topic
+                ts = datetime.utcnow().strftime('%Y%m%d-%H%M%S')
+                filename = f"RECAP_{ts}.md"
+                _pending_local_syncs.append({
+                    'kind': 'earnings_recap',
+                    'ticker': ticker,
+                    'topic': safe_topic,
+                    'filename': filename,
+                    'markdown': markdown,
+                    'timestamp': datetime.utcnow().isoformat(),
+                })
+                savings['icloud'] = {
+                    'path': f"CATALYSTS/{ticker}/{topic}/{filename}",
+                    'queued': True,
+                }
+            except Exception as e:
+                print(f'approve -> iCloud queue failed: {e}')
+
+        # Finally flip status + record where we saved
+        out['savedAt'] = datetime.utcnow().isoformat()
+        out['savedTo'] = savings
+        with get_db(commit=True) as (_c, cur):
+            cur.execute('''
+                UPDATE analyst_activities
+                   SET status='approved', reviewed_at=NOW(), output=%s::jsonb, updated_at=NOW()
+                 WHERE id=%s
+            ''', (json.dumps(out), activity_id))
+
+        # If this was also a catalyst-proposal linked job, approve it too so the
+        # Catalysts UI reflects user intent.
+        catalyst_job_id = out.get('catalystJobId') or inp.get('catalystJobId')
+        if catalyst_job_id:
+            try:
+                with get_db(commit=True) as (_c, cur):
+                    cur.execute('''
+                        UPDATE research_pipeline_jobs
+                           SET status='queued', current_step='Waiting for processing', updated_at=NOW()
+                         WHERE id=%s AND status='proposed'
+                    ''', (catalyst_job_id,))
+            except Exception as e:
+                print(f'approve -> proposal flip failed: {e}')
+
+        return jsonify({'ok': True, 'activityId': activity_id, 'savedTo': savings})
+    except Exception as e:
+        print(f'analyst_activities_approve error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/analyst-activities/archived', methods=['GET'])
+def analyst_activities_archived():
+    """Return recently-approved activities (earnings_recap default) so users
+    can revisit the recap markdown after approval."""
+    try:
+        limit = int(request.args.get('limit', 50))
+        limit = max(1, min(limit, 200))
+        with get_db() as (_c, cur):
+            cur.execute('''
+                SELECT act.*, a.name AS analyst_name
+                  FROM analyst_activities act
+                  LEFT JOIN analysts a ON a.id = act.analyst_id
+                 WHERE act.status = 'approved'
+                 ORDER BY act.reviewed_at DESC NULLS LAST, act.updated_at DESC
+                 LIMIT %s
+            ''', (limit,))
+            rows = cur.fetchall()
+        return jsonify({'activities': [_row_to_activity(r) for r in rows]})
+    except Exception as e:
+        print(f'analyst_activities_archived error: {e}')
+        return jsonify({'activities': [], 'error': str(e)}), 500
+
+
 @app.route('/api/analyst-activities/<activity_id>/run', methods=['POST'])
 def analyst_activities_run(activity_id):
     """Phase 3c: dispatch an analyst activity as a catalyst-synthesis job with

@@ -54,7 +54,7 @@ if (typeof window !== 'undefined') {
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-24T07';
+        const BUILD_VERSION = '2026-04-24T08';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -1516,6 +1516,12 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [earningsFormOpen, setEarningsFormOpen] = useState(false);
             // Phase 3c: per-activity live progress for running earnings recaps
             const [activityProgress, setActivityProgress] = useState({});
+            // Phase 3c: archived (approved) inbox view + email modal
+            const [showArchivedInbox, setShowArchivedInbox] = useState(false);
+            const [archivedInbox, setArchivedInbox] = useState([]);
+            const [recapEmailOpen, setRecapEmailOpen] = useState(null); // activity object when open
+            const [recapEmailTo, setRecapEmailTo] = useState('');
+            const [recapEmailSubject, setRecapEmailSubject] = useState('');
             const [newAnalystOpen, setNewAnalystOpen] = useState(false);
             const [newAnalystForm, setNewAnalystForm] = useState({ name: '', sector: '', subsector: '', coverageCsv: '' });
             const [analystToast, setAnalystToast] = useState(null);
@@ -6718,6 +6724,116 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     const res = await fetch(`${API_URL}/api/earnings/calendar/${entryId}`, { method: 'DELETE' });
                     if (res.ok) fetchUpcomingEarnings();
                 } catch (e) { setAnalystToast('Delete error: ' + e.message); }
+            };
+            const fetchArchivedInbox = async () => {
+                try {
+                    const res = await fetch(`${API_URL}/api/analyst-activities/archived?limit=100`);
+                    if (res.ok) {
+                        const j = await res.json();
+                        setArchivedInbox(j.activities || []);
+                    }
+                } catch (e) { console.warn('fetchArchivedInbox:', e); }
+            };
+            const approveActivity = async (activityId) => {
+                try {
+                    const res = await fetch(`${API_URL}/api/analyst-activities/${activityId}/approve`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                    });
+                    if (res.ok) {
+                        const j = await res.json();
+                        const bits = [];
+                        if (j.savedTo?.research) bits.push('Research tab');
+                        if (j.savedTo?.icloud) bits.push(`iCloud (${j.savedTo.icloud.path})`);
+                        setAnalystToast(bits.length ? `Approved. Saved to ${bits.join(' + ')}.` : 'Approved.');
+                        fetchAnalystInbox();
+                        if (showArchivedInbox) fetchArchivedInbox();
+                    } else {
+                        setAnalystToast('Approve failed');
+                    }
+                } catch (e) { setAnalystToast('Approve error: ' + e.message); }
+            };
+            const copyRecap = async (markdown) => {
+                try {
+                    await navigator.clipboard.writeText(markdown || '');
+                    setAnalystToast('Recap copied to clipboard');
+                } catch (e) { setAnalystToast('Copy failed'); }
+            };
+            const emailRecapQuick = async (activity) => {
+                const md = activity.output?.synthesisMarkdown || '';
+                if (!md) return setAnalystToast('No recap to email');
+                const saved = localStorage.getItem('emailCredentials');
+                if (!saved) return setAnalystToast('Set email credentials in Settings first');
+                let creds; try { creds = JSON.parse(saved); } catch (e) { return setAnalystToast('Invalid email credentials'); }
+                if (!creds.email) return setAnalystToast('Set recipient email in Settings first');
+                const subject = `${activity.ticker} ${activity.input?.topic || 'Earnings Recap'}`;
+                try {
+                    const html = '<pre style="white-space: pre-wrap; font-family: -apple-system, sans-serif; font-size: 14px; line-height: 1.6;">' + md.replace(/</g, '&lt;') + '</pre>';
+                    const r = await fetch(`${API_URL}/api/email-summary-section`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            email: creds.email,
+                            subject,
+                            section: 'earnings_recap',
+                            content: html,
+                            title: subject,
+                            topic: activity.ticker,
+                            smtpConfig: {
+                                use_gmail: creds.useGmail,
+                                gmail_user: creds.gmailUser,
+                                gmail_app_password: creds.gmailPassword,
+                                from_email: creds.gmailUser,
+                            },
+                        }),
+                    });
+                    if (r.ok) setAnalystToast('Recap emailed');
+                    else { const err = await r.json().catch(() => ({})); setAnalystToast('Email failed: ' + (err.error || r.status)); }
+                } catch (e) { setAnalystToast('Email error: ' + e.message); }
+            };
+            const openRecapEmailWithOptions = (activity) => {
+                const saved = localStorage.getItem('emailCredentials');
+                let defaultEmail = '';
+                if (saved) { try { defaultEmail = JSON.parse(saved).email || ''; } catch (e) {} }
+                setRecapEmailTo(defaultEmail);
+                setRecapEmailSubject(`${activity.ticker} ${activity.input?.topic || 'Earnings Recap'}`);
+                setRecapEmailOpen(activity);
+            };
+            const sendRecapEmailWithOptions = async () => {
+                const activity = recapEmailOpen;
+                if (!activity || !recapEmailTo) return setAnalystToast('Recipient required');
+                const md = activity.output?.synthesisMarkdown || '';
+                const saved = localStorage.getItem('emailCredentials');
+                let creds = { useGmail: false, gmailUser: '', gmailPassword: '' };
+                if (saved) { try { creds = JSON.parse(saved); } catch (e) {} }
+                try {
+                    const html = '<pre style="white-space: pre-wrap; font-family: -apple-system, sans-serif; font-size: 14px; line-height: 1.6;">' + md.replace(/</g, '&lt;') + '</pre>';
+                    const r = await fetch(`${API_URL}/api/email-summary-section`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            email: recapEmailTo,
+                            subject: recapEmailSubject,
+                            section: 'earnings_recap',
+                            content: html,
+                            title: recapEmailSubject,
+                            topic: activity.ticker,
+                            smtpConfig: {
+                                use_gmail: creds.useGmail,
+                                gmail_user: creds.gmailUser,
+                                gmail_app_password: creds.gmailPassword,
+                                from_email: creds.gmailUser,
+                            },
+                        }),
+                    });
+                    if (r.ok) {
+                        setRecapEmailOpen(null);
+                        setAnalystToast('Recap emailed');
+                    } else {
+                        const err = await r.json().catch(() => ({}));
+                        setAnalystToast('Email failed: ' + (err.error || r.status));
+                    }
+                } catch (e) { setAnalystToast('Email error: ' + e.message); }
             };
             const runAnalystActivity = async (activityId, opts = {}) => {
                 try {
@@ -23067,12 +23183,98 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                         </div>
                                     )}
 
+                                    {recapEmailOpen && (
+                                        <>
+                                            <div className="fixed inset-0 bg-black/60 z-50" onClick={() => setRecapEmailOpen(null)} />
+                                            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+                                                <div className="bg-neutral-900 border border-white/10 rounded-lg w-full max-w-md p-6 pointer-events-auto">
+                                                    <h3 className="font-semibold text-lg mb-4">Email earnings recap</h3>
+                                                    <div className="space-y-3">
+                                                        <div>
+                                                            <label className="block text-xs text-slate-400 mb-1">To</label>
+                                                            <input type="email" value={recapEmailTo} onChange={e => setRecapEmailTo(e.target.value)} className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded text-sm" placeholder="someone@example.com" />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-xs text-slate-400 mb-1">Subject</label>
+                                                            <input type="text" value={recapEmailSubject} onChange={e => setRecapEmailSubject(e.target.value)} className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded text-sm" />
+                                                        </div>
+                                                        <div className="flex gap-2 pt-2">
+                                                            <button onClick={sendRecapEmailWithOptions} className="flex-1 px-3 py-2 bg-amber-600 hover:bg-amber-500 rounded text-sm font-medium">Send</button>
+                                                            <button onClick={() => setRecapEmailOpen(null)} className="flex-1 px-3 py-2 bg-white/10 hover:bg-white/20 rounded text-sm">Cancel</button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
+
                                     {analystView === 'inbox' && (
                                         <div className="p-6">
                                             <div className="flex items-center justify-between mb-4">
                                                 <h2 className="text-xl font-bold">Inbox</h2>
-                                                <button onClick={fetchAnalystInbox} className="text-xs text-slate-400 hover:text-white">Refresh</button>
+                                                <div className="flex items-center gap-3">
+                                                    <button
+                                                        onClick={() => {
+                                                            const next = !showArchivedInbox;
+                                                            setShowArchivedInbox(next);
+                                                            if (next) fetchArchivedInbox();
+                                                        }}
+                                                        className={`text-xs px-2 py-1 rounded ${showArchivedInbox ? 'bg-emerald-600 text-white' : 'bg-white/10 text-slate-300 hover:bg-white/20'}`}
+                                                    >
+                                                        {showArchivedInbox ? 'Show pending' : 'Show archived'}
+                                                    </button>
+                                                    <button onClick={() => showArchivedInbox ? fetchArchivedInbox() : fetchAnalystInbox()} className="text-xs text-slate-400 hover:text-white">Refresh</button>
+                                                </div>
                                             </div>
+                                            {showArchivedInbox && (
+                                                <div className="mb-4">
+                                                    {archivedInbox.length === 0 ? (
+                                                        <p className="text-xs text-slate-500 text-center py-6">No approved recaps yet.</p>
+                                                    ) : (
+                                                        <ul className="space-y-3">
+                                                            {archivedInbox.map(item => {
+                                                                const md = item.output?.synthesisMarkdown;
+                                                                const savedTo = item.output?.savedTo || {};
+                                                                return (
+                                                                    <li key={item.id} className="bg-white/5 border border-emerald-500/20 rounded-lg p-4">
+                                                                        <div className="flex items-center justify-between mb-2">
+                                                                            <div className="flex items-center gap-2">
+                                                                                <span className="font-mono font-bold text-sm">{item.ticker}</span>
+                                                                                <span className="text-[10px] px-1.5 py-0.5 bg-emerald-500/20 text-emerald-300 rounded">approved</span>
+                                                                                <span className="text-[10px] text-slate-500">· {item.analystName}</span>
+                                                                            </div>
+                                                                            <span className="text-[10px] text-slate-500">{item.reviewedAt && new Date(item.reviewedAt).toLocaleString()}</span>
+                                                                        </div>
+                                                                        <p className="text-sm text-slate-200">{item.input?.topic}</p>
+                                                                        {(savedTo.icloud || savedTo.research) && (
+                                                                            <p className="text-[10px] text-slate-500 mt-1">
+                                                                                Saved to:
+                                                                                {savedTo.research ? ` Research/${savedTo.research.category}` : ''}
+                                                                                {savedTo.research && savedTo.icloud ? ' · ' : ''}
+                                                                                {savedTo.icloud ? `iCloud ${savedTo.icloud.path}` : ''}
+                                                                            </p>
+                                                                        )}
+                                                                        {md && (
+                                                                            <details className="mt-2">
+                                                                                <summary className="text-[11px] text-amber-300 cursor-pointer">Show recap</summary>
+                                                                                <div className="mt-2 bg-black/40 border border-amber-500/20 rounded p-3 max-h-72 overflow-y-auto">
+                                                                                    <pre className="whitespace-pre-wrap text-xs text-slate-200 font-sans leading-relaxed">{md}</pre>
+                                                                                </div>
+                                                                                <div className="flex gap-1 mt-2">
+                                                                                    <button onClick={() => copyRecap(md)} className="px-2 py-1 bg-white/10 hover:bg-white/20 rounded text-[10px]">Copy</button>
+                                                                                    <button onClick={() => emailRecapQuick(item)} className="px-2 py-1 bg-amber-600 hover:bg-amber-500 rounded text-[10px]">Email to me</button>
+                                                                                    <button onClick={() => openRecapEmailWithOptions(item)} className="px-2 py-1 bg-yellow-500 hover:bg-yellow-400 text-slate-900 rounded text-[10px]">Email to…</button>
+                                                                                </div>
+                                                                            </details>
+                                                                        )}
+                                                                    </li>
+                                                                );
+                                                            })}
+                                                        </ul>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {showArchivedInbox && <div className="h-px bg-white/10 my-4" />}
                                             {analystInbox.length === 0 ? (
                                                 <div className="text-center py-16">
                                                     <p className="text-sm text-slate-500">Nothing pending review.</p>
@@ -23119,9 +23321,36 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                     </div>
                                                                 )}
                                                                 {item.output && item.output.synthesisMarkdown && (
-                                                                    <div className="my-3 bg-black/40 border border-amber-500/20 rounded p-3 max-h-96 overflow-y-auto">
-                                                                        <div className="text-[10px] text-amber-300/70 mb-2 uppercase tracking-wider">Earnings Recap</div>
-                                                                        <pre className="whitespace-pre-wrap text-xs text-slate-200 font-sans leading-relaxed">{item.output.synthesisMarkdown}</pre>
+                                                                    <div className="my-3 bg-black/40 border border-amber-500/20 rounded">
+                                                                        <div className="flex items-center justify-between px-3 pt-2 pb-1">
+                                                                            <div className="text-[10px] text-amber-300/70 uppercase tracking-wider">Earnings Recap</div>
+                                                                            <div className="flex items-center gap-1">
+                                                                                <button
+                                                                                    onClick={() => copyRecap(item.output.synthesisMarkdown)}
+                                                                                    title="Copy"
+                                                                                    className="p-1 bg-white/10 hover:bg-white/20 rounded"
+                                                                                >
+                                                                                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={() => emailRecapQuick(item)}
+                                                                                    title="Quick email to me"
+                                                                                    className="p-1 bg-amber-600 hover:bg-amber-500 rounded"
+                                                                                >
+                                                                                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={() => openRecapEmailWithOptions(item)}
+                                                                                    title="Email to someone else…"
+                                                                                    className="p-1 bg-yellow-500 hover:bg-yellow-400 text-slate-900 rounded"
+                                                                                >
+                                                                                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="px-3 pb-3 max-h-96 overflow-y-auto">
+                                                                            <pre className="whitespace-pre-wrap text-xs text-slate-200 font-sans leading-relaxed">{item.output.synthesisMarkdown}</pre>
+                                                                        </div>
                                                                     </div>
                                                                 )}
                                                                 <div className="flex items-center gap-2 flex-wrap">
@@ -23177,21 +23406,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                         >View initial synthesis</button>
                                                                     )}
                                                                     <button
-                                                                        onClick={async () => {
-                                                                            await updateActivity(item.id, { status: 'approved' });
-                                                                            if (isCatalystFolder && input.catalystJobId) {
-                                                                                try {
-                                                                                    await fetch(`${API_URL}/api/catalysts/proposals/approve`, {
-                                                                                        method: 'POST',
-                                                                                        headers: { 'Content-Type': 'application/json' },
-                                                                                        body: JSON.stringify({ jobIds: [input.catalystJobId] }),
-                                                                                    });
-                                                                                } catch (e) { console.warn('approve proposal:', e); }
-                                                                            }
-                                                                        }}
+                                                                        onClick={() => approveActivity(item.id)}
                                                                         disabled={item.status === 'running'}
                                                                         className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 rounded text-xs font-medium"
-                                                                    >Approve</button>
+                                                                        title="Save to iCloud + Research tab, then archive"
+                                                                    >Approve & save</button>
                                                                     <button
                                                                         onClick={() => updateActivity(item.id, { status: 'rejected' })}
                                                                         disabled={item.status === 'running'}
