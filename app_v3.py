@@ -20617,6 +20617,68 @@ def analysts_seed_default_roster():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/analysts/queue-catalyst-activity', methods=['POST'])
+def analysts_queue_catalyst_activity():
+    """Local agent calls this when new files land in CATALYSTS/{ticker}/{topic}/.
+    Finds analysts covering the ticker and creates analyst_activities rows
+    (one per covering analyst, dedup on (analyst_id, ticker, topic, fingerprint)
+    within a rolling 24h window)."""
+    try:
+        data = request.get_json() or {}
+        ticker = (data.get('ticker') or '').upper()
+        topic = (data.get('topic') or '').strip()
+        fingerprint = data.get('fingerprint') or ''
+        file_count = int(data.get('fileCount') or 0)
+        catalyst_job_id = data.get('catalystJobId')  # optional -- link to proposal
+        if not ticker or not topic:
+            return jsonify({'error': 'ticker + topic required'}), 400
+
+        # Classify
+        import re as _re
+        is_earnings = bool(_re.search(r'\b[1-4]Q\d{2}\b|earnings', topic, _re.IGNORECASE))
+        activity_type = 'earnings_recap' if is_earnings else 'takeaway'
+
+        with get_db() as (_c, cur):
+            cur.execute("SELECT id, name, auto_mode FROM analysts WHERE %s = ANY(coverage_tickers)", (ticker,))
+            analysts = cur.fetchall()
+
+        created = []
+        for a in analysts:
+            # Dedup: skip if existing pending_review/running activity for same
+            # (analyst, ticker, topic, fingerprint) within 24h
+            with get_db() as (_c, cur):
+                cur.execute('''
+                    SELECT id FROM analyst_activities
+                     WHERE analyst_id=%s AND ticker=%s AND trigger_source='catalyst_folder'
+                       AND status IN ('pending_review','running')
+                       AND created_at > NOW() - INTERVAL '24 hours'
+                       AND (input->>'topic') = %s
+                       AND (input->>'fingerprint') = %s
+                ''', (a['id'], ticker, topic, fingerprint))
+                if cur.fetchone():
+                    continue
+            # Create
+            act_id = str(uuid.uuid4())
+            inp = {
+                'topic': topic,
+                'ticker': ticker,
+                'fingerprint': fingerprint,
+                'fileCount': file_count,
+                'catalystJobId': catalyst_job_id,
+            }
+            with get_db(commit=True) as (_c, cur):
+                cur.execute('''
+                    INSERT INTO analyst_activities
+                      (id, analyst_id, activity_type, ticker, status, trigger_source, input, created_at)
+                    VALUES (%s, %s, %s, %s, 'pending_review', 'catalyst_folder', %s::jsonb, NOW())
+                ''', (act_id, a['id'], activity_type, ticker, json.dumps(inp)))
+            created.append({'activityId': act_id, 'analystId': a['id'], 'analystName': a['name']})
+        return jsonify({'created': created, 'count': len(created), 'activityType': activity_type})
+    except Exception as e:
+        print(f'analysts_queue_catalyst_activity error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/health', methods=['GET'])
 def health():
     """Health check endpoint"""

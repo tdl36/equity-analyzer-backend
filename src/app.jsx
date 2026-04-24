@@ -54,7 +54,7 @@ if (typeof window !== 'undefined') {
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-24T02';
+        const BUILD_VERSION = '2026-04-24T03';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -22844,12 +22844,18 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 <ul className="space-y-3">
                                                     {analystInbox.map(item => {
                                                         const input = item.input || {};
+                                                        const isCatalystFolder = item.triggerSource === 'catalyst_folder';
+                                                        const typeChipColor = item.activityType === 'earnings_recap'
+                                                            ? 'bg-amber-500/20 text-amber-300'
+                                                            : item.activityType === 'takeaway'
+                                                                ? 'bg-slate-500/30 text-slate-200'
+                                                                : 'bg-white/10';
                                                         return (
                                                             <li key={item.id} className="bg-white/5 border border-white/10 rounded-lg p-4">
                                                                 <div className="flex items-center justify-between mb-2">
                                                                     <div className="flex items-center gap-2">
                                                                         <span className="font-mono font-bold text-sm">{item.ticker}</span>
-                                                                        <span className="text-[10px] px-1.5 py-0.5 bg-white/10 rounded">{item.activityType}</span>
+                                                                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${typeChipColor}`}>{item.activityType}</span>
                                                                         <span className="text-[10px] px-1.5 py-0.5 bg-white/10 rounded">{item.triggerSource}</span>
                                                                         <span className="text-[10px] text-slate-500">· {item.analystName}</span>
                                                                     </div>
@@ -22865,9 +22871,45 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                         )}
                                                                     </div>
                                                                 )}
+                                                                {isCatalystFolder && (item.activityType === 'earnings_recap' || item.activityType === 'takeaway') && (
+                                                                    <div className="space-y-1 mb-3">
+                                                                        {input.topic && <p className="text-sm text-slate-200">{input.topic}</p>}
+                                                                        <p className="text-[11px] text-slate-500">
+                                                                            {typeof input.fileCount === 'number' ? `${input.fileCount} file${input.fileCount === 1 ? '' : 's'}` : 'Catalyst folder drop'}
+                                                                            {input.catalystJobId ? ' · synthesis queued' : ''}
+                                                                        </p>
+                                                                    </div>
+                                                                )}
                                                                 <div className="flex items-center gap-2">
+                                                                    {isCatalystFolder && input.catalystJobId && (
+                                                                        <button
+                                                                            onClick={async () => {
+                                                                                try {
+                                                                                    const r = await fetch(`${API_URL}/api/catalysts/results/${input.catalystJobId}`);
+                                                                                    if (r.ok) {
+                                                                                        const j = await r.json();
+                                                                                        setCatalystActiveJob(j);
+                                                                                        setActiveTab('agents');
+                                                                                        setAgentView('catalysts');
+                                                                                    }
+                                                                                } catch (e) { console.warn('open synth:', e); }
+                                                                            }}
+                                                                            className="px-3 py-1 bg-amber-600 hover:bg-amber-500 rounded text-xs font-medium"
+                                                                        >View synthesis</button>
+                                                                    )}
                                                                     <button
-                                                                        onClick={() => updateActivity(item.id, { status: 'approved' })}
+                                                                        onClick={async () => {
+                                                                            await updateActivity(item.id, { status: 'approved' });
+                                                                            if (isCatalystFolder && input.catalystJobId) {
+                                                                                try {
+                                                                                    await fetch(`${API_URL}/api/catalysts/proposals/approve`, {
+                                                                                        method: 'POST',
+                                                                                        headers: { 'Content-Type': 'application/json' },
+                                                                                        body: JSON.stringify({ jobIds: [input.catalystJobId] }),
+                                                                                    });
+                                                                                } catch (e) { console.warn('approve proposal:', e); }
+                                                                            }
+                                                                        }}
                                                                         className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 rounded text-xs font-medium"
                                                                     >Approve</button>
                                                                     <button

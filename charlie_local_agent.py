@@ -2361,6 +2361,27 @@ def check_for_catalyst_auto_synth() -> None:
                         log.info(f"Auto-catalyst: {action_word} done for {ticker}/{topic} (job {job_id})")
                         state[key]['last_fired_at'] = now
                         state[key]['fingerprint'] = fingerprint
+                        # Phase 3b: also route to covering analysts' inboxes
+                        try:
+                            analyst_resp = requests.post(
+                                f"{CHARLIE_API}/api/analysts/queue-catalyst-activity",
+                                json={
+                                    'ticker': ticker,
+                                    'topic': topic,
+                                    'fingerprint': fingerprint,
+                                    'fileCount': len(source_files),
+                                    'catalystJobId': job_id,
+                                },
+                                headers=_agent_headers(),
+                                timeout=10,
+                            )
+                            if analyst_resp.ok:
+                                j = analyst_resp.json()
+                                log.info(f"Auto-catalyst: routed {ticker}/{topic} to {j.get('count',0)} analyst(s) as {j.get('activityType')}")
+                            else:
+                                log.warning(f"Analyst routing failed for {ticker}/{topic}: {analyst_resp.status_code} {analyst_resp.text[:200]}")
+                        except Exception as e:
+                            log.warning(f"Analyst routing failed for {ticker}/{topic}: {e}")
                     else:
                         log.warning(f"Auto-catalyst POST failed for {ticker}/{topic}: {res.status_code} {res.text[:200]}")
                 except Exception as e:
