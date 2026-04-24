@@ -1,6 +1,6 @@
 // Charlie - Equity Analyzer Service Worker
 // BUILD_VERSION is updated on each deploy to trigger cache invalidation
-const BUILD_VERSION = '20260424-26';
+const BUILD_VERSION = '20260424-27';
 const CACHE_NAME = 'charlie-' + BUILD_VERSION;
 
 const STATIC_ASSETS = [
@@ -56,15 +56,15 @@ self.addEventListener('push', (event) => {
       catch { data.body = raw; }
     }
   } catch (e) { console.warn('push parse error', e); }
+  // iOS PWA push: keep options minimal. Avoid renotify + static tag
+  // combo that iOS Safari silently coalesces; omit custom badge which
+  // Safari 17+ can reject, leaving notification undelivered.
   event.waitUntil(
     self.registration.showNotification(data.title, {
       body: data.body || '',
       icon: '/icon-192.png',
-      badge: '/icon-152.png',
       data: { url: data.url || '/' },
-      tag: data.url || 'charlie-alert',
-      renotify: true,
-    })
+    }).catch((err) => console.warn('showNotification failed:', err))
   );
 });
 

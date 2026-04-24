@@ -106,6 +106,8 @@ def _push_send(title: str, body: str, url: str = '/') -> dict:
                 payload,
                 vapid_private_key=vapid_priv,
                 vapid_claims={'sub': f'mailto:{vapid_claims_email or "noreply@tonydlee.com"}'},
+                ttl=3600,
+                headers={'Urgency': 'high'},
             )
             endpoint = (sub or {}).get('endpoint', '') or ''
             host = endpoint.split('/')[2] if '://' in endpoint else endpoint[:40]
