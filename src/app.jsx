@@ -1986,9 +1986,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     });
                     const j = await r.json().catch(() => ({}));
                     if (!r.ok) { alert('Test failed: ' + (j.error || 'backend error')); return; }
-                    const { total = 0, sent = 0, failed = 0, reason = null, errors = [] } = j;
+                    const { total = 0, sent = 0, failed = 0, reason = null, errors = [], responses = [] } = j;
                     if (sent > 0 && failed === 0) {
-                        alert(`Test push sent to ${sent} device${sent === 1 ? '' : 's'} — check your notifications.`);
+                        const detail = responses.map((r) => `${r.host} → HTTP ${r.status}`).join('\n');
+                        alert(`Test push accepted by push service:\n${detail}\n\nIf no banner appeared, the push service accepted but dropped it.`);
                     } else if (total === 0) {
                         alert('No push subscriptions saved on the backend. Tap Unsubscribe then Enable push again, then retry.');
                     } else if (failed > 0) {

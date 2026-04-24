@@ -98,15 +98,26 @@ def _push_send(title: str, body: str, url: str = '/') -> dict:
         print(stats['reason'])
         return stats
     payload = json.dumps({'title': title, 'body': body, 'url': url})
+    stats['responses'] = []
     for sub in subs:
         try:
-            webpush(
+            resp = webpush(
                 sub,
                 payload,
                 vapid_private_key=vapid_priv,
                 vapid_claims={'sub': f'mailto:{vapid_claims_email or "noreply@tonydlee.com"}'},
             )
+            endpoint = (sub or {}).get('endpoint', '') or ''
+            host = endpoint.split('/')[2] if '://' in endpoint else endpoint[:40]
+            status = getattr(resp, 'status_code', None)
+            body_text = ''
+            try:
+                body_text = (resp.text or '')[:120] if hasattr(resp, 'text') else ''
+            except Exception:
+                body_text = ''
+            stats['responses'].append({'host': host, 'status': status, 'body': body_text})
             stats['sent'] += 1
+            print(f'push send ok host={host} status={status}')
         except Exception as e:
             stats['failed'] += 1
             stats['errors'].append(str(e))
