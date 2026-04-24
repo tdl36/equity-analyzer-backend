@@ -294,6 +294,96 @@ def media_feeds_list():
     return jsonify({'feeds': feeds, 'total': len(feeds)})
 
 
+@app.route('/api/media/admin/kick', methods=['POST'])
+def media_admin_kick():
+    """One-shot: reset stuck episodes (transcribing/extracting > stuckMinutes
+    back to 'new'; optionally retry 'failed'), then synchronously run the
+    transcribe + extract batches so we see what happens without waiting on
+    the 2-min scheduler tick.
+
+    Body (all optional):
+      stuckMinutes: int (default 30) — age threshold to consider stuck
+      retryFailed: bool (default false) — also flip failed back to new
+      feedId:      str — scope to a single feed
+    Returns: {reset: {transcribing, extracting, failed}, transcribed: [ids], extractErrors: [...], statusAfter: {...}}
+    """
+    data = request.json or {}
+    stuck_min = int(data.get('stuckMinutes', 30))
+    retry_failed = bool(data.get('retryFailed', False))
+    feed_id = data.get('feedId')
+
+    reset = {'transcribing': 0, 'extracting': 0, 'failed': 0}
+    feed_clause = 'AND feed_id = %s' if feed_id else ''
+    feed_params = [feed_id] if feed_id else []
+
+    with get_db(commit=True) as (_c, cur):
+        cur.execute(
+            f"UPDATE media_episodes SET status='new', error_message=NULL "
+            f"WHERE status='transcribing' AND created_at < NOW() - (%s || ' minutes')::interval {feed_clause} "
+            f"RETURNING id",
+            [str(stuck_min)] + feed_params,
+        )
+        reset['transcribing'] = len(cur.fetchall())
+        cur.execute(
+            f"UPDATE media_episodes SET status='new', error_message=NULL "
+            f"WHERE status='extracting' AND created_at < NOW() - (%s || ' minutes')::interval {feed_clause} "
+            f"RETURNING id",
+            [str(stuck_min)] + feed_params,
+        )
+        reset['extracting'] = len(cur.fetchall())
+        if retry_failed:
+            cur.execute(
+                f"UPDATE media_episodes SET status='new', error_message=NULL "
+                f"WHERE status='failed' {feed_clause} RETURNING id",
+                feed_params,
+            )
+            reset['failed'] = len(cur.fetchall())
+
+    # Run the batches synchronously so we see immediate results
+    transcribed = []
+    extract_errors = []
+    try:
+        from media_trackers import transcribe as _tr
+        # Collect ids ourselves so we can report what was picked
+        with get_db() as (_c, cur):
+            scope = f"AND feed_id = %s" if feed_id else ''
+            cur.execute(
+                f"SELECT id FROM media_episodes WHERE status='new' {scope} "
+                f"ORDER BY published_at DESC NULLS LAST LIMIT 10",
+                feed_params,
+            )
+            target_ids = [r['id'] for r in cur.fetchall()]
+        for eid in target_ids:
+            try:
+                _tr.transcribe_episode(eid)
+                transcribed.append(eid)
+            except Exception as e:
+                extract_errors.append({'id': eid, 'stage': 'transcribe', 'error': str(e)})
+    except Exception as e:
+        extract_errors.append({'stage': 'transcribe_batch_setup', 'error': str(e)})
+
+    try:
+        from media_trackers import extractor as _ex
+        _ex.process_extract_batch()
+    except Exception as e:
+        extract_errors.append({'stage': 'extract_batch', 'error': str(e)})
+
+    status_after = {}
+    with get_db() as (_c, cur):
+        if feed_id:
+            cur.execute("SELECT status, COUNT(*) AS c FROM media_episodes WHERE feed_id=%s GROUP BY status", (feed_id,))
+        else:
+            cur.execute("SELECT status, COUNT(*) AS c FROM media_episodes GROUP BY status")
+        status_after = {r['status']: r['c'] for r in cur.fetchall()}
+
+    return jsonify({
+        'reset': reset,
+        'transcribed': transcribed,
+        'extractErrors': extract_errors,
+        'statusAfter': status_after,
+    })
+
+
 @app.route('/api/media/feeds/<feed_id>/episodes', methods=['GET'])
 def media_feeds_episodes(feed_id):
     """All episodes for a feed regardless of status, plus a status
