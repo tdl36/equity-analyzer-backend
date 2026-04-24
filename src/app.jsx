@@ -54,7 +54,7 @@ if (typeof window !== 'undefined') {
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-24T18';
+        const BUILD_VERSION = '2026-04-24T19';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -1878,6 +1878,18 @@ Regulatory, execution, or macro risks that could derail the thesis:
             // Finnhub API key + sync status (stored on backend app_settings, not localStorage)
             const [finnhubApiKey, setFinnhubApiKey] = useState('');
             const [finnhubStatus, setFinnhubStatus] = useState(null);
+            // Visible live progress while async sync runs
+            const [finnhubSyncing, setFinnhubSyncing] = useState(false);
+            const [finnhubSyncStart, setFinnhubSyncStart] = useState(null);
+            const [finnhubSyncElapsed, setFinnhubSyncElapsed] = useState(0);
+            const [finnhubSyncResult, setFinnhubSyncResult] = useState(null);
+            useEffect(() => {
+                if (!finnhubSyncing || !finnhubSyncStart) return;
+                const tick = () => setFinnhubSyncElapsed(Math.floor((Date.now() - finnhubSyncStart) / 1000));
+                tick();
+                const id = setInterval(tick, 500);
+                return () => clearInterval(id);
+            }, [finnhubSyncing, finnhubSyncStart]);
             const loadFinnhubStatus = React.useCallback(async () => {
                 try {
                     const r = await fetch(`${API_URL}/api/earnings/finnhub-status`);
@@ -24782,6 +24794,17 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 Save
                                             </button>
                                         </div>
+                                        {finnhubSyncing && (
+                                            <div className="mt-3 px-3 py-2 bg-emerald-500/10 border border-emerald-500/30 rounded flex items-center gap-2 text-xs text-emerald-300">
+                                                <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" opacity="0.25"/><path d="M22 12a10 10 0 0 1-10 10"/></svg>
+                                                <span>Syncing Finnhub… {finnhubSyncElapsed}s elapsed (typically ~40s for 36 tickers). You can leave this screen; the result will appear below when done.</span>
+                                            </div>
+                                        )}
+                                        {finnhubSyncResult && !finnhubSyncing && (
+                                            <div className="mt-3 px-3 py-2 bg-emerald-500/10 border border-emerald-500/30 rounded text-xs text-emerald-200">
+                                                ✓ Sync complete — {finnhubSyncResult.upserted || 0} dates across {finnhubSyncResult.covered_matched?.length || 0} / {finnhubSyncResult.coverage_tickers || 0} covered tickers.
+                                            </div>
+                                        )}
                                         <div className="mt-3 flex items-start justify-between gap-2">
                                             <div className="text-xs text-slate-500 flex-1 min-w-0">
                                                 {!finnhubStatus ? 'Loading…' : !finnhubStatus.hasKey ? 'Key not set' : !finnhubStatus.lastSync?.ran_at ? 'Never synced' : (
@@ -24797,28 +24820,50 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 )}
                                             </div>
                                             <button
+                                                disabled={finnhubSyncing}
                                                 onClick={async () => {
+                                                    setFinnhubSyncResult(null);
                                                     try {
                                                         const r = await fetch(`${API_URL}/api/earnings/sync-finnhub`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
                                                         const j = await r.json();
                                                         if (j.error) { alert('Sync failed: ' + j.error); return; }
                                                         if (!j.started) {
-                                                            alert(j.reason || 'Sync already running');
+                                                            alert(j.reason || 'Sync already running on backend');
                                                             return;
                                                         }
-                                                        alert('Sync running in background (~40s for 36 tickers). Last-synced timestamp below will update when it finishes. You can leave this screen.');
-                                                        // Poll status every 5s for up to 2 minutes
+                                                        setFinnhubSyncing(true);
+                                                        setFinnhubSyncStart(Date.now());
                                                         const prevRanAt = finnhubStatus?.lastSync?.ran_at;
-                                                        for (let i = 0; i < 24; i++) {
-                                                            await new Promise(res => setTimeout(res, 5000));
-                                                            await loadFinnhubStatus();
-                                                            const now = (await (await fetch(`${API_URL}/api/earnings/finnhub-status`)).json()).lastSync?.ran_at;
-                                                            if (now && now !== prevRanAt) break;
+                                                        for (let i = 0; i < 30; i++) {
+                                                            await new Promise(res => setTimeout(res, 3000));
+                                                            try {
+                                                                const sr = await fetch(`${API_URL}/api/earnings/finnhub-status`);
+                                                                if (sr.ok) {
+                                                                    const sj = await sr.json();
+                                                                    setFinnhubStatus(sj);
+                                                                    if (sj.lastSync?.ran_at && sj.lastSync.ran_at !== prevRanAt) {
+                                                                        setFinnhubSyncResult(sj.lastSync);
+                                                                        break;
+                                                                    }
+                                                                }
+                                                            } catch (_) {}
                                                         }
-                                                    } catch (e) { alert('Sync error: ' + e.message); }
+                                                    } catch (e) {
+                                                        alert('Sync error: ' + e.message);
+                                                    } finally {
+                                                        setFinnhubSyncing(false);
+                                                        setFinnhubSyncStart(null);
+                                                    }
                                                 }}
-                                                className="px-3 py-1 bg-emerald-700 hover:bg-emerald-600 rounded text-xs flex-shrink-0"
-                                            >Sync now</button>
+                                                className="px-3 py-1 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 rounded text-xs flex-shrink-0 flex items-center gap-1"
+                                            >
+                                                {finnhubSyncing ? (
+                                                    <>
+                                                        <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" opacity="0.25"/><path d="M22 12a10 10 0 0 1-10 10"/></svg>
+                                                        <span>Syncing {finnhubSyncElapsed}s</span>
+                                                    </>
+                                                ) : 'Sync now'}
+                                            </button>
                                         </div>
                                         <p className="text-xs text-slate-500 mt-2">Per-symbol fetch (1 req/sec) across all covered tickers — a 36-ticker sync takes ~40s. Nightly at 08:00 UTC. Free key at <a href="https://finnhub.io/register" target="_blank" rel="noreferrer" className="text-emerald-400 underline">finnhub.io</a>.</p>
                                     </div>
