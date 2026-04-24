@@ -1,6 +1,6 @@
 // Charlie - Equity Analyzer Service Worker
 // BUILD_VERSION is updated on each deploy to trigger cache invalidation
-const BUILD_VERSION = '20260424-28';
+const BUILD_VERSION = '20260424-29';
 const CACHE_NAME = 'charlie-' + BUILD_VERSION;
 
 const STATIC_ASSETS = [
@@ -48,24 +48,34 @@ self.addEventListener('activate', (event) => {
 // Payload shape (from media_trackers/notifications._push_send):
 //   { title, body, url }
 self.addEventListener('push', (event) => {
-  let data = { title: 'Charlie', body: 'You have a new alert', url: '/' };
-  try {
-    if (event.data) {
-      const raw = event.data.text();
-      try { data = { ...data, ...JSON.parse(raw) }; }
-      catch { data.body = raw; }
+  // First, always fire *some* notification so we can tell if the push
+  // event is reaching the SW at all — separate from payload parsing.
+  event.waitUntil((async () => {
+    let title = 'Charlie';
+    let body = 'Push received';
+    let url = '/';
+    try {
+      if (event.data) {
+        const raw = event.data.text();
+        try {
+          const parsed = JSON.parse(raw);
+          title = parsed.title || title;
+          body = parsed.body || body;
+          url = parsed.url || url;
+        } catch { body = raw || body; }
+      }
+    } catch {}
+    try {
+      await self.registration.showNotification(title, {
+        body,
+        data: { url },
+      });
+    } catch (e) {
+      // If showNotification threw for any reason, at least fire a
+      // fallback so we know the event reached the SW.
+      try { await self.registration.showNotification('Charlie push (fallback)', { body: String(e) }); } catch {}
     }
-  } catch (e) { console.warn('push parse error', e); }
-  // iOS PWA push: keep options minimal. Avoid renotify + static tag
-  // combo that iOS Safari silently coalesces; omit custom badge which
-  // Safari 17+ can reject, leaving notification undelivered.
-  event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body || '',
-      icon: '/icon-192.png',
-      data: { url: data.url || '/' },
-    }).catch((err) => console.warn('showNotification failed:', err))
-  );
+  })());
 });
 
 // Clicking the notification focuses the existing Charlie tab if open, or

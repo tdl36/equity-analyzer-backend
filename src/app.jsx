@@ -1908,34 +1908,34 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 return out;
             };
             const waitForActiveSW = async (timeoutMs = 15000) => {
-                // iOS PWAs often resolve navigator.serviceWorker.ready before
-                // registration.active is populated. Poll for an active SW,
-                // and re-register if none exists after a short wait.
-                let reg = await navigator.serviceWorker.getRegistration();
-                if (!reg) reg = await navigator.serviceWorker.register('/service-worker.js', { updateViaCache: 'none' });
+                // iOS PWAs resolve navigator.serviceWorker.ready before
+                // registration.active is populated. Poll for active SW on
+                // the existing registration (index.html already registered
+                // one at page load; re-registering from here would trigger
+                // a controllerchange -> page reload mid-subscribe).
                 const deadline = Date.now() + timeoutMs;
                 while (Date.now() < deadline) {
-                    if (reg.active) return reg;
-                    const installing = reg.installing || reg.waiting;
-                    if (installing) {
-                        await new Promise((resolve) => {
-                            const onChange = () => {
-                                if (installing.state === 'activated' || installing.state === 'redundant') {
-                                    installing.removeEventListener('statechange', onChange);
-                                    resolve();
-                                }
-                            };
-                            installing.addEventListener('statechange', onChange);
-                            setTimeout(resolve, 2000);
-                        });
-                    } else {
-                        await new Promise((r) => setTimeout(r, 500));
+                    const reg = await navigator.serviceWorker.getRegistration();
+                    if (reg && reg.active) return reg;
+                    if (reg) {
+                        const installing = reg.installing || reg.waiting;
+                        if (installing) {
+                            await new Promise((resolve) => {
+                                const onChange = () => {
+                                    if (installing.state === 'activated' || installing.state === 'redundant') {
+                                        installing.removeEventListener('statechange', onChange);
+                                        resolve();
+                                    }
+                                };
+                                installing.addEventListener('statechange', onChange);
+                                setTimeout(resolve, 2000);
+                            });
+                            continue;
+                        }
                     }
-                    reg = await navigator.serviceWorker.getRegistration();
-                    if (!reg) throw new Error('Service worker lost registration');
+                    await new Promise((r) => setTimeout(r, 500));
                 }
-                if (!reg.active) throw new Error('Service worker did not activate within 15s — try killing and reopening the PWA');
-                return reg;
+                throw new Error('Service worker did not activate within 15s — close and reopen Charlie, then retry.');
             };
             const enableWebPush = async () => {
                 try {
