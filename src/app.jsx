@@ -54,7 +54,7 @@ if (typeof window !== 'undefined') {
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-24T10';
+        const BUILD_VERSION = '2026-04-24T11';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -7458,6 +7458,67 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [mtError, setMtError] = useState(null);
             const [mtAddFeedOpen, setMtAddFeedOpen] = useState(false);
             const [mtNewFeed, setMtNewFeed] = useState({name: '', feedUrl: '', sectorTags: '', pollIntervalMin: 30});
+            // Apple Podcasts search modal
+            const [mtSearchOpen, setMtSearchOpen] = useState(false);
+            const [mtSearchQ, setMtSearchQ] = useState('');
+            const [mtSearchResults, setMtSearchResults] = useState([]);
+            const [mtSearchLoading, setMtSearchLoading] = useState(false);
+            const [mtSearchBackfillDate, setMtSearchBackfillDate] = useState(() => {
+                const d = new Date(); d.setDate(d.getDate() - 30);
+                return d.toISOString().slice(0, 10);
+            });
+            const [mtSearchAdding, setMtSearchAdding] = useState(null); // feedUrl currently being added
+            const searchApplePodcasts = async () => {
+                if (!mtSearchQ.trim()) return;
+                setMtSearchLoading(true);
+                try {
+                    const r = await fetch(`${API_URL}/api/media/podcast-search?q=${encodeURIComponent(mtSearchQ.trim())}`);
+                    const j = await r.json();
+                    setMtSearchResults(j.results || []);
+                } catch (e) { alert('Search failed: ' + e.message); }
+                setMtSearchLoading(false);
+            };
+            const addPodcastFromSearch = async (pick) => {
+                setMtSearchAdding(pick.feedUrl);
+                try {
+                    // Infer sector tags from genre (best-effort; user can edit later)
+                    const genre = (pick.genre || '').toLowerCase();
+                    const tags = [];
+                    if (genre.includes('business') || genre.includes('investing')) tags.push('investing');
+                    if (genre.includes('tech')) tags.push('tech');
+                    if (genre.includes('news')) tags.push('macro');
+                    if (genre.includes('health') || genre.includes('medicine')) tags.push('healthcare');
+                    const r1 = await fetch(`${API_URL}/api/media/feeds`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            name: pick.name,
+                            feedUrl: pick.feedUrl,
+                            sourceType: 'podcast',
+                            sectorTags: tags,
+                            pollIntervalMin: 30,
+                        }),
+                    });
+                    if (!r1.ok) {
+                        const err = await r1.json().catch(() => ({}));
+                        throw new Error(err.error || `HTTP ${r1.status}`);
+                    }
+                    const feed = (await r1.json()).feed;
+                    // Fire backfill
+                    if (feed?.id && mtSearchBackfillDate) {
+                        await fetch(`${API_URL}/api/media/feeds/${feed.id}/backfill`, {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({sinceDate: mtSearchBackfillDate}),
+                        });
+                    }
+                    alert(`Added "${pick.name}"${feed?.id ? ` and queued backfill to ${mtSearchBackfillDate}` : ''}.`);
+                    loadMediaTrackerSettings();
+                } catch (e) {
+                    alert('Add failed: ' + e.message);
+                }
+                setMtSearchAdding(null);
+            };
             const [mtAddSignalOpen, setMtAddSignalOpen] = useState(false);
             const [mtNewSignal, setMtNewSignal] = useState({kind: 'ticker', value: '', associatedTicker: '', note: ''});
 
@@ -24756,8 +24817,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     {/* FEEDS */}
                                     {mtSection === 'feeds' && (
                                         <div>
-                                            <div className="flex justify-end mb-3">
-                                                <button onClick={() => setMtAddFeedOpen(true)} className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 rounded-md text-xs font-medium">+ Add feed</button>
+                                            <div className="flex justify-end gap-2 mb-3">
+                                                <button onClick={() => { setMtSearchOpen(true); setMtSearchQ(''); setMtSearchResults([]); }} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-md text-xs font-medium">
+                                                    🔎 Search Apple Podcasts
+                                                </button>
+                                                <button onClick={() => setMtAddFeedOpen(true)} className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 rounded-md text-xs font-medium">+ Add by URL</button>
                                             </div>
                                             <div className="overflow-x-auto">
                                                 <table className="w-full text-sm">
@@ -24894,6 +24958,80 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 </div>
 
                                 {/* Add-feed modal */}
+                                {mtSearchOpen && (
+                                    <>
+                                        <div className="fixed inset-0 bg-black/60 z-50" onClick={() => setMtSearchOpen(false)} />
+                                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+                                            <div className="bg-neutral-900 border border-white/10 rounded-lg w-full max-w-2xl p-5 pointer-events-auto max-h-[85vh] overflow-y-auto">
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <h3 className="font-semibold text-lg">Search Apple Podcasts</h3>
+                                                    <button onClick={() => setMtSearchOpen(false)} className="text-slate-400 hover:text-white text-sm">Close</button>
+                                                </div>
+                                                <p className="text-xs text-slate-400 mb-3">Type a podcast name; results come from the iTunes Podcast API. Click Add to register the feed and fire a backfill since the date below.</p>
+                                                <div className="flex gap-2 mb-3">
+                                                    <input
+                                                        type="text"
+                                                        placeholder="e.g. Dwarkesh, Odd Lots, Acquired…"
+                                                        value={mtSearchQ}
+                                                        onChange={e => setMtSearchQ(e.target.value)}
+                                                        onKeyDown={e => { if (e.key === 'Enter') searchApplePodcasts(); }}
+                                                        className="flex-1 px-3 py-2 bg-black/30 border border-white/10 rounded text-sm"
+                                                    />
+                                                    <button
+                                                        onClick={searchApplePodcasts}
+                                                        disabled={mtSearchLoading}
+                                                        className="px-3 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded text-sm font-medium"
+                                                    >{mtSearchLoading ? 'Searching…' : 'Search'}</button>
+                                                </div>
+                                                <div className="flex items-center gap-2 mb-3 text-xs text-slate-400">
+                                                    <label>Backfill since</label>
+                                                    <input
+                                                        type="date"
+                                                        value={mtSearchBackfillDate}
+                                                        onChange={e => setMtSearchBackfillDate(e.target.value)}
+                                                        className="px-2 py-1 bg-black/30 border border-white/10 rounded text-xs"
+                                                    />
+                                                    <span className="text-slate-500">(applies only to newly-added feeds)</span>
+                                                </div>
+                                                {mtSearchResults.length === 0 ? (
+                                                    <p className="text-xs text-slate-500 text-center py-6">{mtSearchLoading ? 'Searching…' : 'No results yet.'}</p>
+                                                ) : (
+                                                    <ul className="space-y-2">
+                                                        {mtSearchResults.map((r, i) => {
+                                                            const alreadyExists = (mtFeeds || []).some(f => f.feedUrl === r.feedUrl);
+                                                            return (
+                                                                <li key={r.feedUrl || i} className="flex items-center gap-3 bg-white/5 border border-white/10 rounded p-2">
+                                                                    {r.artworkUrl ? (
+                                                                        <img src={r.artworkUrl} alt="" className="w-12 h-12 rounded flex-shrink-0" />
+                                                                    ) : (
+                                                                        <div className="w-12 h-12 bg-white/10 rounded flex-shrink-0" />
+                                                                    )}
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <div className="text-sm font-medium truncate">{r.name}</div>
+                                                                        <div className="text-[11px] text-slate-400 truncate">{r.artist}{r.genre ? ` · ${r.genre}` : ''}{r.trackCount ? ` · ${r.trackCount} episodes` : ''}</div>
+                                                                        <div className="text-[10px] text-slate-500 truncate">{r.feedUrl}</div>
+                                                                    </div>
+                                                                    <div className="flex-shrink-0">
+                                                                        {alreadyExists ? (
+                                                                            <span className="text-[10px] px-2 py-1 bg-emerald-500/20 text-emerald-300 rounded">Added</span>
+                                                                        ) : (
+                                                                            <button
+                                                                                disabled={!!mtSearchAdding}
+                                                                                onClick={() => addPodcastFromSearch(r)}
+                                                                                className="px-2 py-1 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 rounded text-xs font-medium"
+                                                                            >{mtSearchAdding === r.feedUrl ? 'Adding…' : 'Add'}</button>
+                                                                        )}
+                                                                    </div>
+                                                                </li>
+                                                            );
+                                                        })}
+                                                    </ul>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+
                                 {mtAddFeedOpen && (
                                     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setMtAddFeedOpen(false)}>
                                         <div className="bg-neutral-900 border border-white/10 rounded-2xl p-5 w-full max-w-md" onClick={e => e.stopPropagation()}>

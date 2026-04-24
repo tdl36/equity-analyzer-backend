@@ -342,6 +342,45 @@ def media_feeds_delete(feed_id):
     return jsonify({'success': True})
 
 
+@app.route('/api/media/podcast-search', methods=['GET'])
+def media_podcast_search():
+    """Search Apple's iTunes Podcast API. Returns a ranked list of matches
+    with name, artist, feedUrl, artwork, and episode count. The UI can then
+    add a chosen row via the normal POST /api/media/feeds route."""
+    q = (request.args.get('q') or '').strip()
+    if not q:
+        return jsonify({'results': [], 'error': 'q required'}), 400
+    try:
+        import urllib.request as _urllib, urllib.parse as _urlp
+        url = 'https://itunes.apple.com/search?' + _urlp.urlencode({
+            'media': 'podcast',
+            'term': q,
+            'limit': 15,
+        })
+        req = _urllib.Request(url, headers={'User-Agent': 'Charlie/1.0'})
+        with _urllib.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+        results = []
+        for r in data.get('results') or []:
+            feed_url = r.get('feedUrl')
+            if not feed_url:
+                continue
+            results.append({
+                'name': r.get('collectionName') or r.get('trackName') or '',
+                'artist': r.get('artistName') or '',
+                'feedUrl': feed_url,
+                'artworkUrl': r.get('artworkUrl100') or r.get('artworkUrl60') or '',
+                'trackCount': r.get('trackCount'),
+                'releaseDate': r.get('releaseDate'),
+                'genre': (r.get('primaryGenreName') or ''),
+                'itunesUrl': r.get('collectionViewUrl') or '',
+            })
+        return jsonify({'results': results, 'count': len(results)})
+    except Exception as e:
+        print(f'media_podcast_search error: {e}')
+        return jsonify({'results': [], 'error': str(e)}), 500
+
+
 @app.route('/api/media/feeds/<feed_id>/backfill', methods=['POST'])
 def media_feeds_backfill(feed_id):
     """Set last_episode_at to a past date so the next poll picks up episodes
