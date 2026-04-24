@@ -294,6 +294,31 @@ def media_feeds_list():
     return jsonify({'feeds': feeds, 'total': len(feeds)})
 
 
+@app.route('/api/media/feeds/reseed', methods=['POST'])
+def media_feeds_reseed():
+    """Re-run seed_feeds.seed() against the current DB. Idempotent via
+    ON CONFLICT DO NOTHING on feed_url — existing rows are untouched;
+    any feeds present in SEED_FEEDS but missing in the DB get inserted.
+    Used when seed_feeds.py adds new entries that weren't in the DB at
+    initial setup time (e.g. Dwarkesh Podcast)."""
+    try:
+        from media_trackers import seed_feeds as _sf
+        before = 0
+        after = 0
+        with get_db() as (_c, cur):
+            cur.execute("SELECT COUNT(*) AS c FROM media_feeds")
+            row = cur.fetchone()
+            before = (row or {}).get('c', 0)
+        _sf.seed()
+        with get_db() as (_c, cur):
+            cur.execute("SELECT COUNT(*) AS c FROM media_feeds")
+            row = cur.fetchone()
+            after = (row or {}).get('c', 0)
+        return jsonify({'ok': True, 'before': before, 'after': after, 'added': after - before})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/media/feeds', methods=['POST'])
 def media_feeds_create():
     data = request.get_json() or {}
