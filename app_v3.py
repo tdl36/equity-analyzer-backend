@@ -21406,8 +21406,13 @@ def earnings_sync_finnhub():
     earnings_calendar (only for tickers covered by at least one analyst)."""
     try:
         import finnhub_sync as _fh
-        days_ahead = int((request.json or {}).get('daysAhead', 60))
-        stats = _fh.sync(days_ahead=max(1, min(days_ahead, 180)))
+        body = request.json or {}
+        days_ahead = int(body.get('daysAhead', 120))
+        days_back = int(body.get('daysBack', 7))
+        stats = _fh.sync(
+            days_ahead=max(1, min(days_ahead, 365)),
+            days_back=max(0, min(days_back, 30)),
+        )
         return jsonify(stats)
     except Exception as e:
         print(f'earnings_sync_finnhub error: {e}')

@@ -57,13 +57,15 @@ def _quarter_label(dt: date) -> str:
     return f"{q}Q{dt.year % 100:02d}"
 
 
-def fetch_upcoming(days_ahead: int = 60, api_key: str | None = None) -> list[dict]:
-    """Call Finnhub once for the window [today, today+days_ahead]."""
+def fetch_upcoming(days_ahead: int = 120, days_back: int = 7, api_key: str | None = None) -> list[dict]:
+    """Bulk calendar fetch — returns whatever Finnhub has for the window.
+    Free tier occasionally under-returns names here, so sync() prefers
+    per-symbol fetches (see fetch_for_symbol). Kept for backwards compat."""
     key = api_key or _api_key()
     if not key:
         raise RuntimeError('Finnhub API key not set. Save to Settings -> API Keys -> Finnhub.')
     today = datetime.utcnow().date()
-    frm = today.isoformat()
+    frm = (today - timedelta(days=max(0, days_back))).isoformat()
     to = (today + timedelta(days=days_ahead)).isoformat()
     qs = urllib.parse.urlencode({'from': frm, 'to': to, 'token': key})
     url = f'{FINNHUB_BASE}/calendar/earnings?{qs}'
@@ -74,6 +76,29 @@ def fetch_upcoming(days_ahead: int = 60, api_key: str | None = None) -> list[dic
     except Exception as e:
         raise RuntimeError(f'Finnhub fetch failed: {e}')
     return data.get('earningsCalendar') or []
+
+
+def fetch_for_symbol(symbol: str, days_ahead: int = 120, days_back: int = 7,
+                      api_key: str | None = None) -> list[dict]:
+    """Per-symbol calendar fetch — more reliable than the bulk endpoint on
+    the free tier. Returns Finnhub's earningsCalendar entries for this
+    symbol within the window."""
+    key = api_key or _api_key()
+    if not key:
+        raise RuntimeError('Finnhub API key not set.')
+    today = datetime.utcnow().date()
+    frm = (today - timedelta(days=max(0, days_back))).isoformat()
+    to = (today + timedelta(days=days_ahead)).isoformat()
+    qs = urllib.parse.urlencode({'from': frm, 'to': to, 'symbol': symbol, 'token': key})
+    url = f'{FINNHUB_BASE}/calendar/earnings?{qs}'
+    req = urllib.request.Request(url, headers={'User-Agent': 'Charlie/1.0'})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+        return data.get('earningsCalendar') or []
+    except Exception as e:
+        print(f'finnhub_sync: per-symbol fetch failed for {symbol}: {e}')
+        return []
 
 
 def upsert_entries(entries: list[dict], only_tickers: set[str] | None = None) -> dict:
@@ -119,15 +144,42 @@ def upsert_entries(entries: list[dict], only_tickers: set[str] | None = None) ->
     return stats
 
 
-def sync(days_ahead: int = 60) -> dict:
-    """Full sync: covered tickers only. Returns a stats summary."""
-    tickers = set(_covered_tickers())
+def sync(days_ahead: int = 120, days_back: int = 7) -> dict:
+    """Full sync: iterate covered tickers and fetch each individually from
+    Finnhub (more reliable than the bulk endpoint on free tier). Paces
+    requests at ~1 rps to stay under 60 calls/min.
+
+    Default 127-day window catches the full next-quarter cycle plus
+    recently-reported names for backfill."""
+    import time as _time
+    tickers = sorted(set(_covered_tickers()))
     if not tickers:
         return {'ok': False, 'reason': 'no covered tickers'}
-    entries = fetch_upcoming(days_ahead=days_ahead)
-    stats = upsert_entries(entries, only_tickers=tickers)
+    key = _api_key()
+    if not key:
+        raise RuntimeError('Finnhub API key not set. Save to Settings -> API Keys -> Finnhub.')
+
+    all_entries: list[dict] = []
+    matched: list[str] = []
+    unmatched: list[str] = []
+    for i, t in enumerate(tickers):
+        rows = fetch_for_symbol(t, days_ahead=days_ahead, days_back=days_back, api_key=key)
+        if rows:
+            all_entries.extend(rows)
+            matched.append(t)
+        else:
+            unmatched.append(t)
+        # Pace: stay under 60/min. 1.1s between calls.
+        if i < len(tickers) - 1:
+            _time.sleep(1.1)
+
+    stats = upsert_entries(all_entries, only_tickers=set(tickers))
     stats['coverage_tickers'] = len(tickers)
-    stats['window_days'] = days_ahead
+    stats['window_days'] = days_ahead + days_back
+    stats['days_ahead'] = days_ahead
+    stats['days_back'] = days_back
+    stats['covered_matched'] = matched
+    stats['covered_unmatched'] = unmatched
     stats['ran_at'] = datetime.utcnow().isoformat()
     try:
         with app_v3.get_db(commit=True) as (_c, cur):

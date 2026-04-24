@@ -54,7 +54,7 @@ if (typeof window !== 'undefined') {
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-24T15';
+        const BUILD_VERSION = '2026-04-24T16';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -24773,24 +24773,34 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 Save
                                             </button>
                                         </div>
-                                        <div className="mt-3 flex items-center justify-between">
-                                            <p className="text-xs text-slate-500">
-                                                {finnhubStatus ? (finnhubStatus.hasKey ? (finnhubStatus.lastSync?.ran_at ? `Last synced ${new Date(finnhubStatus.lastSync.ran_at).toLocaleString()} — ${finnhubStatus.lastSync.upserted || 0} upserted across ${finnhubStatus.lastSync.coverage_tickers || 0} tickers` : 'Never synced') : 'Key not set') : 'Loading…'}
-                                            </p>
+                                        <div className="mt-3 flex items-start justify-between gap-2">
+                                            <div className="text-xs text-slate-500 flex-1 min-w-0">
+                                                {!finnhubStatus ? 'Loading…' : !finnhubStatus.hasKey ? 'Key not set' : !finnhubStatus.lastSync?.ran_at ? 'Never synced' : (
+                                                    <>
+                                                        <div>Last synced {new Date(finnhubStatus.lastSync.ran_at).toLocaleString()} — {finnhubStatus.lastSync.upserted || 0} dates across {finnhubStatus.lastSync.covered_matched?.length || 0} / {finnhubStatus.lastSync.coverage_tickers || 0} covered tickers ({finnhubStatus.lastSync.days_back || 0}d back + {finnhubStatus.lastSync.days_ahead || 120}d ahead)</div>
+                                                        {finnhubStatus.lastSync.covered_matched?.length > 0 && (
+                                                            <div className="text-emerald-400/80 mt-1 break-words"><strong>Matched:</strong> {finnhubStatus.lastSync.covered_matched.join(', ')}</div>
+                                                        )}
+                                                        {finnhubStatus.lastSync.covered_unmatched?.length > 0 && (
+                                                            <div className="text-slate-500 mt-1 break-words"><strong>No earnings in window:</strong> {finnhubStatus.lastSync.covered_unmatched.join(', ')}</div>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </div>
                                             <button
                                                 onClick={async () => {
                                                     try {
                                                         const r = await fetch(`${API_URL}/api/earnings/sync-finnhub`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
                                                         const j = await r.json();
                                                         if (j.error) alert('Sync failed: ' + j.error);
-                                                        else alert(`Synced: ${j.upserted || 0} earnings dates upserted across ${j.coverage_tickers || 0} covered tickers`);
+                                                        else alert(`Synced: ${j.upserted || 0} earnings dates across ${j.covered_matched?.length || 0} / ${j.coverage_tickers || 0} covered tickers`);
                                                         loadFinnhubStatus();
                                                     } catch (e) { alert('Sync error: ' + e.message); }
                                                 }}
-                                                className="px-3 py-1 bg-emerald-700 hover:bg-emerald-600 rounded text-xs"
+                                                className="px-3 py-1 bg-emerald-700 hover:bg-emerald-600 rounded text-xs flex-shrink-0"
                                             >Sync now</button>
                                         </div>
-                                        <p className="text-xs text-slate-500 mt-2">Nightly at 08:00 UTC auto-pulls next 60 days of earnings dates for covered tickers. Free key at <a href="https://finnhub.io/register" target="_blank" rel="noreferrer" className="text-emerald-400 underline">finnhub.io</a>.</p>
+                                        <p className="text-xs text-slate-500 mt-2">Per-symbol fetch (1 req/sec) across all covered tickers — a 36-ticker sync takes ~40s. Nightly at 08:00 UTC. Free key at <a href="https://finnhub.io/register" target="_blank" rel="noreferrer" className="text-emerald-400 underline">finnhub.io</a>.</p>
                                     </div>
 
                                     {/* Google Drive OAuth Client ID Section */}

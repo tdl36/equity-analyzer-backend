@@ -97,19 +97,28 @@ def test_dispatch_takeaway_does_not_include_thesis(client, clean_db):
 
 # ---- Finnhub sync ----
 
-FAKE_FINNHUB_RESP = [
-    {'symbol': 'MDT', 'date': '2026-05-21', 'hour': 'bmo', 'epsEstimate': 1.47},
-    {'symbol': 'BSX', 'date': '2026-04-30', 'hour': 'amc', 'epsEstimate': 0.75},
-    {'symbol': 'ZZZZ', 'date': '2026-05-05', 'hour': 'amc'},  # not covered
-]
+def _symbol_responses():
+    return {
+        'MDT': [{'symbol': 'MDT', 'date': '2026-05-21', 'hour': 'bmo', 'epsEstimate': 1.47}],
+        'BSX': [{'symbol': 'BSX', 'date': '2026-04-30', 'hour': 'amc', 'epsEstimate': 0.75}],
+    }
 
 
 def test_finnhub_sync_upserts_only_covered(client, clean_db):
     client.post('/api/analysts', json={'name': 't', 'coverageTickers': ['MDT', 'BSX']})
+    resp_by_symbol = _symbol_responses()
+
+    def _fake_fetch(symbol, days_ahead=120, days_back=7, api_key=None):
+        return resp_by_symbol.get(symbol.upper(), [])
+
     with patch.object(finnhub_sync, '_api_key', return_value='k'):
-        with patch.object(finnhub_sync, 'fetch_upcoming', return_value=FAKE_FINNHUB_RESP):
-            stats = finnhub_sync.sync(days_ahead=60)
+        with patch.object(finnhub_sync, 'fetch_for_symbol', side_effect=_fake_fetch):
+            # sleep gets called between calls; patch it to avoid 1.1s * N wait
+            with patch('time.sleep', return_value=None):
+                stats = finnhub_sync.sync(days_ahead=60, days_back=7)
     assert stats['upserted'] == 2
+    assert sorted(stats['covered_matched']) == ['BSX', 'MDT']
+    assert stats['covered_unmatched'] == []
     with app_v3.get_db() as (_c, cur):
         cur.execute('SELECT ticker, quarter_label, timing FROM earnings_calendar ORDER BY ticker')
         rows = cur.fetchall()
@@ -119,6 +128,22 @@ def test_finnhub_sync_upserts_only_covered(client, clean_db):
     assert bsx['timing'] == 'AMC'
     mdt = next(r for r in rows if r['ticker'] == 'MDT')
     assert mdt['timing'] == 'BMO'
+
+
+def test_finnhub_sync_reports_unmatched_tickers(client, clean_db):
+    client.post('/api/analysts', json={'name': 't', 'coverageTickers': ['MDT', 'XYZ']})
+
+    def _fake_fetch(symbol, days_ahead=120, days_back=7, api_key=None):
+        if symbol == 'MDT':
+            return [{'symbol': 'MDT', 'date': '2026-05-21', 'hour': 'bmo'}]
+        return []  # XYZ returns nothing
+
+    with patch.object(finnhub_sync, '_api_key', return_value='k'):
+        with patch.object(finnhub_sync, 'fetch_for_symbol', side_effect=_fake_fetch):
+            with patch('time.sleep', return_value=None):
+                stats = finnhub_sync.sync()
+    assert stats['covered_matched'] == ['MDT']
+    assert stats['covered_unmatched'] == ['XYZ']
 
 
 def test_finnhub_sync_without_api_key_returns_error(client, clean_db):
