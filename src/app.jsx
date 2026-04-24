@@ -1907,12 +1907,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
                 return out;
             };
-            const waitForActiveSW = async (timeoutMs = 15000) => {
-                // iOS PWAs resolve navigator.serviceWorker.ready before
-                // registration.active is populated. Poll for active SW on
-                // the existing registration (index.html already registered
-                // one at page load; re-registering from here would trigger
-                // a controllerchange -> page reload mid-subscribe).
+            const waitForActiveSW = async (timeoutMs = 30000) => {
+                // Poll the existing SW registration for an active worker.
+                // index.html registers the SW on page load; we just wait
+                // for it to finish activating. iOS can take up to ~30s.
                 const deadline = Date.now() + timeoutMs;
                 while (Date.now() < deadline) {
                     const reg = await navigator.serviceWorker.getRegistration();
@@ -1935,22 +1933,29 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     }
                     await new Promise((r) => setTimeout(r, 500));
                 }
-                throw new Error('Service worker did not activate within 15s — close and reopen Charlie, then retry.');
+                throw new Error('Service worker did not activate within 30s — close and reopen Charlie, then retry.');
             };
             const enableWebPush = async () => {
                 try {
-                    if (Notification.permission !== 'granted') {
-                        const p = await Notification.requestPermission();
-                        if (p !== 'granted') { setPushStatus(p === 'denied' ? 'denied' : 'unsubscribed'); return; }
-                    }
-                    const keyRes = await fetch(`${API_URL}/api/push/vapid-public-key`);
-                    if (!keyRes.ok) { alert('Backend push not configured (VAPID_PUBLIC_KEY missing)'); return; }
-                    const { publicKey } = await keyRes.json();
                     const reg = await waitForActiveSW();
-                    const sub = await reg.pushManager.subscribe({
-                        userVisibleOnly: true,
-                        applicationServerKey: urlBase64ToUint8Array(publicKey),
-                    });
+                    // Idempotent: if a local subscription already exists
+                    // (e.g. a prior attempt got interrupted by a page
+                    // reload), just persist it to the backend rather than
+                    // creating a new one.
+                    let sub = await reg.pushManager.getSubscription();
+                    if (!sub) {
+                        if (Notification.permission !== 'granted') {
+                            const p = await Notification.requestPermission();
+                            if (p !== 'granted') { setPushStatus(p === 'denied' ? 'denied' : 'unsubscribed'); return; }
+                        }
+                        const keyRes = await fetch(`${API_URL}/api/push/vapid-public-key`);
+                        if (!keyRes.ok) { alert('Backend push not configured (VAPID_PUBLIC_KEY missing)'); return; }
+                        const { publicKey } = await keyRes.json();
+                        sub = await reg.pushManager.subscribe({
+                            userVisibleOnly: true,
+                            applicationServerKey: urlBase64ToUint8Array(publicKey),
+                        });
+                    }
                     const r = await fetch(`${API_URL}/api/push/subscribe`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
