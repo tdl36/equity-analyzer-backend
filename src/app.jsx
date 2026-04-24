@@ -54,7 +54,7 @@ if (typeof window !== 'undefined') {
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-24T14';
+        const BUILD_VERSION = '2026-04-24T15';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -1522,6 +1522,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [recapEmailOpen, setRecapEmailOpen] = useState(null); // activity object when open
             const [recapEmailTo, setRecapEmailTo] = useState('');
             const [recapEmailSubject, setRecapEmailSubject] = useState('');
+            // Thesis editor state (per analyst / ticker)
+            const [thesisEditorTicker, setThesisEditorTicker] = useState('');
+            const [thesisDraft, setThesisDraft] = useState({});
+            // Reset draft when analyst or ticker changes
+            useEffect(() => { setThesisDraft({}); }, [selectedAnalyst?.id, thesisEditorTicker]);
             const [newAnalystOpen, setNewAnalystOpen] = useState(false);
             const [newAnalystForm, setNewAnalystForm] = useState({ name: '', sector: '', subsector: '', coverageCsv: '' });
             const [analystToast, setAnalystToast] = useState(null);
@@ -1870,6 +1875,18 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const summaryFileInputRef = useRef(null);
             const summarySearchRef = useRef(null);
             const [geminiApiKey, setGeminiApiKey] = useState(loadGeminiKeyFromStorage() || '');
+            // Finnhub API key + sync status (stored on backend app_settings, not localStorage)
+            const [finnhubApiKey, setFinnhubApiKey] = useState('');
+            const [finnhubStatus, setFinnhubStatus] = useState(null);
+            const loadFinnhubStatus = React.useCallback(async () => {
+                try {
+                    const r = await fetch(`${API_URL}/api/earnings/finnhub-status`);
+                    if (r.ok) setFinnhubStatus(await r.json());
+                } catch (e) { /* ignore */ }
+            }, []);
+            useEffect(() => {
+                if (activeTab === 'settings') loadFinnhubStatus();
+            }, [activeTab, loadFinnhubStatus]);
             const [transcriptExpanded, setTranscriptExpanded] = useState(false);
             const [assessmentExpanded, setAssessmentExpanded] = useState(true);
             const [meetingSummaryExpanded, setMeetingSummaryExpanded] = useState(true);
@@ -23181,6 +23198,138 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     );
                                                 })()}
                                             </div>
+                                            {/* Phase 2 (thesis): per-ticker coverage thesis editor */}
+                                            {(() => {
+                                                const tickers = selectedAnalyst.coverageTickers || [];
+                                                const currentPb = selectedAnalyst.playbook || {};
+                                                const thesesMap = currentPb.thesesByTicker || {};
+                                                const activeTicker = thesisEditorTicker && tickers.includes(thesisEditorTicker) ? thesisEditorTicker : (tickers[0] || '');
+                                                const t = thesesMap[activeTicker] || {};
+                                                const linesToArr = (s) => (s || '').split('\n').map(l => l.trim()).filter(Boolean);
+                                                const csvToArr = (s) => (s || '').split(',').map(l => l.trim()).filter(Boolean);
+                                                const toLines = (a) => Array.isArray(a) ? a.join('\n') : (a || '');
+                                                const toCsv = (a) => Array.isArray(a) ? a.join(', ') : (a || '');
+                                                return (
+                                                    <div className="bg-white/5 border border-white/10 rounded-lg p-4 mb-4">
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <h3 className="font-semibold text-sm">Coverage thesis</h3>
+                                                            {tickers.length > 0 && (
+                                                                <select
+                                                                    value={activeTicker}
+                                                                    onChange={e => setThesisEditorTicker(e.target.value)}
+                                                                    className="text-xs px-2 py-1 bg-black/30 border border-white/10 rounded"
+                                                                >
+                                                                    {tickers.map(tk => {
+                                                                        const has = !!thesesMap[tk];
+                                                                        return <option key={tk} value={tk}>{tk}{has ? ' ✓' : ''}</option>;
+                                                                    })}
+                                                                </select>
+                                                            )}
+                                                        </div>
+                                                        {tickers.length === 0 ? (
+                                                            <p className="text-[11px] text-slate-500">Add at least one ticker to coverage above, then register a thesis here.</p>
+                                                        ) : (
+                                                            <div className="space-y-2">
+                                                                <p className="text-[11px] text-slate-400">Pre-registered thesis gets injected into earnings recaps for <span className="font-mono font-semibold">{activeTicker}</span> — the LLM will explicitly call out whether each pillar is supported or challenged.</p>
+                                                                <div>
+                                                                    <label className="block text-[10px] text-slate-500 mb-1">Summary (1–2 sentences)</label>
+                                                                    <textarea
+                                                                        value={thesisDraft.summary ?? (t.summary || '')}
+                                                                        onChange={e => setThesisDraft(d => ({ ...d, summary: e.target.value }))}
+                                                                        rows={2}
+                                                                        className="w-full px-2 py-1 bg-black/30 border border-white/10 rounded text-xs"
+                                                                        placeholder="Why do I own (or short) this name?"
+                                                                    />
+                                                                </div>
+                                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                                    <div>
+                                                                        <label className="block text-[10px] text-slate-500 mb-1">Bull case pillars (one per line)</label>
+                                                                        <textarea
+                                                                            value={thesisDraft.bulls ?? toLines(t.bulls)}
+                                                                            onChange={e => setThesisDraft(d => ({ ...d, bulls: e.target.value }))}
+                                                                            rows={4}
+                                                                            className="w-full px-2 py-1 bg-black/30 border border-white/10 rounded text-xs"
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-[10px] text-slate-500 mb-1">Bear case pillars (one per line)</label>
+                                                                        <textarea
+                                                                            value={thesisDraft.bears ?? toLines(t.bears)}
+                                                                            onChange={e => setThesisDraft(d => ({ ...d, bears: e.target.value }))}
+                                                                            rows={4}
+                                                                            className="w-full px-2 py-1 bg-black/30 border border-white/10 rounded text-xs"
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                                <div>
+                                                                    <label className="block text-[10px] text-slate-500 mb-1">Signposts I'm tracking (one per line)</label>
+                                                                    <textarea
+                                                                        value={thesisDraft.signposts ?? toLines(t.signposts)}
+                                                                        onChange={e => setThesisDraft(d => ({ ...d, signposts: e.target.value }))}
+                                                                        rows={3}
+                                                                        className="w-full px-2 py-1 bg-black/30 border border-white/10 rounded text-xs"
+                                                                    />
+                                                                </div>
+                                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                                    <div>
+                                                                        <label className="block text-[10px] text-slate-500 mb-1">Comp set (comma-separated)</label>
+                                                                        <input
+                                                                            type="text"
+                                                                            value={thesisDraft.compSet ?? toCsv(t.compSet)}
+                                                                            onChange={e => setThesisDraft(d => ({ ...d, compSet: e.target.value }))}
+                                                                            className="w-full px-2 py-1 bg-black/30 border border-white/10 rounded text-xs"
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-[10px] text-slate-500 mb-1">Key KPIs / ratios (comma-separated)</label>
+                                                                        <input
+                                                                            type="text"
+                                                                            value={thesisDraft.keyRatios ?? toCsv(t.keyRatios)}
+                                                                            onChange={e => setThesisDraft(d => ({ ...d, keyRatios: e.target.value }))}
+                                                                            className="w-full px-2 py-1 bg-black/30 border border-white/10 rounded text-xs"
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex items-center justify-between pt-1">
+                                                                    <p className="text-[10px] text-slate-500">{thesesMap[activeTicker] ? 'Thesis registered for this ticker' : 'No thesis registered yet'}</p>
+                                                                    <div className="flex gap-2">
+                                                                        {thesesMap[activeTicker] && (
+                                                                            <button
+                                                                                onClick={async () => {
+                                                                                    if (!confirm(`Delete thesis for ${activeTicker}?`)) return;
+                                                                                    const nextMap = { ...thesesMap };
+                                                                                    delete nextMap[activeTicker];
+                                                                                    await patchAnalyst(selectedAnalyst.id, { playbook: { ...currentPb, thesesByTicker: nextMap } });
+                                                                                    setThesisDraft({});
+                                                                                }}
+                                                                                className="px-2 py-1 bg-white/10 hover:bg-red-600/30 rounded text-[10px]"
+                                                                            >Delete</button>
+                                                                        )}
+                                                                        <button
+                                                                            onClick={async () => {
+                                                                                const nextThesis = {
+                                                                                    summary: (thesisDraft.summary ?? (t.summary || '')).trim(),
+                                                                                    bulls: linesToArr(thesisDraft.bulls ?? toLines(t.bulls)),
+                                                                                    bears: linesToArr(thesisDraft.bears ?? toLines(t.bears)),
+                                                                                    signposts: linesToArr(thesisDraft.signposts ?? toLines(t.signposts)),
+                                                                                    compSet: csvToArr(thesisDraft.compSet ?? toCsv(t.compSet)),
+                                                                                    keyRatios: csvToArr(thesisDraft.keyRatios ?? toCsv(t.keyRatios)),
+                                                                                    updatedAt: new Date().toISOString(),
+                                                                                };
+                                                                                const nextMap = { ...thesesMap, [activeTicker]: nextThesis };
+                                                                                await patchAnalyst(selectedAnalyst.id, { playbook: { ...currentPb, thesesByTicker: nextMap } });
+                                                                                setThesisDraft({});
+                                                                                setAnalystToast(`Thesis saved for ${activeTicker}`);
+                                                                            }}
+                                                                            className="px-3 py-1 bg-amber-600 hover:bg-amber-500 rounded text-[11px] font-medium"
+                                                                        >Save thesis</button>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })()}
                                             <div className="bg-white/5 border border-white/10 rounded-lg p-4">
                                                 <h3 className="font-semibold text-sm mb-2">Recent activities</h3>
                                                 {(!selectedAnalyst.recentActivities || selectedAnalyst.recentActivities.length === 0) ? (
@@ -24591,6 +24740,57 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             </button>
                                         </div>
                                         <p className="text-xs text-slate-500 mt-2">Required for audio transcription. Stored locally only.</p>
+                                    </div>
+
+                                    {/* Finnhub API Key Section (earnings calendar) */}
+                                    <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl p-4 border border-white/10">
+                                        <h3 className="font-semibold mb-3 flex items-center gap-2">
+                                            <Key className="w-4 h-4 text-emerald-400" />
+                                            Finnhub API Key (Earnings Calendar)
+                                        </h3>
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="password"
+                                                value={finnhubApiKey}
+                                                onChange={(e) => setFinnhubApiKey(e.target.value)}
+                                                placeholder="Free tier key from finnhub.io"
+                                                className="flex-1 px-4 py-2 bg-white/5 border border-white/10 backdrop-blur-md rounded-lg text-sm"
+                                            />
+                                            <button
+                                                onClick={async () => {
+                                                    try {
+                                                        await fetch(`${API_URL}/api/settings`, {
+                                                            method: 'POST',
+                                                            headers: { 'Content-Type': 'application/json' },
+                                                            body: JSON.stringify({ finnhub_api_key: finnhubApiKey }),
+                                                        });
+                                                        alert('Finnhub API key saved!');
+                                                        loadFinnhubStatus();
+                                                    } catch (e) { alert('Save failed: ' + e.message); }
+                                                }}
+                                                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-lg text-sm font-medium"
+                                            >
+                                                Save
+                                            </button>
+                                        </div>
+                                        <div className="mt-3 flex items-center justify-between">
+                                            <p className="text-xs text-slate-500">
+                                                {finnhubStatus ? (finnhubStatus.hasKey ? (finnhubStatus.lastSync?.ran_at ? `Last synced ${new Date(finnhubStatus.lastSync.ran_at).toLocaleString()} — ${finnhubStatus.lastSync.upserted || 0} upserted across ${finnhubStatus.lastSync.coverage_tickers || 0} tickers` : 'Never synced') : 'Key not set') : 'Loading…'}
+                                            </p>
+                                            <button
+                                                onClick={async () => {
+                                                    try {
+                                                        const r = await fetch(`${API_URL}/api/earnings/sync-finnhub`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+                                                        const j = await r.json();
+                                                        if (j.error) alert('Sync failed: ' + j.error);
+                                                        else alert(`Synced: ${j.upserted || 0} earnings dates upserted across ${j.coverage_tickers || 0} covered tickers`);
+                                                        loadFinnhubStatus();
+                                                    } catch (e) { alert('Sync error: ' + e.message); }
+                                                }}
+                                                className="px-3 py-1 bg-emerald-700 hover:bg-emerald-600 rounded text-xs"
+                                            >Sync now</button>
+                                        </div>
+                                        <p className="text-xs text-slate-500 mt-2">Nightly at 08:00 UTC auto-pulls next 60 days of earnings dates for covered tickers. Free key at <a href="https://finnhub.io/register" target="_blank" rel="noreferrer" className="text-emerald-400 underline">finnhub.io</a>.</p>
                                     </div>
 
                                     {/* Google Drive OAuth Client ID Section */}

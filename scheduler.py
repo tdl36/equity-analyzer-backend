@@ -12,6 +12,7 @@ from apscheduler.jobstores.memory import MemoryJobStore
 import app_v3
 from media_trackers import poller, extractor, transcribe, clustering, cost_watch, notifications
 import earnings
+import finnhub_sync
 
 
 def _kill_switch_on() -> bool:
@@ -63,6 +64,20 @@ def run_cost_watch_daily():
     cost_watch.check_cost_warning()
 
 
+def run_finnhub_earnings_sync():
+    """Nightly: pull the next 60 days of earnings dates from Finnhub and
+    upsert into earnings_calendar for covered tickers."""
+    if not _kill_switch_on():
+        return
+    try:
+        finnhub_sync.sync(days_ahead=60)
+    except Exception as e:
+        # Missing API key is expected until user sets it — don't spam logs
+        msg = str(e)
+        if 'API key' not in msg:
+            print(f'run_finnhub_earnings_sync error: {msg}')
+
+
 def run_earnings_fetch_sweep():
     """Phase 3d: check earnings calendar twice per US trading day and dispatch
     fetch jobs for any ticker whose confirmed earnings date == today."""
@@ -96,6 +111,9 @@ def build_scheduler(use_memory_jobstore: bool = False) -> BackgroundScheduler:
     # pre-market reports, 21:30 UTC (~5:30pm ET) for post-close reports.
     sched.add_job(run_earnings_fetch_sweep, 'cron', hour='11,21', minute=30,
                   id='earnings_fetch_sweep', replace_existing=True)
+    # Phase 3d+: Finnhub earnings calendar sync — daily at 08:00 UTC (~4am ET).
+    sched.add_job(run_finnhub_earnings_sync, 'cron', hour=8, minute=0,
+                  id='finnhub_earnings_sync', replace_existing=True)
     return sched
 
 

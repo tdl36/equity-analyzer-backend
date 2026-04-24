@@ -47,7 +47,9 @@ def clean_db():
                     'media_email_digest_to',
                     'telegram_chat_id',
                     'media_cost_weekly_warn_usd',
-                    'media_muted_coverage_tickers'
+                    'media_muted_coverage_tickers',
+                    'finnhub_api_key',
+                    'finnhub_last_sync'
                 )
             """)
     except Exception:

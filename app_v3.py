@@ -12688,8 +12688,13 @@ The following are source documents to synthesize:
 Write the synthesis report now. Start with a clear title line, then the analysis."""
 
 
-# Phase 3c: dedicated earnings recap prompt (4-section format).
+# Phase 3c + thesis bias: dedicated earnings recap prompt (4-section format).
+# {thesis_block} is empty string when no thesis is configured, or a pre-rendered
+# "MY COVERAGE THESIS" section that primes the LLM to frame results against
+# the analyst's pre-registered thesis (bulls / bears / signposts).
 EARNINGS_RECAP_PROMPT = """You are a senior equity research analyst writing an EARNINGS RECAP for your portfolio manager immediately after {ticker} reported {topic}.
+
+{thesis_block}
 
 ## ATTRIBUTION RULES (CRITICAL — FOLLOW EXACTLY)
 - NEVER reference any specific broker, sellside firm, or analyst by name.
@@ -20860,6 +20865,42 @@ def analyst_activities_archived():
         return jsonify({'activities': [], 'error': str(e)}), 500
 
 
+def _render_thesis_block(playbook: dict | None, ticker: str) -> str:
+    """Return a formatted MY COVERAGE THESIS block for the given ticker, or
+    empty string if no thesis is configured."""
+    if not isinstance(playbook, dict):
+        return ''
+    theses = playbook.get('thesesByTicker') or {}
+    thesis = theses.get(ticker) or theses.get(ticker.upper()) or {}
+    if not thesis:
+        return ''
+    parts = ['## MY COVERAGE THESIS (pre-registered — use to frame results, not as the conclusion)']
+    if thesis.get('summary'):
+        parts.append(f"**My thesis summary:** {thesis['summary']}")
+    if thesis.get('bulls'):
+        bulls = thesis['bulls'] if isinstance(thesis['bulls'], list) else [thesis['bulls']]
+        parts.append('**Bull case pillars:**\n' + '\n'.join(f'- {b}' for b in bulls if b))
+    if thesis.get('bears'):
+        bears = thesis['bears'] if isinstance(thesis['bears'], list) else [thesis['bears']]
+        parts.append('**Bear case pillars:**\n' + '\n'.join(f'- {b}' for b in bears if b))
+    if thesis.get('signposts'):
+        sp = thesis['signposts'] if isinstance(thesis['signposts'], list) else [thesis['signposts']]
+        parts.append('**Signposts I am tracking:**\n' + '\n'.join(f'- {s}' for s in sp if s))
+    if thesis.get('compSet'):
+        cs = thesis['compSet'] if isinstance(thesis['compSet'], list) else [thesis['compSet']]
+        parts.append(f"**Comp set:** {', '.join(cs)}")
+    if thesis.get('keyRatios'):
+        kr = thesis['keyRatios'] if isinstance(thesis['keyRatios'], list) else [thesis['keyRatios']]
+        parts.append(f"**Key ratios / KPIs I watch:** {', '.join(kr)}")
+    parts.append(
+        'When writing the recap, explicitly call out whether tonight\'s results '
+        'support or challenge each bull/bear pillar, and flag any signpost that '
+        'was tripped or invalidated. Frame the "Read-throughs & What I\'d Do" '
+        'section in terms of thesis impact.'
+    )
+    return '\n\n'.join(parts)
+
+
 def _dispatch_activity_run(activity_id: str, length: str = 'standard', custom_instructions: str = ''):
     """Shared helper: dispatch the given analyst activity as a synthesis job
     (earnings_recap variant if activity_type is earnings_recap). Returns
@@ -20894,6 +20935,25 @@ def _dispatch_activity_run(activity_id: str, length: str = 'standard', custom_in
     if length not in CATALYST_LENGTH_PRESETS:
         length = 'standard'
 
+    # Phase 2 (thesis-biased recap): look up the analyst's pre-registered
+    # thesis for this ticker and inject into the synthesis job.
+    thesis_block = ''
+    try:
+        analyst_id = act.get('analyst_id')
+        if analyst_id and prompt_variant == 'earnings_recap':
+            with get_db() as (_c, cur):
+                cur.execute('SELECT playbook FROM analysts WHERE id=%s', (analyst_id,))
+                a_row = cur.fetchone()
+            pb = (a_row or {}).get('playbook') if a_row else None
+            if isinstance(pb, str):
+                try:
+                    pb = json.loads(pb)
+                except Exception:
+                    pb = None
+            thesis_block = _render_thesis_block(pb, ticker)
+    except Exception as _e:
+        print(f'thesis lookup failed for {activity_id}: {_e}')
+
     job_id = str(uuid.uuid4())
     job_detail = {
         'topic': topic,
@@ -20902,6 +20962,7 @@ def _dispatch_activity_run(activity_id: str, length: str = 'standard', custom_in
         'prompt_variant': prompt_variant,
         'activityId': activity_id,
         'excludedFiles': [],
+        'thesis_block': thesis_block,
     }
     with get_db(commit=True) as (_c, cur):
         cur.execute('''
@@ -21335,6 +21396,40 @@ def earnings_config_put(ticker):
                 data.get('notes'),
             ))
         return jsonify({'ok': True, 'ticker': ticker})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/earnings/sync-finnhub', methods=['POST'])
+def earnings_sync_finnhub():
+    """Fetch upcoming earnings dates from Finnhub and upsert into
+    earnings_calendar (only for tickers covered by at least one analyst)."""
+    try:
+        import finnhub_sync as _fh
+        days_ahead = int((request.json or {}).get('daysAhead', 60))
+        stats = _fh.sync(days_ahead=max(1, min(days_ahead, 180)))
+        return jsonify(stats)
+    except Exception as e:
+        print(f'earnings_sync_finnhub error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/earnings/finnhub-status', methods=['GET'])
+def earnings_finnhub_status():
+    try:
+        with get_db() as (_c, cur):
+            cur.execute("SELECT value FROM app_settings WHERE key='finnhub_last_sync'")
+            row = cur.fetchone()
+            cur.execute("SELECT value FROM app_settings WHERE key='finnhub_api_key'")
+            key_row = cur.fetchone()
+        has_key = bool(key_row and key_row['value'])
+        last = None
+        if row and row['value']:
+            try:
+                last = json.loads(row['value']) if isinstance(row['value'], str) else row['value']
+            except Exception:
+                last = None
+        return jsonify({'hasKey': has_key, 'lastSync': last})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

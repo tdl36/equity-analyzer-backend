@@ -2055,9 +2055,12 @@ CATALYST_LENGTH_PRESETS = {
 }
 
 
-# Phase 3c: Earnings recap prompt (4-section format). Used when a synthesis job
-# is dispatched with steps_detail.prompt_variant == 'earnings_recap'.
+# Phase 3c + thesis bias: earnings recap prompt. Used when the synthesis job
+# has steps_detail.prompt_variant == 'earnings_recap'. {thesis_block} is empty
+# string when no thesis is configured; otherwise a rendered context block.
 EARNINGS_RECAP_PROMPT = """You are a senior equity research analyst writing an EARNINGS RECAP for your portfolio manager immediately after {ticker} reported {topic}.
+
+{thesis_block}
 
 ## ATTRIBUTION RULES (CRITICAL — FOLLOW EXACTLY)
 - NEVER reference any specific broker, sellside firm, or analyst by name.
@@ -2638,6 +2641,25 @@ def process_earnings_fetch_job(job: dict) -> None:
         else:
             notes_lines.append("Transcript: no url configured (user can drop manually)")
 
+        # Phase 3d+: SEC EDGAR fallback / augmentation — pull 99.x exhibits
+        # from the most recent earnings 8-K. Runs even if pr_url succeeded,
+        # so we also get the earnings presentation (Exhibit 99.2).
+        try:
+            update_job_progress(job_id, "running", "Checking SEC EDGAR for 8-K...", 75)
+            import sec_edgar
+            sec_result = sec_edgar.download_earnings_exhibits(ticker, topic_dir, since_days=5)
+            dl_names = [d['name'] for d in sec_result.get('downloaded') or []]
+            if dl_names:
+                got_anything = True
+                notes_lines.append(f"SEC 8-K ({sec_result.get('accessionNumber')}): {', '.join(dl_names)}")
+                log.info(f"earnings_fetch {ticker}/{quarter_label} SEC EDGAR: {', '.join(dl_names)}")
+            else:
+                sec_notes = sec_result.get('notes') or ['no exhibits']
+                notes_lines.append(f"SEC 8-K: {sec_notes[0]}")
+        except Exception as _e:
+            notes_lines.append(f"SEC 8-K: error — {_e}")
+            log.debug(f"SEC EDGAR lookup for {ticker} failed: {_e}")
+
         status_flag = 'fetched' if got_anything else 'retry'
         # Report back to calendar
         if calendar_id:
@@ -2854,13 +2876,17 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
         update_job_progress(job_id, "running", f"Synthesizing report (batch 1/{total_batches})...", 50)
 
         base_prompt = EARNINGS_RECAP_PROMPT if prompt_variant == 'earnings_recap' else CATALYST_SYNTHESIS_PROMPT
-        prompt_text = base_prompt.format(
+        thesis_block = steps_detail.get('thesis_block') or ''
+        fmt = dict(
             length_instruction=length_instruction,
             ticker=ticker,
             topic=topic,
             custom_instructions=custom_block,
             source_content="[See attached documents above]",
         )
+        if prompt_variant == 'earnings_recap':
+            fmt['thesis_block'] = thesis_block
+        prompt_text = base_prompt.format(**fmt)
         content_blocks = _build_content_blocks(batches[0], prompt_text)
 
         response = client.messages.create(
