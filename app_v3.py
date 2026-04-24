@@ -21527,6 +21527,18 @@ def earnings_config_put(ticker):
 _finnhub_sync_state = {'running': False, 'started_at': None}
 
 
+@app.route('/api/themes/scan', methods=['POST'])
+def themes_scan_trigger():
+    """Manually fire the theme-tracker scan for all analysts. Normally runs
+    hourly via APScheduler (10-23 UTC weekdays)."""
+    try:
+        import theme_tracker as _tt
+        return jsonify(_tt.run_theme_scan())
+    except Exception as e:
+        print(f'themes_scan_trigger error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/briefings/send', methods=['POST'])
 def briefings_send():
     """Manually fire a briefing context (bmo/midday/amc) for every analyst

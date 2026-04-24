@@ -54,7 +54,7 @@ if (typeof window !== 'undefined') {
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-24T21';
+        const BUILD_VERSION = '2026-04-24T22';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -23627,7 +23627,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             ? 'bg-amber-500/20 text-amber-300'
                                                             : item.activityType === 'takeaway'
                                                                 ? 'bg-slate-500/30 text-slate-200'
-                                                                : 'bg-white/10';
+                                                                : item.activityType === 'theme_alert'
+                                                                    ? 'bg-purple-500/20 text-purple-300'
+                                                                    : 'bg-white/10';
                                                         return (
                                                             <li key={item.id} className="bg-white/5 border border-white/10 rounded-lg p-4">
                                                                 <div className="flex items-center justify-between mb-2">
@@ -23639,6 +23641,29 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                     </div>
                                                                     <span className="text-[10px] text-slate-500">{item.createdAt && new Date(item.createdAt).toLocaleString()}</span>
                                                                 </div>
+                                                                {item.activityType === 'theme_alert' && (
+                                                                    <div className="mb-3 space-y-2">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="text-sm font-medium text-purple-200">🎯 Theme: <span className="italic">{input.theme}</span></span>
+                                                                            <span className="text-[10px] text-slate-500">{input.bulletCount} bullets · {(input.tickers || []).length} tickers · last {input.windowHours || 48}h</span>
+                                                                        </div>
+                                                                        <div className="flex flex-wrap gap-1">
+                                                                            {(input.tickers || []).map(t => (
+                                                                                <span key={t} className="px-1.5 py-0.5 bg-white/10 rounded text-[10px] font-mono">{t}</span>
+                                                                            ))}
+                                                                        </div>
+                                                                        {(input.sample || []).length > 0 && (
+                                                                            <ul className="space-y-1 text-xs text-slate-300">
+                                                                                {(input.sample || []).slice(0, 4).map((s, i) => (
+                                                                                    <li key={i} className="border-l-2 border-purple-500/40 pl-2">
+                                                                                        <div>{s.text}</div>
+                                                                                        <div className="text-[10px] text-slate-500">{s.feed}{s.feed && s.episode ? ' · ' : ''}{s.episode}</div>
+                                                                                    </li>
+                                                                                ))}
+                                                                            </ul>
+                                                                        )}
+                                                                    </div>
+                                                                )}
                                                                 {item.activityType === 'investigation' && (
                                                                     <div className="space-y-1 mb-3">
                                                                         {input.pointText && <p className="text-sm text-slate-200">{input.pointText}</p>}

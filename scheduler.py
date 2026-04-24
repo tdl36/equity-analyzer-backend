@@ -14,6 +14,7 @@ from media_trackers import poller, extractor, transcribe, clustering, cost_watch
 import earnings
 import finnhub_sync
 import briefings
+import theme_tracker
 
 
 def _kill_switch_on() -> bool:
@@ -63,6 +64,18 @@ def run_cost_watch_daily():
     if not _kill_switch_on():
         return
     cost_watch.check_cost_warning()
+
+
+def run_theme_scan():
+    """Hourly: scan last 48h of podcast bullets; route per-analyst theme
+    alerts (AI capex, etc.) when the same theme spans 2+ covered tickers
+    with 3+ bullets."""
+    if not _kill_switch_on():
+        return
+    try:
+        theme_tracker.run_theme_scan()
+    except Exception as e:
+        print(f'run_theme_scan error: {e}')
 
 
 def run_briefing_bmo():
@@ -152,6 +165,11 @@ def build_scheduler(use_memory_jobstore: bool = False) -> BackgroundScheduler:
                   id='briefing_midday', replace_existing=True)
     sched.add_job(run_briefing_amc,    'cron', hour=21, minute=30, day_of_week='mon-fri',
                   id='briefing_amc',    replace_existing=True)
+    # Cross-stock theme tracker — hourly during US weekdays (10 UTC = 6 AM ET
+    # through 23 UTC = 7 PM ET). 14 scans/day catches fresh cross-coverage
+    # themes as they emerge in podcasts.
+    sched.add_job(run_theme_scan, 'cron', hour='10-23', minute=5, day_of_week='mon-fri',
+                  id='theme_scan', replace_existing=True)
     return sched
 
 
