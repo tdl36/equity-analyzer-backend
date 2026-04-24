@@ -371,6 +371,32 @@ def media_admin_kick():
     })
 
 
+@app.route('/api/media/admin/failed-episodes', methods=['GET'])
+def media_admin_failed_episodes():
+    """Recent failed episodes with error messages across all feeds."""
+    limit = int(request.args.get('limit', 20))
+    with get_db() as (_c, cur):
+        cur.execute('''
+            SELECT e.id, e.title, e.status, e.error_message, e.published_at,
+                   f.name AS feed_name
+              FROM media_episodes e
+              JOIN media_feeds f ON f.id = e.feed_id
+             WHERE e.status IN ('failed', 'skipped')
+             ORDER BY e.published_at DESC NULLS LAST
+             LIMIT %s
+        ''', (limit,))
+        rows = cur.fetchall()
+    eps = [{
+        'id': r['id'],
+        'feed': r['feed_name'],
+        'title': (r['title'] or '')[:80],
+        'status': r['status'],
+        'error': r['error_message'],
+        'published_at': r['published_at'].isoformat() if r['published_at'] else None,
+    } for r in rows]
+    return jsonify({'episodes': eps, 'count': len(eps)})
+
+
 @app.route('/api/media/feeds/<feed_id>/episodes', methods=['GET'])
 def media_feeds_episodes(feed_id):
     """All episodes for a feed regardless of status, plus a status
