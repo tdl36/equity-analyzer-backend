@@ -53,6 +53,31 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/icon-192.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/icon-192.png">
     
+    <!-- One-time SW + cache nuke: recovers users with a stuck service worker
+         from the T27 precompile cycle. Runs before any CDN script so those
+         are fetched fresh from network, not from stale SW cache. -->
+    <script>
+    (function(){
+      try {
+        var flag = 'charlie_sw_nuked_v1';
+        if (!localStorage.getItem(flag)) {
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function(regs){
+              regs.forEach(function(r){ r.unregister(); });
+            }).catch(function(){});
+          }
+          if (window.caches && caches.keys) {
+            caches.keys().then(function(ns){
+              ns.forEach(function(n){ caches.delete(n); });
+            }).catch(function(){});
+          }
+          localStorage.setItem(flag, '1');
+          setTimeout(function(){ location.reload(); }, 400);
+        }
+      } catch(e) { /* ignore */ }
+    })();
+    </script>
+
     <!-- Critical CSS - prevents white flash, loads before scripts -->
     <style>
         html, body, #root {
@@ -278,7 +303,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-23T30';
+        const BUILD_VERSION = '2026-04-23T31';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
