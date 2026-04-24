@@ -2808,6 +2808,43 @@ def init_db():
             ''')
             cur.execute('CREATE INDEX IF NOT EXISTS idx_point_notes_point ON media_point_notes(point_id, created_at DESC)')
 
+            # Phase 3a: Analyst team
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS analysts (
+                    id VARCHAR(100) PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    sector TEXT,
+                    subsector TEXT,
+                    coverage_tickers TEXT[] DEFAULT '{}',
+                    thesis_snapshots JSONB DEFAULT '{}',
+                    playbook JSONB DEFAULT '{}',
+                    auto_mode JSONB DEFAULT '{"enabled": false, "expires_at": null}',
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP DEFAULT NOW()
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_analysts_coverage ON analysts USING GIN(coverage_tickers)')
+
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS analyst_activities (
+                    id VARCHAR(100) PRIMARY KEY,
+                    analyst_id VARCHAR(100) REFERENCES analysts(id) ON DELETE CASCADE,
+                    activity_type VARCHAR(30) NOT NULL,
+                    ticker VARCHAR(20),
+                    status VARCHAR(20) DEFAULT 'pending_review',
+                    trigger_source VARCHAR(50),
+                    input JSONB,
+                    output JSONB,
+                    error TEXT,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP DEFAULT NOW(),
+                    reviewed_at TIMESTAMP
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_analyst_activities_analyst_status ON analyst_activities(analyst_id, status, created_at DESC)')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_analyst_activities_ticker ON analyst_activities(ticker)')
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_analyst_activities_pending ON analyst_activities(status, created_at DESC) WHERE status='pending_review'")
+
         print("Database tables initialized")
     except Exception as e:
         print(f"Database init error (may be normal on first run): {e}")
@@ -20231,6 +20268,353 @@ def earnings_calendar():
         return jsonify({'earnings': earnings})
     except Exception as e:
         return jsonify({'earnings': [], 'error': str(e)})
+
+
+# ============================================
+# PHASE 3a: ANALYST TEAM ENDPOINTS
+# ============================================
+
+# Hard-coded default seed roster, grouped by subsector
+_DEFAULT_ANALYST_ROSTER = [
+    ('Healthcare', 'Large Cap Pharma', ['LLY', 'JNJ', 'BMY', 'ABBV']),
+    ('Healthcare', 'Medical Devices', ['BSX', 'MDT', 'ABT', 'BDX']),
+    ('Healthcare', 'Dx/Life Sci Tools', ['TMO', 'DHR', 'DGX', 'LH', 'IDXX']),
+    ('Healthcare', 'Managed Care', ['UNH', 'ELV', 'HUM']),
+    ('Industrials', 'Machinery & Equipment', ['DOV', 'ETN', 'CAT', 'ROK', 'PH']),
+    ('Industrials', 'Aerospace & Defense', ['RTX', 'LMT']),
+    ('Industrials', 'Infrastructure/Utilities', ['AVB', 'AMT', 'PLD']),
+    ('Tech', 'Semiconductors & AI', ['NVDA', 'TSM', 'AMAT', 'LRCX']),
+]
+
+
+def _row_to_analyst(r, pending_count=None, total_count=None):
+    """Convert an analysts row (RealDictCursor) to an API-shaped dict."""
+    if r is None:
+        return None
+    raw_thesis = r.get('thesis_snapshots') or {}
+    thesis = raw_thesis if isinstance(raw_thesis, dict) else (json.loads(raw_thesis) if raw_thesis else {})
+    raw_playbook = r.get('playbook') or {}
+    playbook = raw_playbook if isinstance(raw_playbook, dict) else (json.loads(raw_playbook) if raw_playbook else {})
+    raw_auto = r.get('auto_mode') or {}
+    auto = raw_auto if isinstance(raw_auto, dict) else (json.loads(raw_auto) if raw_auto else {})
+    out = {
+        'id': r['id'],
+        'name': r['name'],
+        'sector': r.get('sector'),
+        'subsector': r.get('subsector'),
+        'coverageTickers': list(r.get('coverage_tickers') or []),
+        'thesisSnapshots': thesis,
+        'playbook': playbook,
+        'autoMode': auto or {'enabled': False, 'expires_at': None},
+        'createdAt': r['created_at'].isoformat() if r.get('created_at') else None,
+        'updatedAt': r['updated_at'].isoformat() if r.get('updated_at') else None,
+    }
+    if pending_count is not None:
+        out['pendingCount'] = pending_count
+    if total_count is not None:
+        out['totalActivities'] = total_count
+    return out
+
+
+def _row_to_activity(r):
+    if r is None:
+        return None
+    raw_input = r.get('input')
+    inp = raw_input if isinstance(raw_input, dict) else (json.loads(raw_input) if raw_input else {})
+    raw_output = r.get('output')
+    outp = raw_output if isinstance(raw_output, dict) else (json.loads(raw_output) if raw_output else None)
+    return {
+        'id': r['id'],
+        'analystId': r.get('analyst_id'),
+        'analystName': r.get('analyst_name'),
+        'activityType': r.get('activity_type'),
+        'ticker': r.get('ticker'),
+        'status': r.get('status'),
+        'triggerSource': r.get('trigger_source'),
+        'input': inp,
+        'output': outp,
+        'error': r.get('error'),
+        'createdAt': r['created_at'].isoformat() if r.get('created_at') else None,
+        'updatedAt': r['updated_at'].isoformat() if r.get('updated_at') else None,
+        'reviewedAt': r['reviewed_at'].isoformat() if r.get('reviewed_at') else None,
+    }
+
+
+@app.route('/api/analysts', methods=['GET'])
+def analysts_list():
+    """List all analysts with activity counts."""
+    try:
+        with get_db() as (_c, cur):
+            cur.execute('''
+                SELECT a.*,
+                    COALESCE(SUM(CASE WHEN act.status='pending_review' THEN 1 ELSE 0 END), 0) AS pending_count,
+                    COUNT(act.id) AS total_count
+                FROM analysts a
+                LEFT JOIN analyst_activities act ON act.analyst_id = a.id
+                GROUP BY a.id
+                ORDER BY a.sector, a.subsector, a.name
+            ''')
+            rows = cur.fetchall()
+        analysts = [
+            _row_to_analyst(r, pending_count=int(r.get('pending_count') or 0),
+                            total_count=int(r.get('total_count') or 0))
+            for r in rows
+        ]
+        return jsonify({'analysts': analysts, 'total': len(analysts)})
+    except Exception as e:
+        print(f'analysts_list error: {e}')
+        return jsonify({'analysts': [], 'total': 0, 'error': str(e)}), 500
+
+
+@app.route('/api/analysts', methods=['POST'])
+def analysts_create():
+    """Create a new analyst."""
+    try:
+        import uuid as _uuid
+        data = request.json or {}
+        name = (data.get('name') or '').strip()
+        if not name:
+            return jsonify({'error': 'name required'}), 400
+        sector = (data.get('sector') or '').strip() or None
+        subsector = (data.get('subsector') or '').strip() or None
+        coverage = data.get('coverageTickers') or []
+        coverage = [str(t).upper().strip() for t in coverage if str(t).strip()]
+        aid = str(_uuid.uuid4())
+        with get_db(commit=True) as (_c, cur):
+            cur.execute('''
+                INSERT INTO analysts (id, name, sector, subsector, coverage_tickers)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING *
+            ''', (aid, name, sector, subsector, coverage))
+            row = cur.fetchone()
+        return jsonify({'analyst': _row_to_analyst(row, pending_count=0, total_count=0)}), 201
+    except Exception as e:
+        print(f'analysts_create error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/analysts/<analyst_id>', methods=['GET'])
+def analysts_get(analyst_id):
+    """Get one analyst with recent activities."""
+    try:
+        with get_db() as (_c, cur):
+            cur.execute('SELECT * FROM analysts WHERE id=%s', (analyst_id,))
+            row = cur.fetchone()
+            if not row:
+                return jsonify({'error': 'not found'}), 404
+            cur.execute('''
+                SELECT act.*, a.name AS analyst_name
+                FROM analyst_activities act
+                LEFT JOIN analysts a ON a.id = act.analyst_id
+                WHERE act.analyst_id=%s
+                ORDER BY act.created_at DESC
+                LIMIT 50
+            ''', (analyst_id,))
+            acts = cur.fetchall()
+        analyst = _row_to_analyst(row)
+        analyst['recentActivities'] = [_row_to_activity(r) for r in acts]
+        return jsonify({'analyst': analyst})
+    except Exception as e:
+        print(f'analysts_get error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/analysts/<analyst_id>', methods=['PATCH'])
+def analysts_patch(analyst_id):
+    """Update any field on an analyst."""
+    try:
+        data = request.json or {}
+        sets = []
+        vals = []
+        field_map = {
+            'name': 'name',
+            'sector': 'sector',
+            'subsector': 'subsector',
+        }
+        for api_key, col in field_map.items():
+            if api_key in data:
+                sets.append(f'{col} = %s')
+                vals.append(data.get(api_key))
+        if 'coverageTickers' in data:
+            coverage = [str(t).upper().strip() for t in (data.get('coverageTickers') or []) if str(t).strip()]
+            sets.append('coverage_tickers = %s')
+            vals.append(coverage)
+        if 'thesisSnapshots' in data:
+            sets.append('thesis_snapshots = %s::jsonb')
+            vals.append(json.dumps(data.get('thesisSnapshots') or {}))
+        if 'playbook' in data:
+            sets.append('playbook = %s::jsonb')
+            vals.append(json.dumps(data.get('playbook') or {}))
+        if 'autoMode' in data:
+            sets.append('auto_mode = %s::jsonb')
+            vals.append(json.dumps(data.get('autoMode') or {}))
+        if not sets:
+            return jsonify({'error': 'no updatable fields in body'}), 400
+        sets.append('updated_at = NOW()')
+        vals.append(analyst_id)
+        with get_db(commit=True) as (_c, cur):
+            cur.execute(
+                f"UPDATE analysts SET {', '.join(sets)} WHERE id=%s RETURNING *",
+                tuple(vals),
+            )
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'error': 'not found'}), 404
+        return jsonify({'analyst': _row_to_analyst(row)})
+    except Exception as e:
+        print(f'analysts_patch error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/analysts/<analyst_id>', methods=['DELETE'])
+def analysts_delete(analyst_id):
+    """Delete an analyst + cascade activities."""
+    try:
+        with get_db(commit=True) as (_c, cur):
+            cur.execute('DELETE FROM analysts WHERE id=%s RETURNING id', (analyst_id,))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'error': 'not found'}), 404
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f'analysts_delete error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/analysts/<analyst_id>/activities', methods=['GET'])
+def analysts_activities_list(analyst_id):
+    """List activities for this analyst (optional ?status=)."""
+    try:
+        status = request.args.get('status')
+        params = [analyst_id]
+        where = 'act.analyst_id = %s'
+        if status:
+            where += ' AND act.status = %s'
+            params.append(status)
+        with get_db() as (_c, cur):
+            cur.execute(f'''
+                SELECT act.*, a.name AS analyst_name
+                FROM analyst_activities act
+                LEFT JOIN analysts a ON a.id = act.analyst_id
+                WHERE {where}
+                ORDER BY act.created_at DESC
+                LIMIT 200
+            ''', tuple(params))
+            rows = cur.fetchall()
+        return jsonify({'activities': [_row_to_activity(r) for r in rows]})
+    except Exception as e:
+        print(f'analysts_activities_list error: {e}')
+        return jsonify({'activities': [], 'error': str(e)}), 500
+
+
+@app.route('/api/analyst-activities/pending', methods=['GET'])
+def analyst_activities_pending():
+    """Global inbox: all pending activities across all analysts."""
+    try:
+        with get_db() as (_c, cur):
+            cur.execute('''
+                SELECT act.*, a.name AS analyst_name
+                FROM analyst_activities act
+                LEFT JOIN analysts a ON a.id = act.analyst_id
+                WHERE act.status = 'pending_review'
+                ORDER BY act.created_at DESC
+                LIMIT 500
+            ''')
+            rows = cur.fetchall()
+        items = [_row_to_activity(r) for r in rows]
+        return jsonify({'activities': items, 'total': len(items)})
+    except Exception as e:
+        print(f'analyst_activities_pending error: {e}')
+        return jsonify({'activities': [], 'total': 0, 'error': str(e)}), 500
+
+
+@app.route('/api/analyst-activities/<activity_id>', methods=['PATCH'])
+def analyst_activities_patch(activity_id):
+    """User approves/rejects/edits an activity."""
+    try:
+        data = request.json or {}
+        sets = []
+        vals = []
+        if 'status' in data:
+            sets.append('status = %s')
+            vals.append(data['status'])
+            if data['status'] in ('approved', 'rejected'):
+                sets.append('reviewed_at = NOW()')
+        if 'output' in data:
+            sets.append('output = %s::jsonb')
+            vals.append(json.dumps(data.get('output') or {}))
+        if 'error' in data:
+            sets.append('error = %s')
+            vals.append(data.get('error'))
+        if not sets:
+            return jsonify({'error': 'no updatable fields'}), 400
+        sets.append('updated_at = NOW()')
+        vals.append(activity_id)
+        with get_db(commit=True) as (_c, cur):
+            cur.execute(f'''
+                UPDATE analyst_activities
+                SET {', '.join(sets)}
+                WHERE id=%s
+                RETURNING *
+            ''', tuple(vals))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'error': 'not found'}), 404
+        # Join analyst name for the serialized response
+        with get_db() as (_c, cur):
+            cur.execute('SELECT name FROM analysts WHERE id=%s', (row.get('analyst_id'),))
+            a = cur.fetchone()
+        row_dict = dict(row)
+        row_dict['analyst_name'] = a['name'] if a else None
+        return jsonify({'activity': _row_to_activity(row_dict)})
+    except Exception as e:
+        print(f'analyst_activities_patch error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/analyst-activities/<activity_id>/retry', methods=['POST'])
+def analyst_activities_retry(activity_id):
+    """Retry a failed activity (just flips status back to pending_review)."""
+    try:
+        with get_db(commit=True) as (_c, cur):
+            cur.execute('''
+                UPDATE analyst_activities
+                SET status='pending_review', error=NULL, updated_at=NOW()
+                WHERE id=%s AND status='failed'
+                RETURNING *
+            ''', (activity_id,))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'error': 'not found or not retryable'}), 404
+        return jsonify({'activity': _row_to_activity(dict(row))})
+    except Exception as e:
+        print(f'analyst_activities_retry error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/analysts/seed-default-roster', methods=['POST'])
+def analysts_seed_default_roster():
+    """Idempotent: seed the default roster if no analysts exist yet."""
+    try:
+        import uuid as _uuid
+        with get_db() as (_c, cur):
+            cur.execute('SELECT COUNT(*) AS n FROM analysts')
+            existing = int(cur.fetchone()['n'])
+        if existing > 0:
+            return jsonify({'seeded': 0, 'existing': existing, 'skipped': True})
+        created = 0
+        with get_db(commit=True) as (_c, cur):
+            for sector, subsector, tickers in _DEFAULT_ANALYST_ROSTER:
+                name = f'{sector} - {subsector} Analyst'
+                cur.execute('''
+                    INSERT INTO analysts (id, name, sector, subsector, coverage_tickers)
+                    VALUES (%s, %s, %s, %s, %s)
+                ''', (str(_uuid.uuid4()), name, sector, subsector, list(tickers)))
+                created += 1
+        return jsonify({'seeded': created, 'existing': 0, 'skipped': False})
+    except Exception as e:
+        print(f'analysts_seed_default_roster error: {e}')
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/health', methods=['GET'])

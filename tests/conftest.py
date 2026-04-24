@@ -33,7 +33,8 @@ def clean_db():
             cur.execute("""
                 TRUNCATE media_point_notes, media_digest_points, media_episodes, media_feeds,
                          signals_watchlist, media_theme_clusters, notification_prefs,
-                         agent_alerts, mp_jobs, portfolio_analyses
+                         agent_alerts, mp_jobs, portfolio_analyses,
+                         analyst_activities, analysts
                 RESTART IDENTITY CASCADE
             """)
             cur.execute("""

@@ -299,3 +299,37 @@ def gate_and_alert_for_episode(episode_id):
                 )
             except Exception as e:
                 print(f'notify_new_material_alert failed: {e}')
+
+            # Phase 3a: route to analyst team. Create a pending_review
+            # investigation row for each analyst covering this ticker.
+            try:
+                with app_v3.get_db() as (_c, cur):
+                    cur.execute(
+                        'SELECT id, name FROM analysts WHERE %s = ANY(coverage_tickers)',
+                        (primary,),
+                    )
+                    matching = cur.fetchall() or []
+                for a in matching:
+                    with app_v3.get_db(commit=True) as (_c, cur):
+                        cur.execute('''
+                            INSERT INTO analyst_activities
+                              (id, analyst_id, activity_type, ticker, status,
+                               trigger_source, input, created_at)
+                            VALUES (%s, %s, 'investigation', %s, 'pending_review',
+                                    'podcast_material', %s::jsonb, NOW())
+                        ''', (
+                            str(uuid.uuid4()),
+                            a['id'],
+                            primary,
+                            json.dumps({
+                                'alertId': alert_id,
+                                'pointText': point['text'],
+                                'episodeTitle': episode.get('title'),
+                                'feedName': feed.get('name'),
+                                'sourceUrl': episode.get('source_url'),
+                                'tickers': point['tickers'],
+                                'themeTags': point['theme_tags'],
+                            }),
+                        ))
+            except Exception as e:
+                print(f'analyst routing failed: {e}')
