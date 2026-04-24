@@ -158,17 +158,23 @@
         .summary-content p {
             margin-bottom: 1rem;
         }
-        /* Add bullet points to paragraphs that start with bold text (common webhook format) */
+        /* Bullet points for paragraphs that start with bold text (webhook format).
+           NOTE: previously used display:flex, which split the bold label and body
+           into two flex items — on mobile this forced the body into a cramped
+           narrow column. Now we hang a bullet in absolute position so the
+           strong + body flows inline and wraps naturally like the emailed copy. */
         .summary-content > p:has(> strong:first-child),
         .summary-content > p:has(> b:first-child) {
-            display: flex;
-            gap: 0.5rem;
+            position: relative;
+            padding-left: 1.25rem;
         }
         .summary-content > p:has(> strong:first-child)::before,
         .summary-content > p:has(> b:first-child)::before {
             content: '•';
             color: #64748b;
-            flex-shrink: 0;
+            position: absolute;
+            left: 0;
+            top: 0;
         }
         .summary-content ul,
         .summary-content ol {
