@@ -1907,6 +1907,36 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
                 return out;
             };
+            const waitForActiveSW = async (timeoutMs = 15000) => {
+                // iOS PWAs often resolve navigator.serviceWorker.ready before
+                // registration.active is populated. Poll for an active SW,
+                // and re-register if none exists after a short wait.
+                let reg = await navigator.serviceWorker.getRegistration();
+                if (!reg) reg = await navigator.serviceWorker.register('/service-worker.js', { updateViaCache: 'none' });
+                const deadline = Date.now() + timeoutMs;
+                while (Date.now() < deadline) {
+                    if (reg.active) return reg;
+                    const installing = reg.installing || reg.waiting;
+                    if (installing) {
+                        await new Promise((resolve) => {
+                            const onChange = () => {
+                                if (installing.state === 'activated' || installing.state === 'redundant') {
+                                    installing.removeEventListener('statechange', onChange);
+                                    resolve();
+                                }
+                            };
+                            installing.addEventListener('statechange', onChange);
+                            setTimeout(resolve, 2000);
+                        });
+                    } else {
+                        await new Promise((r) => setTimeout(r, 500));
+                    }
+                    reg = await navigator.serviceWorker.getRegistration();
+                    if (!reg) throw new Error('Service worker lost registration');
+                }
+                if (!reg.active) throw new Error('Service worker did not activate within 15s — try killing and reopening the PWA');
+                return reg;
+            };
             const enableWebPush = async () => {
                 try {
                     if (Notification.permission !== 'granted') {
@@ -1916,7 +1946,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     const keyRes = await fetch(`${API_URL}/api/push/vapid-public-key`);
                     if (!keyRes.ok) { alert('Backend push not configured (VAPID_PUBLIC_KEY missing)'); return; }
                     const { publicKey } = await keyRes.json();
-                    const reg = await navigator.serviceWorker.ready;
+                    const reg = await waitForActiveSW();
                     const sub = await reg.pushManager.subscribe({
                         userVisibleOnly: true,
                         applicationServerKey: urlBase64ToUint8Array(publicKey),
