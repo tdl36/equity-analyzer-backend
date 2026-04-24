@@ -61,21 +61,25 @@ def _telegram_send(message: str) -> None:
         print(f'telegram send error: {e}')
 
 
-def _push_send(title: str, body: str, url: str = '/') -> None:
+def _push_send(title: str, body: str, url: str = '/') -> dict:
     """Web push to any saved push subscriptions in notification_prefs.push_subscriptions.
 
     Uses pywebpush + VAPID if env vars set (VAPID_PRIVATE_KEY, VAPID_CLAIMS_EMAIL).
+    Returns {total, sent, failed, reason, errors} so callers can surface diagnostics.
     """
+    stats = {'total': 0, 'sent': 0, 'failed': 0, 'reason': None, 'errors': []}
     try:
         from pywebpush import webpush
     except ImportError:
-        print('pywebpush not installed, skipping push')
-        return
+        stats['reason'] = 'pywebpush not installed'
+        print(stats['reason'])
+        return stats
     vapid_priv = os.environ.get('VAPID_PRIVATE_KEY', '')
     vapid_claims_email = os.environ.get('VAPID_CLAIMS_EMAIL', '')
     if not vapid_priv:
-        print('VAPID_PRIVATE_KEY not set, skipping push')
-        return
+        stats['reason'] = 'VAPID_PRIVATE_KEY not set'
+        print(stats['reason'])
+        return stats
     try:
         with app_v3.get_db() as (_c, cur):
             cur.execute("SELECT value FROM notification_prefs WHERE key='push_subscriptions'")
@@ -84,11 +88,15 @@ def _push_send(title: str, body: str, url: str = '/') -> None:
         if row and row['value']:
             val = row['value'] if isinstance(row['value'], list) else json.loads(row['value'])
             subs = val or []
-    except Exception:
-        subs = []
+    except Exception as e:
+        stats['reason'] = f'db read failed: {e}'
+        print(stats['reason'])
+        return stats
+    stats['total'] = len(subs)
     if not subs:
-        print('no push subscriptions, skipping')
-        return
+        stats['reason'] = 'no push subscriptions saved'
+        print(stats['reason'])
+        return stats
     payload = json.dumps({'title': title, 'body': body, 'url': url})
     for sub in subs:
         try:
@@ -98,8 +106,12 @@ def _push_send(title: str, body: str, url: str = '/') -> None:
                 vapid_private_key=vapid_priv,
                 vapid_claims={'sub': f'mailto:{vapid_claims_email or "noreply@tonydlee.com"}'},
             )
+            stats['sent'] += 1
         except Exception as e:
+            stats['failed'] += 1
+            stats['errors'].append(str(e))
             print(f'push send error for one sub: {e}')
+    return stats
 
 
 def _email_send(subject: str, html: str, to: str = '') -> None:

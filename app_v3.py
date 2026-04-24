@@ -21612,8 +21612,8 @@ def push_test():
         body = data.get('body') or 'If you see this, push is wired correctly.'
         url = data.get('url') or '/'
         from media_trackers import notifications as _nt
-        _nt._push_send(title, body, url=url)
-        return jsonify({'ok': True})
+        stats = _nt._push_send(title, body, url=url)
+        return jsonify({'ok': True, **(stats or {})})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
