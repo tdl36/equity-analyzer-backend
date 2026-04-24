@@ -25478,19 +25478,31 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                         <div className="space-y-3">
                                             <p className="text-xs text-slate-400 mb-3">Where material alerts should surface. M8 will wire these to actually fire; for now the preferences are saved.</p>
                                             {[
-                                                {id: 'tab', label: 'In-app Alerts tab'},
-                                                {id: 'push', label: 'Web push (this device)'},
-                                                {id: 'telegram', label: 'Telegram'},
-                                                {id: 'email', label: 'Email digest (7am)'},
+                                                {id: 'tab', label: 'In-app Alerts tab', testable: false},
+                                                {id: 'push', label: 'Web push (this device)', testable: true},
+                                                {id: 'telegram', label: 'Telegram', testable: true},
+                                                {id: 'email', label: 'Email digest (7am)', testable: true},
                                             ].map(c => (
-                                                <label key={c.id} className="flex items-center gap-3 p-3 rounded-md bg-white/5 border border-white/10 cursor-pointer">
-                                                    <input type="checkbox" checked={!!mtChannels[c.id]} onChange={async (e) => {
-                                                        const next = {...mtChannels, [c.id]: e.target.checked};
-                                                        setMtChannels(next);
-                                                        await fetch('/api/settings', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({media_notification_channels: next})});
-                                                    }} />
-                                                    <span className="text-sm text-slate-200">{c.label}</span>
-                                                </label>
+                                                <div key={c.id} className="flex items-center gap-3 p-3 rounded-md bg-white/5 border border-white/10">
+                                                    <label className="flex-1 flex items-center gap-3 cursor-pointer">
+                                                        <input type="checkbox" checked={!!mtChannels[c.id]} onChange={async (e) => {
+                                                            const next = {...mtChannels, [c.id]: e.target.checked};
+                                                            setMtChannels(next);
+                                                            await fetch('/api/settings', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({media_notification_channels: next})});
+                                                        }} />
+                                                        <span className="text-sm text-slate-200">{c.label}</span>
+                                                    </label>
+                                                    {c.testable && (
+                                                        <button className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded text-xs" onClick={async () => {
+                                                            try {
+                                                                const r = await fetch(`${API_URL}/api/media/notification-prefs/test`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({channel: c.id})});
+                                                                const j = await r.json().catch(() => ({}));
+                                                                if (!r.ok) { alert(`${c.label} test failed: ${j.error || r.status}`); return; }
+                                                                alert(`${c.label} test sent — check ${c.id === 'telegram' ? 'your Telegram chat' : c.id === 'email' ? 'your inbox' : 'your notifications'}.`);
+                                                            } catch (e) { alert(`${c.label} test error: ${e.message}`); }
+                                                        }}>Test</button>
+                                                    )}
+                                                </div>
                                             ))}
                                             <div className="text-xs text-slate-500 mt-4 p-3 rounded-md bg-black/20 border border-white/5">
                                                 Cost tracking dashboard lights up in M8.
