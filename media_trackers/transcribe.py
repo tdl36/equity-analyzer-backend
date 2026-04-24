@@ -95,9 +95,9 @@ def _gemini_transcribe_audio(audio_bytes: bytes, mime_type: str) -> str:
             import time as _time
             wait_start = _time.time()
             while hasattr(uploaded, 'state') and str(uploaded.state) not in ('ACTIVE', 'State.ACTIVE', '2'):
-                if _time.time() - wait_start > 120:
-                    raise RuntimeError('Gemini file processing timed out')
-                _time.sleep(3)
+                if _time.time() - wait_start > 600:
+                    raise RuntimeError(f'Gemini file processing timed out after 600s (size={size_mb:.1f}MB, last state={uploaded.state})')
+                _time.sleep(5)
                 uploaded = client.files.get(name=uploaded.name)
             audio_content = uploaded
         else:
