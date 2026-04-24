@@ -13,6 +13,7 @@ import app_v3
 from media_trackers import poller, extractor, transcribe, clustering, cost_watch, notifications
 import earnings
 import finnhub_sync
+import briefings
 
 
 def _kill_switch_on() -> bool:
@@ -62,6 +63,36 @@ def run_cost_watch_daily():
     if not _kill_switch_on():
         return
     cost_watch.check_cost_warning()
+
+
+def run_briefing_bmo():
+    """6:30 AM ET (10:30 UTC) — before market open."""
+    if not _kill_switch_on():
+        return
+    try:
+        briefings.send_briefings_for_context('bmo')
+    except Exception as e:
+        print(f'run_briefing_bmo error: {e}')
+
+
+def run_briefing_midday():
+    """12:30 PM ET (16:30 UTC) — midday, after BMO reports have been digested."""
+    if not _kill_switch_on():
+        return
+    try:
+        briefings.send_briefings_for_context('midday')
+    except Exception as e:
+        print(f'run_briefing_midday error: {e}')
+
+
+def run_briefing_amc():
+    """5:30 PM ET (21:30 UTC) — after market close, before evening review."""
+    if not _kill_switch_on():
+        return
+    try:
+        briefings.send_briefings_for_context('amc')
+    except Exception as e:
+        print(f'run_briefing_amc error: {e}')
 
 
 def run_finnhub_earnings_sync():
@@ -114,6 +145,13 @@ def build_scheduler(use_memory_jobstore: bool = False) -> BackgroundScheduler:
     # Phase 3d+: Finnhub earnings calendar sync — daily at 08:00 UTC (~4am ET).
     sched.add_job(run_finnhub_earnings_sync, 'cron', hour=8, minute=0,
                   id='finnhub_earnings_sync', replace_existing=True)
+    # Analyst briefings — 3x/day, weekdays only (Mon=0 .. Fri=4)
+    sched.add_job(run_briefing_bmo,    'cron', hour=10, minute=30, day_of_week='mon-fri',
+                  id='briefing_bmo',    replace_existing=True)
+    sched.add_job(run_briefing_midday, 'cron', hour=16, minute=30, day_of_week='mon-fri',
+                  id='briefing_midday', replace_existing=True)
+    sched.add_job(run_briefing_amc,    'cron', hour=21, minute=30, day_of_week='mon-fri',
+                  id='briefing_amc',    replace_existing=True)
     return sched
 
 

@@ -49,8 +49,9 @@ def clean_db():
                     'media_cost_weekly_warn_usd',
                     'media_muted_coverage_tickers',
                     'finnhub_api_key',
-                    'finnhub_last_sync'
-                )
+                    'finnhub_last_sync',
+                    'briefing_email_to'
+                ) OR key LIKE 'briefing_last_%'
             """)
     except Exception:
         pass  # media_* tables don't exist until Task 2; agent_alerts does

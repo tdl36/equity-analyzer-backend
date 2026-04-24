@@ -21072,6 +21072,19 @@ def _maybe_link_activity_to_job_result(job_id: str, status: str, result):
                    SET status=%s, output=%s::jsonb, error=%s, updated_at=NOW()
                  WHERE id=%s
             ''', (new_status, json.dumps(out), (err_msg or None), activity_id))
+
+        # Event-triggered briefing — fires only when the analyst has
+        # playbook.briefings.on_recap_ready enabled (checked inside).
+        if status == 'complete':
+            try:
+                import briefings as _br
+                threading.Thread(
+                    target=_br.send_event_recap_briefing,
+                    args=(activity_id,),
+                    daemon=True,
+                ).start()
+            except Exception as _e:
+                print(f'event briefing dispatch failed: {_e}')
     except Exception as e:
         print(f'_maybe_link_activity_to_job_result error: {e}')
 
@@ -21401,6 +21414,24 @@ def earnings_config_put(ticker):
 
 
 _finnhub_sync_state = {'running': False, 'started_at': None}
+
+
+@app.route('/api/briefings/send', methods=['POST'])
+def briefings_send():
+    """Manually fire a briefing context (bmo/midday/amc) for every analyst
+    who has it enabled. Useful for testing + on-demand sends. Returns
+    {sent, skipped, errors}."""
+    try:
+        data = request.json or {}
+        context = (data.get('context') or '').lower().strip()
+        if context not in ('bmo', 'midday', 'amc'):
+            return jsonify({'error': 'context must be bmo|midday|amc'}), 400
+        import briefings as _br
+        stats = _br.send_briefings_for_context(context)
+        return jsonify(stats)
+    except Exception as e:
+        print(f'briefings_send error: {e}')
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/earnings/sync-finnhub', methods=['POST'])

@@ -54,7 +54,7 @@ if (typeof window !== 'undefined') {
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-24T19';
+        const BUILD_VERSION = '2026-04-24T20';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -23210,6 +23210,54 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     );
                                                 })()}
                                             </div>
+                                            {/* Briefings — BMO / midday / AMC scheduled + event-triggered recap-ready */}
+                                            {(() => {
+                                                const pb = selectedAnalyst.playbook || {};
+                                                const br = pb.briefings || {};
+                                                const save = (patch) => {
+                                                    const next = { ...pb, briefings: { ...br, ...patch } };
+                                                    patchAnalyst(selectedAnalyst.id, { playbook: next });
+                                                };
+                                                return (
+                                                    <div className="bg-white/5 border border-white/10 rounded-lg p-4 mb-4">
+                                                        <h3 className="font-semibold text-sm mb-2">Briefing emails</h3>
+                                                        <p className="text-[11px] text-slate-500 mb-2">Scheduled digests on weekdays + instant-send when an Auto-Mode recap completes. Each turn on independently.</p>
+                                                        <div className="space-y-1">
+                                                            <label className="flex items-center gap-2 text-xs text-slate-300"><input type="checkbox" checked={!!br.bmo} onChange={e => save({ bmo: e.target.checked })} />BMO — <span className="text-slate-500">6:30 AM ET, pre-market</span></label>
+                                                            <label className="flex items-center gap-2 text-xs text-slate-300"><input type="checkbox" checked={!!br.midday} onChange={e => save({ midday: e.target.checked })} />Midday — <span className="text-slate-500">12:30 PM ET</span></label>
+                                                            <label className="flex items-center gap-2 text-xs text-slate-300"><input type="checkbox" checked={!!br.amc} onChange={e => save({ amc: e.target.checked })} />AMC — <span className="text-slate-500">5:30 PM ET, post-close</span></label>
+                                                            <label className="flex items-center gap-2 text-xs text-slate-300"><input type="checkbox" checked={!!br.on_recap_ready} onChange={e => save({ on_recap_ready: e.target.checked })} />Instant recap-ready — <span className="text-slate-500">fires the moment an Auto-Mode recap completes</span></label>
+                                                        </div>
+                                                        <div className="mt-2 flex items-center gap-2">
+                                                            <label className="text-[11px] text-slate-500">Recipient override (optional):</label>
+                                                            <input
+                                                                type="email"
+                                                                defaultValue={br.email || ''}
+                                                                onBlur={e => save({ email: e.target.value.trim() || null })}
+                                                                className="flex-1 text-[11px] px-2 py-1 bg-black/30 border border-white/10 rounded"
+                                                                placeholder="defaults to your SMTP_TO / media_email_digest_to"
+                                                            />
+                                                        </div>
+                                                        <div className="mt-2 flex gap-1 flex-wrap">
+                                                            {['bmo','midday','amc'].map(ctx => (
+                                                                <button
+                                                                    key={ctx}
+                                                                    onClick={async () => {
+                                                                        try {
+                                                                            const r = await fetch(`${API_URL}/api/briefings/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ context: ctx }) });
+                                                                            const j = await r.json();
+                                                                            if (j.error) setAnalystToast('Briefing error: ' + j.error);
+                                                                            else setAnalystToast(`${ctx.toUpperCase()} briefing: ${j.sent} sent, ${j.skipped} skipped, ${j.errors} errors`);
+                                                                        } catch (e) { setAnalystToast('Send error: ' + e.message); }
+                                                                    }}
+                                                                    className="px-2 py-1 bg-white/10 hover:bg-white/20 rounded text-[10px]"
+                                                                >Send {ctx.toUpperCase()} now</button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
+
                                             {/* Phase 2 (thesis): per-ticker coverage thesis editor */}
                                             {(() => {
                                                 const tickers = selectedAnalyst.coverageTickers || [];
