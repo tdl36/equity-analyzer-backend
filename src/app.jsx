@@ -54,7 +54,7 @@ if (typeof window !== 'undefined') {
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-24T08';
+        const BUILD_VERSION = '2026-04-24T09';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -2151,6 +2151,37 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 }
             };
             
+            // Email Meeting Summary only
+            const emailMeetingSummary = async () => {
+                if (!currentSummary || !currentSummary.meetingSummary) return;
+                const saved = localStorage.getItem('emailCredentials');
+                if (!saved) { alert('Please set your email credentials in Settings first'); return; }
+                let creds; try { creds = JSON.parse(saved); } catch (e) { alert('Invalid email credentials. Please update in Settings.'); return; }
+                if (!creds.email) { alert('Please set your recipient email in Settings first'); return; }
+                try {
+                    const response = await fetch(`${API_URL}/api/email-summary-section`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            email: creds.email,
+                            subject: `Meeting Summary: ${currentSummary.title}`,
+                            section: 'meeting',
+                            content: currentSummary.meetingSummary,
+                            title: currentSummary.title,
+                            topic: currentSummary.topic || 'General',
+                            smtpConfig: {
+                                use_gmail: creds.useGmail,
+                                gmail_user: creds.gmailUser,
+                                gmail_app_password: creds.gmailPassword,
+                                from_email: creds.gmailUser
+                            }
+                        })
+                    });
+                    if (response.ok) { alert('Meeting Summary emailed successfully!'); }
+                    else { const err = await response.json(); throw new Error(err.error || 'Failed to send'); }
+                } catch (err) { alert('Failed to send email: ' + err.message); }
+            };
+
             // Email Follow-up Questions only
             const emailQuestions = async () => {
                 if (!currentSummary) return;
@@ -3281,6 +3312,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 let defaultSubject = '';
                 if (section === 'takeaways') {
                     defaultSubject = `Key Takeaways: ${currentSummary?.title || 'Summary'}`;
+                } else if (section === 'meeting') {
+                    defaultSubject = `Meeting Summary: ${currentSummary?.title || 'Summary'}`;
                 } else if (section === 'questions') {
                     defaultSubject = `Follow-up Questions: ${currentSummary?.title || 'Summary'}`;
                 } else if (section === 'assessment') {
@@ -3316,6 +3349,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 let section = summaryEmailSection;
                 if (section === 'takeaways') {
                     content = currentSummary.summary;
+                } else if (section === 'meeting') {
+                    content = currentSummary.meetingSummary;
                 } else if (section === 'questions') {
                     content = currentSummary.questions;
                 } else if (section === 'assessment') {
@@ -16358,6 +16393,20 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 title="Copy All"
                                                             >
                                                                 <Copy className="w-4 h-4" />
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); emailMeetingSummary(); }}
+                                                                className="p-1.5 bg-gradient-to-r from-sky-500 to-blue-500 hover:from-sky-600 hover:to-blue-600 rounded-lg transition-colors shadow-lg shadow-sky-500/20"
+                                                                title="Quick Email"
+                                                            >
+                                                                <Mail className="w-4 h-4" />
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); openSummaryEmailWithOptions('meeting'); }}
+                                                                className="p-1.5 bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-slate-900 rounded-lg transition-colors shadow-lg shadow-yellow-500/20"
+                                                                title="Email with Options"
+                                                            >
+                                                                <Mails className="w-4 h-4" />
                                                             </button>
                                                         </div>
                                                     </div>
