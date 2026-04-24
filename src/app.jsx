@@ -1907,33 +1907,32 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
                 return out;
             };
-            const waitForActiveSW = async (timeoutMs = 30000) => {
-                // Poll the existing SW registration for an active worker.
-                // index.html registers the SW on page load; we just wait
-                // for it to finish activating. iOS can take up to ~30s.
-                const deadline = Date.now() + timeoutMs;
-                while (Date.now() < deadline) {
-                    const reg = await navigator.serviceWorker.getRegistration();
-                    if (reg && reg.active) return reg;
-                    if (reg) {
-                        const installing = reg.installing || reg.waiting;
-                        if (installing) {
-                            await new Promise((resolve) => {
-                                const onChange = () => {
-                                    if (installing.state === 'activated' || installing.state === 'redundant') {
-                                        installing.removeEventListener('statechange', onChange);
-                                        resolve();
-                                    }
-                                };
-                                installing.addEventListener('statechange', onChange);
-                                setTimeout(resolve, 2000);
-                            });
-                            continue;
-                        }
-                    }
-                    await new Promise((r) => setTimeout(r, 500));
-                }
-                throw new Error('Service worker did not activate within 30s — close and reopen Charlie, then retry.');
+            const waitForActiveSW = async (timeoutMs = 60000) => {
+                // Use the browser's native ready promise (waits for active SW),
+                // but race it against a timeout so we don't hang forever on iOS.
+                const readyPromise = navigator.serviceWorker.ready.then((reg) => {
+                    if (reg.active) return reg;
+                    // Edge case: ready resolved but active still null (iOS bug).
+                    // Poll for up to 10s.
+                    return new Promise((resolve, reject) => {
+                        const start = Date.now();
+                        const check = () => {
+                            if (reg.active) return resolve(reg);
+                            if (Date.now() - start > 10000) return reject(new Error('ready resolved but registration.active never populated'));
+                            setTimeout(check, 300);
+                        };
+                        check();
+                    });
+                });
+                const timeoutPromise = new Promise((_, reject) => setTimeout(() => {
+                    navigator.serviceWorker.getRegistration().then((reg) => {
+                        const state = reg
+                            ? `reg exists: active=${!!reg.active} installing=${!!reg.installing} waiting=${!!reg.waiting} scope=${reg.scope}`
+                            : 'no registration found';
+                        reject(new Error(`SW did not become ready within ${timeoutMs / 1000}s. State: ${state}`));
+                    }).catch(() => reject(new Error(`SW did not become ready within ${timeoutMs / 1000}s`)));
+                }, timeoutMs));
+                return Promise.race([readyPromise, timeoutPromise]);
             };
             const enableWebPush = async () => {
                 try {
