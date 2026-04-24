@@ -278,7 +278,7 @@
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-23T22';
+        const BUILD_VERSION = '2026-04-23T23';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -6790,6 +6790,45 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [feedThemesOpen, setFeedThemesOpen] = useState(false);
             const feedHeatmapCacheRef = useRef({ loadedAt: 0, data: [] });
 
+            // Features 5-8: toast, saved views, last-seen, full-summary jobs
+            const [feedToast, setFeedToast] = useState(null); // { text, kind?, action? }
+            const [feedSavedViews, setFeedSavedViews] = useState(() => {
+                try { return JSON.parse(localStorage.getItem('charlie_feed_saved_views') || '[]'); }
+                catch { return []; }
+            });
+            const [feedActiveView, setFeedActiveView] = useState('');
+            const [feedLastSeen, setFeedLastSeen] = useState(() => {
+                try { return localStorage.getItem('charlie_feed_last_seen') || '1970-01-01T00:00:00Z'; }
+                catch { return '1970-01-01T00:00:00Z'; }
+            });
+            const [feedSummaryJobs, setFeedSummaryJobs] = useState({}); // { [episodeId]: { jobId, status } }
+
+            // Built-in saved views (not deletable)
+            const FEED_BUILTIN_VIEWS = [
+                { name: 'My tech watch',      builtin: true, filters: { sectorBundle: 'tech', days: 7, material: false, ticker: '', q: '', source: 'podcast' } },
+                { name: 'Healthcare material',builtin: true, filters: { sectorBundle: 'healthcare', material: true, days: 7, ticker: '', q: '', source: 'podcast' } },
+                { name: 'Last 24h all',       builtin: true, filters: { days: 1, material: false, sectorBundle: null, ticker: '', q: '', source: 'podcast' } },
+            ];
+
+            // Toast auto-dismiss
+            useEffect(() => {
+                if (!feedToast) return;
+                const t = setTimeout(() => setFeedToast(null), 3000);
+                return () => clearTimeout(t);
+            }, [feedToast]);
+
+            // Update last-seen when leaving Feed tab
+            const feedPrevTabRef = useRef(null);
+            useEffect(() => {
+                if (feedPrevTabRef.current === 'feed' && activeTab !== 'feed') {
+                    // Leaving feed — stamp last seen
+                    const now = new Date().toISOString();
+                    try { localStorage.setItem('charlie_feed_last_seen', now); } catch {}
+                    setFeedLastSeen(now);
+                }
+                feedPrevTabRef.current = activeTab;
+            }, [activeTab]);
+
             const fetchFeed = useCallback(async () => {
                 setFeedLoading(true);
                 setFeedError(null);
@@ -6837,6 +6876,166 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         clusters: data.clusters || [],
                     });
                 } catch (e) {}
+            }, []);
+
+            // ---- Feature 5: per-bullet actions ----
+            const feedAskCharlie = useCallback(async (ep, p) => {
+                const ctx = [
+                    'Ask Charlie about this bullet:',
+                    `Episode: ${ep.feedName || ''}: ${ep.title || ''}`,
+                    `Bullet: ${p.text || ''}`,
+                    `Tickers: ${(p.tickers || []).join(',')}`,
+                    `Source: ${ep.sourceUrl || ''}`,
+                ].join('\n');
+                try {
+                    await navigator.clipboard.writeText(ctx);
+                    setFeedToast({ text: 'Context copied — paste into Chat', kind: 'ok' });
+                } catch (e) {
+                    // Fallback: inject into prompt state if such a setter exists in scope
+                    setFeedToast({ text: 'Clipboard unavailable — context logged to console', kind: 'warn' });
+                    console.log(ctx);
+                }
+            }, []);
+
+            const feedAttachToThesis = useCallback(async (ep, p) => {
+                const tickers = p.tickers || [];
+                let ticker = tickers[0] || '';
+                if (!ticker) {
+                    ticker = prompt('No ticker on this bullet. Attach to which ticker thesis?');
+                    if (!ticker) return;
+                    ticker = ticker.trim().toUpperCase();
+                }
+                try {
+                    const resp = await fetch('/api/media/attach-to-thesis', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            ticker,
+                            bulletText: p.text || '',
+                            episodeTitle: ep.title || '',
+                            feedName: ep.feedName || '',
+                            sourceUrl: ep.sourceUrl || '',
+                        }),
+                    });
+                    if (!resp.ok) throw new Error((await resp.json()).error || 'attach failed');
+                    setFeedToast({ text: `Attached to ${ticker} thesis`, kind: 'ok' });
+                } catch (e) {
+                    setFeedToast({ text: `Attach failed: ${e.message || e}`, kind: 'err' });
+                }
+            }, []);
+
+            const feedMuteTheme = useCallback(async (p) => {
+                const themes = p.themeTags || [];
+                let theme = themes[0] || '';
+                if (!theme) {
+                    theme = prompt('No theme tags on this bullet. Enter a theme keyword to mute:');
+                    if (!theme) return;
+                    theme = theme.trim();
+                }
+                if (!confirm(`Mute "${theme}"? You won't get alerts on bullets tagged with this theme.`)) return;
+                try {
+                    const resp = await fetch('/api/media/mute-theme', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ theme }),
+                    });
+                    if (!resp.ok) throw new Error((await resp.json()).error || 'mute failed');
+                    setFeedToast({ text: `${theme} muted — won't alert anymore`, kind: 'ok' });
+                } catch (e) {
+                    setFeedToast({ text: `Mute failed: ${e.message || e}`, kind: 'err' });
+                }
+            }, []);
+
+            // ---- Feature 8: full-summary generation ----
+            const feedGenerateFullSummary = useCallback(async (ep) => {
+                setFeedSummaryJobs(prev => ({ ...prev, [ep.id]: { jobId: null, status: 'starting' } }));
+                try {
+                    const apiKey = (typeof apiKeySaved !== 'undefined' ? apiKeySaved : '') || '';
+                    const resp = await fetch(`/api/media/episode/${ep.id}/full-summary`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ apiKey }),
+                    });
+                    if (!resp.ok) throw new Error((await resp.json()).error || 'request failed');
+                    const data = await resp.json();
+                    const jobId = data.jobId;
+                    setFeedSummaryJobs(prev => ({ ...prev, [ep.id]: { jobId, status: 'running' } }));
+
+                    // Poll /api/mp/jobs/:id every 3s
+                    const poll = async () => {
+                        try {
+                            const r = await fetch(`/api/mp/jobs/${jobId}`);
+                            const j = await r.json();
+                            if (j.status === 'done') {
+                                const summaryId = j.result && j.result.summaryId;
+                                setFeedSummaryJobs(prev => ({ ...prev, [ep.id]: { jobId, status: 'done', summaryId } }));
+                                setFeedToast({
+                                    text: 'Saved to Summary tab',
+                                    kind: 'ok',
+                                    action: { label: 'Open', onClick: () => { try { switchTab('summary'); } catch {} } },
+                                });
+                                return;
+                            }
+                            if (j.status === 'failed') {
+                                setFeedSummaryJobs(prev => ({ ...prev, [ep.id]: { jobId, status: 'failed', error: j.error } }));
+                                setFeedToast({ text: `Summary failed: ${j.error || 'unknown error'}`, kind: 'err' });
+                                return;
+                            }
+                            setTimeout(poll, 3000);
+                        } catch (e) {
+                            setFeedSummaryJobs(prev => ({ ...prev, [ep.id]: { jobId, status: 'failed', error: String(e) } }));
+                        }
+                    };
+                    setTimeout(poll, 2000);
+                } catch (e) {
+                    setFeedSummaryJobs(prev => ({ ...prev, [ep.id]: { status: 'failed', error: String(e) } }));
+                    setFeedToast({ text: `Full summary failed: ${e.message || e}`, kind: 'err' });
+                }
+            }, []);
+
+            // ---- Feature 7: saved views ----
+            const feedSaveCurrentView = useCallback(() => {
+                const name = prompt('Name this view:');
+                if (!name) return;
+                const trimmed = name.trim();
+                if (!trimmed) return;
+                // Don't collide with builtin names
+                if (FEED_BUILTIN_VIEWS.some(v => v.name === trimmed)) {
+                    alert('That name is reserved by a built-in view. Pick a different name.');
+                    return;
+                }
+                const next = [...feedSavedViews.filter(v => v.name !== trimmed), { name: trimmed, filters: { ...feedFilters } }];
+                setFeedSavedViews(next);
+                try { localStorage.setItem('charlie_feed_saved_views', JSON.stringify(next)); } catch {}
+                setFeedActiveView(trimmed);
+                setFeedToast({ text: `Saved view "${trimmed}"`, kind: 'ok' });
+            }, [feedFilters, feedSavedViews]);
+
+            const feedLoadView = useCallback((name) => {
+                setFeedActiveView(name);
+                if (!name) return;
+                const builtin = FEED_BUILTIN_VIEWS.find(v => v.name === name);
+                const custom = feedSavedViews.find(v => v.name === name);
+                const view = builtin || custom;
+                if (!view) return;
+                setFeedFilters(prev => ({ ...prev, ...view.filters }));
+            }, [feedSavedViews]);
+
+            const feedDeleteView = useCallback((name) => {
+                if (FEED_BUILTIN_VIEWS.some(v => v.name === name)) return; // can't delete builtin
+                if (!confirm(`Delete view "${name}"?`)) return;
+                const next = feedSavedViews.filter(v => v.name !== name);
+                setFeedSavedViews(next);
+                try { localStorage.setItem('charlie_feed_saved_views', JSON.stringify(next)); } catch {}
+                if (feedActiveView === name) setFeedActiveView('');
+                setFeedToast({ text: `Deleted view "${name}"`, kind: 'ok' });
+            }, [feedSavedViews, feedActiveView]);
+
+            const feedMarkAllSeen = useCallback(() => {
+                const now = new Date().toISOString();
+                try { localStorage.setItem('charlie_feed_last_seen', now); } catch {}
+                setFeedLastSeen(now);
+                setFeedToast({ text: 'All caught up', kind: 'ok' });
             }, []);
 
             // Media Trackers settings state (M7)
@@ -22555,6 +22754,64 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                         )}
                                     </div>
 
+                                    {/* Features 6 + 7 — New-since-last-visit counter + Saved views */}
+                                    {(() => {
+                                        const lastSeenMs = Date.parse(feedLastSeen) || 0;
+                                        const newCount = feedEpisodes.filter(ep => ep.publishedAt && Date.parse(ep.publishedAt) > lastSeenMs).length;
+                                        return (
+                                            <div className="flex flex-wrap items-center gap-2 mb-3">
+                                                {newCount > 0 && (
+                                                    <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-300 text-amber-900 text-xs font-semibold">
+                                                        <span>{newCount} new since last visit</span>
+                                                        <button
+                                                            onClick={feedMarkAllSeen}
+                                                            className="ml-1 px-2 py-0.5 rounded bg-amber-200 text-amber-900 hover:bg-amber-300 text-[10px]"
+                                                        >
+                                                            Mark all seen
+                                                        </button>
+                                                    </div>
+                                                )}
+                                                <div className="flex items-center gap-1 ml-auto">
+                                                    <label className="text-[11px] text-slate-500">Saved view:</label>
+                                                    <select
+                                                        value={feedActiveView}
+                                                        onChange={e => feedLoadView(e.target.value)}
+                                                        className="px-2 py-1 rounded border border-slate-300 bg-white text-xs"
+                                                    >
+                                                        <option value="">— none —</option>
+                                                        <optgroup label="Built-in">
+                                                            {FEED_BUILTIN_VIEWS.map(v => (
+                                                                <option key={v.name} value={v.name}>{v.name}</option>
+                                                            ))}
+                                                        </optgroup>
+                                                        {feedSavedViews.length > 0 && (
+                                                            <optgroup label="Saved">
+                                                                {feedSavedViews.map(v => (
+                                                                    <option key={v.name} value={v.name}>{v.name}</option>
+                                                                ))}
+                                                            </optgroup>
+                                                        )}
+                                                    </select>
+                                                    {feedActiveView && !FEED_BUILTIN_VIEWS.some(v => v.name === feedActiveView) && (
+                                                        <button
+                                                            onClick={() => feedDeleteView(feedActiveView)}
+                                                            className="px-2 py-1 rounded border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 text-[11px]"
+                                                            title="Delete this view"
+                                                        >
+                                                            Delete
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        onClick={feedSaveCurrentView}
+                                                        className="px-2 py-1 rounded border border-slate-300 bg-white hover:bg-slate-100 text-[11px] text-slate-700"
+                                                    >
+                                                        Save current
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
+
                                     {/* Feature 1 — Quick filter chips */}
                                     {(() => {
                                         const f = feedFilters;
@@ -22715,10 +22972,12 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 }
                                                 return parts;
                                             };
+                                            const isNew = ep.publishedAt && Date.parse(ep.publishedAt) > (Date.parse(feedLastSeen) || 0);
+                                            const summaryJob = feedSummaryJobs[ep.id];
                                             return (
                                             <div key={ep.id} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-                                                <div className="flex items-baseline justify-between mb-1">
-                                                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                <div className="flex items-baseline justify-between mb-1 gap-2">
+                                                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 flex-1">
                                                         {ep.feedName} · {ep.publishedAt ? new Date(ep.publishedAt).toLocaleDateString() : ''}
                                                         {ep.sourceUrl && (
                                                             <a href={ep.sourceUrl} target="_blank" rel="noopener" className="ml-2 text-indigo-600 hover:underline">
@@ -22730,7 +22989,25 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 {matchLabel}
                                                             </span>
                                                         )}
+                                                        {isNew && (
+                                                            <span className="ml-2 inline-block px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-bold normal-case tracking-normal">
+                                                                NEW
+                                                            </span>
+                                                        )}
                                                     </div>
+                                                    {ep.hasTranscript && (
+                                                        <button
+                                                            onClick={() => feedGenerateFullSummary(ep)}
+                                                            disabled={summaryJob && (summaryJob.status === 'running' || summaryJob.status === 'starting')}
+                                                            className="shrink-0 text-[11px] px-2 py-1 rounded border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 disabled:opacity-50"
+                                                            title="Generate a full 4-section Meeting Summary from this transcript"
+                                                        >
+                                                            {summaryJob && summaryJob.status === 'running' ? 'Generating…'
+                                                             : summaryJob && summaryJob.status === 'starting' ? 'Queuing…'
+                                                             : summaryJob && summaryJob.status === 'done' ? '✓ Saved'
+                                                             : '📝 Full Summary'}
+                                                        </button>
+                                                    )}
                                                 </div>
                                                 <h3 className="font-semibold text-slate-900 mb-1">{ep.title}</h3>
                                                 {q && mc && (
@@ -22741,14 +23018,37 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 {!(q && mc) && <div className="mb-2"></div>}
                                                 <ul className="space-y-2">
                                                     {(ep.points || []).map(p => (
-                                                        <li key={p.id} className="flex items-start gap-2 text-sm text-slate-700">
+                                                        <li key={p.id} className="group flex items-start gap-2 text-sm text-slate-700">
                                                             {(p.sectorTags || []).map(t => (
                                                                 <span key={t} className="shrink-0 px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 text-[10px] font-semibold">
                                                                     {t}
                                                                 </span>
                                                             ))}
                                                             {p.material && <span className="shrink-0 text-amber-500">★</span>}
-                                                            <span>{q ? renderHighlighted(p.text) : p.text}</span>
+                                                            <span className="flex-1">{q ? renderHighlighted(p.text) : p.text}</span>
+                                                            <span className="shrink-0 flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                                                                <button
+                                                                    onClick={() => feedAskCharlie(ep, p)}
+                                                                    className="text-[10px] px-1.5 py-0.5 rounded border border-slate-200 bg-white hover:bg-indigo-50 hover:border-indigo-300 text-slate-600"
+                                                                    title="Copy context for Chat"
+                                                                >
+                                                                    Ask
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => feedAttachToThesis(ep, p)}
+                                                                    className="text-[10px] px-1.5 py-0.5 rounded border border-slate-200 bg-white hover:bg-emerald-50 hover:border-emerald-300 text-slate-600"
+                                                                    title="Attach this bullet to the ticker's thesis"
+                                                                >
+                                                                    Attach
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => feedMuteTheme(p)}
+                                                                    className="text-[10px] px-1.5 py-0.5 rounded border border-slate-200 bg-white hover:bg-rose-50 hover:border-rose-300 text-slate-600"
+                                                                    title="Mute alerts for this theme"
+                                                                >
+                                                                    Mute
+                                                                </button>
+                                                            </span>
                                                         </li>
                                                     ))}
                                                 </ul>
@@ -22757,6 +23057,21 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                         })}
                                     </div>
                                 </div>
+                                {/* Feature 5-8 toast */}
+                                {feedToast && (
+                                    <div className="fixed bottom-20 md:bottom-6 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg text-sm font-medium flex items-center gap-3 bg-slate-900 text-white max-w-[90vw]">
+                                        <span>{feedToast.text}</span>
+                                        {feedToast.action && (
+                                            <button
+                                                onClick={() => { feedToast.action.onClick(); setFeedToast(null); }}
+                                                className="px-2 py-0.5 rounded bg-amber-500 text-slate-900 text-xs font-semibold hover:bg-amber-400"
+                                            >
+                                                {feedToast.action.label}
+                                            </button>
+                                        )}
+                                        <button onClick={() => setFeedToast(null)} className="text-slate-400 hover:text-white text-xs">×</button>
+                                    </div>
+                                )}
                             </div>
                         )}
 

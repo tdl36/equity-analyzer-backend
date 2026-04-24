@@ -416,6 +416,79 @@ def media_watchlist_delete(signal_id):
 
 
 # ============================================
+# MEDIA TRACKER — FEED-BULLET ACTIONS (Feature 5)
+# ============================================
+
+@app.route('/api/media/attach-to-thesis', methods=['POST'])
+def media_attach_to_thesis():
+    """Append a bullet from the Feed to a ticker's thesis media_notes array.
+
+    Body: {ticker, bulletText, episodeTitle, feedName, sourceUrl}
+    """
+    data = request.get_json() or {}
+    ticker = (data.get('ticker') or '').strip().upper()
+    bullet_text = (data.get('bulletText') or '').strip()
+    if not ticker or not bullet_text:
+        return jsonify({'error': 'ticker and bulletText required'}), 400
+    note = {
+        'bulletText': bullet_text,
+        'episodeTitle': data.get('episodeTitle') or '',
+        'feedName': data.get('feedName') or '',
+        'sourceUrl': data.get('sourceUrl') or '',
+        'attachedAt': datetime.now().isoformat(),
+    }
+    try:
+        with get_db(commit=True) as (_c, cur):
+            # Upsert: ensure a row exists, then append to media_notes
+            cur.execute(
+                """
+                INSERT INTO portfolio_analyses (ticker, company, analysis, media_notes, updated_at)
+                VALUES (%s, %s, '{}'::jsonb, %s::jsonb, NOW())
+                ON CONFLICT (ticker) DO UPDATE
+                  SET media_notes = COALESCE(portfolio_analyses.media_notes, '[]'::jsonb) || %s::jsonb,
+                      updated_at = NOW()
+                RETURNING ticker
+                """,
+                (ticker, ticker, json.dumps([note]), json.dumps([note])),
+            )
+            row = cur.fetchone()
+    except Exception as e:
+        print(f"attach-to-thesis error: {e}")
+        return jsonify({'error': str(e)}), 500
+    return jsonify({'success': True, 'ticker': row['ticker'] if row else ticker})
+
+
+@app.route('/api/media/mute-theme', methods=['POST'])
+def media_mute_theme():
+    """Mute a theme keyword — upserts into signals_watchlist with muted=true.
+
+    Body: {theme}
+    """
+    data = request.get_json() or {}
+    theme = (data.get('theme') or '').strip()
+    if not theme:
+        return jsonify({'error': 'theme required'}), 400
+    try:
+        with get_db(commit=True) as (_c, cur):
+            # Try insert; if conflict, update existing to muted=true
+            sid = str(uuid.uuid4())
+            cur.execute(
+                """
+                INSERT INTO signals_watchlist (id, kind, value, muted)
+                VALUES (%s, 'keyword', %s, TRUE)
+                ON CONFLICT (kind, value) DO UPDATE SET muted = TRUE
+                RETURNING id, value, muted
+                """,
+                (sid, theme),
+            )
+            row = cur.fetchone()
+    except Exception as e:
+        print(f"mute-theme error: {e}")
+        return jsonify({'error': str(e)}), 500
+    return jsonify({'success': True, 'theme': row['value'] if row else theme})
+
+
+# ============================================
 # MEDIA TRACKER — FEED (firehose) + SCANNER
 # ============================================
 
@@ -530,6 +603,7 @@ def media_feed_read():
             'sourceUrl': e['source_url'], 'points': pts,
             'matchSource': match_source,
             'matchContext': match_ctx,
+            'hasTranscript': bool(e.get('transcript')),
         })
     return jsonify({'episodes': result, 'total': len(result)})
 
@@ -673,6 +747,182 @@ def media_scan_status(scan_id):
     if not rec:
         return jsonify({'error': 'unknown scan id'}), 404
     return jsonify(rec)
+
+
+# ============================================
+# MEDIA TRACKER — EPISODE FULL SUMMARY (Feature 8)
+# ============================================
+
+def _run_podcast_fullsummary_job(job_id, episode_id, api_key):
+    """Generate 4-section Meeting Summary from an episode transcript.
+    Inserts a row into meeting_summaries, marks mp_jobs done with {summaryId}.
+    """
+    try:
+        with get_db() as (_c, cur):
+            cur.execute(
+                """
+                SELECT e.id, e.title, e.transcript, e.source_url, f.name AS feed_name
+                  FROM media_episodes e
+                  JOIN media_feeds f ON f.id = e.feed_id
+                 WHERE e.id = %s
+                """,
+                (episode_id,),
+            )
+            ep = cur.fetchone()
+        if not ep:
+            _mp_update_job(job_id, status='failed', error='episode not found')
+            return
+        transcript = (ep.get('transcript') or '').strip()
+        if not transcript:
+            _mp_update_job(job_id, status='failed', error='episode has no transcript')
+            return
+
+        feed_name = ep.get('feed_name') or 'Podcast'
+        ep_title = ep.get('title') or 'Episode'
+        title = f"{feed_name}: {ep_title}"
+
+        html_format = (
+            "OUTPUT FORMAT — Return raw HTML. No markdown. No code fences.\n"
+            "Use: <h2>Section Title</h2>, <p><strong>Topic:</strong> Description.</p>, <ul><li>Sub-point</li></ul>"
+        )
+        summary_instruction = (
+            "Generate a clear, well-structured Key Takeaways summary of the following transcript. "
+            "Include key points, decisions, action items, and important details. "
+            "Cover Q&A exchanges where relevant.\n" + html_format
+        )
+        meeting_summary_instruction = (
+            "Generate a clear, well-structured narrative summary of the following transcript. "
+            "Include key points, decisions, action items, context, and important details. "
+            "This is a NARRATIVE summary grouped by logical topic sections — NOT a bullet list and NOT a Q&A log.\n\n"
+            "OUTPUT FORMAT — Return raw HTML. No markdown. No code fences.\n"
+            "Use: <h2>Section Title</h2>, <p><strong>Topic:</strong> Description text here.</p>, <ul><li>Sub-point</li></ul>\n"
+            "Organize into 3-6 logical sections."
+        )
+        assessment_instruction = (
+            "You are a sharp, experienced advisor giving your CANDID, UNFILTERED assessment of this podcast. "
+            "Cover: overall quality, credibility of claims, red flags, what landed, what was missed, bottom line.\n"
+            "Be conversational and direct. Don't hedge.\n" + html_format
+        )
+
+        try:
+            summary_result = _call_llm_stream_with_retry(
+                messages=[{"role": "user", "content": f"{summary_instruction}\n\nTRANSCRIPT:\n{transcript[:50000]}"}],
+                system="You are a meeting notes analyst. Generate structured HTML summaries.",
+                tier="standard", max_tokens=8192, api_key=api_key,
+                label=f"podcast summary ({episode_id})",
+            )
+            summary_html = summary_result.get('text', '') or ''
+        except Exception as e:
+            raise Exception(f"summary step failed: {e}") from e
+
+        try:
+            questions_result = _call_llm_stream_with_retry(
+                messages=[{"role": "user", "content": f"Based on this transcript, generate 3-5 key follow-up questions.\nReturn raw HTML: <ol><li>Question?</li></ol>\n\nTRANSCRIPT:\n{transcript[:20000]}"}],
+                system="Generate insightful follow-up questions.",
+                tier="fast", max_tokens=2048, api_key=api_key,
+                label=f"podcast questions ({episode_id})",
+            )
+            questions_html = questions_result.get('text', '') or ''
+        except Exception as e:
+            print(f"[podcast-fullsummary {job_id}] questions step failed (non-fatal): {e}")
+            questions_html = ''
+
+        try:
+            assessment_result = _call_llm_stream_with_retry(
+                messages=[{"role": "user", "content": f"{assessment_instruction}\n\nTRANSCRIPT:\n{transcript[:50000]}"}],
+                system="You are a sharp advisor giving candid assessments.",
+                tier="standard", max_tokens=4096, api_key=api_key,
+                label=f"podcast assessment ({episode_id})",
+            )
+            assessment_html = assessment_result.get('text', '') or ''
+        except Exception as e:
+            print(f"[podcast-fullsummary {job_id}] assessment step failed (non-fatal): {e}")
+            assessment_html = ''
+
+        try:
+            meeting_summary_result = _call_llm_stream_with_retry(
+                messages=[{"role": "user", "content": f"{meeting_summary_instruction}\n\nTRANSCRIPT:\n{transcript[:50000]}"}],
+                system="You are a meeting notes analyst. Generate narrative topic-grouped HTML summaries.",
+                tier="standard", max_tokens=8192, api_key=api_key,
+                label=f"podcast meeting_summary ({episode_id})",
+            )
+            meeting_summary_html = meeting_summary_result.get('text', '') or ''
+        except Exception as e:
+            print(f"[podcast-fullsummary {job_id}] meeting_summary step failed (non-fatal): {e}")
+            meeting_summary_html = ''
+
+        summary_id = str(uuid.uuid4())
+        with get_db(commit=True) as (_conn, cur):
+            cur.execute(
+                """
+                INSERT INTO meeting_summaries
+                    (id, title, raw_notes, summary, questions, assessment, meeting_summary,
+                     source_type, doc_type, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 'audio', 'podcast', NOW())
+                """,
+                (summary_id, title, transcript, summary_html, questions_html,
+                 assessment_html, meeting_summary_html),
+            )
+        try: cache.invalidate('summaries')
+        except Exception: pass
+
+        _mp_update_job(job_id, status='done', result={'summaryId': summary_id, 'title': title})
+        print(f"[podcast-fullsummary {job_id}] Complete: {title} saved as {summary_id}")
+    except Exception as e:
+        print(f"[podcast-fullsummary {job_id}] Failed: {e}")
+        import traceback; traceback.print_exc()
+        _mp_update_job(job_id, status='failed', error=str(e)[:2000])
+
+
+@app.route('/api/media/episode/<episode_id>/full-summary', methods=['POST'])
+def media_episode_full_summary(episode_id):
+    """Kick off background generation of 4-section Meeting Summary for an episode.
+
+    Returns {jobId}. Frontend polls /api/mp/jobs/:id.
+    """
+    data = request.get_json(silent=True) or {}
+    api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('apiKey', '')
+    if not api_key:
+        return jsonify({'error': 'No API key provided.'}), 400
+
+    # Verify episode exists + has transcript
+    with get_db() as (_c, cur):
+        cur.execute(
+            "SELECT e.id, e.transcript, e.title, p.tickers "
+            "FROM media_episodes e "
+            "LEFT JOIN media_digest_points p ON p.episode_id = e.id "
+            "WHERE e.id = %s LIMIT 1",
+            (episode_id,),
+        )
+        row = cur.fetchone()
+    if not row:
+        return jsonify({'error': 'episode not found'}), 404
+    if not (row.get('transcript') or '').strip():
+        return jsonify({'error': 'episode has no transcript'}), 400
+
+    first_ticker = ''
+    try:
+        tlist = row.get('tickers') or []
+        if tlist:
+            first_ticker = tlist[0]
+    except Exception:
+        pass
+
+    job_id = str(uuid.uuid4())
+    with get_db(commit=True) as (_c, cur):
+        cur.execute(
+            """
+            INSERT INTO mp_jobs (id, stage, ticker, status)
+            VALUES (%s, 'podcast-fullsummary', %s, 'running')
+            """,
+            (job_id, first_ticker or ''),
+        )
+    threading.Thread(
+        target=_run_podcast_fullsummary_job,
+        args=(job_id, episode_id, api_key),
+        daemon=True,
+    ).start()
+    return jsonify({'jobId': job_id}), 202
 
 
 @app.route('/api/media/notification-prefs', methods=['GET'])
@@ -1260,6 +1510,11 @@ def init_db():
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
+            ''')
+            # media_notes column — bullets attached from Feed tab (Feature 5)
+            cur.execute('''
+                ALTER TABLE portfolio_analyses
+                ADD COLUMN IF NOT EXISTS media_notes JSONB DEFAULT '[]'::jsonb
             ''')
 
             # Stock Overviews table

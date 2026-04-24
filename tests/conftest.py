@@ -33,7 +33,8 @@ def clean_db():
             cur.execute("""
                 TRUNCATE media_digest_points, media_episodes, media_feeds,
                          signals_watchlist, media_theme_clusters, notification_prefs,
-                         agent_alerts RESTART IDENTITY CASCADE
+                         agent_alerts, mp_jobs, portfolio_analyses
+                RESTART IDENTITY CASCADE
             """)
             cur.execute("""
                 DELETE FROM app_settings WHERE key IN (
