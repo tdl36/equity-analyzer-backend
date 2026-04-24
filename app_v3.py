@@ -21568,9 +21568,9 @@ def push_subscribe():
             existing = [s for s in existing if (s or {}).get('endpoint') != endpoint]
             existing.append(sub_record)
             cur.execute('''
-                INSERT INTO notification_prefs (key, value, updated_at)
-                VALUES ('push_subscriptions', %s::jsonb, NOW())
-                ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()
+                INSERT INTO notification_prefs (key, value)
+                VALUES ('push_subscriptions', %s::jsonb)
+                ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value
             ''', (json.dumps(existing),))
         return jsonify({'ok': True, 'subscriptionCount': len(existing)})
     except Exception as e:
@@ -21594,9 +21594,9 @@ def push_unsubscribe():
                 except Exception: val = []
             val = [s for s in (val or []) if (s or {}).get('endpoint') != endpoint]
             cur.execute('''
-                INSERT INTO notification_prefs (key, value, updated_at)
-                VALUES ('push_subscriptions', %s::jsonb, NOW())
-                ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()
+                INSERT INTO notification_prefs (key, value)
+                VALUES ('push_subscriptions', %s::jsonb)
+                ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value
             ''', (json.dumps(val),))
         return jsonify({'ok': True, 'remaining': len(val)})
     except Exception as e:
