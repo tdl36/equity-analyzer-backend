@@ -342,6 +342,38 @@ def media_feeds_delete(feed_id):
     return jsonify({'success': True})
 
 
+@app.route('/api/media/feeds/<feed_id>/backfill', methods=['POST'])
+def media_feeds_backfill(feed_id):
+    """Set last_episode_at to a past date so the next poll picks up episodes
+    published since that date. Body: {sinceDate: 'YYYY-MM-DD'}. Fires poll_feed
+    immediately after updating the cutoff."""
+    data = request.get_json() or {}
+    since_date = (data.get('sinceDate') or '').strip()
+    if not since_date:
+        return jsonify({'error': 'sinceDate required (YYYY-MM-DD)'}), 400
+    try:
+        # Accept YYYY-MM-DD or full ISO
+        parsed = datetime.fromisoformat(since_date.replace('Z', '+00:00')) if 'T' in since_date else datetime.strptime(since_date, '%Y-%m-%d')
+    except ValueError:
+        return jsonify({'error': 'invalid sinceDate format'}), 400
+
+    with get_db(commit=True) as (_c, cur):
+        cur.execute("UPDATE media_feeds SET last_episode_at = %s, last_polled_at = NULL WHERE id = %s RETURNING name", (parsed, feed_id))
+        row = cur.fetchone()
+    if not row:
+        return jsonify({'error': 'feed not found'}), 404
+
+    # Fire poll immediately in a background thread
+    def _run():
+        try:
+            from media_trackers import poller
+            poller.poll_feed(feed_id)
+        except Exception as e:
+            print(f'backfill poll error: {e}')
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({'success': True, 'feedName': row['name'], 'cutoff': parsed.isoformat()})
+
+
 # ============================================
 # MEDIA TRACKER — SIGNALS WATCHLIST
 # ============================================
