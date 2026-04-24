@@ -8,3 +8,8 @@ __pycache__/
 *.pyc
 .venv/
 .pytest_cache/
+
+# Node / frontend build
+node_modules/
+# NOTE: dist/ is committed (built JSX + Tailwind artifacts deployed via wrangler).
+# Do NOT add dist/ to .gitignore — deploy depends on those files being in the repo.
