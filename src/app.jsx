@@ -54,7 +54,7 @@ if (typeof window !== 'undefined') {
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-24T04';
+        const BUILD_VERSION = '2026-04-24T05';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -22727,8 +22727,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         {/* ANALYSTS TAB (Phase 3a) */}
                         {activeTab === 'analysts' && (
                             <div className="flex-1 flex flex-col md:flex-row overflow-hidden pb-24 md:pb-0 bg-white/[0.02]">
-                                {/* Left rail — analyst list */}
-                                <div className="w-full md:w-80 border-r border-white/10 flex flex-col overflow-hidden">
+                                {/* Left rail — analyst list (hidden on mobile when viewing detail/inbox/earnings) */}
+                                <div className={`w-full md:w-80 border-r border-white/10 md:flex flex-col overflow-hidden ${analystView === 'list' ? 'flex' : 'hidden'}`}>
                                     <div className="p-4 border-b border-white/10 flex items-center justify-between">
                                         <div className="flex items-center gap-2">
                                             <svg className="w-5 h-5 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -22805,8 +22805,20 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     </div>
                                 </div>
 
-                                {/* Right pane */}
-                                <div className="flex-1 overflow-y-auto">
+                                {/* Right pane (mobile: only visible when a detail/inbox/earnings view is active) */}
+                                <div className={`flex-1 overflow-y-auto ${analystView === 'list' ? 'hidden md:block' : 'block'}`}>
+                                    {/* Mobile back button */}
+                                    {analystView !== 'list' && (
+                                        <div className="md:hidden sticky top-0 z-10 bg-neutral-950/95 backdrop-blur border-b border-white/10 px-4 py-2">
+                                            <button
+                                                onClick={() => { setAnalystView('list'); setSelectedAnalyst(null); }}
+                                                className="flex items-center gap-1 text-sm text-amber-400 hover:text-amber-300"
+                                            >
+                                                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                                                Analysts
+                                            </button>
+                                        </div>
+                                    )}
                                     {analystView === 'list' && (
                                         <div className="p-6">
                                             <h2 className="text-lg font-bold mb-2">Analyst Team</h2>
