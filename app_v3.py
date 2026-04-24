@@ -302,16 +302,30 @@ def media_feeds_episodes(feed_id):
     limit = int(request.args.get('limit', 50))
     with get_db() as (_c, cur):
         cur.execute('''
-            SELECT id, title, status, published_at, created_at, updated_at,
-                   audio_url IS NOT NULL AS has_audio,
-                   transcript IS NOT NULL AS has_transcript,
+            SELECT id, title, status, published_at, created_at,
+                   error_message,
+                   (audio_url IS NOT NULL) AS has_audio,
+                   (transcript IS NOT NULL) AS has_transcript,
                    COALESCE(LENGTH(transcript), 0) AS transcript_len
               FROM media_episodes
              WHERE feed_id = %s
              ORDER BY published_at DESC NULLS LAST
              LIMIT %s
         ''', (feed_id, limit))
-        eps = [dict(r) for r in cur.fetchall()]
+        rows = cur.fetchall()
+        eps = []
+        for r in rows:
+            eps.append({
+                'id': r['id'],
+                'title': r['title'],
+                'status': r['status'],
+                'published_at': r['published_at'].isoformat() if r['published_at'] else None,
+                'created_at': r['created_at'].isoformat() if r['created_at'] else None,
+                'error_message': r['error_message'],
+                'has_audio': r['has_audio'],
+                'has_transcript': r['has_transcript'],
+                'transcript_len': r['transcript_len'],
+            })
         cur.execute("SELECT status, COUNT(*) AS c FROM media_episodes WHERE feed_id = %s GROUP BY status", (feed_id,))
         status_counts = {r['status']: r['c'] for r in cur.fetchall()}
     return jsonify({'episodes': eps, 'statusCounts': status_counts, 'total': sum(status_counts.values())})
