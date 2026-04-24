@@ -1,5 +1,5 @@
 const BACKEND_URL = 'https://equity-analyzer-backend.onrender.com';
-const BUILD_VERSION = '2026-04-23T25';
+const BUILD_VERSION = '2026-04-23T26';
 
 export default {
   async fetch(request, env) {
@@ -88,3 +88,20 @@ export default {
     return env.ASSETS.fetch(request);
   },
 };
+
+
+// Scheduled trigger — pings backend every 10 min to keep Render dyno warm.
+// Configured via wrangler.jsonc triggers.crons.
+export async function scheduled(event, env, ctx) {
+  ctx.waitUntil((async () => {
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/alerts/count`, {
+        headers: { 'User-Agent': 'charlie-keepwarm/1.0' },
+        signal: AbortSignal.timeout(60000),
+      });
+      console.log(`keepwarm: ${r.status}`);
+    } catch (e) {
+      console.log(`keepwarm error: ${e && e.message || e}`);
+    }
+  })());
+}
