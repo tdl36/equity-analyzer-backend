@@ -34,7 +34,9 @@ def clean_db():
                 TRUNCATE media_point_notes, media_digest_points, media_episodes, media_feeds,
                          signals_watchlist, media_theme_clusters, notification_prefs,
                          agent_alerts, mp_jobs, portfolio_analyses,
-                         analyst_activities, analysts
+                         analyst_activities, analysts,
+                         earnings_calendar, ticker_earnings_config,
+                         research_pipeline_jobs
                 RESTART IDENTITY CASCADE
             """)
             cur.execute("""

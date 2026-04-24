@@ -1,0 +1,156 @@
+"""Phase 3c: earnings recap workflow — /api/analyst-activities/<id>/run +
+link-back from pipeline job result to activity."""
+import json
+
+import app_v3
+
+
+def _create_analyst(client, tickers):
+    return client.post('/api/analysts', json={
+        'name': 'MDT Analyst',
+        'coverageTickers': tickers,
+    }).get_json()['analyst']['id']
+
+
+def _queue_earnings_activity(client, ticker='MDT', topic='4Q26 Earnings'):
+    client.post('/api/analysts/queue-catalyst-activity', json={
+        'ticker': ticker,
+        'topic': topic,
+        'fingerprint': 'fp1',
+        'fileCount': 3,
+        'catalystJobId': 'initial-job-id',
+    })
+    with app_v3.get_db() as (_c, cur):
+        cur.execute('''
+            SELECT id FROM analyst_activities
+             WHERE ticker=%s AND activity_type='earnings_recap'
+             ORDER BY created_at DESC LIMIT 1
+        ''', (ticker,))
+        row = cur.fetchone()
+    return row['id']
+
+
+def test_run_endpoint_creates_synthesis_job_with_earnings_variant(client, clean_db):
+    _create_analyst(client, ['MDT'])
+    activity_id = _queue_earnings_activity(client)
+
+    resp = client.post(f'/api/analyst-activities/{activity_id}/run', json={'length': 'standard'})
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body['ticker'] == 'MDT'
+    assert body['promptVariant'] == 'earnings_recap'
+    catalyst_job_id = body['catalystJobId']
+
+    # Verify pipeline job was created with the right variant
+    with app_v3.get_db() as (_c, cur):
+        cur.execute("SELECT job_type, status, steps_detail FROM research_pipeline_jobs WHERE id=%s", (catalyst_job_id,))
+        row = cur.fetchone()
+    assert row is not None
+    assert row['job_type'] == 'synthesis'
+    assert row['status'] == 'queued'
+    sd = row['steps_detail']
+    if isinstance(sd, str):
+        sd = json.loads(sd)
+    assert sd['prompt_variant'] == 'earnings_recap'
+    assert sd['activityId'] == activity_id
+
+    # Activity should be marked running with catalystJobId in output
+    with app_v3.get_db() as (_c, cur):
+        cur.execute('SELECT status, output FROM analyst_activities WHERE id=%s', (activity_id,))
+        act = cur.fetchone()
+    out = act['output']
+    if isinstance(out, str):
+        out = json.loads(out)
+    assert act['status'] == 'running'
+    assert out['catalystJobId'] == catalyst_job_id
+    assert out['promptVariant'] == 'earnings_recap'
+
+
+def test_run_endpoint_rejects_if_activity_not_pending(client, clean_db):
+    _create_analyst(client, ['MDT'])
+    activity_id = _queue_earnings_activity(client)
+    # Flip to approved
+    with app_v3.get_db(commit=True) as (_c, cur):
+        cur.execute("UPDATE analyst_activities SET status='approved' WHERE id=%s", (activity_id,))
+    r = client.post(f'/api/analyst-activities/{activity_id}/run', json={})
+    assert r.status_code == 400
+
+
+def test_run_endpoint_handles_unknown_activity(client, clean_db):
+    r = client.post('/api/analyst-activities/nope/run', json={})
+    assert r.status_code == 404
+
+
+def test_takeaway_activity_uses_catalyst_prompt_variant(client, clean_db):
+    _create_analyst(client, ['AAPL'])
+    client.post('/api/analysts/queue-catalyst-activity', json={
+        'ticker': 'AAPL', 'topic': 'WWDC 2026 takeaways', 'fingerprint': 'fp1', 'fileCount': 1,
+    })
+    with app_v3.get_db() as (_c, cur):
+        cur.execute("SELECT id FROM analyst_activities WHERE ticker='AAPL' ORDER BY created_at DESC LIMIT 1")
+        act_id = cur.fetchone()['id']
+
+    r = client.post(f'/api/analyst-activities/{act_id}/run', json={}).get_json()
+    assert r['promptVariant'] == 'catalyst'
+
+
+def test_agent_update_job_propagates_to_activity_on_complete(client, clean_db):
+    _create_analyst(client, ['MDT'])
+    activity_id = _queue_earnings_activity(client)
+    run_body = client.post(f'/api/analyst-activities/{activity_id}/run', json={}).get_json()
+    job_id = run_body['catalystJobId']
+
+    # Simulate local agent reporting completion
+    client.post('/api/agent/update-job', json={
+        'jobId': job_id,
+        'status': 'complete',
+        'currentStep': 'Complete',
+        'progress': 100,
+        'result': {
+            'markdown': '# MDT 4Q26\n\n### 1. Results vs. Expectations\nRev beat by 2%.',
+            'sourceFiles': ['press_release.pdf', 'transcript.pdf'],
+            'fileCount': 2,
+        },
+    })
+
+    with app_v3.get_db() as (_c, cur):
+        cur.execute('SELECT status, output FROM analyst_activities WHERE id=%s', (activity_id,))
+        row = cur.fetchone()
+    out = row['output']
+    if isinstance(out, str):
+        out = json.loads(out)
+    assert row['status'] == 'pending_review'
+    assert out['synthesisMarkdown'].startswith('# MDT 4Q26')
+    assert out['sourceFiles'] == ['press_release.pdf', 'transcript.pdf']
+
+
+def test_agent_update_job_propagates_failure_to_activity(client, clean_db):
+    _create_analyst(client, ['MDT'])
+    activity_id = _queue_earnings_activity(client)
+    run_body = client.post(f'/api/analyst-activities/{activity_id}/run', json={}).get_json()
+    job_id = run_body['catalystJobId']
+
+    client.post('/api/agent/update-job', json={
+        'jobId': job_id,
+        'status': 'failed',
+        'error': 'Anthropic API transient error',
+        'progress': 50,
+    })
+
+    with app_v3.get_db() as (_c, cur):
+        cur.execute('SELECT status, error FROM analyst_activities WHERE id=%s', (activity_id,))
+        row = cur.fetchone()
+    assert row['status'] == 'failed'
+    assert 'transient' in (row['error'] or '').lower()
+
+
+def test_pending_inbox_includes_running_activities(client, clean_db):
+    _create_analyst(client, ['MDT'])
+    activity_id = _queue_earnings_activity(client)
+    client.post(f'/api/analyst-activities/{activity_id}/run', json={})
+
+    body = client.get('/api/analyst-activities/pending').get_json()
+    ids = [a['id'] for a in body['activities']]
+    assert activity_id in ids
+    running = [a for a in body['activities'] if a['id'] == activity_id][0]
+    assert running['status'] == 'running'

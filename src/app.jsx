@@ -54,7 +54,7 @@ if (typeof window !== 'undefined') {
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-24T03';
+        const BUILD_VERSION = '2026-04-24T04';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -1508,7 +1508,12 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [analystPendingCount, setAnalystPendingCount] = useState(0);
             const [selectedAnalyst, setSelectedAnalyst] = useState(null);
             const [analystInbox, setAnalystInbox] = useState([]);
-            const [analystView, setAnalystView] = useState('list'); // 'list' | 'detail' | 'inbox'
+            const [analystView, setAnalystView] = useState('list'); // 'list' | 'detail' | 'inbox' | 'earnings'
+            // Phase 3d: earnings calendar
+            const [earningsItems, setEarningsItems] = useState([]);
+            const [earningsLoading, setEarningsLoading] = useState(false);
+            const [earningsForm, setEarningsForm] = useState({ ticker: '', quarterLabel: '', confirmedDate: '', timing: '', prUrl: '', transcriptUrl: '' });
+            const [earningsFormOpen, setEarningsFormOpen] = useState(false);
             const [newAnalystOpen, setNewAnalystOpen] = useState(false);
             const [newAnalystForm, setNewAnalystForm] = useState({ name: '', sector: '', subsector: '', coverageCsv: '' });
             const [analystToast, setAnalystToast] = useState(null);
@@ -6657,6 +6662,76 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         if (selectedAnalyst) loadAnalystDetail(selectedAnalyst.id);
                     }
                 } catch (e) { console.warn('updateActivity:', e); }
+            };
+            // Phase 3d: earnings calendar
+            const fetchUpcomingEarnings = async () => {
+                setEarningsLoading(true);
+                try {
+                    const res = await fetch(`${API_URL}/api/earnings/upcoming?days=30`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        setEarningsItems(data.items || []);
+                    }
+                } catch (e) { console.warn('fetchUpcomingEarnings:', e); }
+                setEarningsLoading(false);
+            };
+            const upsertEarningsEntry = async () => {
+                try {
+                    const payload = {
+                        ticker: earningsForm.ticker.trim().toUpperCase(),
+                        quarterLabel: earningsForm.quarterLabel.trim(),
+                        confirmedDate: earningsForm.confirmedDate || null,
+                        timing: earningsForm.timing || null,
+                        prUrl: earningsForm.prUrl || null,
+                        transcriptUrl: earningsForm.transcriptUrl || null,
+                    };
+                    if (!payload.ticker || !payload.quarterLabel) {
+                        setAnalystToast('Ticker + quarter required');
+                        return;
+                    }
+                    const res = await fetch(`${API_URL}/api/earnings/calendar`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                    });
+                    if (res.ok) {
+                        setAnalystToast('Earnings entry saved');
+                        setEarningsFormOpen(false);
+                        setEarningsForm({ ticker: '', quarterLabel: '', confirmedDate: '', timing: '', prUrl: '', transcriptUrl: '' });
+                        fetchUpcomingEarnings();
+                    }
+                } catch (e) { setAnalystToast('Save error: ' + e.message); }
+            };
+            const triggerEarningsFetchNow = async (entryId) => {
+                try {
+                    const res = await fetch(`${API_URL}/api/earnings/calendar/${entryId}/fetch-now`, { method: 'POST' });
+                    if (res.ok) {
+                        setAnalystToast('Fetch queued for local agent');
+                        fetchUpcomingEarnings();
+                    }
+                } catch (e) { setAnalystToast('Fetch error: ' + e.message); }
+            };
+            const deleteEarningsEntry = async (entryId) => {
+                try {
+                    const res = await fetch(`${API_URL}/api/earnings/calendar/${entryId}`, { method: 'DELETE' });
+                    if (res.ok) fetchUpcomingEarnings();
+                } catch (e) { setAnalystToast('Delete error: ' + e.message); }
+            };
+            const runAnalystActivity = async (activityId, opts = {}) => {
+                try {
+                    const res = await fetch(`${API_URL}/api/analyst-activities/${activityId}/run`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(opts),
+                    });
+                    if (res.ok) {
+                        setAnalystToast('Earnings recap queued — local agent will process and deliver results here');
+                        fetchAnalystInbox();
+                    } else {
+                        const j = await res.json().catch(() => ({}));
+                        setAnalystToast('Could not queue: ' + (j.error || res.status));
+                    }
+                } catch (e) { setAnalystToast('Run error: ' + e.message); }
             };
             const seedDefaultRoster = async () => {
                 setAnalystSeeding(true);
@@ -22662,7 +22737,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                         </div>
                                         <button onClick={() => setNewAnalystOpen(true)} className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 rounded text-xs font-medium">+ New</button>
                                     </div>
-                                    <div className="px-3 py-2 border-b border-white/10">
+                                    <div className="px-3 py-2 border-b border-white/10 space-y-1">
                                         <button
                                             onClick={() => { setAnalystView('inbox'); setSelectedAnalyst(null); fetchAnalystInbox(); }}
                                             className={`w-full flex items-center justify-between px-3 py-2 rounded text-sm transition-all ${analystView === 'inbox' ? 'bg-amber-600/20 border border-amber-500/40' : 'bg-white/5 hover:bg-white/10'}`}
@@ -22674,6 +22749,15 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             {analystPendingCount > 0 && (
                                                 <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-[9px] font-bold leading-none">{analystPendingCount}</span>
                                             )}
+                                        </button>
+                                        <button
+                                            onClick={() => { setAnalystView('earnings'); setSelectedAnalyst(null); fetchUpcomingEarnings(); }}
+                                            className={`w-full flex items-center justify-between px-3 py-2 rounded text-sm transition-all ${analystView === 'earnings' ? 'bg-amber-600/20 border border-amber-500/40' : 'bg-white/5 hover:bg-white/10'}`}
+                                        >
+                                            <span className="flex items-center gap-2">
+                                                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                                Earnings
+                                            </span>
                                         </button>
                                     </div>
                                     <div className="flex-1 overflow-y-auto p-3 space-y-2">
@@ -22830,6 +22914,111 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                         </div>
                                     )}
 
+                                    {analystView === 'earnings' && (
+                                        <div className="p-6">
+                                            <div className="flex items-center justify-between mb-4">
+                                                <div>
+                                                    <h2 className="text-xl font-bold">Earnings Calendar</h2>
+                                                    <p className="text-xs text-slate-500 mt-1">Agent auto-fetches press release + transcript on confirmed date. Files land in iCloud CATALYSTS/{'{'}ticker{'}'}/{'{'}quarter{'}'}/ and trigger an earnings recap activity.</p>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <button onClick={fetchUpcomingEarnings} className="text-xs text-slate-400 hover:text-white">Refresh</button>
+                                                    <button onClick={() => setEarningsFormOpen(true)} className="px-3 py-1 bg-amber-600 hover:bg-amber-500 rounded text-xs font-medium">+ Add entry</button>
+                                                </div>
+                                            </div>
+                                            {earningsLoading ? (
+                                                <p className="text-sm text-slate-500">Loading...</p>
+                                            ) : earningsItems.length === 0 ? (
+                                                <div className="text-center py-16">
+                                                    <p className="text-sm text-slate-500">No upcoming earnings.</p>
+                                                    <button onClick={() => setEarningsFormOpen(true)} className="mt-3 text-xs text-amber-400 hover:text-amber-300">Add one →</button>
+                                                </div>
+                                            ) : (
+                                                <ul className="space-y-2">
+                                                    {earningsItems.map(e => {
+                                                        const dateStr = e.confirmedDate || e.expectedDate || '';
+                                                        const statusColor = e.status === 'fetched' ? 'bg-emerald-500/20 text-emerald-300'
+                                                            : e.status === 'fetching' ? 'bg-amber-500/20 text-amber-300'
+                                                            : e.status === 'retry' ? 'bg-red-500/20 text-red-300'
+                                                            : 'bg-slate-500/20 text-slate-300';
+                                                        return (
+                                                            <li key={e.id} className="bg-white/5 border border-white/10 rounded-lg p-3">
+                                                                <div className="flex items-center justify-between gap-3 flex-wrap">
+                                                                    <div className="flex items-center gap-2 min-w-0">
+                                                                        <span className="font-mono font-bold text-sm">{e.ticker}</span>
+                                                                        <span className="text-xs text-slate-300">{e.quarterLabel}</span>
+                                                                        <span className="text-xs text-slate-500">· {dateStr}</span>
+                                                                        {e.timing && <span className="text-[10px] px-1.5 py-0.5 bg-white/10 rounded">{e.timing}</span>}
+                                                                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${statusColor}`}>{e.status}</span>
+                                                                    </div>
+                                                                    <div className="flex gap-2">
+                                                                        <button onClick={() => triggerEarningsFetchNow(e.id)} className="px-2 py-1 bg-amber-600 hover:bg-amber-500 rounded text-[11px] font-medium">Fetch now</button>
+                                                                        <button onClick={() => deleteEarningsEntry(e.id)} className="px-2 py-1 bg-white/10 hover:bg-red-600/30 rounded text-[11px]">Delete</button>
+                                                                    </div>
+                                                                </div>
+                                                                {(e.prUrl || e.transcriptUrl || e.fetchNotes) && (
+                                                                    <div className="mt-2 text-[11px] text-slate-400 space-y-0.5">
+                                                                        {e.prUrl && <div>PR: <a href={e.prUrl} target="_blank" rel="noreferrer" className="text-amber-400 break-all">{e.prUrl}</a></div>}
+                                                                        {e.transcriptUrl && <div>Transcript: <a href={e.transcriptUrl} target="_blank" rel="noreferrer" className="text-amber-400 break-all">{e.transcriptUrl}</a></div>}
+                                                                        {e.fetchNotes && <div className="text-slate-500">Notes: {e.fetchNotes}</div>}
+                                                                    </div>
+                                                                )}
+                                                            </li>
+                                                        );
+                                                    })}
+                                                </ul>
+                                            )}
+                                            {earningsFormOpen && (
+                                                <>
+                                                    <div className="fixed inset-0 bg-black/60 z-50" onClick={() => setEarningsFormOpen(false)} />
+                                                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+                                                        <div className="bg-neutral-900 border border-white/10 rounded-lg w-full max-w-md p-6 pointer-events-auto">
+                                                            <h3 className="font-semibold text-lg mb-4">Add earnings entry</h3>
+                                                            <div className="space-y-3">
+                                                                <div className="grid grid-cols-2 gap-3">
+                                                                    <div>
+                                                                        <label className="block text-xs text-slate-400 mb-1">Ticker</label>
+                                                                        <input type="text" value={earningsForm.ticker} onChange={ev => setEarningsForm(f => ({ ...f, ticker: ev.target.value.toUpperCase() }))} className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded text-sm" placeholder="NVDA" />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-xs text-slate-400 mb-1">Quarter</label>
+                                                                        <input type="text" value={earningsForm.quarterLabel} onChange={ev => setEarningsForm(f => ({ ...f, quarterLabel: ev.target.value }))} className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded text-sm" placeholder="1Q26 Earnings" />
+                                                                    </div>
+                                                                </div>
+                                                                <div className="grid grid-cols-2 gap-3">
+                                                                    <div>
+                                                                        <label className="block text-xs text-slate-400 mb-1">Confirmed date</label>
+                                                                        <input type="date" value={earningsForm.confirmedDate} onChange={ev => setEarningsForm(f => ({ ...f, confirmedDate: ev.target.value }))} className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded text-sm" />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-xs text-slate-400 mb-1">Timing</label>
+                                                                        <select value={earningsForm.timing} onChange={ev => setEarningsForm(f => ({ ...f, timing: ev.target.value }))} className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded text-sm">
+                                                                            <option value="">—</option>
+                                                                            <option value="BMO">Before market open</option>
+                                                                            <option value="AMC">After market close</option>
+                                                                        </select>
+                                                                    </div>
+                                                                </div>
+                                                                <div>
+                                                                    <label className="block text-xs text-slate-400 mb-1">Press release URL</label>
+                                                                    <input type="url" value={earningsForm.prUrl} onChange={ev => setEarningsForm(f => ({ ...f, prUrl: ev.target.value }))} className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded text-sm" placeholder="https://investors.nvidia.com/..." />
+                                                                </div>
+                                                                <div>
+                                                                    <label className="block text-xs text-slate-400 mb-1">Transcript URL (optional)</label>
+                                                                    <input type="url" value={earningsForm.transcriptUrl} onChange={ev => setEarningsForm(f => ({ ...f, transcriptUrl: ev.target.value }))} className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded text-sm" placeholder="https://..." />
+                                                                </div>
+                                                                <div className="flex gap-2 pt-2">
+                                                                    <button onClick={upsertEarningsEntry} className="flex-1 px-3 py-2 bg-amber-600 hover:bg-amber-500 rounded text-sm font-medium">Save</button>
+                                                                    <button onClick={() => setEarningsFormOpen(false)} className="flex-1 px-3 py-2 bg-white/10 hover:bg-white/20 rounded text-sm">Cancel</button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    )}
+
                                     {analystView === 'inbox' && (
                                         <div className="p-6">
                                             <div className="flex items-center justify-between mb-4">
@@ -22876,12 +23065,31 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                         {input.topic && <p className="text-sm text-slate-200">{input.topic}</p>}
                                                                         <p className="text-[11px] text-slate-500">
                                                                             {typeof input.fileCount === 'number' ? `${input.fileCount} file${input.fileCount === 1 ? '' : 's'}` : 'Catalyst folder drop'}
-                                                                            {input.catalystJobId ? ' · synthesis queued' : ''}
+                                                                            {input.catalystJobId ? ' · initial synthesis queued' : ''}
+                                                                            {item.status === 'running' ? ' · earnings recap running…' : ''}
                                                                         </p>
                                                                     </div>
                                                                 )}
-                                                                <div className="flex items-center gap-2">
-                                                                    {isCatalystFolder && input.catalystJobId && (
+                                                                {item.output && item.output.synthesisMarkdown && (
+                                                                    <div className="my-3 bg-black/40 border border-amber-500/20 rounded p-3 max-h-96 overflow-y-auto">
+                                                                        <div className="text-[10px] text-amber-300/70 mb-2 uppercase tracking-wider">Earnings Recap</div>
+                                                                        <pre className="whitespace-pre-wrap text-xs text-slate-200 font-sans leading-relaxed">{item.output.synthesisMarkdown}</pre>
+                                                                    </div>
+                                                                )}
+                                                                <div className="flex items-center gap-2 flex-wrap">
+                                                                    {/* Phase 3c: Run earnings recap (only for earnings_recap in pending_review/failed without result yet) */}
+                                                                    {item.activityType === 'earnings_recap' && isCatalystFolder && !item.output?.synthesisMarkdown && item.status !== 'running' && (
+                                                                        <button
+                                                                            onClick={() => runAnalystActivity(item.id, { length: 'standard' })}
+                                                                            className="px-3 py-1 bg-amber-600 hover:bg-amber-500 rounded text-xs font-medium"
+                                                                        >Run earnings recap</button>
+                                                                    )}
+                                                                    {item.status === 'running' && (
+                                                                        <span className="px-3 py-1 bg-amber-500/20 border border-amber-500/30 text-amber-300 rounded text-xs font-medium">
+                                                                            Generating…
+                                                                        </span>
+                                                                    )}
+                                                                    {isCatalystFolder && input.catalystJobId && !item.output?.synthesisMarkdown && (
                                                                         <button
                                                                             onClick={async () => {
                                                                                 try {
@@ -22894,8 +23102,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                     }
                                                                                 } catch (e) { console.warn('open synth:', e); }
                                                                             }}
-                                                                            className="px-3 py-1 bg-amber-600 hover:bg-amber-500 rounded text-xs font-medium"
-                                                                        >View synthesis</button>
+                                                                            className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded text-xs font-medium"
+                                                                        >View initial synthesis</button>
                                                                     )}
                                                                     <button
                                                                         onClick={async () => {
@@ -22910,11 +23118,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                 } catch (e) { console.warn('approve proposal:', e); }
                                                                             }
                                                                         }}
-                                                                        className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 rounded text-xs font-medium"
+                                                                        disabled={item.status === 'running'}
+                                                                        className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 rounded text-xs font-medium"
                                                                     >Approve</button>
                                                                     <button
                                                                         onClick={() => updateActivity(item.id, { status: 'rejected' })}
-                                                                        className="px-3 py-1 bg-red-600 hover:bg-red-500 rounded text-xs font-medium"
+                                                                        disabled={item.status === 'running'}
+                                                                        className="px-3 py-1 bg-red-600 hover:bg-red-500 disabled:opacity-40 rounded text-xs font-medium"
                                                                     >Reject</button>
                                                                     {input.sourceUrl && (
                                                                         <a

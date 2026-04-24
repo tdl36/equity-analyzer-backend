@@ -2845,6 +2845,41 @@ def init_db():
             cur.execute('CREATE INDEX IF NOT EXISTS idx_analyst_activities_ticker ON analyst_activities(ticker)')
             cur.execute("CREATE INDEX IF NOT EXISTS idx_analyst_activities_pending ON analyst_activities(status, created_at DESC) WHERE status='pending_review'")
 
+            # Phase 3d: earnings calendar + per-ticker IR/PR/transcript config.
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS earnings_calendar (
+                    id VARCHAR(100) PRIMARY KEY,
+                    ticker VARCHAR(20) NOT NULL,
+                    quarter_label VARCHAR(20) NOT NULL,
+                    expected_date DATE,
+                    confirmed_date DATE,
+                    timing VARCHAR(10),
+                    pr_url TEXT,
+                    transcript_url TEXT,
+                    status VARCHAR(20) DEFAULT 'upcoming',
+                    last_fetch_attempt_at TIMESTAMP,
+                    fetch_notes TEXT,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP DEFAULT NOW(),
+                    UNIQUE (ticker, quarter_label)
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_earnings_calendar_ticker ON earnings_calendar(ticker)')
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_earnings_calendar_due ON earnings_calendar(confirmed_date, status) WHERE status IN ('upcoming', 'fetching')")
+
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS ticker_earnings_config (
+                    ticker VARCHAR(20) PRIMARY KEY,
+                    ir_url TEXT,
+                    pr_url_pattern TEXT,
+                    transcript_source VARCHAR(50),
+                    transcript_url_pattern TEXT,
+                    notes TEXT,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP DEFAULT NOW()
+                )
+            ''')
+
         print("Database tables initialized")
     except Exception as e:
         print(f"Database init error (may be normal on first run): {e}")
@@ -12614,6 +12649,59 @@ The following are source documents to synthesize:
 Write the synthesis report now. Start with a clear title line, then the analysis."""
 
 
+# Phase 3c: dedicated earnings recap prompt (4-section format).
+EARNINGS_RECAP_PROMPT = """You are a senior equity research analyst writing an EARNINGS RECAP for your portfolio manager immediately after {ticker} reported {topic}.
+
+## ATTRIBUTION RULES (CRITICAL — FOLLOW EXACTLY)
+- NEVER reference any specific broker, sellside firm, or analyst by name.
+- NEVER cite analyst counts, ratings, or consensus targets as arguments.
+- NEVER use sellside sentiment as thesis support.
+- You MAY reference "consensus" or "Street estimates" as factual data points in the "Results vs. Expectations" section only.
+- Write in FIRST PERSON ("I think", "My read is", "I see the setup as...").
+
+## TONE & STYLE
+- Confident, direct analyst voice writing to their PM the night of the print.
+- No AI filler ("it's worth noting", "delve into", "poised to", "navigate the landscape").
+- Specific numbers. Dollar amounts, basis points, sequential vs YoY.
+- Lead with the punchline, then support with evidence.
+
+## REQUIRED FORMAT (exactly four sections, in this order)
+
+### 1. Results vs. Expectations
+- Revenue, EPS, key segment results vs consensus (or implied buy/sell-side bar).
+- Beat / miss magnitude in both absolute and %.
+- Call out the one-line headline: did the quarter clear the bar or not?
+- Note the print reaction where available (AH move).
+
+### 2. Guidance
+- What they guided for next quarter and full year (revenue, EPS, margins, segment color).
+- Compare vs prior guide and vs buy-side expectations.
+- Flag anything that looks conservative / aggressive / sandbagged and my interpretation.
+
+### 3. KPIs & Operating Details
+- Volume, pricing, mix, units, bookings, backlog, churn, ARR — whichever apply for this ticker.
+- Margin walk (gross / operating / EBITDA) — what drove the delta.
+- Cash flow / buyback / leverage color.
+- Segment-level highlights and lowlights.
+
+### 4. Read-throughs & What I'd Do
+- Investment implication for {ticker} itself (how does this change my thesis? Any signpost tripped?).
+- Cross-read to peers or the broader sector (name them).
+- My recommended action: add, trim, hold, watch — and the near-term catalyst I'm tracking next.
+
+## LENGTH
+{length_instruction}
+
+## CUSTOM INSTRUCTIONS
+{custom_instructions}
+
+## SOURCE DOCUMENTS
+The following are source documents for the earnings recap:
+{source_content}
+
+Write the earnings recap now. Start with a one-line headline ("{ticker} {topic}: [beat / miss / in-line] with [key takeaway]"), then the four sections above, each with a clear h3 header."""
+
+
 @app.route('/api/catalysts/folders', methods=['GET'])
 def list_catalyst_folders():
     """List catalyst topic subfolders for a ticker (read by local agent)."""
@@ -14018,6 +14106,14 @@ def agent_update_job():
 
     if kwargs:
         _update_pipeline_job(job_id, **kwargs)
+
+    # Phase 3c: if this job was dispatched from an analyst activity, propagate
+    # completion/failure back to the activity row so the inbox updates.
+    try:
+        if status in ('complete', 'failed'):
+            _maybe_link_activity_to_job_result(job_id, status, result)
+    except Exception as _e:
+        print(f'activity link propagation failed: {_e}')
 
     return jsonify({'success': True})
 
@@ -20509,14 +20605,15 @@ def analysts_activities_list(analyst_id):
 
 @app.route('/api/analyst-activities/pending', methods=['GET'])
 def analyst_activities_pending():
-    """Global inbox: all pending activities across all analysts."""
+    """Global inbox: all pending + running activities across all analysts.
+    Running activities are included so the UI can show in-flight work."""
     try:
         with get_db() as (_c, cur):
             cur.execute('''
                 SELECT act.*, a.name AS analyst_name
                 FROM analyst_activities act
                 LEFT JOIN analysts a ON a.id = act.analyst_id
-                WHERE act.status = 'pending_review'
+                WHERE act.status IN ('pending_review', 'running')
                 ORDER BY act.created_at DESC
                 LIMIT 500
             ''')
@@ -20590,6 +20687,155 @@ def analyst_activities_retry(activity_id):
     except Exception as e:
         print(f'analyst_activities_retry error: {e}')
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/analyst-activities/<activity_id>/run', methods=['POST'])
+def analyst_activities_run(activity_id):
+    """Phase 3c: dispatch an analyst activity as a catalyst-synthesis job with
+    the right prompt variant. Currently supports earnings_recap (4-section
+    earnings prompt) and takeaway (generic catalyst synth prompt)."""
+    try:
+        data = request.json or {}
+        override_length = (data.get('length') or 'standard')
+        custom_instructions = data.get('customInstructions') or ''
+
+        with get_db() as (_c, cur):
+            cur.execute('''
+                SELECT act.*, a.name AS analyst_name
+                  FROM analyst_activities act
+                  LEFT JOIN analysts a ON a.id = act.analyst_id
+                 WHERE act.id = %s
+            ''', (activity_id,))
+            act = cur.fetchone()
+        if not act:
+            return jsonify({'error': 'activity not found'}), 404
+        if act['status'] not in ('pending_review', 'failed'):
+            return jsonify({'error': f"activity status is {act['status']}; only pending_review or failed can be run"}), 400
+
+        inp = act.get('input') or {}
+        if isinstance(inp, str):
+            try:
+                inp = json.loads(inp)
+            except Exception:
+                inp = {}
+        ticker = (act.get('ticker') or inp.get('ticker') or '').upper()
+        topic = (inp.get('topic') or '').strip()
+        if not ticker or not topic:
+            return jsonify({'error': 'activity is missing ticker or topic'}), 400
+
+        # Pick prompt variant. Earnings activities use 4-section prompt; others
+        # fall through to the generic catalyst synthesis prompt.
+        activity_type = act.get('activity_type') or 'takeaway'
+        prompt_variant = 'earnings_recap' if activity_type == 'earnings_recap' else 'catalyst'
+
+        if override_length not in CATALYST_LENGTH_PRESETS:
+            override_length = 'standard'
+
+        job_id = str(uuid.uuid4())
+        job_detail = {
+            'topic': topic,
+            'length': override_length,
+            'customInstructions': custom_instructions,
+            'prompt_variant': prompt_variant,
+            'activityId': activity_id,
+            'excludedFiles': data.get('excludedFiles') or [],
+        }
+        with get_db(commit=True) as (_c, cur):
+            cur.execute('''
+                INSERT INTO research_pipeline_jobs (id, batch_id, ticker, job_type, status, progress, current_step, total_steps, steps_detail)
+                VALUES (%s, %s, %s, 'synthesis', 'queued', 0, 'Waiting for local agent', 4, %s)
+            ''', (job_id, str(uuid.uuid4()), ticker, json.dumps(job_detail)))
+            # Mark activity as running + link the catalyst job
+            out = act.get('output') or {}
+            if isinstance(out, str):
+                try:
+                    out = json.loads(out)
+                except Exception:
+                    out = {}
+            out['catalystJobId'] = job_id
+            out['promptVariant'] = prompt_variant
+            out['startedAt'] = datetime.utcnow().isoformat()
+            cur.execute('''
+                UPDATE analyst_activities
+                   SET status='running', output=%s::jsonb, error=NULL, updated_at=NOW()
+                 WHERE id=%s
+            ''', (json.dumps(out), activity_id))
+
+        return jsonify({
+            'ok': True,
+            'activityId': activity_id,
+            'catalystJobId': job_id,
+            'ticker': ticker,
+            'topic': topic,
+            'promptVariant': prompt_variant,
+        })
+    except Exception as e:
+        print(f'analyst_activities_run error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+def _maybe_link_activity_to_job_result(job_id: str, status: str, result):
+    """When a pipeline synthesis job completes and it was dispatched from an
+    analyst activity, flip the activity to completed/failed and attach the
+    resulting markdown. Called from agent_update_job."""
+    if status not in ('complete', 'failed'):
+        return
+    try:
+        with get_db() as (_c, cur):
+            cur.execute('SELECT steps_detail, ticker FROM research_pipeline_jobs WHERE id=%s', (job_id,))
+            row = cur.fetchone()
+        if not row:
+            return
+        sd = row.get('steps_detail') or {}
+        if isinstance(sd, str):
+            try:
+                sd = json.loads(sd)
+            except Exception:
+                sd = {}
+        activity_id = sd.get('activityId')
+        if not activity_id:
+            return
+
+        with get_db() as (_c, cur):
+            cur.execute('SELECT id, output, status FROM analyst_activities WHERE id=%s', (activity_id,))
+            act = cur.fetchone()
+        if not act:
+            return
+        out = act.get('output') or {}
+        if isinstance(out, str):
+            try:
+                out = json.loads(out)
+            except Exception:
+                out = {}
+
+        new_status = 'failed' if status == 'failed' else 'pending_review'
+        err_msg = None
+        if isinstance(result, dict):
+            out['synthesisMarkdown'] = result.get('markdown') or out.get('synthesisMarkdown')
+            out['sourceFiles'] = result.get('sourceFiles') or out.get('sourceFiles')
+            out['sourceProvenance'] = result.get('sourceProvenance') or out.get('sourceProvenance')
+            out['fileCount'] = result.get('fileCount') or out.get('fileCount')
+        if status == 'failed':
+            err_msg = (result or {}).get('error') if isinstance(result, dict) else None
+            # Pull from job row if not in payload
+            if not err_msg:
+                try:
+                    with get_db() as (_c, cur):
+                        cur.execute('SELECT error FROM research_pipeline_jobs WHERE id=%s', (job_id,))
+                        r2 = cur.fetchone()
+                    err_msg = (r2 or {}).get('error')
+                except Exception:
+                    pass
+        out['completedAt'] = datetime.utcnow().isoformat()
+
+        with get_db(commit=True) as (_c, cur):
+            cur.execute('''
+                UPDATE analyst_activities
+                   SET status=%s, output=%s::jsonb, error=%s, updated_at=NOW()
+                 WHERE id=%s
+            ''', (new_status, json.dumps(out), (err_msg or None), activity_id))
+    except Exception as e:
+        print(f'_maybe_link_activity_to_job_result error: {e}')
 
 
 @app.route('/api/analysts/seed-default-roster', methods=['POST'])
@@ -20676,6 +20922,224 @@ def analysts_queue_catalyst_activity():
         return jsonify({'created': created, 'count': len(created), 'activityType': activity_type})
     except Exception as e:
         print(f'analysts_queue_catalyst_activity error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================
+# PHASE 3D: EARNINGS CALENDAR + AUTO-FETCH ENDPOINTS
+# ============================================
+
+def _row_to_earnings(r):
+    if not r:
+        return None
+    return {
+        'id': r['id'],
+        'ticker': r.get('ticker'),
+        'quarterLabel': r.get('quarter_label'),
+        'expectedDate': r['expected_date'].isoformat() if r.get('expected_date') else None,
+        'confirmedDate': r['confirmed_date'].isoformat() if r.get('confirmed_date') else None,
+        'timing': r.get('timing'),
+        'prUrl': r.get('pr_url'),
+        'transcriptUrl': r.get('transcript_url'),
+        'status': r.get('status'),
+        'fetchNotes': r.get('fetch_notes'),
+        'lastFetchAttemptAt': r['last_fetch_attempt_at'].isoformat() if r.get('last_fetch_attempt_at') else None,
+        'createdAt': r['created_at'].isoformat() if r.get('created_at') else None,
+        'updatedAt': r['updated_at'].isoformat() if r.get('updated_at') else None,
+        # Enriched from config join when available
+        'irUrl': r.get('ir_url'),
+        'prUrlPattern': r.get('pr_url_pattern'),
+        'transcriptSource': r.get('transcript_source'),
+    }
+
+
+@app.route('/api/earnings/upcoming', methods=['GET'])
+def earnings_upcoming():
+    """Return earnings entries due in the next N days (default 14)."""
+    try:
+        window = int(request.args.get('days', 14))
+        window = max(1, min(window, 90))
+        import earnings as _earn
+        rows = _earn.upcoming(window_days=window)
+        return jsonify({'items': [_row_to_earnings(r) for r in rows], 'windowDays': window})
+    except Exception as e:
+        print(f'earnings_upcoming error: {e}')
+        return jsonify({'items': [], 'error': str(e)}), 500
+
+
+@app.route('/api/earnings/calendar', methods=['GET'])
+def earnings_calendar_list():
+    """Full calendar list (paginated by ticker filter)."""
+    try:
+        ticker = (request.args.get('ticker') or '').upper()
+        params = []
+        where = '1=1'
+        if ticker:
+            where = 'ec.ticker = %s'
+            params.append(ticker)
+        with get_db() as (_c, cur):
+            cur.execute(f'''
+                SELECT ec.*, tec.ir_url, tec.pr_url_pattern, tec.transcript_source
+                  FROM earnings_calendar ec
+                  LEFT JOIN ticker_earnings_config tec ON tec.ticker = ec.ticker
+                 WHERE {where}
+                 ORDER BY COALESCE(ec.confirmed_date, ec.expected_date) DESC NULLS LAST
+                 LIMIT 500
+            ''', tuple(params))
+            rows = cur.fetchall()
+        return jsonify({'items': [_row_to_earnings(r) for r in rows]})
+    except Exception as e:
+        print(f'earnings_calendar_list error: {e}')
+        return jsonify({'items': [], 'error': str(e)}), 500
+
+
+@app.route('/api/earnings/calendar', methods=['POST'])
+def earnings_calendar_upsert():
+    """Create or update an earnings calendar entry. Keyed on (ticker, quarter_label)."""
+    try:
+        data = request.json or {}
+        ticker = (data.get('ticker') or '').upper().strip()
+        quarter_label = (data.get('quarterLabel') or '').strip()
+        if not ticker or not quarter_label:
+            return jsonify({'error': 'ticker and quarterLabel required'}), 400
+        expected_date = data.get('expectedDate')
+        confirmed_date = data.get('confirmedDate')
+        timing = (data.get('timing') or '').strip() or None  # 'BMO' / 'AMC'
+        pr_url = data.get('prUrl') or None
+        transcript_url = data.get('transcriptUrl') or None
+        status = data.get('status') or 'upcoming'
+        entry_id = data.get('id') or str(uuid.uuid4())
+
+        with get_db(commit=True) as (_c, cur):
+            cur.execute('''
+                INSERT INTO earnings_calendar
+                    (id, ticker, quarter_label, expected_date, confirmed_date, timing,
+                     pr_url, transcript_url, status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (ticker, quarter_label) DO UPDATE SET
+                    expected_date = COALESCE(EXCLUDED.expected_date, earnings_calendar.expected_date),
+                    confirmed_date = COALESCE(EXCLUDED.confirmed_date, earnings_calendar.confirmed_date),
+                    timing = COALESCE(EXCLUDED.timing, earnings_calendar.timing),
+                    pr_url = COALESCE(EXCLUDED.pr_url, earnings_calendar.pr_url),
+                    transcript_url = COALESCE(EXCLUDED.transcript_url, earnings_calendar.transcript_url),
+                    status = EXCLUDED.status,
+                    updated_at = NOW()
+                RETURNING *
+            ''', (entry_id, ticker, quarter_label, expected_date, confirmed_date,
+                  timing, pr_url, transcript_url, status))
+            row = cur.fetchone()
+        return jsonify({'entry': _row_to_earnings(row)})
+    except Exception as e:
+        print(f'earnings_calendar_upsert error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/earnings/calendar/<entry_id>', methods=['DELETE'])
+def earnings_calendar_delete(entry_id):
+    try:
+        with get_db(commit=True) as (_c, cur):
+            cur.execute('DELETE FROM earnings_calendar WHERE id=%s RETURNING id', (entry_id,))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'error': 'not found'}), 404
+        return jsonify({'deleted': entry_id})
+    except Exception as e:
+        print(f'earnings_calendar_delete error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/earnings/calendar/<entry_id>/fetch-now', methods=['POST'])
+def earnings_calendar_fetch_now(entry_id):
+    """Manually trigger a fetch for a specific calendar entry."""
+    try:
+        with get_db() as (_c, cur):
+            cur.execute('''
+                SELECT ec.*, tec.ir_url, tec.pr_url_pattern, tec.transcript_source,
+                       tec.transcript_url_pattern
+                  FROM earnings_calendar ec
+                  LEFT JOIN ticker_earnings_config tec ON tec.ticker = ec.ticker
+                 WHERE ec.id = %s
+            ''', (entry_id,))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'error': 'not found'}), 404
+        import earnings as _earn
+        job_id = _earn._dispatch_earnings_fetch_job(dict(row))
+        return jsonify({'jobId': job_id, 'ticker': row['ticker'], 'quarterLabel': row['quarter_label']})
+    except Exception as e:
+        print(f'earnings_calendar_fetch_now error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/earnings/config/<ticker>', methods=['GET'])
+def earnings_config_get(ticker):
+    ticker = (ticker or '').upper()
+    try:
+        with get_db() as (_c, cur):
+            cur.execute('SELECT * FROM ticker_earnings_config WHERE ticker=%s', (ticker,))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'ticker': ticker, 'irUrl': None, 'prUrlPattern': None,
+                            'transcriptSource': None, 'transcriptUrlPattern': None, 'notes': None})
+        return jsonify({
+            'ticker': row['ticker'],
+            'irUrl': row.get('ir_url'),
+            'prUrlPattern': row.get('pr_url_pattern'),
+            'transcriptSource': row.get('transcript_source'),
+            'transcriptUrlPattern': row.get('transcript_url_pattern'),
+            'notes': row.get('notes'),
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/earnings/config/<ticker>', methods=['PUT'])
+def earnings_config_put(ticker):
+    ticker = (ticker or '').upper().strip()
+    if not ticker:
+        return jsonify({'error': 'ticker required'}), 400
+    data = request.json or {}
+    try:
+        with get_db(commit=True) as (_c, cur):
+            cur.execute('''
+                INSERT INTO ticker_earnings_config
+                    (ticker, ir_url, pr_url_pattern, transcript_source, transcript_url_pattern, notes)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (ticker) DO UPDATE SET
+                    ir_url = EXCLUDED.ir_url,
+                    pr_url_pattern = EXCLUDED.pr_url_pattern,
+                    transcript_source = EXCLUDED.transcript_source,
+                    transcript_url_pattern = EXCLUDED.transcript_url_pattern,
+                    notes = EXCLUDED.notes,
+                    updated_at = NOW()
+            ''', (
+                ticker,
+                data.get('irUrl'),
+                data.get('prUrlPattern'),
+                data.get('transcriptSource'),
+                data.get('transcriptUrlPattern'),
+                data.get('notes'),
+            ))
+        return jsonify({'ok': True, 'ticker': ticker})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/earnings/fetch-result', methods=['POST'])
+def earnings_fetch_result():
+    """Local agent posts back after completing an earnings_fetch job."""
+    try:
+        data = request.json or {}
+        calendar_id = data.get('calendarId')
+        status = data.get('status') or 'fetched'
+        notes = data.get('notes') or None
+        if not calendar_id:
+            return jsonify({'error': 'calendarId required'}), 400
+        import earnings as _earn
+        _earn.record_fetch_result(calendar_id, status, notes)
+        return jsonify({'ok': True})
+    except Exception as e:
+        print(f'earnings_fetch_result error: {e}')
         return jsonify({'error': str(e)}), 500
 
 

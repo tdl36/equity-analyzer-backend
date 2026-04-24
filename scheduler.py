@@ -11,6 +11,7 @@ from apscheduler.jobstores.memory import MemoryJobStore
 
 import app_v3
 from media_trackers import poller, extractor, transcribe, clustering, cost_watch, notifications
+import earnings
 
 
 def _kill_switch_on() -> bool:
@@ -62,6 +63,17 @@ def run_cost_watch_daily():
     cost_watch.check_cost_warning()
 
 
+def run_earnings_fetch_sweep():
+    """Phase 3d: check earnings calendar twice per US trading day and dispatch
+    fetch jobs for any ticker whose confirmed earnings date == today."""
+    if not _kill_switch_on():
+        return
+    try:
+        earnings.check_due_earnings()
+    except Exception as e:
+        print(f'run_earnings_fetch_sweep error: {e}')
+
+
 def build_scheduler(use_memory_jobstore: bool = False) -> BackgroundScheduler:
     if use_memory_jobstore or not os.environ.get('DATABASE_URL'):
         jobstore = MemoryJobStore()
@@ -80,6 +92,10 @@ def build_scheduler(use_memory_jobstore: bool = False) -> BackgroundScheduler:
                   id='email_digest_daily', replace_existing=True)
     sched.add_job(run_cost_watch_daily,   'cron', hour=23, minute=0,
                   id='cost_watch_daily',   replace_existing=True)
+    # Phase 3d: earnings auto-fetch sweeps. 11:30 UTC (~7:30am ET) for
+    # pre-market reports, 21:30 UTC (~5:30pm ET) for post-close reports.
+    sched.add_job(run_earnings_fetch_sweep, 'cron', hour='11,21', minute=30,
+                  id='earnings_fetch_sweep', replace_existing=True)
     return sched
 
 

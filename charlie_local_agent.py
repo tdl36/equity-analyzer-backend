@@ -2036,6 +2036,59 @@ CATALYST_LENGTH_PRESETS = {
 }
 
 
+# Phase 3c: Earnings recap prompt (4-section format). Used when a synthesis job
+# is dispatched with steps_detail.prompt_variant == 'earnings_recap'.
+EARNINGS_RECAP_PROMPT = """You are a senior equity research analyst writing an EARNINGS RECAP for your portfolio manager immediately after {ticker} reported {topic}.
+
+## ATTRIBUTION RULES (CRITICAL — FOLLOW EXACTLY)
+- NEVER reference any specific broker, sellside firm, or analyst by name.
+- NEVER cite analyst counts, ratings, or consensus targets as arguments.
+- NEVER use sellside sentiment as thesis support.
+- You MAY reference "consensus" or "Street estimates" as factual data points in the "Results vs. Expectations" section only.
+- Write in FIRST PERSON ("I think", "My read is", "I see the setup as...").
+
+## TONE & STYLE
+- Confident, direct analyst voice writing to their PM the night of the print.
+- No AI filler ("it's worth noting", "delve into", "poised to", "navigate the landscape").
+- Specific numbers. Dollar amounts, basis points, sequential vs YoY.
+- Lead with the punchline, then support with evidence.
+
+## REQUIRED FORMAT (exactly four sections, in this order, using h3 headers)
+
+### 1. Results vs. Expectations
+- Revenue, EPS, key segment results vs consensus.
+- Beat / miss magnitude (absolute and %).
+- One-line headline: did the quarter clear the bar?
+- Print reaction where available (AH move).
+
+### 2. Guidance
+- Next quarter and full year (revenue, EPS, margins, segment color).
+- Compare vs prior guide and buy-side expectations.
+- Flag conservative / aggressive / sandbagged setups and my interpretation.
+
+### 3. KPIs & Operating Details
+- Volume, pricing, mix, units, bookings, backlog, churn, ARR — whichever apply.
+- Margin walk (gross / operating / EBITDA) and drivers.
+- Cash flow / buyback / leverage color.
+- Segment-level highlights and lowlights.
+
+### 4. Read-throughs & What I'd Do
+- Investment implication for {ticker} (thesis impact, signposts tripped).
+- Cross-read to peers or the broader sector (name them).
+- Recommended action: add, trim, hold, watch — and the next catalyst to track.
+
+## LENGTH
+{length_instruction}
+
+## CUSTOM INSTRUCTIONS
+{custom_instructions}
+
+## SOURCE DOCUMENTS
+{source_content}
+
+Write the earnings recap now. Start with a one-line headline ("{ticker} {topic}: [beat / miss / in-line] with [key takeaway]"), then the four sections above."""
+
+
 def ensure_catalyst_folders():
     """Auto-scaffold CATALYSTS/{TICKER}/ folders for all universe tickers."""
     CATALYSTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -2428,6 +2481,150 @@ def process_scan_catalysts_job(job: dict) -> None:
         update_job_progress(job_id, "failed", "Failed", None, error=str(e))
 
 
+# ---------------------------------------------------------------------------
+# Phase 3d: earnings auto-fetch
+# ---------------------------------------------------------------------------
+
+_EARNINGS_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) CharlieAgent/1.0"
+)
+
+
+def _download_url_to_folder(url: str, dest_dir: Path, preferred_name: str) -> tuple[bool, str]:
+    """Download URL to dest_dir. Returns (ok, message). Respects content-disposition
+    for filename, falls back to preferred_name. Skips if the target file already exists."""
+    try:
+        resp = requests.get(
+            url,
+            headers={"User-Agent": _EARNINGS_USER_AGENT, "Accept": "*/*"},
+            timeout=45,
+            allow_redirects=True,
+            stream=True,
+        )
+        if resp.status_code != 200:
+            return False, f"HTTP {resp.status_code} from {url[:80]}"
+        # Determine extension
+        ct = (resp.headers.get('Content-Type') or '').lower()
+        cd = resp.headers.get('Content-Disposition') or ''
+        ext = ''
+        if 'pdf' in ct:
+            ext = '.pdf'
+        elif 'html' in ct:
+            ext = '.html'
+        elif 'text/plain' in ct:
+            ext = '.txt'
+        # content-disposition filename parsing (best-effort)
+        fname = None
+        if 'filename=' in cd:
+            try:
+                fname = cd.split('filename=')[-1].strip().strip('"').strip("'")
+            except Exception:
+                fname = None
+        if not fname:
+            # pull last path segment from URL
+            from urllib.parse import urlparse
+            seg = urlparse(url).path.rsplit('/', 1)[-1]
+            if seg and '.' in seg:
+                fname = seg
+            else:
+                fname = preferred_name + (ext or '.bin')
+        # Sanitize
+        fname = ''.join(c for c in fname if c not in '/\\:')[:100] or (preferred_name + (ext or '.bin'))
+        target = dest_dir / fname
+        # Idempotency: skip if file already exists with nonzero size
+        if target.exists() and target.stat().st_size > 0:
+            return True, f"already present: {target.name}"
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        with open(target, 'wb') as fh:
+            for chunk in resp.iter_content(chunk_size=65536):
+                if chunk:
+                    fh.write(chunk)
+        return True, f"downloaded {target.name} ({target.stat().st_size:,} bytes)"
+    except Exception as e:
+        return False, f"error: {e}"
+
+
+def process_earnings_fetch_job(job: dict) -> None:
+    """Phase 3d: fetch earnings press release + transcript into
+    CATALYSTS/{ticker}/{quarter_label}/ so the auto-synth flow can pick it up."""
+    job_id = job.get("id", "")
+    ticker = (job.get("ticker") or "").upper()
+    detail = job.get("steps_detail", {})
+    if isinstance(detail, str):
+        try:
+            detail = json.loads(detail)
+        except Exception:
+            detail = {}
+
+    quarter_label = detail.get('quarter_label') or 'earnings'
+    calendar_id = detail.get('calendar_id')
+    pr_url = detail.get('pr_url')
+    transcript_url = detail.get('transcript_url')
+
+    notes_lines = []
+    try:
+        update_job_progress(job_id, "running", "Preparing folder...", 10)
+        ticker_dir = CATALYSTS_DIR / ticker
+        ticker_dir.mkdir(parents=True, exist_ok=True)
+        topic_dir = ticker_dir / quarter_label
+        topic_dir.mkdir(exist_ok=True)
+
+        got_anything = False
+        if pr_url:
+            update_job_progress(job_id, "running", "Fetching press release...", 30)
+            ok, msg = _download_url_to_folder(pr_url, topic_dir, 'press_release')
+            notes_lines.append(f"PR: {msg}")
+            got_anything = got_anything or ok
+            log.info(f"earnings_fetch {ticker}/{quarter_label} PR: {msg}")
+        else:
+            notes_lines.append("PR: no url configured")
+
+        if transcript_url:
+            update_job_progress(job_id, "running", "Fetching transcript...", 60)
+            ok, msg = _download_url_to_folder(transcript_url, topic_dir, 'transcript')
+            notes_lines.append(f"Transcript: {msg}")
+            got_anything = got_anything or ok
+            log.info(f"earnings_fetch {ticker}/{quarter_label} transcript: {msg}")
+        else:
+            notes_lines.append("Transcript: no url configured (user can drop manually)")
+
+        status_flag = 'fetched' if got_anything else 'retry'
+        # Report back to calendar
+        if calendar_id:
+            try:
+                requests.post(
+                    f"{CHARLIE_API}/api/earnings/fetch-result",
+                    json={
+                        "calendarId": calendar_id,
+                        "status": status_flag,
+                        "notes": " | ".join(notes_lines)[:1000],
+                    },
+                    headers=_agent_headers(),
+                    timeout=15,
+                )
+            except Exception as e:
+                log.warning(f"fetch-result post failed: {e}")
+
+        update_job_progress(job_id, "complete", "Earnings fetch complete", 100,
+                            result={"ticker": ticker, "quarter": quarter_label,
+                                    "notes": notes_lines, "status": status_flag})
+        notify(f"*Charlie Agent:* Earnings fetch for {ticker} {quarter_label}: {status_flag}\n" + "\n".join(notes_lines))
+    except Exception as e:
+        log.error(f"Earnings fetch failed for {ticker}/{quarter_label}: {e}")
+        update_job_progress(job_id, "failed", "Earnings fetch failed", None, error=str(e))
+        if calendar_id:
+            try:
+                requests.post(
+                    f"{CHARLIE_API}/api/earnings/fetch-result",
+                    json={"calendarId": calendar_id, "status": "retry", "notes": str(e)[:500]},
+                    headers=_agent_headers(),
+                    timeout=10,
+                )
+            except Exception:
+                pass
+
+
 def _generate_source_provenance_local(client, source_names, synthesis_markdown, ticker, topic):
     """Generate source provenance summary using Claude directly (local agent path)."""
     if not source_names:
@@ -2475,10 +2672,12 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
     topic = steps_detail.get("topic", "")
     length = steps_detail.get("length", "standard")
     custom_instructions = steps_detail.get("customInstructions", "")
+    prompt_variant = (steps_detail.get("prompt_variant") or "").strip().lower()
 
     try:
-        update_job_progress(job_id, "running", "Reading source files...", 10)
-        notify(f"*Charlie Agent:* Starting synthesis for {ticker}/{topic}")
+        variant_label = 'earnings recap' if prompt_variant == 'earnings_recap' else 'synthesis'
+        update_job_progress(job_id, "running", f"Reading source files for {variant_label}...", 10)
+        notify(f"*Charlie Agent:* Starting {variant_label} for {ticker}/{topic}")
 
         # Read files from CATALYSTS/{ticker}/{topic}/
         topic_dir = CATALYSTS_DIR / ticker / topic
@@ -2605,7 +2804,8 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
         # Process first batch
         update_job_progress(job_id, "running", f"Synthesizing report (batch 1/{total_batches})...", 50)
 
-        prompt_text = CATALYST_SYNTHESIS_PROMPT.format(
+        base_prompt = EARNINGS_RECAP_PROMPT if prompt_variant == 'earnings_recap' else CATALYST_SYNTHESIS_PROMPT
+        prompt_text = base_prompt.format(
             length_instruction=length_instruction,
             ticker=ticker,
             topic=topic,
@@ -2845,6 +3045,8 @@ def main() -> None:
                     process_synthesis_job(job, api_key)
                 elif job_type == "scan_catalysts":
                     process_scan_catalysts_job(job)
+                elif job_type == "earnings_fetch":
+                    process_earnings_fetch_job(job)
                 else:
                     process_note_job(job, api_key)
 
