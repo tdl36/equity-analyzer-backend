@@ -1907,36 +1907,34 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
                 return out;
             };
-            const waitForActiveSW = async (timeoutMs = 60000) => {
-                // Use the browser's native ready promise (waits for active SW),
-                // but race it against a timeout so we don't hang forever on iOS.
-                const readyPromise = navigator.serviceWorker.ready.then((reg) => {
-                    if (reg.active) return reg;
-                    // Edge case: ready resolved but active still null (iOS bug).
-                    // Poll for up to 10s.
-                    return new Promise((resolve, reject) => {
-                        const start = Date.now();
-                        const check = () => {
-                            if (reg.active) return resolve(reg);
-                            if (Date.now() - start > 10000) return reject(new Error('ready resolved but registration.active never populated'));
-                            setTimeout(check, 300);
-                        };
-                        check();
-                    });
-                });
-                const timeoutPromise = new Promise((_, reject) => setTimeout(() => {
-                    navigator.serviceWorker.getRegistration().then((reg) => {
-                        const state = reg
-                            ? `reg exists: active=${!!reg.active} installing=${!!reg.installing} waiting=${!!reg.waiting} scope=${reg.scope}`
-                            : 'no registration found';
-                        reject(new Error(`SW did not become ready within ${timeoutMs / 1000}s. State: ${state}`));
-                    }).catch(() => reject(new Error(`SW did not become ready within ${timeoutMs / 1000}s`)));
-                }, timeoutMs));
-                return Promise.race([readyPromise, timeoutPromise]);
+            const getSWRegistration = async () => {
+                // iOS PWAs: registration.active is often null even after
+                // ready resolves (documented Safari bug). Don't rely on
+                // .active — just get a registration and let callers try
+                // their operations on it.
+                return (await navigator.serviceWorker.getRegistration())
+                    || (await navigator.serviceWorker.ready);
+            };
+            const subscribeWithRetry = async (reg, publicKey, attempts = 5) => {
+                let lastErr;
+                for (let i = 0; i < attempts; i++) {
+                    try {
+                        return await reg.pushManager.subscribe({
+                            userVisibleOnly: true,
+                            applicationServerKey: urlBase64ToUint8Array(publicKey),
+                        });
+                    } catch (e) {
+                        lastErr = e;
+                        if (!/active service worker/i.test(e.message || '') || i === attempts - 1) throw e;
+                        await new Promise((r) => setTimeout(r, 3000));
+                        reg = await getSWRegistration();
+                    }
+                }
+                throw lastErr;
             };
             const enableWebPush = async () => {
                 try {
-                    const reg = await waitForActiveSW();
+                    const reg = await getSWRegistration();
                     // Idempotent: if a local subscription already exists
                     // (e.g. a prior attempt got interrupted by a page
                     // reload), just persist it to the backend rather than
@@ -1950,10 +1948,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         const keyRes = await fetch(`${API_URL}/api/push/vapid-public-key`);
                         if (!keyRes.ok) { alert('Backend push not configured (VAPID_PUBLIC_KEY missing)'); return; }
                         const { publicKey } = await keyRes.json();
-                        sub = await reg.pushManager.subscribe({
-                            userVisibleOnly: true,
-                            applicationServerKey: urlBase64ToUint8Array(publicKey),
-                        });
+                        sub = await subscribeWithRetry(reg, publicKey);
                     }
                     const r = await fetch(`${API_URL}/api/push/subscribe`, {
                         method: 'POST',
@@ -1971,7 +1966,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         alert('Notification permission not granted — tap Enable push first.');
                         return;
                     }
-                    const reg = await waitForActiveSW();
+                    const reg = await getSWRegistration();
                     await reg.showNotification('Charlie local test', {
                         body: 'If you see this banner, the service worker can show notifications. Push pipeline is broken if Send-test does not.',
                         icon: '/icon-192.png',
