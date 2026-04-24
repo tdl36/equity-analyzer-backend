@@ -20860,6 +20860,79 @@ def analyst_activities_archived():
         return jsonify({'activities': [], 'error': str(e)}), 500
 
 
+def _dispatch_activity_run(activity_id: str, length: str = 'standard', custom_instructions: str = ''):
+    """Shared helper: dispatch the given analyst activity as a synthesis job
+    (earnings_recap variant if activity_type is earnings_recap). Returns
+    (body_dict, http_status)."""
+    with get_db() as (_c, cur):
+        cur.execute('''
+            SELECT act.*, a.name AS analyst_name
+              FROM analyst_activities act
+              LEFT JOIN analysts a ON a.id = act.analyst_id
+             WHERE act.id = %s
+        ''', (activity_id,))
+        act = cur.fetchone()
+    if not act:
+        return {'error': 'activity not found'}, 404
+    if act['status'] not in ('pending_review', 'failed'):
+        return {'error': f"activity status is {act['status']}; only pending_review or failed can be run"}, 400
+
+    inp = act.get('input') or {}
+    if isinstance(inp, str):
+        try:
+            inp = json.loads(inp)
+        except Exception:
+            inp = {}
+    ticker = (act.get('ticker') or inp.get('ticker') or '').upper()
+    topic = (inp.get('topic') or '').strip()
+    if not ticker or not topic:
+        return {'error': 'activity is missing ticker or topic'}, 400
+
+    activity_type = act.get('activity_type') or 'takeaway'
+    prompt_variant = 'earnings_recap' if activity_type == 'earnings_recap' else 'catalyst'
+
+    if length not in CATALYST_LENGTH_PRESETS:
+        length = 'standard'
+
+    job_id = str(uuid.uuid4())
+    job_detail = {
+        'topic': topic,
+        'length': length,
+        'customInstructions': custom_instructions,
+        'prompt_variant': prompt_variant,
+        'activityId': activity_id,
+        'excludedFiles': [],
+    }
+    with get_db(commit=True) as (_c, cur):
+        cur.execute('''
+            INSERT INTO research_pipeline_jobs (id, batch_id, ticker, job_type, status, progress, current_step, total_steps, steps_detail)
+            VALUES (%s, %s, %s, 'synthesis', 'queued', 0, 'Waiting for local agent', 4, %s)
+        ''', (job_id, str(uuid.uuid4()), ticker, json.dumps(job_detail)))
+        out = act.get('output') or {}
+        if isinstance(out, str):
+            try:
+                out = json.loads(out)
+            except Exception:
+                out = {}
+        out['catalystJobId'] = job_id
+        out['promptVariant'] = prompt_variant
+        out['startedAt'] = datetime.utcnow().isoformat()
+        cur.execute('''
+            UPDATE analyst_activities
+               SET status='running', output=%s::jsonb, error=NULL, updated_at=NOW()
+             WHERE id=%s
+        ''', (json.dumps(out), activity_id))
+
+    return {
+        'ok': True,
+        'activityId': activity_id,
+        'catalystJobId': job_id,
+        'ticker': ticker,
+        'topic': topic,
+        'promptVariant': prompt_variant,
+    }, 200
+
+
 @app.route('/api/analyst-activities/<activity_id>/run', methods=['POST'])
 def analyst_activities_run(activity_id):
     """Phase 3c: dispatch an analyst activity as a catalyst-synthesis job with
@@ -20867,79 +20940,12 @@ def analyst_activities_run(activity_id):
     earnings prompt) and takeaway (generic catalyst synth prompt)."""
     try:
         data = request.json or {}
-        override_length = (data.get('length') or 'standard')
-        custom_instructions = data.get('customInstructions') or ''
-
-        with get_db() as (_c, cur):
-            cur.execute('''
-                SELECT act.*, a.name AS analyst_name
-                  FROM analyst_activities act
-                  LEFT JOIN analysts a ON a.id = act.analyst_id
-                 WHERE act.id = %s
-            ''', (activity_id,))
-            act = cur.fetchone()
-        if not act:
-            return jsonify({'error': 'activity not found'}), 404
-        if act['status'] not in ('pending_review', 'failed'):
-            return jsonify({'error': f"activity status is {act['status']}; only pending_review or failed can be run"}), 400
-
-        inp = act.get('input') or {}
-        if isinstance(inp, str):
-            try:
-                inp = json.loads(inp)
-            except Exception:
-                inp = {}
-        ticker = (act.get('ticker') or inp.get('ticker') or '').upper()
-        topic = (inp.get('topic') or '').strip()
-        if not ticker or not topic:
-            return jsonify({'error': 'activity is missing ticker or topic'}), 400
-
-        # Pick prompt variant. Earnings activities use 4-section prompt; others
-        # fall through to the generic catalyst synthesis prompt.
-        activity_type = act.get('activity_type') or 'takeaway'
-        prompt_variant = 'earnings_recap' if activity_type == 'earnings_recap' else 'catalyst'
-
-        if override_length not in CATALYST_LENGTH_PRESETS:
-            override_length = 'standard'
-
-        job_id = str(uuid.uuid4())
-        job_detail = {
-            'topic': topic,
-            'length': override_length,
-            'customInstructions': custom_instructions,
-            'prompt_variant': prompt_variant,
-            'activityId': activity_id,
-            'excludedFiles': data.get('excludedFiles') or [],
-        }
-        with get_db(commit=True) as (_c, cur):
-            cur.execute('''
-                INSERT INTO research_pipeline_jobs (id, batch_id, ticker, job_type, status, progress, current_step, total_steps, steps_detail)
-                VALUES (%s, %s, %s, 'synthesis', 'queued', 0, 'Waiting for local agent', 4, %s)
-            ''', (job_id, str(uuid.uuid4()), ticker, json.dumps(job_detail)))
-            # Mark activity as running + link the catalyst job
-            out = act.get('output') or {}
-            if isinstance(out, str):
-                try:
-                    out = json.loads(out)
-                except Exception:
-                    out = {}
-            out['catalystJobId'] = job_id
-            out['promptVariant'] = prompt_variant
-            out['startedAt'] = datetime.utcnow().isoformat()
-            cur.execute('''
-                UPDATE analyst_activities
-                   SET status='running', output=%s::jsonb, error=NULL, updated_at=NOW()
-                 WHERE id=%s
-            ''', (json.dumps(out), activity_id))
-
-        return jsonify({
-            'ok': True,
-            'activityId': activity_id,
-            'catalystJobId': job_id,
-            'ticker': ticker,
-            'topic': topic,
-            'promptVariant': prompt_variant,
-        })
+        body, status = _dispatch_activity_run(
+            activity_id,
+            length=(data.get('length') or 'standard'),
+            custom_instructions=(data.get('customInstructions') or ''),
+        )
+        return jsonify(body), status
     except Exception as e:
         print(f'analyst_activities_run error: {e}')
         return jsonify({'error': str(e)}), 500
@@ -21089,7 +21095,36 @@ def analysts_queue_catalyst_activity():
                       (id, analyst_id, activity_type, ticker, status, trigger_source, input, created_at)
                     VALUES (%s, %s, %s, %s, 'pending_review', 'catalyst_folder', %s::jsonb, NOW())
                 ''', (act_id, a['id'], activity_type, ticker, json.dumps(inp)))
-            created.append({'activityId': act_id, 'analystId': a['id'], 'analystName': a['name']})
+
+            # If this analyst's Auto Mode is ON AND it's an earnings_recap,
+            # dispatch the run immediately instead of waiting for a click.
+            auto_ran = False
+            try:
+                auto = a.get('auto_mode') or {}
+                if isinstance(auto, str):
+                    try:
+                        auto = json.loads(auto)
+                    except Exception:
+                        auto = {}
+                expires_at = auto.get('expires_at')
+                still_valid = True
+                if expires_at:
+                    try:
+                        still_valid = datetime.fromisoformat(expires_at.replace('Z', '+00:00')) > datetime.utcnow()
+                    except Exception:
+                        still_valid = True
+                if auto.get('enabled') and still_valid and activity_type == 'earnings_recap':
+                    _dispatch_activity_run(act_id)
+                    auto_ran = True
+            except Exception as _e:
+                print(f'auto_mode dispatch failed for activity {act_id}: {_e}')
+
+            created.append({
+                'activityId': act_id,
+                'analystId': a['id'],
+                'analystName': a['name'],
+                'autoRan': auto_ran,
+            })
         return jsonify({'created': created, 'count': len(created), 'activityType': activity_type})
     except Exception as e:
         print(f'analysts_queue_catalyst_activity error: {e}')

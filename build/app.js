@@ -16,7 +16,7 @@ window.onerror=function(msg,url,line,col,error){var root=document.getElementById
                 <p><strong>Stack:</strong> <pre style="white-space: pre-wrap; font-size: 12px;">${error?.stack||'N/A'}</pre></p>
                 <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #4ecdc4; border: none; border-radius: 5px; cursor: pointer;">Reload App</button>
             </div>`;return true;};// Build version — auto-update mechanism compares against /version endpoint
-var BUILD_VERSION='2026-04-24T11';// Backend API URL — use same-origin proxy in production, direct URL for local dev
+var BUILD_VERSION='2026-04-24T12';// Backend API URL — use same-origin proxy in production, direct URL for local dev
 var API_URL=window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1'?'https://equity-analyzer-backend.onrender.com':'';// Direct backend URL for long-running requests (bypasses Cloudflare 100s timeout)
 var DIRECT_API_URL='https://equity-analyzer-backend.onrender.com';// Auth token management
 var getAuthToken=()=>{try{return localStorage.getItem('charlie_auth_token')||'';}catch(e){return'';}};var setAuthToken=token=>{try{localStorage.setItem('charlie_auth_token',token);}catch(e){}};var clearAuthToken=()=>{try{localStorage.removeItem('charlie_auth_token');localStorage.removeItem('charlie_auth_email');}catch(e){}};var getAuthEmail=()=>{try{return localStorage.getItem('charlie_auth_email')||'';}catch(e){return'';}};// Wrap global fetch to inject auth header on API requests

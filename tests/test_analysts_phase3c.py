@@ -202,6 +202,64 @@ def test_archived_endpoint_returns_approved_activities(client, clean_db):
     assert approved['status'] == 'approved'
 
 
+def test_auto_mode_dispatches_earnings_recap_immediately(client, clean_db):
+    aid = _create_analyst(client, ['MDT'])
+    # Flip auto_mode on
+    client.patch(f'/api/analysts/{aid}', json={'autoMode': {'enabled': True, 'expires_at': None}})
+
+    r = client.post('/api/analysts/queue-catalyst-activity', json={
+        'ticker': 'MDT',
+        'topic': '4Q26 Earnings',
+        'fingerprint': 'fp-auto',
+        'fileCount': 3,
+        'catalystJobId': 'j1',
+    })
+    body = r.get_json()
+    assert body['count'] == 1
+    assert body['created'][0]['autoRan'] is True
+
+    # Activity should already be running
+    with app_v3.get_db() as (_c, cur):
+        cur.execute("SELECT status, output FROM analyst_activities WHERE ticker='MDT'")
+        row = cur.fetchone()
+    assert row['status'] == 'running'
+    out = row['output']
+    if isinstance(out, str):
+        out = json.loads(out)
+    assert out.get('catalystJobId')
+    assert out.get('promptVariant') == 'earnings_recap'
+
+
+def test_auto_mode_off_leaves_activity_pending(client, clean_db):
+    aid = _create_analyst(client, ['MDT'])
+    # Default auto_mode is off
+    r = client.post('/api/analysts/queue-catalyst-activity', json={
+        'ticker': 'MDT', 'topic': '4Q26 Earnings', 'fingerprint': 'fp-off', 'fileCount': 1,
+    })
+    body = r.get_json()
+    assert body['created'][0]['autoRan'] is False
+
+    with app_v3.get_db() as (_c, cur):
+        cur.execute("SELECT status FROM analyst_activities WHERE ticker='MDT'")
+        assert cur.fetchone()['status'] == 'pending_review'
+
+
+def test_auto_mode_skips_takeaway_activities(client, clean_db):
+    aid = _create_analyst(client, ['AAPL'])
+    client.patch(f'/api/analysts/{aid}', json={'autoMode': {'enabled': True, 'expires_at': None}})
+    r = client.post('/api/analysts/queue-catalyst-activity', json={
+        'ticker': 'AAPL', 'topic': 'WWDC takeaways', 'fingerprint': 'fp-x', 'fileCount': 1,
+    })
+    body = r.get_json()
+    # takeaway activities are NOT auto-run even if auto_mode is on
+    assert body['created'][0]['autoRan'] is False
+    with app_v3.get_db() as (_c, cur):
+        cur.execute("SELECT status, activity_type FROM analyst_activities WHERE ticker='AAPL'")
+        row = cur.fetchone()
+    assert row['activity_type'] == 'takeaway'
+    assert row['status'] == 'pending_review'
+
+
 def test_pending_inbox_includes_running_activities(client, clean_db):
     _create_analyst(client, ['MDT'])
     activity_id = _queue_earnings_activity(client)
