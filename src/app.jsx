@@ -7113,8 +7113,18 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
             // Feed tab state
             const [feedEpisodes, setFeedEpisodes] = useState([]);
+            const [feedAllFeeds, setFeedAllFeeds] = useState([]);
             const [feedLoading, setFeedLoading] = useState(false);
             const [feedError, setFeedError] = useState(null);
+            useEffect(() => {
+                (async () => {
+                    try {
+                        const r = await fetch(`${API_URL}/api/media/feeds`);
+                        const j = await r.json();
+                        setFeedAllFeeds(j.feeds || []);
+                    } catch {}
+                })();
+            }, []);
             const [feedFilters, setFeedFilters] = useState({
                 source: 'podcast', ticker: '', sector: '', days: 7, q: '', material: false,
                 sectorBundle: null,
@@ -24472,7 +24482,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             className="px-2 py-1.5 rounded-lg border border-slate-300 bg-white max-w-[200px]"
                                         >
                                             <option value="">All podcasts</option>
-                                            {[...new Set(feedEpisodes.map(ep => ep.feedName).filter(Boolean))].sort().map(name => (
+                                            {[...new Set([
+                                                ...feedAllFeeds.filter(f => !f.muted).map(f => f.name),
+                                                ...feedEpisodes.map(ep => ep.feedName),
+                                            ].filter(Boolean))].sort().map(name => (
                                                 <option key={name} value={name}>{name}</option>
                                             ))}
                                         </select>
