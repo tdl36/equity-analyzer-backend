@@ -54,7 +54,7 @@ if (typeof window !== 'undefined') {
         };
 
         // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-24T12';
+        const BUILD_VERSION = '2026-04-24T13';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -23152,14 +23152,34 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             </div>
                                             <div className="bg-white/5 border border-white/10 rounded-lg p-4 mb-4">
                                                 <h3 className="font-semibold text-sm mb-2">Auto Mode</h3>
-                                                <label className="flex items-center gap-2 text-xs text-slate-400">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={!!(selectedAnalyst.autoMode && selectedAnalyst.autoMode.enabled)}
-                                                        onChange={e => patchAnalyst(selectedAnalyst.id, { autoMode: { enabled: e.target.checked, expires_at: null } })}
-                                                    />
-                                                    Auto-fire approved activities (when enabled, investigations run without waiting for approval)
-                                                </label>
+                                                <p className="text-[11px] text-slate-500 mb-2">When a switch is on, qualifying activities skip the review queue and auto-run the specialized prompt. Flip off to keep items in pending_review for your approval.</p>
+                                                {(() => {
+                                                    const am = selectedAnalyst.autoMode || {};
+                                                    // Back-compat: legacy rows use {enabled: true/false} meaning "earnings"
+                                                    const earningsOn = !!(am.earnings ?? am.enabled);
+                                                    const takeawaysOn = !!am.takeaways;
+                                                    const write = (next) => patchAnalyst(selectedAnalyst.id, { autoMode: { ...next, expires_at: null } });
+                                                    return (
+                                                        <div className="space-y-1">
+                                                            <label className="flex items-center gap-2 text-xs text-slate-300">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={earningsOn}
+                                                                    onChange={e => write({ earnings: e.target.checked, takeaways: takeawaysOn })}
+                                                                />
+                                                                Auto-run <span className="text-amber-300">earnings recaps</span> (4-section prompt)
+                                                            </label>
+                                                            <label className="flex items-center gap-2 text-xs text-slate-300">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={takeawaysOn}
+                                                                    onChange={e => write({ earnings: earningsOn, takeaways: e.target.checked })}
+                                                                />
+                                                                Auto-run <span className="text-slate-200">takeaways</span> (generic catalyst synth)
+                                                            </label>
+                                                        </div>
+                                                    );
+                                                })()}
                                             </div>
                                             <div className="bg-white/5 border border-white/10 rounded-lg p-4">
                                                 <h3 className="font-semibold text-sm mb-2">Recent activities</h3>

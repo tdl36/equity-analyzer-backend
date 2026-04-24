@@ -21096,8 +21096,10 @@ def analysts_queue_catalyst_activity():
                     VALUES (%s, %s, %s, %s, 'pending_review', 'catalyst_folder', %s::jsonb, NOW())
                 ''', (act_id, a['id'], activity_type, ticker, json.dumps(inp)))
 
-            # If this analyst's Auto Mode is ON AND it's an earnings_recap,
-            # dispatch the run immediately instead of waiting for a click.
+            # Per-analyst Auto Mode: two independent switches —
+            #   auto_mode.earnings (default: auto_mode.enabled for legacy rows)
+            #   auto_mode.takeaways
+            # Dispatch immediately if the relevant switch is on and not expired.
             auto_ran = False
             try:
                 auto = a.get('auto_mode') or {}
@@ -21113,7 +21115,13 @@ def analysts_queue_catalyst_activity():
                         still_valid = datetime.fromisoformat(expires_at.replace('Z', '+00:00')) > datetime.utcnow()
                     except Exception:
                         still_valid = True
-                if auto.get('enabled') and still_valid and activity_type == 'earnings_recap':
+                run_earnings = bool(auto.get('earnings', auto.get('enabled', False)))
+                run_takeaways = bool(auto.get('takeaways', False))
+                should_run = (
+                    (activity_type == 'earnings_recap' and run_earnings)
+                    or (activity_type == 'takeaway' and run_takeaways)
+                )
+                if should_run and still_valid:
                     _dispatch_activity_run(act_id)
                     auto_ran = True
             except Exception as _e:

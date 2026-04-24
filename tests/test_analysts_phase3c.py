@@ -244,20 +244,47 @@ def test_auto_mode_off_leaves_activity_pending(client, clean_db):
         assert cur.fetchone()['status'] == 'pending_review'
 
 
-def test_auto_mode_skips_takeaway_activities(client, clean_db):
+def test_legacy_enabled_toggle_only_auto_runs_earnings_not_takeaways(client, clean_db):
     aid = _create_analyst(client, ['AAPL'])
+    # Legacy auto_mode with just {enabled: true} -> maps to earnings only
     client.patch(f'/api/analysts/{aid}', json={'autoMode': {'enabled': True, 'expires_at': None}})
     r = client.post('/api/analysts/queue-catalyst-activity', json={
         'ticker': 'AAPL', 'topic': 'WWDC takeaways', 'fingerprint': 'fp-x', 'fileCount': 1,
     })
     body = r.get_json()
-    # takeaway activities are NOT auto-run even if auto_mode is on
     assert body['created'][0]['autoRan'] is False
     with app_v3.get_db() as (_c, cur):
         cur.execute("SELECT status, activity_type FROM analyst_activities WHERE ticker='AAPL'")
         row = cur.fetchone()
     assert row['activity_type'] == 'takeaway'
     assert row['status'] == 'pending_review'
+
+
+def test_auto_mode_takeaways_flag_auto_runs_takeaway(client, clean_db):
+    aid = _create_analyst(client, ['AAPL'])
+    # Explicitly enable takeaways auto-run
+    client.patch(f'/api/analysts/{aid}', json={'autoMode': {'earnings': False, 'takeaways': True, 'expires_at': None}})
+    r = client.post('/api/analysts/queue-catalyst-activity', json={
+        'ticker': 'AAPL', 'topic': 'WWDC takeaways', 'fingerprint': 'fp-tk', 'fileCount': 1,
+    })
+    body = r.get_json()
+    assert body['created'][0]['autoRan'] is True
+    with app_v3.get_db() as (_c, cur):
+        cur.execute("SELECT status FROM analyst_activities WHERE ticker='AAPL'")
+        assert cur.fetchone()['status'] == 'running'
+
+
+def test_auto_mode_takeaways_does_not_auto_run_earnings(client, clean_db):
+    aid = _create_analyst(client, ['MDT'])
+    # Takeaways on, earnings off -> earnings stays pending
+    client.patch(f'/api/analysts/{aid}', json={'autoMode': {'earnings': False, 'takeaways': True, 'expires_at': None}})
+    r = client.post('/api/analysts/queue-catalyst-activity', json={
+        'ticker': 'MDT', 'topic': '1Q26 Earnings', 'fingerprint': 'fp-e', 'fileCount': 1,
+    })
+    assert r.get_json()['created'][0]['autoRan'] is False
+    with app_v3.get_db() as (_c, cur):
+        cur.execute("SELECT status FROM analyst_activities WHERE ticker='MDT'")
+        assert cur.fetchone()['status'] == 'pending_review'
 
 
 def test_pending_inbox_includes_running_activities(client, clean_db):
