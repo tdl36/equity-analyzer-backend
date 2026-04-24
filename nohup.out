@@ -1,0 +1,12 @@
+Traceback (most recent call last):
+  File "/Users/tonydlee/Projects/equity-analyzer-backend/charlie_local_agent.py", line 35, in <module>
+    import requests
+ModuleNotFoundError: No module named 'requests'
+Traceback (most recent call last):
+  File "/Users/tonydlee/Projects/equity-analyzer-backend/charlie_local_agent.py", line 35, in <module>
+    import requests
+ModuleNotFoundError: No module named 'requests'
+Traceback (most recent call last):
+  File "/Users/tonydlee/Projects/equity-analyzer-backend/charlie_local_agent.py", line 35, in <module>
+    import requests
+ModuleNotFoundError: No module named 'requests'

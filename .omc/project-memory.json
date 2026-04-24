@@ -1,0 +1,353 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1774607249519,
+  "projectRoot": "/Users/tonydlee/Projects/equity-analyzer-backend",
+  "techStack": {
+    "languages": [
+      {
+        "name": "Python",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "requirements.txt"
+        ]
+      }
+    ],
+    "frameworks": [],
+    "packageManager": "pip",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": null,
+    "lintCommand": null,
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "EXAMPLE": {
+      "path": "EXAMPLE",
+      "purpose": null,
+      "fileCount": 3,
+      "lastAccessed": 1774607249491,
+      "keyFiles": [
+        "CI CEO call Transcription.docx",
+        "CI CEO call messy.docx",
+        "Cigna CEO callback.m4a"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "index.html",
+      "accessCount": 399,
+      "lastAccessed": 1777000541205,
+      "type": "directory"
+    },
+    {
+      "path": "app_v3.py",
+      "accessCount": 208,
+      "lastAccessed": 1776993116692,
+      "type": "directory"
+    },
+    {
+      "path": "charlie_local_agent.py",
+      "accessCount": 32,
+      "lastAccessed": 1776977558354,
+      "type": "directory"
+    },
+    {
+      "path": "service-worker.js",
+      "accessCount": 31,
+      "lastAccessed": 1777001144560,
+      "type": "file"
+    },
+    {
+      "path": "worker.js",
+      "accessCount": 30,
+      "lastAccessed": 1776999217271,
+      "type": "file"
+    },
+    {
+      "path": "tests/conftest.py",
+      "accessCount": 14,
+      "lastAccessed": 1776993127130,
+      "type": "file"
+    },
+    {
+      "path": "media_trackers/extractor.py",
+      "accessCount": 10,
+      "lastAccessed": 1776985716457,
+      "type": "file"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-04-22-podcast-feed-foundation-m1-m4.md",
+      "accessCount": 8,
+      "lastAccessed": 1776910194354,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_extractor.py",
+      "accessCount": 7,
+      "lastAccessed": 1776985321862,
+      "type": "file"
+    },
+    {
+      "path": "scheduler.py",
+      "accessCount": 7,
+      "lastAccessed": 1776985815299,
+      "type": "file"
+    },
+    {
+      "path": "requirements.txt",
+      "accessCount": 6,
+      "lastAccessed": 1776985816407,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_scheduler.py",
+      "accessCount": 5,
+      "lastAccessed": 1776985923610,
+      "type": "file"
+    },
+    {
+      "path": "",
+      "accessCount": 4,
+      "lastAccessed": 1775363585384,
+      "type": "directory"
+    },
+    {
+      "path": "start_agent.sh",
+      "accessCount": 4,
+      "lastAccessed": 1776198118049,
+      "type": "file"
+    },
+    {
+      "path": "media_trackers/seed_feeds.py",
+      "accessCount": 4,
+      "lastAccessed": 1776958514689,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_feed_api.py",
+      "accessCount": 4,
+      "lastAccessed": 1776992998434,
+      "type": "file"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-03-27-research-export-slides-design.md",
+      "accessCount": 3,
+      "lastAccessed": 1775396667964,
+      "type": "file"
+    },
+    {
+      "path": "media_trackers/prompts.py",
+      "accessCount": 3,
+      "lastAccessed": 1776985361398,
+      "type": "file"
+    },
+    {
+      "path": "media_trackers/material.py",
+      "accessCount": 3,
+      "lastAccessed": 1776985802095,
+      "type": "file"
+    },
+    {
+      "path": ".assetsignore",
+      "accessCount": 3,
+      "lastAccessed": 1776999422864,
+      "type": "file"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-04-22-charlie-media-trackers-podcast-design.md",
+      "accessCount": 2,
+      "lastAccessed": 1776887663790,
+      "type": "file"
+    },
+    {
+      "path": "media_trackers/poller.py",
+      "accessCount": 2,
+      "lastAccessed": 1776984841979,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_material.py",
+      "accessCount": 2,
+      "lastAccessed": 1776985704268,
+      "type": "file"
+    },
+    {
+      "path": "media_trackers/notifications.py",
+      "accessCount": 2,
+      "lastAccessed": 1776992994015,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_feed_actions_api.py",
+      "accessCount": 2,
+      "lastAccessed": 1776992998149,
+      "type": "file"
+    },
+    {
+      "path": "src/app.jsx",
+      "accessCount": 2,
+      "lastAccessed": 1776999262042,
+      "type": "file"
+    },
+    {
+      "path": "pytest.ini",
+      "accessCount": 1,
+      "lastAccessed": 1776944993272,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_db_migration.py",
+      "accessCount": 1,
+      "lastAccessed": 1776947661763,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_seed_feeds.py",
+      "accessCount": 1,
+      "lastAccessed": 1776954550848,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_feeds_api.py",
+      "accessCount": 1,
+      "lastAccessed": 1776954606790,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_watchlist_api.py",
+      "accessCount": 1,
+      "lastAccessed": 1776954733745,
+      "type": "file"
+    },
+    {
+      "path": "tests/fixtures/odd_lots_sample.xml",
+      "accessCount": 1,
+      "lastAccessed": 1776954870198,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_poller.py",
+      "accessCount": 1,
+      "lastAccessed": 1776954886892,
+      "type": "file"
+    },
+    {
+      "path": "tests/fixtures/shownotes_sample.txt",
+      "accessCount": 1,
+      "lastAccessed": 1776956198720,
+      "type": "file"
+    },
+    {
+      "path": "media_trackers/scrapers.py",
+      "accessCount": 1,
+      "lastAccessed": 1776984882625,
+      "type": "file"
+    },
+    {
+      "path": "media_trackers/transcribe.py",
+      "accessCount": 1,
+      "lastAccessed": 1776984919131,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_transcribe.py",
+      "accessCount": 1,
+      "lastAccessed": 1776984946699,
+      "type": "file"
+    },
+    {
+      "path": "media_trackers/clustering.py",
+      "accessCount": 1,
+      "lastAccessed": 1776985781156,
+      "type": "file"
+    },
+    {
+      "path": "media_trackers/cost_watch.py",
+      "accessCount": 1,
+      "lastAccessed": 1776985793177,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_notifications.py",
+      "accessCount": 1,
+      "lastAccessed": 1776985872083,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_cost_watch.py",
+      "accessCount": 1,
+      "lastAccessed": 1776985888606,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_heatmap_api.py",
+      "accessCount": 1,
+      "lastAccessed": 1776988173107,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_theme_clusters_api.py",
+      "accessCount": 1,
+      "lastAccessed": 1776988181866,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_notes_api.py",
+      "accessCount": 1,
+      "lastAccessed": 1776993144261,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_email_endpoints.py",
+      "accessCount": 1,
+      "lastAccessed": 1776993162949,
+      "type": "file"
+    },
+    {
+      "path": "wrangler.jsonc",
+      "accessCount": 1,
+      "lastAccessed": 1776999086866,
+      "type": "file"
+    },
+    {
+      "path": "src/app_body.jsx",
+      "accessCount": 1,
+      "lastAccessed": 1776999144094,
+      "type": "file"
+    },
+    {
+      "path": "tailwind.config.js",
+      "accessCount": 1,
+      "lastAccessed": 1776999158815,
+      "type": "file"
+    },
+    {
+      "path": "src/tailwind-input.css",
+      "accessCount": 1,
+      "lastAccessed": 1776999159560,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

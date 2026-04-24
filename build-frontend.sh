@@ -1,30 +1,25 @@
 #!/bin/bash
-# Frontend build: precompile JSX (esbuild) and Tailwind CSS so the browser
-# does not have to load @babel/standalone or cdn.tailwindcss.com at runtime.
-#
-# NOTE: this file is named build-frontend.sh (NOT build.sh) because build.sh
-# is the Render backend build script for Python deps. Do not rename it.
+# Frontend build: Babel transpiles JSX + const/let → var, then esbuild bundles.
+# Do NOT rename (build.sh is Render's Python build).
 set -euo pipefail
-
 cd "$(dirname "$0")"
+mkdir -p dist build
 
-mkdir -p dist
+echo "[1/3] Babel transpile..."
+# -x .jsx because default doesn't pick .jsx
+npx babel src --out-dir build --extensions .jsx,.js 2>&1 | tail -3
 
-echo "[1/2] Bundling JSX with esbuild..."
-npx esbuild src/app.jsx \
+echo "[2/3] esbuild bundle..."
+npx esbuild build/app.js \
   --bundle \
   --minify \
   --sourcemap \
   --outfile=dist/app.js \
-  --loader:.js=jsx \
-  --loader:.jsx=jsx \
-  --define:process.env.NODE_ENV=\"production\" \
-  --target=es2020 \
-  --format=iife
+  --define:process.env.NODE_ENV='"production"' \
+  --target=es2017 \
+  --format=iife 2>&1 | tail -3
 
-echo "[2/2] Compiling Tailwind CSS..."
-npx tailwindcss -i src/tailwind-input.css -o dist/tailwind.css --minify
+echo "[3/3] Tailwind CSS..."
+npx tailwindcss -i src/tailwind-input.css -o dist/tailwind.css --minify 2>&1 | tail -2
 
-echo
-echo "Build complete:"
-ls -lh dist/app.js dist/tailwind.css | awk '{printf "  %-24s %s\n", $9, $5}'
+ls -lh dist/app.js dist/tailwind.css
