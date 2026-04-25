@@ -310,9 +310,10 @@ def media_admin_kick():
     data = request.json or {}
     stuck_min = int(data.get('stuckMinutes', 30))
     retry_failed = bool(data.get('retryFailed', False))
+    retry_skipped = bool(data.get('retrySkipped', False))
     feed_id = data.get('feedId')
 
-    reset = {'transcribing': 0, 'extracting': 0, 'failed': 0}
+    reset = {'transcribing': 0, 'extracting': 0, 'failed': 0, 'skipped': 0}
     feed_clause = 'AND feed_id = %s' if feed_id else ''
     feed_params = [feed_id] if feed_id else []
 
@@ -338,6 +339,13 @@ def media_admin_kick():
                 feed_params,
             )
             reset['failed'] = len(cur.fetchall())
+        if retry_skipped:
+            cur.execute(
+                f"UPDATE media_episodes SET status='new', error_message=NULL "
+                f"WHERE status='skipped' {feed_clause} RETURNING id",
+                feed_params,
+            )
+            reset['skipped'] = len(cur.fetchall())
 
     # Fire the batches in a background thread so the HTTP request
     # returns in <1s (transcription can take minutes per episode and
