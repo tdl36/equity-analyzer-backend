@@ -143,7 +143,12 @@ def build_scheduler(use_memory_jobstore: bool = False) -> BackgroundScheduler:
         job_defaults={'coalesce': True, 'max_instances': 1, 'misfire_grace_time': 300},
     )
     sched.add_job(run_feed_poller,        'interval', minutes=30, id='feed_poller',        replace_existing=True)
-    sched.add_job(run_transcribe_worker,  'interval', minutes=2,  id='transcribe_worker',  replace_existing=True)
+    # Transcribe is the throughput bottleneck. Run every minute and allow 2
+    # instances overlapping so a slow Gemini batch doesn't starve the next
+    # tick. With MAX_EPISODES_PER_BATCH=4 and MAX_PARALLEL_TRANSCRIBE=4, peak
+    # in-flight is 8 audio buffers (~1GB worst case — fits Render Standard,
+    # tight on Starter; lower max_instances if memory pressure shows).
+    sched.add_job(run_transcribe_worker,  'interval', minutes=1,  id='transcribe_worker',  replace_existing=True, max_instances=2, coalesce=False)
     sched.add_job(run_extract_worker,     'interval', minutes=1,  id='extract_worker',     replace_existing=True)
     sched.add_job(run_cluster_weekly,     'cron', day_of_week='sun', hour=5, minute=0,
                   id='cluster_weekly',     replace_existing=True)

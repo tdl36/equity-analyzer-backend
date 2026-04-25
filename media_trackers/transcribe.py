@@ -20,7 +20,7 @@ import app_v3
 from media_trackers.scrapers import try_publisher_scrape
 
 
-MAX_EPISODES_PER_BATCH = 8
+MAX_EPISODES_PER_BATCH = 4
 MAX_PARALLEL_TRANSCRIBE = 4        # threads per batch (mostly I/O wait on Gemini)
 MAX_DURATION_SEC = 14400           # 4 hour cap on Gemini fallback
 MAX_AUDIO_BYTES = 150 * 1024 * 1024  # 150 MB download cap
