@@ -14610,10 +14610,19 @@ def agent_health():
 # TRADING AGENTS (Multi-Agent Analysis)
 # ============================================
 
+# TODO(future): replace this hand-maintained list with a daily refresh
+# that queries each provider's list-models endpoint
+# (Anthropic GET /v1/models, OpenAI GET /v1/models, Google ListModels)
+# so retired models drop automatically and new ones appear without a
+# code change.
 TRADING_AGENT_PROVIDERS = {
-    "anthropic": ["claude-haiku-4-5-20251001", "claude-sonnet-4-6", "claude-opus-4-6"],
+    "anthropic": [
+        "claude-haiku-4-5-20251001",
+        "claude-sonnet-4-6",
+        "claude-opus-4-7",
+    ],
     "openai": ["gpt-4.1-mini", "gpt-4.1", "o4-mini"],
-    "google": ["gemini-2.0-flash", "gemini-2.5-pro"],
+    "google": ["gemini-2.5-flash", "gemini-2.5-pro"],
 }
 
 @app.route('/api/agents/providers', methods=['GET'])
