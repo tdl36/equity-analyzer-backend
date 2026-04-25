@@ -3311,6 +3311,13 @@ def _run_trading_agent(run_id, ticker, date_str, provider, model):
         config["llm_provider"] = provider
         config["deep_think_llm"] = model
         config["quick_think_llm"] = model
+        # DEFAULT_CONFIG has backend_url pinned to OpenAI's endpoint. When
+        # provider != openai, that URL gets handed to the Anthropic/Google
+        # client as base_url and every request returns 404. Clear it so each
+        # provider picks its own native endpoint.
+        provider_lower = (provider or '').lower()
+        if provider_lower not in ('openai', 'azure', 'xai', 'deepseek', 'qwen', 'glm', 'ollama', 'openrouter'):
+            config["backend_url"] = None
 
         _append_log("system", "Initializing agent graph...")
         ta = TradingAgentsGraph(debug=True, config=config)
