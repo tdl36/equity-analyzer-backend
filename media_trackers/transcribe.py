@@ -151,6 +151,18 @@ def _download_audio(audio_url: str) -> tuple[bytes, str]:
                         headers={'User-Agent': 'Charlie/1.0'})
     resp.raise_for_status()
     mime_type = resp.headers.get('Content-Type', 'audio/mpeg').split(';')[0].strip() or 'audio/mpeg'
+    # Some hosts (Dwarkesh's Cloudflare worker, others) serve audio as
+    # binary/octet-stream which Gemini rejects. Fall back to the URL's
+    # extension or audio/mpeg.
+    if mime_type in ('binary/octet-stream', 'application/octet-stream', 'application/binary'):
+        url_lower = audio_url.lower().split('?')[0]
+        if   url_lower.endswith('.mp3'): mime_type = 'audio/mpeg'
+        elif url_lower.endswith('.m4a'): mime_type = 'audio/mp4'
+        elif url_lower.endswith('.aac'): mime_type = 'audio/aac'
+        elif url_lower.endswith('.ogg') or url_lower.endswith('.oga'): mime_type = 'audio/ogg'
+        elif url_lower.endswith('.wav'): mime_type = 'audio/wav'
+        elif url_lower.endswith('.flac'): mime_type = 'audio/flac'
+        else: mime_type = 'audio/mpeg'
 
     content_length = resp.headers.get('Content-Length')
     if content_length:
