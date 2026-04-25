@@ -14610,12 +14610,10 @@ def agent_health():
 # TRADING AGENTS (Multi-Agent Analysis)
 # ============================================
 
-# TODO(future): replace this hand-maintained list with a daily refresh
-# that queries each provider's list-models endpoint
-# (Anthropic GET /v1/models, OpenAI GET /v1/models, Google ListModels)
-# so retired models drop automatically and new ones appear without a
-# code change.
-TRADING_AGENT_PROVIDERS = {
+# Hand-maintained fallback used when provider list-endpoint calls fail
+# (no API key, network error, etc.). The live list comes from
+# _fetch_provider_models below; this dict is just the safety net.
+TRADING_AGENT_PROVIDERS_FALLBACK = {
     "anthropic": [
         "claude-haiku-4-5-20251001",
         "claude-sonnet-4-6",
@@ -14625,9 +14623,142 @@ TRADING_AGENT_PROVIDERS = {
     "google": ["gemini-2.5-flash", "gemini-2.5-pro"],
 }
 
+_PROVIDERS_CACHE_KEY = 'agent_providers_cache'
+_PROVIDERS_CACHE_TTL_SEC = 24 * 3600
+
+
+def _fetch_anthropic_models(api_key):
+    if not api_key:
+        return None
+    try:
+        r = requests.get(
+            'https://api.anthropic.com/v1/models',
+            headers={'x-api-key': api_key, 'anthropic-version': '2023-06-01'},
+            timeout=10,
+        )
+        if not r.ok:
+            return None
+        data = r.json().get('data', []) or []
+        ids = [m['id'] for m in data
+               if m.get('type') == 'model'
+               and (m.get('id') or '').startswith('claude-')]
+        return sorted(ids, reverse=True) if ids else None
+    except Exception:
+        return None
+
+
+def _fetch_openai_models(api_key):
+    if not api_key:
+        return None
+    try:
+        r = requests.get(
+            'https://api.openai.com/v1/models',
+            headers={'Authorization': f'Bearer {api_key}'},
+            timeout=10,
+        )
+        if not r.ok:
+            return None
+        data = r.json().get('data', []) or []
+        excludes = ('-realtime', '-audio', '-tts', '-vision-preview',
+                    '-instruct', '-search-preview', '-transcribe', '-image')
+        ids = [m['id'] for m in data
+               if (m.get('id') or '').startswith(('gpt-', 'o1-', 'o3-', 'o4-'))
+               and not any(s in m['id'] for s in excludes)
+               and ':' not in m['id']]
+        return sorted(set(ids)) if ids else None
+    except Exception:
+        return None
+
+
+def _fetch_google_models(api_key):
+    if not api_key:
+        return None
+    try:
+        r = requests.get(
+            f'https://generativelanguage.googleapis.com/v1beta/models?key={api_key}',
+            timeout=10,
+        )
+        if not r.ok:
+            return None
+        models = r.json().get('models', []) or []
+        ids = []
+        for m in models:
+            name = (m.get('name') or '').replace('models/', '')
+            if not name.startswith('gemini-'):
+                continue
+            if 'generateContent' not in (m.get('supportedGenerationMethods') or []):
+                continue
+            ids.append(name)
+        return sorted(set(ids)) if ids else None
+    except Exception:
+        return None
+
+
+def _fetch_provider_models():
+    """Query each provider's list-models endpoint. Returns dict mapping
+    provider -> sorted list of model ids, falling back to the hardcoded
+    list for any provider whose call fails."""
+    out = {}
+    out['anthropic'] = (_fetch_anthropic_models(os.environ.get('ANTHROPIC_API_KEY', ''))
+                        or TRADING_AGENT_PROVIDERS_FALLBACK['anthropic'])
+    out['openai'] = (_fetch_openai_models(os.environ.get('OPENAI_API_KEY', ''))
+                     or TRADING_AGENT_PROVIDERS_FALLBACK['openai'])
+    out['google'] = (_fetch_google_models(
+        os.environ.get('GEMINI_API_KEY', '') or os.environ.get('GOOGLE_API_KEY', ''))
+                     or TRADING_AGENT_PROVIDERS_FALLBACK['google'])
+    return out
+
+
+def _get_cached_providers(force_refresh=False):
+    if not force_refresh:
+        try:
+            with get_db() as (_c, cur):
+                cur.execute("SELECT value, updated_at FROM app_settings WHERE key=%s",
+                            (_PROVIDERS_CACHE_KEY,))
+                row = cur.fetchone()
+            if row and row.get('value') and row.get('updated_at'):
+                age = (datetime.utcnow() - row['updated_at']).total_seconds()
+                if age < _PROVIDERS_CACHE_TTL_SEC:
+                    val = row['value']
+                    if isinstance(val, str):
+                        val = json.loads(val)
+                    return val, int(age)
+        except Exception:
+            pass
+    fresh = _fetch_provider_models()
+    try:
+        with get_db(commit=True) as (_c, cur):
+            cur.execute('''
+                INSERT INTO app_settings (key, value, updated_at)
+                VALUES (%s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP
+            ''', (_PROVIDERS_CACHE_KEY, json.dumps(fresh)))
+    except Exception:
+        pass
+    return fresh, 0
+
+
 @app.route('/api/agents/providers', methods=['GET'])
 def get_agent_providers():
-    return jsonify(TRADING_AGENT_PROVIDERS)
+    """Cached provider/model dropdown. Auto-refreshes from each provider's
+    list-models endpoint daily (24h TTL). Response is a flat dict
+    {provider: [model, ...]} for backward compatibility with the frontend
+    Object.keys() iteration; meta available at /api/agents/providers/meta."""
+    providers, _ = _get_cached_providers(force_refresh=False)
+    return jsonify(providers)
+
+
+@app.route('/api/agents/providers/meta', methods=['GET'])
+def get_agent_providers_meta():
+    _, age_sec = _get_cached_providers(force_refresh=False)
+    return jsonify({'cacheAgeSec': age_sec, 'ttlSec': _PROVIDERS_CACHE_TTL_SEC})
+
+
+@app.route('/api/agents/providers/refresh', methods=['POST'])
+def refresh_agent_providers():
+    """Force a provider list refresh (bypass the 24h cache)."""
+    providers, _ = _get_cached_providers(force_refresh=True)
+    return jsonify(providers)
 
 
 @app.route('/api/agents/run', methods=['POST'])
