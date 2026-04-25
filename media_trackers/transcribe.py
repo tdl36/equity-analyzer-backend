@@ -94,7 +94,17 @@ def _gemini_transcribe_audio(audio_bytes: bytes, mime_type: str) -> str:
             # Wait for processing
             import time as _time
             wait_start = _time.time()
-            while hasattr(uploaded, 'state') and str(uploaded.state) not in ('ACTIVE', 'State.ACTIVE', '2'):
+            def _is_active(s):
+                # Gemini SDK has shipped multiple state representations:
+                # 'ACTIVE', 'State.ACTIVE', 'FileState.ACTIVE', '2', and the
+                # enum itself (with .name == 'ACTIVE'). Accept any of them.
+                if s is None:
+                    return False
+                name = getattr(s, 'name', None)
+                if isinstance(name, str) and name.upper() == 'ACTIVE':
+                    return True
+                return str(s).rsplit('.', 1)[-1].upper() == 'ACTIVE' or str(s) == '2'
+            while hasattr(uploaded, 'state') and not _is_active(uploaded.state):
                 if _time.time() - wait_start > 600:
                     raise RuntimeError(f'Gemini file processing timed out after 600s (size={size_mb:.1f}MB, last state={uploaded.state})')
                 _time.sleep(5)
