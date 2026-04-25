@@ -20,8 +20,9 @@ import app_v3
 from media_trackers.scrapers import try_publisher_scrape
 
 
-MAX_EPISODES_PER_BATCH = 3
-MAX_DURATION_SEC = 7200            # 2 hour cap on Gemini fallback
+MAX_EPISODES_PER_BATCH = 8
+MAX_PARALLEL_TRANSCRIBE = 4        # threads per batch (mostly I/O wait on Gemini)
+MAX_DURATION_SEC = 14400           # 4 hour cap on Gemini fallback
 MAX_AUDIO_BYTES = 150 * 1024 * 1024  # 150 MB download cap
 DOWNLOAD_TIMEOUT_SEC = 120
 
@@ -230,11 +231,20 @@ def process_transcribe_batch() -> None:
              LIMIT %s
         ''', (MAX_EPISODES_PER_BATCH,))
         ids = [r['id'] for r in cur.fetchall()]
-    for eid in ids:
+    if not ids:
+        return
+    # Transcription is mostly waiting on Gemini upload+processing+generate;
+    # ThreadPoolExecutor lets us hold MAX_PARALLEL_TRANSCRIBE in flight at
+    # once. Each thread holds one episode's audio bytes (10-150MB), so cap
+    # parallelism rather than spawning unbounded.
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    def _safe(eid):
         try:
             transcribe_episode(eid)
         except Exception as e:
-            try:
-                _set_failed(eid, str(e))
-            except Exception:
-                pass
+            try: _set_failed(eid, str(e))
+            except Exception: pass
+    with ThreadPoolExecutor(max_workers=MAX_PARALLEL_TRANSCRIBE) as ex:
+        futures = [ex.submit(_safe, eid) for eid in ids]
+        for _ in as_completed(futures):
+            pass
