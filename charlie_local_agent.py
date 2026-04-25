@@ -2268,6 +2268,8 @@ def _wait_for_audio_job_and_move(fname: str, fpath: Path, job_id: str) -> None:
                 if r.status_code == 404:
                     # Job id never landed (or rolled off) — treat as failure.
                     log.warning(f"Audio job {job_id} not found (backend restart?); leaving {fname} for next tick retry")
+                    try: _known_audio_files.discard(fname)
+                    except Exception: pass
                     return
                 if not r.ok:
                     continue
@@ -2339,13 +2341,15 @@ def check_for_new_audio():
             try:
                 with open(fpath, 'rb') as af:
                     file_data = af.read()
-                # Upload to backend auto-process endpoint
+                # Upload to backend auto-process endpoint. 30+ MB files at
+                # variable upload speeds need a generous timeout (separate
+                # connect / read so we don't sit forever on a dead socket).
                 res = requests.post(
                     f"{CHARLIE_API}/api/auto-process-audio",
                     files={'file': (fname, file_data)},
                     data={'detailLevel': 'standard'},
                     headers={'Authorization': f'ApiKey {os.environ.get("CHARLIE_API_KEY", "")}'},
-                    timeout=30,
+                    timeout=(15, 300),
                 )
                 if res.ok:
                     data = res.json()
@@ -2357,8 +2361,14 @@ def check_for_new_audio():
                     _wait_for_audio_job_and_move(fname, fpath, job_id)
                 else:
                     log.warning(f"Audio auto-process failed for {fname}: {res.status_code}")
+                    try: _known_audio_files.discard(fname)
+                    except Exception: pass
             except Exception as e:
                 log.warning(f"Error auto-processing audio {fname}: {e}")
+                # Drop from known-files so the next tick retries instead of
+                # silently giving up forever.
+                try: _known_audio_files.discard(fname)
+                except Exception: pass
     except PermissionError:
         pass
 
