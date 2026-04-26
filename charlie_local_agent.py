@@ -2832,11 +2832,18 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
     length = steps_detail.get("length", "standard")
     custom_instructions = steps_detail.get("customInstructions", "")
     prompt_variant = (steps_detail.get("prompt_variant") or "").strip().lower()
-    # Anthropic model selection. Backend passes 'model' in steps_detail when
-    # the user picked one in the UI. Default to current latest Sonnet so
-    # bumps don't require code changes; older recaps without model in spec
-    # use this default automatically.
-    recap_model = (steps_detail.get("model") or os.environ.get("CHARLIE_RECAP_MODEL") or "claude-sonnet-4-6").strip()
+    # Provider + model selection. Backend passes both in steps_detail when
+    # the user picked one in the UI. Defaults: anthropic + claude-sonnet-4-6.
+    recap_provider = (steps_detail.get("provider") or os.environ.get("CHARLIE_RECAP_PROVIDER") or "anthropic").strip().lower()
+    if recap_provider not in ("anthropic", "openai", "google"):
+        log.warning(f"Unknown recap provider {recap_provider!r}, falling back to anthropic")
+        recap_provider = "anthropic"
+    _provider_default_models = {
+        "anthropic": "claude-sonnet-4-6",
+        "openai": "gpt-4.1",
+        "google": "gemini-2.5-pro",
+    }
+    recap_model = (steps_detail.get("model") or os.environ.get("CHARLIE_RECAP_MODEL") or _provider_default_models[recap_provider]).strip()
 
     try:
         variant_label = 'earnings recap' if prompt_variant == 'earnings_recap' else 'synthesis'
@@ -2942,6 +2949,93 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
         if total_batches > 1:
             log.info(f"Sources exceed context limit (~{est_tokens:,} est tokens). Splitting into {total_batches} batches.")
 
+        def _extract_text_from_pdf_b64(b64_data, name):
+            """Extract text from base64-encoded PDF. Used when target provider
+            doesn't accept native PDF blocks (OpenAI / Gemini)."""
+            try:
+                from PyPDF2 import PdfReader
+                import io as _io
+                pdf_bytes = base64.b64decode(b64_data)
+                reader = PdfReader(_io.BytesIO(pdf_bytes))
+                pages = []
+                for i, page in enumerate(reader.pages):
+                    try:
+                        t = page.extract_text() or ''
+                    except Exception:
+                        t = ''
+                    if t.strip():
+                        pages.append(t)
+                return '\n'.join(pages) or f'[Could not extract text from {name}]'
+            except Exception as e:
+                return f'[PDF text extraction failed for {name}: {e}]'
+
+        def _build_text_prompt(parts, prompt_text, char_cap=120000):
+            """Plain-text equivalent of _build_content_blocks for OpenAI/Gemini.
+            Concats source file contents (extracting PDF text inline) followed
+            by the task prompt."""
+            chunks = []
+            for sp in parts:
+                if sp['type'] == 'pdf':
+                    txt = _extract_text_from_pdf_b64(sp['data'], sp['name'])
+                    chunks.append(f"### Source: {sp['name']}\n{txt}")
+                elif sp['type'] == 'text':
+                    chunks.append(f"### Source: {sp['name']}\n{sp['content']}")
+            sources = '\n\n---\n\n'.join(chunks)
+            if len(sources) > char_cap:
+                sources = sources[:char_cap] + '\n\n[...source content truncated for length...]'
+            return f"{sources}\n\n---\n\n{prompt_text}"
+
+        def _call_recap_llm(provider, model, system_prompt, parts, prompt_text, anthropic_blocks, max_tokens=8192):
+            """Provider-aware single LLM call for the recap pipeline.
+            anthropic path uses native PDF blocks; openai/google extract text
+            via PyPDF2 then call the respective SDK with a single text prompt."""
+            log.info(f"Recap call: provider={provider} model={model}")
+            if provider == 'anthropic':
+                resp = client.messages.create(
+                    model=model,
+                    max_tokens=max_tokens,
+                    system=system_prompt,
+                    messages=[{"role": "user", "content": anthropic_blocks}],
+                )
+                return resp.content[0].text
+            elif provider == 'openai':
+                try:
+                    import openai as _openai
+                except ImportError:
+                    raise RuntimeError("openai package not installed")
+                openai_key = os.environ.get('OPENAI_API_KEY', '')
+                if not openai_key:
+                    raise RuntimeError("OPENAI_API_KEY not set in env")
+                _client = _openai.OpenAI(api_key=openai_key)
+                user_text = _build_text_prompt(parts, prompt_text)
+                resp = _client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_text},
+                    ],
+                    max_completion_tokens=max_tokens,
+                )
+                return resp.choices[0].message.content or ''
+            elif provider == 'google':
+                try:
+                    from google import genai as _genai
+                except ImportError:
+                    raise RuntimeError("google-genai package not installed")
+                google_key = os.environ.get('GEMINI_API_KEY', '') or os.environ.get('GOOGLE_API_KEY', '')
+                if not google_key:
+                    raise RuntimeError("GEMINI_API_KEY or GOOGLE_API_KEY not set in env")
+                _gclient = _genai.Client(api_key=google_key)
+                user_text = _build_text_prompt(parts, prompt_text)
+                resp = _gclient.models.generate_content(
+                    model=model,
+                    contents=[user_text],
+                    config={"system_instruction": system_prompt, "max_output_tokens": max_tokens},
+                )
+                return getattr(resp, 'text', '') or ''
+            else:
+                raise RuntimeError(f"Unknown provider: {provider}")
+
         def _build_content_blocks(parts, prompt_text):
             blocks = []
             pdf_count = 0
@@ -2982,14 +3076,12 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
         prompt_text = base_prompt.format(**fmt)
         content_blocks = _build_content_blocks(batches[0], prompt_text)
 
-        log.info(f"Synthesis batch 1: model={recap_model}")
-        response = client.messages.create(
-            model=recap_model,
+        markdown = _call_recap_llm(
+            recap_provider, recap_model,
+            "You are a senior equity research analyst. Follow all instructions precisely.",
+            batches[0], prompt_text, content_blocks,
             max_tokens=8192,
-            system="You are a senior equity research analyst. Follow all instructions precisely.",
-            messages=[{"role": "user", "content": content_blocks}],
         )
-        markdown = response.content[0].text
 
         # Process subsequent batches — merge into existing synthesis
         for i, batch in enumerate(batches[1:], 2):
@@ -3031,13 +3123,12 @@ EXISTING REPORT:
 
 Write the complete, updated synthesis report now. ZERO firm names, ALL first person."""
             merge_blocks = _build_content_blocks(batch, merge_prompt)
-            merge_response = client.messages.create(
-                model=recap_model,
+            markdown = _call_recap_llm(
+                recap_provider, recap_model,
+                "You are a senior equity research analyst. Follow all instructions precisely.",
+                batch, merge_prompt, merge_blocks,
                 max_tokens=8192,
-                system="You are a senior equity research analyst. Follow all instructions precisely.",
-                messages=[{"role": "user", "content": merge_blocks}],
             )
-            markdown = merge_response.content[0].text
             log.info(f"Batch {i}/{total_batches} merged: {len(markdown)} chars")
 
         log.info(f"Synthesis generated: {len(markdown)} chars")

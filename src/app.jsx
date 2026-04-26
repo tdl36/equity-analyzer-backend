@@ -1534,6 +1534,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [recapCustomInstructions, setRecapCustomInstructions] = useState({}); // {activityId: '...'}
             const [recapActiveTab, setRecapActiveTab] = useState({}); // {activityId: 'quick'|'summary'|'comprehensive'}
             const [recapModel, setRecapModel] = useState({}); // {activityId: 'claude-sonnet-4-6'|...}
+            const [recapProvider, setRecapProvider] = useState({}); // {activityId: 'anthropic'|'openai'|'google'}
+            const RECAP_DEFAULT_PROVIDER = 'anthropic';
             const RECAP_DEFAULT_MODEL = 'claude-sonnet-4-6';
             // Parse the multi-version recap HTML into {quick, summary, comprehensive}.
             // Falls back to a single comprehensive entry if no <section data-version> blocks
@@ -18403,22 +18405,45 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                 })}
                                                                                 
                                                                                 {/* Document content (for deep research / catalyst saves with no analyses) */}
-                                                                                {docAnalyses.length === 0 && doc.content && (
-                                                                                    <div className="bg-white/[0.02] border border-white/5 rounded-lg p-4 max-h-[500px] overflow-y-auto">
-                                                                                        <div className="prose prose-invert prose-sm max-w-none text-slate-300" dangerouslySetInnerHTML={{ __html: renderMarkdown(doc.content) }} />
-                                                                                        <div className="mt-3 flex gap-2 border-t border-white/10 pt-3">
-                                                                                            <button onClick={() => {
-                                                                                                navigator.clipboard.writeText(doc.content);
-                                                                                                alert('Copied to clipboard');
-                                                                                            }} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Copy</button>
-                                                                                            <button onClick={() => {
-                                                                                                const blob = new Blob([doc.content], { type: 'text/markdown' });
-                                                                                                const url = URL.createObjectURL(blob);
-                                                                                                const a = document.createElement('a'); a.href = url; a.download = `${doc.name || 'research'}.md`; a.click();
-                                                                                            }} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Download .md</button>
+                                                                                {docAnalyses.length === 0 && doc.content && (() => {
+                                                                                    const parsed = parseRecapVersions(doc.content);
+                                                                                    const tabKey = `doc-${doc.id}`;
+                                                                                    const tab = recapActiveTab[tabKey] || 'comprehensive';
+                                                                                    const setTab = (v) => setRecapActiveTab(s => ({...s, [tabKey]: v}));
+                                                                                    const versionLabel = { quick: 'Quick', summary: 'Summary', comprehensive: 'Comprehensive' };
+                                                                                    const currentHtml = parsed.hasVersions ? (parsed[tab] || '') : doc.content;
+                                                                                    const looksHtml = /<\s*(h[1-6]|p|ul|ol|table|section)\b/i.test(currentHtml.trim());
+                                                                                    return (
+                                                                                        <div className="bg-white/[0.02] border border-white/5 rounded-lg p-4 max-h-[500px] overflow-y-auto">
+                                                                                            {parsed.hasVersions && (
+                                                                                                <div className="flex items-center gap-1 mb-3 pb-2 border-b border-white/10">
+                                                                                                    {['quick','summary','comprehensive'].filter(v => parsed[v]).map(v => (
+                                                                                                        <button key={v} onClick={() => setTab(v)}
+                                                                                                            className={`px-2 py-0.5 text-[10px] uppercase tracking-wider rounded ${tab===v ? 'bg-amber-500 text-slate-900' : 'bg-white/10 text-amber-300/70 hover:bg-white/20'}`}>
+                                                                                                            {versionLabel[v]}
+                                                                                                        </button>
+                                                                                                    ))}
+                                                                                                </div>
+                                                                                            )}
+                                                                                            {looksHtml ? (
+                                                                                                <div className="prose prose-invert prose-sm max-w-none text-slate-300" dangerouslySetInnerHTML={{ __html: currentHtml }} />
+                                                                                            ) : (
+                                                                                                <div className="prose prose-invert prose-sm max-w-none text-slate-300" dangerouslySetInnerHTML={{ __html: renderMarkdown(currentHtml) }} />
+                                                                                            )}
+                                                                                            <div className="mt-3 flex gap-2 border-t border-white/10 pt-3">
+                                                                                                <button onClick={() => {
+                                                                                                    navigator.clipboard.writeText(currentHtml);
+                                                                                                    alert(`Copied ${parsed.hasVersions ? versionLabel[tab] : 'document'}`);
+                                                                                                }} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Copy {parsed.hasVersions ? versionLabel[tab] : ''}</button>
+                                                                                                <button onClick={() => {
+                                                                                                    const blob = new Blob([doc.content], { type: 'text/markdown' });
+                                                                                                    const url = URL.createObjectURL(blob);
+                                                                                                    const a = document.createElement('a'); a.href = url; a.download = `${doc.name || 'research'}.md`; a.click();
+                                                                                                }} className="px-2.5 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg">Download .md</button>
+                                                                                            </div>
                                                                                         </div>
-                                                                                    </div>
-                                                                                )}
+                                                                                    );
+                                                                                })()}
 
                                                                                 {/* Completed Analyses */}
                                                                                 {docAnalyses.map(analysis => (
@@ -23850,19 +23875,68 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                 {savedTo.icloud ? `iCloud ${savedTo.icloud.path}` : ''}
                                                                             </p>
                                                                         )}
-                                                                        {md && (
-                                                                            <details className="mt-2">
-                                                                                <summary className="text-[11px] text-amber-300 cursor-pointer">Show recap</summary>
-                                                                                <div className="mt-2 bg-black/40 border border-amber-500/20 rounded p-3 max-h-72 overflow-y-auto">
-                                                                                    <pre className="whitespace-pre-wrap text-xs text-slate-200 font-sans leading-relaxed">{md}</pre>
-                                                                                </div>
-                                                                                <div className="flex gap-1 mt-2">
-                                                                                    <button onClick={() => copyRecap(md)} className="px-2 py-1 bg-white/10 hover:bg-white/20 rounded text-[10px]">Copy</button>
-                                                                                    <button onClick={() => emailRecapQuick(item)} className="px-2 py-1 bg-amber-600 hover:bg-amber-500 rounded text-[10px]">Email to me</button>
-                                                                                    <button onClick={() => openRecapEmailWithOptions(item)} className="px-2 py-1 bg-yellow-500 hover:bg-yellow-400 text-slate-900 rounded text-[10px]">Email to…</button>
-                                                                                </div>
-                                                                            </details>
-                                                                        )}
+                                                                        {md && (() => {
+                                                                            const parsed = parseRecapVersions(md);
+                                                                            const tab = recapActiveTab[item.id] || 'comprehensive';
+                                                                            const setTab = (v) => setRecapActiveTab(s => ({...s, [item.id]: v}));
+                                                                            const currentHtml = parsed.hasVersions ? (parsed[tab] || '') : (parsed.comprehensive || md);
+                                                                            const versionLabel = { quick: 'Quick', summary: 'Summary', comprehensive: 'Comprehensive' };
+                                                                            const looksHtml = /<\s*(h[1-6]|p|ul|ol|table|section)\b/i.test(currentHtml);
+                                                                            return (
+                                                                                <details className="mt-2">
+                                                                                    <summary className="text-[11px] text-amber-300 cursor-pointer">Show recap</summary>
+                                                                                    <div className="mt-2 bg-black/40 border border-amber-500/20 rounded">
+                                                                                        <div className="flex items-center justify-between px-3 pt-2 pb-1 flex-wrap gap-2">
+                                                                                            <div className="flex items-center gap-1">
+                                                                                                {parsed.hasVersions ? ['quick','summary','comprehensive'].filter(v => parsed[v]).map(v => (
+                                                                                                    <button key={v} onClick={() => setTab(v)}
+                                                                                                        className={`px-2 py-0.5 text-[10px] uppercase tracking-wider rounded ${tab===v ? 'bg-amber-500 text-slate-900' : 'bg-white/10 text-amber-300/70 hover:bg-white/20'}`}>
+                                                                                                        {versionLabel[v]}
+                                                                                                    </button>
+                                                                                                )) : (
+                                                                                                    <span className="text-[10px] text-amber-300/70 uppercase tracking-wider">Earnings Recap</span>
+                                                                                                )}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                        <div className="px-3 pb-3 max-h-96 overflow-y-auto">
+                                                                                            {looksHtml ? (
+                                                                                                <div className="prose prose-invert prose-sm max-w-none text-slate-200" dangerouslySetInnerHTML={{ __html: currentHtml }} />
+                                                                                            ) : (
+                                                                                                <pre className="whitespace-pre-wrap text-xs text-slate-200 font-sans leading-relaxed">{currentHtml}</pre>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div className="flex gap-1 mt-2 flex-wrap">
+                                                                                        <button onClick={() => copyRecap(currentHtml)} className="px-2 py-1 bg-white/10 hover:bg-white/20 rounded text-[10px]">Copy {parsed.hasVersions ? versionLabel[tab] : ''}</button>
+                                                                                        <button onClick={() => emailRecapVersion(item, parsed.hasVersions ? tab : 'comprehensive')} className="px-2 py-1 bg-amber-600 hover:bg-amber-500 rounded text-[10px]">Email {parsed.hasVersions ? versionLabel[tab] : 'to me'}</button>
+                                                                                        {parsed.hasVersions && (
+                                                                                            <button onClick={() => emailRecapVersion(item, 'all')} className="px-2 py-1 bg-amber-700 hover:bg-amber-600 text-white rounded text-[10px]">Email All 3</button>
+                                                                                        )}
+                                                                                        <button onClick={() => openRecapEmailWithOptions(item)} className="px-2 py-1 bg-yellow-500 hover:bg-yellow-400 text-slate-900 rounded text-[10px]">Email to…</button>
+                                                                                        <button
+                                                                                            onClick={() => {
+                                                                                                const providers = Object.keys(agentProviders).length ? Object.keys(agentProviders) : ['anthropic'];
+                                                                                                const currentProvider = recapProvider[item.id] || 'anthropic';
+                                                                                                const p = window.prompt(`Provider? Available: ${providers.join(', ')}`, currentProvider);
+                                                                                                if (p === null) return;
+                                                                                                const models = agentProviders[p.trim()] || agentProviders.anthropic || [RECAP_DEFAULT_MODEL];
+                                                                                                const currentModel = recapModel[item.id] || RECAP_DEFAULT_MODEL;
+                                                                                                const m = window.prompt(`Model? Available: ${models.join(', ')}`, currentModel);
+                                                                                                if (m === null) return;
+                                                                                                const ci = window.prompt('Optional custom instructions:', recapCustomInstructions[item.id] || '');
+                                                                                                if (ci === null) return;
+                                                                                                if (!window.confirm(`Regenerate this recap with ${p.trim()}/${m.trim()}? Prior version preserved in history.`)) return;
+                                                                                                setRecapProvider(s => ({...s, [item.id]: p.trim()}));
+                                                                                                setRecapModel(s => ({...s, [item.id]: m.trim()}));
+                                                                                                setRecapCustomInstructions(s => ({...s, [item.id]: ci}));
+                                                                                                regenerateAnalystActivity(item.id, { length: 'standard', customInstructions: ci.trim(), provider: p.trim(), model: m.trim() });
+                                                                                            }}
+                                                                                            className="px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-[10px]"
+                                                                                        >Regenerate</button>
+                                                                                    </div>
+                                                                                </details>
+                                                                            );
+                                                                        })()}
                                                                     </li>
                                                                 );
                                                             })}
@@ -23976,16 +24050,21 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                     </button>
                                                                                     <button
                                                                                         onClick={() => {
-                                                                                            const models = agentProviders.anthropic || [RECAP_DEFAULT_MODEL];
+                                                                                            const providers = Object.keys(agentProviders).length ? Object.keys(agentProviders) : ['anthropic'];
+                                                                                            const currentProvider = recapProvider[item.id] || RECAP_DEFAULT_PROVIDER;
+                                                                                            const p = window.prompt(`Provider? Available: ${providers.join(', ')}`, currentProvider);
+                                                                                            if (p === null) return;
+                                                                                            const models = agentProviders[p.trim()] || agentProviders.anthropic || [RECAP_DEFAULT_MODEL];
                                                                                             const currentModel = recapModel[item.id] || RECAP_DEFAULT_MODEL;
-                                                                                            const ci = window.prompt('Optional custom instructions for this re-run (leave blank to use defaults):', recapCustomInstructions[item.id] || '');
-                                                                                            if (ci === null) return; // cancelled
-                                                                                            const m = window.prompt(`Model? Available: ${models.join(', ')}\n(Press OK to keep current)`, currentModel);
-                                                                                            if (m === null) return; // cancelled
-                                                                                            if (!window.confirm(`Regenerate this recap with ${m.trim() || currentModel}?\nPrior version is preserved in history.`)) return;
+                                                                                            const m = window.prompt(`Model? Available: ${models.join(', ')}`, currentModel);
+                                                                                            if (m === null) return;
+                                                                                            const ci = window.prompt('Optional custom instructions:', recapCustomInstructions[item.id] || '');
+                                                                                            if (ci === null) return;
+                                                                                            if (!window.confirm(`Regenerate with ${p.trim()}/${m.trim()}? Prior version preserved.`)) return;
+                                                                                            setRecapProvider(s => ({...s, [item.id]: p.trim()}));
+                                                                                            setRecapModel(s => ({...s, [item.id]: m.trim()}));
                                                                                             setRecapCustomInstructions(s => ({...s, [item.id]: ci}));
-                                                                                            setRecapModel(s => ({...s, [item.id]: m.trim() || currentModel}));
-                                                                                            regenerateAnalystActivity(item.id, { length: 'standard', customInstructions: ci.trim(), model: m.trim() || currentModel });
+                                                                                            regenerateAnalystActivity(item.id, { length: 'standard', customInstructions: ci.trim(), provider: p.trim(), model: m.trim() });
                                                                                         }}
                                                                                         title="Regenerate this recap"
                                                                                         className="p-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded"
@@ -24015,19 +24094,35 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                 rows={2}
                                                                                 className="w-full px-2 py-1 text-xs bg-black/30 border border-white/10 rounded text-slate-200 placeholder:text-slate-500 resize-y"
                                                                             />
-                                                                            <div className="flex items-center gap-2">
+                                                                            <div className="flex items-center gap-2 flex-wrap">
+                                                                                <label className="text-[10px] text-slate-400 uppercase tracking-wider">Provider</label>
+                                                                                <select
+                                                                                    value={recapProvider[item.id] || RECAP_DEFAULT_PROVIDER}
+                                                                                    onChange={(e) => {
+                                                                                        const p = e.target.value;
+                                                                                        setRecapProvider(s => ({...s, [item.id]: p}));
+                                                                                        // Auto-pick default model for newly-selected provider
+                                                                                        const models = agentProviders[p] || [];
+                                                                                        if (models.length) setRecapModel(s => ({...s, [item.id]: models[0]}));
+                                                                                    }}
+                                                                                    className="px-2 py-1 text-xs bg-black/30 border border-white/10 rounded text-slate-200"
+                                                                                >
+                                                                                    {(Object.keys(agentProviders).length ? Object.keys(agentProviders) : [RECAP_DEFAULT_PROVIDER]).map(p => (
+                                                                                        <option key={p} value={p}>{p}</option>
+                                                                                    ))}
+                                                                                </select>
                                                                                 <label className="text-[10px] text-slate-400 uppercase tracking-wider">Model</label>
                                                                                 <select
                                                                                     value={recapModel[item.id] || RECAP_DEFAULT_MODEL}
                                                                                     onChange={(e) => setRecapModel(s => ({...s, [item.id]: e.target.value}))}
                                                                                     className="px-2 py-1 text-xs bg-black/30 border border-white/10 rounded text-slate-200"
                                                                                 >
-                                                                                    {(agentProviders.anthropic || [RECAP_DEFAULT_MODEL]).map(m => (
+                                                                                    {(agentProviders[recapProvider[item.id] || RECAP_DEFAULT_PROVIDER] || [RECAP_DEFAULT_MODEL]).map(m => (
                                                                                         <option key={m} value={m}>{m}</option>
                                                                                     ))}
                                                                                 </select>
                                                                                 <button
-                                                                                    onClick={() => runAnalystActivity(item.id, { length: 'standard', customInstructions: (recapCustomInstructions[item.id] || '').trim(), model: recapModel[item.id] || RECAP_DEFAULT_MODEL })}
+                                                                                    onClick={() => runAnalystActivity(item.id, { length: 'standard', customInstructions: (recapCustomInstructions[item.id] || '').trim(), provider: recapProvider[item.id] || RECAP_DEFAULT_PROVIDER, model: recapModel[item.id] || RECAP_DEFAULT_MODEL })}
                                                                                     className="px-3 py-1 bg-amber-600 hover:bg-amber-500 rounded text-xs font-medium"
                                                                                 >Run earnings recap</button>
                                                                             </div>
