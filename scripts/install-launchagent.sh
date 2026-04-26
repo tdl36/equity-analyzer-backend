@@ -71,8 +71,12 @@ cat > "$PLIST" <<EOF
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>LimitLoadToSessionType</key><string>Aqua</string>
-  <key>StandardOutPath</key><string>${LOG}</string>
-  <key>StandardErrorPath</key><string>${LOG}</string>
+  <!-- Python's logging FileHandler already writes ${LOG} directly. If we
+       point StandardOutPath at the same file, every line gets duplicated
+       (StreamHandler -> launchd captures stdout -> writes to file too).
+       Discard stdout/stderr; rely on the Python file handler. -->
+  <key>StandardOutPath</key><string>/dev/null</string>
+  <key>StandardErrorPath</key><string>/tmp/charlie-agent.stderr.log</string>
 </dict>
 </plist>
 EOF
