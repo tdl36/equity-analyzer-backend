@@ -233,8 +233,39 @@ def transcribe_episode(episode_id: str) -> None:
         _set_failed(episode_id, str(e))
 
 
+STUCK_TRANSCRIBING_RESET_MINUTES = 30  # episodes idle in transcribing/extracting longer than this revert to 'new'
+
+
+def _reset_stuck_episodes() -> int:
+    """Revert episodes left in transcribing/extracting after a dyno restart
+    or crash back to 'new' so they retry on the next tick. Without this,
+    every Render deploy strands the in-flight batch.
+    Returns count reset."""
+    try:
+        with app_v3.get_db(commit=True) as (_c, cur):
+            cur.execute(
+                """
+                UPDATE media_episodes
+                   SET status = 'new', error_message = NULL
+                 WHERE status IN ('transcribing', 'extracting')
+                   AND created_at < NOW() - (%s || ' minutes')::interval
+                 RETURNING id
+                """,
+                (str(STUCK_TRANSCRIBING_RESET_MINUTES),),
+            )
+            return len(cur.fetchall())
+    except Exception as e:
+        print(f'_reset_stuck_episodes error: {e}')
+        return 0
+
+
 def process_transcribe_batch() -> None:
     """Pick up to MAX_EPISODES_PER_BATCH 'new' episodes and transcribe each."""
+    # Self-heal: any episode stranded from a prior crash/deploy comes back
+    # to 'new' before we pick a new batch.
+    n_reset = _reset_stuck_episodes()
+    if n_reset:
+        print(f'process_transcribe_batch: reset {n_reset} stuck episode(s) before batch')
     with app_v3.get_db() as (_c, cur):
         cur.execute('''
             SELECT id FROM media_episodes
