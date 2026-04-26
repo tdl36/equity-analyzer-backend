@@ -13033,33 +13033,6 @@ EARNINGS_RECAP_PROMPT = """You are a senior equity research analyst writing an E
 - Specific numbers. Dollar amounts, basis points, sequential vs YoY.
 - Lead with the punchline, then support with evidence.
 
-## REQUIRED FORMAT (exactly four sections, in this order)
-
-### 1. Results vs. Expectations
-- Revenue, EPS, key segment results vs consensus (or implied buy/sell-side bar).
-- Beat / miss magnitude in both absolute and %.
-- Call out the one-line headline: did the quarter clear the bar or not?
-- Note the print reaction where available (AH move).
-
-### 2. Guidance
-- What they guided for next quarter and full year (revenue, EPS, margins, segment color).
-- Compare vs prior guide and vs buy-side expectations.
-- Flag anything that looks conservative / aggressive / sandbagged and my interpretation.
-
-### 3. KPIs & Operating Details
-- Volume, pricing, mix, units, bookings, backlog, churn, ARR — whichever apply for this ticker.
-- Margin walk (gross / operating / EBITDA) — what drove the delta.
-- Cash flow / buyback / leverage color.
-- Segment-level highlights and lowlights.
-
-### 4. Read-throughs & What I'd Do
-- Investment implication for {ticker} itself (how does this change my thesis? Any signpost tripped?).
-- Cross-read to peers or the broader sector (name them).
-- My recommended action: add, trim, hold, watch — and the near-term catalyst I'm tracking next.
-
-## LENGTH
-{length_instruction}
-
 ## CUSTOM INSTRUCTIONS
 {custom_instructions}
 
@@ -13067,16 +13040,48 @@ EARNINGS_RECAP_PROMPT = """You are a senior equity research analyst writing an E
 The following are source documents for the earnings recap:
 {source_content}
 
-## OUTPUT FORMAT (mandatory)
-Return raw HTML. NO markdown. NO code fences. Use:
-- <h2>{ticker} {topic}: ...</h2> for the headline
-- <h3>Section Name</h3> for each of the four required sections
-- <p>...</p> for paragraphs
-- <ul><li>...</li></ul> for bullet lists
-- <strong>...</strong> for emphasis
-Do NOT wrap the response in <html> or <body> tags. Plain HTML fragment only.
+## OUTPUT — THREE VERSIONS OF THE SAME RECAP, IN ONE HTML RESPONSE
 
-Write the earnings recap now."""
+You will produce THREE distinct versions of this recap, each progressively longer and more detailed. ALL three must cover the same quarter from the same source documents — they differ only in depth, not content selection.
+
+The three versions are wrapped in three <section> blocks with data-version attributes. Use this EXACT structure (no other top-level tags, no <html>/<body> wrappers, no markdown, no code fences):
+
+<section data-version="quick">
+  <h2>{ticker} {topic}: [beat / miss / in-line] with [key takeaway]</h2>
+  <p><strong>One-line bottom line.</strong></p>
+  <ul>
+    <li>3-6 bullets covering: results vs. consensus, guide, biggest delta vs. expectations, my action.</li>
+    <li>Each bullet ≤ 2 lines.</li>
+    <li>No section headers. Pure scannable bullet list, ~150-250 words total.</li>
+  </ul>
+</section>
+
+<section data-version="summary">
+  <h2>{ticker} {topic}: [beat / miss / in-line] with [key takeaway]</h2>
+  <p>Paragraph 1 (~5-7 sentences): results vs. expectations, beat/miss magnitude, AH move.</p>
+  <p>Paragraph 2 (~5-7 sentences): guidance vs. prior guide, KPIs that mattered, margin/cash color.</p>
+  <p>Paragraph 3 (~5-7 sentences): what this changes for the thesis, read-through to peers/sector, my recommended action and the next catalyst.</p>
+</section>
+
+<section data-version="comprehensive">
+  <h2>{ticker} {topic}: [beat / miss / in-line] with [key takeaway]</h2>
+  <h3>Results vs. Expectations</h3>
+  <p>Revenue, EPS, key segment results vs consensus. Beat/miss magnitude in both absolute and %. AH reaction. ~3-5 paragraphs with embedded bullets where useful.</p>
+  <h3>Guidance</h3>
+  <p>Next-quarter and full-year guide (revenue, EPS, margins, segment color). Compare vs prior guide. Flag conservative/aggressive/sandbagged interpretations. ~3-5 paragraphs.</p>
+  <h3>KPIs &amp; Operating Details</h3>
+  <p>Volume, pricing, mix, units, bookings, backlog, churn, ARR. Margin walk (gross/op/EBITDA). Cash flow / buyback / leverage. Segment highlights and lowlights. ~4-6 paragraphs.</p>
+  <h3>Read-throughs &amp; What I'd Do</h3>
+  <p>Investment implication, signpost check, cross-read to peers/sector. Recommended action + next catalyst. ~3-4 paragraphs.</p>
+</section>
+
+REQUIREMENTS:
+- Output exactly three <section> blocks, in order: quick, summary, comprehensive.
+- Inside each section use only h2, h3, p, ul, ol, li, strong, em.
+- No other top-level tags. No <div>. No styles. No comments.
+- The three versions tell the same story — quick is a glance, summary is a paragraph trio, comprehensive is the full memo.
+
+Write all three now."""
 
 
 @app.route('/api/catalysts/folders', methods=['GET'])

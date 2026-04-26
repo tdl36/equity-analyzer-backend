@@ -1530,6 +1530,26 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [newAnalystOpen, setNewAnalystOpen] = useState(false);
             const [newAnalystForm, setNewAnalystForm] = useState({ name: '', sector: '', subsector: '', coverageCsv: '' });
             const [analystToast, setAnalystToast] = useState(null);
+            // Per-activity custom-instructions input + per-recap active-tab tracking
+            const [recapCustomInstructions, setRecapCustomInstructions] = useState({}); // {activityId: '...'}
+            const [recapActiveTab, setRecapActiveTab] = useState({}); // {activityId: 'quick'|'summary'|'comprehensive'}
+            // Parse the multi-version recap HTML into {quick, summary, comprehensive}.
+            // Falls back to a single comprehensive entry if no <section data-version> blocks
+            // are present (older recaps were generated before the 3-version prompt change).
+            const parseRecapVersions = (raw) => {
+                if (!raw) return { hasVersions: false, comprehensive: '' };
+                const re = /<section\s+data-version="(quick|summary|comprehensive)"[^>]*>([\s\S]*?)<\/section>/gi;
+                const out = { hasVersions: false };
+                let m;
+                while ((m = re.exec(raw)) !== null) {
+                    out[m[1]] = m[2].trim();
+                    out.hasVersions = true;
+                }
+                if (!out.hasVersions) {
+                    out.comprehensive = raw;
+                }
+                return out;
+            };
             const [analystSeeding, setAnalystSeeding] = useState(false);
             const [analystCoverageDraft, setAnalystCoverageDraft] = useState('');
 
@@ -6983,6 +7003,50 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 }
                 close();
                 return out.join('\n');
+            };
+            // Email a specific recap version (or all 3 stitched). version: 'quick' | 'summary' | 'comprehensive' | 'all'
+            const emailRecapVersion = async (activity, version = 'comprehensive') => {
+                const raw = activity.output?.synthesisMarkdown || '';
+                if (!raw) return setAnalystToast('No recap to email');
+                const parsed = parseRecapVersions(raw);
+                let html = '';
+                let labelSuffix = '';
+                if (version === 'all' && parsed.hasVersions) {
+                    const blocks = [];
+                    if (parsed.quick) blocks.push('<h2 style="border-bottom:1px solid #ccc;padding-bottom:4px">Quick</h2>' + parsed.quick);
+                    if (parsed.summary) blocks.push('<h2 style="border-bottom:1px solid #ccc;padding-bottom:4px;margin-top:24px">Summary</h2>' + parsed.summary);
+                    if (parsed.comprehensive) blocks.push('<h2 style="border-bottom:1px solid #ccc;padding-bottom:4px;margin-top:24px">Comprehensive</h2>' + parsed.comprehensive);
+                    html = blocks.join('\n');
+                    labelSuffix = ' (all versions)';
+                } else if (parsed.hasVersions && parsed[version]) {
+                    html = parsed[version];
+                    labelSuffix = ` (${version})`;
+                } else {
+                    // Fallback: old recap or no versions parsed
+                    const looksHtml = /<\s*(h[1-6]|p|ul|ol|table)\b/i.test(raw.trim());
+                    html = looksHtml ? raw : mdToHtml(raw);
+                }
+                const saved = localStorage.getItem('emailCredentials');
+                if (!saved) return setAnalystToast('Set email credentials in Settings first');
+                let creds; try { creds = JSON.parse(saved); } catch (e) { return setAnalystToast('Invalid email credentials'); }
+                if (!creds.email) return setAnalystToast('Set recipient email in Settings first');
+                const subject = `${activity.ticker} ${activity.input?.topic || 'Earnings Recap'}${labelSuffix}`;
+                try {
+                    const r = await fetch(`${API_URL}/api/email-summary-section`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            email: creds.email,
+                            subject, section: 'earnings_recap', content: html, title: subject, topic: activity.ticker,
+                            smtpConfig: {
+                                use_gmail: creds.useGmail, gmail_user: creds.gmailUser,
+                                gmail_app_password: creds.gmailPassword, from_email: creds.gmailUser,
+                            },
+                        }),
+                    });
+                    if (r.ok) setAnalystToast(`Recap emailed${labelSuffix}`);
+                    else { const err = await r.json().catch(() => ({})); setAnalystToast('Email failed: ' + (err.error || r.status)); }
+                } catch (e) { setAnalystToast('Email error: ' + e.message); }
             };
             const emailRecapQuick = async (activity) => {
                 const md = activity.output?.synthesisMarkdown || '';
@@ -23859,46 +23923,67 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                         </p>
                                                                     </div>
                                                                 )}
-                                                                {item.output && item.output.synthesisMarkdown && (
-                                                                    <div className="my-3 bg-black/40 border border-amber-500/20 rounded">
-                                                                        <div className="flex items-center justify-between px-3 pt-2 pb-1">
-                                                                            <div className="text-[10px] text-amber-300/70 uppercase tracking-wider">Earnings Recap</div>
-                                                                            <div className="flex items-center gap-1">
-                                                                                <button
-                                                                                    onClick={() => copyRecap(item.output.synthesisMarkdown)}
-                                                                                    title="Copy"
-                                                                                    className="p-1 bg-white/10 hover:bg-white/20 rounded"
-                                                                                >
-                                                                                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                                                                                </button>
-                                                                                <button
-                                                                                    onClick={() => emailRecapQuick(item)}
-                                                                                    title="Quick email to me"
-                                                                                    className="p-1 bg-amber-600 hover:bg-amber-500 rounded"
-                                                                                >
-                                                                                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                                                                                </button>
-                                                                                <button
-                                                                                    onClick={() => openRecapEmailWithOptions(item)}
-                                                                                    title="Email to someone else…"
-                                                                                    className="p-1 bg-yellow-500 hover:bg-yellow-400 text-slate-900 rounded"
-                                                                                >
-                                                                                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                                                                                </button>
+                                                                {item.output && item.output.synthesisMarkdown && (() => {
+                                                                    const parsed = parseRecapVersions(item.output.synthesisMarkdown);
+                                                                    const tab = recapActiveTab[item.id] || (parsed.hasVersions ? 'comprehensive' : 'comprehensive');
+                                                                    const setTab = (v) => setRecapActiveTab(s => ({...s, [item.id]: v}));
+                                                                    const currentHtml = parsed.hasVersions ? (parsed[tab] || '') : (parsed.comprehensive || item.output.synthesisMarkdown);
+                                                                    const versionLabel = { quick: 'Quick', summary: 'Summary', comprehensive: 'Comprehensive' };
+                                                                    const looksHtml = /<\s*(h[1-6]|p|ul|ol|table|section)\b/i.test(currentHtml);
+                                                                    return (
+                                                                        <div className="my-3 bg-black/40 border border-amber-500/20 rounded">
+                                                                            <div className="flex items-center justify-between px-3 pt-2 pb-1 flex-wrap gap-2">
+                                                                                <div className="flex items-center gap-1">
+                                                                                    {parsed.hasVersions ? ['quick','summary','comprehensive'].filter(v => parsed[v]).map(v => (
+                                                                                        <button key={v} onClick={() => setTab(v)}
+                                                                                            className={`px-2 py-0.5 text-[10px] uppercase tracking-wider rounded ${tab===v ? 'bg-amber-500 text-slate-900' : 'bg-white/10 text-amber-300/70 hover:bg-white/20'}`}>
+                                                                                            {versionLabel[v]}
+                                                                                        </button>
+                                                                                    )) : (
+                                                                                        <span className="text-[10px] text-amber-300/70 uppercase tracking-wider">Earnings Recap</span>
+                                                                                    )}
+                                                                                </div>
+                                                                                <div className="flex items-center gap-1">
+                                                                                    <button onClick={() => copyRecap(currentHtml)} title={`Copy ${parsed.hasVersions ? versionLabel[tab] : ''}`} className="p-1 bg-white/10 hover:bg-white/20 rounded">
+                                                                                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                                                                    </button>
+                                                                                    <button onClick={() => emailRecapVersion(item, parsed.hasVersions ? tab : 'comprehensive')} title={`Email ${parsed.hasVersions ? versionLabel[tab] : 'recap'} to me`} className="p-1 bg-amber-600 hover:bg-amber-500 rounded">
+                                                                                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                                                                                    </button>
+                                                                                    {parsed.hasVersions && (
+                                                                                        <button onClick={() => emailRecapVersion(item, 'all')} title="Email all 3 versions" className="px-2 py-0.5 text-[10px] uppercase tracking-wider bg-amber-700 hover:bg-amber-600 text-white rounded">All</button>
+                                                                                    )}
+                                                                                    <button onClick={() => openRecapEmailWithOptions(item)} title="Email to someone else…" className="p-1 bg-yellow-500 hover:bg-yellow-400 text-slate-900 rounded">
+                                                                                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                                                                    </button>
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="px-3 pb-3 max-h-96 overflow-y-auto">
+                                                                                {looksHtml ? (
+                                                                                    <div className="prose prose-invert prose-sm max-w-none text-slate-200" dangerouslySetInnerHTML={{ __html: currentHtml }} />
+                                                                                ) : (
+                                                                                    <pre className="whitespace-pre-wrap text-xs text-slate-200 font-sans leading-relaxed">{currentHtml}</pre>
+                                                                                )}
                                                                             </div>
                                                                         </div>
-                                                                        <div className="px-3 pb-3 max-h-96 overflow-y-auto">
-                                                                            <pre className="whitespace-pre-wrap text-xs text-slate-200 font-sans leading-relaxed">{item.output.synthesisMarkdown}</pre>
-                                                                        </div>
-                                                                    </div>
-                                                                )}
+                                                                    );
+                                                                })()}
                                                                 <div className="flex items-center gap-2 flex-wrap">
                                                                     {/* Phase 3c: Run earnings recap (only for earnings_recap in pending_review/failed without result yet) */}
                                                                     {item.activityType === 'earnings_recap' && isCatalystFolder && !item.output?.synthesisMarkdown && item.status !== 'running' && (
-                                                                        <button
-                                                                            onClick={() => runAnalystActivity(item.id, { length: 'standard' })}
-                                                                            className="px-3 py-1 bg-amber-600 hover:bg-amber-500 rounded text-xs font-medium"
-                                                                        >Run earnings recap</button>
+                                                                        <div className="flex flex-col gap-1 w-full">
+                                                                            <textarea
+                                                                                value={recapCustomInstructions[item.id] || ''}
+                                                                                onChange={(e) => setRecapCustomInstructions(s => ({...s, [item.id]: e.target.value}))}
+                                                                                placeholder="Optional custom instructions (e.g. focus on margin commentary, compare to PFE/MRK)…"
+                                                                                rows={2}
+                                                                                className="w-full px-2 py-1 text-xs bg-black/30 border border-white/10 rounded text-slate-200 placeholder:text-slate-500 resize-y"
+                                                                            />
+                                                                            <button
+                                                                                onClick={() => runAnalystActivity(item.id, { length: 'standard', customInstructions: (recapCustomInstructions[item.id] || '').trim() })}
+                                                                                className="self-start px-3 py-1 bg-amber-600 hover:bg-amber-500 rounded text-xs font-medium"
+                                                                            >Run earnings recap</button>
+                                                                        </div>
                                                                     )}
                                                                     {item.status === 'running' && (() => {
                                                                         const p = activityProgress[item.id];

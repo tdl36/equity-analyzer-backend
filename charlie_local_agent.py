@@ -2075,40 +2075,54 @@ EARNINGS_RECAP_PROMPT = """You are a senior equity research analyst writing an E
 - Specific numbers. Dollar amounts, basis points, sequential vs YoY.
 - Lead with the punchline, then support with evidence.
 
-## REQUIRED FORMAT (exactly four sections, in this order, using h3 headers)
-
-### 1. Results vs. Expectations
-- Revenue, EPS, key segment results vs consensus.
-- Beat / miss magnitude (absolute and %).
-- One-line headline: did the quarter clear the bar?
-- Print reaction where available (AH move).
-
-### 2. Guidance
-- Next quarter and full year (revenue, EPS, margins, segment color).
-- Compare vs prior guide and buy-side expectations.
-- Flag conservative / aggressive / sandbagged setups and my interpretation.
-
-### 3. KPIs & Operating Details
-- Volume, pricing, mix, units, bookings, backlog, churn, ARR — whichever apply.
-- Margin walk (gross / operating / EBITDA) and drivers.
-- Cash flow / buyback / leverage color.
-- Segment-level highlights and lowlights.
-
-### 4. Read-throughs & What I'd Do
-- Investment implication for {ticker} (thesis impact, signposts tripped).
-- Cross-read to peers or the broader sector (name them).
-- Recommended action: add, trim, hold, watch — and the next catalyst to track.
-
-## LENGTH
-{length_instruction}
-
 ## CUSTOM INSTRUCTIONS
 {custom_instructions}
 
 ## SOURCE DOCUMENTS
 {source_content}
 
-Write the earnings recap now. Start with a one-line headline ("{ticker} {topic}: [beat / miss / in-line] with [key takeaway]"), then the four sections above."""
+## OUTPUT — THREE VERSIONS OF THE SAME RECAP, IN ONE HTML RESPONSE
+
+You will produce THREE distinct versions of this recap, each progressively longer and more detailed. ALL three must cover the same quarter from the same source documents — they differ only in depth, not content selection.
+
+The three versions are wrapped in three <section> blocks with data-version attributes. Use this EXACT structure (no other top-level tags, no <html>/<body> wrappers, no markdown, no code fences):
+
+<section data-version="quick">
+  <h2>{ticker} {topic}: [beat / miss / in-line] with [key takeaway]</h2>
+  <p><strong>One-line bottom line.</strong></p>
+  <ul>
+    <li>3-6 bullets covering: results vs. consensus, guide, biggest delta vs. expectations, my action.</li>
+    <li>Each bullet ≤ 2 lines.</li>
+    <li>No section headers. Pure scannable bullet list, ~150-250 words total.</li>
+  </ul>
+</section>
+
+<section data-version="summary">
+  <h2>{ticker} {topic}: [beat / miss / in-line] with [key takeaway]</h2>
+  <p>Paragraph 1 (~5-7 sentences): results vs. expectations, beat/miss magnitude, AH move.</p>
+  <p>Paragraph 2 (~5-7 sentences): guidance vs. prior guide, KPIs that mattered, margin/cash color.</p>
+  <p>Paragraph 3 (~5-7 sentences): what this changes for the thesis, read-through to peers/sector, my recommended action and the next catalyst.</p>
+</section>
+
+<section data-version="comprehensive">
+  <h2>{ticker} {topic}: [beat / miss / in-line] with [key takeaway]</h2>
+  <h3>Results vs. Expectations</h3>
+  <p>Revenue, EPS, key segment results vs consensus. Beat/miss magnitude in both absolute and %. AH reaction. ~3-5 paragraphs with embedded bullets where useful.</p>
+  <h3>Guidance</h3>
+  <p>Next-quarter and full-year guide (revenue, EPS, margins, segment color). Compare vs prior guide. Flag conservative/aggressive/sandbagged interpretations. ~3-5 paragraphs.</p>
+  <h3>KPIs &amp; Operating Details</h3>
+  <p>Volume, pricing, mix, units, bookings, backlog, churn, ARR. Margin walk (gross/op/EBITDA). Cash flow / buyback / leverage. Segment highlights and lowlights. ~4-6 paragraphs.</p>
+  <h3>Read-throughs &amp; What I'd Do</h3>
+  <p>Investment implication, signpost check, cross-read to peers/sector. Recommended action + next catalyst. ~3-4 paragraphs.</p>
+</section>
+
+REQUIREMENTS:
+- Output exactly three <section> blocks, in order: quick, summary, comprehensive.
+- Inside each section use only h2, h3, p, ul, ol, li, strong, em.
+- No other top-level tags. No <div>. No styles. No comments.
+- The three versions tell the same story — quick is a glance, summary is a paragraph trio, comprehensive is the full memo.
+
+Write all three now."""
 
 
 def ensure_catalyst_folders():
