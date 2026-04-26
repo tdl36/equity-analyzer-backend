@@ -5310,8 +5310,12 @@ def email_summary_section():
         plain_text = plain_text.replace('&nbsp;', ' ').replace('&amp;', '&')
         
         # Format the section label
-        section_label = "Key Takeaways" if section == 'takeaways' else "Follow-up Questions"
-        header_color = "#0d9488" if section == 'takeaways' else "#d97706"
+        if section == 'takeaways':
+            section_label, header_color = "Key Takeaways", "#0d9488"
+        elif section == 'earnings_recap':
+            section_label, header_color = "Earnings Recap", "#0369a1"
+        else:
+            section_label, header_color = "Follow-up Questions", "#d97706"
         
         # Build HTML email
         html_content = f"""
@@ -13063,7 +13067,16 @@ EARNINGS_RECAP_PROMPT = """You are a senior equity research analyst writing an E
 The following are source documents for the earnings recap:
 {source_content}
 
-Write the earnings recap now. Start with a one-line headline ("{ticker} {topic}: [beat / miss / in-line] with [key takeaway]"), then the four sections above, each with a clear h3 header."""
+## OUTPUT FORMAT (mandatory)
+Return raw HTML. NO markdown. NO code fences. Use:
+- <h2>{ticker} {topic}: ...</h2> for the headline
+- <h3>Section Name</h3> for each of the four required sections
+- <p>...</p> for paragraphs
+- <ul><li>...</li></ul> for bullet lists
+- <strong>...</strong> for emphasis
+Do NOT wrap the response in <html> or <body> tags. Plain HTML fragment only.
+
+Write the earnings recap now."""
 
 
 @app.route('/api/catalysts/folders', methods=['GET'])
