@@ -21476,6 +21476,30 @@ def _dispatch_activity_run(activity_id: str, length: str = 'standard', custom_in
     }, 200
 
 
+@app.route('/api/analyst-activities/<activity_id>/unapprove', methods=['POST'])
+def analyst_activities_unapprove(activity_id):
+    """Reopen an approved activity: flip status back to pending_review so the
+    user can run / re-run the recap. Leaves any prior savedTo records and
+    research-tab docs in place (they can be deleted separately if needed)."""
+    try:
+        with get_db(commit=True) as (_c, cur):
+            cur.execute('SELECT status FROM analyst_activities WHERE id=%s', (activity_id,))
+            row = cur.fetchone()
+            if not row:
+                return jsonify({'error': 'activity not found'}), 404
+            if row.get('status') != 'approved':
+                return jsonify({'error': f"activity status is {row.get('status')}; only approved can be reopened"}), 400
+            cur.execute('''
+                UPDATE analyst_activities
+                   SET status='pending_review', reviewed_at=NULL, updated_at=NOW()
+                 WHERE id=%s
+            ''', (activity_id,))
+        return jsonify({'ok': True, 'activityId': activity_id})
+    except Exception as e:
+        print(f'analyst_activities_unapprove error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/analyst-activities/<activity_id>/regenerate', methods=['POST'])
 def analyst_activities_regenerate(activity_id):
     """Force-rerun a previously completed/approved activity. Clears the

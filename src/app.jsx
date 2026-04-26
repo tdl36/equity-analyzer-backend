@@ -6952,8 +6952,16 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     }
                 } catch (e) { console.warn('fetchArchivedInbox:', e); }
             };
-            const approveActivity = async (activityId) => {
+            const approveActivity = async (activityId, opts = {}) => {
                 try {
+                    if (!opts.skipGuard) {
+                        const item = analystInbox.find(a => a.id === activityId);
+                        const hasRecap = !!(item && item.output && item.output.synthesisMarkdown);
+                        if (item && !hasRecap) {
+                            const ok = window.confirm('No recap has been generated yet for this entry. Approving will archive it without a recap. Continue?');
+                            if (!ok) return;
+                        }
+                    }
                     const res = await fetch(`${API_URL}/api/analyst-activities/${activityId}/approve`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -7131,6 +7139,24 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         setAnalystToast('Email failed: ' + (err.error || r.status));
                     }
                 } catch (e) { setAnalystToast('Email error: ' + e.message); }
+            };
+            const unapproveActivity = async (activityId) => {
+                try {
+                    const ok = window.confirm('Reopen this approved entry back to the pending inbox? The saved Research/iCloud copy will stay; you can run a fresh recap from the inbox.');
+                    if (!ok) return;
+                    const res = await fetch(`${API_URL}/api/analyst-activities/${activityId}/unapprove`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                    });
+                    if (res.ok) {
+                        setAnalystToast('Reopened — moved back to pending inbox');
+                        fetchArchivedInbox();
+                        fetchAnalystInbox();
+                    } else {
+                        const j = await res.json().catch(() => ({}));
+                        setAnalystToast('Reopen failed: ' + (j.error || res.status));
+                    }
+                } catch (e) { setAnalystToast('Reopen error: ' + e.message); }
             };
             const regenerateAnalystActivity = async (activityId, opts = {}) => {
                 try {
@@ -23864,7 +23890,14 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                 <span className="text-[10px] px-1.5 py-0.5 bg-emerald-500/20 text-emerald-300 rounded">approved</span>
                                                                                 <span className="text-[10px] text-slate-500">· {item.analystName}</span>
                                                                             </div>
-                                                                            <span className="text-[10px] text-slate-500">{item.reviewedAt && new Date(item.reviewedAt).toLocaleString()}</span>
+                                                                            <div className="flex items-center gap-2">
+                                                                                <span className="text-[10px] text-slate-500">{item.reviewedAt && new Date(item.reviewedAt).toLocaleString()}</span>
+                                                                                <button
+                                                                                    onClick={() => unapproveActivity(item.id)}
+                                                                                    className="px-2 py-0.5 text-[10px] bg-amber-600 hover:bg-amber-500 text-white rounded"
+                                                                                    title="Move back to pending inbox so you can run/re-run a recap"
+                                                                                >Reopen</button>
+                                                                            </div>
                                                                         </div>
                                                                         <p className="text-sm text-slate-200">{item.input?.topic}</p>
                                                                         {(savedTo.icloud || savedTo.research) && (
