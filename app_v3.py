@@ -21215,7 +21215,9 @@ def analyst_activities_approve(activity_id):
       (B) Files the recap under the Catalyst Synthesis category in Research
     Returns a summary of what was saved where."""
     try:
-        data = request.json or {}
+        # Frontend sends Content-Type: application/json with no body.
+        # request.json strict-parses and 400s on empty; silent=True returns None.
+        data = request.get_json(silent=True) or {}
         with get_db() as (_c, cur):
             cur.execute('SELECT * FROM analyst_activities WHERE id=%s', (activity_id,))
             act = cur.fetchone()
