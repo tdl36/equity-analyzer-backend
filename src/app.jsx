@@ -7128,6 +7128,22 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     }
                 } catch (e) { setAnalystToast('Email error: ' + e.message); }
             };
+            const regenerateAnalystActivity = async (activityId, opts = {}) => {
+                try {
+                    const res = await fetch(`${API_URL}/api/analyst-activities/${activityId}/regenerate`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(opts),
+                    });
+                    if (res.ok) {
+                        setAnalystToast('Regenerating recap — fresh run queued');
+                        fetchAnalystInbox();
+                    } else {
+                        const j = await res.json().catch(() => ({}));
+                        setAnalystToast('Could not regenerate: ' + (j.error || res.status));
+                    }
+                } catch (e) { setAnalystToast('Regenerate error: ' + e.message); }
+            };
             const runAnalystActivity = async (activityId, opts = {}) => {
                 try {
                     const res = await fetch(`${API_URL}/api/analyst-activities/${activityId}/run`, {
@@ -23955,6 +23971,19 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                     )}
                                                                                     <button onClick={() => openRecapEmailWithOptions(item)} title="Email to someone else…" className="p-1 bg-yellow-500 hover:bg-yellow-400 text-slate-900 rounded">
                                                                                         <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                                                                    </button>
+                                                                                    <button
+                                                                                        onClick={() => {
+                                                                                            const ci = window.prompt('Optional custom instructions for this re-run (leave blank to use defaults):', recapCustomInstructions[item.id] || '');
+                                                                                            if (ci === null) return; // cancelled
+                                                                                            if (!window.confirm('Regenerate this recap? Prior version is preserved in history.')) return;
+                                                                                            setRecapCustomInstructions(s => ({...s, [item.id]: ci}));
+                                                                                            regenerateAnalystActivity(item.id, { length: 'standard', customInstructions: ci.trim() });
+                                                                                        }}
+                                                                                        title="Regenerate this recap"
+                                                                                        className="p-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded"
+                                                                                    >
+                                                                                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
                                                                                     </button>
                                                                                 </div>
                                                                             </div>

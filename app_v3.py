@@ -21381,7 +21381,7 @@ def _render_thesis_block(playbook: dict | None, ticker: str) -> str:
     return '\n\n'.join(parts)
 
 
-def _dispatch_activity_run(activity_id: str, length: str = 'standard', custom_instructions: str = ''):
+def _dispatch_activity_run(activity_id: str, length: str = 'standard', custom_instructions: str = '', force: bool = False):
     """Shared helper: dispatch the given analyst activity as a synthesis job
     (earnings_recap variant if activity_type is earnings_recap). Returns
     (body_dict, http_status)."""
@@ -21395,7 +21395,7 @@ def _dispatch_activity_run(activity_id: str, length: str = 'standard', custom_in
         act = cur.fetchone()
     if not act:
         return {'error': 'activity not found'}, 404
-    if act['status'] not in ('pending_review', 'failed'):
+    if not force and act['status'] not in ('pending_review', 'failed'):
         return {'error': f"activity status is {act['status']}; only pending_review or failed can be run"}, 400
 
     inp = act.get('input') or {}
@@ -21472,6 +21472,54 @@ def _dispatch_activity_run(activity_id: str, length: str = 'standard', custom_in
         'topic': topic,
         'promptVariant': prompt_variant,
     }, 200
+
+
+@app.route('/api/analyst-activities/<activity_id>/regenerate', methods=['POST'])
+def analyst_activities_regenerate(activity_id):
+    """Force-rerun a previously completed/approved activity. Clears the
+    prior output so the new generation lands fresh, then dispatches as
+    if it were pending_review. Lets the user iterate on prompts /
+    custom instructions without recreating the catalyst folder."""
+    try:
+        data = request.get_json(silent=True) or {}
+        # Clear prior output + reset status so the dispatch sees a clean slate
+        with get_db(commit=True) as (_c, cur):
+            cur.execute('SELECT output FROM analyst_activities WHERE id=%s', (activity_id,))
+            row = cur.fetchone()
+            if not row:
+                return jsonify({'error': 'activity not found'}), 404
+            prev = row.get('output') or {}
+            if isinstance(prev, str):
+                try:
+                    prev = json.loads(prev)
+                except Exception:
+                    prev = {}
+            # Preserve a copy of the prior recap before we overwrite it
+            history = prev.get('priorRuns') or []
+            if prev.get('synthesisMarkdown'):
+                history.append({
+                    'synthesisMarkdown': prev.get('synthesisMarkdown'),
+                    'completedAt': prev.get('completedAt'),
+                    'savedTo': prev.get('savedTo'),
+                })
+                history = history[-5:]  # cap at last 5
+            new_out = {'priorRuns': history}
+            cur.execute('''
+                UPDATE analyst_activities
+                   SET status='pending_review', output=%s::jsonb,
+                       error=NULL, reviewed_at=NULL, updated_at=NOW()
+                 WHERE id=%s
+            ''', (json.dumps(new_out), activity_id))
+        body, status = _dispatch_activity_run(
+            activity_id,
+            length=(data.get('length') or 'standard'),
+            custom_instructions=(data.get('customInstructions') or ''),
+            force=True,
+        )
+        return jsonify(body), status
+    except Exception as e:
+        print(f'analyst_activities_regenerate error: {e}')
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/analyst-activities/<activity_id>/run', methods=['POST'])
