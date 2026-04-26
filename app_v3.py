@@ -12483,18 +12483,47 @@ def get_research_note_pdf(ticker):
     # Bullets
     html_body = re.sub(r'^- (.+)$', r'<p style="margin:2px 0 2px 20px;font-size:10pt;color:#334155;">&bull; \1</p>', html_body, flags=re.MULTILINE)
     # Markdown tables -> HTML tables (BEFORE horizontal rule replacement to avoid breaking separator rows)
+    # xhtml2pdf is unforgiving: it ignores percentage widths on table cells UNLESS
+    # table-layout:fixed is set AND every <th>/<td> has an explicit width attribute.
+    # Without this, content width drives column allocation and wide-content first
+    # columns starve the trailing columns (the symptom: last 3 of 6 columns get
+    # crammed into the right edge with overlapping headers like "Implied/Probabu/Assumptions").
     def _md_table_to_html(match):
         lines = match.group(0).strip().split('\n')
         # Filter out separator rows (|---|---|---| or |:--|:--:|--:|)
         rows = [l for l in lines if l.strip() and not re.match(r'^\|[\s\-:|]+\|$', l.strip())]
         if not rows:
             return ''
-        html = '<table style="border-collapse:collapse;width:100%;margin:8px 0;font-size:9pt;page-break-inside:avoid;">'
+        # Determine column count from the widest row so per-column width math is right.
+        col_count = max((len([c for c in r.strip('|').split('|')]) for r in rows), default=1)
+        col_count = max(col_count, 1)
+        # Heuristic: give the first column a touch more room when there are 4+
+        # columns (usually a label like "Bull/Base/Bear" or "Scenario") and the
+        # last column more room (usually a free-text "Key Assumptions" / "Notes"
+        # cell). Middle columns share the remainder equally. Total = 100%.
+        if col_count >= 4:
+            first_pct = 14
+            last_pct = 26
+            mid_pct = (100 - first_pct - last_pct) / (col_count - 2)
+            col_widths = [first_pct] + [mid_pct] * (col_count - 2) + [last_pct]
+        else:
+            col_widths = [100.0 / col_count] * col_count
+        widths_attr = [f'{w:.2f}%' for w in col_widths]
+        html = '<table style="border-collapse:collapse;width:100%;margin:8px 0;font-size:9pt;page-break-inside:avoid;table-layout:fixed;">'
         for ri, row in enumerate(rows):
             cells = [c.strip().replace('**', '') for c in row.strip('|').split('|')]
+            # Pad short rows so column counts line up
+            while len(cells) < col_count:
+                cells.append('')
             tag = 'th' if ri == 0 else 'td'
-            style = 'padding:5px 8px;border:1px solid #d1d5db;color:#1e293b;word-wrap:break-word;' + ('background:#f1f5f9;font-weight:bold;' if ri == 0 else '')
-            html += '<tr>' + ''.join(f'<{tag} style="{style}">{c}</{tag}>' for c in cells) + '</tr>'
+            base_style = 'padding:5px 6px;border:1px solid #d1d5db;color:#1e293b;word-wrap:break-word;vertical-align:top;'
+            if ri == 0:
+                base_style += 'background:#f1f5f9;font-weight:bold;text-align:center;'
+            html += '<tr>'
+            for ci, c in enumerate(cells):
+                w = widths_attr[ci] if ci < len(widths_attr) else widths_attr[-1]
+                html += f'<{tag} width="{w}" style="width:{w};{base_style}">{c}</{tag}>'
+            html += '</tr>'
         html += '</table>'
         return html
     html_body = re.sub(r'(\|.+\|[\n\r]*)+', _md_table_to_html, html_body)
