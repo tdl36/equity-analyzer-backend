@@ -2395,7 +2395,10 @@ def check_for_new_audio():
 
 CATALYST_AUTO_STATE_FILE = Path.home() / "Library/Application Support/charlie-agent/auto-catalyst-state.json"
 CATALYST_AUTO_DEBOUNCE_S = 120     # wait this long after last file change before firing
-CATALYST_AUTO_COOLDOWN_S = 15 * 60 # don't re-fire same topic within this window
+# Removed COOLDOWN. Fingerprint match (same files) blocks re-fire on its own,
+# and the 2-minute debounce catches in-progress file drops. The old 15-min
+# cooldown also blocked legit "delete folder, recreate with new files" flows
+# which a single user actively iterating on a catalyst hits constantly.
 CATALYST_SOURCE_EXTS = {'.pdf', '.xlsx', '.xls', '.csv', '.txt', '.md', '.docx', '.doc', '.pptx', '.ppt', '.html'}
 
 
@@ -2515,12 +2518,11 @@ def check_for_catalyst_auto_synth() -> None:
                 if fingerprint == prior_fingerprint and prior_fired > 0:
                     continue
 
-                # Debounce: wait until files have been quiet for DEBOUNCE_S
+                # Debounce: wait until files have been quiet for DEBOUNCE_S.
+                # Combined with the fingerprint dedup above, this is the only
+                # gate — cooldown was removed because it blocked legitimate
+                # "delete + recreate folder with new files" iteration flows.
                 if now - max_mtime < CATALYST_AUTO_DEBOUNCE_S:
-                    continue
-
-                # Cooldown: don't re-fire same topic within COOLDOWN_S
-                if now - prior_fired < CATALYST_AUTO_COOLDOWN_S:
                     continue
 
                 # Decide: auto-fire or just propose?
