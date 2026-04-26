@@ -13050,9 +13050,9 @@ The three versions are wrapped in three <section> blocks with data-version attri
   <h2>{ticker} {topic}: [beat / miss / in-line] with [key takeaway]</h2>
   <p><strong>One-line bottom line.</strong></p>
   <ul>
-    <li>3-6 bullets covering: results vs. consensus, guide, biggest delta vs. expectations, my action.</li>
-    <li>Each bullet ≤ 2 lines.</li>
-    <li>No section headers. Pure scannable bullet list, ~150-250 words total.</li>
+    <li>8-12 substantive bullets covering: print vs. consensus (rev/EPS magnitude), guide vs. prior + Street, biggest segment / KPI surprises (with specific numbers), margin walk highlight, cash flow / capital return color, key call/Q&amp;A takeaway, signpost check vs. my thesis, peer/sector read-through, my recommended action, near-term catalyst to track.</li>
+    <li>Each bullet 1-3 lines, with at least one specific number where applicable.</li>
+    <li>No section headers. Pure scannable bullet list, ~400-600 words total.</li>
   </ul>
 </section>
 
