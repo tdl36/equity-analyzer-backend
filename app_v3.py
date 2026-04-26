@@ -15,7 +15,7 @@ import queue
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from psycopg2.pool import ThreadedConnectionPool
-from datetime import datetime
+from datetime import datetime, timedelta
 import anthropic
 import openai
 from google import genai
@@ -495,13 +495,25 @@ def media_feeds_create():
     if not name or not feed_url:
         return jsonify({'error': 'name and feedUrl required'}), 400
     feed_id = str(uuid.uuid4())
+    # Pre-seed last_episode_at to 30 days ago so the first poll picks up
+    # recent backlog (matches the backfill endpoint's default behavior).
+    backfill_cutoff = datetime.utcnow() - timedelta(days=30)
     with get_db(commit=True) as (_c, cur):
         cur.execute('''
-            INSERT INTO media_feeds (id, source_type, name, feed_url, sector_tags, poll_interval_min)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO media_feeds (id, source_type, name, feed_url, sector_tags, poll_interval_min, last_episode_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             RETURNING *
-        ''', (feed_id, source_type, name, feed_url, sector_tags, poll_interval))
+        ''', (feed_id, source_type, name, feed_url, sector_tags, poll_interval, backfill_cutoff))
         row = cur.fetchone()
+    # Fire an immediate poll in the background so episodes appear within
+    # ~30s instead of after the next 30-min scheduler tick.
+    def _initial_poll():
+        try:
+            from media_trackers import poller
+            poller.poll_feed(feed_id)
+        except Exception as e:
+            print(f'initial poll error for {name}: {e}')
+    threading.Thread(target=_initial_poll, daemon=True).start()
     return jsonify({'feed': _row_to_feed(row)})
 
 
