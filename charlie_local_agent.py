@@ -2985,11 +2985,15 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
                 sources = sources[:char_cap] + '\n\n[...source content truncated for length...]'
             return f"{sources}\n\n---\n\n{prompt_text}"
 
-        def _call_recap_llm(provider, model, system_prompt, parts, prompt_text, anthropic_blocks, max_tokens=8192):
+        def _call_recap_llm(provider, model, system_prompt, parts, prompt_text, anthropic_blocks, max_tokens=24576):
             """Provider-aware single LLM call for the recap pipeline.
             anthropic path uses native PDF blocks; openai/google extract text
-            via PyPDF2 then call the respective SDK with a single text prompt."""
-            log.info(f"Recap call: provider={provider} model={model}")
+            via PyPDF2 then call the respective SDK with a single text prompt.
+            Default max_tokens 24576 — the 3-version recap (Quick + Summary +
+            full Comprehensive memo) routinely exceeded the old 8192 cap, which
+            silently truncated the Comprehensive section mid-output (the
+            closing </section> never landed and the frontend parser dropped it)."""
+            log.info(f"Recap call: provider={provider} model={model} max_tokens={max_tokens}")
             if provider == 'anthropic':
                 resp = client.messages.create(
                     model=model,
@@ -2997,6 +3001,9 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
                     system=system_prompt,
                     messages=[{"role": "user", "content": anthropic_blocks}],
                 )
+                stop = getattr(resp, 'stop_reason', None)
+                if stop == 'max_tokens':
+                    log.warning(f"Recap call hit max_tokens ({max_tokens}); output likely truncated mid-section")
                 return resp.content[0].text
             elif provider == 'openai':
                 try:
@@ -3080,7 +3087,7 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
             recap_provider, recap_model,
             "You are a senior equity research analyst. Follow all instructions precisely.",
             batches[0], prompt_text, content_blocks,
-            max_tokens=8192,
+            max_tokens=24576,
         )
 
         # Process subsequent batches — merge into existing synthesis
@@ -3127,7 +3134,7 @@ Write the complete, updated synthesis report now. ZERO firm names, ALL first per
                 recap_provider, recap_model,
                 "You are a senior equity research analyst. Follow all instructions precisely.",
                 batch, merge_prompt, merge_blocks,
-                max_tokens=8192,
+                max_tokens=24576,
             )
             log.info(f"Batch {i}/{total_batches} merged: {len(markdown)} chars")
 

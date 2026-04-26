@@ -1543,15 +1543,33 @@ Regulatory, execution, or macro risks that could derail the thesis:
             // are present (older recaps were generated before the 3-version prompt change).
             const parseRecapVersions = (raw) => {
                 if (!raw) return { hasVersions: false, comprehensive: '' };
-                const re = /<section\s+data-version="(quick|summary|comprehensive)"[^>]*>([\s\S]*?)<\/section>/gi;
-                const out = { hasVersions: false };
+                // Find every section opener. For each, take content up to the
+                // earliest of: matching </section>, the next <section data-version="..."
+                // opener, or end-of-string. This rescues truncated comprehensive
+                // sections (model hit max_tokens and the closing tag never landed).
+                const openerRe = /<section\s+data-version="(quick|summary|comprehensive)"[^>]*>/gi;
+                const openers = [];
                 let m;
-                while ((m = re.exec(raw)) !== null) {
-                    out[m[1]] = m[2].trim();
-                    out.hasVersions = true;
+                while ((m = openerRe.exec(raw)) !== null) {
+                    openers.push({ name: m[1].toLowerCase(), start: m.index + m[0].length });
                 }
-                if (!out.hasVersions) {
+                const out = { hasVersions: false };
+                if (openers.length === 0) {
                     out.comprehensive = raw;
+                    return out;
+                }
+                for (let i = 0; i < openers.length; i++) {
+                    const op = openers[i];
+                    const nextOpenerStart = i + 1 < openers.length ? openers[i + 1].start : raw.length;
+                    // Search for </section> only within the slice up to the next opener.
+                    const slice = raw.slice(op.start, nextOpenerStart);
+                    const closeIdx = slice.search(/<\/section\s*>/i);
+                    const body = (closeIdx >= 0 ? slice.slice(0, closeIdx) : slice).trim();
+                    if (body) {
+                        out[op.name] = body;
+                        out.hasVersions = true;
+                        if (closeIdx < 0) out.truncated = (out.truncated || []).concat(op.name);
+                    }
                 }
                 return out;
             };
