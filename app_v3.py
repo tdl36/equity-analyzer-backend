@@ -21381,7 +21381,7 @@ def _render_thesis_block(playbook: dict | None, ticker: str) -> str:
     return '\n\n'.join(parts)
 
 
-def _dispatch_activity_run(activity_id: str, length: str = 'standard', custom_instructions: str = '', force: bool = False):
+def _dispatch_activity_run(activity_id: str, length: str = 'standard', custom_instructions: str = '', force: bool = False, model: str = ''):
     """Shared helper: dispatch the given analyst activity as a synthesis job
     (earnings_recap variant if activity_type is earnings_recap). Returns
     (body_dict, http_status)."""
@@ -21443,6 +21443,7 @@ def _dispatch_activity_run(activity_id: str, length: str = 'standard', custom_in
         'activityId': activity_id,
         'excludedFiles': [],
         'thesis_block': thesis_block,
+        'model': (model or '').strip(),  # local agent defaults to claude-sonnet-4-6 if blank
     }
     with get_db(commit=True) as (_c, cur):
         cur.execute('''
@@ -21514,6 +21515,7 @@ def analyst_activities_regenerate(activity_id):
             activity_id,
             length=(data.get('length') or 'standard'),
             custom_instructions=(data.get('customInstructions') or ''),
+            model=(data.get('model') or ''),
             force=True,
         )
         return jsonify(body), status
@@ -21533,6 +21535,7 @@ def analyst_activities_run(activity_id):
             activity_id,
             length=(data.get('length') or 'standard'),
             custom_instructions=(data.get('customInstructions') or ''),
+            model=(data.get('model') or ''),
         )
         return jsonify(body), status
     except Exception as e:

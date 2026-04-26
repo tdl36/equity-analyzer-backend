@@ -1533,6 +1533,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
             // Per-activity custom-instructions input + per-recap active-tab tracking
             const [recapCustomInstructions, setRecapCustomInstructions] = useState({}); // {activityId: '...'}
             const [recapActiveTab, setRecapActiveTab] = useState({}); // {activityId: 'quick'|'summary'|'comprehensive'}
+            const [recapModel, setRecapModel] = useState({}); // {activityId: 'claude-sonnet-4-6'|...}
+            const RECAP_DEFAULT_MODEL = 'claude-sonnet-4-6';
             // Parse the multi-version recap HTML into {quick, summary, comprehensive}.
             // Falls back to a single comprehensive entry if no <section data-version> blocks
             // are present (older recaps were generated before the 3-version prompt change).
@@ -23974,11 +23976,16 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                     </button>
                                                                                     <button
                                                                                         onClick={() => {
+                                                                                            const models = agentProviders.anthropic || [RECAP_DEFAULT_MODEL];
+                                                                                            const currentModel = recapModel[item.id] || RECAP_DEFAULT_MODEL;
                                                                                             const ci = window.prompt('Optional custom instructions for this re-run (leave blank to use defaults):', recapCustomInstructions[item.id] || '');
                                                                                             if (ci === null) return; // cancelled
-                                                                                            if (!window.confirm('Regenerate this recap? Prior version is preserved in history.')) return;
+                                                                                            const m = window.prompt(`Model? Available: ${models.join(', ')}\n(Press OK to keep current)`, currentModel);
+                                                                                            if (m === null) return; // cancelled
+                                                                                            if (!window.confirm(`Regenerate this recap with ${m.trim() || currentModel}?\nPrior version is preserved in history.`)) return;
                                                                                             setRecapCustomInstructions(s => ({...s, [item.id]: ci}));
-                                                                                            regenerateAnalystActivity(item.id, { length: 'standard', customInstructions: ci.trim() });
+                                                                                            setRecapModel(s => ({...s, [item.id]: m.trim() || currentModel}));
+                                                                                            regenerateAnalystActivity(item.id, { length: 'standard', customInstructions: ci.trim(), model: m.trim() || currentModel });
                                                                                         }}
                                                                                         title="Regenerate this recap"
                                                                                         className="p-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded"
@@ -24008,10 +24015,22 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                 rows={2}
                                                                                 className="w-full px-2 py-1 text-xs bg-black/30 border border-white/10 rounded text-slate-200 placeholder:text-slate-500 resize-y"
                                                                             />
-                                                                            <button
-                                                                                onClick={() => runAnalystActivity(item.id, { length: 'standard', customInstructions: (recapCustomInstructions[item.id] || '').trim() })}
-                                                                                className="self-start px-3 py-1 bg-amber-600 hover:bg-amber-500 rounded text-xs font-medium"
-                                                                            >Run earnings recap</button>
+                                                                            <div className="flex items-center gap-2">
+                                                                                <label className="text-[10px] text-slate-400 uppercase tracking-wider">Model</label>
+                                                                                <select
+                                                                                    value={recapModel[item.id] || RECAP_DEFAULT_MODEL}
+                                                                                    onChange={(e) => setRecapModel(s => ({...s, [item.id]: e.target.value}))}
+                                                                                    className="px-2 py-1 text-xs bg-black/30 border border-white/10 rounded text-slate-200"
+                                                                                >
+                                                                                    {(agentProviders.anthropic || [RECAP_DEFAULT_MODEL]).map(m => (
+                                                                                        <option key={m} value={m}>{m}</option>
+                                                                                    ))}
+                                                                                </select>
+                                                                                <button
+                                                                                    onClick={() => runAnalystActivity(item.id, { length: 'standard', customInstructions: (recapCustomInstructions[item.id] || '').trim(), model: recapModel[item.id] || RECAP_DEFAULT_MODEL })}
+                                                                                    className="px-3 py-1 bg-amber-600 hover:bg-amber-500 rounded text-xs font-medium"
+                                                                                >Run earnings recap</button>
+                                                                            </div>
                                                                         </div>
                                                                     )}
                                                                     {item.status === 'running' && (() => {

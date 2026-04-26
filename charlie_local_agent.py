@@ -2832,6 +2832,11 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
     length = steps_detail.get("length", "standard")
     custom_instructions = steps_detail.get("customInstructions", "")
     prompt_variant = (steps_detail.get("prompt_variant") or "").strip().lower()
+    # Anthropic model selection. Backend passes 'model' in steps_detail when
+    # the user picked one in the UI. Default to current latest Sonnet so
+    # bumps don't require code changes; older recaps without model in spec
+    # use this default automatically.
+    recap_model = (steps_detail.get("model") or os.environ.get("CHARLIE_RECAP_MODEL") or "claude-sonnet-4-6").strip()
 
     try:
         variant_label = 'earnings recap' if prompt_variant == 'earnings_recap' else 'synthesis'
@@ -2977,8 +2982,9 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
         prompt_text = base_prompt.format(**fmt)
         content_blocks = _build_content_blocks(batches[0], prompt_text)
 
+        log.info(f"Synthesis batch 1: model={recap_model}")
         response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model=recap_model,
             max_tokens=8192,
             system="You are a senior equity research analyst. Follow all instructions precisely.",
             messages=[{"role": "user", "content": content_blocks}],
@@ -3026,7 +3032,7 @@ EXISTING REPORT:
 Write the complete, updated synthesis report now. ZERO firm names, ALL first person."""
             merge_blocks = _build_content_blocks(batch, merge_prompt)
             merge_response = client.messages.create(
-                model="claude-sonnet-4-20250514",
+                model=recap_model,
                 max_tokens=8192,
                 system="You are a senior equity research analyst. Follow all instructions precisely.",
                 messages=[{"role": "user", "content": merge_blocks}],
