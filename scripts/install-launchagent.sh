@@ -56,7 +56,6 @@ cat > "$PLIST" <<EOF
   <key>Label</key><string>com.charlie.local-agent</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/usr/bin/arch</string><string>-arm64</string>
     <string>/Library/Developer/CommandLineTools/usr/bin/python3</string>
     <string>${APP_DIR}/charlie_local_agent.py</string>
   </array>
