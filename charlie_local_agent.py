@@ -2986,17 +2986,33 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
         # Process subsequent batches — merge into existing synthesis
         for i, batch in enumerate(batches[1:], 2):
             update_job_progress(job_id, "running", f"Synthesizing report (batch {i}/{total_batches})...", 50 + int(30 * i / total_batches))
+            # For earnings_recap, the existing report has three required
+            # <section data-version="..."> blocks. Preserve more of the prior
+            # output so the merge model sees the full structure (was truncated
+            # to 6000 chars which only covered Quick + part of Summary).
+            existing_excerpt = markdown[:30000]
+            structure_reminder = ''
+            if prompt_variant == 'earnings_recap':
+                structure_reminder = (
+                    "\n## STRUCTURE PRESERVATION (NON-NEGOTIABLE)\n"
+                    "The existing report is wrapped in THREE <section data-version=\"...\"> blocks "
+                    "in this exact order: quick, summary, comprehensive. Your output MUST also be "
+                    "wrapped in those three blocks. Do NOT collapse them into one. Do NOT change "
+                    "the order. Do NOT drop any block. Update the contents of each block with the "
+                    "new findings; the depth/length conventions stay the same (Quick = bullets, "
+                    "Summary = 3 paragraphs, Comprehensive = full memo with h3 section headers).\n"
+                )
             merge_prompt = f"""You previously wrote a synthesis report based on earlier documents. Now incorporate these ADDITIONAL source documents into the existing report.
 
 EXISTING REPORT:
-{markdown[:6000]}
+{existing_excerpt}
 
 ## ATTRIBUTION RULES — ABSOLUTE, NO EXCEPTIONS
 - ZERO references to any broker, bank, sellside firm, or analyst by name. Not "Wolfe Research", not "Goldman Sachs", not "JPMorgan", not ANY firm.
 - Replace ALL firm attributions with first-person voice: "I estimate", "my analysis shows".
 - Write ENTIRELY in FIRST PERSON as YOUR OWN proprietary work.
 - If the existing report accidentally contains firm names, REMOVE them in this pass.
-
+{structure_reminder}
 ## MERGE INSTRUCTIONS
 - Integrate new findings into the existing report structure
 - Give EQUAL WEIGHT to new documents — do not let earlier batch dominate
