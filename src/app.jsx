@@ -21532,31 +21532,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     </div>
                                                 )}
 
-                                                {/* Recent Completed/Failed Jobs */}
-                                                {pipelineJobs.filter(j => j.status === 'complete' || j.status === 'failed').length > 0 && (
-                                                    <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4">
-                                                        <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Recent</h2>
-                                                        <div className="space-y-1.5">
-                                                            {pipelineJobs.filter(j => j.status === 'complete' || j.status === 'failed').slice(0, 5).map(job => (
-                                                                <div key={job.id} className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${
-                                                                    job.status === 'complete' ? 'bg-white/[0.02] border-white/5' : 'bg-red-500/5 border-red-500/10'
-                                                                }`}>
-                                                                    <span className="font-bold text-sm text-white w-10">{job.ticker}</span>
-                                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                                                                        job.status === 'complete' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-                                                                    }`}>{job.status === 'complete' ? 'Done' : 'Fail'}</span>
-                                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                                                                        job.job_type === 'note' ? 'bg-purple-500/20 text-purple-400' : 'bg-slate-500/20 text-slate-400'
-                                                                    }`}>{job.job_type === 'note' ? 'Note' : job.job_type === 'update' ? 'Update' : 'Process'}</span>
-                                                                    <div className="flex-1 min-w-0">
-                                                                        {job.error && <span className="text-[10px] text-red-400 truncate block">{job.error.split(':')[0]}</span>}
-                                                                    </div>
-                                                                    {job.completed_at && <span className="text-[10px] text-slate-600 flex-shrink-0">{new Date(job.completed_at).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</span>}
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                )}
+                                                {/* Recent Completed/Failed Jobs section removed — visual filler with no
+                                                    interaction. The History tab in the top-right serves the audit-trail role,
+                                                    and in-flight progress is already shown in the active-jobs section above. */}
 
                                                 {/* Research Note Result */}
                                                 {pipelineNoteResult && (
