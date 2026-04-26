@@ -1509,6 +1509,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [selectedAnalyst, setSelectedAnalyst] = useState(null);
             const [analystInbox, setAnalystInbox] = useState([]);
             const [analystView, setAnalystView] = useState('list'); // 'list' | 'detail' | 'inbox' | 'earnings'
+            const [analystCoverageExpanded, setAnalystCoverageExpanded] = useState({}); // { 'analystId:TICKER': bool }
             // Phase 3d: earnings calendar
             const [earningsItems, setEarningsItems] = useState([]);
             const [earningsLoading, setEarningsLoading] = useState(false);
@@ -23698,30 +23699,183 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     </div>
                                                 );
                                             })()}
-                                            <div className="bg-white/5 border border-white/10 rounded-lg p-4">
-                                                <h3 className="font-semibold text-sm mb-2">Recent activities</h3>
-                                                {(!selectedAnalyst.recentActivities || selectedAnalyst.recentActivities.length === 0) ? (
-                                                    <p className="text-xs text-slate-500">No activities yet. When a covered ticker appears in a material podcast alert, a pending investigation is created here.</p>
-                                                ) : (
-                                                    <ul className="space-y-2">
-                                                        {selectedAnalyst.recentActivities.map(act => (
-                                                            <li key={act.id} className="p-3 bg-white/5 rounded">
-                                                                <div className="flex items-center justify-between">
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className="text-xs font-mono font-semibold">{act.ticker}</span>
-                                                                        <span className="text-[10px] text-slate-500">{act.activityType}</span>
-                                                                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${act.status === 'pending_review' ? 'bg-amber-500/20 text-amber-300' : act.status === 'approved' ? 'bg-emerald-500/20 text-emerald-300' : act.status === 'rejected' ? 'bg-red-500/20 text-red-300' : 'bg-white/10 text-slate-300'}`}>{act.status}</span>
+                                            {/* Coverage activity — grouped by ticker, with full recap viewer / Reopen / Regenerate */}
+                                            {(() => {
+                                                const acts = selectedAnalyst.recentActivities || [];
+                                                const tickers = selectedAnalyst.coverageTickers || [];
+                                                // Group activities by ticker. Include any ticker that has activity even if not in coverage anymore.
+                                                const byTicker = {};
+                                                for (const a of acts) {
+                                                    const tk = (a.ticker || '').toUpperCase();
+                                                    if (!tk) continue;
+                                                    (byTicker[tk] = byTicker[tk] || []).push(a);
+                                                }
+                                                const orderedTickers = Array.from(new Set([...tickers, ...Object.keys(byTicker)]));
+                                                if (acts.length === 0 && tickers.length === 0) {
+                                                    return (
+                                                        <div className="bg-white/5 border border-white/10 rounded-lg p-4">
+                                                            <h3 className="font-semibold text-sm mb-2">Coverage activity</h3>
+                                                            <p className="text-xs text-slate-500">No activities yet. When a covered ticker appears in a material podcast alert, a pending investigation is created here.</p>
+                                                        </div>
+                                                    );
+                                                }
+                                                return (
+                                                    <div className="bg-white/5 border border-white/10 rounded-lg p-4">
+                                                        <div className="flex items-center justify-between mb-3">
+                                                            <h3 className="font-semibold text-sm">Coverage activity</h3>
+                                                            <button onClick={() => loadAnalystDetail(selectedAnalyst.id)} className="text-[10px] text-slate-400 hover:text-white">Refresh</button>
+                                                        </div>
+                                                        <div className="space-y-3">
+                                                            {orderedTickers.map(tk => {
+                                                                const items = (byTicker[tk] || []).slice().sort((x, y) => {
+                                                                    const dx = new Date(x.reviewedAt || x.updatedAt || x.createdAt || 0).getTime();
+                                                                    const dy = new Date(y.reviewedAt || y.updatedAt || y.createdAt || 0).getTime();
+                                                                    return dy - dx;
+                                                                });
+                                                                const isOpen = !!analystCoverageExpanded[`${selectedAnalyst.id}:${tk}`];
+                                                                const approvedCount = items.filter(a => a.status === 'approved').length;
+                                                                const pendingCount = items.filter(a => a.status === 'pending_review' || a.status === 'running').length;
+                                                                return (
+                                                                    <div key={tk} className="bg-black/20 border border-white/5 rounded">
+                                                                        <button
+                                                                            onClick={() => setAnalystCoverageExpanded(s => ({ ...s, [`${selectedAnalyst.id}:${tk}`]: !isOpen }))}
+                                                                            className="w-full flex items-center justify-between px-3 py-2 hover:bg-white/5"
+                                                                        >
+                                                                            <div className="flex items-center gap-2">
+                                                                                <span className="font-mono font-bold text-sm">{tk}</span>
+                                                                                <span className="text-[10px] text-slate-500">{items.length} {items.length === 1 ? 'entry' : 'entries'}</span>
+                                                                                {approvedCount > 0 && <span className="text-[10px] px-1.5 py-0.5 bg-emerald-500/20 text-emerald-300 rounded">{approvedCount} approved</span>}
+                                                                                {pendingCount > 0 && <span className="text-[10px] px-1.5 py-0.5 bg-amber-500/20 text-amber-300 rounded">{pendingCount} pending</span>}
+                                                                            </div>
+                                                                            <span className="text-xs text-slate-500">{isOpen ? '▼' : '▶'}</span>
+                                                                        </button>
+                                                                        {isOpen && (
+                                                                            <div className="px-3 pb-3 space-y-2">
+                                                                                {items.length === 0 ? (
+                                                                                    <p className="text-[11px] text-slate-500">No activity for {tk} yet.</p>
+                                                                                ) : items.map(item => {
+                                                                                    const md = item.output?.synthesisMarkdown;
+                                                                                    const savedTo = item.output?.savedTo || {};
+                                                                                    const isApproved = item.status === 'approved';
+                                                                                    const isPending = item.status === 'pending_review';
+                                                                                    const isRunning = item.status === 'running';
+                                                                                    const isFailed = item.status === 'failed';
+                                                                                    const statusBadge = isApproved ? 'bg-emerald-500/20 text-emerald-300'
+                                                                                        : isPending ? 'bg-amber-500/20 text-amber-300'
+                                                                                        : isRunning ? 'bg-sky-500/20 text-sky-300'
+                                                                                        : isFailed ? 'bg-red-500/20 text-red-300'
+                                                                                        : 'bg-white/10 text-slate-300';
+                                                                                    return (
+                                                                                        <div key={item.id} className={`bg-white/5 border ${isApproved ? 'border-emerald-500/20' : 'border-white/5'} rounded p-3`}>
+                                                                                            <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
+                                                                                                <div className="flex items-center gap-2">
+                                                                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${statusBadge}`}>{item.status}</span>
+                                                                                                    <span className="text-[10px] text-slate-500">{item.activityType}</span>
+                                                                                                </div>
+                                                                                                <div className="flex items-center gap-2">
+                                                                                                    <span className="text-[10px] text-slate-500">
+                                                                                                        {(item.reviewedAt || item.updatedAt || item.createdAt) && new Date(item.reviewedAt || item.updatedAt || item.createdAt).toLocaleString()}
+                                                                                                    </span>
+                                                                                                    {isApproved && (
+                                                                                                        <button
+                                                                                                            onClick={() => unapproveActivity(item.id)}
+                                                                                                            className="px-2 py-0.5 text-[10px] bg-amber-600 hover:bg-amber-500 text-white rounded"
+                                                                                                            title="Move back to pending inbox"
+                                                                                                        >Reopen</button>
+                                                                                                    )}
+                                                                                                </div>
+                                                                                            </div>
+                                                                                            {item.input?.topic && <p className="text-xs text-slate-200">{item.input.topic}</p>}
+                                                                                            {(savedTo.icloud || savedTo.research) && (
+                                                                                                <p className="text-[10px] text-slate-500 mt-1">
+                                                                                                    Saved to:
+                                                                                                    {savedTo.research ? ` Research/${savedTo.research.category}` : ''}
+                                                                                                    {savedTo.research && savedTo.icloud ? ' · ' : ''}
+                                                                                                    {savedTo.icloud ? `iCloud ${savedTo.icloud.path}` : ''}
+                                                                                                </p>
+                                                                                            )}
+                                                                                            {md && (() => {
+                                                                                                const parsed = parseRecapVersions(md);
+                                                                                                const tab = recapActiveTab[item.id] || 'comprehensive';
+                                                                                                const setTab = (v) => setRecapActiveTab(s => ({ ...s, [item.id]: v }));
+                                                                                                const currentHtml = parsed.hasVersions ? (parsed[tab] || '') : (parsed.comprehensive || md);
+                                                                                                const versionLabel = { quick: 'Quick', summary: 'Summary', comprehensive: 'Comprehensive' };
+                                                                                                const looksHtml = /<\s*(h[1-6]|p|ul|ol|table|section)\b/i.test(currentHtml);
+                                                                                                return (
+                                                                                                    <details className="mt-2">
+                                                                                                        <summary className="text-[11px] text-amber-300 cursor-pointer">Show recap</summary>
+                                                                                                        <div className="mt-2 bg-black/40 border border-amber-500/20 rounded">
+                                                                                                            <div className="flex items-center justify-between px-3 pt-2 pb-1 flex-wrap gap-2">
+                                                                                                                <div className="flex items-center gap-1">
+                                                                                                                    {parsed.hasVersions ? ['quick','summary','comprehensive'].filter(v => parsed[v]).map(v => (
+                                                                                                                        <button key={v} onClick={() => setTab(v)}
+                                                                                                                            className={`px-2 py-0.5 text-[10px] uppercase tracking-wider rounded ${tab===v ? 'bg-amber-500 text-slate-900' : 'bg-white/10 text-amber-300/70 hover:bg-white/20'}`}>
+                                                                                                                            {versionLabel[v]}
+                                                                                                                        </button>
+                                                                                                                    )) : (
+                                                                                                                        <span className="text-[10px] text-amber-300/70 uppercase tracking-wider">Earnings Recap</span>
+                                                                                                                    )}
+                                                                                                                </div>
+                                                                                                            </div>
+                                                                                                            <div className="px-3 pb-3 max-h-96 overflow-y-auto">
+                                                                                                                {looksHtml ? (
+                                                                                                                    <div className="prose prose-invert prose-sm max-w-none text-slate-200" dangerouslySetInnerHTML={{ __html: currentHtml }} />
+                                                                                                                ) : (
+                                                                                                                    <pre className="whitespace-pre-wrap text-xs text-slate-200 font-sans leading-relaxed">{currentHtml}</pre>
+                                                                                                                )}
+                                                                                                            </div>
+                                                                                                        </div>
+                                                                                                        <div className="flex gap-1 mt-2 flex-wrap">
+                                                                                                            <button onClick={() => copyRecap(currentHtml)} className="px-2 py-1 bg-white/10 hover:bg-white/20 rounded text-[10px]">Copy {parsed.hasVersions ? versionLabel[tab] : ''}</button>
+                                                                                                            <button onClick={() => emailRecapVersion(item, parsed.hasVersions ? tab : 'comprehensive')} className="px-2 py-1 bg-amber-600 hover:bg-amber-500 rounded text-[10px]">Email {parsed.hasVersions ? versionLabel[tab] : 'to me'}</button>
+                                                                                                            {parsed.hasVersions && (
+                                                                                                                <button onClick={() => emailRecapVersion(item, 'all')} className="px-2 py-1 bg-amber-700 hover:bg-amber-600 text-white rounded text-[10px]">Email All 3</button>
+                                                                                                            )}
+                                                                                                            <button
+                                                                                                                onClick={() => {
+                                                                                                                    const providers = Object.keys(agentProviders).length ? Object.keys(agentProviders) : ['anthropic'];
+                                                                                                                    const currentProvider = recapProvider[item.id] || 'anthropic';
+                                                                                                                    const p = window.prompt(`Provider? Available: ${providers.join(', ')}`, currentProvider);
+                                                                                                                    if (p === null) return;
+                                                                                                                    const models = agentProviders[p.trim()] || agentProviders.anthropic || [RECAP_DEFAULT_MODEL];
+                                                                                                                    const currentModel = recapModel[item.id] || RECAP_DEFAULT_MODEL;
+                                                                                                                    const m = window.prompt(`Model? Available: ${models.join(', ')}`, currentModel);
+                                                                                                                    if (m === null) return;
+                                                                                                                    const ci = window.prompt('Optional custom instructions:', recapCustomInstructions[item.id] || '');
+                                                                                                                    if (ci === null) return;
+                                                                                                                    if (!window.confirm(`Regenerate this recap with ${p.trim()}/${m.trim()}? Prior version preserved in history.`)) return;
+                                                                                                                    setRecapProvider(s => ({ ...s, [item.id]: p.trim() }));
+                                                                                                                    setRecapModel(s => ({ ...s, [item.id]: m.trim() }));
+                                                                                                                    setRecapCustomInstructions(s => ({ ...s, [item.id]: ci }));
+                                                                                                                    regenerateAnalystActivity(item.id, { length: 'standard', customInstructions: ci.trim(), provider: p.trim(), model: m.trim() });
+                                                                                                                }}
+                                                                                                                className="px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-[10px]"
+                                                                                                            >Regenerate</button>
+                                                                                                        </div>
+                                                                                                    </details>
+                                                                                                );
+                                                                                            })()}
+                                                                                            {!md && isApproved && (
+                                                                                                <p className="text-[10px] text-slate-500 italic mt-1">No recap content saved. Use Reopen to move it back to the inbox and run a fresh recap.</p>
+                                                                                            )}
+                                                                                            {(isPending || isRunning || isFailed) && (
+                                                                                                <button
+                                                                                                    onClick={() => { setAnalystView('inbox'); setShowArchivedInbox(false); fetchAnalystInbox(); }}
+                                                                                                    className="mt-2 text-[10px] text-amber-300 hover:text-amber-200"
+                                                                                                >Open in Inbox →</button>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    );
+                                                                                })}
+                                                                            </div>
+                                                                        )}
                                                                     </div>
-                                                                    <span className="text-[10px] text-slate-500">{act.createdAt && new Date(act.createdAt).toLocaleString()}</span>
-                                                                </div>
-                                                                {act.input && act.input.pointText && (
-                                                                    <p className="text-xs text-slate-300 mt-1">{act.input.pointText}</p>
-                                                                )}
-                                                            </li>
-                                                        ))}
-                                                    </ul>
-                                                )}
-                                            </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
                                     )}
 
