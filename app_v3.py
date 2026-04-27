@@ -387,6 +387,44 @@ def media_admin_kick():
     })
 
 
+@app.route('/api/media/admin/purge-pending', methods=['POST'])
+def media_admin_purge_pending():
+    """Delete unprocessed episodes from a feed without unsubscribing the feed.
+    Use case: a chatty daily feed (e.g. Bloomberg Surveillance) accumulated a
+    big backfill backlog that you don't want to spend Gemini quota
+    transcribing — purge the queue, keep the subscription so future episodes
+    flow normally.
+
+    Body:
+      feedId    (required): feed UUID
+      statuses  (optional): list of statuses to delete. Default
+                            ['new','queued','failed','skipped']. Never deletes
+                            'transcribing' / 'extracting' / 'done' to avoid
+                            yanking work in flight or losing processed history.
+    """
+    data = request.json or {}
+    feed_id = data.get('feedId')
+    if not feed_id:
+        return jsonify({'error': 'feedId required'}), 400
+    statuses = data.get('statuses') or ['new', 'queued', 'failed', 'skipped']
+    # Hard-allowlist to keep this from ever deleting 'done' or in-flight rows.
+    allowed = {'new', 'queued', 'failed', 'skipped'}
+    statuses = [s for s in statuses if s in allowed]
+    if not statuses:
+        return jsonify({'error': 'no valid statuses (allowed: new, queued, failed, skipped)'}), 400
+    with get_db(commit=True) as (_c, cur):
+        cur.execute('SELECT name FROM media_feeds WHERE id=%s', (feed_id,))
+        f = cur.fetchone()
+        if not f:
+            return jsonify({'error': 'feed not found'}), 404
+        cur.execute(
+            'DELETE FROM media_episodes WHERE feed_id=%s AND status = ANY(%s) RETURNING id',
+            (feed_id, statuses),
+        )
+        deleted = len(cur.fetchall())
+    return jsonify({'ok': True, 'feed': f['name'], 'deleted': deleted, 'statuses': statuses})
+
+
 @app.route('/api/media/admin/failed-episodes', methods=['GET'])
 def media_admin_failed_episodes():
     """Recent failed episodes with error messages across all feeds."""
