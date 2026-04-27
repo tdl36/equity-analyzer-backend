@@ -6436,6 +6436,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         const cfg = existingMap[doc.filename] || existingMap[doc.charlieId];
                         if (cfg) {
                             doc.selected = cfg.included !== false;
+                            doc.purged = cfg.purged === true;
+                        } else {
+                            doc.purged = false;
                         }
                     }
 
@@ -22129,20 +22132,31 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                             {grouped[folder].map(doc => (
                                                                                 <div key={doc.filename + doc.folder}
                                                                                     onClick={() => {
+                                                                                        // Purged docs are locked-unchecked — clicking the row first un-purges
+                                                                                        // (and leaves include unchanged) instead of toggling include.
+                                                                                        if (doc.purged) {
+                                                                                            setPipelineDocModalDocs(prev => prev.map((d, j) => j === doc._idx ? { ...d, purged: false } : d));
+                                                                                            return;
+                                                                                        }
                                                                                         setPipelineDocModalDocs(prev => prev.map((d, j) => j === doc._idx ? { ...d, selected: !d.selected } : d));
                                                                                     }}
                                                                                     className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-colors ${
-                                                                                        doc.selected ? 'bg-white/[0.03] border-white/10 hover:border-white/20' : 'bg-white/[0.01] border-white/5 opacity-40 hover:opacity-60'
+                                                                                        doc.purged ? 'bg-red-950/30 border-red-500/30 hover:border-red-500/50'
+                                                                                        : doc.selected ? 'bg-white/[0.03] border-white/10 hover:border-white/20'
+                                                                                        : 'bg-white/[0.01] border-white/5 opacity-40 hover:opacity-60'
                                                                                     }`}
                                                                                 >
                                                                                     <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
-                                                                                        doc.selected ? 'bg-amber-600 border-amber-500' : 'border-white/20'
+                                                                                        doc.purged ? 'border-red-500/40 bg-red-900/20'
+                                                                                        : doc.selected ? 'bg-amber-600 border-amber-500'
+                                                                                        : 'border-white/20'
                                                                                     }`}>
-                                                                                        {doc.selected && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                                                                                        {doc.selected && !doc.purged && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
                                                                                     </div>
                                                                                     <div className="flex-1 min-w-0">
-                                                                                        <div className="text-[10px] font-medium truncate">{doc.filename}</div>
+                                                                                        <div className={`text-[10px] font-medium truncate ${doc.purged ? 'line-through text-red-300' : ''}`}>{doc.filename}</div>
                                                                                         <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                                                                            {doc.purged && <span className="text-[8px] px-1 py-0.5 rounded bg-red-500/30 text-red-200 font-bold uppercase tracking-wider">Purged</span>}
                                                                                             {doc.usedInThesis && doc.usedInNote && <span className="text-[8px] px-1 py-0.5 rounded bg-green-500/20 text-green-400 font-medium">Thesis + Note</span>}
                                                                                             {doc.usedInThesis && !doc.usedInNote && <span className="text-[8px] px-1 py-0.5 rounded bg-green-500/20 text-green-400 font-medium">Thesis</span>}
                                                                                             {!doc.usedInThesis && doc.usedInNote && <span className="text-[8px] px-1 py-0.5 rounded bg-blue-500/20 text-blue-400 font-medium">Note</span>}
@@ -22151,6 +22165,30 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                             <span className="text-[8px] text-slate-600">{doc.fileSize > 0 ? `${Math.round(doc.fileSize / 1024)}KB` : ''}</span>
                                                                                         </div>
                                                                                     </div>
+                                                                                    {/* Purge toggle — only meaningful for docs that have prior thesis influence.
+                                                                                        Click sets purged=true AND auto-unchecks include (since "include this doc as a
+                                                                                        source" + "scrub its prior influence" together is incoherent — the model
+                                                                                        would re-establish the influence). Click again to un-purge. */}
+                                                                                    {doc.usedInThesis && (
+                                                                                        <button
+                                                                                            onClick={(e) => {
+                                                                                                e.stopPropagation();
+                                                                                                setPipelineDocModalDocs(prev => prev.map((d, j) => j === doc._idx ? {
+                                                                                                    ...d,
+                                                                                                    purged: !d.purged,
+                                                                                                    selected: d.purged ? d.selected : false,  // auto-uncheck on purge; keep state on un-purge
+                                                                                                } : d));
+                                                                                            }}
+                                                                                            className={`flex-shrink-0 p-1 rounded transition-colors ${
+                                                                                                doc.purged
+                                                                                                    ? 'text-red-300 bg-red-500/20 hover:bg-red-500/30'
+                                                                                                    : 'text-slate-500 hover:text-red-400 hover:bg-red-500/10'
+                                                                                            }`}
+                                                                                            title={doc.purged ? 'Click to un-purge (restore prior influence)' : 'Purge: scrub this doc\'s prior influence from the analysis (auto-unchecks Include)'}
+                                                                                        >
+                                                                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3"/></svg>
+                                                                                        </button>
+                                                                                    )}
                                                                                 </div>
                                                                             ))}
                                                                         </div>
@@ -22184,15 +22222,20 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     <button onClick={() => setPipelineDocModalTicker(null)} className="px-3 py-1.5 text-xs text-slate-400 hover:text-white">Cancel</button>
                                                     <button
                                                         onClick={() => {
+                                                            const purgedFilenames = pipelineDocModalDocs
+                                                                .filter(d => d.purged && d.usedInThesis)
+                                                                .map(d => d.filename);
                                                             setPipelineDocConfig(prev => ({
                                                                 ...prev,
                                                                 [pipelineDocModalTicker]: {
                                                                     existingWeight: pipelineDocModalExistingWeight,
+                                                                    excludedHistoricalDocs: purgedFilenames,
                                                                     documents: pipelineDocModalDocs.map(d => ({
                                                                         id: d.charlieId || d.filename,
                                                                         filename: d.filename,
                                                                         folder: d.folder,
                                                                         included: d.selected,
+                                                                        purged: d.purged === true,
                                                                     }))
                                                                 }
                                                             }));
