@@ -7302,17 +7302,20 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [feedAllFeeds, setFeedAllFeeds] = useState([]);
             const [feedLoading, setFeedLoading] = useState(false);
             const [feedError, setFeedError] = useState(null);
-            useEffect(() => {
-                (async () => {
-                    try {
-                        const r = await fetch(`${API_URL}/api/media/feeds`);
-                        const j = await r.json();
-                        setFeedAllFeeds(j.feeds || []);
-                    } catch {}
-                })();
+            // Refetch the subscribed-feeds list so the podcast dropdown picks up
+            // any feeds added since page-load (was a one-shot useEffect on mount,
+            // so newly-subscribed shows like "The Memo by Howard Marks" never
+            // appeared until full reload).
+            const refetchAllFeeds = useCallback(async () => {
+                try {
+                    const r = await fetch(`${API_URL}/api/media/feeds`);
+                    const j = await r.json();
+                    setFeedAllFeeds(j.feeds || []);
+                } catch {}
             }, []);
+            useEffect(() => { refetchAllFeeds(); }, [refetchAllFeeds]);
             const [feedFilters, setFeedFilters] = useState({
-                source: 'podcast', ticker: '', sector: '', days: 7, q: '', material: false,
+                source: 'podcast', ticker: '', sector: '', days: 30, q: '', material: false,
                 sectorBundle: null,
             });
             const [feedTickerHeatmap, setFeedTickerHeatmap] = useState([]);
@@ -7371,15 +7374,19 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     if (feedFilters.days)     params.set('days', String(feedFilters.days));
                     if (feedFilters.q)        params.set('q', feedFilters.q);
                     if (feedFilters.material) params.set('material', 'true');
+                    // Bump default limit so 30/60/90-day windows aren't capped at 100.
+                    params.set('limit', '300');
                     const resp = await fetch(`/api/media/feed?${params}`);
                     const data = await resp.json();
                     setFeedEpisodes(data.episodes || []);
+                    // Keep the podcast dropdown in sync with newly-added feeds.
+                    refetchAllFeeds();
                 } catch (e) {
                     setFeedError(String(e));
                 } finally {
                     setFeedLoading(false);
                 }
-            }, [feedFilters]);
+            }, [feedFilters, refetchAllFeeds]);
 
             const fetchTickerHeatmap = useCallback(async () => {
                 const now = Date.now();
@@ -24968,7 +24975,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                         >
                                             <option value={1}>Today</option>
                                             <option value={7}>7 days</option>
+                                            <option value={14}>14 days</option>
                                             <option value={30}>30 days</option>
+                                            <option value={60}>60 days</option>
+                                            <option value={90}>90 days</option>
                                         </select>
                                         <input
                                             type="text"
