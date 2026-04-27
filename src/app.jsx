@@ -1510,6 +1510,28 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [analystInbox, setAnalystInbox] = useState([]);
             const [analystView, setAnalystView] = useState('list'); // 'list' | 'detail' | 'inbox' | 'earnings'
             const [analystCoverageExpanded, setAnalystCoverageExpanded] = useState({}); // { 'analystId:TICKER': bool }
+            // Agent liveness — polls /api/agent/health every 60s; banner shown when stale > 120s.
+            const [agentHealth, setAgentHealth] = useState(null); // { status, staleSeconds, lastSeen, agentSeenEver }
+            const [agentBannerDismissed, setAgentBannerDismissed] = useState(false);
+            useEffect(() => {
+                let stop = false;
+                const poll = async () => {
+                    try {
+                        const r = await fetch(`${API_URL}/api/agent/health`);
+                        if (r.ok && !stop) {
+                            const j = await r.json();
+                            setAgentHealth(j);
+                        }
+                    } catch (e) { /* network blip — keep last value */ }
+                };
+                poll();
+                const id = setInterval(poll, 60000);
+                return () => { stop = true; clearInterval(id); };
+            }, []);
+            // When agent comes back, auto-clear the dismissed flag so the next outage shows.
+            useEffect(() => {
+                if (agentHealth && agentHealth.status === 'ok') setAgentBannerDismissed(false);
+            }, [agentHealth?.status]);
             // Phase 3d: earnings calendar
             const [earningsItems, setEarningsItems] = useState([]);
             const [earningsLoading, setEarningsLoading] = useState(false);
@@ -12826,6 +12848,22 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     )}
                     
                 <div className="flex flex-col h-screen glass-bg-mesh text-slate-100">
+                    {/* Agent stale banner — shown when /api/agent/health reports stale or never-seen.
+                        Sits above the nav so it's the first thing visible on every tab. Dismissible. */}
+                    {agentHealth && !agentBannerDismissed && (agentHealth.status === 'stale' || agentHealth.agentSeenEver === false) && (
+                        <div className={`px-4 py-2 text-xs flex items-center justify-between gap-3 border-b ${agentHealth.status === 'stale' ? 'bg-red-900/40 border-red-500/40 text-red-200' : 'bg-amber-900/40 border-amber-500/40 text-amber-200'}`}>
+                            <div className="flex-1 min-w-0">
+                                <span className="font-semibold">Local agent {agentHealth.status === 'stale' ? 'stale' : 'never seen'}.</span>
+                                {' '}
+                                {agentHealth.status === 'stale'
+                                    ? <>Last heartbeat <strong>{Math.floor((agentHealth.staleSeconds || 0) / 60)}m {Math.floor((agentHealth.staleSeconds || 0) % 60)}s ago</strong> — pipeline jobs (note generation, recap, catalyst synth) are halted until the agent comes back.</>
+                                    : <>The local agent has never checked in. New jobs will sit queued until you start it on your Mac.</>}
+                                {' '}
+                                <span className="opacity-70">Try: <code className="bg-black/30 px-1 rounded">launchctl kickstart -k gui/$(id -u)/com.charlie.local-agent</code></span>
+                            </div>
+                            <button onClick={() => setAgentBannerDismissed(true)} className="text-[10px] px-2 py-0.5 rounded bg-white/10 hover:bg-white/20 flex-shrink-0" title="Dismiss until next outage">×</button>
+                        </div>
+                    )}
                     {/* DESKTOP TOP NAVIGATION - Hidden on mobile */}
                     <nav className="hidden md:flex items-center justify-between px-6 py-3 bg-white/5 backdrop-blur-xl border-b border-white/10">
                         <div className="flex items-center gap-3">

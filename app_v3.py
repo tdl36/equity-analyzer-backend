@@ -115,9 +115,17 @@ def require_auth():
     if request.path in AUTH_EXEMPT_PATHS:
         return None
 
-    # No auth configured = dev mode, allow all
+    # No auth configured. Historically this opened the entire backend to the
+    # internet (incl. /api/media/admin/* and analyst_activities mutators) which
+    # is fine for local dev but a footgun on Render if both env vars get
+    # accidentally unset (typo, secret rotation, env wipe). Require an explicit
+    # opt-in to acknowledge that risk.
     if not CHARLIE_PASSWORD and not CHARLIE_API_KEY:
-        return None
+        if os.environ.get('CHARLIE_ALLOW_NO_AUTH') == '1':
+            return None
+        return jsonify({
+            'error': 'Auth misconfigured: set CHARLIE_PASSWORD or CHARLIE_API_KEY, or set CHARLIE_ALLOW_NO_AUTH=1 to explicitly run open.'
+        }), 503
 
     auth_header = request.headers.get('Authorization', '')
 
@@ -2857,6 +2865,18 @@ def init_db():
             cur.execute("""
                 UPDATE research_pipeline_jobs SET status = 'failed', error = 'Job timed out', updated_at = NOW()
                 WHERE status IN ('queued', 'running') AND created_at < NOW() - INTERVAL '30 minutes'
+            """)
+
+            # Fan out: any analyst_activities row stuck on 'running' for > 30 min
+            # is also failed (the linked synthesis job is dead, agent crashed,
+            # Mac slept, etc.). Without this the row stays "running" forever and
+            # the only escape was Reopen-on-approved which doesn't apply here.
+            cur.execute("""
+                UPDATE analyst_activities
+                   SET status = 'failed',
+                       error = COALESCE(error, '') || CASE WHEN COALESCE(error, '') = '' THEN '' ELSE ' | ' END || 'Stranded running >30min — auto-failed by reaper',
+                       updated_at = NOW()
+                 WHERE status = 'running' AND updated_at < NOW() - INTERVAL '30 minutes'
             """)
 
             # Clean up old completed/failed pipeline jobs (older than 7 days)
@@ -14659,10 +14679,73 @@ def agent_doc_upload_complete():
     return jsonify({'success': True})
 
 
+@app.route('/api/agent/heartbeat', methods=['POST'])
+def agent_heartbeat():
+    """Local agent posts here every ~30s. Stores last_seen so the frontend
+    can detect a stale agent (Mac asleep, plist broken, network down, etc.)
+    and the user knows the pipeline is halted instead of just slow."""
+    data = request.get_json(silent=True) or {}
+    agent_id = (data.get('agentId') or 'default').strip()[:64]
+    version = (data.get('version') or '').strip()[:64]
+    try:
+        with get_db(commit=True) as (_c, cur):
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS agent_heartbeats (
+                    agent_id TEXT PRIMARY KEY,
+                    last_seen TIMESTAMP NOT NULL DEFAULT NOW(),
+                    version TEXT
+                )
+            ''')
+            cur.execute('''
+                INSERT INTO agent_heartbeats (agent_id, last_seen, version)
+                VALUES (%s, NOW(), %s)
+                ON CONFLICT (agent_id) DO UPDATE SET
+                    last_seen = NOW(),
+                    version = EXCLUDED.version
+            ''', (agent_id, version))
+        return jsonify({'ok': True, 'agentId': agent_id})
+    except Exception as e:
+        print(f'agent_heartbeat error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/agent/health', methods=['GET'])
 def agent_health():
-    """Health check endpoint for the agent."""
-    return jsonify({'status': 'ok', 'timestamp': datetime.utcnow().isoformat()})
+    """Public health check. Returns the most-recent agent heartbeat staleness
+    in seconds, so the frontend can show a banner when the pipeline is dead."""
+    try:
+        with get_db() as (_c, cur):
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS agent_heartbeats (
+                    agent_id TEXT PRIMARY KEY,
+                    last_seen TIMESTAMP NOT NULL DEFAULT NOW(),
+                    version TEXT
+                )
+            ''')
+            cur.execute('SELECT agent_id, last_seen, version FROM agent_heartbeats ORDER BY last_seen DESC LIMIT 1')
+            row = cur.fetchone()
+        if not row:
+            return jsonify({
+                'status': 'unknown',
+                'agentSeenEver': False,
+                'staleSeconds': None,
+                'lastSeen': None,
+                'timestamp': datetime.utcnow().isoformat(),
+            })
+        last_seen = row['last_seen']
+        # last_seen is naive UTC from the DB
+        stale_s = (datetime.utcnow() - last_seen).total_seconds()
+        return jsonify({
+            'status': 'ok' if stale_s < 120 else 'stale',
+            'agentSeenEver': True,
+            'staleSeconds': round(stale_s, 1),
+            'lastSeen': last_seen.isoformat(),
+            'agentId': row.get('agent_id'),
+            'version': row.get('version'),
+            'timestamp': datetime.utcnow().isoformat(),
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'error': str(e), 'timestamp': datetime.utcnow().isoformat()}), 500
 
 
 # ============================================
@@ -21507,23 +21590,38 @@ def _dispatch_activity_run(activity_id: str, length: str = 'standard', custom_in
 
 @app.route('/api/analyst-activities/<activity_id>/unapprove', methods=['POST'])
 def analyst_activities_unapprove(activity_id):
-    """Reopen an approved activity: flip status back to pending_review so the
-    user can run / re-run the recap. Leaves any prior savedTo records and
-    research-tab docs in place (they can be deleted separately if needed)."""
+    """Reopen an activity: flip status back to pending_review so the user can
+    run / re-run the recap. Accepts:
+      - approved: the original use case (accidental Approve & Save)
+      - failed: lets the user re-edit and re-queue without going through retry
+      - running with updated_at older than 15 min: escape hatch for when the
+        local agent crashed mid-job and the reaper hasn't run yet
+    Leaves any prior savedTo records and research-tab docs in place (the user
+    can delete those separately if needed)."""
     try:
         with get_db(commit=True) as (_c, cur):
-            cur.execute('SELECT status FROM analyst_activities WHERE id=%s', (activity_id,))
+            cur.execute('SELECT status, updated_at FROM analyst_activities WHERE id=%s', (activity_id,))
             row = cur.fetchone()
             if not row:
                 return jsonify({'error': 'activity not found'}), 404
-            if row.get('status') != 'approved':
-                return jsonify({'error': f"activity status is {row.get('status')}; only approved can be reopened"}), 400
+            current = row.get('status')
+            ok = False
+            if current in ('approved', 'failed'):
+                ok = True
+            elif current == 'running':
+                upd = row.get('updated_at')
+                if upd and (datetime.utcnow() - upd).total_seconds() > 15 * 60:
+                    ok = True
+            if not ok:
+                return jsonify({
+                    'error': f"activity status is {current}; only approved/failed (or running >15min stale) can be reopened"
+                }), 400
             cur.execute('''
                 UPDATE analyst_activities
-                   SET status='pending_review', reviewed_at=NULL, updated_at=NOW()
+                   SET status='pending_review', reviewed_at=NULL, error=NULL, updated_at=NOW()
                  WHERE id=%s
             ''', (activity_id,))
-        return jsonify({'ok': True, 'activityId': activity_id})
+        return jsonify({'ok': True, 'activityId': activity_id, 'fromStatus': current})
     except Exception as e:
         print(f'analyst_activities_unapprove error: {e}')
         return jsonify({'error': str(e)}), 500

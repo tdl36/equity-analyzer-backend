@@ -14,18 +14,30 @@ APP_DIR="$HOME/Projects/equity-analyzer-backend"
 RUN_SCRIPT="$HOME/Applications/CharlieAgent.app/Contents/MacOS/run"
 LOG="$HOME/Library/Logs/charlie-agent.log"
 
-# Pull API keys out of the existing CharlieAgent.app run script so we
-# don't ask the user to paste them again. Falls back to current env.
+KEYCHAIN_SERVICE="charlie-agent"
+
+# Resolve a secret by precedence: Keychain → env var → existing CharlieAgent.app
+# run script. The agent's get_secret() helper does the same lookup at runtime,
+# so any secret already in Keychain doesn't need to land in the plist at all.
+read_keychain() {
+  security find-generic-password -s "$KEYCHAIN_SERVICE" -a "$1" -w 2>/dev/null || true
+}
+
 extract_var() {
   local name="$1"
   local val=""
+  val="$(read_keychain "$name")"
+  if [[ -n "$val" ]]; then printf '%s' "$val"; return; fi
+  if [[ -n "${!name:-}" ]]; then printf '%s' "${!name}"; return; fi
   if [[ -f "$RUN_SCRIPT" ]]; then
     val=$(grep -oE "${name}=[^[:space:]]+" "$RUN_SCRIPT" | head -1 | sed -E "s/^${name}=//")
   fi
-  if [[ -z "$val" ]]; then
-    val="${!name}"
-  fi
   printf '%s' "$val"
+}
+
+# Track which secrets came from Keychain (skip plist embedding for those).
+in_keychain() {
+  [[ -n "$(read_keychain "$1")" ]]
 }
 
 CHARLIE_API_KEY=$(extract_var CHARLIE_API_KEY)
@@ -35,10 +47,25 @@ TELEGRAM_CHAT_ID=$(extract_var TELEGRAM_CHAT_ID)
 PYTHONPATH_VAL="$HOME/Library/Python/3.9/lib/python/site-packages"
 
 if [[ -z "$CHARLIE_API_KEY" ]] || [[ -z "$ANTHROPIC_API_KEY" ]]; then
-  echo "ERROR: Could not find CHARLIE_API_KEY or ANTHROPIC_API_KEY in $RUN_SCRIPT or environment." >&2
-  echo "Either keep the existing CharlieAgent.app or export the keys before running this script." >&2
+  echo "ERROR: Could not find CHARLIE_API_KEY or ANTHROPIC_API_KEY in Keychain, env, or $RUN_SCRIPT." >&2
+  echo "Either populate the Keychain via:" >&2
+  echo "  security add-generic-password -U -s $KEYCHAIN_SERVICE -a CHARLIE_API_KEY    -w 'YOUR_KEY'" >&2
+  echo "  security add-generic-password -U -s $KEYCHAIN_SERVICE -a ANTHROPIC_API_KEY -w 'sk-ant-...'" >&2
+  echo "or export the keys to env before running this script." >&2
   exit 1
 fi
+
+# Build the EnvironmentVariables block: only include secrets that are NOT
+# already in Keychain (the agent reads Keychain at startup, so duplicating
+# them in the plist defeats the purpose).
+build_env_var() {
+  local key="$1"; local val="$2"
+  if in_keychain "$key"; then
+    echo "    <!-- $key sourced from Keychain at runtime -->"
+  elif [[ -n "$val" ]]; then
+    echo "    <key>$key</key><string>$val</string>"
+  fi
+}
 
 # Stop any current agent (Terminal-launched python and/or launchd-managed)
 pkill -9 -f charlie_local_agent.py 2>/dev/null || true
@@ -62,10 +89,10 @@ cat > "$PLIST" <<EOF
   <key>WorkingDirectory</key><string>${APP_DIR}</string>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>CHARLIE_API_KEY</key><string>${CHARLIE_API_KEY}</string>
-    <key>ANTHROPIC_API_KEY</key><string>${ANTHROPIC_API_KEY}</string>
-    <key>TELEGRAM_BOT_TOKEN</key><string>${TELEGRAM_BOT_TOKEN}</string>
-    <key>TELEGRAM_CHAT_ID</key><string>${TELEGRAM_CHAT_ID}</string>
+$(build_env_var CHARLIE_API_KEY    "${CHARLIE_API_KEY}")
+$(build_env_var ANTHROPIC_API_KEY  "${ANTHROPIC_API_KEY}")
+$(build_env_var TELEGRAM_BOT_TOKEN "${TELEGRAM_BOT_TOKEN}")
+$(build_env_var TELEGRAM_CHAT_ID   "${TELEGRAM_CHAT_ID}")
     <key>PYTHONPATH</key><string>${PYTHONPATH_VAL}</string>
   </dict>
   <key>RunAtLoad</key><true/>
@@ -109,3 +136,18 @@ echo "  4. Restart agent: launchctl kickstart -k gui/\$(id -u)/com.charlie.local
 echo ""
 echo "To uninstall later:"
 echo "  launchctl bootout gui/\$(id -u)/com.charlie.local-agent && rm $PLIST"
+
+# Warn loudly if any secret got embedded in the plist (Keychain miss).
+PLIST_HAS_SECRETS=0
+for KEY in CHARLIE_API_KEY ANTHROPIC_API_KEY TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID; do
+  if /usr/libexec/PlistBuddy -c "Print :EnvironmentVariables:$KEY" "$PLIST" >/dev/null 2>&1; then
+    PLIST_HAS_SECRETS=1
+    break
+  fi
+done
+if [[ $PLIST_HAS_SECRETS -eq 1 ]]; then
+  echo ""
+  echo "⚠ The plist contains plaintext secrets (Time Machine + iCloud Library backups will copy them)."
+  echo "  Move them to the macOS Keychain by running:"
+  echo "    bash scripts/migrate-secrets-to-keychain.sh"
+fi

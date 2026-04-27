@@ -1,5 +1,30 @@
 const BACKEND_URL = 'https://equity-analyzer-backend.onrender.com';
-const BUILD_VERSION = '2026-04-26T10';
+const BUILD_VERSION = '2026-04-26T11';
+
+// Origin allowlist. Wildcard CORS was leaking the API behind any origin and
+// blocking any future cookie-auth migration. Echo back the request Origin only
+// if it's on this list; otherwise omit the header (browser blocks the response).
+const ALLOWED_ORIGINS = new Set([
+  'https://charlie-deployment.tonydlee.workers.dev',
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+]);
+
+function corsOrigin(request) {
+  const origin = request.headers.get('Origin') || '';
+  return ALLOWED_ORIGINS.has(origin) ? origin : null;
+}
+
+function corsHeaders(request, extra = {}) {
+  const origin = corsOrigin(request);
+  const h = { ...extra };
+  if (origin) {
+    h['Access-Control-Allow-Origin'] = origin;
+    h['Vary'] = 'Origin';
+  }
+  return h;
+}
 
 export default {
   async fetch(request, env) {
@@ -8,23 +33,21 @@ export default {
     // Handle CORS preflight
     if (request.method === 'OPTIONS') {
       return new Response(null, {
-        headers: {
-          'Access-Control-Allow-Origin': '*',
+        headers: corsHeaders(request, {
           'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type, Authorization',
           'Access-Control-Max-Age': '86400',
-        },
+        }),
       });
     }
 
     // Version endpoint for auto-update detection (bypasses service worker cache)
     if (url.pathname === '/version') {
       return new Response(JSON.stringify({ version: BUILD_VERSION }), {
-        headers: {
+        headers: corsHeaders(request, {
           'Content-Type': 'application/json',
           'Cache-Control': 'no-store, no-cache, must-revalidate',
-          'Access-Control-Allow-Origin': '*',
-        },
+        }),
       });
     }
 
@@ -64,22 +87,24 @@ export default {
           body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : undefined,
         });
         const response = await fetch(backendRequest);
-        // Add CORS headers
         const newHeaders = new Headers(response.headers);
-        newHeaders.set('Access-Control-Allow-Origin', '*');
+        const origin = corsOrigin(request);
+        if (origin) {
+          newHeaders.set('Access-Control-Allow-Origin', origin);
+          newHeaders.append('Vary', 'Origin');
+        } else {
+          // Same-origin requests don't need ACAO; strip any wildcard the backend might emit.
+          newHeaders.delete('Access-Control-Allow-Origin');
+        }
         return new Response(response.body, {
           status: response.status,
           statusText: response.statusText,
           headers: newHeaders,
         });
       } catch (e) {
-        // Backend unreachable or timed out — return a proper JSON error
         return new Response(JSON.stringify({ error: 'Backend unavailable. It may be restarting — please try again in 30 seconds.' }), {
           status: 502,
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-          },
+          headers: corsHeaders(request, { 'Content-Type': 'application/json' }),
         });
       }
     }

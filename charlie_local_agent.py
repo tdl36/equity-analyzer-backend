@@ -22,6 +22,7 @@ import re
 import time
 import shutil
 import signal
+import subprocess
 import argparse
 import logging
 import threading
@@ -46,8 +47,12 @@ CONFIG_FILE = Path.home() / ".charlie_agent_config.json"
 AGENT_SECRET_HEADER = "X-Agent-Secret"
 
 # Telegram notifications
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "8487228930:AAHqadJIzFEVGq5TUESrKufD8-nHxcufj7Y")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "465648202")
+# Telegram credentials are resolved lazily via get_secret() at call time so
+# they can come from env / Keychain / config file. Historical default values
+# were hardcoded here and committed to the public GitHub repo — DO NOT
+# reintroduce a literal default. Rotate the leaked token in BotFather.
+TELEGRAM_BOT_TOKEN = ""  # populated in main() via get_secret('TELEGRAM_BOT_TOKEN')
+TELEGRAM_CHAT_ID = ""    # populated in main() via get_secret('TELEGRAM_CHAT_ID')
 
 log = logging.getLogger("charlie_agent")
 
@@ -217,6 +222,43 @@ def get_agent_secret() -> Optional[str]:
     return os.environ.get("CHARLIE_AGENT_SECRET") or load_config().get("agent_secret")
 
 
+# Keychain integration. The launchd plist used to ship API keys in plaintext
+# EnvironmentVariables (Time Machine + iCloud Library backups copied them
+# verbatim). Now: keys live in macOS Keychain under service "charlie-agent",
+# and this helper falls back through env -> Keychain -> ~/.charlie_agent_config.json
+# in that order so existing dev environments keep working.
+_KEYCHAIN_SERVICE = "charlie-agent"
+
+
+def _read_keychain(account: str) -> Optional[str]:
+    """Read a generic password from the user's login Keychain.
+    Returns None if missing, the `security` binary is unavailable, or the
+    user denied keychain access. Never raises."""
+    try:
+        result = subprocess.run(
+            ["security", "find-generic-password", "-s", _KEYCHAIN_SERVICE, "-a", account, "-w"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip() or None
+    except Exception as e:
+        log.debug(f"Keychain read for {account} failed: {e}")
+    return None
+
+
+def get_secret(name: str) -> Optional[str]:
+    """Resolve a secret by precedence: env var -> Keychain -> config file.
+    Use this everywhere instead of os.environ.get for API keys."""
+    val = os.environ.get(name)
+    if val:
+        return val
+    val = _read_keychain(name)
+    if val:
+        return val
+    cfg = load_config()
+    return cfg.get(name) or cfg.get(name.lower())
+
+
 # ---------------------------------------------------------------------------
 # Backend communication
 # ---------------------------------------------------------------------------
@@ -228,7 +270,7 @@ def _agent_headers() -> dict:
     if secret:
         headers[AGENT_SECRET_HEADER] = secret
     # API key auth for backend authentication
-    api_key = os.environ.get("CHARLIE_API_KEY", "")
+    api_key = get_secret("CHARLIE_API_KEY") or ""
     if api_key:
         headers["Authorization"] = f"ApiKey {api_key}"
     return headers
@@ -851,6 +893,21 @@ def auto_unzip_catalyst_folders() -> None:
                     log.warning(f"  Bad zip file, skipping: {zf.name}")
                 except Exception as e:
                     log.warning(f"  Could not unzip {zf.name}: {e}")
+
+
+def push_heartbeat() -> None:
+    """Tell the backend we're alive. Frontend polls /api/agent/health to
+    detect a stale agent and warn the user that the pipeline is halted
+    (Mac asleep, plist broken, network down, etc.)."""
+    try:
+        requests.post(
+            f"{CHARLIE_API}/api/agent/heartbeat",
+            json={"agentId": _agent_id(), "version": "1.0"},
+            headers=_agent_headers(),
+            timeout=10,
+        )
+    except Exception as e:
+        log.debug(f"Heartbeat push failed: {e}")
 
 
 def push_file_manifest() -> None:
@@ -2402,7 +2459,7 @@ def check_for_new_audio():
                     f"{CHARLIE_API}/api/auto-process-audio",
                     files={'file': (fname, file_data)},
                     data={'detailLevel': 'standard'},
-                    headers={'Authorization': f'ApiKey {os.environ.get("CHARLIE_API_KEY", "")}'},
+                    headers={'Authorization': f'ApiKey {get_secret("CHARLIE_API_KEY") or ""}'},
                     timeout=(15, 300),
                 )
                 if res.ok:
@@ -3050,7 +3107,7 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
                     import openai as _openai
                 except ImportError:
                     raise RuntimeError("openai package not installed")
-                openai_key = os.environ.get('OPENAI_API_KEY', '')
+                openai_key = get_secret('OPENAI_API_KEY') or ''
                 if not openai_key:
                     raise RuntimeError("OPENAI_API_KEY not set in env")
                 _client = _openai.OpenAI(api_key=openai_key)
@@ -3069,7 +3126,7 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
                     from google import genai as _genai
                 except ImportError:
                     raise RuntimeError("google-genai package not installed")
-                google_key = os.environ.get('GEMINI_API_KEY', '') or os.environ.get('GOOGLE_API_KEY', '')
+                google_key = get_secret('GEMINI_API_KEY') or get_secret('GOOGLE_API_KEY') or ''
                 if not google_key:
                     raise RuntimeError("GEMINI_API_KEY or GOOGLE_API_KEY not set in env")
                 _gclient = _genai.Client(api_key=google_key)
@@ -3264,7 +3321,7 @@ def main() -> None:
     args = parser.parse_args()
 
     # Resolve API key
-    api_key = args.api_key or os.environ.get("ANTHROPIC_API_KEY") or load_api_key_from_config()
+    api_key = args.api_key or get_secret("ANTHROPIC_API_KEY") or load_api_key_from_config()
     if not api_key:
         print("Error: Anthropic API key required.")
         print("  Set ANTHROPIC_API_KEY env var, use --api-key, or save to ~/.charlie_agent_config.json")
@@ -3318,15 +3375,38 @@ def main() -> None:
     except Exception as e:
         log.warning(f"Document import failed: {e}")
 
+    # Resolve Telegram credentials from env -> Keychain -> config file. The
+    # globals are mutated here so existing call sites that read them keep
+    # working without changes.
+    global TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+    TELEGRAM_BOT_TOKEN = get_secret("TELEGRAM_BOT_TOKEN") or ""
+    TELEGRAM_CHAT_ID = get_secret("TELEGRAM_CHAT_ID") or ""
+    if TELEGRAM_BOT_TOKEN:
+        log.info("Telegram credentials resolved")
+    else:
+        log.info("No Telegram credentials — alert channel disabled")
+
     consecutive_errors = 0
     MAX_CONSECUTIVE_ERRORS = 10
     MANIFEST_INTERVAL = 60  # seconds
+    HEARTBEAT_INTERVAL = 30  # seconds
     last_manifest_push = 0.0  # epoch; push immediately on first iteration
+    last_heartbeat = 0.0
 
     while not shutdown.is_set():
         try:
-            # Auto-unzip + push file manifest periodically (every 60s)
+            # Heartbeat every 30s so the frontend can show a "agent stale"
+            # banner when the Mac sleeps or the plist breaks.
             now = time.time()
+            if now - last_heartbeat >= HEARTBEAT_INTERVAL:
+                try:
+                    push_heartbeat()
+                    last_heartbeat = now
+                except Exception as e:
+                    log.debug(f"Heartbeat error: {e}")
+                    last_heartbeat = now
+
+            # Auto-unzip + push file manifest periodically (every 60s)
             if now - last_manifest_push >= MANIFEST_INTERVAL:
                 try:
                     auto_unzip_stock_folders()
