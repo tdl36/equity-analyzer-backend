@@ -21955,6 +21955,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             <button onClick={() => setPipelineDocModalDocs(prev => prev.map(d => ({ ...d, selected: true })))} className="text-[9px] text-amber-400 hover:text-amber-300">All</button>
                                                             <button onClick={() => setPipelineDocModalDocs(prev => prev.map(d => ({ ...d, selected: false })))} className="text-[9px] text-slate-400 hover:text-slate-300">None</button>
                                                             <button onClick={() => setPipelineDocModalDocs(prev => prev.map(d => d.folder === 'main' ? { ...d, selected: true } : { ...d, selected: false }))} className="text-[9px] text-cyan-400 hover:text-cyan-300">Main Only</button>
+                                                            <button onClick={() => setPipelineDocModalDocs(prev => prev.map(d => d.folder?.startsWith('Catalysts/') ? { ...d, selected: true } : { ...d, selected: false }))} className="text-[9px] text-purple-400 hover:text-purple-300">Catalysts Only</button>
                                                         </div>
                                                     </div>
                                                     {pipelineDocModalLoading ? (
@@ -21968,16 +21969,32 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             if (!grouped[folder]) grouped[folder] = [];
                                                             grouped[folder].push({ ...doc, _idx: i });
                                                         });
-                                                        const folderOrder = ['main', ...Object.keys(grouped).filter(f => f !== 'main' && f !== 'Processed' && f !== 'Prior Versions').sort(), 'Processed'];
+                                                        // Order: main first, then catalyst folders (alphabetically), then other STOCKS subfolders, then Processed last.
+                                                        const isCatalyst = (f) => f.startsWith('Catalysts/');
+                                                        const others = Object.keys(grouped)
+                                                            .filter(f => f !== 'main' && f !== 'Processed' && f !== 'Prior Versions')
+                                                            .sort();
+                                                        const catalystFolders = others.filter(isCatalyst);
+                                                        const stocksSubfolders = others.filter(f => !isCatalyst(f));
+                                                        const folderOrder = ['main', ...catalystFolders, ...stocksSubfolders, 'Processed'];
                                                         const folders = folderOrder.filter(f => grouped[f]);
+                                                        const folderLabel = (f) => {
+                                                            if (f === 'main') return 'Main Folder (STOCKS)';
+                                                            if (f.startsWith('Catalysts/')) return 'Catalysts: ' + f.slice('Catalysts/'.length);
+                                                            return f;
+                                                        };
+                                                        const folderHeaderClass = (f) => {
+                                                            if (f === 'main') return 'text-amber-400';
+                                                            if (f.startsWith('Catalysts/')) return 'text-purple-400';
+                                                            if (f === 'Processed') return 'text-slate-500';
+                                                            return 'text-cyan-400';
+                                                        };
                                                         return (
                                                             <div className="space-y-3">
                                                                 {folders.map(folder => (
-                                                                    <div key={folder}>
+                                                                    <div key={folder} className={folder.startsWith('Catalysts/') ? 'border-l-2 border-purple-500/40 pl-2' : ''}>
                                                                         <div className="flex items-center gap-2 mb-1.5">
-                                                                            <span className={`text-[9px] font-semibold uppercase tracking-wider ${
-                                                                                folder === 'main' ? 'text-amber-400' : folder === 'Processed' ? 'text-slate-500' : 'text-cyan-400'
-                                                                            }`}>{folder === 'main' ? 'Main Folder' : folder}</span>
+                                                                            <span className={`text-[9px] font-semibold uppercase tracking-wider ${folderHeaderClass(folder)}`}>{folderLabel(folder)}</span>
                                                                             <div className="flex-1 border-t border-white/5"></div>
                                                                             <span className="text-[8px] text-slate-600">{grouped[folder].length} files</span>
                                                                             <button onClick={() => {

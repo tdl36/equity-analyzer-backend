@@ -854,45 +854,70 @@ def auto_unzip_catalyst_folders() -> None:
 
 
 def push_file_manifest() -> None:
-    """Scan all ticker folders recursively and push file manifest to backend."""
+    """Scan all ticker folders recursively and push file manifest to backend.
+    Includes both STOCKS/<ticker>/ (main + subfolders) AND CATALYSTS/<ticker>/<topic>/.
+    Catalyst entries use folder labels of the form "Catalysts/<topic>" so the
+    frontend Update Config modal can group + style them distinctly."""
     SCAN_EXTS = {'.pdf', '.xlsx', '.xls', '.csv', '.txt', '.md', '.docx', '.pptx', '.png'}
     SKIP_DIRS = {'.icloud'}
-    manifest = {}
+    manifest: dict[str, list[dict]] = {}
+
+    def _scan_file(f: Path, base_dir: Path) -> Optional[dict]:
+        if f.is_dir():
+            return None
+        if f.name.startswith('.') or f.name.startswith('~$'):
+            return None
+        if any(part in SKIP_DIRS for part in f.parts):
+            return None
+        ext = f.suffix.lower()
+        if ext not in SCAN_EXTS:
+            return None
+        rel = f.relative_to(base_dir)
+        return {
+            'filename': f.name,
+            'path': str(rel),
+            'size': f.stat().st_size,
+            'extension': ext,
+            'modified': datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
+        }
+
+    # --- STOCKS/<ticker>/ ---
     for ticker_dir in sorted(STOCKS_DIR.iterdir()):
         if not ticker_dir.is_dir() or ticker_dir.name.startswith('.') or ticker_dir.name.startswith('_'):
             continue
         ticker = ticker_dir.name.upper()
-        files = []
-
-        # Recursively scan all files in the ticker folder
+        files: list[dict] = []
         for f in sorted(ticker_dir.rglob('*')):
-            if f.is_dir():
+            entry = _scan_file(f, ticker_dir)
+            if not entry:
                 continue
-            if f.name.startswith('.') or f.name.startswith('~$'):
-                continue
-            # Skip files inside .icloud dirs
-            if any(part in SKIP_DIRS for part in f.parts):
-                continue
-            ext = f.suffix.lower()
-            if ext not in SCAN_EXTS:
-                continue
-            # Determine folder label from relative path
-            rel = f.relative_to(ticker_dir)
-            if len(rel.parts) == 1:
-                folder = 'main'
-            else:
-                folder = str(rel.parent)  # e.g., "Processed", "Prior Versions", "20260320 - Tony Lee..."
-            files.append({
-                'filename': f.name,
-                'folder': folder,
-                'path': str(rel),
-                'size': f.stat().st_size,
-                'extension': ext,
-                'modified': datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
-            })
-
+            rel = Path(entry['path'])
+            entry['folder'] = 'main' if len(rel.parts) == 1 else str(rel.parent)
+            files.append(entry)
         if files:
             manifest[ticker] = files
+
+    # --- CATALYSTS/<ticker>/<topic>/ ---
+    if CATALYSTS_DIR.exists():
+        for ticker_dir in sorted(CATALYSTS_DIR.iterdir()):
+            if not ticker_dir.is_dir() or ticker_dir.name.startswith('.') or ticker_dir.name.startswith('_'):
+                continue
+            ticker = ticker_dir.name.upper()
+            for topic_dir in sorted(ticker_dir.iterdir()):
+                if not topic_dir.is_dir() or topic_dir.name.startswith('.'):
+                    continue
+                topic = topic_dir.name
+                for f in sorted(topic_dir.rglob('*')):
+                    entry = _scan_file(f, topic_dir)
+                    if not entry:
+                        continue
+                    rel = Path(entry['path'])
+                    # Nested subfolders inside a topic folder become "Catalysts/<topic>/<sub>"
+                    if len(rel.parts) == 1:
+                        entry['folder'] = f'Catalysts/{topic}'
+                    else:
+                        entry['folder'] = f'Catalysts/{topic}/{rel.parent}'
+                    manifest.setdefault(ticker, []).append(entry)
 
     try:
         requests.post(
@@ -986,21 +1011,36 @@ def read_ticker_files(
     # Main folder (always scan)
     files.extend(_read_dir(ticker_dir, "main"))
 
-    # Determine which subfolders to scan
-    subfolders_to_scan: set[str] = set()
+    # Determine which subfolders to scan. STOCKS subfolders use the bare label
+    # (e.g. "Processed"); CATALYSTS folders use "Catalysts/<topic>" so we route
+    # those to CATALYSTS_DIR/<ticker>/<topic>/ instead of STOCKS_DIR/<ticker>/.
+    stocks_subfolders: set[str] = set()
+    catalysts_subfolders: set[str] = set()  # values are "Catalysts/<topic>" or "Catalysts/<topic>/<sub>"
     if include_processed:
-        subfolders_to_scan.add("Processed")
-    # If file_selection specifies files from specific folders, scan those too
+        stocks_subfolders.add("Processed")
     if selection_set:
         for _, folder in selection_set:
-            if folder != "main":
-                subfolders_to_scan.add(folder)
+            if folder == "main":
+                continue
+            if folder.startswith("Catalysts/"):
+                catalysts_subfolders.add(folder)
+            else:
+                stocks_subfolders.add(folder)
 
-    # Scan each required subfolder
-    for subfolder in subfolders_to_scan:
+    # Scan STOCKS subfolders
+    for subfolder in stocks_subfolders:
         sub_dir = ticker_dir / subfolder
         if sub_dir.exists() and sub_dir.is_dir():
             files.extend(_read_dir(sub_dir, subfolder))
+
+    # Scan CATALYSTS topic folders. The folder label is e.g. "Catalysts/CHAMPION-AF"
+    # which maps to CATALYSTS_DIR/<ticker>/CHAMPION-AF/. Nested labels like
+    # "Catalysts/CHAMPION-AF/Excerpts" map to CATALYSTS_DIR/<ticker>/CHAMPION-AF/Excerpts/.
+    for folder_label in catalysts_subfolders:
+        rel_under_catalysts = folder_label[len("Catalysts/"):]
+        sub_dir = CATALYSTS_DIR / ticker / rel_under_catalysts
+        if sub_dir.exists() and sub_dir.is_dir():
+            files.extend(_read_dir(sub_dir, folder_label))
 
     return files
 
