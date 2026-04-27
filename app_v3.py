@@ -3899,6 +3899,17 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
                         print(f'[pipeline {job_id}] reconciliation step failed (analysis still saved): {recon_err}')
 
                 analysis_data['updatedAt'] = datetime.utcnow().isoformat()
+                # Stamp the documents that were ACTUALLY used in this update so the
+                # frontend can distinguish "used in latest run" from "ever in archive".
+                # documentHistory accumulates across every run for the ticker — without
+                # this stamp the UI button reads "N docs" and looks like the latest
+                # update used N docs when it really used a much smaller subset.
+                analysis_data['_lastUpdateInfo'] = {
+                    'at': analysis_data['updatedAt'],
+                    'docCount': len(selected_docs),
+                    'docNames': [d['filename'] for d in selected_docs],
+                    'preservationWeight': existing_weight,
+                }
                 # Inject company + ticker into analysis JSON (frontend reads from here)
                 analysis_data['company'] = company
                 analysis_data['ticker'] = ticker

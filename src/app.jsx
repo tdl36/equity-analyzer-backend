@@ -13879,7 +13879,16 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 <div>
                                                                     <div className="font-medium text-slate-200">Keep Existing Analysis</div>
                                                                     <div className="text-xs text-slate-500">
-                                                                        {analysis.documentHistory.length} document{analysis.documentHistory.length > 1 ? 's' : ''} previously analyzed
+                                                                        {(() => {
+                                                                            const total = analysis.documentHistory.length;
+                                                                            const lastUsed = analysis._lastUpdateInfo?.docCount;
+                                                                            const lastAt = analysis._lastUpdateInfo?.at;
+                                                                            const stamp = lastAt ? ` (${new Date(lastAt).toLocaleDateString()})` : '';
+                                                                            if (lastUsed != null) {
+                                                                                return <>{lastUsed} doc{lastUsed !== 1 ? 's' : ''} used in latest update{stamp} · {total} in archive</>;
+                                                                            }
+                                                                            return <>{total} document{total !== 1 ? 's' : ''} previously analyzed</>;
+                                                                        })()}
                                                                     </div>
                                                                 </div>
                                                                 <span className="text-2xl font-mono font-bold text-amber-400">
@@ -13912,30 +13921,42 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         
                                                         <details className="text-xs text-slate-500">
                                                             <summary className="cursor-pointer hover:text-slate-300">
-                                                                View {analysis.documentHistory?.length || 0} documents in existing analysis
+                                                                {(() => {
+                                                                    const total = analysis.documentHistory?.length || 0;
+                                                                    const lastUsed = analysis._lastUpdateInfo?.docCount;
+                                                                    if (lastUsed != null) return `View archive — ${lastUsed} used in latest update, ${total} total ever analyzed`;
+                                                                    return `View ${total} documents in existing analysis`;
+                                                                })()}
                                                             </summary>
                                                             <div className="mt-2 pl-4 border-l border-white/10 space-y-3">
-                                                                {safeArray(analysis.documentHistory).map((doc, idx) => (
-                                                                    <div key={idx} className="py-1">
-                                                                        {/* Document name - full width */}
-                                                                        <div className="text-slate-300 text-sm mb-1">
-                                                                            📄 {getSmartDocumentName(doc)}
-                                                                        </div>
-                                                                        {/* Metadata and action button row */}
-                                                                        <div className="flex items-center gap-2 text-slate-500">
-                                                                            <span>{safeStr(doc.type, 'doc')} • {safeStr(doc.date, '')}</span>
-                                                                            {(doc.stored || storedDocuments.some(sd => sd.filename === doc.filename)) && (
-                                                                                <button
-                                                                                    onClick={(e) => { e.stopPropagation(); e.preventDefault(); viewStoredTickerFile(currentTicker, doc.filename); }}
-                                                                                    className="p-1 text-amber-400 hover:bg-amber-600/20 rounded"
-                                                                                    title="View PDF"
-                                                                                >
-                                                                                    <ExternalLink className="w-3.5 h-3.5" />
-                                                                                </button>
-                                                                            )}
-                                                                        </div>
-                                                                    </div>
-                                                                ))}
+                                                                {(() => {
+                                                                    const lastNames = new Set(analysis._lastUpdateInfo?.docNames || []);
+                                                                    return safeArray(analysis.documentHistory).map((doc, idx) => {
+                                                                        const usedInLatest = lastNames.has(doc.filename);
+                                                                        return (
+                                                                            <div key={idx} className={`py-1 ${usedInLatest ? '' : 'opacity-60'}`}>
+                                                                                {/* Document name - full width */}
+                                                                                <div className="text-slate-300 text-sm mb-1 flex items-center gap-2">
+                                                                                    <span>📄 {getSmartDocumentName(doc)}</span>
+                                                                                    {usedInLatest && <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-semibold uppercase tracking-wider flex-shrink-0">used in latest</span>}
+                                                                                </div>
+                                                                                {/* Metadata and action button row */}
+                                                                                <div className="flex items-center gap-2 text-slate-500">
+                                                                                    <span>{safeStr(doc.type, 'doc')} • {safeStr(doc.date, '')}</span>
+                                                                                    {(doc.stored || storedDocuments.some(sd => sd.filename === doc.filename)) && (
+                                                                                        <button
+                                                                                            onClick={(e) => { e.stopPropagation(); e.preventDefault(); viewStoredTickerFile(currentTicker, doc.filename); }}
+                                                                                            className="p-1 text-amber-400 hover:bg-amber-600/20 rounded"
+                                                                                            title="View PDF"
+                                                                                        >
+                                                                                            <ExternalLink className="w-3.5 h-3.5" />
+                                                                                        </button>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        );
+                                                                    });
+                                                                })()}
                                                             </div>
                                                         </details>
                                                     </div>
