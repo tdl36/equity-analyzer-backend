@@ -1298,6 +1298,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [condensedThesisData, setCondensedThesisData] = useState(null);
             const [tierLoading, setTierLoading] = useState(false);
             const [changes, setChanges] = useState([]);
+            // Stale-fact reconciliation results from the pipeline's reconciler pass.
+            // Each entry: {location, metric, oldText, newText, oldPeriod, newPeriod, sourceDoc}
+            const [factCorrections, setFactCorrections] = useState([]);
             const [loading, setLoading] = useState(false);
             const [error, setError] = useState(null);
             const [analysisProgress, setAnalysisProgress] = useState(null);
@@ -9757,6 +9760,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         setCurrentTicker(ticker);
                         setDocuments([]);
                         setChanges(data.analysis?._pipelineChanges || []);
+                        setFactCorrections(data.analysis?._factCorrections || []);
                         // Preserve thesisTier across stock switches — clear stale tier data
                         setFullThesisData(null);
                         setCondensedThesisData(null);
@@ -10028,6 +10032,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 setDocumentGroups([]); // Clear document groups
                 setSelectedForGrouping([]); // Clear selection
                 setChanges([]);
+                setFactCorrections([]);
                 setError(null);
                 setShowDocumentManager(false);
                 setStoredDocuments([]); // Clear stored documents for new analysis
@@ -11303,6 +11308,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         history: updatedHistory
                     });
                     setChanges(data.changes || []);
+                    setFactCorrections(data.analysis?._factCorrections || []);
                     setExpanded({ thesis: true, signposts: true, threats: true, changes: true });
                     setShowSaveDialog(true);
                     setShowDocumentManager(false);
@@ -14670,6 +14676,53 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             </div>
                                         )}
 
+                                        {/* Stale-fact reconciliation: surfaces every numeric claim refreshed by the
+                                            backend's reconciler pass. Lets the user see exactly which Q3 figures got
+                                            replaced with Q1 readings (etc.) so a reviewer can spot-check. */}
+                                        {(thesisTier === 'detailed' || activeTierData) && factCorrections.length > 0 && (
+                                            <div className="bg-white/[0.04] backdrop-blur-lg border border-emerald-500/20 rounded-xl overflow-hidden">
+                                                <button onClick={() => setExpanded(e => ({...e, factCorrections: !e.factCorrections}))} className="w-full px-6 py-4 flex justify-between hover:bg-white/[0.04]">
+                                                    <div className="flex gap-3">
+                                                        <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                                            <span className="text-emerald-400 text-xs font-bold">↻</span>
+                                                        </div>
+                                                        <div className="text-left">
+                                                            <h3 className="font-bold">Stale numbers refreshed</h3>
+                                                            <p className="text-xs text-slate-400">{factCorrections.length} numeric claim{factCorrections.length === 1 ? '' : 's'} updated to latest source data</p>
+                                                        </div>
+                                                    </div>
+                                                    <ChevronDown className={`w-5 h-5 transition ${expanded.factCorrections ? 'rotate-180' : ''}`} />
+                                                </button>
+                                                {expanded.factCorrections && (
+                                                    <div className="px-6 pb-6">
+                                                        <ul className="space-y-3">
+                                                            {factCorrections.map((c, i) => (
+                                                                <li key={i} className="text-xs bg-black/20 border border-white/5 rounded p-3">
+                                                                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                                                                        <span className="font-mono text-[10px] text-slate-500">{c.location || 'unknown'}</span>
+                                                                        {c.metric && <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[9px] uppercase tracking-wider">{c.metric}</span>}
+                                                                        {c.oldPeriod && c.newPeriod && (
+                                                                            <span className="text-[10px] text-slate-400">
+                                                                                <span className="line-through opacity-60">{c.oldPeriod}</span>
+                                                                                <span className="mx-1 text-emerald-400">→</span>
+                                                                                <span className="text-emerald-300 font-semibold">{c.newPeriod}</span>
+                                                                            </span>
+                                                                        )}
+                                                                        {c.sourceDoc && <span className="text-[9px] text-slate-500 ml-auto truncate max-w-[40%]" title={c.sourceDoc}>{c.sourceDoc}</span>}
+                                                                    </div>
+                                                                    {c.oldText && (
+                                                                        <div className="text-slate-500 line-through mb-1">{c.oldText}</div>
+                                                                    )}
+                                                                    {c.newText && (
+                                                                        <div className="text-emerald-200">{c.newText}</div>
+                                                                    )}
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                         {(thesisTier === 'detailed' || activeTierData) && changes.length > 0 && (
                                             <div className="bg-white/[0.04] backdrop-blur-lg border border-white/10 rounded-xl overflow-hidden">
                                                 <button onClick={() => setExpanded(e => ({...e, changes: !e.changes}))} className="w-full px-6 py-4 flex justify-between hover:bg-white/[0.04]">

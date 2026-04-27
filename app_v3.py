@@ -3793,6 +3793,28 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
                         dh for dh in analysis_data.get('documentHistory', [])
                         if dh.get('filename') not in excluded_set
                     ]
+
+                # Stale-fact reconciliation: the merge prompt under heavy
+                # preservation can leave older quarter figures intact even when
+                # newer-period source docs are present. Run a second LLM pass
+                # that extracts a canonical fact table from the source PDFs
+                # and rewrites any stale numeric claims while keeping argument
+                # structure intact. Only meaningful when this is an UPDATE
+                # (existing analysis was being preserved) AND we have new docs
+                # to reconcile against.
+                if existing and not rebuild_from_scratch and selected_docs:
+                    try:
+                        _update_pipeline_job(job_id, current_step='Reconciling stale facts vs new sources', progress=82)
+                        recon = _reconcile_stale_facts(analysis_data, selected_docs, api_key, ticker)
+                        analysis_data = recon.get('updatedAnalysis') or analysis_data
+                        if recon.get('factCorrections'):
+                            analysis_data['_factCorrections'] = recon['factCorrections']
+                        if recon.get('factTable'):
+                            analysis_data['_factTable'] = recon['factTable']
+                    except Exception as recon_err:
+                        # Reconciliation is polish-only; never block save on its failure
+                        print(f'[pipeline {job_id}] reconciliation step failed (analysis still saved): {recon_err}')
+
                 analysis_data['updatedAt'] = datetime.utcnow().isoformat()
                 # Inject company + ticker into analysis JSON (frontend reads from here)
                 analysis_data['company'] = company
@@ -3913,6 +3935,163 @@ def _count_pdf_pages(base64_data):
         return len(reader.pages)
     except:
         return 30
+
+
+def _reconcile_stale_facts(analysis_data: dict, source_docs: list, api_key: str, ticker: str) -> dict:
+    """Two-pass stale-fact reconciliation.
+
+    PASS 1: Extract a canonical fact table (metric, value, unit, period, source)
+            from the freshest source documents — these are ground truth for any
+            quarterly figure mentioned in the analysis.
+    PASS 2: Walk every numerical claim in analysis_data (thesis pillars,
+            signposts, threats). If the analysis cites an older period when a
+            newer reading exists in the fact table, REWRITE the claim to use
+            the latest figure while preserving the original argument structure.
+
+    Both passes run in a single Anthropic call to keep cost down (~$0.05-0.10
+    per update). Returns dict with:
+      - updatedAnalysis: full analysis with corrections applied (or original on failure)
+      - factCorrections: list of {location, oldText, newText, oldPeriod, newPeriod, sourceDoc, metric}
+      - factTable: list of {metric, value, unit, asOfPeriod, sourceDoc, documentDate}
+
+    On any failure the original analysis is returned unchanged — the merge
+    upstream already produced a usable note; this is a polish pass and must
+    not regress on errors.
+    """
+    if not source_docs or not analysis_data or not isinstance(analysis_data, dict):
+        return {'updatedAnalysis': analysis_data, 'factCorrections': [], 'factTable': []}
+    # Skip if there's no thesis content to reconcile against
+    if not (analysis_data.get('thesis') or analysis_data.get('signposts') or analysis_data.get('threats')):
+        return {'updatedAnalysis': analysis_data, 'factCorrections': [], 'factTable': []}
+
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+
+        content = []
+        # Attach source PDFs first (these are the ground-truth facts)
+        attached = 0
+        for doc in source_docs:
+            doc_data = doc.get('file_data') or doc.get('fileData', '')
+            doc_name = doc.get('filename', 'document.pdf')
+            doc_type = doc.get('file_type') or doc.get('fileType', 'pdf')
+            mime_type = doc.get('mime_type') or doc.get('mimeType', 'application/pdf')
+            if not doc_data:
+                continue
+            content.append({"type": "text", "text": f"\n=== SOURCE DOCUMENT: {doc_name} ==="})
+            if doc_type == 'pdf':
+                content.append({"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": doc_data}})
+                attached += 1
+            else:
+                # Skip non-PDF for fact reconciliation — text/image facts are noisier
+                continue
+        if attached == 0:
+            return {'updatedAnalysis': analysis_data, 'factCorrections': [], 'factTable': []}
+
+        # Trim the analysis to just the parts that contain numerical claims.
+        # Sending the full analysis (with documentMetadata, history, etc.) bloats
+        # tokens and confuses the model — only thesis/signposts/threats matter.
+        slim_analysis = {
+            'thesis': analysis_data.get('thesis'),
+            'signposts': analysis_data.get('signposts'),
+            'threats': analysis_data.get('threats'),
+        }
+
+        prompt = f"""You are reconciling stale numerical facts in an equity research analysis for {ticker}.
+
+INPUTS:
+1. SOURCE DOCUMENTS (attached above as PDFs) — the freshest available data, ground truth for any quarterly figure.
+2. CURRENT ANALYSIS (below) — may contain numerical claims citing older periods.
+
+CURRENT ANALYSIS (the only part you reconcile against; ignore other fields):
+{json.dumps(slim_analysis, indent=2)}
+
+YOUR TASK — execute both passes:
+
+PASS 1 — EXTRACT canonical facts from SOURCE DOCUMENTS only.
+For every quarterly figure in the source docs, emit one row in `factTable`:
+  {{
+    "metric": "operating_margin" | "revenue" | "eps" | "backlog" | "book_to_bill"
+              | "fcf" | "cash" | "guidance_revenue" | "guidance_eps"
+              | "segment_<name>_revenue" | "program_<name>_revenue" | etc.,
+    "value": <number>,
+    "unit": "%" | "$B" | "$M" | "x" | "units" | etc.,
+    "asOfPeriod": "1Q26" | "FY26" | "FY27 guidance" | etc.,
+    "sourceDoc": "<filename>",
+    "documentDate": "YYYY-MM-DD or YYYY-Qn or null"
+  }}
+Focus on quarter-bearing financial + operating metrics. Skip narrative claims and qualitative statements.
+
+PASS 2 — RECONCILE the CURRENT ANALYSIS against the fact table.
+Walk every numerical claim in thesis.summary, every pillar.description, every signpost.target,
+every threat.description / triggerPoints. For each numerical claim:
+  - Look up the most-recent corresponding metric in the fact table.
+  - If the analysis cites an OLDER period when a NEWER reading is available, REWRITE the claim
+    using the latest figure while preserving the original argument structure. Optionally include a
+    brief comparison ("11.8% in 1Q26, down from 12.2% in 3Q25") when useful.
+  - If the claim already cites the latest available period, leave it alone.
+  - Emit a record in `factCorrections` for every change: {{
+      "location": "thesis.pillars[0].description" | "signposts[2].target" | etc.,
+      "metric": "<canonical name from pass 1>",
+      "oldText": "<exact substring being replaced>",
+      "newText": "<replacement substring>",
+      "oldPeriod": "3Q25",
+      "newPeriod": "1Q26",
+      "sourceDoc": "<filename>"
+    }}
+
+ABSOLUTE RULES:
+- Do NOT add new pillars, signposts, or threats.
+- Do NOT remove any.
+- Do NOT rewrite arguments, structure, or qualitative claims — only NUMBERS change.
+- Preserve the count, ordering, and JSON shape of every section exactly.
+- If no corrections are needed, return updatedAnalysis identical to CURRENT ANALYSIS and factCorrections=[].
+
+OUTPUT — valid JSON only, no prose, no markdown fencing:
+{{
+  "factTable": [...],
+  "factCorrections": [...],
+  "updatedAnalysis": {{ "thesis": {{...}}, "signposts": [...], "threats": [...] }}
+}}"""
+
+        content.append({"type": "text", "text": prompt})
+
+        resp = client.messages.create(
+            model='claude-sonnet-4-6',
+            max_tokens=12288,
+            system="You are a meticulous equity research fact-checker. Your job is to surface and correct stale numbers, never to rewrite arguments.",
+            messages=[{"role": "user", "content": content}],
+        )
+        raw = resp.content[0].text.strip()
+
+        # Strip code fences if model added them despite instructions
+        if raw.startswith('```'):
+            raw = raw.split('```', 2)[1] if raw.count('```') >= 2 else raw
+            if raw.startswith('json'):
+                raw = raw[4:].strip()
+
+        parsed = json.loads(raw)
+        fact_table = parsed.get('factTable') or []
+        fact_corrections = parsed.get('factCorrections') or []
+        updated_slim = parsed.get('updatedAnalysis') or {}
+
+        # Defensive: only accept the reconciler's rewrites if it returned every section
+        # we sent in. If the model dropped something, bail to the original (safer than
+        # losing data).
+        if not all(k in updated_slim for k in slim_analysis.keys() if slim_analysis.get(k) is not None):
+            print(f'[reconcile {ticker}] Model dropped a section, keeping original')
+            return {'updatedAnalysis': analysis_data, 'factCorrections': [], 'factTable': fact_table}
+
+        # Splice rewritten sections back into the full analysis_data
+        merged = dict(analysis_data)
+        for k, v in updated_slim.items():
+            if v is not None:
+                merged[k] = v
+
+        print(f'[reconcile {ticker}] {len(fact_corrections)} stale fact(s) updated, {len(fact_table)} canonical facts extracted')
+        return {'updatedAnalysis': merged, 'factCorrections': fact_corrections, 'factTable': fact_table}
+    except Exception as e:
+        print(f'[reconcile {ticker}] Reconciliation failed (keeping original analysis): {e}')
+        return {'updatedAnalysis': analysis_data, 'factCorrections': [], 'factTable': []}
 
 
 def _build_analysis_content(batch_docs, all_docs, existing_analysis, historical_weights, weighting_config, batch_num, total_batches):
