@@ -3600,6 +3600,23 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
                 'weight': 1.0,
             })
 
+        # Load document config from the job's steps_detail. Hoisted from below
+        # because the iCloud-only fetch block (next) and the analysis prep step
+        # both need it. Bug fix: previously doc_config was only assigned at line
+        # ~3739, which made the catalyst block raise UnboundLocalError on every
+        # update (Python sees the later assignment, treats doc_config as
+        # function-local, can't read it before assignment).
+        doc_config = {}
+        with get_db() as (_, cur):
+            cur.execute('SELECT steps_detail FROM research_pipeline_jobs WHERE id = %s', (job_id,))
+            job_row = cur.fetchone()
+            if job_row and job_row['steps_detail']:
+                sd = job_row['steps_detail']
+                if isinstance(sd, str):
+                    try: sd = json.loads(sd)
+                    except: sd = {}
+                doc_config = sd.get('documentConfig', {})
+
         # If the user's selection includes docs NOT in our DB (e.g. "iCloud Only"
         # files in the modal — typically catalyst-folder PDFs the user just dropped
         # in), ask the local agent to fetch those specific files BEFORE we proceed.
@@ -3735,18 +3752,8 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
                 local_hint = f' ({len(local_source_files)} files seen in iCloud but upload timed out — is the local agent running?)' if local_source_files else ''
                 raise Exception(f'No documents or existing analysis found for {ticker}{local_hint}')
 
-        # Apply document config (inclusion/exclusion/weights)
-        doc_config = {}
-        with get_db() as (_, cur):
-            cur.execute('SELECT steps_detail FROM research_pipeline_jobs WHERE id = %s', (job_id,))
-            job_row = cur.fetchone()
-            if job_row and job_row['steps_detail']:
-                sd = job_row['steps_detail']
-                if isinstance(sd, str):
-                    try: sd = json.loads(sd)
-                    except: sd = {}
-                doc_config = sd.get('documentConfig', {})
-
+        # Apply document config (inclusion/exclusion/weights). doc_config was
+        # already loaded earlier (above the iCloud-fetch block) — re-using it here.
         excluded_historical = doc_config.get('excludedHistoricalDocs', [])
         rebuild_from_scratch = doc_config.get('rebuildFromScratch', False)
 
