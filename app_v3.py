@@ -3600,6 +3600,89 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
                 'weight': 1.0,
             })
 
+        # If the user's selection includes docs NOT in our DB (e.g. "iCloud Only"
+        # files in the modal — typically catalyst-folder PDFs the user just dropped
+        # in), ask the local agent to fetch those specific files BEFORE we proceed.
+        # Without this, the pipeline silently runs against only the DB-backed docs
+        # and the new sources are invisible to both the merge and the reconciler.
+        config_docs_for_fetch = doc_config.get('documents', []) if doc_config else []
+        available_ids = {d['id'] for d in all_available}
+        available_filenames = {d['filename'] for d in all_available}
+        wanted_files = []
+        seen = set()
+        for cd in config_docs_for_fetch:
+            if cd.get('included') is False:
+                continue
+            cid = cd.get('id')
+            cfn = cd.get('filename')
+            cfolder = cd.get('folder', 'main')
+            if not cfn:
+                continue
+            # If id matches a DB-backed doc, no fetch needed
+            if cid and cid in available_ids:
+                continue
+            # If filename already in DB (perhaps under a different ID after a re-upload), skip
+            if cfn in available_filenames:
+                continue
+            key = (cfn, cfolder)
+            if key in seen:
+                continue
+            seen.add(key)
+            wanted_files.append({'filename': cfn, 'folder': cfolder})
+
+        if wanted_files:
+            print(f'[pipeline {job_id}] {len(wanted_files)} iCloud-only file(s) selected; requesting agent fetch')
+            _pending_doc_upload_requests[ticker] = {
+                'requested_at': datetime.utcnow(),
+                'job_id': job_id,
+                'wantedFiles': wanted_files,
+            }
+            _update_pipeline_job(job_id, current_step=f'Fetching {len(wanted_files)} new iCloud doc(s) from agent...', progress=18)
+            target_filenames = {wf['filename'] for wf in wanted_files}
+            max_wait = 90  # seconds — catalyst PDFs can be large
+            poll_interval = 3
+            waited = 0
+            while waited < max_wait:
+                time.sleep(poll_interval)
+                waited += poll_interval
+                with get_db() as (_, cur):
+                    cur.execute('SELECT filename FROM document_files WHERE ticker = %s', (ticker,))
+                    have = {r['filename'] for r in cur.fetchall()}
+                if target_filenames.issubset(have):
+                    print(f'[pipeline {job_id}] All {len(target_filenames)} requested files now in DB after {waited}s')
+                    break
+            else:
+                missing = target_filenames - have
+                if missing:
+                    print(f'[pipeline {job_id}] Timeout waiting for agent; still missing: {sorted(missing)}')
+            _pending_doc_upload_requests.pop(ticker, None)
+
+            # Rebuild all_available with newly-uploaded files included
+            with get_db() as (_, cur):
+                cur.execute('SELECT id, filename, file_data, file_type, mime_type, file_size, metadata FROM document_files WHERE ticker = %s ORDER BY created_at DESC', (ticker,))
+                thesis_docs = [dict(r) for r in cur.fetchall()]
+            all_available = []
+            for d in thesis_docs:
+                all_available.append({
+                    'id': f'thesis_{d["id"]}',
+                    'filename': d['filename'],
+                    'file_data': d.get('file_data', ''),
+                    'file_type': d.get('file_type', 'pdf'),
+                    'mime_type': d.get('mime_type', 'application/pdf'),
+                    'source': 'thesis',
+                    'weight': 1.0,
+                })
+            for d in research_docs:
+                all_available.append({
+                    'id': f'research_{d["id"]}',
+                    'filename': d['filename'],
+                    'file_data': d.get('file_data', ''),
+                    'file_type': d.get('file_type', 'pdf'),
+                    'mime_type': d.get('mime_type', 'application/pdf'),
+                    'source': 'research',
+                    'weight': 1.0,
+                })
+
         # If no docs in DB, check local manifest and request upload from local agent
         if not all_available:
             local_files = _local_file_manifest.get('manifest', {}).get(ticker, [])
@@ -14867,17 +14950,26 @@ def agent_local_files(ticker):
 
 @app.route('/api/agent/doc-requests', methods=['GET'])
 def agent_doc_requests():
-    """Return tickers that need urgent document upload from local agent."""
+    """Return tickers that need urgent document upload from local agent.
+    When wantedFiles is present, the agent should fetch ONLY those specific
+    files (each with a folder label that may be 'main', a STOCKS subfolder,
+    or 'Catalysts/<topic>' for files in CATALYSTS/<ticker>/<topic>/).
+    Without wantedFiles the agent falls back to scanning the main folder."""
     global _pending_doc_upload_requests
-    # Clean up stale requests (older than 2 minutes)
+    # Clean up stale requests (older than 3 minutes — catalyst PDFs can be large
+    # and slow to upload over flaky home wifi)
     now = datetime.utcnow()
     stale = [t for t, info in _pending_doc_upload_requests.items()
-             if (now - info['requested_at']).total_seconds() > 120]
+             if (now - info['requested_at']).total_seconds() > 180]
     for t in stale:
         _pending_doc_upload_requests.pop(t, None)
 
     requests_list = [
-        {'ticker': t, 'jobId': info['job_id']}
+        {
+            'ticker': t,
+            'jobId': info['job_id'],
+            'wantedFiles': info.get('wantedFiles', []),
+        }
         for t, info in _pending_doc_upload_requests.items()
     ]
     return jsonify({'requests': requests_list})

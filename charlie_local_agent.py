@@ -724,13 +724,21 @@ def check_and_fulfill_doc_requests() -> None:
             return
 
         UPLOAD_EXTS = {".pdf", ".xlsx", ".xls", ".csv"}
+
+        def _resolve_path(ticker: str, folder: str, filename: str) -> Optional[Path]:
+            """Map a (folder, filename) pair from the backend's wantedFiles list
+            to an actual filesystem path under either STOCKS or CATALYSTS."""
+            if folder.startswith('Catalysts/'):
+                rel = folder[len('Catalysts/'):]
+                return CATALYSTS_DIR / ticker / rel / filename
+            if folder == 'main' or not folder:
+                return STOCKS_DIR / ticker / filename
+            return STOCKS_DIR / ticker / folder / filename
+
         for req in pending:
             ticker = req['ticker']
-            log.info(f"Urgent doc upload requested for {ticker}")
-            ticker_dir = STOCKS_DIR / ticker
-            if not ticker_dir.exists():
-                log.warning(f"  Ticker folder not found: {ticker_dir}")
-                continue
+            wanted = req.get('wantedFiles', []) or []
+            log.info(f"Urgent doc upload requested for {ticker} (wanted={len(wanted)})")
 
             # Get existing docs in Charlie to avoid duplicates
             existing_filenames = set()
@@ -746,19 +754,45 @@ def check_and_fulfill_doc_requests() -> None:
             except Exception:
                 pass
 
-            log.info(f"  Found {ticker} folder, {len(existing_filenames)} already in DB, scanning...")
-            # Scan main folder for source docs
-            docs_to_upload = []
-            for f in sorted(ticker_dir.iterdir()):
-                if f.is_dir() or f.name.startswith('.') or f.name.startswith('~$'):
+            docs_to_upload: list[Path] = []
+            if wanted:
+                # Targeted fetch: only the specific files the backend asked for.
+                # Routes catalyst-folder paths to CATALYSTS_DIR, everything else
+                # to STOCKS_DIR. This is the path that actually picks up
+                # "iCloud Only" files the user selected in the Update Config modal.
+                for wf in wanted:
+                    fn = wf.get('filename', '').strip()
+                    folder = wf.get('folder', 'main') or 'main'
+                    if not fn or fn in existing_filenames:
+                        continue
+                    p = _resolve_path(ticker, folder, fn)
+                    if p is None or not p.exists():
+                        log.warning(f"  Wanted file not found at {p}")
+                        continue
+                    if p.suffix.lower() not in UPLOAD_EXTS:
+                        continue
+                    if p.stat().st_size > 50 * 1024 * 1024:
+                        log.warning(f"  Skipping {p.name} — exceeds 50MB upload cap")
+                        continue
+                    docs_to_upload.append(p)
+                log.info(f"  Resolved {len(docs_to_upload)} of {len(wanted)} wanted files")
+            else:
+                # Legacy fallback: scan main STOCKS folder for any source doc.
+                ticker_dir = STOCKS_DIR / ticker
+                if not ticker_dir.exists():
+                    log.warning(f"  Ticker folder not found: {ticker_dir}")
                     continue
-                if f.suffix.lower() not in UPLOAD_EXTS:
-                    continue
-                if f.name in existing_filenames:
-                    continue
-                if f.stat().st_size > 50 * 1024 * 1024:
-                    continue
-                docs_to_upload.append(f)
+                log.info(f"  Found {ticker} folder, {len(existing_filenames)} already in DB, scanning...")
+                for f in sorted(ticker_dir.iterdir()):
+                    if f.is_dir() or f.name.startswith('.') or f.name.startswith('~$'):
+                        continue
+                    if f.suffix.lower() not in UPLOAD_EXTS:
+                        continue
+                    if f.name in existing_filenames:
+                        continue
+                    if f.stat().st_size > 50 * 1024 * 1024:
+                        continue
+                    docs_to_upload.append(f)
 
             log.info(f"  {len(docs_to_upload)} docs to upload for {ticker}")
             uploaded = 0
