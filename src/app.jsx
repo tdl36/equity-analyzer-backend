@@ -12883,7 +12883,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             </div>
                             <span className="font-bold text-lg">Charlie</span>
                         </div>
-                        <div className="flex items-center gap-1 bg-white/10 backdrop-blur-lg rounded-lg p-1 border border-white/10">
+                        {/* 16 nav buttons — too wide for sub-2560px screens, so allow wrap.
+                            Without flex-wrap, Analysts/Alerts/Settings get clipped off the right edge
+                            (which is why they showed up in the mobile "More" menu but not on desktop). */}
+                        <div className="flex flex-wrap items-center gap-1 bg-white/10 backdrop-blur-lg rounded-lg p-1 border border-white/10 min-w-0">
                             <button
                                 onClick={() => switchTab('dashboard')}
                                 className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
