@@ -3126,16 +3126,30 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
             closing </section> never landed and the frontend parser dropped it)."""
             log.info(f"Recap call: provider={provider} model={model} max_tokens={max_tokens}")
             if provider == 'anthropic':
-                resp = client.messages.create(
+                # Anthropic SDK refuses non-streaming calls whose ESTIMATED duration
+                # exceeds 10 minutes. After the max_tokens bump to 24576, we cross
+                # that threshold and the SDK raises:
+                #   "Streaming is required for operations that may take longer
+                #    than 10 minutes."
+                # Use streaming and reconstruct the full text + stop_reason at end.
+                with client.messages.stream(
                     model=model,
                     max_tokens=max_tokens,
                     system=system_prompt,
                     messages=[{"role": "user", "content": anthropic_blocks}],
-                )
-                stop = getattr(resp, 'stop_reason', None)
+                ) as stream:
+                    final = stream.get_final_message()
+                stop = getattr(final, 'stop_reason', None)
                 if stop == 'max_tokens':
                     log.warning(f"Recap call hit max_tokens ({max_tokens}); output likely truncated mid-section")
-                return resp.content[0].text
+                # final.content is a list of blocks; concatenate any text blocks (defensive
+                # in case SDK returns multiple — usually it's a single TextBlock).
+                parts = []
+                for blk in (final.content or []):
+                    text = getattr(blk, 'text', None)
+                    if text:
+                        parts.append(text)
+                return ''.join(parts)
             elif provider == 'openai':
                 try:
                     import openai as _openai
