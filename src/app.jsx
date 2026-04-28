@@ -1561,21 +1561,21 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [analystToast, setAnalystToast] = useState(null);
             // Per-activity custom-instructions input + per-recap active-tab tracking
             const [recapCustomInstructions, setRecapCustomInstructions] = useState({}); // {activityId: '...'}
-            const [recapActiveTab, setRecapActiveTab] = useState({}); // {activityId: 'quick'|'summary'|'comprehensive'}
+            const [recapActiveTab, setRecapActiveTab] = useState({}); // {activityId: 'pm'|'quick'|'summary'|'comprehensive'}
             const [recapModel, setRecapModel] = useState({}); // {activityId: 'claude-sonnet-4-6'|...}
             const [recapProvider, setRecapProvider] = useState({}); // {activityId: 'anthropic'|'openai'|'google'}
             const RECAP_DEFAULT_PROVIDER = 'anthropic';
             const RECAP_DEFAULT_MODEL = 'claude-sonnet-4-6';
-            // Parse the multi-version recap HTML into {quick, summary, comprehensive}.
+            // Parse the multi-version recap HTML into {pm, quick, summary, comprehensive}.
             // Falls back to a single comprehensive entry if no <section data-version> blocks
-            // are present (older recaps were generated before the 3-version prompt change).
+            // are present (older recaps were generated before the multi-version prompt change).
             const parseRecapVersions = (raw) => {
                 if (!raw) return { hasVersions: false, comprehensive: '' };
                 // Find every section opener. For each, take content up to the
                 // earliest of: matching </section>, the next <section data-version="..."
                 // opener, or end-of-string. This rescues truncated comprehensive
                 // sections (model hit max_tokens and the closing tag never landed).
-                const openerRe = /<section\s+data-version="(quick|summary|comprehensive)"[^>]*>/gi;
+                const openerRe = /<section\s+data-version="(pm|quick|summary|comprehensive)"[^>]*>/gi;
                 const openers = [];
                 let m;
                 while ((m = openerRe.exec(raw)) !== null) {
@@ -7075,8 +7075,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 close();
                 return out.join('\n');
             };
-            // Email a specific recap version (or all 3 stitched). version: 'quick' | 'summary' | 'comprehensive' | 'all'
-            const emailRecapVersion = async (activity, version = 'comprehensive') => {
+            // Email a specific recap version (or all 4 stitched). version: 'pm' | 'quick' | 'summary' | 'comprehensive' | 'all'
+            const emailRecapVersion = async (activity, version = 'pm') => {
                 const raw = activity.output?.synthesisMarkdown || '';
                 if (!raw) return setAnalystToast('No recap to email');
                 const parsed = parseRecapVersions(raw);
@@ -7084,7 +7084,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 let labelSuffix = '';
                 if (version === 'all' && parsed.hasVersions) {
                     const blocks = [];
-                    if (parsed.quick) blocks.push('<h2 style="border-bottom:1px solid #ccc;padding-bottom:4px">Quick</h2>' + parsed.quick);
+                    if (parsed.pm) blocks.push('<h2 style="border-bottom:1px solid #ccc;padding-bottom:4px">PM Take</h2>' + parsed.pm);
+                    if (parsed.quick) blocks.push('<h2 style="border-bottom:1px solid #ccc;padding-bottom:4px;margin-top:24px">Quick</h2>' + parsed.quick);
                     if (parsed.summary) blocks.push('<h2 style="border-bottom:1px solid #ccc;padding-bottom:4px;margin-top:24px">Summary</h2>' + parsed.summary);
                     if (parsed.comprehensive) blocks.push('<h2 style="border-bottom:1px solid #ccc;padding-bottom:4px;margin-top:24px">Comprehensive</h2>' + parsed.comprehensive);
                     html = blocks.join('\n');
@@ -18591,16 +18592,16 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                 {docAnalyses.length === 0 && doc.content && (() => {
                                                                                     const parsed = parseRecapVersions(doc.content);
                                                                                     const tabKey = `doc-${doc.id}`;
-                                                                                    const tab = recapActiveTab[tabKey] || 'comprehensive';
+                                                                                    const tab = recapActiveTab[tabKey] || (parsed.pm ? 'pm' : 'comprehensive');
                                                                                     const setTab = (v) => setRecapActiveTab(s => ({...s, [tabKey]: v}));
-                                                                                    const versionLabel = { quick: 'Quick', summary: 'Summary', comprehensive: 'Comprehensive' };
+                                                                                    const versionLabel = { pm: 'PM Take', quick: 'Quick', summary: 'Summary', comprehensive: 'Comprehensive' };
                                                                                     const currentHtml = parsed.hasVersions ? (parsed[tab] || '') : doc.content;
                                                                                     const looksHtml = /<\s*(h[1-6]|p|ul|ol|table|section)\b/i.test(currentHtml.trim());
                                                                                     return (
                                                                                         <div className="bg-white/[0.02] border border-white/5 rounded-lg p-4 max-h-[500px] overflow-y-auto">
                                                                                             {parsed.hasVersions && (
                                                                                                 <div className="flex items-center gap-1 mb-3 pb-2 border-b border-white/10">
-                                                                                                    {['quick','summary','comprehensive'].filter(v => parsed[v]).map(v => (
+                                                                                                    {['pm','quick','summary','comprehensive'].filter(v => parsed[v]).map(v => (
                                                                                                         <button key={v} onClick={() => setTab(v)}
                                                                                                             className={`px-2 py-0.5 text-[10px] uppercase tracking-wider rounded ${tab===v ? 'bg-amber-500 text-slate-900' : 'bg-white/10 text-amber-300/70 hover:bg-white/20'}`}>
                                                                                                             {versionLabel[v]}
@@ -23987,10 +23988,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                             )}
                                                                                             {md && (() => {
                                                                                                 const parsed = parseRecapVersions(md);
-                                                                                                const tab = recapActiveTab[item.id] || 'comprehensive';
+                                                                                                const tab = recapActiveTab[item.id] || (parsed.pm ? 'pm' : 'comprehensive');
                                                                                                 const setTab = (v) => setRecapActiveTab(s => ({ ...s, [item.id]: v }));
                                                                                                 const currentHtml = parsed.hasVersions ? (parsed[tab] || '') : (parsed.comprehensive || md);
-                                                                                                const versionLabel = { quick: 'Quick', summary: 'Summary', comprehensive: 'Comprehensive' };
+                                                                                                const versionLabel = { pm: 'PM Take', quick: 'Quick', summary: 'Summary', comprehensive: 'Comprehensive' };
                                                                                                 const looksHtml = /<\s*(h[1-6]|p|ul|ol|table|section)\b/i.test(currentHtml);
                                                                                                 return (
                                                                                                     <details className="mt-2">
@@ -23998,7 +23999,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                                         <div className="mt-2 bg-black/40 border border-amber-500/20 rounded">
                                                                                                             <div className="flex items-center justify-between px-3 pt-2 pb-1 flex-wrap gap-2">
                                                                                                                 <div className="flex items-center gap-1">
-                                                                                                                    {parsed.hasVersions ? ['quick','summary','comprehensive'].filter(v => parsed[v]).map(v => (
+                                                                                                                    {parsed.hasVersions ? ['pm','quick','summary','comprehensive'].filter(v => parsed[v]).map(v => (
                                                                                                                         <button key={v} onClick={() => setTab(v)}
                                                                                                                             className={`px-2 py-0.5 text-[10px] uppercase tracking-wider rounded ${tab===v ? 'bg-amber-500 text-slate-900' : 'bg-white/10 text-amber-300/70 hover:bg-white/20'}`}>
                                                                                                                             {versionLabel[v]}
@@ -24020,7 +24021,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                                             <button onClick={() => copyRecap(currentHtml)} className="px-2 py-1 bg-white/10 hover:bg-white/20 rounded text-[10px]">Copy {parsed.hasVersions ? versionLabel[tab] : ''}</button>
                                                                                                             <button onClick={() => emailRecapVersion(item, parsed.hasVersions ? tab : 'comprehensive')} className="px-2 py-1 bg-amber-600 hover:bg-amber-500 rounded text-[10px]">Email {parsed.hasVersions ? versionLabel[tab] : 'to me'}</button>
                                                                                                             {parsed.hasVersions && (
-                                                                                                                <button onClick={() => emailRecapVersion(item, 'all')} className="px-2 py-1 bg-amber-700 hover:bg-amber-600 text-white rounded text-[10px]">Email All 3</button>
+                                                                                                                <button onClick={() => emailRecapVersion(item, 'all')} className="px-2 py-1 bg-amber-700 hover:bg-amber-600 text-white rounded text-[10px]">Email All 4</button>
                                                                                                             )}
                                                                                                             <button
                                                                                                                 onClick={() => {
@@ -24265,10 +24266,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                         )}
                                                                         {md && (() => {
                                                                             const parsed = parseRecapVersions(md);
-                                                                            const tab = recapActiveTab[item.id] || 'comprehensive';
+                                                                            const tab = recapActiveTab[item.id] || (parsed.pm ? 'pm' : 'comprehensive');
                                                                             const setTab = (v) => setRecapActiveTab(s => ({...s, [item.id]: v}));
                                                                             const currentHtml = parsed.hasVersions ? (parsed[tab] || '') : (parsed.comprehensive || md);
-                                                                            const versionLabel = { quick: 'Quick', summary: 'Summary', comprehensive: 'Comprehensive' };
+                                                                            const versionLabel = { pm: 'PM Take', quick: 'Quick', summary: 'Summary', comprehensive: 'Comprehensive' };
                                                                             const looksHtml = /<\s*(h[1-6]|p|ul|ol|table|section)\b/i.test(currentHtml);
                                                                             return (
                                                                                 <details className="mt-2">
@@ -24276,7 +24277,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                     <div className="mt-2 bg-black/40 border border-amber-500/20 rounded">
                                                                                         <div className="flex items-center justify-between px-3 pt-2 pb-1 flex-wrap gap-2">
                                                                                             <div className="flex items-center gap-1">
-                                                                                                {parsed.hasVersions ? ['quick','summary','comprehensive'].filter(v => parsed[v]).map(v => (
+                                                                                                {parsed.hasVersions ? ['pm','quick','summary','comprehensive'].filter(v => parsed[v]).map(v => (
                                                                                                     <button key={v} onClick={() => setTab(v)}
                                                                                                         className={`px-2 py-0.5 text-[10px] uppercase tracking-wider rounded ${tab===v ? 'bg-amber-500 text-slate-900' : 'bg-white/10 text-amber-300/70 hover:bg-white/20'}`}>
                                                                                                         {versionLabel[v]}
@@ -24298,7 +24299,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                         <button onClick={() => copyRecap(currentHtml)} className="px-2 py-1 bg-white/10 hover:bg-white/20 rounded text-[10px]">Copy {parsed.hasVersions ? versionLabel[tab] : ''}</button>
                                                                                         <button onClick={() => emailRecapVersion(item, parsed.hasVersions ? tab : 'comprehensive')} className="px-2 py-1 bg-amber-600 hover:bg-amber-500 rounded text-[10px]">Email {parsed.hasVersions ? versionLabel[tab] : 'to me'}</button>
                                                                                         {parsed.hasVersions && (
-                                                                                            <button onClick={() => emailRecapVersion(item, 'all')} className="px-2 py-1 bg-amber-700 hover:bg-amber-600 text-white rounded text-[10px]">Email All 3</button>
+                                                                                            <button onClick={() => emailRecapVersion(item, 'all')} className="px-2 py-1 bg-amber-700 hover:bg-amber-600 text-white rounded text-[10px]">Email All 4</button>
                                                                                         )}
                                                                                         <button onClick={() => openRecapEmailWithOptions(item)} className="px-2 py-1 bg-yellow-500 hover:bg-yellow-400 text-slate-900 rounded text-[10px]">Email to…</button>
                                                                                         <button
@@ -24440,16 +24441,16 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 )}
                                                                 {item.output && item.output.synthesisMarkdown && (() => {
                                                                     const parsed = parseRecapVersions(item.output.synthesisMarkdown);
-                                                                    const tab = recapActiveTab[item.id] || (parsed.hasVersions ? 'comprehensive' : 'comprehensive');
+                                                                    const tab = recapActiveTab[item.id] || (parsed.pm ? 'pm' : 'comprehensive');
                                                                     const setTab = (v) => setRecapActiveTab(s => ({...s, [item.id]: v}));
                                                                     const currentHtml = parsed.hasVersions ? (parsed[tab] || '') : (parsed.comprehensive || item.output.synthesisMarkdown);
-                                                                    const versionLabel = { quick: 'Quick', summary: 'Summary', comprehensive: 'Comprehensive' };
+                                                                    const versionLabel = { pm: 'PM Take', quick: 'Quick', summary: 'Summary', comprehensive: 'Comprehensive' };
                                                                     const looksHtml = /<\s*(h[1-6]|p|ul|ol|table|section)\b/i.test(currentHtml);
                                                                     return (
                                                                         <div className="my-3 bg-black/40 border border-amber-500/20 rounded">
                                                                             <div className="flex items-center justify-between px-3 pt-2 pb-1 flex-wrap gap-2">
                                                                                 <div className="flex items-center gap-1">
-                                                                                    {parsed.hasVersions ? ['quick','summary','comprehensive'].filter(v => parsed[v]).map(v => (
+                                                                                    {parsed.hasVersions ? ['pm','quick','summary','comprehensive'].filter(v => parsed[v]).map(v => (
                                                                                         <button key={v} onClick={() => setTab(v)}
                                                                                             className={`px-2 py-0.5 text-[10px] uppercase tracking-wider rounded ${tab===v ? 'bg-amber-500 text-slate-900' : 'bg-white/10 text-amber-300/70 hover:bg-white/20'}`}>
                                                                                             {versionLabel[v]}

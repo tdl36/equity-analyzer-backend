@@ -2220,11 +2220,24 @@ EARNINGS_RECAP_PROMPT = """You are a senior equity research analyst writing an E
 ## SOURCE DOCUMENTS
 {source_content}
 
-## OUTPUT — THREE VERSIONS OF THE SAME RECAP, IN ONE HTML RESPONSE
+## OUTPUT — FOUR VERSIONS OF THE SAME RECAP, IN ONE HTML RESPONSE
 
-You will produce THREE distinct versions of this recap, each progressively longer and more detailed. ALL three must cover the same quarter from the same source documents — they differ only in depth, not content selection.
+You will produce FOUR distinct versions of this recap, each progressively longer and more detailed. ALL four must cover the same quarter from the same source documents — they differ only in depth, not content selection.
 
-The three versions are wrapped in three <section> blocks with data-version attributes. Use this EXACT structure (no other top-level tags, no <html>/<body> wrappers, no markdown, no code fences):
+The four versions are wrapped in four <section> blocks with data-version attributes. Use this EXACT structure (no other top-level tags, no <html>/<body> wrappers, no markdown, no code fences):
+
+<section data-version="pm">
+  <h2>{ticker} {topic}: [BEAT / MISS / IN-LINE] · Thesis [INTACT / WEAKENED / BROKEN] · [ADD / HOLD / TRIM / SELL / NO-CHANGE]</h2>
+  <ul>
+    <li><strong>Verdict:</strong> [Beat / miss / in-line magnitude. Rev $X.XB vs cons $Y.YB. EPS $Z.ZZ vs cons $W.WW. AH move %.] — must contain at least 3 numbers, ≤25 words.</li>
+    <li><strong>Thesis check:</strong> [Intact / Weakened / Broken] — [one specific reason tied to a thesis pillar or signpost]. ≤25 words.</li>
+    <li><strong>Action:</strong> [Add / Hold / Trim / Sell / No change] — [one-line rationale]. ≤25 words. Take a stance.</li>
+    <li><strong>Key driver:</strong> [The single most important quarter-specific moving piece — segment surprise, guide change, KPI inflection, named-program update — with the number.] ≤25 words.</li>
+    <li><strong>Read-through:</strong> [Implication for peers / sector / your other holdings]. ≤25 words. If genuinely none, say "Idiosyncratic — no peer read."</li>
+    <li><strong>Next signpost:</strong> [The ONE KPI or event next quarter that confirms or refutes — with target threshold and date]. ≤25 words.</li>
+  </ul>
+  <p style="margin:0;font-size:0.9em;color:#888">Total ~120-150 words. Every bullet must contain a number or take a stance — no filler, no "we'll be monitoring", no "it's worth noting".</p>
+</section>
 
 <section data-version="quick">
   <h2>{ticker} {topic}: [beat / miss / in-line] with [key takeaway]</h2>
@@ -2256,12 +2269,13 @@ The three versions are wrapped in three <section> blocks with data-version attri
 </section>
 
 REQUIREMENTS:
-- Output exactly three <section> blocks, in order: quick, summary, comprehensive.
+- Output exactly four <section> blocks, in order: pm, quick, summary, comprehensive.
 - Inside each section use only h2, h3, p, ul, ol, li, strong, em.
 - No other top-level tags. No <div>. No styles. No comments.
-- The three versions tell the same story — quick is a glance, summary is a paragraph trio, comprehensive is the full memo.
+- The four versions tell the same story — pm is a 6-bullet PM-grade decision view (verdict + thesis + action + key driver + read-through + next signpost), quick is a glance, summary is a paragraph trio, comprehensive is the full memo.
+- The pm section MUST take a stance on every bullet. Never write "we'll watch", "monitor closely", "remains to be seen" — those are filler. Pick a side.
 
-Write all three now."""
+Write all four now."""
 
 
 def ensure_catalyst_folders():
@@ -3255,12 +3269,13 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
             if prompt_variant == 'earnings_recap':
                 structure_reminder = (
                     "\n## STRUCTURE PRESERVATION (NON-NEGOTIABLE)\n"
-                    "The existing report is wrapped in THREE <section data-version=\"...\"> blocks "
-                    "in this exact order: quick, summary, comprehensive. Your output MUST also be "
-                    "wrapped in those three blocks. Do NOT collapse them into one. Do NOT change "
+                    "The existing report is wrapped in FOUR <section data-version=\"...\"> blocks "
+                    "in this exact order: pm, quick, summary, comprehensive. Your output MUST also be "
+                    "wrapped in those four blocks. Do NOT collapse them into one. Do NOT change "
                     "the order. Do NOT drop any block. Update the contents of each block with the "
-                    "new findings; the depth/length conventions stay the same (Quick = bullets, "
-                    "Summary = 3 paragraphs, Comprehensive = full memo with h3 section headers).\n"
+                    "new findings; the depth/length conventions stay the same (PM = 6 stance-taking "
+                    "bullets ≤25 words each, Quick = scannable bullet list, Summary = 3 paragraphs, "
+                    "Comprehensive = full memo with h3 section headers).\n"
                 )
             merge_prompt = f"""You previously wrote a synthesis report based on earlier documents. Now incorporate these ADDITIONAL source documents into the existing report.
 
