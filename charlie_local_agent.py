@@ -3447,21 +3447,31 @@ def main() -> None:
     MANIFEST_INTERVAL = 60  # seconds
     HEARTBEAT_INTERVAL = 30  # seconds
     last_manifest_push = 0.0  # epoch; push immediately on first iteration
-    last_heartbeat = 0.0
+
+    # Heartbeat runs in its OWN daemon thread so it ticks every 30s regardless of
+    # what the main loop is doing. Earlier this lived in the main loop, which
+    # meant any long-running synthesis call (Anthropic streaming for a 10-page
+    # earnings recap can take 1-3 minutes) starved the heartbeat and the
+    # frontend showed "Local agent stale" even though the agent was actively
+    # working. Daemon thread auto-exits when the main process exits.
+    def _heartbeat_loop():
+        while not shutdown.is_set():
+            try:
+                push_heartbeat()
+            except Exception as e:
+                log.debug(f"Heartbeat thread error: {e}")
+            # Sleep in small chunks so shutdown is responsive
+            for _ in range(HEARTBEAT_INTERVAL):
+                if shutdown.is_set():
+                    return
+                time.sleep(1)
+    heartbeat_thread = threading.Thread(target=_heartbeat_loop, daemon=True, name='charlie-heartbeat')
+    heartbeat_thread.start()
+    log.info(f"Heartbeat thread started (every {HEARTBEAT_INTERVAL}s)")
 
     while not shutdown.is_set():
         try:
-            # Heartbeat every 30s so the frontend can show a "agent stale"
-            # banner when the Mac sleeps or the plist breaks.
             now = time.time()
-            if now - last_heartbeat >= HEARTBEAT_INTERVAL:
-                try:
-                    push_heartbeat()
-                    last_heartbeat = now
-                except Exception as e:
-                    log.debug(f"Heartbeat error: {e}")
-                    last_heartbeat = now
-
             # Auto-unzip + push file manifest periodically (every 60s)
             if now - last_manifest_push >= MANIFEST_INTERVAL:
                 try:
