@@ -4156,13 +4156,21 @@ OUTPUT — valid JSON only, no prose, no markdown fencing:
 
         content.append({"type": "text", "text": prompt})
 
-        resp = client.messages.create(
+        # Stream — Anthropic SDK refuses non-streaming calls whose ESTIMATED
+        # duration exceeds 10 minutes. The reconciler attaches PDFs + a 12K
+        # output cap, which crosses the threshold under load.
+        with client.messages.stream(
             model='claude-sonnet-4-6',
             max_tokens=12288,
             system="You are a meticulous equity research fact-checker. Your job is to surface and correct stale numbers, never to rewrite arguments.",
             messages=[{"role": "user", "content": content}],
-        )
-        raw = resp.content[0].text.strip()
+        ) as stream:
+            final = stream.get_final_message()
+        raw_parts = []
+        for blk in (final.content or []):
+            t = getattr(blk, 'text', None)
+            if t: raw_parts.append(t)
+        raw = ''.join(raw_parts).strip()
 
         # Strip code fences if model added them despite instructions
         if raw.startswith('```'):
@@ -6588,13 +6596,20 @@ def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key
                     f"{topic_context}"
                 )
                 _client = _anthropic_mod.Anthropic(api_key=cleanup_key, timeout=600)
-                cleanup_resp = _client.messages.create(
+                # Stream — 64K output cap is far past Anthropic SDK's 10-minute
+                # non-streaming threshold; the SDK refuses those calls outright.
+                with _client.messages.stream(
                     model='claude-sonnet-4-20250514',
                     max_tokens=64000,
                     system=cleanup_prompt,
                     messages=[{'role': 'user', 'content': f"Please correct the specialized terms in this transcript:\n\n{transcript_text}"}],
-                )
-                cleaned = cleanup_resp.content[0].text.strip()
+                ) as cleanup_stream:
+                    cleanup_final = cleanup_stream.get_final_message()
+                cleanup_parts = []
+                for _blk in (cleanup_final.content or []):
+                    _t = getattr(_blk, 'text', None)
+                    if _t: cleanup_parts.append(_t)
+                cleaned = ''.join(cleanup_parts).strip()
                 if cleaned and len(cleaned) > len(transcript_text) * 0.5:
                     print(f"[Job {job_id}] Transcript cleaned: {len(transcript_text)} -> {len(cleaned)} chars")
                     transcript_text = cleaned

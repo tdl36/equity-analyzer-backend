@@ -1452,14 +1452,22 @@ Return your response in this exact format:
 
     log.info(f"Calling Claude with {len(content)} content blocks...")
 
-    response = client.messages.create(
+    # Stream — 16K output with PDF context can cross Anthropic SDK's 10-min
+    # non-streaming threshold; the SDK refuses those calls with
+    # "Streaming is required for operations that may take longer than 10 minutes."
+    with client.messages.stream(
         model="claude-sonnet-4-20250514",
         max_tokens=16384,
         system="You are a senior equity research analyst. Write thorough, data-driven research notes. Be precise with numbers. No sellside attribution in the main note.",
         messages=[{"role": "user", "content": content}],
-    )
-
-    return response.content[0].text
+    ) as stream:
+        final = stream.get_final_message()
+    parts = []
+    for blk in (final.content or []):
+        text = getattr(blk, 'text', None)
+        if text:
+            parts.append(text)
+    return ''.join(parts)
 
 
 def _extract_docx_text(filepath: str) -> Optional[str]:
