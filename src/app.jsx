@@ -117,17 +117,45 @@ if (typeof window !== 'undefined') {
         const formatNYTime = (timestamp) => {
             if (!timestamp) return 'N/A';
             // Ensure timestamp is treated as UTC by adding Z if missing
-            const utcTimestamp = timestamp.endsWith('Z') || timestamp.includes('+') || timestamp.includes('-', 10) 
-                ? timestamp 
+            const utcTimestamp = timestamp.endsWith('Z') || timestamp.includes('+') || timestamp.includes('-', 10)
+                ? timestamp
                 : timestamp + 'Z';
             return new Date(utcTimestamp).toLocaleString('en-US', {
-                timeZone: 'America/New_York', 
-                month: 'numeric', 
-                day: 'numeric', 
-                year: 'numeric', 
-                hour: '2-digit', 
+                timeZone: 'America/New_York',
+                month: 'numeric',
+                day: 'numeric',
+                year: 'numeric',
+                hour: '2-digit',
                 minute: '2-digit'
             });
+        };
+
+        // ET-locked timestamp formatters. Backend serializes naive UTC datetimes
+        // without a Z, so JS would otherwise parse them as LOCAL time and a
+        // 9:58 AM ET timestamp stored as UTC 13:58 would render as 1:58 PM
+        // (the bug Tony spotted on the AMT timestamp). We defensively append Z
+        // if missing, then render in America/New_York regardless of browser
+        // locale. Spec: all timestamps in the app are ET.
+        const _toUtcIso = (ts) => {
+            if (!ts) return null;
+            const s = String(ts);
+            const hasTz = s.endsWith('Z') || s.includes('+') || /-\d{2}:\d{2}$/.test(s);
+            return hasTz ? s : s + 'Z';
+        };
+        const fmtETDateTime = (ts) => {
+            const s = _toUtcIso(ts);
+            if (!s) return '';
+            return new Date(s).toLocaleString('en-US', { timeZone: 'America/New_York', year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        };
+        const fmtETDate = (ts) => {
+            const s = _toUtcIso(ts);
+            if (!s) return '';
+            return new Date(s).toLocaleDateString('en-US', { timeZone: 'America/New_York', year: 'numeric', month: 'numeric', day: 'numeric' });
+        };
+        const fmtETTime = (ts) => {
+            const s = _toUtcIso(ts);
+            if (!s) return '';
+            return new Date(s).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit' });
         };
 
         // Research Prompt Frameworks for deep analysis
@@ -7485,7 +7513,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
             // ---- Feature 9: Share / export helpers ----
             const feedBulletAsMarkdown = useCallback((ep, p) => {
                 const ticker = (p.tickers || [])[0] || '';
-                const dateStr = ep.publishedAt ? new Date(ep.publishedAt).toLocaleDateString() : '';
+                const dateStr = ep.publishedAt ? fmtETDate(ep.publishedAt) : '';
                 const tag = ticker ? `**${ticker}**` : '**(no ticker)**';
                 return `- ${tag} — ${p.text || ''}  \n  _source: ${ep.feedName || ''} · ${ep.title || ''} (${dateStr})_`;
             }, []);
@@ -7530,7 +7558,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
             }, []);
 
             const feedCopyEpisodeMd = useCallback(async (ep) => {
-                const dateStr = ep.publishedAt ? new Date(ep.publishedAt).toLocaleDateString() : '';
+                const dateStr = ep.publishedAt ? fmtETDate(ep.publishedAt) : '';
                 const header = `## ${ep.title || ''}\n_${ep.feedName || ''} · ${dateStr}${ep.sourceUrl ? ` · [source](${ep.sourceUrl})` : ''}_\n\n`;
                 const bullets = (ep.points || []).map(p => {
                     const tic = (p.tickers || [])[0] || '';
@@ -7574,7 +7602,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     if (!tMs || tMs < cutoff) return;
                     const matching = (ep.points || []).filter(p => (p.tickers || []).includes(ticker));
                     if (!matching.length) return;
-                    const dateStr = new Date(ep.publishedAt).toLocaleDateString();
+                    const dateStr = fmtETDate(ep.publishedAt);
                     lines.push(`### ${ep.title} — _${ep.feedName} · ${dateStr}_`);
                     matching.forEach(p => { lines.push(`- ${p.text}`); count++; });
                     lines.push('');
@@ -9681,7 +9709,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     React.createElement('span', { className: 'shrink-0 px-1.5 py-0.5 bg-purple-500/20 text-purple-300 text-[10px] font-bold rounded' }, 'ZIP')
                                                 ),
                                                 React.createElement('p', { className: 'text-xs text-slate-400' },
-                                                    (f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString() : '') +
+                                                    (f.modifiedTime ? fmtETDate(f.modifiedTime) : '') +
                                                     (f.size ? ` \u00B7 ${(parseInt(f.size) / 1024 / 1024).toFixed(1)}MB` : '') +
                                                     (zipPdfs ? ` \u00B7 ${zipPdfs.length} PDFs` : ' \u00B7 tap to expand')
                                                 )
@@ -9696,7 +9724,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             React.createElement('div', { className: 'min-w-0 flex-1' },
                                                 React.createElement('p', { className: 'text-sm text-slate-200 truncate' }, f.name),
                                                 React.createElement('p', { className: 'text-xs text-slate-400' },
-                                                    (f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString() : '') +
+                                                    (f.modifiedTime ? fmtETDate(f.modifiedTime) : '') +
                                                     (f.size ? ` \u00B7 ${(parseInt(f.size) / 1024 / 1024).toFixed(1)}MB` : '')
                                                 )
                                             )
@@ -13900,7 +13928,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                             const total = analysis.documentHistory.length;
                                                                             const lastUsed = analysis._lastUpdateInfo?.docCount;
                                                                             const lastAt = analysis._lastUpdateInfo?.at;
-                                                                            const stamp = lastAt ? ` (${new Date(lastAt).toLocaleDateString()})` : '';
+                                                                            const stamp = lastAt ? ` (${fmtETDate(lastAt)})` : '';
                                                                             if (lastUsed != null) {
                                                                                 return <>{lastUsed} doc{lastUsed !== 1 ? 's' : ''} used in latest update{stamp} · {total} in archive</>;
                                                                             }
@@ -19549,7 +19577,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 <div className="flex items-center gap-2 mt-1">
                                                                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${typeBadgeColors[output.type] || 'bg-slate-500/20 text-slate-300'}`}>{output.type}</span>
                                                                     <span className={`text-[10px] font-medium ${statusColors[output.status?.split(':')[0]] || 'text-slate-400'}`}>{statusLabel}</span>
-                                                                    <span className="text-[10px] text-slate-500">{output.created_at ? new Date(output.created_at).toLocaleDateString() : ''}</span>
+                                                                    <span className="text-[10px] text-slate-500">{output.created_at ? fmtETDate(output.created_at) : ''}</span>
                                                                 </div>
                                                             </div>
                                                             <button onClick={(e) => { e.stopPropagation(); deleteStudioOutput(output.id); }} className="text-slate-500 hover:text-red-400 p-1 transition-colors">
@@ -20713,7 +20741,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                         <span className="text-amber-400 text-[10px]">(edited)</span>
                                                                     )}
                                                                     <span className="text-[10px] text-slate-600 ml-auto">
-                                                                        {v.createdAt ? new Date(v.createdAt).toLocaleString() : ''}
+                                                                        {v.createdAt ? fmtETDateTime(v.createdAt) : ''}
                                                                     </span>
                                                                 </div>
                                                                 <button onClick={(e) => { e.stopPropagation(); deleteInfographicVersion(v.id); }}
@@ -21111,7 +21139,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                         'Conviction Card'
                                                                     }</span>
                                                                     <span className="text-[10px] text-slate-600 ml-auto flex-shrink-0">
-                                                                        {v.createdAt ? new Date(v.createdAt).toLocaleString() : ''}
+                                                                        {v.createdAt ? fmtETDateTime(v.createdAt) : ''}
                                                                     </span>
                                                                 </div>
                                                                 <div className="flex items-center gap-1 ml-2 flex-shrink-0">
@@ -21246,7 +21274,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                         <div className={`absolute -left-3.5 top-1.5 w-3 h-3 rounded-full border-2 border-slate-800 ${dotColor}`} />
                                                                         <div className="bg-white/[0.03] rounded-lg p-3 border border-white/5">
                                                                             <div className="flex items-center gap-2 mb-1.5">
-                                                                                <span className="text-[10px] text-slate-500">{new Date(snap.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                                                                                <span className="text-[10px] text-slate-500">{fmtETDateTime(snap.created_at)}</span>
                                                                                 <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${snap.snapshot_type === 'analysis' ? 'bg-blue-500/20 text-blue-400' : 'bg-amber-500/20 text-amber-400'}`}>{snap.snapshot_type}</span>
                                                                             </div>
                                                                             <div className="flex items-center gap-3">
@@ -21631,7 +21659,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 <div className="flex items-center gap-4">
                                                                     {job.duration && <span className="text-[10px] text-slate-500">{job.duration < 60 ? `${job.duration}s` : `${Math.round(job.duration / 60)}m`}</span>}
                                                                     {job.error && <span className="text-[10px] text-red-400 max-w-[200px] truncate">{job.error}</span>}
-                                                                    {job.createdAt && <span className="text-[10px] text-slate-600">{new Date(job.createdAt).toLocaleString()}</span>}
+                                                                    {job.createdAt && <span className="text-[10px] text-slate-600">{fmtETDateTime(job.createdAt)}</span>}
                                                                 </div>
                                                             </div>
                                                         ))}
@@ -22634,7 +22662,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     </div>
                                                     {catalystAutoMode.enabled && catalystAutoMode.expires_at && (
                                                         <div className="text-[10px] text-amber-300/80 -mt-1">
-                                                            Auto-fire expires at {new Date(catalystAutoMode.expires_at + 'Z').toLocaleString()}
+                                                            Auto-fire expires at {fmtETDateTime(catalystAutoMode.expires_at)}
                                                         </div>
                                                     )}
 
@@ -22667,7 +22695,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                 <span>{p.topic}</span>
                                                                             </div>
                                                                             <div className="text-[10px] text-slate-500">
-                                                                                {p.fileCount} file{p.fileCount !== 1 ? 's' : ''} · detected {p.proposedAt ? new Date(p.proposedAt + 'Z').toLocaleString() : 'recently'}
+                                                                                {p.fileCount} file{p.fileCount !== 1 ? 's' : ''} · detected {p.proposedAt ? fmtETDateTime(p.proposedAt) : 'recently'}
                                                                             </div>
                                                                         </div>
                                                                     </label>
@@ -23966,7 +23994,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                                 </div>
                                                                                                 <div className="flex items-center gap-2">
                                                                                                     <span className="text-[10px] text-slate-500">
-                                                                                                        {(item.reviewedAt || item.updatedAt || item.createdAt) && new Date(item.reviewedAt || item.updatedAt || item.createdAt).toLocaleString()}
+                                                                                                        {(item.reviewedAt || item.updatedAt || item.createdAt) && fmtETDateTime(item.reviewedAt || item.updatedAt || item.createdAt)}
                                                                                                     </span>
                                                                                                     {isApproved && (
                                                                                                         <button
@@ -24247,7 +24275,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                 <span className="text-[10px] text-slate-500">· {item.analystName}</span>
                                                                             </div>
                                                                             <div className="flex items-center gap-2">
-                                                                                <span className="text-[10px] text-slate-500">{item.reviewedAt && new Date(item.reviewedAt).toLocaleString()}</span>
+                                                                                <span className="text-[10px] text-slate-500">{item.reviewedAt && fmtETDateTime(item.reviewedAt)}</span>
                                                                                 <button
                                                                                     onClick={() => unapproveActivity(item.id)}
                                                                                     className="px-2 py-0.5 text-[10px] bg-amber-600 hover:bg-amber-500 text-white rounded"
@@ -24350,7 +24378,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                             <span className="text-[10px] text-slate-500">· {item.activityType}</span>
                                                                         </div>
                                                                         <div className="flex items-center gap-2">
-                                                                            <span className="text-[10px] text-slate-500">{item.updatedAt && new Date(item.updatedAt).toLocaleString()}</span>
+                                                                            <span className="text-[10px] text-slate-500">{item.updatedAt && fmtETDateTime(item.updatedAt)}</span>
                                                                             <button
                                                                                 onClick={() => unapproveActivity(item.id)}
                                                                                 className="px-2 py-0.5 text-[10px] bg-amber-600 hover:bg-amber-500 text-white rounded"
@@ -24394,7 +24422,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                         <span className="text-[10px] px-1.5 py-0.5 bg-white/10 rounded">{item.triggerSource}</span>
                                                                         <span className="text-[10px] text-slate-500">· {item.analystName}</span>
                                                                     </div>
-                                                                    <span className="text-[10px] text-slate-500">{item.createdAt && new Date(item.createdAt).toLocaleString()}</span>
+                                                                    <span className="text-[10px] text-slate-500">{item.createdAt && fmtETDateTime(item.createdAt)}</span>
                                                                 </div>
                                                                 {item.activityType === 'theme_alert' && (
                                                                     <div className="mb-3 space-y-2">
@@ -24575,7 +24603,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                 </div>
                                                                                 <p className="mt-1 text-[10px] text-slate-500">
                                                                                     Job {item.output?.catalystJobId?.slice(0, 8) || '—'}
-                                                                                    {p?.updatedAt ? ` · updated ${new Date(p.updatedAt).toLocaleTimeString()}` : ''}
+                                                                                    {p?.updatedAt ? ` · updated ${fmtETTime(p.updatedAt)}` : ''}
                                                                                 </p>
                                                                             </div>
                                                                         );
@@ -24744,7 +24772,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-mono font-medium">{alert.ticker}</span>
                                                                 )}
                                                                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-slate-400">{alert.alertType === 'new_files' ? 'New Files' : alert.alertType === 'audio_summary' ? 'Audio Summary' : alert.alertType === 'web_sweep' ? 'Web Sweep' : alert.alertType}</span>
-                                                                <span className="text-[9px] text-slate-600 ml-auto">{alert.createdAt ? new Date(alert.createdAt + 'Z').toLocaleString('en-US', { timeZone: 'America/New_York', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                                                                <span className="text-[9px] text-slate-600 ml-auto">{alert.createdAt ? fmtETDateTime(alert.createdAt) : ''}</span>
                                                             </div>
                                                             <p className="text-sm text-slate-200 font-medium">{alert.title}</p>
                                                             {alert.detail?.newFiles && (
@@ -25276,7 +25304,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             <div key={ep.id} id={`feed-ep-${ep.id}`} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm transition-shadow">
                                                 <div className="flex items-baseline justify-between mb-1 gap-2">
                                                     <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 flex-1">
-                                                        {ep.feedName} · {ep.publishedAt ? new Date(ep.publishedAt).toLocaleDateString() : ''}
+                                                        {ep.feedName} · {ep.publishedAt ? fmtETDate(ep.publishedAt) : ''}
                                                         {ep.sourceUrl && (
                                                             <a href={ep.sourceUrl} target="_blank" rel="noopener" className="ml-2 text-indigo-600 hover:underline">
                                                                 SOURCE ↗
@@ -25459,7 +25487,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                     <div key={n.id} className="flex items-start gap-2 py-1 border-b border-amber-100 last:border-0">
                                                                         <div className="flex-1 text-[12px] text-slate-800 whitespace-pre-wrap">{n.noteText}</div>
                                                                         <div className="text-[10px] text-slate-400 shrink-0">
-                                                                            {n.createdAt ? new Date(n.createdAt).toLocaleDateString() : ''}
+                                                                            {n.createdAt ? fmtETDate(n.createdAt) : ''}
                                                                         </div>
                                                                         <button
                                                                             onClick={() => feedDeleteNote(p.id, n.id)}
@@ -25536,7 +25564,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         {(feedClusterModal.episodes || []).map(e => (
                                                             <li key={e.id} className="border border-slate-200 rounded-lg p-3 hover:bg-slate-50">
                                                                 <div className="text-[11px] text-slate-500 font-semibold uppercase tracking-wide">
-                                                                    {e.feedName} · {e.publishedAt ? new Date(e.publishedAt).toLocaleDateString() : ''}
+                                                                    {e.feedName} · {e.publishedAt ? fmtETDate(e.publishedAt) : ''}
                                                                 </div>
                                                                 <div className="font-medium text-slate-900 mt-0.5">{e.title}</div>
                                                                 <div className="flex items-center gap-3 mt-1.5 text-xs">
@@ -25715,7 +25743,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             <div className="text-xs text-slate-500 flex-1 min-w-0">
                                                 {!finnhubStatus ? 'Loading…' : !finnhubStatus.hasKey ? 'Key not set' : !finnhubStatus.lastSync?.ran_at ? 'Never synced' : (
                                                     <>
-                                                        <div>Last synced {new Date(finnhubStatus.lastSync.ran_at).toLocaleString()} — {finnhubStatus.lastSync.upserted || 0} dates across {finnhubStatus.lastSync.covered_matched?.length || 0} / {finnhubStatus.lastSync.coverage_tickers || 0} covered tickers ({finnhubStatus.lastSync.days_back || 0}d back + {finnhubStatus.lastSync.days_ahead || 120}d ahead)</div>
+                                                        <div>Last synced {fmtETDateTime(finnhubStatus.lastSync.ran_at)} — {finnhubStatus.lastSync.upserted || 0} dates across {finnhubStatus.lastSync.covered_matched?.length || 0} / {finnhubStatus.lastSync.coverage_tickers || 0} covered tickers ({finnhubStatus.lastSync.days_back || 0}d back + {finnhubStatus.lastSync.days_ahead || 120}d ahead)</div>
                                                         {finnhubStatus.lastSync.covered_matched?.length > 0 && (
                                                             <div className="text-emerald-400/80 mt-1 break-words"><strong>Matched:</strong> {finnhubStatus.lastSync.covered_matched.join(', ')}</div>
                                                         )}
@@ -26087,7 +26115,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                     <div className="text-xs text-slate-500 truncate max-w-xs">{f.feedUrl}</div>
                                                                 </td>
                                                                 <td className="py-2 text-xs text-slate-400">{(f.sectorTags || []).join(', ')}</td>
-                                                                <td className="py-2 text-xs text-slate-400">{f.lastEpisodeAt ? new Date(f.lastEpisodeAt).toLocaleDateString() : '—'}</td>
+                                                                <td className="py-2 text-xs text-slate-400">{f.lastEpisodeAt ? fmtETDate(f.lastEpisodeAt) : '—'}</td>
                                                                 <td className="py-2 text-xs">{f.errorCount > 0 ? <span className="text-rose-400">{f.errorCount}</span> : <span className="text-emerald-500">0</span>}</td>
                                                                 <td className="py-2 text-right">
                                                                     <button onClick={async () => {
