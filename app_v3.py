@@ -21799,6 +21799,31 @@ def analyst_activities_archived():
         return jsonify({'activities': [], 'error': str(e)}), 500
 
 
+@app.route('/api/analyst-activities/failed', methods=['GET'])
+def analyst_activities_failed():
+    """Return recently-failed activities so the user can see them in the Inbox.
+    Without this, failures are invisible (the pending endpoint only shows
+    pending_review + running, archived only shows approved). Failed activities
+    can be reopened via the unapprove endpoint to retry."""
+    try:
+        limit = int(request.args.get('limit', 50))
+        limit = max(1, min(limit, 200))
+        with get_db() as (_c, cur):
+            cur.execute('''
+                SELECT act.*, a.name AS analyst_name
+                  FROM analyst_activities act
+                  LEFT JOIN analysts a ON a.id = act.analyst_id
+                 WHERE act.status = 'failed'
+                 ORDER BY act.updated_at DESC NULLS LAST, act.created_at DESC
+                 LIMIT %s
+            ''', (limit,))
+            rows = cur.fetchall()
+        return jsonify({'activities': [_row_to_activity(r) for r in rows]})
+    except Exception as e:
+        print(f'analyst_activities_failed error: {e}')
+        return jsonify({'activities': [], 'error': str(e)}), 500
+
+
 def _render_thesis_block(playbook: dict | None, ticker: str) -> str:
     """Return a formatted MY COVERAGE THESIS block for the given ticker, or
     empty string if no thesis is configured."""

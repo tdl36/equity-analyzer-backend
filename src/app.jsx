@@ -1545,6 +1545,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
             // Phase 3c: archived (approved) inbox view + email modal
             const [showArchivedInbox, setShowArchivedInbox] = useState(false);
             const [archivedInbox, setArchivedInbox] = useState([]);
+            // Failed-activity inbox view (third toggle alongside pending/archived)
+            const [showFailedInbox, setShowFailedInbox] = useState(false);
+            const [failedInbox, setFailedInbox] = useState([]);
             const [recapEmailOpen, setRecapEmailOpen] = useState(null); // activity object when open
             const [recapEmailTo, setRecapEmailTo] = useState('');
             const [recapEmailSubject, setRecapEmailSubject] = useState('');
@@ -6999,6 +7002,15 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     }
                 } catch (e) { console.warn('fetchArchivedInbox:', e); }
             };
+            const fetchFailedInbox = async () => {
+                try {
+                    const res = await fetch(`${API_URL}/api/analyst-activities/failed?limit=100`);
+                    if (res.ok) {
+                        const j = await res.json();
+                        setFailedInbox(j.activities || []);
+                    }
+                } catch (e) { console.warn('fetchFailedInbox:', e); }
+            };
             const approveActivity = async (activityId, opts = {}) => {
                 try {
                     if (!opts.skipGuard) {
@@ -7198,6 +7210,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     if (res.ok) {
                         setAnalystToast('Reopened — moved back to pending inbox');
                         fetchArchivedInbox();
+                        fetchFailedInbox();
                         fetchAnalystInbox();
                     } else {
                         const j = await res.json().catch(() => ({}));
@@ -24202,7 +24215,17 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     >
                                                         {showArchivedInbox ? 'Show pending' : 'Show archived'}
                                                     </button>
-                                                    <button onClick={() => showArchivedInbox ? fetchArchivedInbox() : fetchAnalystInbox()} className="text-xs text-slate-400 hover:text-white">Refresh</button>
+                                                    <button
+                                                        onClick={() => {
+                                                            const next = !showFailedInbox;
+                                                            setShowFailedInbox(next);
+                                                            if (next) fetchFailedInbox();
+                                                        }}
+                                                        className={`text-xs px-2 py-1 rounded ${showFailedInbox ? 'bg-red-600 text-white' : 'bg-white/10 text-slate-300 hover:bg-white/20'}`}
+                                                    >
+                                                        {showFailedInbox ? 'Hide failed' : 'Show failed'}
+                                                    </button>
+                                                    <button onClick={() => { fetchAnalystInbox(); if (showArchivedInbox) fetchArchivedInbox(); if (showFailedInbox) fetchFailedInbox(); }} className="text-xs text-slate-400 hover:text-white">Refresh</button>
                                                 </div>
                                             </div>
                                             {showArchivedInbox && (
@@ -24310,6 +24333,41 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 </div>
                                             )}
                                             {showArchivedInbox && <div className="h-px bg-white/10 my-4" />}
+                                            {showFailedInbox && (
+                                                <div className="mb-4">
+                                                    {failedInbox.length === 0 ? (
+                                                        <p className="text-xs text-slate-500 text-center py-6">No failed activities. ✓</p>
+                                                    ) : (
+                                                        <ul className="space-y-3">
+                                                            {failedInbox.map(item => (
+                                                                <li key={item.id} className="bg-red-950/20 border border-red-500/30 rounded-lg p-4">
+                                                                    <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="font-mono font-bold text-sm">{item.ticker}</span>
+                                                                            <span className="text-[10px] px-1.5 py-0.5 bg-red-500/30 text-red-200 rounded uppercase tracking-wider font-bold">failed</span>
+                                                                            <span className="text-[10px] text-slate-500">· {item.analystName}</span>
+                                                                            <span className="text-[10px] text-slate-500">· {item.activityType}</span>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="text-[10px] text-slate-500">{item.updatedAt && new Date(item.updatedAt).toLocaleString()}</span>
+                                                                            <button
+                                                                                onClick={() => unapproveActivity(item.id)}
+                                                                                className="px-2 py-0.5 text-[10px] bg-amber-600 hover:bg-amber-500 text-white rounded"
+                                                                                title="Move back to pending inbox so you can re-run"
+                                                                            >Reopen</button>
+                                                                        </div>
+                                                                    </div>
+                                                                    {item.input?.topic && <p className="text-sm text-slate-200 mb-1">{item.input.topic}</p>}
+                                                                    {item.error && (
+                                                                        <pre className="mt-2 text-[10px] bg-black/40 border border-red-500/20 rounded p-2 text-red-200 whitespace-pre-wrap font-mono overflow-x-auto">{item.error}</pre>
+                                                                    )}
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {showFailedInbox && <div className="h-px bg-white/10 my-4" />}
                                             {analystInbox.length === 0 ? (
                                                 <div className="text-center py-16">
                                                     <p className="text-sm text-slate-500">Nothing pending review.</p>
