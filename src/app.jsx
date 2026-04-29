@@ -6028,10 +6028,15 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 return () => document.removeEventListener('visibilitychange', handler);
             }, [activeTab]);
 
-            // Agents tab - fetch providers and history
+            // Provider list is needed by multiple tabs (Agents recap form,
+            // Analysts inbox Run form, Analysts Regenerate dialog). Fetch on
+            // mount once instead of gating to a specific tab — without this,
+            // opening the Analysts inbox before ever visiting Agents leaves
+            // the provider/model dropdowns showing only anthropic + sonnet 4-6.
+            React.useEffect(() => { fetchAgentProviders(); }, []);
+            // Agents tab - fetch history (provider list above already covered)
             React.useEffect(() => {
                 if (activeTab === 'agents') {
-                    fetchAgentProviders();
                     fetchAgentHistory();
                     fetchPipelineUniverse();
                     fetchResearchHistory();
