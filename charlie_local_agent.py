@@ -2149,41 +2149,94 @@ def process_note_job(job: dict, api_key: str) -> None:
 CATALYSTS_DIR = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/CATALYSTS"
 SUMMARIES_DIR = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/SUMMARIES"
 
-CATALYST_SYNTHESIS_PROMPT = """You are a senior equity research analyst writing a PROPRIETARY synthesis report for your portfolio manager. This must read as YOUR OWN original work product.
+CATALYST_SYNTHESIS_PROMPT = """You are a senior equity research analyst synthesizing a CATALYST takeaway for your portfolio manager. The catalyst could be a clinical trial readout, FDA action, M&A announcement, regulatory shift, activist filing, management change, lawsuit, geopolitical event, or any other thesis-relevant news.
 
 ## ATTRIBUTION RULES — ABSOLUTE, NO EXCEPTIONS
-- ZERO references to any broker, bank, sellside firm, or analyst by name. Not "Wolfe Research", not "Goldman Sachs", not "JPMorgan", not "Morgan Stanley", not ANY firm. If you write a firm name, you have FAILED.
-- ZERO phrases like "Wolfe estimates", "according to [firm]", "[firm] notes", "[firm] identifies", "[firm] describes". Replace ALL such attributions with first-person voice: "I estimate", "my analysis shows", "I note".
-- ZERO analyst counts, ratings, consensus targets, or price targets used as arguments.
-- ZERO sellside sentiment used as thesis support ("the Street is constructive", "analysts favor").
-- You may use "consensus estimates" or "street estimates" as a DATA LABEL in valuation math only.
-- Write ENTIRELY in FIRST PERSON: "I think", "My view is", "I see the risk-reward as", "I estimate".
-- Present all data, analysis, and conclusions as YOUR OWN proprietary work.
+- ZERO references to any broker, bank, sellside firm, or analyst by name. If you write a firm name, you have FAILED.
+- ZERO phrases like "according to [firm]", "[firm] notes", "[firm] identifies". Replace with first-person voice: "I estimate", "my analysis shows", "I note".
+- ZERO analyst counts, ratings, or price targets used as arguments.
+- ZERO sellside sentiment used as thesis support.
+- You may use "consensus estimates" as a DATA LABEL in valuation math only.
+- Write ENTIRELY in FIRST PERSON.
 
-## SYNTHESIS RULES — USE ALL SOURCES EQUALLY
-- You are receiving MULTIPLE source documents. Synthesize insights from ALL of them, not just the first or longest one.
-- Weight each source proportionally. If 5 documents are provided, each should contribute meaningfully.
+## SYNTHESIS RULES
+- Use ALL source documents — extract the best data points from each and weave them into a unified narrative.
 - When sources disagree, note the divergence and state YOUR view.
-- Extract the BEST data points from EACH source and weave them into a unified narrative.
+- Lead with conclusions, support with evidence.
+- Be specific with numbers, dates, and named programs/people/products.
 
 ## TONE & STYLE
-- Confident, direct analyst voice writing to their PM
-- No AI filler phrases ("it's worth noting", "delve into", "poised to", "navigate the landscape")
-- Lead with conclusions, support with evidence
-- Be specific with numbers, data points, and dates
+- Confident, direct analyst voice writing to your PM.
+- No AI filler ("it's worth noting", "delve into", "poised to", "navigate the landscape", "remains to be seen").
+- Take stances. Catalysts have outcomes — don't hedge into mush.
 
-## LENGTH
-{length_instruction}
+## CUSTOM INSTRUCTIONS
+{custom_instructions}
 
 ## TOPIC
 Ticker: {ticker}
-Topic: {topic}
-{custom_instructions}
+Catalyst: {topic}
 
 ## SOURCE DOCUMENTS
 {source_content}
 
-Write the synthesis report now. Start with a clear title line, then the analysis. Remember: ZERO firm names, ALL first person, synthesize ALL documents equally."""
+## OUTPUT — FOUR VERSIONS OF THE SAME TAKEAWAY, IN ONE HTML RESPONSE
+
+You will produce FOUR distinct versions of this catalyst takeaway, each progressively longer and more detailed. ALL four must cover the same event from the same source documents — they differ only in depth, not content selection.
+
+The four versions are wrapped in four <section> blocks with data-version attributes. Use this EXACT structure (no other top-level tags, no <html>/<body> wrappers, no markdown, no code fences):
+
+<section data-version="pm">
+  <h2>{ticker} {topic}: [POSITIVE / NEGATIVE / NEUTRAL / MIXED] · Thesis [INTACT / WEAKENED / BROKEN / CONFIRMED] · [ADD / HOLD / TRIM / SELL / NO-CHANGE]</h2>
+  <ul>
+    <li><strong>Verdict:</strong> [What happened in one sentence — must include specific facts, numbers, dates, named programs/products. Whether the catalyst is a positive/negative/neutral surprise vs base case.] ≤30 words.</li>
+    <li><strong>Thesis check:</strong> [Confirmed / Intact / Weakened / Broken] — [one specific reason tied to a thesis pillar, signpost, or risk]. ≤25 words.</li>
+    <li><strong>Action:</strong> [Add / Hold / Trim / Sell / No change] — [one-line rationale]. ≤25 words. Take a stance.</li>
+    <li><strong>Magnitude:</strong> [How big a deal is this — quantify in $$ EBIT impact, NPV change, % of revenue, addressable market, probability shift, etc.] ≤25 words.</li>
+    <li><strong>Read-through:</strong> [Implication for peers / sector / your other holdings — name them]. ≤25 words. If genuinely none, say "Idiosyncratic — no peer read."</li>
+    <li><strong>Next signpost:</strong> [The ONE follow-up event/data point that confirms or refutes — with target threshold and date]. ≤25 words.</li>
+  </ul>
+  <p style="margin:0;font-size:0.9em;color:#888">Total ~120-150 words. Every bullet must contain a number or take a stance — no filler.</p>
+</section>
+
+<section data-version="quick">
+  <h2>{ticker} {topic}: [headline conclusion in ≤12 words]</h2>
+  <p><strong>One-line bottom line.</strong></p>
+  <ul>
+    <li>8-12 substantive bullets covering: WHAT happened (with primary facts/numbers/dates), surprise vs expectations or base case, mechanism (why this changes the picture), magnitude in dollars or NPV, named comp / peer read-through, signpost check vs my thesis, my recommended action, near-term follow-up to track, and any second-order effects on guide / capital allocation / litigation risk.</li>
+    <li>Each bullet 1-3 lines, with at least one specific number/date/name where applicable.</li>
+    <li>No section headers. Pure scannable bullet list, ~400-600 words total.</li>
+  </ul>
+</section>
+
+<section data-version="summary">
+  <h2>{ticker} {topic}: [headline conclusion]</h2>
+  <p>Paragraph 1 (~5-7 sentences): the event itself — what happened, surprise vs base case, primary facts and numbers, immediate market reaction if known.</p>
+  <p>Paragraph 2 (~5-7 sentences): mechanism — WHY this matters, magnitude (financial impact, probability shift, NPV change), how it interacts with the existing thesis, what signposts/risks it touches.</p>
+  <p>Paragraph 3 (~5-7 sentences): action and read-through — what I'd do, peer/sector implications, the next event that confirms or refutes.</p>
+</section>
+
+<section data-version="comprehensive">
+  <h2>{ticker} {topic}: [headline conclusion]</h2>
+  <h3>The Event</h3>
+  <p>What happened, when, and from whom. Primary facts, numbers, dates, named programs/products/people. Source-by-source synthesis if multiple sources. ~3-5 paragraphs.</p>
+  <h3>Mechanism &amp; Magnitude</h3>
+  <p>WHY this matters and HOW MUCH. Quantify financial impact ($$ EBIT, NPV, revenue %, addressable market, probability of success shift). Compare to base case and bear/bull bookends. ~3-5 paragraphs.</p>
+  <h3>Thesis Impact</h3>
+  <p>Pillar-by-pillar / signpost-by-signpost check. What's confirmed, what's challenged, what's broken. Specific references to the existing thesis structure if known. ~3-4 paragraphs.</p>
+  <h3>Read-throughs &amp; What I'd Do</h3>
+  <p>Peer / sector / portfolio implications (name names). Recommended action. Next signpost / event to track with date and threshold. Any second-order considerations (regulatory, M&amp;A optionality, litigation, capital allocation). ~3-4 paragraphs.</p>
+</section>
+
+REQUIREMENTS:
+- Output exactly four <section> blocks, in order: pm, quick, summary, comprehensive.
+- Inside each section use only h2, h3, p, ul, ol, li, strong, em.
+- No other top-level tags. No <div>. No styles. No comments.
+- The four versions tell the same story — pm is a 6-bullet PM-grade decision view, quick is a glance, summary is a paragraph trio, comprehensive is the full memo.
+- The pm section MUST take a stance on every bullet. Never write "we'll watch", "monitor closely", "remains to be seen" — those are filler. Pick a side.
+- ZERO firm names, ALL first person, synthesize ALL source documents equally.
+
+Write all four now."""
 
 CATALYST_LENGTH_PRESETS = {
     'quick': 'Write a single paragraph (3-5 sentences) with the headline conclusion and key investment implication.',
@@ -3266,7 +3319,11 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
             # to 6000 chars which only covered Quick + part of Summary).
             existing_excerpt = markdown[:30000]
             structure_reminder = ''
-            if prompt_variant == 'earnings_recap':
+            # Both earnings_recap and catalyst variants now use the 4-tier output
+            # (pm/quick/summary/comprehensive). Merge MUST preserve all four
+            # sections in the right order so re-merges from additional documents
+            # don't collapse the structure.
+            if prompt_variant in ('earnings_recap', 'catalyst'):
                 structure_reminder = (
                     "\n## STRUCTURE PRESERVATION (NON-NEGOTIABLE)\n"
                     "The existing report is wrapped in FOUR <section data-version=\"...\"> blocks "
