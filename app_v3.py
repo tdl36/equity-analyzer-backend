@@ -15289,6 +15289,115 @@ def get_agent_status(run_id):
     })
 
 
+DECIPHER_SYSTEM_PROMPT = """You are a senior equity research analyst patiently teaching a generalist portfolio manager industry concepts they're not familiar with. Your job is to make sense of jargon-dense source material so the PM can read research notes, earnings transcripts, and broker reports faster.
+
+VOICE & METHOD:
+- Build intuition before precision. Lead with a concrete analogy or first-principles physical/economic reality, then layer the technical terms.
+- Concrete analogies are your superpower. Lanes on a highway, same-store comps in retail, real-estate deeds, an orchestra hall for spectrum — find the bridge from the new concept to something the PM already knows.
+- Confident, direct. No hedging filler ("it's worth noting", "delve into", "in the coming quarters"). Take a stance when stances are warranted.
+- Specifics matter: real numbers, real names, real timeframes when the example calls for them. "AMT charges Verizon ~3% annual escalators" is better than "carriers pay rent that grows".
+- Connect every explanation back to "why this matters for the investment" — what the PM should look for in the data, what changes their model, what signposts to watch.
+
+WHEN ASKED TO EXPLAIN SIMPLER:
+- Drop one level of abstraction. If you were using "spectrum", go to "radio waves". If you were using "radio waves", go to "vibrations like a piano".
+- Don't apologize. The user isn't dumb — finance is genuinely jargon-thick.
+- Re-explain from a more basic foundation, not just shorter wording.
+
+DEFINITIONS:
+- Define every acronym on first use, even ones you think are obvious (FCF, AFFO, DSO, EBITDA, MVNO, etc.). The PM is non-specialist.
+- For Q&A excerpts from transcripts, explain WHO is asking (sellside analyst from which firm if identifiable from context) and WHY they're asking — the unstated thesis behind the question.
+
+ATTRIBUTION RULES:
+- Reference broker names as factual context only ("a Wolfe analyst asked about X") — never as opinion support.
+- Never use sellside ratings or targets as arguments.
+- Always pivot to "here's how I'd think about it" with first-person voice.
+
+OUTPUT:
+- Markdown. Bold for emphasis on key terms first time used.
+- Use lists when explaining 3+ parallel components, otherwise prose.
+- 2-4 paragraphs unless the user explicitly asks for more depth.
+- Always end with one practical takeaway: "what to watch for in the data" or "what changes the call"."""
+
+
+@app.route('/api/decipher', methods=['POST'])
+def decipher():
+    """One-shot Decipher agent: takes a snippet of text or a PDF and explains
+    industry jargon, Q&A subtext, and key metrics in plain English with
+    intuition-first analogies. Uses Opus 4-7 + streaming (long-context patient
+    explanation is Opus's strength; streaming is required because Opus call
+    durations cross the SDK's 10-min non-stream threshold)."""
+    try:
+        data = request.get_json(silent=True) or {}
+        text = (data.get('text') or '').strip()
+        file_data = data.get('fileData') or ''
+        file_type = (data.get('fileType') or 'pdf').lower()
+        file_name = (data.get('fileName') or '').strip()
+        ticker = (data.get('ticker') or '').strip().upper()
+
+        if not text and not file_data:
+            return jsonify({'error': 'Provide text or fileData (PDF)'}), 400
+
+        # Cost guardrail: cap pasted text. Anthropic accepts very long but the
+        # decipher use case rarely needs more than 200K chars.
+        if text and len(text) > 200_000:
+            text = text[:200_000] + '\n\n[truncated to 200K chars]'
+
+        api_key = data.get('apiKey') or os.environ.get('ANTHROPIC_API_KEY', '')
+        if not api_key:
+            return jsonify({'error': 'Anthropic API key not configured'}), 500
+
+        client = anthropic.Anthropic(api_key=api_key)
+        content = []
+
+        if file_data and file_type == 'pdf':
+            label = f"PDF source: {file_name or 'document.pdf'}"
+            content.append({"type": "text", "text": f"=== {label} ==="})
+            content.append({"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": file_data}})
+
+        if text:
+            content.append({"type": "text", "text": "=== User-provided text ===\n" + text})
+
+        ticker_block = ''
+        if ticker:
+            ticker_block = f"\n\nThe PM is currently reading source material about {ticker}. When useful, frame your explanation around {ticker}'s specific business / KPIs / common transcript jargon. Otherwise stay general."
+
+        ask = (
+            "Decipher the source material above for the PM. Identify the industry jargon, "
+            "obscure acronyms, accounting conventions, Q&A subtext, and any KPIs that need "
+            "definition. Build intuition first via analogies, then layer in precision. End with "
+            "a practical takeaway about what to watch for or what would change the call."
+            f"{ticker_block}"
+        )
+        content.append({"type": "text", "text": ask})
+
+        # Stream — Opus 4-7 + max_tokens 8K can cross the 10-min non-stream threshold.
+        with client.messages.stream(
+            model='claude-opus-4-7',
+            max_tokens=8192,
+            system=DECIPHER_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": content}],
+        ) as stream:
+            final = stream.get_final_message()
+
+        parts = []
+        for blk in (final.content or []):
+            t = getattr(blk, 'text', None)
+            if t: parts.append(t)
+        explanation = ''.join(parts).strip()
+
+        usage = getattr(final, 'usage', None)
+        return jsonify({
+            'ok': True,
+            'explanation': explanation,
+            'model': 'claude-opus-4-7',
+            'inputTokens': getattr(usage, 'input_tokens', None) if usage else None,
+            'outputTokens': getattr(usage, 'output_tokens', None) if usage else None,
+        })
+    except Exception as e:
+        print(f'decipher error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/agents/results', methods=['GET'])
 def list_agent_results():
     limit = request.args.get('limit', 50, type=int)

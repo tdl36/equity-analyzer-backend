@@ -1476,7 +1476,16 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [agentModel, setAgentModel] = useState('claude-haiku-4-5-20251001');
             const [agentActiveRun, setAgentActiveRun] = useState(null);
             const [agentHistory, setAgentHistory] = useState([]);
-            const [agentView, setAgentView] = useState('new'); // 'new' | 'history' | 'detail'
+            const [agentView, setAgentView] = useState('new'); // 'new' | 'history' | 'detail' | 'decipher'
+            // Decipher sub-tab state — one-shot agent that explains industry jargon
+            // and Q&A subtext from pasted text or uploaded PDFs.
+            const [decipherText, setDecipherText] = useState('');
+            const [decipherFile, setDecipherFile] = useState(null); // { fileData, fileName, fileType }
+            const [decipherTicker, setDecipherTicker] = useState('');
+            const [decipherLoading, setDecipherLoading] = useState(false);
+            const [decipherError, setDecipherError] = useState(null);
+            const [decipherResult, setDecipherResult] = useState(null);
+            const [decipherHistory, setDecipherHistory] = useState([]);  // session-only, no backend persistence in v1
             const [agentDetailRun, setAgentDetailRun] = useState(null);
             const [agentSaveState, setAgentSaveState] = useState({});
             const [agentDashboard, setAgentDashboard] = useState(null);
@@ -22310,7 +22319,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 <p className="text-xs text-slate-400 mt-0.5">Multi-agent LLM analysis: fundamentals, sentiment, news, risk</p>
                                             </div>
                                             <div className="flex flex-wrap gap-1 shrink-0">
-                                                {[{v: 'research', label: 'Research'}, {v: 'catalysts', label: 'Catalysts'}, {v: 'new', label: 'Agents'}, {v: 'batch', label: 'Batch'}, {v: 'dashboard', label: 'Dashboard'}, {v: 'history', label: 'History'}].map(({v, label}) => (
+                                                {[{v: 'research', label: 'Research'}, {v: 'catalysts', label: 'Catalysts'}, {v: 'decipher', label: 'Decipher'}, {v: 'new', label: 'Agents'}, {v: 'batch', label: 'Batch'}, {v: 'dashboard', label: 'Dashboard'}, {v: 'history', label: 'History'}].map(({v, label}) => (
                                                     <button key={v} onClick={() => { setAgentView(v); if (v === 'dashboard') fetchAgentDashboard(); if (v === 'catalysts') fetchCatalystHistory(); }}
                                                         className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors ${
                                                             agentView === v ? 'bg-amber-600 text-white' : 'bg-white/[0.06] text-slate-400 hover:text-white'
@@ -23235,6 +23244,169 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 )}
                                             </>
                                         )}
+
+                                        {agentView === 'decipher' && (() => {
+                                            const runDecipher = async () => {
+                                                const text = (decipherText || '').trim();
+                                                if (!text && !decipherFile) {
+                                                    setDecipherError('Paste some text or upload a PDF first.');
+                                                    return;
+                                                }
+                                                setDecipherLoading(true);
+                                                setDecipherError(null);
+                                                try {
+                                                    const body = {
+                                                        text,
+                                                        ticker: (decipherTicker || '').trim(),
+                                                    };
+                                                    if (decipherFile) {
+                                                        body.fileData = decipherFile.fileData;
+                                                        body.fileName = decipherFile.fileName;
+                                                        body.fileType = decipherFile.fileType;
+                                                    }
+                                                    const res = await fetch(`${API_URL}/api/decipher`, {
+                                                        method: 'POST',
+                                                        headers: { 'Content-Type': 'application/json' },
+                                                        body: JSON.stringify(body),
+                                                    });
+                                                    const data = await res.json();
+                                                    if (!res.ok || data.error) {
+                                                        setDecipherError(data.error || `HTTP ${res.status}`);
+                                                    } else {
+                                                        const entry = {
+                                                            id: Date.now(),
+                                                            text: text,
+                                                            fileName: decipherFile?.fileName || null,
+                                                            ticker: decipherTicker || null,
+                                                            explanation: data.explanation || '',
+                                                            tokensIn: data.inputTokens,
+                                                            tokensOut: data.outputTokens,
+                                                            at: new Date().toISOString(),
+                                                        };
+                                                        setDecipherResult(entry);
+                                                        setDecipherHistory(prev => [entry, ...prev].slice(0, 20));
+                                                    }
+                                                } catch (e) {
+                                                    setDecipherError(String(e));
+                                                } finally {
+                                                    setDecipherLoading(false);
+                                                }
+                                            };
+                                            const onPdfPick = async (e) => {
+                                                const f = e.target.files?.[0];
+                                                if (!f) return;
+                                                if (!/\.pdf$/i.test(f.name)) {
+                                                    setDecipherError('Only PDF uploads supported in v1');
+                                                    return;
+                                                }
+                                                if (f.size > 30 * 1024 * 1024) {
+                                                    setDecipherError('PDF too large (>30MB cap)');
+                                                    return;
+                                                }
+                                                const buf = await f.arrayBuffer();
+                                                let bin = '';
+                                                const bytes = new Uint8Array(buf);
+                                                for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+                                                const b64 = btoa(bin);
+                                                setDecipherFile({ fileData: b64, fileName: f.name, fileType: 'pdf' });
+                                                setDecipherError(null);
+                                            };
+                                            return (
+                                                <div className="space-y-4">
+                                                    <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4">
+                                                        <div className="flex items-baseline justify-between mb-2 flex-wrap gap-2">
+                                                            <h2 className="text-lg font-bold">Decipher</h2>
+                                                            <p className="text-xs text-slate-500">Paste a snippet or upload a PDF — get a plain-English explanation of jargon, Q&amp;A subtext, and KPIs from a patient senior analyst (Opus 4-7).</p>
+                                                        </div>
+                                                        <textarea
+                                                            value={decipherText}
+                                                            onChange={e => setDecipherText(e.target.value)}
+                                                            placeholder='Paste a paragraph, sentence, or question. Examples: "What does AMT mean by &apos;straight-line revenue&apos;?" or paste a Q&amp;A excerpt from an earnings call.'
+                                                            rows={6}
+                                                            className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded text-sm text-slate-200 placeholder:text-slate-500 resize-y"
+                                                        />
+                                                        <div className="flex flex-wrap items-center gap-2 mt-2">
+                                                            <label className="text-[10px] uppercase tracking-wider text-slate-500">Ticker (optional)</label>
+                                                            <input
+                                                                type="text"
+                                                                value={decipherTicker}
+                                                                onChange={e => setDecipherTicker(e.target.value.toUpperCase())}
+                                                                placeholder="AMT"
+                                                                className="w-24 px-2 py-1 bg-black/30 border border-white/10 rounded text-xs font-mono text-slate-200"
+                                                            />
+                                                            <label className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded text-xs cursor-pointer">
+                                                                {decipherFile ? `📎 ${decipherFile.fileName}` : 'Attach PDF…'}
+                                                                <input type="file" accept="application/pdf,.pdf" onChange={onPdfPick} className="hidden" />
+                                                            </label>
+                                                            {decipherFile && (
+                                                                <button onClick={() => setDecipherFile(null)} className="text-xs text-slate-500 hover:text-red-400">Remove</button>
+                                                            )}
+                                                            <div className="flex-1" />
+                                                            <button
+                                                                onClick={runDecipher}
+                                                                disabled={decipherLoading}
+                                                                className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 rounded text-xs font-medium"
+                                                            >{decipherLoading ? 'Deciphering…' : 'Decipher'}</button>
+                                                        </div>
+                                                        {decipherError && (
+                                                            <p className="mt-2 text-xs text-red-400">{decipherError}</p>
+                                                        )}
+                                                    </div>
+
+                                                    {decipherLoading && (
+                                                        <div className="bg-white/[0.03] border border-amber-500/20 rounded-xl p-6 text-center">
+                                                            <div className="text-amber-400 text-sm">Reading and explaining… typically 30-60s on Opus 4-7.</div>
+                                                        </div>
+                                                    )}
+
+                                                    {decipherResult && !decipherLoading && (
+                                                        <div className="bg-white/[0.03] border border-amber-500/30 rounded-xl p-5">
+                                                            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                                                                <div className="flex items-center gap-2 text-xs text-slate-400 flex-wrap">
+                                                                    {decipherResult.ticker && <span className="px-2 py-0.5 bg-white/10 rounded font-mono font-bold text-slate-200">{decipherResult.ticker}</span>}
+                                                                    {decipherResult.fileName && <span>📎 {decipherResult.fileName}</span>}
+                                                                    <span>· {fmtETDateTime(decipherResult.at)}</span>
+                                                                    {decipherResult.tokensOut && <span className="text-slate-600">· {decipherResult.tokensIn}→{decipherResult.tokensOut} tok</span>}
+                                                                </div>
+                                                                <button
+                                                                    onClick={async () => {
+                                                                        try { await navigator.clipboard.writeText(decipherResult.explanation); } catch {}
+                                                                    }}
+                                                                    className="text-[10px] px-2 py-1 bg-white/10 hover:bg-white/20 rounded"
+                                                                >Copy</button>
+                                                            </div>
+                                                            <div className="prose prose-invert prose-sm max-w-none text-slate-100" dangerouslySetInnerHTML={{ __html: renderMarkdown(decipherResult.explanation) }} />
+                                                        </div>
+                                                    )}
+
+                                                    {decipherHistory.length > 1 && (
+                                                        <details className="bg-white/[0.02] border border-white/10 rounded-xl p-3">
+                                                            <summary className="cursor-pointer text-xs text-slate-400 hover:text-white">
+                                                                Session history ({decipherHistory.length} earlier decipher{decipherHistory.length === 1 ? '' : 's'})
+                                                            </summary>
+                                                            <div className="mt-3 space-y-2">
+                                                                {decipherHistory.slice(1).map(h => (
+                                                                    <button
+                                                                        key={h.id}
+                                                                        onClick={() => setDecipherResult(h)}
+                                                                        className="w-full text-left p-2 bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 rounded text-xs"
+                                                                    >
+                                                                        <div className="flex items-center gap-2 text-[10px] text-slate-500 mb-1 flex-wrap">
+                                                                            {h.ticker && <span className="px-1.5 py-0.5 bg-white/10 rounded font-mono">{h.ticker}</span>}
+                                                                            {h.fileName && <span>📎 {h.fileName}</span>}
+                                                                            <span>{fmtETDateTime(h.at)}</span>
+                                                                        </div>
+                                                                        <div className="text-slate-300 truncate">
+                                                                            {(h.text || h.fileName || '(empty)').slice(0, 140)}
+                                                                        </div>
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </details>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
 
                                         {agentView === 'new' && (
                                             <>
