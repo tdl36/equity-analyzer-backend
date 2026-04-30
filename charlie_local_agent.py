@@ -954,9 +954,16 @@ def push_file_manifest() -> None:
     manifest: dict[str, list[dict]] = {}
 
     def _scan_file(f: Path, base_dir: Path) -> Optional[dict]:
-        if f.is_dir():
-            return None
+        try:
+            if f.is_dir():
+                return None
+        except OSError:
+            return None  # iCloud stub, skip
         if f.name.startswith('.') or f.name.startswith('~$'):
+            return None
+        # iCloud cloud-only placeholder files end in .icloud — skip them
+        # because stat() can hang waiting for iCloud to materialize.
+        if f.name.endswith('.icloud'):
             return None
         if any(part in SKIP_DIRS for part in f.parts):
             return None
@@ -964,13 +971,20 @@ def push_file_manifest() -> None:
         if ext not in SCAN_EXTS:
             return None
         rel = f.relative_to(base_dir)
-        return {
-            'filename': f.name,
-            'path': str(rel),
-            'size': f.stat().st_size,
-            'extension': ext,
-            'modified': datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
-        }
+        try:
+            st = f.stat()
+            return {
+                'filename': f.name,
+                'path': str(rel),
+                'size': st.st_size,
+                'extension': ext,
+                'modified': datetime.fromtimestamp(st.st_mtime).isoformat(),
+            }
+        except OSError as e:
+            # iCloud not ready (errno 11/35) or transient FS error — skip
+            # this file rather than letting the manifest loop hang.
+            log.debug(f"_scan_file: skip {f.name}: {e}")
+            return None
 
     # --- STOCKS/<ticker>/ ---
     for ticker_dir in sorted(STOCKS_DIR.iterdir()):
@@ -2630,49 +2644,51 @@ def check_for_new_audio():
                 # Mark in-flight so concurrent ticks don't re-upload the
                 # same file while a slow upload is in progress.
                 _audio_in_flight.add(fname)
-                # Upload to backend auto-process endpoint. Render upload speed
-                # to a free-tier instance is unpredictable (varies 1-5 MB/s)
-                # and the dyno can take 30s+ to wake from cold. Generous
-                # timeouts: 60s connect (cold start), 30 min upload (covers
-                # 100+ MB at 1 MB/s). Without this, 60+ MB files would die
-                # mid-upload and loop forever.
-                res = requests.post(
-                    f"{CHARLIE_API}/api/auto-process-audio",
-                    files={'file': (fname, file_data)},
-                    data={'detailLevel': 'standard'},
-                    headers={'Authorization': f'ApiKey {get_secret("CHARLIE_API_KEY") or ""}'},
-                    timeout=(60, 1800),
-                )
-                if res.ok:
-                    data = res.json()
-                    job_id = data.get('jobId', '?')
-                    log.info(f"Audio auto-process started: {fname} (job {job_id})")
-                    _audio_failed_attempts.pop(fname, None)  # reset failure counter on successful upload
-                    # Poll job status for up to 20 min. Only move to Processed/
-                    # on confirmed 'complete'. On 'error' / 'failed' leave the
-                    # file in place so the next agent tick retries it.
-                    # CRITICAL: run this in a daemon thread so we don't block
-                    # the for-loop. Without it, processing 4 audio files takes
-                    # 4 × 10 min serially because the loop sits on the wait.
-                    def _audio_wait_wrapper(fn, fp, jid):
-                        try:
+
+                # CRITICAL: do the upload + wait in a daemon thread. Previously
+                # the requests.post() with timeout=(60, 1800) ran on the main
+                # loop thread, so a single 30-min upload window held the entire
+                # agent hostage — no other audio detected, no manifest pushed,
+                # no podcast polled, no heartbeat thread relevance because
+                # everything else also queued behind it. With the upload in a
+                # daemon, the main loop completes in seconds and remains free
+                # to run other work concurrently.
+                def _audio_upload_and_wait(fn, fp, fdata):
+                    try:
+                        res = requests.post(
+                            f"{CHARLIE_API}/api/auto-process-audio",
+                            files={'file': (fn, fdata)},
+                            data={'detailLevel': 'standard'},
+                            headers={'Authorization': f'ApiKey {get_secret("CHARLIE_API_KEY") or ""}'},
+                            timeout=(60, 1800),
+                        )
+                        if res.ok:
+                            data = res.json()
+                            jid = data.get('jobId', '?')
+                            log.info(f"Audio auto-process started: {fn} (job {jid})")
+                            _audio_failed_attempts.pop(fn, None)
                             _wait_for_audio_job_and_move(fn, fp, jid)
-                        finally:
-                            _audio_in_flight.discard(fn)
-                    threading.Thread(
-                        target=_audio_wait_wrapper,
-                        args=(fname, fpath, job_id),
-                        daemon=True,
-                        name=f'audio-wait-{job_id[:8]}',
-                    ).start()
-                else:
-                    log.warning(f"Audio auto-process failed for {fname}: {res.status_code}")
-                    _audio_in_flight.discard(fname)
-                    _audio_failed_attempts[fname] = _audio_failed_attempts.get(fname, 0) + 1
-                    try: _known_audio_files.discard(fname)
-                    except Exception: pass
+                        else:
+                            log.warning(f"Audio auto-process failed for {fn}: {res.status_code}")
+                            _audio_failed_attempts[fn] = _audio_failed_attempts.get(fn, 0) + 1
+                            _known_audio_files.discard(fn)
+                    except Exception as e:
+                        log.warning(f"Error in audio upload thread for {fn}: {e}")
+                        _audio_failed_attempts[fn] = _audio_failed_attempts.get(fn, 0) + 1
+                        if _audio_failed_attempts[fn] >= 5:
+                            log.error(f"AUDIO GIVE UP: {fn} failed {_audio_failed_attempts[fn]} times. Investigate manually.")
+                        _known_audio_files.discard(fn)
+                    finally:
+                        _audio_in_flight.discard(fn)
+
+                threading.Thread(
+                    target=_audio_upload_and_wait,
+                    args=(fname, fpath, file_data),
+                    daemon=True,
+                    name=f'audio-upload-{fname[:24]}',
+                ).start()
             except Exception as e:
-                log.warning(f"Error auto-processing audio {fname}: {e}")
+                log.warning(f"Error preparing audio file {fname}: {e}")
                 _audio_in_flight.discard(fname)
                 _audio_failed_attempts[fname] = _audio_failed_attempts.get(fname, 0) + 1
                 if _audio_failed_attempts[fname] >= 5:
