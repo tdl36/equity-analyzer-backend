@@ -2614,7 +2614,15 @@ def check_for_new_audio():
                     # Poll job status for up to 20 min. Only move to Processed/
                     # on confirmed 'complete'. On 'error' / 'failed' leave the
                     # file in place so the next agent tick retries it.
-                    _wait_for_audio_job_and_move(fname, fpath, job_id)
+                    # CRITICAL: run this in a daemon thread so we don't block
+                    # the for-loop. Without it, processing 4 audio files takes
+                    # 4 × 10 min serially because the loop sits on the wait.
+                    threading.Thread(
+                        target=_wait_for_audio_job_and_move,
+                        args=(fname, fpath, job_id),
+                        daemon=True,
+                        name=f'audio-wait-{job_id[:8]}',
+                    ).start()
                 else:
                     log.warning(f"Audio auto-process failed for {fname}: {res.status_code}")
                     try: _known_audio_files.discard(fname)
