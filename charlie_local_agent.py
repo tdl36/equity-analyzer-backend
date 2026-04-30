@@ -3766,6 +3766,28 @@ def main() -> None:
 
         shutdown.wait(timeout=POLL_INTERVAL)
 
+    # Graceful shutdown: any synthesis daemon thread was killed when the main
+    # process exits. Flag those jobs as failed on the backend NOW so the
+    # frontend Inbox sees a recoverable state immediately, instead of sitting
+    # in zombie 'running' until the 30-min reaper runs (Tony's MRK incident).
+    if _synthesis_in_flight:
+        log.info(f"Marking {len(_synthesis_in_flight)} in-flight synthesis job(s) as failed before exit")
+        for jid in list(_synthesis_in_flight):
+            try:
+                requests.post(
+                    f"{CHARLIE_API}/api/agent/update-job",
+                    json={
+                        'jobId': jid,
+                        'status': 'failed',
+                        'currentStep': 'Killed by agent restart',
+                        'error': 'Synthesis aborted by agent shutdown — re-run from inbox',
+                    },
+                    headers=_agent_headers(),
+                    timeout=5,
+                )
+            except Exception as e:
+                log.debug(f"Could not mark {jid[:8]} failed on shutdown: {e}")
+
     log.info("Agent stopped.")
 
 
