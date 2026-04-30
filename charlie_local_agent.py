@@ -2547,6 +2547,13 @@ def _wait_for_audio_job_and_move(fname: str, fpath: Path, job_id: str) -> None:
 _audio_in_flight = set()  # filenames currently being uploaded or transcribed
 _audio_failed_attempts = {}  # fname -> consecutive-failure count
 
+# Bounded synthesis parallelism. Tony's Anthropic Tier 4 has 400K output
+# TPM. ~100K out per recap × 5 concurrent ≈ 170K TPM peak — comfortable
+# headroom. Other constraints (memory ~300-500MB per job × 5 = 1.5-2.5GB,
+# requests at 4000/min) are non-binding.
+MAX_CONCURRENT_SYNTHESIS = 5
+_synthesis_in_flight = set()  # job IDs currently being synthesized
+
 def check_for_new_audio():
     """Scan SUMMARIES/ folder for new audio files, auto-process them."""
     global _known_audio_files, _audio_initialized, _audio_in_flight, _audio_failed_attempts
@@ -3678,28 +3685,72 @@ def main() -> None:
             consecutive_errors = 0  # reset on successful poll
 
             if jobs:
-                job = jobs[0]
-                ticker = job.get("ticker", "???")
-                log.info(f"Found job: {job['id'][:12]}... for {ticker}")
+                # Bounded parallelism for synthesis jobs only. Earnings recaps
+                # are I/O-bound (Anthropic streaming) so threads work fine.
+                # Capped at MAX_CONCURRENT_SYNTHESIS to stay under Tony's
+                # Anthropic Tier 4 output-token rate limit (400K TPM). At
+                # ~100K output tokens per recap spread across ~3 min, 5
+                # concurrent peaks at ~170K TPM — comfortable headroom.
+                # Other job types (note, scan_catalysts, earnings_fetch) still
+                # run synchronously on the main thread one-at-a-time — they're
+                # rarer and changing them isn't on this scope.
+                synth_dispatched = 0
+                for job in jobs:
+                    job_type = job.get("job_type", "note")
+                    job_id = job["id"]
+                    ticker = job.get("ticker", "???")
 
-                # Claim the job
-                claimed = claim_job(job["id"])
-                if not claimed:
-                    log.warning(f"Could not claim job {job['id'][:12]}..., skipping")
-                    shutdown.wait(timeout=POLL_INTERVAL)
-                    continue
+                    if job_type == "synthesis":
+                        # Skip if this exact job is already in-flight (defensive
+                        # against duplicate poll responses)
+                        if job_id in _synthesis_in_flight:
+                            continue
+                        # Skip if we've already hit the concurrency cap this tick
+                        if len(_synthesis_in_flight) >= MAX_CONCURRENT_SYNTHESIS:
+                            log.info(f"Synthesis concurrency cap ({MAX_CONCURRENT_SYNTHESIS}) reached; deferring {ticker} to next tick")
+                            break
+                        # Claim and dispatch in a daemon thread so the main
+                        # loop is never blocked on a synthesis call.
+                        if not claim_job(job_id):
+                            log.warning(f"Could not claim job {job_id[:12]}..., skipping")
+                            continue
+                        _synthesis_in_flight.add(job_id)
+                        log.info(f"Dispatching synthesis job: {job_id[:12]}... for {ticker} (in-flight={len(_synthesis_in_flight)})")
+                        def _synth_wrapper(j, jid):
+                            try:
+                                process_synthesis_job(j, api_key)
+                            except Exception as e:
+                                log.error(f"Synthesis thread crashed for {jid[:12]}: {e}")
+                            finally:
+                                _synthesis_in_flight.discard(jid)
+                        threading.Thread(
+                            target=_synth_wrapper,
+                            args=(job, job_id),
+                            daemon=True,
+                            name=f'synthesis-{job_id[:8]}',
+                        ).start()
+                        synth_dispatched += 1
+                        continue
 
-                job_type = job.get("job_type", "note")
-                if job_type == "synthesis":
-                    process_synthesis_job(job, api_key)
-                elif job_type == "scan_catalysts":
-                    process_scan_catalysts_job(job)
-                elif job_type == "earnings_fetch":
-                    process_earnings_fetch_job(job)
-                else:
-                    process_note_job(job, api_key)
+                    # Non-synthesis job types: serial as before, but only the
+                    # FIRST one this tick (matches old behavior). Lets the
+                    # main loop continue ticking for parallel synthesis.
+                    log.info(f"Found job: {job_id[:12]}... for {ticker}")
+                    if not claim_job(job_id):
+                        log.warning(f"Could not claim job {job_id[:12]}..., skipping")
+                        continue
+                    if job_type == "scan_catalysts":
+                        process_scan_catalysts_job(job)
+                    elif job_type == "earnings_fetch":
+                        process_earnings_fetch_job(job)
+                    else:
+                        process_note_job(job, api_key)
+                    break  # only one non-synthesis job per tick
 
-                if args.once:
+                if synth_dispatched > 0:
+                    log.info(f"Dispatched {synth_dispatched} synthesis job(s) this tick (total in-flight={len(_synthesis_in_flight)})")
+
+                if args.once and synth_dispatched > 0:
                     break
             else:
                 log.debug("No pending jobs")
