@@ -25354,6 +25354,32 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                             className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded text-xs font-medium"
                                                                         >View initial synthesis</button>
                                                                     )}
+                                                                    {/* Re-run button: surfaces when an initial synthesis already exists.
+                                                                        Lets user re-run with provider/model/custom-instructions overrides
+                                                                        without having to approve-then-reopen-then-regenerate. */}
+                                                                    {(item.activityType === 'earnings_recap' || item.activityType === 'takeaway') && isCatalystFolder && item.output?.synthesisMarkdown && item.status !== 'running' && (
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                const providers = Object.keys(agentProviders).length ? Object.keys(agentProviders) : ['anthropic'];
+                                                                                const currentProvider = recapProvider[item.id] || 'anthropic';
+                                                                                const p = window.prompt(`Provider? Available: ${providers.join(', ')}`, currentProvider);
+                                                                                if (p === null) return;
+                                                                                const models = agentProviders[p.trim()] || agentProviders.anthropic || [RECAP_DEFAULT_MODEL];
+                                                                                const currentModel = recapModel[item.id] || RECAP_DEFAULT_MODEL;
+                                                                                const m = window.prompt(`Model? Available: ${models.join(', ')}`, currentModel);
+                                                                                if (m === null) return;
+                                                                                const ci = window.prompt('Optional custom instructions:', recapCustomInstructions[item.id] || '');
+                                                                                if (ci === null) return;
+                                                                                if (!window.confirm(`Re-run with ${p.trim()}/${m.trim()}? Prior version preserved in history.`)) return;
+                                                                                setRecapProvider(s => ({ ...s, [item.id]: p.trim() }));
+                                                                                setRecapModel(s => ({ ...s, [item.id]: m.trim() }));
+                                                                                setRecapCustomInstructions(s => ({ ...s, [item.id]: ci }));
+                                                                                regenerateAnalystActivity(item.id, { length: 'standard', customInstructions: ci.trim(), provider: p.trim(), model: m.trim() });
+                                                                            }}
+                                                                            className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-medium"
+                                                                            title="Re-run this activity with override provider/model/custom instructions. Prior result preserved in priorRuns history."
+                                                                        >{item.activityType === 'earnings_recap' ? 'Re-run recap' : 'Re-run takeaway'}</button>
+                                                                    )}
                                                                     <button
                                                                         onClick={() => approveActivity(item.id)}
                                                                         disabled={item.status === 'running'}
