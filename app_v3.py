@@ -14982,6 +14982,106 @@ def agent_local_files(ticker):
     })
 
 
+@app.route('/api/agent/fetch-files', methods=['POST'])
+def agent_fetch_files():
+    """Generic byte-fetcher for any iCloud file (STOCKS or CATALYSTS).
+    Body: {files: [{ticker, folder, filename}, ...]}
+    Returns: {files: [{ticker, folder, filename, fileData (base64), mimeType,
+              size}, ...], missing: [...]}.
+
+    Used by the shared <ICloudPicker> across all upload destinations
+    (Thesis, Summary, Research, Studio, Decipher). Each destination's
+    existing handler accepts the returned bytes the same way it accepts
+    a normal drag/drop File.
+
+    Mechanism mirrors mp_import_from_icloud: groups by ticker, queues a
+    wantedFiles fetch via _pending_doc_upload_requests, polls
+    document_files until present, returns the bytes."""
+    try:
+        data = request.get_json(silent=True) or {}
+        files = data.get('files') or []
+        if not files:
+            return jsonify({'error': 'No files specified'}), 400
+
+        by_ticker = {}
+        for f in files:
+            tk = (f.get('ticker') or '').upper().strip()
+            fn = (f.get('filename') or '').strip()
+            folder = (f.get('folder') or 'main').strip()
+            if not tk or not fn:
+                continue
+            by_ticker.setdefault(tk, []).append({'filename': fn, 'folder': folder})
+
+        if not by_ticker:
+            return jsonify({'error': 'No valid files in request'}), 400
+
+        global _pending_doc_upload_requests
+        for tk, wanted in by_ticker.items():
+            with get_db() as (_, cur):
+                cur.execute('SELECT filename FROM document_files WHERE ticker = %s', (tk,))
+                already = {r['filename'] for r in cur.fetchall()}
+            still_wanted = [w for w in wanted if w['filename'] not in already]
+            if still_wanted:
+                _pending_doc_upload_requests[tk] = {
+                    'requested_at': datetime.utcnow(),
+                    'job_id': f'fetch-{datetime.utcnow().timestamp()}',
+                    'wantedFiles': still_wanted,
+                }
+
+        all_targets = {(tk, wf['filename']) for tk, wfs in by_ticker.items() for wf in wfs}
+        max_wait = 120
+        poll_interval = 3
+        waited = 0
+        have_all = False
+        while waited < max_wait:
+            time.sleep(poll_interval)
+            waited += poll_interval
+            present = set()
+            with get_db() as (_, cur):
+                for tk in by_ticker.keys():
+                    cur.execute('SELECT filename FROM document_files WHERE ticker = %s', (tk,))
+                    for r in cur.fetchall():
+                        present.add((tk, r['filename']))
+            if all_targets.issubset(present):
+                have_all = True
+                break
+        for tk in by_ticker.keys():
+            _pending_doc_upload_requests.pop(tk, None)
+
+        out_files = []
+        missing = []
+        with get_db() as (_, cur):
+            for tk, wfs in by_ticker.items():
+                for wf in wfs:
+                    fn = wf['filename']
+                    folder = wf.get('folder') or 'main'
+                    cur.execute(
+                        'SELECT file_data, mime_type, file_size FROM document_files WHERE ticker = %s AND filename = %s LIMIT 1',
+                        (tk, fn),
+                    )
+                    row = cur.fetchone()
+                    if not row or not row.get('file_data'):
+                        missing.append({'ticker': tk, 'folder': folder, 'filename': fn})
+                        continue
+                    out_files.append({
+                        'ticker': tk,
+                        'folder': folder,
+                        'filename': fn,
+                        'fileData': row['file_data'],
+                        'mimeType': row.get('mime_type') or 'application/pdf',
+                        'size': row.get('file_size') or 0,
+                    })
+        return jsonify({
+            'files': out_files,
+            'missing': missing,
+            'haveAll': have_all,
+            'waitedSeconds': waited,
+        })
+    except Exception as e:
+        print(f'agent_fetch_files error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/agent/local-files-all', methods=['GET'])
 def agent_local_files_all():
     """Whole-universe iCloud manifest. Used by Meeting Prep + Decipher

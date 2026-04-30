@@ -1717,6 +1717,89 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [mpDataLoaded, setMpDataLoaded] = useState(false);
             const [mpPastQuestions, setMpPastQuestions] = useState([]);
             const [mpUploading, setMpUploading] = useState(false);
+            // === Shared iCloud picker (used by Thesis, Summary, Research, Studio,
+            // Decipher, Meeting Prep). Single modal, one fetch path, one set of
+            // primitives. Each consumer mounts <ICloudPicker> with its own onConfirm
+            // handler that receives the selected file descriptors. Optionally use
+            // pickFromICloud() to fetch the actual bytes via the backend's
+            // /api/agent/fetch-files endpoint and turn them into File objects so
+            // existing drag/drop handlers keep working unchanged.
+            const [icloudManifest, setIcloudManifest] = useState({});
+            const [icloudManifestLoadedAt, setIcloudManifestLoadedAt] = useState(null);
+            const [icloudManifestLoading, setIcloudManifestLoading] = useState(false);
+            const refreshICloudManifest = useCallback(async () => {
+                setIcloudManifestLoading(true);
+                try {
+                    const r = await fetch(`${API_URL}/api/agent/local-files-all`);
+                    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                    const j = await r.json();
+                    setIcloudManifest(j.manifest || {});
+                    setIcloudManifestLoadedAt(j.lastUpdated || new Date().toISOString());
+                    return j.manifest || {};
+                } finally {
+                    setIcloudManifestLoading(false);
+                }
+            }, []);
+
+            // base64 -> Uint8Array -> File. Lets the picker drop into any handler
+            // that accepts a normal browser File object.
+            const _base64ToFile = (b64, filename, mimeType) => {
+                const bin = atob(b64);
+                const bytes = new Uint8Array(bin.length);
+                for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                return new File([bytes], filename, { type: mimeType || 'application/pdf' });
+            };
+
+            // Fetch real bytes for a list of {ticker, folder, filename} descriptors.
+            // Returns { files: [File, ...], missing: [...], haveAll: bool }.
+            const fetchICloudFileBytes = useCallback(async (descriptors) => {
+                if (!descriptors || descriptors.length === 0) return { files: [], missing: [], haveAll: true };
+                const r = await fetch(`${API_URL}/api/agent/fetch-files`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ files: descriptors }),
+                });
+                if (!r.ok) {
+                    const err = await r.text().catch(() => '');
+                    throw new Error(`fetch-files HTTP ${r.status}: ${err}`);
+                }
+                const data = await r.json();
+                const files = (data.files || []).map(f => _base64ToFile(f.fileData, f.filename, f.mimeType));
+                return { files, missing: data.missing || [], haveAll: !!data.haveAll };
+            }, []);
+
+            // Picker modal state. The picker is shared — only one is open at a time.
+            // mode: 'descriptors' returns just {ticker, folder, filename} list;
+            //       'bytes' fetches bytes via fetch-files and returns File[].
+            const [icloudPicker, setIcloudPicker] = useState(null);
+            // ^ when open: { mode, defaultTicker, onConfirm: (files|descriptors) => void, title }
+
+            const pickFromICloud = useCallback((opts = {}) => {
+                return new Promise((resolve, reject) => {
+                    setIcloudPicker({
+                        mode: opts.mode || 'bytes',
+                        defaultTicker: opts.defaultTicker || '',
+                        title: opts.title || 'Browse iCloud (STOCKS + CATALYSTS)',
+                        onConfirm: (result) => { setIcloudPicker(null); resolve(result); },
+                        onCancel: () => { setIcloudPicker(null); resolve(null); },
+                    });
+                });
+            }, []);
+
+            // Helper: open the picker, fetch bytes, then drive any existing
+            // onChange={handleFooFileUpload} handler by synthesizing the same
+            // {target: {files, value}} shape an <input type=file> emits.
+            // The handler reads e.target.files, processes, then sets value=''.
+            const pickAndUploadViaHandler = useCallback(async (handler, opts = {}) => {
+                const files = await pickFromICloud({ mode: 'bytes', ...opts });
+                if (!files || files.length === 0) return;
+                const fakeTarget = { files, value: '' };
+                await handler({ target: fakeTarget });
+            }, [pickFromICloud]);
+
+            // === MP-specific picker state (legacy from before the shared picker;
+            // still used by the existing MP modal that ships its own destination
+            // logic via /api/mp/meetings/<id>/import-from-icloud).
             // iCloud picker (browse STOCKS + CATALYSTS folders monitored by local agent)
             const [mpICloudPickerOpen, setMpICloudPickerOpen] = useState(false);
             const [mpICloudManifest, setMpICloudManifest] = useState({});  // { TICKER: [{filename, folder, ...}] }
@@ -13011,6 +13094,151 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             <button onClick={() => setAgentBannerDismissed(true)} className="text-[10px] px-2 py-0.5 rounded bg-white/10 hover:bg-white/20 flex-shrink-0" title="Dismiss until next outage">×</button>
                         </div>
                     )}
+
+                    {/* Shared iCloud picker modal — opened by pickFromICloud() from any tab.
+                        Returns selected file descriptors or pre-fetched bytes (depending on mode)
+                        to the awaiting Promise. */}
+                    {icloudPicker && (() => {
+                        const Picker = () => {
+                            const [tk, setTk] = useState(icloudPicker.defaultTicker || '');
+                            const [filter, setFilter] = useState('');
+                            const [selected, setSelected] = useState(new Set());
+                            const [busy, setBusy] = useState(false);
+                            const [busyMsg, setBusyMsg] = useState('');
+                            const tickers = Object.keys(icloudManifest).sort();
+                            React.useEffect(() => {
+                                if (Object.keys(icloudManifest).length === 0) refreshICloudManifest();
+                            }, []);
+                            React.useEffect(() => {
+                                if (!tk && tickers.length) setTk(tickers[0]);
+                            }, [tickers.length]);
+                            const allFiles = (icloudManifest[tk] || []);
+                            const q = filter.trim().toLowerCase();
+                            const visible = q ? allFiles.filter(f => (f.folder || '').toLowerCase().includes(q) || (f.filename || '').toLowerCase().includes(q)) : allFiles;
+                            const grouped = {};
+                            for (const f of visible) {
+                                const g = f.folder || 'main';
+                                (grouped[g] = grouped[g] || []).push(f);
+                            }
+                            const folderOrder = Object.keys(grouped).sort((a, b) => {
+                                if (a === 'main') return -1;
+                                if (b === 'main') return 1;
+                                const aCat = a.startsWith('Catalysts/'), bCat = b.startsWith('Catalysts/');
+                                if (aCat !== bCat) return aCat ? -1 : 1;
+                                return a.localeCompare(b);
+                            });
+
+                            const confirm = async () => {
+                                if (selected.size === 0) return;
+                                const descriptors = Array.from(selected).map(key => {
+                                    const [t, folder, ...fnParts] = key.split('::');
+                                    return { ticker: t, folder, filename: fnParts.join('::') };
+                                });
+                                if (icloudPicker.mode === 'descriptors') {
+                                    icloudPicker.onConfirm(descriptors);
+                                    return;
+                                }
+                                // 'bytes' mode: fetch real File objects.
+                                setBusy(true);
+                                setBusyMsg(`Fetching ${descriptors.length} file${descriptors.length !== 1 ? 's' : ''} from local agent…`);
+                                try {
+                                    const result = await fetchICloudFileBytes(descriptors);
+                                    if (result.missing.length > 0) {
+                                        const list = result.missing.map(m => `${m.ticker}/${m.filename}`).join(', ');
+                                        alert(`Imported ${result.files.length} file(s). ${result.missing.length} couldn't be fetched (timeout / missing): ${list}`);
+                                    }
+                                    icloudPicker.onConfirm(result.files);
+                                } catch (e) {
+                                    alert('Fetch failed: ' + e.message);
+                                    setBusy(false);
+                                    setBusyMsg('');
+                                }
+                            };
+
+                            return (
+                                <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4" onClick={() => !busy && icloudPicker.onCancel()}>
+                                    <div className="bg-neutral-900 border border-white/10 rounded-xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+                                        <div className="p-4 border-b border-white/10 flex items-center justify-between">
+                                            <div>
+                                                <h3 className="font-bold text-lg">{icloudPicker.title}</h3>
+                                                <p className="text-xs text-slate-400 mt-0.5">
+                                                    {icloudManifestLoadedAt ? `Manifest synced ${fmtETDateTime(icloudManifestLoadedAt)}` : 'Files monitored by the local agent'}
+                                                </p>
+                                            </div>
+                                            <button onClick={() => !busy && icloudPicker.onCancel()} className="text-slate-400 hover:text-white text-xl">&times;</button>
+                                        </div>
+                                        <div className="p-4 border-b border-white/10 flex items-center gap-3 flex-wrap">
+                                            <label className="text-[10px] text-slate-500 uppercase tracking-wider">Ticker</label>
+                                            <select value={tk} onChange={e => setTk(e.target.value)} className="px-2 py-1 bg-black/30 border border-white/10 rounded text-sm font-mono text-slate-200" disabled={icloudManifestLoading || busy}>
+                                                {tickers.map(t => <option key={t} value={t}>{t} ({icloudManifest[t].length})</option>)}
+                                            </select>
+                                            <input type="text" value={filter} onChange={e => setFilter(e.target.value)} placeholder="Filter folder/filename…" className="flex-1 min-w-[150px] px-2 py-1 bg-black/30 border border-white/10 rounded text-sm text-slate-200 placeholder:text-slate-500" />
+                                            <button onClick={refreshICloudManifest} className="text-xs text-slate-400 hover:text-white" disabled={icloudManifestLoading || busy}>{icloudManifestLoading ? 'Loading…' : 'Refresh'}</button>
+                                        </div>
+                                        <div className="flex-1 overflow-y-auto p-4">
+                                            {icloudManifestLoading && tickers.length === 0 ? (
+                                                <p className="text-center text-slate-400 text-sm py-6">Loading manifest…</p>
+                                            ) : !tk ? (
+                                                <p className="text-center text-slate-500 text-sm py-6">No tickers in manifest. Local agent may not have pushed yet.</p>
+                                            ) : folderOrder.length === 0 ? (
+                                                <p className="text-center text-slate-500 text-sm py-6">No files match{q ? ' the filter' : ''}.</p>
+                                            ) : (
+                                                <div className="space-y-3">
+                                                    {folderOrder.map(folder => {
+                                                        const isCat = folder.startsWith('Catalysts/');
+                                                        const isMain = folder === 'main';
+                                                        const label = isMain ? 'Main folder (STOCKS)' : isCat ? `Catalysts: ${folder.slice(10)}` : folder;
+                                                        const labelColor = isMain ? 'text-amber-400' : isCat ? 'text-purple-400' : 'text-cyan-400';
+                                                        const keys = grouped[folder].map(f => `${tk}::${folder}::${f.filename}`);
+                                                        const allSel = keys.every(k => selected.has(k));
+                                                        return (
+                                                            <div key={folder} className={isCat ? 'border-l-2 border-purple-500/40 pl-2' : ''}>
+                                                                <div className="flex items-center gap-2 mb-1.5">
+                                                                    <span className={`text-[10px] font-semibold uppercase tracking-wider ${labelColor}`}>{label}</span>
+                                                                    <div className="flex-1 border-t border-white/5" />
+                                                                    <span className="text-[9px] text-slate-600">{grouped[folder].length} file{grouped[folder].length !== 1 ? 's' : ''}</span>
+                                                                    <button onClick={() => setSelected(prev => { const n = new Set(prev); if (allSel) keys.forEach(k => n.delete(k)); else keys.forEach(k => n.add(k)); return n; })} className="text-[9px] text-slate-500 hover:text-white">Select all</button>
+                                                                </div>
+                                                                <div className="space-y-1">
+                                                                    {grouped[folder].map(f => {
+                                                                        const key = `${tk}::${folder}::${f.filename}`;
+                                                                        const sel = selected.has(key);
+                                                                        const sizeKb = f.size ? Math.round(f.size / 1024) : 0;
+                                                                        return (
+                                                                            <div key={key} onClick={() => setSelected(prev => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; })} className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors ${sel ? 'bg-amber-500/10 border-amber-500/40' : 'bg-white/[0.02] border-white/5 hover:bg-white/[0.05]'}`}>
+                                                                                <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${sel ? 'bg-amber-600 border-amber-500' : 'border-white/20'}`}>
+                                                                                    {sel && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                                                                                </div>
+                                                                                <div className="flex-1 min-w-0">
+                                                                                    <div className="text-xs truncate">{f.filename}</div>
+                                                                                    <div className="text-[9px] text-slate-500">{f.extension || ''}{sizeKb ? ` · ${sizeKb}KB` : ''}{f.modified ? ` · ${fmtETDate(f.modified)}` : ''}</div>
+                                                                                </div>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="p-4 border-t border-white/10 flex items-center justify-between">
+                                            <div className="text-xs text-slate-400">
+                                                {busy ? <span className="text-amber-400">{busyMsg}</span> : `${selected.size} selected`}
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <button onClick={() => setSelected(new Set())} disabled={busy || selected.size === 0} className="px-3 py-1.5 text-xs text-slate-400 hover:text-white disabled:opacity-40">Clear</button>
+                                                <button onClick={() => !busy && icloudPicker.onCancel()} disabled={busy} className="px-3 py-1.5 text-xs text-slate-400 hover:text-white disabled:opacity-40">Cancel</button>
+                                                <button onClick={confirm} disabled={selected.size === 0 || busy} className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white text-xs font-medium rounded-lg">{busy ? 'Working…' : `Import ${selected.size}`}</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        };
+                        return <Picker />;
+                    })()}
                     {/* DESKTOP TOP NAVIGATION - Hidden on mobile */}
                     <nav className="hidden md:flex items-center justify-between px-6 py-3 bg-white/5 backdrop-blur-xl border-b border-white/10">
                         <div className="flex items-center gap-3">
@@ -13949,9 +14177,14 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 {!batchUpdateMode && apiKeyChecked && !analysis && documents.length === 0 && !showDocumentManager && apiKeySaved && (
                                     <div className="text-center py-12 sm:py-16">
                                         <div className="text-slate-400 mb-6 text-base">{savedAnalyses.length > 0 ? 'Tap a stock above or start new' : 'Upload documents to begin'}</div>
-                                        <button onClick={() => fileInputRef.current?.click()} className="px-8 py-4 bg-amber-500/80 hover:bg-amber-500/90 backdrop-blur-sm border border-amber-400/30 shadow-lg shadow-amber-500/20 active:bg-amber-800 rounded-xl font-medium inline-flex items-center gap-2 text-base transition-all active:scale-95">
-                                            <Plus />Upload Documents
-                                        </button>
+                                        <div className="flex flex-wrap gap-2 justify-center">
+                                            <button onClick={() => fileInputRef.current?.click()} className="px-8 py-4 bg-amber-500/80 hover:bg-amber-500/90 backdrop-blur-sm border border-amber-400/30 shadow-lg shadow-amber-500/20 active:bg-amber-800 rounded-xl font-medium inline-flex items-center gap-2 text-base transition-all active:scale-95">
+                                                <Plus />Upload Documents
+                                            </button>
+                                            <button onClick={() => pickAndUploadViaHandler(handleFileUpload, { defaultTicker: currentTicker || '' })} className="px-6 py-4 bg-cyan-600/30 hover:bg-cyan-600/40 border border-cyan-500/30 rounded-xl text-cyan-200 font-medium inline-flex items-center gap-2 text-base transition-all">
+                                                <span>📁</span> Browse iCloud
+                                            </button>
+                                        </div>
                                         <div className="text-xs text-slate-500 mt-3">PDF, Word, Images, Emails, Text files</div>
                                         <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.gif,.webp,.eml,.msg,.txt,.html" multiple onChange={handleFileUpload} className="hidden" />
                                     </div>
@@ -14279,6 +14512,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 <button onClick={() => fileInputRef.current?.click()} className="px-3 sm:px-4 py-2 bg-amber-500/80 hover:bg-amber-500/90 backdrop-blur-sm border border-amber-400/30 shadow-lg shadow-amber-500/20 rounded-lg text-sm flex items-center gap-2">
                                                     <Plus className="w-4 h-4" />
                                                     <span className="hidden sm:inline">Add</span>
+                                                </button>
+                                                <button onClick={() => pickAndUploadViaHandler(handleFileUpload, { defaultTicker: currentTicker || '' })} className="px-3 sm:px-4 py-2 bg-cyan-600/30 hover:bg-cyan-600/40 border border-cyan-500/30 rounded-lg text-cyan-200 text-sm flex items-center gap-2" title="Pick from STOCKS or CATALYSTS folders">
+                                                    <span>📁</span>
+                                                    <span className="hidden sm:inline">iCloud</span>
                                                 </button>
                                             </div>
                                             <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.gif,.webp,.eml,.msg,.txt,.html" multiple onChange={handleFileUpload} className="hidden" />
@@ -17612,6 +17849,14 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             </p>
                                                         </div>
 
+                                                        <button
+                                                            onClick={() => pickAndUploadViaHandler(handleSummaryFileSelect)}
+                                                            className="mt-3 w-full px-3 py-2 bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/30 rounded-lg text-sm text-cyan-300 transition-colors flex items-center justify-center gap-2"
+                                                        >
+                                                            <span>📁</span>
+                                                            <span>Browse iCloud (STOCKS + CATALYSTS)</span>
+                                                        </button>
+
                                                         {renderDriveSearch(null, handleDriveImportSummary)}
 
                                                         {/* Selected Files */}
@@ -18231,6 +18476,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                     <FileUp className="w-8 h-8 mx-auto mb-2 text-slate-500" />
                                                                     <p className="text-sm text-slate-400">Click to upload</p>
                                                                 </div>
+                                                                <button
+                                                                    onClick={() => pickAndUploadViaHandler(handleResearchFileUpload, { defaultTicker: selectedResearchCategory ? (researchCategories.find(c => c.id === selectedResearchCategory)?.name || '').toUpperCase() : '' })}
+                                                                    className="mt-3 w-full px-3 py-2 bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/30 rounded-lg text-sm text-cyan-300 transition-colors flex items-center justify-center gap-2"
+                                                                >
+                                                                    <span>📁</span>
+                                                                    <span>Browse iCloud (STOCKS + CATALYSTS)</span>
+                                                                </button>
                                                                 {renderDriveSearch(
                                                                     selectedResearchCategory ? (researchCategories.find(c => c.id === selectedResearchCategory)?.name || '') : '',
                                                                     handleDriveImportResearch
@@ -20239,6 +20491,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                     className="w-full py-6 border-2 border-dashed border-white/20 hover:border-purple-500/50 rounded-xl text-center transition-colors">
                                                                     <div className="text-slate-400 text-sm">Click to upload files</div>
                                                                     <div className="text-[10px] text-slate-600 mt-1">PDF, Word, images, text, audio files</div>
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => pickAndUploadViaHandler(handleStudioFileUpload)}
+                                                                    className="w-full px-3 py-2 bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/30 rounded-lg text-sm text-cyan-300 transition-colors flex items-center justify-center gap-2"
+                                                                >
+                                                                    <span>📁</span>
+                                                                    <span>Browse iCloud (STOCKS + CATALYSTS)</span>
                                                                 </button>
 
                                                                 {studioUploadedFiles.length > 0 && (
@@ -23600,6 +23859,27 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 {decipherFile ? `📎 ${decipherFile.fileName}` : 'Attach PDF…'}
                                                                 <input type="file" accept="application/pdf,.pdf" onChange={onPdfPick} className="hidden" />
                                                             </label>
+                                                            <button
+                                                                onClick={async () => {
+                                                                    const files = await pickFromICloud({ mode: 'bytes', defaultTicker: (decipherTicker || '').toUpperCase() });
+                                                                    if (!files || files.length === 0) return;
+                                                                    // Decipher v1 takes one file; if user picked many, take the first.
+                                                                    const f = files[0];
+                                                                    if (!/\.pdf$/i.test(f.name)) {
+                                                                        setDecipherError('Only PDFs supported in v1');
+                                                                        return;
+                                                                    }
+                                                                    const buf = await f.arrayBuffer();
+                                                                    let bin = '';
+                                                                    const bytes = new Uint8Array(buf);
+                                                                    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+                                                                    setDecipherFile({ fileData: btoa(bin), fileName: f.name, fileType: 'pdf' });
+                                                                    setDecipherError(null);
+                                                                    if (files.length > 1) setDecipherError(`Note: only used ${f.name}; Decipher v1 is one file at a time.`);
+                                                                }}
+                                                                className="px-3 py-1 bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/30 rounded text-xs text-cyan-300"
+                                                                title="Pick from STOCKS or CATALYSTS folders"
+                                                            >📁 iCloud</button>
                                                             {decipherFile && (
                                                                 <button onClick={() => setDecipherFile(null)} className="text-xs text-slate-500 hover:text-red-400">Remove</button>
                                                             )}
