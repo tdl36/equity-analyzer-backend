@@ -2558,9 +2558,45 @@ def check_for_new_audio():
         for fname in new_files:
             fpath = SUMMARIES_DIR / fname
             log.info(f"New audio file detected: {fname}, auto-processing...")
+
+            # iCloud quirk: a file can appear in iterdir() before its bytes
+            # are actually downloaded locally, OR while iCloud is still
+            # syncing recent writes. open() then fails with errno 11
+            # (Resource deadlock avoided) or errno 35 (Resource temporarily
+            # unavailable). The macOS-correct way to force a download is
+            # `brctl download`. Try that first if the file looks like a
+            # cloud stub, then retry the open.
+            def _force_icloud_download(p):
+                try:
+                    # brctl download is sync; waits for full materialization
+                    subprocess.run(['/usr/bin/brctl', 'download', str(p)],
+                                   capture_output=True, timeout=120)
+                except Exception as e:
+                    log.debug(f"brctl download failed for {p.name}: {e}")
+
             try:
-                with open(fpath, 'rb') as af:
-                    file_data = af.read()
+                # Pre-flight: if the file is a still-uploading sidecar (.icloud)
+                # or symlinks to one, skip — iCloud isn't done with it yet.
+                if fname.startswith('.') and fname.endswith('.icloud'):
+                    log.info(f"  Skipping {fname} — still uploading to iCloud")
+                    _known_audio_files.discard(fname)
+                    continue
+
+                # First attempt — fast path for fully-local files.
+                try:
+                    with open(fpath, 'rb') as af:
+                        file_data = af.read()
+                except OSError as oe:
+                    # errno 11 = EDEADLK / iCloud not ready; errno 35 = EAGAIN
+                    if oe.errno in (11, 35):
+                        log.info(f"  iCloud not ready for {fname} (errno {oe.errno}); forcing download")
+                        _force_icloud_download(fpath)
+                        # Wait briefly for materialization, then retry
+                        time.sleep(2)
+                        with open(fpath, 'rb') as af:
+                            file_data = af.read()
+                    else:
+                        raise
                 # Upload to backend auto-process endpoint. 30+ MB files at
                 # variable upload speeds need a generous timeout (separate
                 # connect / read so we don't sit forever on a dead socket).
