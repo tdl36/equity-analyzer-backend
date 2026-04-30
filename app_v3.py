@@ -17035,6 +17035,10 @@ def mp_upload_documents(meeting_id):
                             page_count = len(reader.pages)
                     except Exception as ex:
                         print(f"PDF extraction error for {filename}: {ex}")
+                # Strip NUL bytes — Postgres TEXT columns reject them and PyPDF2
+                # can emit them from binary noise in malformed PDFs.
+                if extracted_text and '\x00' in extracted_text:
+                    extracted_text = extracted_text.replace('\x00', '')
 
                 # Classify and estimate tokens
                 doc_type = classify_mp_document(filename, extracted_text)
@@ -17179,6 +17183,11 @@ def mp_import_from_icloud(meeting_id):
                         page_count = len(reader.pages)
                     except Exception as ex:
                         print(f"PDF extraction error for {fn}: {ex}")
+                    # PyPDF2 occasionally emits NUL bytes from binary noise in
+                    # malformed PDFs. Postgres TEXT columns reject NUL ('a string
+                    # literal cannot contain NUL characters'), so strip them.
+                    if extracted_text and '\x00' in extracted_text:
+                        extracted_text = extracted_text.replace('\x00', '')
 
                     # Tag the filename with source folder so the user knows
                     # which folder it came from (esp. catalyst topics)
