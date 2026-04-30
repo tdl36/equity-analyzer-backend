@@ -22696,7 +22696,18 @@ def analysts_queue_catalyst_activity():
 
         # Classify
         import re as _re
-        is_earnings = bool(_re.search(r'\b[1-4]Q\d{2}\b|earnings', topic, _re.IGNORECASE))
+        # Detect earnings catalysts. Patterns:
+        #   1Q26, 2Q25, 3Q24, 4Q23      — calendar-quarter format
+        #   F1Q26, F2Q25, F3Q24, F4Q23  — fiscal-quarter prefix (e.g. CAH, AVGO)
+        #   Q1 2026, Q2'25              — looser human-typed forms
+        #   "earnings" anywhere         — explicit
+        # The original \b[1-4]Q\d{2}\b regex missed F-prefixed names because
+        # \b requires a word boundary, and F is a word character (no boundary
+        # between F and the digit). Tony hit this on CAH/F3Q26.
+        is_earnings = bool(_re.search(
+            r"(?:\bF?[1-4]Q\s?\d{2,4}\b|\bQ[1-4]\s?'?\d{2,4}\b|earnings)",
+            topic, _re.IGNORECASE,
+        ))
         activity_type = 'earnings_recap' if is_earnings else 'takeaway'
 
         with get_db() as (_c, cur):

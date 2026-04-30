@@ -25265,12 +25265,14 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 })()}
                                                                 <div className="flex items-center gap-2 flex-wrap">
                                                                     {/* Phase 3c: Run earnings recap (only for earnings_recap in pending_review/failed without result yet) */}
-                                                                    {item.activityType === 'earnings_recap' && isCatalystFolder && !item.output?.synthesisMarkdown && item.status !== 'running' && (
+                                                                    {(item.activityType === 'earnings_recap' || item.activityType === 'takeaway') && isCatalystFolder && !item.output?.synthesisMarkdown && item.status !== 'running' && (
                                                                         <div className="flex flex-col gap-1 w-full">
                                                                             <textarea
                                                                                 value={recapCustomInstructions[item.id] || ''}
                                                                                 onChange={(e) => setRecapCustomInstructions(s => ({...s, [item.id]: e.target.value}))}
-                                                                                placeholder="Optional custom instructions (e.g. focus on margin commentary, compare to PFE/MRK)…"
+                                                                                placeholder={item.activityType === 'earnings_recap'
+                                                                                    ? 'Optional custom instructions (e.g. focus on margin commentary, compare to PFE/MRK)…'
+                                                                                    : 'Optional custom instructions (e.g. emphasize regulatory risk, compare to peer catalysts)…'}
                                                                                 rows={2}
                                                                                 className="w-full px-2 py-1 text-xs bg-black/30 border border-white/10 rounded text-slate-200 placeholder:text-slate-500 resize-y"
                                                                             />
@@ -25304,7 +25306,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                 <button
                                                                                     onClick={() => runAnalystActivity(item.id, { length: 'standard', customInstructions: (recapCustomInstructions[item.id] || '').trim(), provider: recapProvider[item.id] || RECAP_DEFAULT_PROVIDER, model: recapModel[item.id] || RECAP_DEFAULT_MODEL })}
                                                                                     className="px-3 py-1 bg-amber-600 hover:bg-amber-500 rounded text-xs font-medium"
-                                                                                >Run earnings recap</button>
+                                                                                >{item.activityType === 'earnings_recap' ? 'Run earnings recap' : 'Run catalyst takeaway'}</button>
                                                                             </div>
                                                                         </div>
                                                                     )}
