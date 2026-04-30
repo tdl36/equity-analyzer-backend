@@ -15319,13 +15319,78 @@ OUTPUT:
 - Always end with one practical takeaway: "what to watch for in the data" or "what changes the call"."""
 
 
+DECIPHER_WALKTHROUGH_PROMPT = """You are a senior equity research analyst doing a sentence-by-sentence walk-through of source material for a generalist portfolio manager who is unfamiliar with the company / sector / specialized vocabulary. Your job is to make the entire document scannable for someone who needs the meaning unlocked as they read.
+
+YOUR JOB:
+- Walk through the source material in DOCUMENT ORDER, section by section.
+- For prepared remarks: process by speaker and topical paragraph.
+- For Q&A: process by question (and the analyst's name + firm if identifiable), then by management's answer.
+- For research reports: process by section heading.
+
+WHEN TO ANNOTATE A SENTENCE:
+Annotate ONLY sentences that contain at least one of:
+- Industry-specific jargon, acronyms, or technical/medical terms not obvious to a generalist
+- Specific accounting conventions (straight-line revenue, bookings vs revenue, capitalized vs expensed, ASC numbers, NRR, etc.)
+- KPIs / metrics whose definition or significance is non-obvious (OTBG, ARR, RPO, take-rate, churn cohort, GTV, AOG, CMBS spread, etc.)
+- Q&A questions where the analyst's UNSTATED THESIS or specific concern is implicit (most analyst questions are loaded — explain what they're really asking and why)
+- Statements that require named-program / regulatory / competitive context to fully understand
+- Forward-looking statements with hedge language whose actual meaning is non-obvious
+- Anything a non-expert reader would have to look up
+
+DO NOT annotate:
+- Greetings, transitions, "thank you operator", "good morning everyone"
+- Plainly worded statements with no jargon
+- Numerical updates whose meaning is self-evident from surrounding context
+- Repetitive boilerplate
+
+ANNOTATION FORMAT (this is the structure for EVERY annotated sentence — be strict):
+
+> Original sentence quoted verbatim, with speaker label if applicable.
+
+🔍 **Decipher:**
+- **Term/jargon 1** = plain-English definition. (One sentence, with an analogy if helpful.)
+- **Term/jargon 2** = plain-English definition.
+- *Subtext* (only if Q&A or loaded statement): one-line explanation of what's really being asked or implied and why.
+
+(Then move to the next sentence.)
+
+When NO annotation is needed for a stretch of text, summarize that stretch in one italic line:
+*[Skipping: opening pleasantries / standard liquidity update / etc.]*
+
+VOICE & METHOD:
+- Patient senior analyst teaching a generalist. Confident, direct, no hedging filler ("it's worth noting", "delve into").
+- Build intuition through concrete analogies when the term is alien (highway lanes for spectrum, same-store comps for OTBG, real-estate deeds for licensed spectrum, etc.).
+- For each annotation, the goal is "PM can keep reading the doc without having to stop and look this up."
+
+ATTRIBUTION RULES:
+- Sellside firm names appear ONLY as factual labels for who's asking a question.
+- Never use sellside ratings or targets as opinion support.
+
+OUTPUT STRUCTURE:
+Begin with a 1-2 sentence orientation: "This is {ticker} {document type}. Key things to flag: {3-5 themes a non-expert PM should pay attention to}."
+Then walk through in document order with the annotation format above.
+End with a 3-5 bullet "PM Take" — what the most important PM-relevant takeaways are after reading the whole thing.
+
+Markdown only. No HTML."""
+
+
 @app.route('/api/decipher', methods=['POST'])
 def decipher():
     """One-shot Decipher agent: takes a snippet of text or a PDF and explains
     industry jargon, Q&A subtext, and key metrics in plain English with
-    intuition-first analogies. Uses Opus 4-7 + streaming (long-context patient
-    explanation is Opus's strength; streaming is required because Opus call
-    durations cross the SDK's 10-min non-stream threshold)."""
+    intuition-first analogies.
+
+    Two modes:
+      - 'synthesize' (default): one holistic 2-4 paragraph explainer that picks
+        the 3-5 most-confusing concepts. Best for short snippets / single
+        questions / one paragraph that needs unpacking.
+      - 'walkthrough': sentence-by-sentence walk-through of the entire document
+        with inline annotations on every jargon-heavy line. Best for full
+        earnings transcripts / research reports / long Q&A excerpts.
+
+    Uses Opus 4-7 + streaming (long-context patient explanation is Opus's
+    strength; streaming is required because Opus call durations cross the
+    SDK's 10-min non-stream threshold)."""
     try:
         data = request.get_json(silent=True) or {}
         text = (data.get('text') or '').strip()
@@ -15333,6 +15398,9 @@ def decipher():
         file_type = (data.get('fileType') or 'pdf').lower()
         file_name = (data.get('fileName') or '').strip()
         ticker = (data.get('ticker') or '').strip().upper()
+        mode = (data.get('mode') or 'synthesize').strip().lower()
+        if mode not in ('synthesize', 'walkthrough'):
+            mode = 'synthesize'
 
         if not text and not file_data:
             return jsonify({'error': 'Provide text or fileData (PDF)'}), 400
@@ -15361,20 +15429,37 @@ def decipher():
         if ticker:
             ticker_block = f"\n\nThe PM is currently reading source material about {ticker}. When useful, frame your explanation around {ticker}'s specific business / KPIs / common transcript jargon. Otherwise stay general."
 
-        ask = (
-            "Decipher the source material above for the PM. Identify the industry jargon, "
-            "obscure acronyms, accounting conventions, Q&A subtext, and any KPIs that need "
-            "definition. Build intuition first via analogies, then layer in precision. End with "
-            "a practical takeaway about what to watch for or what would change the call."
-            f"{ticker_block}"
-        )
+        if mode == 'walkthrough':
+            system_prompt = DECIPHER_WALKTHROUGH_PROMPT
+            ask = (
+                "Walk through the source material above sentence by sentence. Quote each "
+                "sentence that contains jargon / acronyms / Q&A subtext / non-obvious "
+                "context, then annotate it with the format specified in your system prompt. "
+                "Skip purely transitional/boilerplate stretches with a one-line note. "
+                "Process in document order. End with a 3-5 bullet 'PM Take'."
+                f"{ticker_block}"
+            )
+            # Walk-through mode produces much longer output (annotations on every
+            # jargon-bearing sentence); 16K covers a typical 30-page transcript.
+            max_out = 16384
+        else:
+            system_prompt = DECIPHER_SYSTEM_PROMPT
+            ask = (
+                "Decipher the source material above for the PM. Identify the industry jargon, "
+                "obscure acronyms, accounting conventions, Q&A subtext, and any KPIs that need "
+                "definition. Build intuition first via analogies, then layer in precision. End with "
+                "a practical takeaway about what to watch for or what would change the call."
+                f"{ticker_block}"
+            )
+            max_out = 8192
+
         content.append({"type": "text", "text": ask})
 
-        # Stream — Opus 4-7 + max_tokens 8K can cross the 10-min non-stream threshold.
+        # Stream — Opus 4-7 + 16K max_tokens crosses the SDK's 10-min non-stream threshold.
         with client.messages.stream(
             model='claude-opus-4-7',
-            max_tokens=8192,
-            system=DECIPHER_SYSTEM_PROMPT,
+            max_tokens=max_out,
+            system=system_prompt,
             messages=[{"role": "user", "content": content}],
         ) as stream:
             final = stream.get_final_message()
@@ -15385,11 +15470,17 @@ def decipher():
             if t: parts.append(t)
         explanation = ''.join(parts).strip()
 
+        stop = getattr(final, 'stop_reason', None)
+        if stop == 'max_tokens':
+            print(f'decipher: hit max_tokens cap ({max_out}); output truncated for mode={mode}')
+
         usage = getattr(final, 'usage', None)
         return jsonify({
             'ok': True,
+            'mode': mode,
             'explanation': explanation,
             'model': 'claude-opus-4-7',
+            'truncated': stop == 'max_tokens',
             'inputTokens': getattr(usage, 'input_tokens', None) if usage else None,
             'outputTokens': getattr(usage, 'output_tokens', None) if usage else None,
         })

@@ -1482,6 +1482,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [decipherText, setDecipherText] = useState('');
             const [decipherFile, setDecipherFile] = useState(null); // { fileData, fileName, fileType }
             const [decipherTicker, setDecipherTicker] = useState('');
+            const [decipherMode, setDecipherMode] = useState('synthesize'); // 'synthesize' | 'walkthrough'
             const [decipherLoading, setDecipherLoading] = useState(false);
             const [decipherError, setDecipherError] = useState(null);
             const [decipherResult, setDecipherResult] = useState(null);
@@ -23258,6 +23259,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     const body = {
                                                         text,
                                                         ticker: (decipherTicker || '').trim(),
+                                                        mode: decipherMode,
                                                     };
                                                     if (decipherFile) {
                                                         body.fileData = decipherFile.fileData;
@@ -23278,6 +23280,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             text: text,
                                                             fileName: decipherFile?.fileName || null,
                                                             ticker: decipherTicker || null,
+                                                            mode: data.mode || decipherMode,
+                                                            truncated: !!data.truncated,
                                                             explanation: data.explanation || '',
                                                             tokensIn: data.inputTokens,
                                                             tokensOut: data.outputTokens,
@@ -23318,6 +23322,27 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             <h2 className="text-lg font-bold">Decipher</h2>
                                                             <p className="text-xs text-slate-500">Paste a snippet or upload a PDF — get a plain-English explanation of jargon, Q&amp;A subtext, and KPIs from a patient senior analyst (Opus 4-7).</p>
                                                         </div>
+                                                        {/* Mode toggle: synthesize vs walkthrough */}
+                                                        <div className="flex items-center gap-2 mb-2 flex-wrap">
+                                                            <span className="text-[10px] uppercase tracking-wider text-slate-500">Mode</span>
+                                                            <div className="flex bg-white/5 rounded-lg p-0.5 border border-white/10">
+                                                                <button
+                                                                    onClick={() => setDecipherMode('synthesize')}
+                                                                    className={`px-3 py-1 text-xs rounded transition-colors ${decipherMode === 'synthesize' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                                                                    title="One holistic 2-4 paragraph explainer covering the 3-5 most-confusing concepts. Best for snippets, single questions, one paragraph."
+                                                                >Synthesize</button>
+                                                                <button
+                                                                    onClick={() => setDecipherMode('walkthrough')}
+                                                                    className={`px-3 py-1 text-xs rounded transition-colors ${decipherMode === 'walkthrough' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                                                                    title="Sentence-by-sentence walk-through with inline annotations on every jargon-bearing line. Best for full transcripts, research reports, long Q&A."
+                                                                >Walk through</button>
+                                                            </div>
+                                                            <span className="text-[10px] text-slate-500 italic">
+                                                                {decipherMode === 'synthesize'
+                                                                    ? '~30-60s · 2-4 paragraphs covering top concepts'
+                                                                    : '~2-4min · annotates every jargon-bearing line in document order'}
+                                                            </span>
+                                                        </div>
                                                         <textarea
                                                             value={decipherText}
                                                             onChange={e => setDecipherText(e.target.value)}
@@ -23355,7 +23380,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
                                                     {decipherLoading && (
                                                         <div className="bg-white/[0.03] border border-amber-500/20 rounded-xl p-6 text-center">
-                                                            <div className="text-amber-400 text-sm">Reading and explaining… typically 30-60s on Opus 4-7.</div>
+                                                            <div className="text-amber-400 text-sm">
+                                                                {decipherMode === 'walkthrough'
+                                                                    ? 'Walking through document sentence by sentence… typically 2-4 min on Opus 4-7 for a full transcript.'
+                                                                    : 'Reading and explaining… typically 30-60s on Opus 4-7.'}
+                                                            </div>
                                                         </div>
                                                     )}
 
@@ -23363,10 +23392,12 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         <div className="bg-white/[0.03] border border-amber-500/30 rounded-xl p-5">
                                                             <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                                                                 <div className="flex items-center gap-2 text-xs text-slate-400 flex-wrap">
+                                                                    {decipherResult.mode && <span className={`px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-semibold ${decipherResult.mode === 'walkthrough' ? 'bg-cyan-500/20 text-cyan-300' : 'bg-amber-500/20 text-amber-300'}`}>{decipherResult.mode === 'walkthrough' ? 'Walk through' : 'Synthesize'}</span>}
                                                                     {decipherResult.ticker && <span className="px-2 py-0.5 bg-white/10 rounded font-mono font-bold text-slate-200">{decipherResult.ticker}</span>}
                                                                     {decipherResult.fileName && <span>📎 {decipherResult.fileName}</span>}
                                                                     <span>· {fmtETDateTime(decipherResult.at)}</span>
                                                                     {decipherResult.tokensOut && <span className="text-slate-600">· {decipherResult.tokensIn}→{decipherResult.tokensOut} tok</span>}
+                                                                    {decipherResult.truncated && <span className="px-2 py-0.5 bg-red-500/20 text-red-300 rounded text-[10px] uppercase tracking-wider font-semibold" title="Output hit max_tokens cap mid-response. Re-run with a smaller selection or contact dev.">Truncated</span>}
                                                                 </div>
                                                                 <button
                                                                     onClick={async () => {
