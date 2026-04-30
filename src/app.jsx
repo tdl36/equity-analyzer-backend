@@ -1773,9 +1773,23 @@ Regulatory, execution, or macro risks that could derail the thesis:
             //       'bytes' fetches bytes via fetch-files and returns File[].
             const [icloudPicker, setIcloudPicker] = useState(null);
             // ^ when open: { mode, defaultTicker, onConfirm: (files|descriptors) => void, title }
+            // Picker UI state (lifted out of the inner Picker component to avoid
+            // remount-on-every-parent-render which was resetting the dropdown
+            // back to the first alphabetical ticker on every click).
+            const [pickerTk, setPickerTk] = useState('');
+            const [pickerFilter, setPickerFilter] = useState('');
+            const [pickerSelected, setPickerSelected] = useState(new Set());
+            const [pickerBusy, setPickerBusy] = useState(false);
+            const [pickerBusyMsg, setPickerBusyMsg] = useState('');
 
             const pickFromICloud = useCallback((opts = {}) => {
                 return new Promise((resolve, reject) => {
+                    // Reset picker UI state for a fresh session
+                    setPickerTk(opts.defaultTicker || '');
+                    setPickerFilter('');
+                    setPickerSelected(new Set());
+                    setPickerBusy(false);
+                    setPickerBusyMsg('');
                     setIcloudPicker({
                         mode: opts.mode || 'bytes',
                         defaultTicker: opts.defaultTicker || '',
@@ -13096,148 +13110,137 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     )}
 
                     {/* Shared iCloud picker modal — opened by pickFromICloud() from any tab.
-                        Returns selected file descriptors or pre-fetched bytes (depending on mode)
-                        to the awaiting Promise. */}
+                        State is lifted to parent (pickerTk/pickerFilter/pickerSelected/pickerBusy)
+                        so a new component identity isn't created on every parent re-render — that
+                        was resetting the dropdown back to the first ticker on every click. */}
                     {icloudPicker && (() => {
-                        const Picker = () => {
-                            const [tk, setTk] = useState(icloudPicker.defaultTicker || '');
-                            const [filter, setFilter] = useState('');
-                            const [selected, setSelected] = useState(new Set());
-                            const [busy, setBusy] = useState(false);
-                            const [busyMsg, setBusyMsg] = useState('');
-                            const tickers = Object.keys(icloudManifest).sort();
-                            React.useEffect(() => {
-                                if (Object.keys(icloudManifest).length === 0) refreshICloudManifest();
-                            }, []);
-                            React.useEffect(() => {
-                                if (!tk && tickers.length) setTk(tickers[0]);
-                            }, [tickers.length]);
-                            const allFiles = (icloudManifest[tk] || []);
-                            const q = filter.trim().toLowerCase();
-                            const visible = q ? allFiles.filter(f => (f.folder || '').toLowerCase().includes(q) || (f.filename || '').toLowerCase().includes(q)) : allFiles;
-                            const grouped = {};
-                            for (const f of visible) {
-                                const g = f.folder || 'main';
-                                (grouped[g] = grouped[g] || []).push(f);
-                            }
-                            const folderOrder = Object.keys(grouped).sort((a, b) => {
-                                if (a === 'main') return -1;
-                                if (b === 'main') return 1;
-                                const aCat = a.startsWith('Catalysts/'), bCat = b.startsWith('Catalysts/');
-                                if (aCat !== bCat) return aCat ? -1 : 1;
-                                return a.localeCompare(b);
+                        const tickers = Object.keys(icloudManifest).sort();
+                        const tk = pickerTk || tickers[0] || '';
+                        const allFiles = (icloudManifest[tk] || []);
+                        const q = (pickerFilter || '').trim().toLowerCase();
+                        const visible = q ? allFiles.filter(f => (f.folder || '').toLowerCase().includes(q) || (f.filename || '').toLowerCase().includes(q)) : allFiles;
+                        const grouped = {};
+                        for (const f of visible) {
+                            const g = f.folder || 'main';
+                            (grouped[g] = grouped[g] || []).push(f);
+                        }
+                        const folderOrder = Object.keys(grouped).sort((a, b) => {
+                            if (a === 'main') return -1;
+                            if (b === 'main') return 1;
+                            const aCat = a.startsWith('Catalysts/'), bCat = b.startsWith('Catalysts/');
+                            if (aCat !== bCat) return aCat ? -1 : 1;
+                            return a.localeCompare(b);
+                        });
+                        const onConfirmClick = async () => {
+                            if (pickerSelected.size === 0) return;
+                            const descriptors = Array.from(pickerSelected).map(key => {
+                                const [t, folder, ...fnParts] = key.split('::');
+                                return { ticker: t, folder, filename: fnParts.join('::') };
                             });
-
-                            const confirm = async () => {
-                                if (selected.size === 0) return;
-                                const descriptors = Array.from(selected).map(key => {
-                                    const [t, folder, ...fnParts] = key.split('::');
-                                    return { ticker: t, folder, filename: fnParts.join('::') };
-                                });
-                                if (icloudPicker.mode === 'descriptors') {
-                                    icloudPicker.onConfirm(descriptors);
-                                    return;
+                            if (icloudPicker.mode === 'descriptors') {
+                                icloudPicker.onConfirm(descriptors);
+                                return;
+                            }
+                            setPickerBusy(true);
+                            setPickerBusyMsg(`Fetching ${descriptors.length} file${descriptors.length !== 1 ? 's' : ''} from local agent…`);
+                            try {
+                                const result = await fetchICloudFileBytes(descriptors);
+                                if (result.missing.length > 0) {
+                                    const list = result.missing.map(m => `${m.ticker}/${m.filename}`).join(', ');
+                                    alert(`Imported ${result.files.length} file(s). ${result.missing.length} couldn't be fetched (timeout / missing): ${list}`);
                                 }
-                                // 'bytes' mode: fetch real File objects.
-                                setBusy(true);
-                                setBusyMsg(`Fetching ${descriptors.length} file${descriptors.length !== 1 ? 's' : ''} from local agent…`);
-                                try {
-                                    const result = await fetchICloudFileBytes(descriptors);
-                                    if (result.missing.length > 0) {
-                                        const list = result.missing.map(m => `${m.ticker}/${m.filename}`).join(', ');
-                                        alert(`Imported ${result.files.length} file(s). ${result.missing.length} couldn't be fetched (timeout / missing): ${list}`);
-                                    }
-                                    icloudPicker.onConfirm(result.files);
-                                } catch (e) {
-                                    alert('Fetch failed: ' + e.message);
-                                    setBusy(false);
-                                    setBusyMsg('');
-                                }
-                            };
-
-                            return (
-                                <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4" onClick={() => !busy && icloudPicker.onCancel()}>
-                                    <div className="bg-neutral-900 border border-white/10 rounded-xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
-                                        <div className="p-4 border-b border-white/10 flex items-center justify-between">
-                                            <div>
-                                                <h3 className="font-bold text-lg">{icloudPicker.title}</h3>
-                                                <p className="text-xs text-slate-400 mt-0.5">
-                                                    {icloudManifestLoadedAt ? `Manifest synced ${fmtETDateTime(icloudManifestLoadedAt)}` : 'Files monitored by the local agent'}
-                                                </p>
-                                            </div>
-                                            <button onClick={() => !busy && icloudPicker.onCancel()} className="text-slate-400 hover:text-white text-xl">&times;</button>
+                                icloudPicker.onConfirm(result.files);
+                            } catch (e) {
+                                alert('Fetch failed: ' + e.message);
+                                setPickerBusy(false);
+                                setPickerBusyMsg('');
+                            }
+                        };
+                        // Lazy-load manifest the first time the picker opens
+                        if (icloudPicker && Object.keys(icloudManifest).length === 0 && !icloudManifestLoading) {
+                            refreshICloudManifest();
+                        }
+                        return (
+                            <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4" onClick={() => !pickerBusy && icloudPicker.onCancel()}>
+                                <div className="bg-neutral-900 border border-white/10 rounded-xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+                                    <div className="p-4 border-b border-white/10 flex items-center justify-between">
+                                        <div>
+                                            <h3 className="font-bold text-lg">{icloudPicker.title}</h3>
+                                            <p className="text-xs text-slate-400 mt-0.5">
+                                                {icloudManifestLoadedAt ? `Manifest synced ${fmtETDateTime(icloudManifestLoadedAt)}` : 'Files monitored by the local agent'}
+                                            </p>
                                         </div>
-                                        <div className="p-4 border-b border-white/10 flex items-center gap-3 flex-wrap">
-                                            <label className="text-[10px] text-slate-500 uppercase tracking-wider">Ticker</label>
-                                            <select value={tk} onChange={e => setTk(e.target.value)} className="px-2 py-1 bg-black/30 border border-white/10 rounded text-sm font-mono text-slate-200" disabled={icloudManifestLoading || busy}>
-                                                {tickers.map(t => <option key={t} value={t}>{t} ({icloudManifest[t].length})</option>)}
-                                            </select>
-                                            <input type="text" value={filter} onChange={e => setFilter(e.target.value)} placeholder="Filter folder/filename…" className="flex-1 min-w-[150px] px-2 py-1 bg-black/30 border border-white/10 rounded text-sm text-slate-200 placeholder:text-slate-500" />
-                                            <button onClick={refreshICloudManifest} className="text-xs text-slate-400 hover:text-white" disabled={icloudManifestLoading || busy}>{icloudManifestLoading ? 'Loading…' : 'Refresh'}</button>
-                                        </div>
-                                        <div className="flex-1 overflow-y-auto p-4">
-                                            {icloudManifestLoading && tickers.length === 0 ? (
-                                                <p className="text-center text-slate-400 text-sm py-6">Loading manifest…</p>
-                                            ) : !tk ? (
-                                                <p className="text-center text-slate-500 text-sm py-6">No tickers in manifest. Local agent may not have pushed yet.</p>
-                                            ) : folderOrder.length === 0 ? (
-                                                <p className="text-center text-slate-500 text-sm py-6">No files match{q ? ' the filter' : ''}.</p>
-                                            ) : (
-                                                <div className="space-y-3">
-                                                    {folderOrder.map(folder => {
-                                                        const isCat = folder.startsWith('Catalysts/');
-                                                        const isMain = folder === 'main';
-                                                        const label = isMain ? 'Main folder (STOCKS)' : isCat ? `Catalysts: ${folder.slice(10)}` : folder;
-                                                        const labelColor = isMain ? 'text-amber-400' : isCat ? 'text-purple-400' : 'text-cyan-400';
-                                                        const keys = grouped[folder].map(f => `${tk}::${folder}::${f.filename}`);
-                                                        const allSel = keys.every(k => selected.has(k));
-                                                        return (
-                                                            <div key={folder} className={isCat ? 'border-l-2 border-purple-500/40 pl-2' : ''}>
-                                                                <div className="flex items-center gap-2 mb-1.5">
-                                                                    <span className={`text-[10px] font-semibold uppercase tracking-wider ${labelColor}`}>{label}</span>
-                                                                    <div className="flex-1 border-t border-white/5" />
-                                                                    <span className="text-[9px] text-slate-600">{grouped[folder].length} file{grouped[folder].length !== 1 ? 's' : ''}</span>
-                                                                    <button onClick={() => setSelected(prev => { const n = new Set(prev); if (allSel) keys.forEach(k => n.delete(k)); else keys.forEach(k => n.add(k)); return n; })} className="text-[9px] text-slate-500 hover:text-white">Select all</button>
-                                                                </div>
-                                                                <div className="space-y-1">
-                                                                    {grouped[folder].map(f => {
-                                                                        const key = `${tk}::${folder}::${f.filename}`;
-                                                                        const sel = selected.has(key);
-                                                                        const sizeKb = f.size ? Math.round(f.size / 1024) : 0;
-                                                                        return (
-                                                                            <div key={key} onClick={() => setSelected(prev => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; })} className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors ${sel ? 'bg-amber-500/10 border-amber-500/40' : 'bg-white/[0.02] border-white/5 hover:bg-white/[0.05]'}`}>
-                                                                                <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${sel ? 'bg-amber-600 border-amber-500' : 'border-white/20'}`}>
-                                                                                    {sel && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
-                                                                                </div>
-                                                                                <div className="flex-1 min-w-0">
-                                                                                    <div className="text-xs truncate">{f.filename}</div>
-                                                                                    <div className="text-[9px] text-slate-500">{f.extension || ''}{sizeKb ? ` · ${sizeKb}KB` : ''}{f.modified ? ` · ${fmtETDate(f.modified)}` : ''}</div>
-                                                                                </div>
-                                                                            </div>
-                                                                        );
-                                                                    })}
-                                                                </div>
+                                        <button onClick={() => !pickerBusy && icloudPicker.onCancel()} className="text-slate-400 hover:text-white text-xl">&times;</button>
+                                    </div>
+                                    <div className="p-4 border-b border-white/10 flex items-center gap-3 flex-wrap">
+                                        <label className="text-[10px] text-slate-500 uppercase tracking-wider">Ticker</label>
+                                        <select value={tk} onChange={e => setPickerTk(e.target.value)} className="px-2 py-1 bg-black/30 border border-white/10 rounded text-sm font-mono text-slate-200" disabled={icloudManifestLoading || pickerBusy}>
+                                            {tickers.map(t => <option key={t} value={t}>{t} ({icloudManifest[t].length})</option>)}
+                                        </select>
+                                        <input type="text" value={pickerFilter} onChange={e => setPickerFilter(e.target.value)} placeholder="Filter folder/filename…" className="flex-1 min-w-[150px] px-2 py-1 bg-black/30 border border-white/10 rounded text-sm text-slate-200 placeholder:text-slate-500" />
+                                        <button onClick={refreshICloudManifest} className="text-xs text-slate-400 hover:text-white" disabled={icloudManifestLoading || pickerBusy}>{icloudManifestLoading ? 'Loading…' : 'Refresh'}</button>
+                                    </div>
+                                    <div className="flex-1 overflow-y-auto p-4">
+                                        {icloudManifestLoading && tickers.length === 0 ? (
+                                            <p className="text-center text-slate-400 text-sm py-6">Loading manifest…</p>
+                                        ) : !tk ? (
+                                            <p className="text-center text-slate-500 text-sm py-6">No tickers in manifest. Local agent may not have pushed yet.</p>
+                                        ) : folderOrder.length === 0 ? (
+                                            <p className="text-center text-slate-500 text-sm py-6">No files match{q ? ' the filter' : ''}.</p>
+                                        ) : (
+                                            <div className="space-y-3">
+                                                {folderOrder.map(folder => {
+                                                    const isCat = folder.startsWith('Catalysts/');
+                                                    const isMain = folder === 'main';
+                                                    const label = isMain ? 'Main folder (STOCKS)' : isCat ? `Catalysts: ${folder.slice(10)}` : folder;
+                                                    const labelColor = isMain ? 'text-amber-400' : isCat ? 'text-purple-400' : 'text-cyan-400';
+                                                    const keys = grouped[folder].map(f => `${tk}::${folder}::${f.filename}`);
+                                                    const allSel = keys.every(k => pickerSelected.has(k));
+                                                    return (
+                                                        <div key={folder} className={isCat ? 'border-l-2 border-purple-500/40 pl-2' : ''}>
+                                                            <div className="flex items-center gap-2 mb-1.5">
+                                                                <span className={`text-[10px] font-semibold uppercase tracking-wider ${labelColor}`}>{label}</span>
+                                                                <div className="flex-1 border-t border-white/5" />
+                                                                <span className="text-[9px] text-slate-600">{grouped[folder].length} file{grouped[folder].length !== 1 ? 's' : ''}</span>
+                                                                <button onClick={() => setPickerSelected(prev => { const n = new Set(prev); if (allSel) keys.forEach(k => n.delete(k)); else keys.forEach(k => n.add(k)); return n; })} className="text-[9px] text-slate-500 hover:text-white">Select all</button>
                                                             </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            )}
+                                                            <div className="space-y-1">
+                                                                {grouped[folder].map(f => {
+                                                                    const key = `${tk}::${folder}::${f.filename}`;
+                                                                    const sel = pickerSelected.has(key);
+                                                                    const sizeKb = f.size ? Math.round(f.size / 1024) : 0;
+                                                                    return (
+                                                                        <div key={key} onClick={() => setPickerSelected(prev => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; })} className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors ${sel ? 'bg-amber-500/10 border-amber-500/40' : 'bg-white/[0.02] border-white/5 hover:bg-white/[0.05]'}`}>
+                                                                            <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${sel ? 'bg-amber-600 border-amber-500' : 'border-white/20'}`}>
+                                                                                {sel && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                                                                            </div>
+                                                                            <div className="flex-1 min-w-0">
+                                                                                <div className="text-xs truncate">{f.filename}</div>
+                                                                                <div className="text-[9px] text-slate-500">{f.extension || ''}{sizeKb ? ` · ${sizeKb}KB` : ''}{f.modified ? ` · ${fmtETDate(f.modified)}` : ''}</div>
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="p-4 border-t border-white/10 flex items-center justify-between">
+                                        <div className="text-xs text-slate-400">
+                                            {pickerBusy ? <span className="text-amber-400">{pickerBusyMsg}</span> : `${pickerSelected.size} selected`}
                                         </div>
-                                        <div className="p-4 border-t border-white/10 flex items-center justify-between">
-                                            <div className="text-xs text-slate-400">
-                                                {busy ? <span className="text-amber-400">{busyMsg}</span> : `${selected.size} selected`}
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <button onClick={() => setSelected(new Set())} disabled={busy || selected.size === 0} className="px-3 py-1.5 text-xs text-slate-400 hover:text-white disabled:opacity-40">Clear</button>
-                                                <button onClick={() => !busy && icloudPicker.onCancel()} disabled={busy} className="px-3 py-1.5 text-xs text-slate-400 hover:text-white disabled:opacity-40">Cancel</button>
-                                                <button onClick={confirm} disabled={selected.size === 0 || busy} className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white text-xs font-medium rounded-lg">{busy ? 'Working…' : `Import ${selected.size}`}</button>
-                                            </div>
+                                        <div className="flex items-center gap-2">
+                                            <button onClick={() => setPickerSelected(new Set())} disabled={pickerBusy || pickerSelected.size === 0} className="px-3 py-1.5 text-xs text-slate-400 hover:text-white disabled:opacity-40">Clear</button>
+                                            <button onClick={() => !pickerBusy && icloudPicker.onCancel()} disabled={pickerBusy} className="px-3 py-1.5 text-xs text-slate-400 hover:text-white disabled:opacity-40">Cancel</button>
+                                            <button onClick={onConfirmClick} disabled={pickerSelected.size === 0 || pickerBusy} className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white text-xs font-medium rounded-lg">{pickerBusy ? 'Working…' : `Import ${pickerSelected.size}`}</button>
                                         </div>
                                     </div>
                                 </div>
-                            );
-                        };
-                        return <Picker />;
+                            </div>
+                        );
                     })()}
                     {/* DESKTOP TOP NAVIGATION - Hidden on mobile */}
                     <nav className="hidden md:flex items-center justify-between px-6 py-3 bg-white/5 backdrop-blur-xl border-b border-white/10">
