@@ -13156,7 +13156,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             };
 
                             return (
-                                <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4" onClick={() => !busy && icloudPicker.onCancel()}>
+                                <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4" onClick={() => !busy && icloudPicker.onCancel()}>
                                     <div className="bg-neutral-900 border border-white/10 rounded-xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
                                         <div className="p-4 border-b border-white/10 flex items-center justify-between">
                                             <div>
