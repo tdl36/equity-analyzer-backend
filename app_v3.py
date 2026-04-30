@@ -14981,6 +14981,25 @@ def agent_local_files(ticker):
         'lastUpdated': _local_file_manifest.get('timestamp'),
     })
 
+
+@app.route('/api/agent/local-files-all', methods=['GET'])
+def agent_local_files_all():
+    """Whole-universe iCloud manifest. Used by Meeting Prep + Decipher
+    pickers so the user can browse STOCKS/<ticker>/ AND
+    CATALYSTS/<ticker>/<topic>/ docs from any ticker without already
+    knowing the ticker. Returned shape mirrors the agent's manifest:
+    { manifest: { TICKER: [{filename, folder, path, size, extension,
+    modified}, ...], ... }, lastUpdated, totalTickers, totalFiles }."""
+    global _local_file_manifest
+    manifest = _local_file_manifest.get('manifest', {}) or {}
+    total_files = sum(len(v) for v in manifest.values())
+    return jsonify({
+        'manifest': manifest,
+        'lastUpdated': _local_file_manifest.get('timestamp'),
+        'totalTickers': len(manifest),
+        'totalFiles': total_files,
+    })
+
 @app.route('/api/agent/doc-requests', methods=['GET'])
 def agent_doc_requests():
     """Return tickers that need urgent document upload from local agent.
@@ -17036,6 +17055,163 @@ def mp_upload_documents(meeting_id):
         return jsonify(results)
     except Exception as e:
         print(f"Error uploading documents: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/mp/meetings/<int:meeting_id>/import-from-icloud', methods=['POST'])
+def mp_import_from_icloud(meeting_id):
+    """Import iCloud files (STOCKS or CATALYSTS) directly into a meeting,
+    avoiding the manual drag/drop step.
+
+    Body: {files: [{ticker, folder, filename}, ...]}
+      - folder='main' or '' -> STOCKS/<ticker>/<filename>
+      - folder='Catalysts/<topic>' -> CATALYSTS/<ticker>/<topic>/<filename>
+      - other folder names -> STOCKS/<ticker>/<folder>/<filename>
+
+    Mechanism: queues a per-ticker fetch request via the existing
+    _pending_doc_upload_requests + wantedFiles channel (same path the
+    catalyst-pipeline fetch uses). Local agent uploads file bytes into
+    document_files; this endpoint then reads each file's bytes,
+    extracts text via PyPDF2, and INSERTs into mp_documents. Synchronous
+    so the frontend can show progress + show docs immediately on success.
+
+    Returns the same shape as POST /api/mp/meetings/<id>/documents — a
+    list of newly-inserted mp_documents rows."""
+    try:
+        from PyPDF2 import PdfReader
+        import io as _io
+
+        data = request.get_json(silent=True) or {}
+        files = data.get('files') or []
+        if not files:
+            return jsonify({'error': 'No files specified'}), 400
+
+        with get_db() as (_, cur):
+            cur.execute('SELECT id FROM mp_meetings WHERE id = %s', (meeting_id,))
+            if not cur.fetchone():
+                return jsonify({'error': 'Meeting not found'}), 404
+
+        # Group requested files by ticker so each agent fetch request can be
+        # batched (one wantedFiles list per ticker).
+        by_ticker = {}
+        for f in files:
+            tk = (f.get('ticker') or '').upper().strip()
+            fn = (f.get('filename') or '').strip()
+            folder = (f.get('folder') or 'main').strip()
+            if not tk or not fn:
+                continue
+            by_ticker.setdefault(tk, []).append({'filename': fn, 'folder': folder})
+
+        if not by_ticker:
+            return jsonify({'error': 'No valid files in request'}), 400
+
+        # Fire one fetch request per ticker. The agent polls every 5s, so
+        # most requests resolve within 30-60s for small PDFs.
+        global _pending_doc_upload_requests
+        for tk, wanted in by_ticker.items():
+            # Skip files already in document_files (avoids redundant fetch)
+            with get_db() as (_, cur):
+                cur.execute('SELECT filename FROM document_files WHERE ticker = %s', (tk,))
+                already = {r['filename'] for r in cur.fetchall()}
+            still_wanted = [w for w in wanted if w['filename'] not in already]
+            if still_wanted:
+                _pending_doc_upload_requests[tk] = {
+                    'requested_at': datetime.utcnow(),
+                    'job_id': f'mp-import-{meeting_id}',
+                    'wantedFiles': still_wanted,
+                }
+
+        # Wait for all requested files to land in document_files. Per-ticker
+        # target sets so we can detect partial completion at the end.
+        all_targets = {(tk, wf['filename']) for tk, wfs in by_ticker.items() for wf in wfs}
+        max_wait = 120
+        poll_interval = 3
+        waited = 0
+        have_all = False
+        while waited < max_wait:
+            time.sleep(poll_interval)
+            waited += poll_interval
+            present = set()
+            with get_db() as (_, cur):
+                for tk in by_ticker.keys():
+                    cur.execute('SELECT filename FROM document_files WHERE ticker = %s', (tk,))
+                    for r in cur.fetchall():
+                        present.add((tk, r['filename']))
+            if all_targets.issubset(present):
+                have_all = True
+                break
+
+        for tk in by_ticker.keys():
+            _pending_doc_upload_requests.pop(tk, None)
+
+        # Now read each requested file from document_files, extract text,
+        # and write it into mp_documents.
+        results = []
+        missing = []
+        with get_db(commit=True) as (_, cur):
+            cur.execute('SELECT COALESCE(MAX(upload_order), 0) AS max_order FROM mp_documents WHERE meeting_id = %s', (meeting_id,))
+            order = cur.fetchone()['max_order']
+
+            for tk, wfs in by_ticker.items():
+                for wf in wfs:
+                    fn = wf['filename']
+                    folder_label = wf.get('folder') or 'main'
+                    cur.execute(
+                        'SELECT file_data, file_type, mime_type FROM document_files WHERE ticker = %s AND filename = %s LIMIT 1',
+                        (tk, fn),
+                    )
+                    row = cur.fetchone()
+                    if not row or not row.get('file_data'):
+                        missing.append({'ticker': tk, 'filename': fn, 'folder': folder_label})
+                        continue
+                    file_data = row['file_data']
+                    extracted_text = ''
+                    page_count = None
+                    try:
+                        pdf_bytes = base64.b64decode(file_data)
+                        reader = PdfReader(_io.BytesIO(pdf_bytes))
+                        pages = []
+                        for page in reader.pages:
+                            t = page.extract_text()
+                            if t:
+                                pages.append(t)
+                        extracted_text = '\n\n'.join(pages)
+                        page_count = len(reader.pages)
+                    except Exception as ex:
+                        print(f"PDF extraction error for {fn}: {ex}")
+
+                    # Tag the filename with source folder so the user knows
+                    # which folder it came from (esp. catalyst topics)
+                    display_filename = fn
+                    if folder_label and folder_label != 'main':
+                        display_filename = f"[{folder_label}] {fn}"
+
+                    doc_type = classify_mp_document(display_filename, extracted_text)
+                    token_estimate = len(extracted_text) // 4 if extracted_text else 0
+                    file_size = len(file_data) * 3 // 4 if file_data else 0
+                    order += 1
+
+                    cur.execute('''
+                        INSERT INTO mp_documents (meeting_id, filename, file_data, doc_type, doc_date,
+                            page_count, token_estimate, extracted_text, upload_order, file_size)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id, filename, doc_type, doc_date, page_count, token_estimate, upload_order, file_size, created_at
+                    ''', (meeting_id, display_filename, file_data, doc_type, None,
+                          page_count, token_estimate, extracted_text, order, file_size))
+                    r = dict(cur.fetchone())
+                    r['created_at'] = r['created_at'].isoformat() if r['created_at'] else None
+                    r['ticker'] = tk
+                    r['source_folder'] = folder_label
+                    results.append(r)
+
+        return jsonify({
+            'imported': results,
+            'missing': missing,
+            'haveAll': have_all,
+            'waitedSeconds': waited,
+        })
+    except Exception as e:
+        print(f'mp_import_from_icloud error: {e}')
         return jsonify({'error': str(e)}), 500
 
 

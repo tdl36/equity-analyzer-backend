@@ -1717,6 +1717,16 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [mpDataLoaded, setMpDataLoaded] = useState(false);
             const [mpPastQuestions, setMpPastQuestions] = useState([]);
             const [mpUploading, setMpUploading] = useState(false);
+            // iCloud picker (browse STOCKS + CATALYSTS folders monitored by local agent)
+            const [mpICloudPickerOpen, setMpICloudPickerOpen] = useState(false);
+            const [mpICloudManifest, setMpICloudManifest] = useState({});  // { TICKER: [{filename, folder, ...}] }
+            const [mpICloudLoading, setMpICloudLoading] = useState(false);
+            const [mpICloudError, setMpICloudError] = useState(null);
+            const [mpICloudTicker, setMpICloudTicker] = useState('');  // selected ticker in picker
+            const [mpICloudFolderFilter, setMpICloudFolderFilter] = useState('');  // optional folder substring filter
+            const [mpICloudSelected, setMpICloudSelected] = useState(new Set());  // 'TICKER::folder::filename' keys
+            const [mpICloudImporting, setMpICloudImporting] = useState(false);
+            const [mpICloudLastSync, setMpICloudLastSync] = useState(null);
 
             // Slides tab state
             const [slideProjects, setSlideProjects] = useState([]);
@@ -9010,6 +9020,70 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     if (mpFileInputRef.current) mpFileInputRef.current.value = '';
                 }
             };
+
+            // Load the whole-universe iCloud manifest from the local agent's
+            // last push. Cheap call (small JSON, server-side cached).
+            const loadMpICloudManifest = async () => {
+                setMpICloudLoading(true);
+                setMpICloudError(null);
+                try {
+                    const r = await fetch(`${API_URL}/api/agent/local-files-all`);
+                    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                    const j = await r.json();
+                    const manifest = j.manifest || {};
+                    setMpICloudManifest(manifest);
+                    setMpICloudLastSync(j.lastUpdated || null);
+                    // If currently no ticker chosen, default to the first one
+                    setMpICloudTicker(prev => prev || Object.keys(manifest).sort()[0] || '');
+                } catch (e) {
+                    setMpICloudError(`Could not load manifest: ${e.message}. Is the local agent running?`);
+                } finally {
+                    setMpICloudLoading(false);
+                }
+            };
+
+            // Trigger the backend to pull selected files from the local agent
+            // (via the wantedFiles channel) and import them into this meeting.
+            const importMpFromICloud = async () => {
+                if (!mpSelectedMeeting || mpICloudSelected.size === 0) return;
+                setMpICloudImporting(true);
+                try {
+                    const files = Array.from(mpICloudSelected).map(key => {
+                        const [ticker, folder, ...fnParts] = key.split('::');
+                        return { ticker, folder, filename: fnParts.join('::') };
+                    });
+                    const res = await fetch(`${API_URL}/api/mp/meetings/${mpSelectedMeeting.id}/import-from-icloud`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ files }),
+                    });
+                    if (!res.ok) {
+                        const errText = await res.text().catch(() => '');
+                        throw new Error(`Import failed (${res.status}): ${errText}`);
+                    }
+                    const data = await res.json();
+                    const importedCount = (data.imported || []).length;
+                    const missingCount = (data.missing || []).length;
+                    if (missingCount > 0) {
+                        const missingList = data.missing.map(m => `${m.ticker}/${m.filename}`).join(', ');
+                        alert(`Imported ${importedCount} file(s). ${missingCount} could not be fetched from the local agent (timeout or missing): ${missingList}`);
+                    }
+                    setMpICloudSelected(new Set());
+                    setMpICloudPickerOpen(false);
+                    await loadMpMeeting(mpSelectedMeeting.id);
+                } catch (err) {
+                    alert('iCloud import error: ' + err.message);
+                } finally {
+                    setMpICloudImporting(false);
+                }
+            };
+
+            // Auto-load manifest when picker opens
+            React.useEffect(() => {
+                if (mpICloudPickerOpen && Object.keys(mpICloudManifest).length === 0) {
+                    loadMpICloudManifest();
+                }
+            }, [mpICloudPickerOpen]);
 
             const deleteMpDocument = async (docId) => {
                 if (!mpSelectedMeeting) return;
@@ -18895,6 +18969,17 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     <input ref={mpFileInputRef} type="file" multiple accept=".pdf" onChange={handleMpFileUpload} className="hidden" />
                                                 </div>
 
+                                                {/* Browse iCloud (STOCKS + CATALYSTS folders monitored by local agent) */}
+                                                <div className="mb-3">
+                                                    <button
+                                                        onClick={() => setMpICloudPickerOpen(true)}
+                                                        className="w-full px-3 py-2 bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/30 rounded-lg text-sm text-cyan-300 transition-colors flex items-center justify-center gap-2"
+                                                    >
+                                                        <span>📁</span>
+                                                        <span>Browse iCloud (STOCKS + CATALYSTS)</span>
+                                                    </button>
+                                                </div>
+
                                                 {/* Google Drive Search */}
                                                 {renderDriveSearch(mpSelectedMeeting?.ticker, handleDriveImportMp)}
 
@@ -19155,6 +19240,158 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     <p>No meetings yet. Create one to get started.</p>
                                                 </div>
                                             )}
+                                        </div>
+                                    </div>
+                                )}
+                                {/* iCloud picker modal — browse STOCKS + CATALYSTS files monitored by local agent */}
+                                {mpICloudPickerOpen && (
+                                    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => !mpICloudImporting && setMpICloudPickerOpen(false)}>
+                                        <div className="bg-neutral-900 border border-white/10 rounded-xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+                                            <div className="p-4 border-b border-white/10 flex items-center justify-between">
+                                                <div>
+                                                    <h3 className="font-bold text-lg">Browse iCloud (STOCKS + CATALYSTS)</h3>
+                                                    <p className="text-xs text-slate-400 mt-0.5">
+                                                        {mpICloudLastSync ? `Manifest synced ${fmtETDateTime(mpICloudLastSync)}` : 'Files monitored by the local agent'}
+                                                        {mpSelectedMeeting?.ticker && <> · importing into <span className="font-mono font-bold text-amber-400">{mpSelectedMeeting.ticker}</span> meeting</>}
+                                                    </p>
+                                                </div>
+                                                <button onClick={() => !mpICloudImporting && setMpICloudPickerOpen(false)} className="text-slate-400 hover:text-white text-xl">&times;</button>
+                                            </div>
+
+                                            <div className="p-4 border-b border-white/10 flex items-center gap-3 flex-wrap">
+                                                <label className="text-[10px] text-slate-500 uppercase tracking-wider">Ticker</label>
+                                                <select
+                                                    value={mpICloudTicker}
+                                                    onChange={e => { setMpICloudTicker(e.target.value); setMpICloudFolderFilter(''); }}
+                                                    className="px-2 py-1 bg-black/30 border border-white/10 rounded text-sm font-mono text-slate-200"
+                                                    disabled={mpICloudLoading}
+                                                >
+                                                    {Object.keys(mpICloudManifest).sort().map(tk => (
+                                                        <option key={tk} value={tk}>{tk} ({mpICloudManifest[tk].length})</option>
+                                                    ))}
+                                                </select>
+                                                <input
+                                                    type="text"
+                                                    value={mpICloudFolderFilter}
+                                                    onChange={e => setMpICloudFolderFilter(e.target.value)}
+                                                    placeholder="Filter by folder/filename…"
+                                                    className="flex-1 min-w-[150px] px-2 py-1 bg-black/30 border border-white/10 rounded text-sm text-slate-200 placeholder:text-slate-500"
+                                                />
+                                                <button onClick={loadMpICloudManifest} className="text-xs text-slate-400 hover:text-white" disabled={mpICloudLoading}>
+                                                    {mpICloudLoading ? 'Loading…' : 'Refresh'}
+                                                </button>
+                                            </div>
+
+                                            <div className="flex-1 overflow-y-auto p-4">
+                                                {mpICloudError && <p className="text-sm text-red-400 mb-2">{mpICloudError}</p>}
+                                                {mpICloudLoading && Object.keys(mpICloudManifest).length === 0 ? (
+                                                    <p className="text-center text-slate-400 text-sm py-6">Loading manifest from local agent…</p>
+                                                ) : !mpICloudTicker ? (
+                                                    <p className="text-center text-slate-500 text-sm py-6">No tickers in manifest. Local agent may not have pushed yet.</p>
+                                                ) : (() => {
+                                                    const allFiles = mpICloudManifest[mpICloudTicker] || [];
+                                                    const q = (mpICloudFolderFilter || '').toLowerCase().trim();
+                                                    const files = q
+                                                        ? allFiles.filter(f => (f.folder || '').toLowerCase().includes(q) || (f.filename || '').toLowerCase().includes(q))
+                                                        : allFiles;
+                                                    // Group by folder. STOCKS goes "main" + sub; CATALYSTS goes "Catalysts/<topic>".
+                                                    const grouped = {};
+                                                    for (const f of files) {
+                                                        const folder = f.folder || 'main';
+                                                        (grouped[folder] = grouped[folder] || []).push(f);
+                                                    }
+                                                    const folderOrder = Object.keys(grouped).sort((a, b) => {
+                                                        if (a === 'main') return -1;
+                                                        if (b === 'main') return 1;
+                                                        const aCat = a.startsWith('Catalysts/');
+                                                        const bCat = b.startsWith('Catalysts/');
+                                                        if (aCat && !bCat) return -1;
+                                                        if (!aCat && bCat) return 1;
+                                                        return a.localeCompare(b);
+                                                    });
+                                                    if (folderOrder.length === 0) {
+                                                        return <p className="text-center text-slate-500 text-sm py-6">No files match{q ? ' the filter' : ''}.</p>;
+                                                    }
+                                                    return (
+                                                        <div className="space-y-3">
+                                                            {folderOrder.map(folder => {
+                                                                const isCat = folder.startsWith('Catalysts/');
+                                                                const isMain = folder === 'main';
+                                                                const label = isMain ? 'Main folder (STOCKS)' : isCat ? `Catalysts: ${folder.slice('Catalysts/'.length)}` : folder;
+                                                                const labelColor = isMain ? 'text-amber-400' : isCat ? 'text-purple-400' : 'text-cyan-400';
+                                                                return (
+                                                                    <div key={folder} className={isCat ? 'border-l-2 border-purple-500/40 pl-2' : ''}>
+                                                                        <div className="flex items-center gap-2 mb-1.5">
+                                                                            <span className={`text-[10px] font-semibold uppercase tracking-wider ${labelColor}`}>{label}</span>
+                                                                            <div className="flex-1 border-t border-white/5" />
+                                                                            <span className="text-[9px] text-slate-600">{grouped[folder].length} file{grouped[folder].length !== 1 ? 's' : ''}</span>
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    const keys = grouped[folder].map(f => `${mpICloudTicker}::${folder}::${f.filename}`);
+                                                                                    const allSelected = keys.every(k => mpICloudSelected.has(k));
+                                                                                    setMpICloudSelected(prev => {
+                                                                                        const next = new Set(prev);
+                                                                                        if (allSelected) keys.forEach(k => next.delete(k));
+                                                                                        else keys.forEach(k => next.add(k));
+                                                                                        return next;
+                                                                                    });
+                                                                                }}
+                                                                                className="text-[9px] text-slate-500 hover:text-white"
+                                                                            >Select all</button>
+                                                                        </div>
+                                                                        <div className="space-y-1">
+                                                                            {grouped[folder].map(f => {
+                                                                                const key = `${mpICloudTicker}::${folder}::${f.filename}`;
+                                                                                const selected = mpICloudSelected.has(key);
+                                                                                const sizeKb = f.size ? Math.round(f.size / 1024) : 0;
+                                                                                return (
+                                                                                    <div
+                                                                                        key={key}
+                                                                                        onClick={() => {
+                                                                                            setMpICloudSelected(prev => {
+                                                                                                const next = new Set(prev);
+                                                                                                if (next.has(key)) next.delete(key);
+                                                                                                else next.add(key);
+                                                                                                return next;
+                                                                                            });
+                                                                                        }}
+                                                                                        className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors ${selected ? 'bg-amber-500/10 border-amber-500/40' : 'bg-white/[0.02] border-white/5 hover:bg-white/[0.05]'}`}
+                                                                                    >
+                                                                                        <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${selected ? 'bg-amber-600 border-amber-500' : 'border-white/20'}`}>
+                                                                                            {selected && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                                                                                        </div>
+                                                                                        <div className="flex-1 min-w-0">
+                                                                                            <div className="text-xs truncate">{f.filename}</div>
+                                                                                            <div className="text-[9px] text-slate-500">
+                                                                                                {f.extension || ''}{sizeKb ? ` · ${sizeKb}KB` : ''}{f.modified ? ` · ${fmtETDate(f.modified)}` : ''}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    );
+                                                })()}
+                                            </div>
+
+                                            <div className="p-4 border-t border-white/10 flex items-center justify-between">
+                                                <div className="text-xs text-slate-400">
+                                                    {mpICloudSelected.size} selected
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <button onClick={() => setMpICloudSelected(new Set())} className="px-3 py-1.5 text-xs text-slate-400 hover:text-white" disabled={mpICloudImporting || mpICloudSelected.size === 0}>Clear</button>
+                                                    <button onClick={() => !mpICloudImporting && setMpICloudPickerOpen(false)} className="px-3 py-1.5 text-xs text-slate-400 hover:text-white" disabled={mpICloudImporting}>Cancel</button>
+                                                    <button
+                                                        onClick={importMpFromICloud}
+                                                        disabled={mpICloudSelected.size === 0 || mpICloudImporting || !mpSelectedMeeting}
+                                                        className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white text-xs font-medium rounded-lg"
+                                                    >{mpICloudImporting ? 'Importing…' : `Import ${mpICloudSelected.size}`}</button>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 )}
