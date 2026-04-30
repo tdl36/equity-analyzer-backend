@@ -6765,18 +6765,37 @@ def _run_auto_process_audio(job_id, file_content, filename, mime_type, gemini_ap
         html_format = """OUTPUT FORMAT — Return raw HTML. No markdown. No code fences.
 Use: <h2>Section Title</h2>, <p><strong>Topic:</strong> Description.</p>, <ul><li>Sub-point</li></ul>"""
 
-        # Key Takeaways summary (summary column) — takeaways + Q&A format
+        # Key Takeaways summary (summary column) — Key Takeaways + Q&A Log format,
+        # mirrors the n8n template the direct-upload path uses. Without the
+        # explicit Q&A Log section the auto-process pipeline produced visibly
+        # different (and worse for the user's workflow) output than direct upload.
+        qa_log_instruction = """
+
+Then add a separate <h2>Q&A Log</h2> section. For every distinct Q&A exchange in the transcript:
+- Quote the question (or paraphrase tightly if the speaker rambled): <p><strong>Q:</strong> ...</p>
+- Summarize the answer with all specific numbers, names, named programs, and stances preserved: <p><strong>A:</strong> ...</p>
+- Each Q/A pair as its own paragraph block. Process in transcript order.
+- If a question has multiple sub-questions, break them into separate Q/A blocks.
+- If management dodged or gave a non-answer, flag it: <em>(Management deflected — did not address X.)</em>
+- Skip purely operational call-mechanic exchanges ("next question please")."""
+
         if detail_level == 'concise':
-            summary_instruction = f"""Generate a SHORT, CONCISE summary of Key Takeaways from the following transcript.
-Maximum 300-500 words. Only critical takeaways, decisions, action items. Be ruthlessly brief.
+            summary_instruction = f"""Generate a SHORT, CONCISE summary of the following transcript.
+
+First section: <h2>Key Takeaways</h2> as a numbered list. Maximum 5-7 takeaways. Each takeaway has a bold lead-in (the topic) followed by a one-sentence specific summary with numbers/names where applicable.
+{qa_log_instruction}
 {html_format}"""
         elif detail_level == 'detailed':
-            summary_instruction = f"""Generate an EXTREMELY DETAILED Key Takeaways summary of the following transcript.
-Preserve all content, numbers, quotes, names, examples. Include Q&A exchanges verbatim where relevant.
+            summary_instruction = f"""Generate an EXTREMELY DETAILED summary of the following transcript.
+
+First section: <h2>Key Takeaways</h2> as a numbered list. 8-15 takeaways. Each takeaway has a bold lead-in (the topic) followed by 2-4 sentences preserving all specific numbers, quotes, names, examples.
+{qa_log_instruction}
 {html_format}"""
         else:
-            summary_instruction = f"""Generate a clear, well-structured Key Takeaways summary of the following transcript.
-Include key points, decisions, action items, and important details. Cover Q&A exchanges where relevant.
+            summary_instruction = f"""Generate a clear, well-structured summary of the following transcript.
+
+First section: <h2>Key Takeaways</h2> as a numbered list. 6-10 takeaways. Each takeaway has a bold lead-in (the topic) followed by 1-2 sentences with specific numbers / names / stances preserved.
+{qa_log_instruction}
 {html_format}"""
 
         # Narrative Meeting Summary (meeting_summary column) — topic-grouped
