@@ -2530,15 +2530,45 @@ def _wait_for_audio_job_and_move(fname: str, fpath: Path, job_id: str) -> None:
     _t.Thread(target=_poll, daemon=True).start()
 
 
+_audio_in_flight = set()  # filenames currently being uploaded or transcribed
+_audio_failed_attempts = {}  # fname -> consecutive-failure count
+
 def check_for_new_audio():
     """Scan SUMMARIES/ folder for new audio files, auto-process them."""
-    global _known_audio_files, _audio_initialized
+    global _known_audio_files, _audio_initialized, _audio_in_flight, _audio_failed_attempts
     if not SUMMARIES_DIR.exists():
         return
     try:
         current_files = set()
+        # Skip filenames that already exist in Processed/ — iCloud sometimes
+        # restores a deleted file from cloud after we move the local copy
+        # away, which created a redetect-and-reupload loop.
+        processed_dir = SUMMARIES_DIR / "Processed"
+        already_processed = set()
+        if processed_dir.exists():
+            for pf in processed_dir.iterdir():
+                if pf.is_file() and not pf.name.startswith('.'):
+                    already_processed.add(pf.name)
+
         for f in SUMMARIES_DIR.iterdir():
             if f.is_file() and not f.name.startswith('.') and f.suffix.lower() in AUDIO_EXTS:
+                if f.name in already_processed:
+                    # Move it again so iCloud doesn't keep re-restoring it
+                    try:
+                        f.unlink()
+                        log.info(f"Duplicate audio file removed (already in Processed/): {f.name}")
+                    except Exception as e:
+                        log.debug(f"Could not remove duplicate {f.name}: {e}")
+                    continue
+                if f.name in _audio_in_flight:
+                    # Skip — another worker thread is already handling it
+                    continue
+                if _audio_failed_attempts.get(f.name, 0) >= 5:
+                    # Stop spamming after 5 consecutive failures; user should
+                    # check the log and either re-drop the file (which will
+                    # reset the counter via _known_audio_files diff) or fix
+                    # the underlying issue.
+                    continue
                 current_files.add(f.name)
 
         # On first tick, treat files already present as NEW so pre-existing
@@ -2597,40 +2627,58 @@ def check_for_new_audio():
                             file_data = af.read()
                     else:
                         raise
-                # Upload to backend auto-process endpoint. 30+ MB files at
-                # variable upload speeds need a generous timeout (separate
-                # connect / read so we don't sit forever on a dead socket).
+                # Mark in-flight so concurrent ticks don't re-upload the
+                # same file while a slow upload is in progress.
+                _audio_in_flight.add(fname)
+                # Upload to backend auto-process endpoint. Render upload speed
+                # to a free-tier instance is unpredictable (varies 1-5 MB/s)
+                # and the dyno can take 30s+ to wake from cold. Generous
+                # timeouts: 60s connect (cold start), 30 min upload (covers
+                # 100+ MB at 1 MB/s). Without this, 60+ MB files would die
+                # mid-upload and loop forever.
                 res = requests.post(
                     f"{CHARLIE_API}/api/auto-process-audio",
                     files={'file': (fname, file_data)},
                     data={'detailLevel': 'standard'},
                     headers={'Authorization': f'ApiKey {get_secret("CHARLIE_API_KEY") or ""}'},
-                    timeout=(15, 300),
+                    timeout=(60, 1800),
                 )
                 if res.ok:
                     data = res.json()
                     job_id = data.get('jobId', '?')
                     log.info(f"Audio auto-process started: {fname} (job {job_id})")
+                    _audio_failed_attempts.pop(fname, None)  # reset failure counter on successful upload
                     # Poll job status for up to 20 min. Only move to Processed/
                     # on confirmed 'complete'. On 'error' / 'failed' leave the
                     # file in place so the next agent tick retries it.
                     # CRITICAL: run this in a daemon thread so we don't block
                     # the for-loop. Without it, processing 4 audio files takes
                     # 4 × 10 min serially because the loop sits on the wait.
+                    def _audio_wait_wrapper(fn, fp, jid):
+                        try:
+                            _wait_for_audio_job_and_move(fn, fp, jid)
+                        finally:
+                            _audio_in_flight.discard(fn)
                     threading.Thread(
-                        target=_wait_for_audio_job_and_move,
+                        target=_audio_wait_wrapper,
                         args=(fname, fpath, job_id),
                         daemon=True,
                         name=f'audio-wait-{job_id[:8]}',
                     ).start()
                 else:
                     log.warning(f"Audio auto-process failed for {fname}: {res.status_code}")
+                    _audio_in_flight.discard(fname)
+                    _audio_failed_attempts[fname] = _audio_failed_attempts.get(fname, 0) + 1
                     try: _known_audio_files.discard(fname)
                     except Exception: pass
             except Exception as e:
                 log.warning(f"Error auto-processing audio {fname}: {e}")
+                _audio_in_flight.discard(fname)
+                _audio_failed_attempts[fname] = _audio_failed_attempts.get(fname, 0) + 1
+                if _audio_failed_attempts[fname] >= 5:
+                    log.error(f"AUDIO GIVE UP: {fname} failed {_audio_failed_attempts[fname]} times. Investigate manually.")
                 # Drop from known-files so the next tick retries instead of
-                # silently giving up forever.
+                # silently giving up forever (until the giveup cap above).
                 try: _known_audio_files.discard(fname)
                 except Exception: pass
     except PermissionError:
