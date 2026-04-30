@@ -23340,7 +23340,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             <span className="text-[10px] text-slate-500 italic">
                                                                 {decipherMode === 'synthesize'
                                                                     ? '~30-60s · 2-4 paragraphs covering top concepts'
-                                                                    : '~2-4min · annotates every jargon-bearing line in document order'}
+                                                                    : '~3-8min · annotates every jargon-bearing line in document order (handles 60-80 page transcripts)'}
                                                             </span>
                                                         </div>
                                                         <textarea
@@ -23382,7 +23382,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         <div className="bg-white/[0.03] border border-amber-500/20 rounded-xl p-6 text-center">
                                                             <div className="text-amber-400 text-sm">
                                                                 {decipherMode === 'walkthrough'
-                                                                    ? 'Walking through document sentence by sentence… typically 2-4 min on Opus 4-7 for a full transcript.'
+                                                                    ? 'Walking through document sentence by sentence… 3-8 min on Opus 4-7 depending on transcript length.'
                                                                     : 'Reading and explaining… typically 30-60s on Opus 4-7.'}
                                                             </div>
                                                         </div>

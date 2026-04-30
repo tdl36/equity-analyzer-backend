@@ -15440,8 +15440,16 @@ def decipher():
                 f"{ticker_block}"
             )
             # Walk-through mode produces much longer output (annotations on every
-            # jargon-bearing sentence); 16K covers a typical 30-page transcript.
-            max_out = 16384
+            # jargon-bearing sentence). Bumped to 48K to comfortably cover
+            # 60-80 page transcripts (the longest Tony's likely to feed in)
+            # while still leaving headroom under Anthropic's 64K hard cap.
+            # Splitting + stitching the document was considered and rejected:
+            # building a page-aware splitter that respects speaker / Q&A
+            # boundaries is real engineering, would re-pay the (expensive)
+            # input PDF token cost per chunk, and the stitched output loses
+            # cross-references ("the analyst was asking..."). One big call
+            # is cleaner.
+            max_out = 49152
         else:
             system_prompt = DECIPHER_SYSTEM_PROMPT
             ask = (
