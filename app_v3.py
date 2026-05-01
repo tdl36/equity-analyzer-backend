@@ -15512,46 +15512,20 @@ End with a 3-5 bullet "PM Take" — what the most important PM-relevant takeaway
 Markdown only. No HTML."""
 
 
-@app.route('/api/decipher', methods=['POST'])
-def decipher():
-    """One-shot Decipher agent: takes a snippet of text or a PDF and explains
-    industry jargon, Q&A subtext, and key metrics in plain English with
-    intuition-first analogies.
+# Decipher jobs are async — the POST returns immediately with a job_id and
+# the actual Anthropic call runs in a daemon thread. Without this, walk-through
+# calls (3-8 minutes) hit Cloudflare Worker's 100s idle timeout (TypeError:
+# load failed). Even direct-to-Render is sketchy at multi-minute durations
+# because the browser tab can close, network can blip, etc. Async + poll is
+# the only robust pattern for long LLM calls.
+_decipher_jobs: dict[str, dict] = {}  # job_id -> {status, result?, error?, meta}
 
-    Two modes:
-      - 'synthesize' (default): one holistic 2-4 paragraph explainer that picks
-        the 3-5 most-confusing concepts. Best for short snippets / single
-        questions / one paragraph that needs unpacking.
-      - 'walkthrough': sentence-by-sentence walk-through of the entire document
-        with inline annotations on every jargon-heavy line. Best for full
-        earnings transcripts / research reports / long Q&A excerpts.
 
-    Uses Opus 4-7 + streaming (long-context patient explanation is Opus's
-    strength; streaming is required because Opus call durations cross the
-    SDK's 10-min non-stream threshold)."""
+def _run_decipher_job(job_id: str, text: str, file_data: str, file_type: str,
+                      file_name: str, ticker: str, mode: str, api_key: str):
+    """Background worker. Updates _decipher_jobs[job_id] with status + result."""
     try:
-        data = request.get_json(silent=True) or {}
-        text = (data.get('text') or '').strip()
-        file_data = data.get('fileData') or ''
-        file_type = (data.get('fileType') or 'pdf').lower()
-        file_name = (data.get('fileName') or '').strip()
-        ticker = (data.get('ticker') or '').strip().upper()
-        mode = (data.get('mode') or 'synthesize').strip().lower()
-        if mode not in ('synthesize', 'walkthrough'):
-            mode = 'synthesize'
-
-        if not text and not file_data:
-            return jsonify({'error': 'Provide text or fileData (PDF)'}), 400
-
-        # Cost guardrail: cap pasted text. Anthropic accepts very long but the
-        # decipher use case rarely needs more than 200K chars.
-        if text and len(text) > 200_000:
-            text = text[:200_000] + '\n\n[truncated to 200K chars]'
-
-        api_key = data.get('apiKey') or os.environ.get('ANTHROPIC_API_KEY', '')
-        if not api_key:
-            return jsonify({'error': 'Anthropic API key not configured'}), 500
-
+        _decipher_jobs[job_id]['status'] = 'running'
         client = anthropic.Anthropic(api_key=api_key)
         content = []
 
@@ -15577,16 +15551,6 @@ def decipher():
                 "Process in document order. End with a 3-5 bullet 'PM Take'."
                 f"{ticker_block}"
             )
-            # Walk-through mode produces much longer output (annotations on every
-            # jargon-bearing sentence). Bumped to 48K to comfortably cover
-            # 60-80 page transcripts (the longest Tony's likely to feed in)
-            # while still leaving headroom under Anthropic's 64K hard cap.
-            # Splitting + stitching the document was considered and rejected:
-            # building a page-aware splitter that respects speaker / Q&A
-            # boundaries is real engineering, would re-pay the (expensive)
-            # input PDF token cost per chunk, and the stitched output loses
-            # cross-references ("the analyst was asking..."). One big call
-            # is cleaner.
             max_out = 49152
         else:
             system_prompt = DECIPHER_SYSTEM_PROMPT
@@ -15601,7 +15565,6 @@ def decipher():
 
         content.append({"type": "text", "text": ask})
 
-        # Stream — Opus 4-7 + 16K max_tokens crosses the SDK's 10-min non-stream threshold.
         with client.messages.stream(
             model='claude-opus-4-7',
             max_tokens=max_out,
@@ -15618,21 +15581,103 @@ def decipher():
 
         stop = getattr(final, 'stop_reason', None)
         if stop == 'max_tokens':
-            print(f'decipher: hit max_tokens cap ({max_out}); output truncated for mode={mode}')
+            print(f'decipher {job_id}: hit max_tokens cap ({max_out}); output truncated for mode={mode}')
 
         usage = getattr(final, 'usage', None)
-        return jsonify({
-            'ok': True,
-            'mode': mode,
+        _decipher_jobs[job_id].update({
+            'status': 'complete',
             'explanation': explanation,
             'model': 'claude-opus-4-7',
+            'mode': mode,
             'truncated': stop == 'max_tokens',
             'inputTokens': getattr(usage, 'input_tokens', None) if usage else None,
             'outputTokens': getattr(usage, 'output_tokens', None) if usage else None,
+            'completedAt': datetime.utcnow().isoformat(),
         })
     except Exception as e:
-        print(f'decipher error: {e}')
+        print(f'decipher job {job_id} error: {e}')
+        _decipher_jobs[job_id].update({
+            'status': 'failed',
+            'error': str(e),
+            'completedAt': datetime.utcnow().isoformat(),
+        })
+
+
+@app.route('/api/decipher', methods=['POST'])
+def decipher():
+    """Start an async Decipher job. Returns {jobId, status} immediately —
+    poll GET /api/decipher/<jobId> for the result.
+
+    Two modes:
+      - 'synthesize' (default): one holistic 2-4 paragraph explainer.
+      - 'walkthrough': sentence-by-sentence walk-through of the document.
+
+    Async pattern is required because walkthroughs take 3-8 minutes and
+    Cloudflare's 100s idle timeout would kill a synchronous HTTP call."""
+    try:
+        data = request.get_json(silent=True) or {}
+        text = (data.get('text') or '').strip()
+        file_data = data.get('fileData') or ''
+        file_type = (data.get('fileType') or 'pdf').lower()
+        file_name = (data.get('fileName') or '').strip()
+        ticker = (data.get('ticker') or '').strip().upper()
+        mode = (data.get('mode') or 'synthesize').strip().lower()
+        if mode not in ('synthesize', 'walkthrough'):
+            mode = 'synthesize'
+
+        if not text and not file_data:
+            return jsonify({'error': 'Provide text or fileData (PDF)'}), 400
+
+        if text and len(text) > 200_000:
+            text = text[:200_000] + '\n\n[truncated to 200K chars]'
+
+        api_key = data.get('apiKey') or os.environ.get('ANTHROPIC_API_KEY', '')
+        if not api_key:
+            return jsonify({'error': 'Anthropic API key not configured'}), 500
+
+        # Garbage-collect old jobs so the dict doesn't grow forever (cap 100,
+        # drop oldest by createdAt). Decipher results are session-only — the
+        # frontend keeps its own history, this dict is just for in-flight polls.
+        if len(_decipher_jobs) > 100:
+            sorted_jobs = sorted(_decipher_jobs.items(),
+                                 key=lambda kv: kv[1].get('createdAt', ''))
+            for jid, _ in sorted_jobs[:len(_decipher_jobs) - 100]:
+                _decipher_jobs.pop(jid, None)
+
+        job_id = str(uuid.uuid4())[:8]
+        _decipher_jobs[job_id] = {
+            'status': 'queued',
+            'mode': mode,
+            'fileName': file_name,
+            'ticker': ticker,
+            'createdAt': datetime.utcnow().isoformat(),
+        }
+        threading.Thread(
+            target=_run_decipher_job,
+            args=(job_id, text, file_data, file_type, file_name, ticker, mode, api_key),
+            daemon=True,
+            name=f'decipher-{job_id}',
+        ).start()
+
+        return jsonify({
+            'ok': True,
+            'jobId': job_id,
+            'status': 'queued',
+            'mode': mode,
+        })
+    except Exception as e:
+        print(f'decipher dispatch error: {e}')
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/decipher/<job_id>', methods=['GET'])
+def decipher_status(job_id):
+    """Poll a Decipher job. Returns the current status + result (if complete)
+    or error (if failed). Frontend polls every 3-5s."""
+    job = _decipher_jobs.get(job_id)
+    if not job:
+        return jsonify({'error': 'job not found (likely garbage-collected after 100 newer jobs)'}), 404
+    return jsonify({'ok': True, 'jobId': job_id, **job})
 
 
 @app.route('/api/agents/results', methods=['GET'])

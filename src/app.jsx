@@ -23765,30 +23765,65 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         body.fileName = decipherFile.fileName;
                                                         body.fileType = decipherFile.fileType;
                                                     }
-                                                    const res = await fetch(`${API_URL}/api/decipher`, {
+                                                    // Use DIRECT_API_URL to bypass Cloudflare's 100s idle timeout.
+                                                    // Backend now returns a jobId immediately and runs the
+                                                    // Anthropic call in a daemon thread; we poll for completion.
+                                                    const dispatchRes = await fetch(`${DIRECT_API_URL}/api/decipher`, {
                                                         method: 'POST',
                                                         headers: { 'Content-Type': 'application/json' },
                                                         body: JSON.stringify(body),
                                                     });
-                                                    const data = await res.json();
-                                                    if (!res.ok || data.error) {
-                                                        setDecipherError(data.error || `HTTP ${res.status}`);
-                                                    } else {
-                                                        const entry = {
-                                                            id: Date.now(),
-                                                            text: text,
-                                                            fileName: decipherFile?.fileName || null,
-                                                            ticker: decipherTicker || null,
-                                                            mode: data.mode || decipherMode,
-                                                            truncated: !!data.truncated,
-                                                            explanation: data.explanation || '',
-                                                            tokensIn: data.inputTokens,
-                                                            tokensOut: data.outputTokens,
-                                                            at: new Date().toISOString(),
-                                                        };
-                                                        setDecipherResult(entry);
-                                                        setDecipherHistory(prev => [entry, ...prev].slice(0, 20));
+                                                    const dispatch = await dispatchRes.json();
+                                                    if (!dispatchRes.ok || dispatch.error || !dispatch.jobId) {
+                                                        setDecipherError(dispatch.error || `Dispatch failed: HTTP ${dispatchRes.status}`);
+                                                        setDecipherLoading(false);
+                                                        return;
                                                     }
+                                                    const jobId = dispatch.jobId;
+                                                    // Poll until complete or failed. Walk-throughs can take
+                                                    // 3-8 min so cap at 12 min total. Poll every 4s.
+                                                    const pollInterval = 4000;
+                                                    const maxIterations = Math.ceil((12 * 60 * 1000) / pollInterval);
+                                                    let result = null;
+                                                    for (let i = 0; i < maxIterations; i++) {
+                                                        await new Promise(r => setTimeout(r, pollInterval));
+                                                        try {
+                                                            const r = await fetch(`${DIRECT_API_URL}/api/decipher/${jobId}`);
+                                                            if (!r.ok) continue; // transient error, keep trying
+                                                            const j = await r.json();
+                                                            if (j.status === 'complete') {
+                                                                result = j;
+                                                                break;
+                                                            }
+                                                            if (j.status === 'failed') {
+                                                                setDecipherError(j.error || 'Decipher job failed');
+                                                                setDecipherLoading(false);
+                                                                return;
+                                                            }
+                                                            // status is 'queued' or 'running' — keep polling
+                                                        } catch (e) {
+                                                            // Network blip on a single poll is fine — keep trying
+                                                        }
+                                                    }
+                                                    if (!result) {
+                                                        setDecipherError('Job timed out after 12 minutes. Backend may still be running — check Render logs.');
+                                                        setDecipherLoading(false);
+                                                        return;
+                                                    }
+                                                    const entry = {
+                                                        id: Date.now(),
+                                                        text: text,
+                                                        fileName: decipherFile?.fileName || null,
+                                                        ticker: decipherTicker || null,
+                                                        mode: result.mode || decipherMode,
+                                                        truncated: !!result.truncated,
+                                                        explanation: result.explanation || '',
+                                                        tokensIn: result.inputTokens,
+                                                        tokensOut: result.outputTokens,
+                                                        at: new Date().toISOString(),
+                                                    };
+                                                    setDecipherResult(entry);
+                                                    setDecipherHistory(prev => [entry, ...prev].slice(0, 20));
                                                 } catch (e) {
                                                     setDecipherError(String(e));
                                                 } finally {
