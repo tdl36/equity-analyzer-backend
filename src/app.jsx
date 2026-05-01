@@ -2088,6 +2088,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [showSummaryHistory, setShowSummaryHistory] = useState(false);
             const [currentSummaryTopic, setCurrentSummaryTopic] = useState(null); // Selected topic filter
             const [takeawaysExpanded, setTakeawaysExpanded] = useState(true);
+            const [briefExpanded, setBriefExpanded] = useState(true);  // Brief section default-open (it's the top tier)
             const [questionsExpanded, setQuestionsExpanded] = useState(true);
             const [editingTakeaways, setEditingTakeaways] = useState(false);
             const [editingQuestions, setEditingQuestions] = useState(false);
@@ -17187,6 +17188,77 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         )}
                                                     </button>
                                                 </div>
+
+                                                {/* BRIEF Section — top-tier scannable summary, sits ABOVE Key Takeaways.
+                                                    Read-only (no inline edit) since the audit/edit tier is Key Takeaways.
+                                                    Renders only when populated (older audio summaries pre-Brief have empty string). */}
+                                                {currentSummary.brief && (
+                                                    <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl border border-cyan-500/30 overflow-hidden">
+                                                        <div className="bg-cyan-500/15 backdrop-blur-lg border-b border-cyan-400/20 px-4 py-3 flex items-center gap-2">
+                                                            <button
+                                                                onClick={() => setBriefExpanded(!briefExpanded)}
+                                                                className="flex items-center gap-2 hover:opacity-80 transition-opacity flex-1 min-w-0"
+                                                            >
+                                                                <span className="text-lg flex-shrink-0">⚡</span>
+                                                                <h3 className="font-semibold text-cyan-300 whitespace-nowrap">Brief</h3>
+                                                                <span className="text-[10px] text-slate-500 uppercase tracking-wider">condensed · scannable in 3-5 min</span>
+                                                                <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform flex-shrink-0 ${briefExpanded ? 'rotate-180' : ''}`} />
+                                                            </button>
+                                                            <div className="flex items-center gap-1 flex-shrink-0">
+                                                                <button
+                                                                    onClick={async (e) => {
+                                                                        e.stopPropagation();
+                                                                        try {
+                                                                            const html = currentSummary.brief || '';
+                                                                            const text = html.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+                                                                            await navigator.clipboard.writeText(text);
+                                                                        } catch {}
+                                                                    }}
+                                                                    className="p-1.5 bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/10 rounded-lg transition-colors"
+                                                                    title="Copy Brief"
+                                                                >
+                                                                    <Copy className="w-4 h-4" />
+                                                                </button>
+                                                                <button
+                                                                    onClick={async (e) => {
+                                                                        e.stopPropagation();
+                                                                        const saved = localStorage.getItem('emailCredentials');
+                                                                        if (!saved) { alert('Set email credentials in Settings first'); return; }
+                                                                        let creds; try { creds = JSON.parse(saved); } catch { return; }
+                                                                        if (!creds.email) { alert('Set recipient email in Settings first'); return; }
+                                                                        try {
+                                                                            const r = await fetch(`${API_URL}/api/email-summary-section`, {
+                                                                                method: 'POST',
+                                                                                headers: { 'Content-Type': 'application/json' },
+                                                                                body: JSON.stringify({
+                                                                                    email: creds.email,
+                                                                                    subject: `Brief: ${currentSummary.title}`,
+                                                                                    section: 'brief',
+                                                                                    content: currentSummary.brief || '',
+                                                                                    title: currentSummary.title,
+                                                                                    topic: currentSummary.topic || 'General',
+                                                                                    smtpConfig: { use_gmail: creds.useGmail, gmail_user: creds.gmailUser, gmail_app_password: creds.gmailPassword, from_email: creds.gmailUser },
+                                                                                })
+                                                                            });
+                                                                            if (r.ok) alert('Brief emailed.');
+                                                                            else { const err = await r.json().catch(() => ({})); alert('Email failed: ' + (err.error || r.status)); }
+                                                                        } catch (err) { alert('Email error: ' + err.message); }
+                                                                    }}
+                                                                    className="p-1.5 bg-gradient-to-r from-cyan-500 to-cyan-600 hover:from-cyan-600 hover:to-cyan-700 rounded-lg transition-colors shadow-lg shadow-cyan-500/20"
+                                                                    title="Quick Email"
+                                                                >
+                                                                    <Mail className="w-4 h-4" />
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                        {briefExpanded && (
+                                                            <div
+                                                                className="p-6 summary-content"
+                                                                dangerouslySetInnerHTML={{ __html: typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(currentSummary.brief) : currentSummary.brief }}
+                                                            />
+                                                        )}
+                                                    </div>
+                                                )}
 
                                                 {/* KEY TAKEAWAYS Section - Collapsible */}
                                                 <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl border border-white/10 overflow-hidden">

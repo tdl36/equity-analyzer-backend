@@ -2332,6 +2332,10 @@ def init_db():
                                   WHERE table_name='meeting_summaries' AND column_name='meeting_summary') THEN
                         ALTER TABLE meeting_summaries ADD COLUMN meeting_summary TEXT DEFAULT '';
                     END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                  WHERE table_name='meeting_summaries' AND column_name='brief') THEN
+                        ALTER TABLE meeting_summaries ADD COLUMN brief TEXT DEFAULT '';
+                    END IF;
                 END $$;
             ''')
 
@@ -5379,7 +5383,7 @@ def get_summaries():
 
         with get_db() as (conn, cur):
             cur.execute('''
-                SELECT id, title, raw_notes, summary, questions, assessment, meeting_summary, topic, topic_type, source_type, source_files, doc_type, has_stored_files, categories, created_at
+                SELECT id, title, raw_notes, summary, questions, assessment, meeting_summary, brief, topic, topic_type, source_type, source_files, doc_type, has_stored_files, categories, created_at
                 FROM meeting_summaries
                 ORDER BY created_at DESC
             ''')
@@ -5395,6 +5399,7 @@ def get_summaries():
                 'questions': row['questions'],
                 'assessment': row.get('assessment') or '',
                 'meetingSummary': row.get('meeting_summary') or '',
+                'brief': row.get('brief') or '',
                 'topic': row.get('topic') or 'General',
                 'topicType': row.get('topic_type') or 'other',
                 'sourceType': row.get('source_type') or 'paste',
@@ -5433,8 +5438,8 @@ def save_summary():
 
         with get_db(commit=True) as (conn, cur):
             cur.execute('''
-                INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, assessment, meeting_summary, topic, topic_type, source_type, source_files, doc_type, categories, created_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, assessment, meeting_summary, brief, topic, topic_type, source_type, source_files, doc_type, categories, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (id)
                 DO UPDATE SET
                     title = EXCLUDED.title,
@@ -5443,6 +5448,7 @@ def save_summary():
                     questions = EXCLUDED.questions,
                     assessment = EXCLUDED.assessment,
                     meeting_summary = EXCLUDED.meeting_summary,
+                    brief = EXCLUDED.brief,
                     topic = EXCLUDED.topic,
                     topic_type = EXCLUDED.topic_type,
                     source_type = EXCLUDED.source_type,
@@ -5458,6 +5464,7 @@ def save_summary():
                 data.get('questions', ''),
                 data.get('assessment', ''),
                 data.get('meetingSummary', ''),
+                data.get('brief', ''),
                 data.get('topic', 'General'),
                 data.get('topicType', 'other'),
                 data.get('sourceType', 'paste'),
@@ -7116,6 +7123,96 @@ Be conversational and direct. Don't hedge.
             print(f"[auto-audio {job_id}] meeting_summary step failed (non-fatal): {e}")
             meeting_summary_html = ''
 
+        # === BRIEF (condensed Summary tier — sits ABOVE Key Takeaways in UI) ===
+        # Tightened mirror of the Key Takeaways tier: same Source-type
+        # classification + same domain-aware corrections (silently applied),
+        # but compressed to be scannable in 3-5 minutes. 6-8 one-sentence
+        # takeaways, every Q with a 1-3 sentence answer, no verbatim tags
+        # (those live in Key Takeaways), short Drill-Down. Ships the
+        # thesis_addendum if present so the Brief stays coherent with the
+        # Thesis Check section in the full tier.
+        brief_system_prompt = """ROLE
+You are an equity analyst's research assistant producing the condensed "Summary" tier of a two-tier meeting note. A separate process produces the exhaustive "Key Takeaways" tier with full verbatim source tags, hedge preservation, and audit infrastructure. Your job is the tightened mirror of that tier — same structure, compressed content, scannable in 3-5 minutes.
+
+The Brief tier is what an analyst reads when revisiting the meeting weeks later, scanning a meeting before the next one, or sharing with a colleague who needs the substance without the audit trail.
+
+INPUTS
+You will receive a raw transcript of an investor meeting. Apply the same domain-aware reading and Step 0 classification as the full-tier prompt (INVESTOR/PUBLIC vs MGMT 1:1 vs INTERNAL).
+
+Apply the same domain-aware transcript correction (silently fix Bucket A errors, correct domain proper nouns, recognize transcription artifacts in dates and numbers). Corrections are NOT logged in this tier — the audit trail lives in the Key Takeaways tier.
+
+OUTPUT STRUCTURE — return raw HTML, no markdown, no code fences
+
+<h1>Brief</h1>
+<p style="font-size:0.85em;color:#888;font-style:italic">Source type: [INVESTOR/PUBLIC | MGMT 1:1 | INTERNAL] — [one-line justification]</p>
+
+<h2>Takeaways</h2>
+6-8 takeaways as <p> blocks. Each:
+<p><strong>[CONCEPT TAG] Lead phrase:</strong> Single sentence stating the substance, including any number that materially anchors the point.</p>
+
+Concept tags (use one per takeaway): [MARGIN TRAJECTORY] [CAPITAL ALLOCATION] [GUIDANCE] [PROGRAM MILESTONE] [CAPACITY/THROUGHPUT] [SUPPLY CHAIN] [LABOR/WORKFORCE] [REGULATORY] [COMPETITIVE POSITIONING] [M&A] [CASH/WORKING CAPITAL] [TAX] [MACRO/POLICY] [TECHNOLOGY/AI] [DEMAND/ORDERS] [RISK FLAG] [OTHER]
+
+Compress aggressively. Hedges implied through word choice ("targeting" vs "expects" vs "hopes"). NO verbatim quote tags — those live in Key Takeaways.
+
+Selection: items that change a model line, change the thesis, or where management's posture differs from prior communications. Drop housekeeping (tax rate, day-count, generic CR commentary) unless materially different. Drop items confirming prior commentary without new information. If fewer than 6 high-signal items exist, write fewer bullets.
+
+<h2>Q&amp;A</h2>
+Every Q&amp;A exchange in transcript order, answers tightened to 1-3 sentences each. Format:
+<p><strong>Q: [question, one sentence]</strong></p>
+<p>A: [answer, 1-3 sentences containing only load-bearing content]</p>
+
+Compression rules:
+- Keep every Q from the transcript. Do not merge or skip.
+- Each A retains: all numbers, all dates, all hedges, all caveats, all non-answers ("we don't disclose," "I can't speak to that"), all specific examples that carry signal.
+- Each A removes: rhetorical restatement (when mgmt makes the same point three times in different words, render once), throat-clearing preambles ("yeah I mean so the way I look at it"), trailing reassurances that restate something earlier in the answer.
+- Clarifying-followup exchanges ("just to clarify, did you mean X?" / "yes, that's what I was trying to say") are preserved in full.
+- Use management's words and sentence structure. Do not paraphrase into your own voice.
+- Target: a typical answer is one to three sentences. Long, multi-point answers can run longer if substance demands.
+
+<h2>Drill-Down</h2>
+Three sub-sections, each 3-5 single-line entries.
+
+<h3>Known Unknowns</h3>
+Topics where management was evasive. One <p> each: "topic — what to chase next."
+
+<h3>Watch Items</h3>
+Specific data points or events that will resolve current ambiguity. One <p> each: "item — when it resolves."
+
+<h3>Tone Notes</h3>
+Posture signals anchored to specific moments. One <p> each, plain language. If nothing meets the bar, write: "No material posture signals beyond hedges noted in Takeaways."
+
+HARD RULES
+1. NO INVENTION. Every claim traceable to the transcript.
+2. NO QUANTITATIVE TIGHTENING. "Teens" stays "teens." "Around 100%" stays "around 100%."
+3. PRESERVE HEDGES THROUGH WORD CHOICE. "Hopes" ≠ "expects" ≠ "targets" ≠ "is confident."
+4. PRESERVE SEGMENT ATTRIBUTION. Tighten content, never blur which segment a number belongs to.
+5. APPLY TRANSCRIPT CORRECTIONS SILENTLY. No Corrections Log here — that lives in Key Takeaways tier.
+6. THIS TIER IS NOT INDEPENDENT TRUTH. Every claim must be supported by content the Key Takeaways tier will surface with verbatim tags.
+
+SELF-CHECK BEFORE RETURNING
+- Did I preserve every Q from the transcript?
+- Are all numbers, dates, and quantitative comparisons preserved exactly?
+- Did I tighten any vague language ("teens" → "low teens")?
+- Are segment-specific numbers correctly attributed?
+- Did I drop hedges or convert them into stronger claims?
+- Is each takeaway one sentence?
+- Are clarifying-followup Q&A exchanges intact?
+- Are tone notes anchored to specific moments?
+
+OUTPUT FORMAT: raw HTML only. No markdown. No code fences."""
+
+        try:
+            brief_result = _call_llm_stream_with_retry(
+                messages=[{"role": "user", "content": f"Process the transcript per your instructions. Return only the Brief HTML.\n\nTRANSCRIPT:\n{transcript[:200000]}"}],
+                system=brief_system_prompt,
+                tier="standard", max_tokens=12288, api_key=anthropic_api_key,
+                label=f"audio brief ({filename})",
+            )
+            brief_html = brief_result.get('text', '') or ''
+        except Exception as e:
+            print(f"[auto-audio {job_id}] brief step failed (non-fatal): {e}")
+            brief_html = ''
+
         # Step 3: Save to DB. Use source_type='audio' to match existing bucket
         # the Summary tab already displays (prior version wrote 'audio_recording'
         # which Summary tab filters would miss).
@@ -7123,9 +7220,9 @@ Be conversational and direct. Don't hedge.
         summary_id = str(uuid.uuid4())
         with get_db(commit=True) as (conn, cur):
             cur.execute('''
-                INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, assessment, meeting_summary, source_type, doc_type, created_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, 'audio', 'audio', NOW())
-            ''', (summary_id, title, transcript, summary_html, questions_html, assessment_html, meeting_summary_html))
+                INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, assessment, meeting_summary, brief, source_type, doc_type, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'audio', 'audio', NOW())
+            ''', (summary_id, title, transcript, summary_html, questions_html, assessment_html, meeting_summary_html, brief_html))
         # Invalidate cache so the new entry shows up immediately in /api/summaries
         try: cache.invalidate('summaries')
         except Exception: pass
