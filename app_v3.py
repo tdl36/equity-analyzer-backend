@@ -6772,6 +6772,15 @@ Use: <h2>Section Title</h2>, <p><strong>Topic:</strong> Description.</p>, <ul><l
         # If found AND an analyst covers it AND has a registered thesis, pull
         # the thesis_block to inject. If anything is missing, no injection —
         # the prompt runs in vanilla mode.
+        # Audio files come in two flavors: ticker-keyed (e.g. "ABBV Post 1Q26
+        # chat", "HUM CFO ...") AND fully generic (e.g. "Chat w: Andy -
+        # 042926", "Roy Batty - EIQ April 2026", "Expert call - Dinner notes").
+        # Thesis injection is OPTIONAL and only fires when ALL of the
+        # following hold: filename starts with an UPPERCASE 2-5 char alpha
+        # token, that token isn't a common false-positive word, an analyst
+        # covers it, AND the analyst has a registered thesis for it.
+        # In any other case we silently fall through to the vanilla equity-
+        # analyst spec — generic audio files keep working unchanged.
         audio_ticker = ''
         thesis_block = ''
         try:
@@ -6780,8 +6789,19 @@ Use: <h2>Section Title</h2>, <p><strong>Topic:</strong> Description.</p>, <ul><l
             m = _re.match(r'^[\s\-_]*([A-Z]{2,5})\b', base)
             if m:
                 cand = m.group(1)
-                # Filter common false-positives that look like tickers but aren't
-                if cand not in ('THE', 'AND', 'FOR', 'WITH', 'NEW', 'OLD', 'POST', 'PRE'):
+                # Conversational / generic words that match the regex but
+                # aren't tickers. Keeps the path fast for the common case
+                # of "Chat w: ..." / "Call with ..." / "Dinner with ...".
+                _NOT_TICKERS = {
+                    'THE', 'AND', 'FOR', 'WITH', 'NEW', 'OLD', 'POST', 'PRE',
+                    'CHAT', 'CALL', 'MTG', 'MTGS', 'MEETING', 'MEET', 'SYNC',
+                    'EXPERT', 'DINNER', 'LUNCH', 'BREAKFAST', 'COFFEE',
+                    'INTERVIEW', 'NDR', 'IR', 'MGMT', 'CEO', 'CFO', 'COO',
+                    'NOTES', 'NOTE', 'AUDIO', 'REC', 'TODO', 'INTRO',
+                    'DRAFT', 'TEST', 'DEMO', 'TODAY', 'TOMORROW',
+                    'MORNING', 'EVENING', 'WEEKLY', 'DAILY', 'OFFSITE',
+                }
+                if cand not in _NOT_TICKERS:
                     audio_ticker = cand
             if audio_ticker:
                 with get_db() as (_, cur):
@@ -6795,8 +6815,16 @@ Use: <h2>Section Title</h2>, <p><strong>Topic:</strong> Description.</p>, <ul><l
                     try: pb = json.loads(pb)
                     except Exception: pb = None
                 thesis_block = _render_thesis_block(pb, audio_ticker)
+                # Visible breadcrumb in the agent log so user can tell whether
+                # thesis injection fired for any given audio file.
+                if thesis_block:
+                    print(f'[auto-audio {job_id}] thesis injection ON for {audio_ticker} (file={filename})')
+                else:
+                    print(f'[auto-audio {job_id}] ticker {audio_ticker} extracted from filename but no thesis registered — running vanilla mode')
+            else:
+                print(f'[auto-audio {job_id}] no ticker extracted from filename (file={filename}) — running vanilla mode')
         except Exception as e:
-            print(f'[auto-audio {job_id}] thesis lookup failed: {e}')
+            print(f'[auto-audio {job_id}] thesis lookup failed (continuing in vanilla mode): {e}')
 
         # Build the thesis-aware addendum that goes INTO the system prompt
         # with very strict separation rules to avoid the model conflating
