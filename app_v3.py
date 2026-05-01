@@ -6765,6 +6765,90 @@ def _run_auto_process_audio(job_id, file_content, filename, mime_type, gemini_ap
         html_format = """OUTPUT FORMAT — Return raw HTML. No markdown. No code fences.
 Use: <h2>Section Title</h2>, <p><strong>Topic:</strong> Description.</p>, <ul><li>Sub-point</li></ul>"""
 
+        # === Thesis injection (Feature A) ===
+        # Try to extract a ticker from the filename (e.g. "ABBV Post 1Q26 chat...",
+        # "HUM CFO Post 1Q26 Chat", "DHR IR DINNER 042926"). Pattern: first
+        # whitespace/dash-delimited 2-5 char UPPERCASE alpha token at the start.
+        # If found AND an analyst covers it AND has a registered thesis, pull
+        # the thesis_block to inject. If anything is missing, no injection —
+        # the prompt runs in vanilla mode.
+        audio_ticker = ''
+        thesis_block = ''
+        try:
+            import re as _re
+            base = os.path.splitext(filename)[0]
+            m = _re.match(r'^[\s\-_]*([A-Z]{2,5})\b', base)
+            if m:
+                cand = m.group(1)
+                # Filter common false-positives that look like tickers but aren't
+                if cand not in ('THE', 'AND', 'FOR', 'WITH', 'NEW', 'OLD', 'POST', 'PRE'):
+                    audio_ticker = cand
+            if audio_ticker:
+                with get_db() as (_, cur):
+                    cur.execute(
+                        "SELECT playbook FROM analysts WHERE %s = ANY(coverage_tickers) LIMIT 1",
+                        (audio_ticker,)
+                    )
+                    a_row = cur.fetchone()
+                pb = (a_row or {}).get('playbook') if a_row else None
+                if isinstance(pb, str):
+                    try: pb = json.loads(pb)
+                    except Exception: pb = None
+                thesis_block = _render_thesis_block(pb, audio_ticker)
+        except Exception as e:
+            print(f'[auto-audio {job_id}] thesis lookup failed: {e}')
+
+        # Build the thesis-aware addendum that goes INTO the system prompt
+        # with very strict separation rules to avoid the model conflating
+        # the user's pre-registered view with what was actually said in the
+        # transcript. (Tony's explicit concern.)
+        thesis_addendum = ''
+        if thesis_block:
+            thesis_addendum = f"""
+
+================================================================================
+USER'S PRE-REGISTERED COVERAGE THESIS (CONTEXT ONLY — NOT A SOURCE)
+================================================================================
+{thesis_block}
+
+CRITICAL — STRICT SEPARATION RULES (NON-NEGOTIABLE):
+The block above is the USER'S PERSONAL VIEW on {audio_ticker}, registered ahead
+of this transcript. It is NOT a source document. It is NOT something that was
+discussed in the call. It is YOUR CONTEXT for understanding what to flag in the
+transcript — nothing more.
+
+YOU MUST:
+1. NEVER attribute thesis pillars or signposts to anyone in the transcript
+   ("Management said the bull case is X" — only if they literally said it).
+2. NEVER write thesis content as if it were facts that emerged from the call.
+3. NEVER blend the user's bull/bear pillars into Key Takeaways or Q&A Log.
+   Those sections are PURELY about what was said in the transcript.
+4. Use the thesis ONLY for ONE specific purpose: a NEW dedicated section
+   added at the END titled "Thesis Check" (described below).
+
+NEW SECTION (added to the output structure, AFTER Transcript Corrections Log):
+
+<h1>Thesis Check</h1>
+<p style="font-size:0.85em;color:#888;font-style:italic">Mapping of transcript content to user's pre-registered {audio_ticker} thesis. The user's thesis is NOT presented as fact — only the mapping below references it; everything in Key Takeaways and Q&amp;A Log above is purely transcript content.</p>
+
+<h2>Bull pillars</h2>
+For each bull pillar in the user's thesis: one <p> assessing whether transcript content CONFIRMED / WEAKENED / NO MENTION. Format:
+<p><strong>Pillar:</strong> [pillar text quoted from user's thesis]</p>
+<p><strong>Verdict:</strong> CONFIRMED / WEAKENED / NO MENTION</p>
+<p><strong>Evidence from transcript:</strong> Cite specific takeaway numbers / Q&amp;A exchanges that bear on this pillar, with verbatim tag. If verdict is NO MENTION, write "Not addressed in this transcript."</p>
+
+<h2>Bear pillars</h2>
+Same format for each bear pillar.
+
+<h2>Signposts tripped</h2>
+For each signpost the user is tracking: was it touched in the transcript?
+<p><strong>Signpost:</strong> [signpost text]</p>
+<p><strong>Touched:</strong> YES (with verbatim tag) / NO</p>
+
+HARD RULE: Never put thesis-derived content in Key Takeaways or Q&amp;A Log. Those
+sections come from the transcript only. Thesis Check is the ONLY place where
+the user's pre-registered view appears."""
+
         # Key Takeaways summary (summary column) — full equity-analyst spec.
         # System prompt encodes the role / classification / correction logic /
         # output structure / hard rules / tagging conventions / self-check.
@@ -6887,7 +6971,33 @@ SELF-CHECK BEFORE RETURNING (run silently, then output)
 9. Are Tone/Posture notes anchored to verbatim quotes, or did I drift into mood music?
 
 OUTPUT FORMAT
-Return raw HTML only. No markdown. No code fences. Use the tags shown in STEP 2."""
+Return raw HTML only. No markdown. No code fences. Use the tags shown in STEP 2.
+
+================================================================================
+HALLUCINATION GUARD RAIL (Feature B — non-negotiable)
+================================================================================
+After drafting your output but BEFORE returning, run this verification pass:
+
+1. Scan your output for every NAMED ENTITY: person names, executive titles,
+   product/program names, drug names, ticker symbols, peer company names,
+   geographies, regulatory programs, named clinical trials.
+2. For EACH named entity in your output: search the source transcript for that
+   exact entity (allowing for case + Bucket A/B corrections you made in STEP 1).
+3. If a named entity in your output does NOT appear in the source transcript:
+   - Either remove it entirely, OR
+   - Mark it inline with [unverified — not in transcript] so the user can audit.
+4. Same check for every NUMBER: percentages, dollar amounts, dates, counts,
+   ratios, basis points, magnitudes. Each number in your output must trace to
+   a number actually said in the transcript. If you cannot find the source
+   number, either remove the claim or mark [unverified — number not in
+   transcript].
+5. Do NOT hallucinate from general knowledge of the company. If management
+   didn't say it in this transcript, don't put it in the output — even if you
+   know it to be true from prior earnings, news, or industry context.
+
+The verbatim quote tagging system above is your built-in self-check: every
+numeric claim should already have a (verbatim: "...") tag. If you wrote a
+numeric claim and can't write a verbatim tag for it, the claim doesn't belong.{thesis_addendum}"""
 
         # User-facing instruction is now minimal — the system prompt does
         # all the heavy lifting per Tony's full spec.
