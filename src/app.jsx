@@ -1484,6 +1484,21 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [decipherTicker, setDecipherTicker] = useState('');
             const [decipherMode, setDecipherMode] = useState('synthesize'); // 'synthesize' | 'walkthrough'
             const [decipherLoading, setDecipherLoading] = useState(false);
+            const [decipherStartedAt, setDecipherStartedAt] = useState(null);
+            const [decipherElapsedSec, setDecipherElapsedSec] = useState(0);
+            // Tick the elapsed-time counter every second while a Decipher job
+            // is in flight so the user can see real progress instead of a
+            // static "Walking through…" string for 8 minutes.
+            React.useEffect(() => {
+                if (!decipherLoading || !decipherStartedAt) {
+                    setDecipherElapsedSec(0);
+                    return;
+                }
+                const id = setInterval(() => {
+                    setDecipherElapsedSec(Math.floor((Date.now() - decipherStartedAt) / 1000));
+                }, 1000);
+                return () => clearInterval(id);
+            }, [decipherLoading, decipherStartedAt]);
             const [decipherError, setDecipherError] = useState(null);
             const [decipherResult, setDecipherResult] = useState(null);
             const [decipherHistory, setDecipherHistory] = useState([]);  // session-only, no backend persistence in v1
@@ -23753,6 +23768,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     return;
                                                 }
                                                 setDecipherLoading(true);
+                                                setDecipherStartedAt(Date.now());
                                                 setDecipherError(null);
                                                 try {
                                                     const body = {
@@ -23933,15 +23949,37 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         )}
                                                     </div>
 
-                                                    {decipherLoading && (
-                                                        <div className="bg-white/[0.03] border border-amber-500/20 rounded-xl p-6 text-center">
-                                                            <div className="text-amber-400 text-sm">
-                                                                {decipherMode === 'walkthrough'
-                                                                    ? 'Walking through document sentence by sentence… 3-8 min on Opus 4-7 depending on transcript length.'
-                                                                    : 'Reading and explaining… typically 30-60s on Opus 4-7.'}
+                                                    {decipherLoading && (() => {
+                                                        // Expected duration for the progress bar
+                                                        const expectedSec = decipherMode === 'walkthrough' ? 240 : 45;
+                                                        const pct = Math.min(99, Math.round((decipherElapsedSec / expectedSec) * 100));
+                                                        const mm = Math.floor(decipherElapsedSec / 60);
+                                                        const ss = decipherElapsedSec % 60;
+                                                        const elapsedStr = mm > 0 ? `${mm}m ${ss}s` : `${ss}s`;
+                                                        return (
+                                                            <div className="bg-white/[0.03] border border-amber-500/30 rounded-xl p-6">
+                                                                <div className="flex items-center gap-3 mb-3">
+                                                                    {/* Animated spinner */}
+                                                                    <svg className="animate-spin w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24">
+                                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                                                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                                                    </svg>
+                                                                    <div className="flex-1">
+                                                                        <div className="text-amber-400 text-sm font-medium">
+                                                                            {decipherMode === 'walkthrough' ? 'Walking through document…' : 'Reading and explaining…'}
+                                                                        </div>
+                                                                        <div className="text-xs text-slate-400 mt-0.5">
+                                                                            {elapsedStr} elapsed · expected ~{decipherMode === 'walkthrough' ? '3-8 min' : '30-60s'} on Opus 4-7
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+                                                                    <div className="h-full bg-amber-500 transition-all duration-1000" style={{ width: `${pct}%` }} />
+                                                                </div>
+                                                                <p className="mt-2 text-[10px] text-slate-500">You can switch tabs — this keeps running in the background. Don't close the page.</p>
                                                             </div>
-                                                        </div>
-                                                    )}
+                                                        );
+                                                    })()}
 
                                                     {decipherResult && !decipherLoading && (
                                                         <div className="bg-white/[0.03] border border-amber-500/30 rounded-xl p-5">
