@@ -1485,6 +1485,21 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [decipherMode, setDecipherMode] = useState('synthesize'); // 'synthesize' | 'walkthrough'
             const [decipherLoading, setDecipherLoading] = useState(false);
             const [decipherStartedAt, setDecipherStartedAt] = useState(null);
+            // Save / catalog / email state for Decipher results.
+            // savedIds maps result.id -> persisted summary_id once saved, so the
+            // Save button flips to "Saved ✓" instead of disappearing.
+            const [decipherSavedIds, setDecipherSavedIds] = useState({});
+            const [decipherSavingId, setDecipherSavingId] = useState(null);
+            const [decipherToast, setDecipherToast] = useState(null);
+            const [decipherCatalogOpen, setDecipherCatalogOpen] = useState(null); // entry being cataloged
+            const [decipherCatalogTitle, setDecipherCatalogTitle] = useState('');
+            const [decipherCatalogTicker, setDecipherCatalogTicker] = useState('');
+            const [decipherCatalogTopic, setDecipherCatalogTopic] = useState('');
+            React.useEffect(() => {
+                if (!decipherToast) return;
+                const t = setTimeout(() => setDecipherToast(null), 3000);
+                return () => clearTimeout(t);
+            }, [decipherToast]);
             const [decipherElapsedSec, setDecipherElapsedSec] = useState(0);
             // Tick the elapsed-time counter every second while a Decipher job
             // is in flight so the user can see real progress instead of a
@@ -16867,7 +16882,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                         {selectedSummaryIds.has(summary.id) && <Check className="w-3 h-3 text-white" />}
                                                                     </div>
                                                                 )}
-                                                                {summary.sourceType === 'audio' ? (
+                                                                {summary.sourceType === 'decipher' ? (
+                                                                    <span className="text-cyan-400 flex-shrink-0 mt-0.5 text-base leading-none" title="Decipher result">🔍</span>
+                                                                ) : summary.sourceType === 'audio' ? (
                                                                     <Mic className="w-4 h-4 text-purple-400 flex-shrink-0 mt-0.5" />
                                                                 ) : summary.sourceType === 'upload' ? (
                                                                     <Upload className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
@@ -23992,14 +24009,197 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                     {decipherResult.tokensOut && <span className="text-slate-600">· {decipherResult.tokensIn}→{decipherResult.tokensOut} tok</span>}
                                                                     {decipherResult.truncated && <span className="px-2 py-0.5 bg-red-500/20 text-red-300 rounded text-[10px] uppercase tracking-wider font-semibold" title="Output hit max_tokens cap mid-response. Re-run with a smaller selection or contact dev.">Truncated</span>}
                                                                 </div>
-                                                                <button
-                                                                    onClick={async () => {
-                                                                        try { await navigator.clipboard.writeText(decipherResult.explanation); } catch {}
-                                                                    }}
-                                                                    className="text-[10px] px-2 py-1 bg-white/10 hover:bg-white/20 rounded"
-                                                                >Copy</button>
+                                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                                    {/* Save: persists to meeting_summaries with source_type='decipher'.
+                                                                        Shows in Summary tab list with a 'decipher' badge.
+                                                                        Idempotent — flips to "Saved ✓" once persisted (uses ON CONFLICT). */}
+                                                                    <button
+                                                                        onClick={async () => {
+                                                                            const r = decipherResult;
+                                                                            const existingId = decipherSavedIds[r.id];
+                                                                            const summaryId = existingId || `decipher-${r.id}`;
+                                                                            setDecipherSavingId(r.id);
+                                                                            try {
+                                                                                const titleGuess = r.fileName?.replace(/\.[^.]+$/, '') ||
+                                                                                                    (r.text || '').split('\n')[0].slice(0, 80) ||
+                                                                                                    `Decipher ${new Date(r.at).toLocaleString()}`;
+                                                                                const res = await fetch(`${API_URL}/api/save-summary`, {
+                                                                                    method: 'POST',
+                                                                                    headers: { 'Content-Type': 'application/json' },
+                                                                                    body: JSON.stringify({
+                                                                                        id: summaryId,
+                                                                                        title: r.ticker ? `${r.ticker} — ${titleGuess}` : titleGuess,
+                                                                                        rawNotes: r.text || (r.fileName ? `[PDF: ${r.fileName}]` : ''),
+                                                                                        summary: r.explanation || '',
+                                                                                        sourceType: 'decipher',
+                                                                                        topic: r.ticker || 'General',
+                                                                                        topicType: 'decipher',
+                                                                                        docType: r.mode || 'synthesize',
+                                                                                        createdAt: r.at,
+                                                                                    })
+                                                                                });
+                                                                                if (res.ok) {
+                                                                                    setDecipherSavedIds(s => ({ ...s, [r.id]: summaryId }));
+                                                                                    setDecipherToast({ text: existingId ? 'Updated ✓' : 'Saved to Summary tab ✓', kind: 'ok' });
+                                                                                } else {
+                                                                                    const err = await res.json().catch(() => ({}));
+                                                                                    setDecipherToast({ text: 'Save failed: ' + (err.error || res.status), kind: 'err' });
+                                                                                }
+                                                                            } catch (e) {
+                                                                                setDecipherToast({ text: 'Save error: ' + e.message, kind: 'err' });
+                                                                            } finally {
+                                                                                setDecipherSavingId(null);
+                                                                            }
+                                                                        }}
+                                                                        disabled={decipherSavingId === decipherResult.id}
+                                                                        className={`text-[10px] px-2 py-1 rounded font-medium ${decipherSavedIds[decipherResult.id] ? 'bg-emerald-600/30 text-emerald-300 hover:bg-emerald-600/40' : 'bg-amber-600 hover:bg-amber-500 text-white'}`}
+                                                                        title="Save to Summary tab — searchable, taggable, exportable"
+                                                                    >{decipherSavingId === decipherResult.id ? 'Saving…' : (decipherSavedIds[decipherResult.id] ? 'Saved ✓' : '💾 Save')}</button>
+
+                                                                    {/* Catalog: open dialog to set title / ticker / topic before saving */}
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            const r = decipherResult;
+                                                                            const titleGuess = r.fileName?.replace(/\.[^.]+$/, '') ||
+                                                                                                (r.text || '').split('\n')[0].slice(0, 80) ||
+                                                                                                `Decipher ${new Date(r.at).toLocaleString()}`;
+                                                                            setDecipherCatalogTitle(titleGuess);
+                                                                            setDecipherCatalogTicker(r.ticker || '');
+                                                                            setDecipherCatalogTopic('');
+                                                                            setDecipherCatalogOpen(r);
+                                                                        }}
+                                                                        className="text-[10px] px-2 py-1 bg-cyan-600/30 hover:bg-cyan-600/40 text-cyan-200 rounded font-medium"
+                                                                        title="Save with custom title, ticker, and topic"
+                                                                    >📂 Catalog…</button>
+
+                                                                    {/* Email: uses the Summary tab's email infrastructure (/api/email-summary-section). */}
+                                                                    <button
+                                                                        onClick={async () => {
+                                                                            const saved = localStorage.getItem('emailCredentials');
+                                                                            if (!saved) {
+                                                                                setDecipherToast({ text: 'Set email credentials in Settings first', kind: 'err' });
+                                                                                return;
+                                                                            }
+                                                                            let creds; try { creds = JSON.parse(saved); } catch {
+                                                                                setDecipherToast({ text: 'Invalid email credentials', kind: 'err' }); return;
+                                                                            }
+                                                                            if (!creds.email) {
+                                                                                setDecipherToast({ text: 'Set recipient email in Settings first', kind: 'err' });
+                                                                                return;
+                                                                            }
+                                                                            const r = decipherResult;
+                                                                            const subj = r.ticker ? `Decipher: ${r.ticker} — ${(r.fileName || (r.text || '').slice(0, 60))}` : `Decipher: ${(r.fileName || (r.text || '').slice(0, 60))}`;
+                                                                            try {
+                                                                                const resp = await fetch(`${API_URL}/api/email-summary-section`, {
+                                                                                    method: 'POST',
+                                                                                    headers: { 'Content-Type': 'application/json' },
+                                                                                    body: JSON.stringify({
+                                                                                        email: creds.email,
+                                                                                        subject: subj,
+                                                                                        section: 'decipher',
+                                                                                        content: r.explanation || '',
+                                                                                        title: subj,
+                                                                                        topic: r.ticker || 'General',
+                                                                                        smtpConfig: {
+                                                                                            use_gmail: creds.useGmail,
+                                                                                            gmail_user: creds.gmailUser,
+                                                                                            gmail_app_password: creds.gmailPassword,
+                                                                                            from_email: creds.gmailUser,
+                                                                                        },
+                                                                                    })
+                                                                                });
+                                                                                if (resp.ok) setDecipherToast({ text: 'Emailed ✓', kind: 'ok' });
+                                                                                else {
+                                                                                    const err = await resp.json().catch(() => ({}));
+                                                                                    setDecipherToast({ text: 'Email failed: ' + (err.error || resp.status), kind: 'err' });
+                                                                                }
+                                                                            } catch (e) {
+                                                                                setDecipherToast({ text: 'Email error: ' + e.message, kind: 'err' });
+                                                                            }
+                                                                        }}
+                                                                        className="text-[10px] px-2 py-1 bg-purple-600/30 hover:bg-purple-600/40 text-purple-200 rounded font-medium"
+                                                                        title="Email to your configured recipient"
+                                                                    >✉ Email</button>
+
+                                                                    <button
+                                                                        onClick={async () => {
+                                                                            try {
+                                                                                await navigator.clipboard.writeText(decipherResult.explanation);
+                                                                                setDecipherToast({ text: 'Copied ✓', kind: 'ok' });
+                                                                            } catch { setDecipherToast({ text: 'Copy failed', kind: 'err' }); }
+                                                                        }}
+                                                                        className="text-[10px] px-2 py-1 bg-white/10 hover:bg-white/20 rounded"
+                                                                    >Copy</button>
+                                                                </div>
                                                             </div>
+                                                            {decipherToast && (
+                                                                <div className={`mb-3 px-3 py-1.5 rounded text-xs ${decipherToast.kind === 'err' ? 'bg-red-500/20 text-red-300' : 'bg-emerald-500/20 text-emerald-300'}`}>
+                                                                    {decipherToast.text}
+                                                                </div>
+                                                            )}
                                                             <div className="prose prose-invert prose-sm max-w-none text-slate-100" dangerouslySetInnerHTML={{ __html: renderMarkdown(decipherResult.explanation) }} />
+                                                        </div>
+                                                    )}
+
+                                                    {/* Catalog dialog — set title/ticker/topic before saving */}
+                                                    {decipherCatalogOpen && (
+                                                        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4" onClick={() => setDecipherCatalogOpen(null)}>
+                                                            <div className="bg-neutral-900 border border-white/10 rounded-xl w-full max-w-md p-5 space-y-3" onClick={e => e.stopPropagation()}>
+                                                                <h3 className="font-bold text-lg">Catalog Decipher result</h3>
+                                                                <p className="text-xs text-slate-400">Save to Summary tab with custom title, ticker, and topic.</p>
+                                                                <div>
+                                                                    <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Title</label>
+                                                                    <input type="text" value={decipherCatalogTitle} onChange={e => setDecipherCatalogTitle(e.target.value)} className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded text-sm text-slate-200" />
+                                                                </div>
+                                                                <div className="grid grid-cols-2 gap-2">
+                                                                    <div>
+                                                                        <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Ticker</label>
+                                                                        <input type="text" value={decipherCatalogTicker} onChange={e => setDecipherCatalogTicker(e.target.value.toUpperCase())} placeholder="e.g. AMT" className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded text-sm font-mono text-slate-200" />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Topic / Category</label>
+                                                                        <input type="text" value={decipherCatalogTopic} onChange={e => setDecipherCatalogTopic(e.target.value)} placeholder="e.g. Tower REIT primer" className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded text-sm text-slate-200" />
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex justify-end gap-2 pt-2">
+                                                                    <button onClick={() => setDecipherCatalogOpen(null)} className="px-3 py-1.5 text-xs text-slate-400 hover:text-white">Cancel</button>
+                                                                    <button
+                                                                        onClick={async () => {
+                                                                            const r = decipherCatalogOpen;
+                                                                            const summaryId = decipherSavedIds[r.id] || `decipher-${r.id}`;
+                                                                            try {
+                                                                                const res = await fetch(`${API_URL}/api/save-summary`, {
+                                                                                    method: 'POST',
+                                                                                    headers: { 'Content-Type': 'application/json' },
+                                                                                    body: JSON.stringify({
+                                                                                        id: summaryId,
+                                                                                        title: decipherCatalogTitle.trim() || 'Decipher',
+                                                                                        rawNotes: r.text || (r.fileName ? `[PDF: ${r.fileName}]` : ''),
+                                                                                        summary: r.explanation || '',
+                                                                                        sourceType: 'decipher',
+                                                                                        topic: decipherCatalogTopic.trim() || decipherCatalogTicker.trim() || 'General',
+                                                                                        topicType: 'decipher',
+                                                                                        docType: r.mode || 'synthesize',
+                                                                                        categories: decipherCatalogTicker.trim() ? [decipherCatalogTicker.trim()] : [],
+                                                                                        createdAt: r.at,
+                                                                                    })
+                                                                                });
+                                                                                if (res.ok) {
+                                                                                    setDecipherSavedIds(s => ({ ...s, [r.id]: summaryId }));
+                                                                                    setDecipherToast({ text: 'Cataloged ✓', kind: 'ok' });
+                                                                                    setDecipherCatalogOpen(null);
+                                                                                } else {
+                                                                                    const err = await res.json().catch(() => ({}));
+                                                                                    setDecipherToast({ text: 'Save failed: ' + (err.error || res.status), kind: 'err' });
+                                                                                }
+                                                                            } catch (e) {
+                                                                                setDecipherToast({ text: 'Save error: ' + e.message, kind: 'err' });
+                                                                            }
+                                                                        }}
+                                                                        className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium rounded-lg"
+                                                                    >Save</button>
+                                                                </div>
+                                                            </div>
                                                         </div>
                                                     )}
 
