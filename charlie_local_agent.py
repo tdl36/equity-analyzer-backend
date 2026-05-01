@@ -2518,6 +2518,10 @@ def _wait_for_audio_job_and_move(fname: str, fpath: Path, job_id: str) -> None:
                             log.info(f"Audio complete: {fname} (job {job_id})")
                     except Exception as e:
                         log.warning(f"Move to Processed/ failed for {fname}: {e}")
+                    # Notify Telegram on completion (mirrors the earnings recap
+                    # start/complete pattern). Visible in user's chat as soon as
+                    # the summary lands in the DB.
+                    notify(f"*Audio summary ready:* {fname}")
                     # Also remove from known-files so a re-dropped version
                     # next time will fire a fresh job
                     try:
@@ -2528,6 +2532,7 @@ def _wait_for_audio_job_and_move(fname: str, fpath: Path, job_id: str) -> None:
                 if status in ('error', 'failed'):
                     err = js.get('error') or 'unknown'
                     log.warning(f"Audio job {job_id} failed for {fname}: {err[:200]}. Leaving file for next-tick retry.")
+                    notify(f"*Audio summary FAILED:* {fname}\n{err[:200]}")
                     try:
                         _known_audio_files.discard(fname)
                     except Exception:
@@ -2673,10 +2678,15 @@ def check_for_new_audio():
                             data = res.json()
                             jid = data.get('jobId', '?')
                             log.info(f"Audio auto-process started: {fn} (job {jid})")
+                            # Notify Telegram on start so user knows the agent
+                            # picked it up and processing has begun. Mirrors
+                            # the earnings recap "started/finished" pattern.
+                            notify(f"*Audio summary started:* {fn}")
                             _audio_failed_attempts.pop(fn, None)
                             _wait_for_audio_job_and_move(fn, fp, jid)
                         else:
                             log.warning(f"Audio auto-process failed for {fn}: {res.status_code}")
+                            notify(f"*Audio summary upload FAILED:* {fn} (HTTP {res.status_code})")
                             _audio_failed_attempts[fn] = _audio_failed_attempts.get(fn, 0) + 1
                             _known_audio_files.discard(fn)
                     except Exception as e:
