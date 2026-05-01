@@ -6752,6 +6752,364 @@ def auto_process_audio():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/auto-process-text', methods=['POST'])
+def auto_process_text():
+    """Auto-process a text-based file (PDF, DOCX, TXT, MD) the same way audio
+    is processed but skipping transcription. Used by the local agent for
+    PDFs/notes the user drops into SUMMARIES/. Output schema matches audio:
+    Brief + Key Takeaways + Meeting Summary + Questions + Assessment, all
+    saved as a meeting_summaries row with source_type='text'.
+
+    Same async pattern as /api/auto-process-audio: returns jobId immediately
+    and runs the LLM pipeline in a daemon thread."""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+
+        allowed = ('.pdf', '.docx', '.doc', '.txt', '.md')
+        if not file.filename.lower().endswith(allowed):
+            return jsonify({'error': f'Unsupported text format. Allowed: {", ".join(allowed)}'}), 400
+
+        file_content = file.read()
+        filename = file.filename
+        anthropic_api_key = request.form.get('apiKey', '') or os.environ.get('ANTHROPIC_API_KEY', '')
+        if not anthropic_api_key:
+            return jsonify({'error': 'Anthropic API key required'}), 400
+
+        # Extract text once, synchronously, before spawning the worker. This
+        # gives us a clean error path if extraction fails (scanned PDF, etc.)
+        # and lets us reject quickly without burning an LLM call.
+        ext = '.' + filename.lower().rsplit('.', 1)[-1]
+        text = ''
+        try:
+            if ext == '.pdf':
+                from PyPDF2 import PdfReader
+                import io as _io
+                reader = PdfReader(_io.BytesIO(file_content))
+                pages = []
+                for page in reader.pages:
+                    t = page.extract_text()
+                    if t:
+                        pages.append(t)
+                text = '\n\n'.join(pages)
+            elif ext in ('.docx', '.doc'):
+                # docx is a zip with XML inside. Use python-docx if available;
+                # fall back to a zip-based xml strip if not.
+                try:
+                    from docx import Document
+                    import io as _io
+                    doc = Document(_io.BytesIO(file_content))
+                    text = '\n\n'.join(p.text for p in doc.paragraphs if p.text)
+                except ImportError:
+                    text = file_content.decode('utf-8', errors='ignore')
+            else:  # .txt, .md
+                text = file_content.decode('utf-8', errors='ignore')
+        except Exception as ex:
+            return jsonify({'error': f'Text extraction failed: {str(ex)[:200]}'}), 400
+
+        # Strip NUL bytes — PyPDF2 occasionally emits them from malformed PDFs;
+        # Postgres TEXT columns reject NUL.
+        if text and '\x00' in text:
+            text = text.replace('\x00', '')
+
+        if not text or len(text.strip()) < 50:
+            return jsonify({'error': f'Extracted text too short ({len(text)} chars). Likely scanned PDF — needs OCR.'}), 400
+
+        job_id = str(uuid.uuid4())[:8]
+        _transcription_jobs[job_id] = {'status': 'starting', 'filename': filename, 'autoProcess': True, 'sourceType': 'text'}
+
+        thread = threading.Thread(
+            target=_run_auto_process_text,
+            args=(job_id, text, filename, anthropic_api_key),
+            daemon=True
+        )
+        thread.start()
+
+        print(f"[auto-text {job_id}] Started for {filename} ({len(text)} chars extracted)")
+        return jsonify({'success': True, 'jobId': job_id, 'filename': filename, 'extractedChars': len(text)})
+    except Exception as e:
+        print(f"Error auto-processing text: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+def _run_auto_process_text(job_id, extracted_text, filename, anthropic_api_key):
+    """Background worker: takes already-extracted text, runs the same Brief +
+    Key Takeaways + Meeting Summary + Questions + Assessment pipeline as
+    audio, saves to meeting_summaries with source_type='text'.
+
+    Differs from audio path in two ways:
+    1. No transcription step (text already extracted by /api/auto-process-text).
+    2. PDF-aware prompt variant: drops disfluency-cleaning + transcript
+       corrections sections (irrelevant for clean PDF text).
+
+    Reuses the SAME thesis injection + hallucination guard rail as audio."""
+    try:
+        text = extracted_text
+        # Thesis injection: same logic as audio (filename ticker extraction).
+        audio_ticker = ''
+        thesis_block = ''
+        try:
+            import re as _re
+            base = os.path.splitext(filename)[0]
+            m = _re.match(r'^[\s\-_]*([A-Z]{2,5})\b', base)
+            if m:
+                cand = m.group(1)
+                _NOT_TICKERS = {
+                    'THE', 'AND', 'FOR', 'WITH', 'NEW', 'OLD', 'POST', 'PRE',
+                    'CHAT', 'CALL', 'MTG', 'MTGS', 'MEETING', 'MEET', 'SYNC',
+                    'EXPERT', 'DINNER', 'LUNCH', 'BREAKFAST', 'COFFEE',
+                    'INTERVIEW', 'NDR', 'IR', 'MGMT', 'CEO', 'CFO', 'COO',
+                    'NOTES', 'NOTE', 'AUDIO', 'REC', 'TODO', 'INTRO',
+                    'DRAFT', 'TEST', 'DEMO', 'TODAY', 'TOMORROW',
+                    'MORNING', 'EVENING', 'WEEKLY', 'DAILY', 'OFFSITE',
+                    'PDF', 'DOC', 'DOCX', 'TXT',
+                }
+                if cand not in _NOT_TICKERS:
+                    audio_ticker = cand
+            if audio_ticker:
+                with get_db() as (_, cur):
+                    cur.execute(
+                        "SELECT playbook FROM analysts WHERE %s = ANY(coverage_tickers) LIMIT 1",
+                        (audio_ticker,)
+                    )
+                    a_row = cur.fetchone()
+                pb = (a_row or {}).get('playbook') if a_row else None
+                if isinstance(pb, str):
+                    try: pb = json.loads(pb)
+                    except Exception: pb = None
+                thesis_block = _render_thesis_block(pb, audio_ticker)
+                if thesis_block:
+                    print(f'[auto-text {job_id}] thesis injection ON for {audio_ticker} (file={filename})')
+        except Exception as e:
+            print(f'[auto-text {job_id}] thesis lookup failed: {e}')
+
+        thesis_addendum = ''
+        if thesis_block:
+            thesis_addendum = f"""
+
+USER'S PRE-REGISTERED COVERAGE THESIS (CONTEXT ONLY — NOT A SOURCE)
+{thesis_block}
+
+CRITICAL — STRICT SEPARATION RULES:
+The thesis above is the USER'S PERSONAL VIEW on {audio_ticker}. It is NOT a source document. Do NOT attribute thesis pillars or signposts to anyone in the document. Do NOT blend the user's bull/bear pillars into Key Takeaways or Q&amp;A Log. Use the thesis ONLY for a NEW dedicated section at the END titled "Thesis Check" with per-pillar verdicts (CONFIRMED / WEAKENED / NO MENTION) citing specific takeaways/Q&amp;As as evidence."""
+
+        # === SUMMARY (Key Takeaways tier) — PDF-aware variant ===
+        # Same backbone as the audio prompt but: drops Corrections Log section
+        # (clean text doesn't need it), drops Q&A disfluency-cleaning rules
+        # (PDFs have clean text already), keeps everything else.
+        summary_system_prompt = f"""ROLE
+You are an equity analyst's research assistant. You convert a research note, transcript, or document into polished research notes of a quality a portfolio manager would accept directly into a coverage file.
+
+INPUTS
+You will receive the text of a document (broker note, conference transcript, expert call summary, regulatory filing, internal memo, etc.). Text quality is generally clean — this is NOT a raw transcribed audio file. Apply the appropriate analytical lens based on the document type.
+
+STEP 0 — AUTO-CLASSIFICATION
+Classify into one of three types:
+- INVESTOR/PUBLIC: earnings transcript, public Q&A transcript, broker research report, conference summary. Lens = margin trajectory, guidance, capital allocation, competitive positioning.
+- MGMT 1:1 / SMALL-GROUP: private dinner notes, NDR meeting notes, expert call summary. Lens = where management is more candid; topics they redirect away from. Direct quotes are higher-value.
+- INTERNAL/OPERATIONAL: team memo, partner sync notes, board materials. Lens = action items, owners, deadlines.
+Output one line at the top:
+  > Source type: [INVESTOR/PUBLIC | MGMT 1:1 | INTERNAL] — [one-line justification]
+
+STEP 1 — DOMAIN-AWARE READING
+Identify the company, sub-sector, and domain vocabulary in play. Use this domain frame to interpret every proper noun, acronym, ratio, and named program. (No transcript-correction step needed — text is clean.)
+
+STEP 2 — OUTPUT STRUCTURE (raw HTML, no markdown, no code fences)
+
+<h1>Key Takeaways</h1>
+8-14 themes as <p> blocks. Each:
+<p><strong>[CONCEPT TAG] Bold lead-in (3-7 words):</strong> 2-4 sentences of substance, with verbatim tags on every number, date, comparison, and magnitude word per the rules below.</p>
+
+Concept tags: [MARGIN TRAJECTORY] [CAPITAL ALLOCATION] [GUIDANCE] [PROGRAM MILESTONE] [CAPACITY/THROUGHPUT] [SUPPLY CHAIN] [LABOR/WORKFORCE] [REGULATORY] [COMPETITIVE POSITIONING] [M&amp;A] [CASH/WORKING CAPITAL] [TAX] [MACRO/POLICY] [TECHNOLOGY/AI] [DEMAND/ORDERS] [RISK FLAG] [OTHER]
+
+Order by investor relevance, not document order. Lead with items most likely to move estimates or change the thesis.
+
+<h1>Q&amp;A Log</h1>
+Only include this section if the document contains discrete Q&amp;A exchanges (transcript, expert call, conference Q&amp;A). For broker notes / memos with no Q&amp;A structure, OMIT this section entirely.
+When included, every Q&amp;A exchange in document order:
+<p><strong>Q: [question, one sentence]</strong></p>
+<p>A: [answer, faithful to source — preserve wording, sentence structure, all numbers, all hedges, all caveats]</p>
+
+<h1>Critical Drill-Down</h1>
+
+<h2>Known Unknowns</h2>
+Topics where the source was evasive, declined to address, or left ambiguous:
+<p><strong>Topic:</strong> one line</p>
+<ul><li>What to chase next: [specific question, data source, or person]</li></ul>
+
+<h2>Topics Flagged for Follow-Up</h2>
+Issues raised but not fully resolved. One <p> each.
+
+<h2>Tone / Posture Notes</h2>
+Posture signals anchored to verbatim quotes from the source. If nothing meets the bar: "No material posture signals beyond hedges already noted in Takeaways."
+
+HARD RULES
+1. NO INVENTION. Only what's in the document.
+2. NO QUANTITATIVE TIGHTENING. Preserve the exact precision the source used.
+3. PRESERVE HEDGES. Reproduce epistemic posture exactly.
+4. CORRECT SEGMENT ATTRIBUTION. When ambiguous, write "[segment unclear]" rather than guess.
+5. PRESERVE CLARIFYING FOLLOW-UPS as separate Q&amp;A entries (when present).
+6. DO NOT CONFLATE QUARTERLY VS. ALL-TIME COMPARISONS.
+7. NO MOOD MUSIC. Stick to claims and their hedges.
+
+QUANTITATIVE / DATED CLAIM TAGGING
+Every claim with a number, percentage, date, count, ratio, or magnitude word ("most," "majority," "small percentage") or directional comparison ("higher than," "below plan") must be followed by a verbatim source phrase tag.
+Format: (verbatim: "exact phrase from source")
+4-15 words; trim with ellipsis if longer but never alter wording inside the quote.
+
+HALLUCINATION GUARD RAIL
+Before returning, scan output for every named entity (person, product, drug, ticker, peer, geography) and every number. Each must trace to the source. If not, either remove or mark [unverified — not in source]. Do NOT fill in from general knowledge of the company.
+
+OUTPUT FORMAT: raw HTML only. No markdown. No code fences.{thesis_addendum}"""
+
+        try:
+            summary_result = _call_llm_stream_with_retry(
+                messages=[{"role": "user", "content": f"Process the document per your instructions. Begin with the Source type line, then the sections in order.\n\nDOCUMENT:\n{text[:200000]}"}],
+                system=summary_system_prompt,
+                tier="standard", max_tokens=24576, api_key=anthropic_api_key,
+                label=f"text summary ({filename})",
+            )
+            summary_html = summary_result.get('text', '') or ''
+        except Exception as e:
+            raise Exception(f"summary LLM failed: {e}") from e
+
+        # Brief tier (PDF-aware): same as audio Brief but Q&A section optional
+        brief_system_prompt = """ROLE
+You are an equity analyst's research assistant producing the condensed "Brief" tier of a research note (a separate tier with full audit infrastructure runs alongside). Your job is the tightened mirror — same structure, compressed content, scannable in 3-5 minutes.
+
+INPUTS
+You receive the text of a document (broker note, transcript, expert call summary, memo). Apply Source type classification.
+
+OUTPUT STRUCTURE — raw HTML, no markdown, no code fences
+
+<h1>Brief</h1>
+<p style="font-size:0.85em;color:#888;font-style:italic">Source type: [INVESTOR/PUBLIC | MGMT 1:1 | INTERNAL] — [one-line justification]</p>
+
+<h2>Takeaways</h2>
+6-8 takeaways as <p> blocks. Each:
+<p><strong>[CONCEPT TAG] Lead phrase:</strong> Single sentence with anchoring number.</p>
+Tags: [MARGIN TRAJECTORY] [CAPITAL ALLOCATION] [GUIDANCE] [PROGRAM MILESTONE] [CAPACITY/THROUGHPUT] [SUPPLY CHAIN] [LABOR/WORKFORCE] [REGULATORY] [COMPETITIVE POSITIONING] [M&A] [CASH/WORKING CAPITAL] [TAX] [MACRO/POLICY] [TECHNOLOGY/AI] [DEMAND/ORDERS] [RISK FLAG] [OTHER]
+Compress aggressively. Hedges through word choice. NO verbatim tags here.
+
+<h2>Q&amp;A</h2>
+Only include if the document has Q&amp;A structure. Every exchange in document order, answers tightened to 1-3 sentences:
+<p><strong>Q: [question, one sentence]</strong></p>
+<p>A: [answer, 1-3 sentences with all numbers/dates/hedges preserved]</p>
+
+<h2>Drill-Down</h2>
+
+<h3>Known Unknowns</h3>
+3-5 single-line entries: "topic — what to chase next"
+
+<h3>Watch Items</h3>
+3-5 single-line entries: "item — when it resolves"
+
+<h3>Tone Notes</h3>
+3-5 entries anchored to specific moments. If none qualify: "No material posture signals beyond hedges noted in Takeaways."
+
+HARD RULES
+1. NO INVENTION.
+2. NO QUANTITATIVE TIGHTENING. "Teens" stays "teens."
+3. PRESERVE HEDGES through word choice. "Hopes" ≠ "expects" ≠ "targets" ≠ "is confident."
+4. PRESERVE SEGMENT ATTRIBUTION.
+
+OUTPUT FORMAT: raw HTML only."""
+
+        try:
+            brief_result = _call_llm_stream_with_retry(
+                messages=[{"role": "user", "content": f"Process the document per your instructions. Return only the Brief HTML.\n\nDOCUMENT:\n{text[:200000]}"}],
+                system=brief_system_prompt,
+                tier="standard", max_tokens=12288, api_key=anthropic_api_key,
+                label=f"text brief ({filename})",
+            )
+            brief_html = brief_result.get('text', '') or ''
+        except Exception as e:
+            print(f"[auto-text {job_id}] brief step failed (non-fatal): {e}")
+            brief_html = ''
+
+        # Meeting Summary (narrative topic-grouped) — same as audio path
+        meeting_summary_instruction = """Generate a clear, well-structured narrative summary of the following document. Include key points, decisions, action items, context, and important details. This is a NARRATIVE summary grouped by logical topic sections — NOT a bullet list of takeaways and NOT a Q&A log.
+
+OUTPUT FORMAT — Return raw HTML. No markdown. No code fences.
+Use: <h2>Section Title</h2>, <p><strong>Topic:</strong> Description text here.</p>, <ul><li>Sub-point</li></ul>
+Organize into 3-6 logical sections (e.g., Business Update, Strategic Priorities, Risks, Q&A Highlights)."""
+        try:
+            meeting_summary_result = _call_llm_stream_with_retry(
+                messages=[{"role": "user", "content": f"{meeting_summary_instruction}\n\nDOCUMENT:\n{text[:50000]}"}],
+                system="You are a meeting notes analyst. Generate narrative topic-grouped HTML summaries.",
+                tier="standard", max_tokens=8192, api_key=anthropic_api_key,
+                label=f"text meeting_summary ({filename})",
+            )
+            meeting_summary_html = meeting_summary_result.get('text', '') or ''
+        except Exception as e:
+            print(f"[auto-text {job_id}] meeting_summary step failed (non-fatal): {e}")
+            meeting_summary_html = ''
+
+        # Follow-up questions
+        try:
+            questions_result = _call_llm_stream_with_retry(
+                messages=[{"role": "user", "content": f"Based on this document, generate 3-5 key follow-up questions.\nReturn raw HTML: <ol><li>Question?</li></ol>\n\nDOCUMENT:\n{text[:20000]}"}],
+                system="Generate insightful follow-up questions.",
+                tier="fast", max_tokens=2048, api_key=anthropic_api_key,
+                label=f"text questions ({filename})",
+            )
+            questions_html = questions_result.get('text', '') or ''
+        except Exception as e:
+            print(f"[auto-text {job_id}] questions step failed (non-fatal): {e}")
+            questions_html = ''
+
+        # Assessment — candid advisor take (same as audio path)
+        assessment_instruction = """You are a sharp, experienced advisor giving your CANDID, UNFILTERED assessment of this document.
+This is NOT a summary — the summaries are generated separately. Provide your HONEST OPINION on the substance, posture, and what stands out.
+Cover: overall assessment, quality of analysis/answers, red flags / BS detection, what was most effective, what's missing or unanswered, credibility, bottom line.
+Be conversational and direct. Don't hedge.
+
+OUTPUT FORMAT — Return raw HTML. No markdown. No code fences.
+Use: <h2>Section Title</h2>, <p><strong>Topic:</strong> Description.</p>, <ul><li>Sub-point</li></ul>"""
+        try:
+            assessment_result = _call_llm_stream_with_retry(
+                messages=[{"role": "user", "content": f"{assessment_instruction}\n\nDOCUMENT:\n{text[:50000]}"}],
+                system="You are a sharp advisor giving candid document assessments.",
+                tier="standard", max_tokens=4096, api_key=anthropic_api_key,
+                label=f"text assessment ({filename})",
+            )
+            assessment_html = assessment_result.get('text', '') or ''
+        except Exception as e:
+            print(f"[auto-text {job_id}] assessment step failed (non-fatal): {e}")
+            assessment_html = ''
+
+        # Save to DB. source_type='text' so frontend can render with appropriate icon.
+        title = os.path.splitext(filename)[0].replace('_', ' ').replace('-', ' ')
+        summary_id = str(uuid.uuid4())
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('''
+                INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, assessment, meeting_summary, brief, source_type, doc_type, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'text', 'text', NOW())
+            ''', (summary_id, title, text, summary_html, questions_html, assessment_html, meeting_summary_html, brief_html))
+        try: cache.invalidate('summaries')
+        except Exception: pass
+
+        # Success alert
+        with get_db(commit=True) as (conn, cur):
+            alert_id = str(uuid.uuid4())
+            cur.execute('''
+                INSERT INTO agent_alerts (id, alert_type, ticker, title, detail, status, created_at)
+                VALUES (%s, 'text_summary', '', %s, %s, 'new', NOW())
+            ''', (alert_id, f'Document summary generated: {title}',
+                  json.dumps({'filename': filename, 'summaryId': summary_id, 'extractedChars': len(text)})))
+
+        _transcription_jobs[job_id]['status'] = 'complete'
+        _transcription_jobs[job_id]['summaryId'] = summary_id
+        print(f"[auto-text {job_id}] Complete: saved summary {summary_id}")
+    except Exception as e:
+        print(f"[auto-text {job_id}] Failed: {e}")
+        _transcription_jobs[job_id]['status'] = 'failed'
+        _transcription_jobs[job_id]['error'] = str(e)
+
+
 def _run_auto_process_audio(job_id, file_content, filename, mime_type, gemini_api_key, anthropic_api_key, detail_level):
     """Background: transcribe audio, generate summary, save to DB, create alert."""
     try:

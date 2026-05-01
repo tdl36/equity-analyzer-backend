@@ -2476,6 +2476,11 @@ def check_for_new_files():
 _known_audio_files = set()
 _audio_initialized = False
 AUDIO_EXTS = {'.mp3', '.mp4', '.m4a', '.wav', '.webm', '.ogg', '.flac'}
+# Text-based files dropped into SUMMARIES/ also get auto-processed (skipping
+# transcription, going straight to the Brief + Key Takeaways pipeline). Same
+# detection / dedup / Telegram-notification machinery as audio.
+TEXT_EXTS = {'.pdf', '.docx', '.doc', '.txt', '.md'}
+SUMMARIES_EXTS = AUDIO_EXTS | TEXT_EXTS
 
 def _wait_for_audio_job_and_move(fname: str, fpath: Path, job_id: str) -> None:
     """Poll the transcription job status. Move to Processed/ only if the
@@ -2577,12 +2582,12 @@ def check_for_new_audio():
                     already_processed.add(pf.name)
 
         for f in SUMMARIES_DIR.iterdir():
-            if f.is_file() and not f.name.startswith('.') and f.suffix.lower() in AUDIO_EXTS:
+            if f.is_file() and not f.name.startswith('.') and f.suffix.lower() in SUMMARIES_EXTS:
                 if f.name in already_processed:
                     # Move it again so iCloud doesn't keep re-restoring it
                     try:
                         f.unlink()
-                        log.info(f"Duplicate audio file removed (already in Processed/): {f.name}")
+                        log.info(f"Duplicate file removed (already in Processed/): {f.name}")
                     except Exception as e:
                         log.debug(f"Could not remove duplicate {f.name}: {e}")
                     continue
@@ -2666,34 +2671,44 @@ def check_for_new_audio():
                 # daemon, the main loop completes in seconds and remains free
                 # to run other work concurrently.
                 def _audio_upload_and_wait(fn, fp, fdata):
+                    # Branch on extension: .pdf/.docx/.txt/.md go through the
+                    # text endpoint (no transcription, PDF-aware prompts).
+                    # Audio extensions go through the audio endpoint.
+                    fn_ext = ('.' + fn.lower().rsplit('.', 1)[-1]) if '.' in fn else ''
+                    is_text = fn_ext in TEXT_EXTS
+                    endpoint = '/api/auto-process-text' if is_text else '/api/auto-process-audio'
+                    kind = 'Document' if is_text else 'Audio'
                     try:
-                        res = requests.post(
-                            f"{CHARLIE_API}/api/auto-process-audio",
-                            files={'file': (fn, fdata)},
-                            data={'detailLevel': 'standard'},
-                            headers={'Authorization': f'ApiKey {get_secret("CHARLIE_API_KEY") or ""}'},
-                            timeout=(60, 1800),
-                        )
+                        # Audio uploads can be 100+ MB at slow Render speeds —
+                        # 30-min cap. Text files are tiny (<5 MB typical) so a
+                        # tighter timeout is fine but we keep the same generous
+                        # cap for consistency.
+                        post_kwargs = {
+                            'files': {'file': (fn, fdata)},
+                            'headers': {'Authorization': f'ApiKey {get_secret("CHARLIE_API_KEY") or ""}'},
+                            'timeout': (60, 1800),
+                        }
+                        if not is_text:
+                            post_kwargs['data'] = {'detailLevel': 'standard'}
+                        res = requests.post(f"{CHARLIE_API}{endpoint}", **post_kwargs)
                         if res.ok:
                             data = res.json()
                             jid = data.get('jobId', '?')
-                            log.info(f"Audio auto-process started: {fn} (job {jid})")
-                            # Notify Telegram on start so user knows the agent
-                            # picked it up and processing has begun. Mirrors
-                            # the earnings recap "started/finished" pattern.
-                            notify(f"*Audio summary started:* {fn}")
+                            log.info(f"{kind} auto-process started: {fn} (job {jid})")
+                            notify(f"*{kind} summary started:* {fn}")
                             _audio_failed_attempts.pop(fn, None)
                             _wait_for_audio_job_and_move(fn, fp, jid)
                         else:
-                            log.warning(f"Audio auto-process failed for {fn}: {res.status_code}")
-                            notify(f"*Audio summary upload FAILED:* {fn} (HTTP {res.status_code})")
+                            err_text = res.text[:300] if res.text else f'HTTP {res.status_code}'
+                            log.warning(f"{kind} auto-process failed for {fn}: {res.status_code} — {err_text}")
+                            notify(f"*{kind} summary upload FAILED:* {fn} (HTTP {res.status_code})\n{err_text[:200]}")
                             _audio_failed_attempts[fn] = _audio_failed_attempts.get(fn, 0) + 1
                             _known_audio_files.discard(fn)
                     except Exception as e:
-                        log.warning(f"Error in audio upload thread for {fn}: {e}")
+                        log.warning(f"Error in {kind.lower()} upload thread for {fn}: {e}")
                         _audio_failed_attempts[fn] = _audio_failed_attempts.get(fn, 0) + 1
                         if _audio_failed_attempts[fn] >= 5:
-                            log.error(f"AUDIO GIVE UP: {fn} failed {_audio_failed_attempts[fn]} times. Investigate manually.")
+                            log.error(f"{kind.upper()} GIVE UP: {fn} failed {_audio_failed_attempts[fn]} times. Investigate manually.")
                         _known_audio_files.discard(fn)
                     finally:
                         _audio_in_flight.discard(fn)
