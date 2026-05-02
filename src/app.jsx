@@ -1517,6 +1517,26 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [decipherError, setDecipherError] = useState(null);
             const [decipherResult, setDecipherResult] = useState(null);
             const [decipherHistory, setDecipherHistory] = useState([]);  // session-only, no backend persistence in v1
+            // Follow-up chat state. Keyed by decipherResult.id so switching
+            // between historical results doesn't bleed turns. Each entry:
+            //   { turns: [{q, a, at}], inFlight: bool, error: string|null,
+            //     elapsedSec: number, startedAt: number|null }
+            const [decipherChats, setDecipherChats] = useState({});
+            const [decipherChatInput, setDecipherChatInput] = useState('');
+            // Tick the in-flight chat elapsed counter once per second.
+            React.useEffect(() => {
+                const activeId = decipherResult?.id;
+                const chat = activeId != null ? decipherChats[activeId] : null;
+                if (!chat?.inFlight || !chat.startedAt) return;
+                const t = setInterval(() => {
+                    setDecipherChats(prev => {
+                        const c = prev[activeId];
+                        if (!c?.inFlight || !c.startedAt) return prev;
+                        return { ...prev, [activeId]: { ...c, elapsedSec: Math.floor((Date.now() - c.startedAt) / 1000) } };
+                    });
+                }, 1000);
+                return () => clearInterval(t);
+            }, [decipherResult?.id, decipherChats[decipherResult?.id]?.inFlight, decipherChats[decipherResult?.id]?.startedAt]);
             const [agentDetailRun, setAgentDetailRun] = useState(null);
             const [agentSaveState, setAgentSaveState] = useState({});
             const [agentDashboard, setAgentDashboard] = useState(null);
@@ -23850,6 +23870,20 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                         )}
 
                                         {agentView === 'decipher' && (() => {
+                                            // Compose the explanation + any follow-up chat turns into one
+                                            // markdown blob — used by Save / Catalog / Email / Copy so the
+                                            // saved/emailed artifact captures the full conversation.
+                                            const buildFullMarkdown = (r) => {
+                                                let md = r.explanation || '';
+                                                const chat = decipherChats[r.id];
+                                                if (chat?.turns?.length > 0) {
+                                                    md += '\n\n---\n\n## Follow-up chat\n\n';
+                                                    chat.turns.forEach((t, i) => {
+                                                        md += `### Q${i + 1}\n\n${t.q}\n\n**Answer:**\n\n${t.a}\n\n`;
+                                                    });
+                                                }
+                                                return md;
+                                            };
                                             const runDecipher = async () => {
                                                 const text = (decipherText || '').trim();
                                                 if (!text && !decipherFile) {
@@ -23917,6 +23951,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     }
                                                     const entry = {
                                                         id: Date.now(),
+                                                        jobId: result.jobId || jobId,
                                                         text: text,
                                                         fileName: decipherFile?.fileName || null,
                                                         ticker: decipherTicker || null,
@@ -24102,7 +24137,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                         id: summaryId,
                                                                                         title: r.ticker ? `${r.ticker} — ${titleGuess}` : titleGuess,
                                                                                         rawNotes: r.text || (r.fileName ? `[PDF: ${r.fileName}]` : ''),
-                                                                                        summary: r.explanation || '',
+                                                                                        summary: buildFullMarkdown(r),
                                                                                         sourceType: 'decipher',
                                                                                         topic: r.ticker || 'General',
                                                                                         topicType: 'decipher',
@@ -24169,7 +24204,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                         email: creds.email,
                                                                                         subject: subj,
                                                                                         section: 'decipher',
-                                                                                        content: r.explanation || '',
+                                                                                        content: buildFullMarkdown(r),
                                                                                         title: subj,
                                                                                         topic: r.ticker || 'General',
                                                                                         smtpConfig: {
@@ -24196,7 +24231,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                     <button
                                                                         onClick={async () => {
                                                                             try {
-                                                                                await navigator.clipboard.writeText(decipherResult.explanation);
+                                                                                await navigator.clipboard.writeText(buildFullMarkdown(decipherResult));
                                                                                 setDecipherToast({ text: 'Copied ✓', kind: 'ok' });
                                                                             } catch { setDecipherToast({ text: 'Copy failed', kind: 'err' }); }
                                                                         }}
@@ -24210,6 +24245,144 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 </div>
                                                             )}
                                                             <div className="prose prose-invert prose-sm max-w-none text-slate-100" dangerouslySetInnerHTML={{ __html: renderMarkdown(decipherResult.explanation) }} />
+
+                                                            {/* Follow-up chat. Replays original PDF + ask + first response
+                                                                + prior turns + new question on each send. Backend uses
+                                                                Anthropic prompt caching (90% off the cached PDF block within
+                                                                the 5-min TTL), so chat is cheap. Chat is keyed by result.id
+                                                                so switching history doesn't bleed turns. */}
+                                                            {(() => {
+                                                                const r = decipherResult;
+                                                                const chat = decipherChats[r.id] || { turns: [], inFlight: false, error: null, elapsedSec: 0, startedAt: null };
+                                                                const sendFollowup = async () => {
+                                                                    const q = (decipherChatInput || '').trim();
+                                                                    if (!q) return;
+                                                                    if (!r.jobId) {
+                                                                        setDecipherChats(prev => ({ ...prev, [r.id]: { ...chat, error: 'This is a saved/historical result — open it fresh to chat. (Server keeps chat state for the most recent ~100 sessions only.)' } }));
+                                                                        return;
+                                                                    }
+                                                                    setDecipherChatInput('');
+                                                                    setDecipherChats(prev => ({ ...prev, [r.id]: { ...chat, inFlight: true, error: null, startedAt: Date.now(), elapsedSec: 0 } }));
+                                                                    try {
+                                                                        const dispatch = await fetch(`${DIRECT_API_URL}/api/decipher/${r.jobId}/followup`, {
+                                                                            method: 'POST',
+                                                                            headers: { 'Content-Type': 'application/json' },
+                                                                            body: JSON.stringify({ question: q }),
+                                                                        });
+                                                                        const dj = await dispatch.json();
+                                                                        if (!dispatch.ok || !dj.followupId) throw new Error(dj.error || `Dispatch failed: HTTP ${dispatch.status}`);
+                                                                        // Poll every 3s, cap at 8 min (followups are typically <1 min).
+                                                                        const fid = dj.followupId;
+                                                                        const maxIter = Math.ceil((8 * 60 * 1000) / 3000);
+                                                                        let answer = null;
+                                                                        let meta = {};
+                                                                        for (let i = 0; i < maxIter; i++) {
+                                                                            await new Promise(res => setTimeout(res, 3000));
+                                                                            try {
+                                                                                const pr = await fetch(`${DIRECT_API_URL}/api/decipher/followup/${fid}`);
+                                                                                if (!pr.ok) continue;
+                                                                                const pj = await pr.json();
+                                                                                if (pj.status === 'complete') { answer = pj.answer || ''; meta = { tokensIn: pj.inputTokens, tokensOut: pj.outputTokens, cacheRead: pj.cacheReadTokens }; break; }
+                                                                                if (pj.status === 'failed') throw new Error(pj.error || 'Follow-up failed');
+                                                                            } catch (pollErr) {
+                                                                                // single-poll network blips are fine; keep trying unless the server returned 'failed' explicitly above
+                                                                                if (String(pollErr.message || '').toLowerCase().includes('follow-up failed') || String(pollErr.message || '').toLowerCase().includes('original decipher')) throw pollErr;
+                                                                            }
+                                                                        }
+                                                                        if (answer == null) throw new Error('Follow-up timed out after 8 minutes');
+                                                                        setDecipherChats(prev => {
+                                                                            const cur = prev[r.id] || { turns: [], inFlight: false };
+                                                                            return { ...prev, [r.id]: {
+                                                                                turns: [...(cur.turns || []), { q, a: answer, at: new Date().toISOString(), ...meta }],
+                                                                                inFlight: false, error: null, elapsedSec: 0, startedAt: null,
+                                                                            }};
+                                                                        });
+                                                                    } catch (e) {
+                                                                        setDecipherChats(prev => ({ ...prev, [r.id]: { ...(prev[r.id] || chat), inFlight: false, error: String(e.message || e), startedAt: null, elapsedSec: 0 } }));
+                                                                    }
+                                                                };
+                                                                const resetChat = () => {
+                                                                    setDecipherChats(prev => ({ ...prev, [r.id]: { turns: [], inFlight: false, error: null, elapsedSec: 0, startedAt: null } }));
+                                                                    setDecipherChatInput('');
+                                                                };
+                                                                return (
+                                                                    <div className="mt-5 pt-4 border-t border-white/10">
+                                                                        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                                                                            <div className="flex items-center gap-2">
+                                                                                <span className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Follow-up chat</span>
+                                                                                {chat.turns.length > 0 && <span className="text-[10px] text-slate-500">· {chat.turns.length} turn{chat.turns.length === 1 ? '' : 's'}</span>}
+                                                                            </div>
+                                                                            {chat.turns.length > 0 && !chat.inFlight && (
+                                                                                <button onClick={resetChat} className="text-[10px] text-slate-500 hover:text-red-400">Reset chat</button>
+                                                                            )}
+                                                                        </div>
+
+                                                                        {/* Q/A bubble pairs */}
+                                                                        {chat.turns.length > 0 && (
+                                                                            <div className="space-y-3 mb-3">
+                                                                                {chat.turns.map((t, i) => (
+                                                                                    <div key={i} className="space-y-2">
+                                                                                        <div className="flex justify-end">
+                                                                                            <div className="max-w-[85%] bg-amber-600/20 border border-amber-500/30 rounded-lg rounded-br-sm px-3 py-2 text-sm text-slate-100 whitespace-pre-wrap">{t.q}</div>
+                                                                                        </div>
+                                                                                        <div className="flex justify-start">
+                                                                                            <div className="max-w-[95%] bg-white/[0.04] border border-white/10 rounded-lg rounded-bl-sm px-3 py-2 text-sm text-slate-100">
+                                                                                                <div className="prose prose-invert prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: renderMarkdown(t.a) }} />
+                                                                                                <div className="mt-2 flex items-center gap-2 text-[9px] text-slate-600">
+                                                                                                    <span>{fmtETDateTime(t.at)}</span>
+                                                                                                    {t.tokensOut && <span>· {t.tokensIn}→{t.tokensOut} tok</span>}
+                                                                                                    {t.cacheRead != null && t.cacheRead > 0 && <span title="Cached PDF tokens (90% discount)">· cache hit {t.cacheRead}</span>}
+                                                                                                    <button onClick={async () => {
+                                                                                                        try { await navigator.clipboard.writeText(t.a); setDecipherToast({ text: 'Copied ✓', kind: 'ok' }); }
+                                                                                                        catch { setDecipherToast({ text: 'Copy failed', kind: 'err' }); }
+                                                                                                    }} className="ml-auto text-slate-500 hover:text-slate-300">Copy</button>
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        )}
+
+                                                                        {chat.inFlight && (
+                                                                            <div className="mb-3 px-3 py-2 bg-amber-500/10 border border-amber-500/20 rounded-lg flex items-center gap-2 text-xs text-amber-300">
+                                                                                <svg className="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
+                                                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                                                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                                                                </svg>
+                                                                                <span>Thinking… {chat.elapsedSec}s elapsed</span>
+                                                                            </div>
+                                                                        )}
+
+                                                                        {chat.error && (
+                                                                            <div className="mb-3 px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-lg text-xs text-red-300">{chat.error}</div>
+                                                                        )}
+
+                                                                        {/* Composer */}
+                                                                        <div className="flex gap-2">
+                                                                            <textarea
+                                                                                value={decipherChatInput}
+                                                                                onChange={e => setDecipherChatInput(e.target.value)}
+                                                                                onKeyDown={e => {
+                                                                                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); sendFollowup(); }
+                                                                                }}
+                                                                                placeholder={r.jobId ? "Ask a follow-up about the source above. Cmd/Ctrl+Enter to send." : "Chat unavailable for saved/historical results — re-run Decipher to enable."}
+                                                                                rows={2}
+                                                                                disabled={chat.inFlight || !r.jobId}
+                                                                                className="flex-1 px-3 py-2 bg-black/30 border border-white/10 rounded text-sm text-slate-200 placeholder:text-slate-500 resize-y disabled:opacity-50"
+                                                                            />
+                                                                            <button
+                                                                                onClick={sendFollowup}
+                                                                                disabled={chat.inFlight || !decipherChatInput.trim() || !r.jobId}
+                                                                                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-medium rounded self-end"
+                                                                            >Send</button>
+                                                                        </div>
+                                                                        <p className="mt-1.5 text-[10px] text-slate-600">
+                                                                            Source stays loaded · prompt-cached for cheap re-sends · Save/Email above will include this chat.
+                                                                        </p>
+                                                                    </div>
+                                                                );
+                                                            })()}
                                                         </div>
                                                     )}
 
@@ -24247,7 +24420,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                         id: summaryId,
                                                                                         title: decipherCatalogTitle.trim() || 'Decipher',
                                                                                         rawNotes: r.text || (r.fileName ? `[PDF: ${r.fileName}]` : ''),
-                                                                                        summary: r.explanation || '',
+                                                                                        summary: buildFullMarkdown(r),
                                                                                         sourceType: 'decipher',
                                                                                         topic: decipherCatalogTopic.trim() || decipherCatalogTicker.trim() || 'General',
                                                                                         topicType: 'decipher',

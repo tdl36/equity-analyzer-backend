@@ -16217,7 +16217,12 @@ _decipher_jobs: dict[str, dict] = {}  # job_id -> {status, result?, error?, meta
 
 def _run_decipher_job(job_id: str, text: str, file_data: str, file_type: str,
                       file_name: str, ticker: str, mode: str, api_key: str):
-    """Background worker. Updates _decipher_jobs[job_id] with status + result."""
+    """Background worker. Updates _decipher_jobs[job_id] with status + result.
+
+    On success also stashes a `_chat_state` dict on the job so follow-up
+    questions can replay the same source material against Anthropic with
+    prompt caching (90% discount on the cached PDF block within the 5-min TTL).
+    """
     try:
         _decipher_jobs[job_id]['status'] = 'running'
         client = anthropic.Anthropic(api_key=api_key)
@@ -16226,7 +16231,13 @@ def _run_decipher_job(job_id: str, text: str, file_data: str, file_type: str,
         if file_data and file_type == 'pdf':
             label = f"PDF source: {file_name or 'document.pdf'}"
             content.append({"type": "text", "text": f"=== {label} ==="})
-            content.append({"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": file_data}})
+            # cache_control marks this block as cacheable. Follow-up turns
+            # within 5 min get a 90% discount on the document tokens.
+            content.append({
+                "type": "document",
+                "source": {"type": "base64", "media_type": "application/pdf", "data": file_data},
+                "cache_control": {"type": "ephemeral"},
+            })
 
         if text:
             content.append({"type": "text", "text": "=== User-provided text ===\n" + text})
@@ -16287,6 +16298,16 @@ def _run_decipher_job(job_id: str, text: str, file_data: str, file_type: str,
             'inputTokens': getattr(usage, 'input_tokens', None) if usage else None,
             'outputTokens': getattr(usage, 'output_tokens', None) if usage else None,
             'completedAt': datetime.utcnow().isoformat(),
+            # Chat state for /api/decipher/<job_id>/followup. We replay
+            # initial_content + first_response + any prior turns + the new
+            # question on each follow-up. Kept in-process only — drops with
+            # job GC (cap 100). Frontend treats expired sessions gracefully.
+            '_chat_state': {
+                'system_prompt': system_prompt,
+                'initial_content': content,
+                'first_response': explanation,
+                'turns': [],
+            },
         })
     except Exception as e:
         print(f'decipher job {job_id} error: {e}')
@@ -16371,7 +16392,141 @@ def decipher_status(job_id):
     job = _decipher_jobs.get(job_id)
     if not job:
         return jsonify({'error': 'job not found (likely garbage-collected after 100 newer jobs)'}), 404
-    return jsonify({'ok': True, 'jobId': job_id, **job})
+    # Strip internal `_chat_state` (contains the full PDF base64) — kept
+    # server-side only for follow-up replay; would be ~MB on every poll.
+    safe = {k: v for k, v in job.items() if not k.startswith('_')}
+    safe['hasChat'] = '_chat_state' in job
+    return jsonify({'ok': True, 'jobId': job_id, **safe})
+
+
+# ----------------------------------------------------------------------------
+# Decipher follow-up chat — keeps the source material loaded in conversation
+# so the PM can ask follow-up questions without re-uploading. Each follow-up
+# replays initial_content (PDF + ask) + first_response + prior turns + new Q.
+# Anthropic prompt caching makes the re-sends cheap (90% off cached blocks).
+# Async-job pattern again because long answers + Cloudflare 100s timeout.
+# ----------------------------------------------------------------------------
+_decipher_followup_jobs: dict[str, dict] = {}  # fid -> {status, answer?, error?, parentJobId, ...}
+
+
+def _run_decipher_followup_job(fid: str, parent_job_id: str, question: str, api_key: str):
+    """Background worker for a single follow-up turn."""
+    try:
+        _decipher_followup_jobs[fid]['status'] = 'running'
+        parent = _decipher_jobs.get(parent_job_id)
+        if not parent:
+            raise RuntimeError('parent decipher session expired (run a fresh Decipher to continue)')
+        chat = parent.get('_chat_state')
+        if not chat:
+            raise RuntimeError('original Decipher run did not complete; cannot follow up')
+
+        client = anthropic.Anthropic(api_key=api_key)
+
+        # Replay the conversation. The PDF block in initial_content carries
+        # cache_control, so the document tokens hit the cache (90% off) on
+        # every follow-up within the 5-min TTL.
+        messages = [
+            {"role": "user", "content": chat['initial_content']},
+            {"role": "assistant", "content": chat['first_response']},
+        ]
+        for turn in chat.get('turns', []):
+            messages.append({"role": "user", "content": turn['q']})
+            messages.append({"role": "assistant", "content": turn['a']})
+        messages.append({"role": "user", "content": question})
+
+        with client.messages.stream(
+            model='claude-opus-4-7',
+            max_tokens=8192,
+            system=chat['system_prompt'],
+            messages=messages,
+        ) as stream:
+            final = stream.get_final_message()
+
+        parts = []
+        for blk in (final.content or []):
+            t = getattr(blk, 'text', None)
+            if t:
+                parts.append(t)
+        answer = ''.join(parts).strip()
+
+        # Append to parent's chat history so subsequent follow-ups see it.
+        chat['turns'].append({'q': question, 'a': answer})
+
+        usage = getattr(final, 'usage', None)
+        _decipher_followup_jobs[fid].update({
+            'status': 'complete',
+            'answer': answer,
+            'inputTokens': getattr(usage, 'input_tokens', None) if usage else None,
+            'outputTokens': getattr(usage, 'output_tokens', None) if usage else None,
+            'cacheReadTokens': getattr(usage, 'cache_read_input_tokens', None) if usage else None,
+            'cacheCreationTokens': getattr(usage, 'cache_creation_input_tokens', None) if usage else None,
+            'completedAt': datetime.utcnow().isoformat(),
+        })
+    except Exception as e:
+        print(f'decipher followup {fid} error: {e}')
+        _decipher_followup_jobs[fid].update({
+            'status': 'failed',
+            'error': str(e),
+            'completedAt': datetime.utcnow().isoformat(),
+        })
+
+
+@app.route('/api/decipher/<job_id>/followup', methods=['POST'])
+def decipher_followup(job_id):
+    """Start an async follow-up turn on an existing Decipher session.
+    Returns {followupId} immediately; poll GET /api/decipher/followup/<fid>."""
+    try:
+        data = request.get_json(silent=True) or {}
+        question = (data.get('question') or '').strip()
+        if not question:
+            return jsonify({'error': 'question is required'}), 400
+        if len(question) > 20_000:
+            question = question[:20_000]
+
+        parent = _decipher_jobs.get(job_id)
+        if not parent:
+            return jsonify({'error': 'Decipher session expired (run a fresh Decipher to continue chat)'}), 404
+        if '_chat_state' not in parent:
+            return jsonify({'error': 'Original Decipher run did not complete; cannot follow up'}), 400
+
+        api_key = data.get('apiKey') or os.environ.get('ANTHROPIC_API_KEY', '')
+        if not api_key:
+            return jsonify({'error': 'Anthropic API key not configured'}), 500
+
+        # Garbage-collect old follow-up jobs (cap 200 — they're small).
+        if len(_decipher_followup_jobs) > 200:
+            sorted_jobs = sorted(_decipher_followup_jobs.items(),
+                                 key=lambda kv: kv[1].get('createdAt', ''))
+            for jid, _ in sorted_jobs[:len(_decipher_followup_jobs) - 200]:
+                _decipher_followup_jobs.pop(jid, None)
+
+        fid = str(uuid.uuid4())[:8]
+        _decipher_followup_jobs[fid] = {
+            'status': 'queued',
+            'parentJobId': job_id,
+            'question': question,
+            'createdAt': datetime.utcnow().isoformat(),
+        }
+        threading.Thread(
+            target=_run_decipher_followup_job,
+            args=(fid, job_id, question, api_key),
+            daemon=True,
+            name=f'decipher-followup-{fid}',
+        ).start()
+
+        return jsonify({'ok': True, 'followupId': fid, 'status': 'queued'})
+    except Exception as e:
+        print(f'decipher followup dispatch error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/decipher/followup/<followup_id>', methods=['GET'])
+def decipher_followup_status(followup_id):
+    """Poll a follow-up turn. Returns status + answer (if complete) or error."""
+    job = _decipher_followup_jobs.get(followup_id)
+    if not job:
+        return jsonify({'error': 'follow-up job not found'}), 404
+    return jsonify({'ok': True, 'followupId': followup_id, **job})
 
 
 @app.route('/api/agents/results', methods=['GET'])
