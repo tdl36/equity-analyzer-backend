@@ -5658,17 +5658,28 @@ def email_summary_section():
         if use_gmail and (not gmail_user or not gmail_password):
             return jsonify({'error': 'Gmail credentials required. Please set them in Settings.'}), 400
         
-        # Convert HTML to plain text
+        # Format the section label + gradient. Decipher content arrives as
+        # markdown (frontend buildFullMarkdown), so convert it before the
+        # template injects it raw.
+        if section == 'takeaways':
+            section_label, header_color, gradient_to = "Key Takeaways", "#0d9488", "#0891b2"
+        elif section == 'earnings_recap':
+            section_label, header_color, gradient_to = "Earnings Recap", "#0369a1", "#0284c7"
+        elif section == 'decipher':
+            section_label, header_color, gradient_to = "Decipher", "#d97706", "#b45309"
+            try:
+                import markdown as _md
+                content = _md.markdown(content, extensions=['extra', 'sane_lists', 'nl2br'])
+            except Exception as _e:
+                print(f'email-summary-section: markdown conversion failed: {_e}')
+                # leave content as-is; the plain-text alternative below is still readable
+        else:
+            section_label, header_color, gradient_to = "Follow-up Questions", "#d97706", "#ea580c"
+
+        # Convert HTML to plain text (after any markdown→HTML above so the
+        # plain alternative reflects the same final content).
         plain_text = re.sub(r'<[^>]+>', '', content)
         plain_text = plain_text.replace('&nbsp;', ' ').replace('&amp;', '&')
-        
-        # Format the section label
-        if section == 'takeaways':
-            section_label, header_color = "Key Takeaways", "#0d9488"
-        elif section == 'earnings_recap':
-            section_label, header_color = "Earnings Recap", "#0369a1"
-        else:
-            section_label, header_color = "Follow-up Questions", "#d97706"
         
         # Build HTML email
         html_content = f"""
@@ -5705,7 +5716,7 @@ def email_summary_section():
                     color: #111;
                 }}
                 .header {{
-                    background: linear-gradient(135deg, {header_color} 0%, {'#0891b2' if section == 'takeaways' else '#ea580c'} 100%);
+                    background: linear-gradient(135deg, {header_color} 0%, {gradient_to} 100%);
                     color: white;
                     padding: 20px;
                     border-radius: 8px;
