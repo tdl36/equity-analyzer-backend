@@ -24261,7 +24261,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                     {decipherToast.text}
                                                                 </div>
                                                             )}
-                                                            <div className="prose prose-invert prose-sm max-w-none text-slate-100" dangerouslySetInnerHTML={{ __html: renderMarkdown(decipherResult.explanation) }} />
+                                                            <div className="prose prose-invert prose-sm max-w-none text-slate-100" dangerouslySetInnerHTML={{ __html: decipherResult.isHtml ? (typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(decipherResult.explanation) : decipherResult.explanation) : renderMarkdown(decipherResult.explanation) }} />
 
                                                             {/* Follow-up chat. Replays original PDF + ask + first response
                                                                 + prior turns + new question on each send. Backend uses
@@ -24490,6 +24490,54 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             </div>
                                                         </details>
                                                     )}
+
+                                                    {/* Saved Decipher results — rows persisted to meeting_summaries
+                                                        with source_type='decipher'. Click to load into the viewer
+                                                        (chat is disabled because server-side _chat_state is dropped
+                                                        with job GC; the explanation alone survives). */}
+                                                    {(() => {
+                                                        const saved = (savedSummaries || []).filter(s => s.sourceType === 'decipher');
+                                                        if (saved.length === 0) return null;
+                                                        return (
+                                                            <details className="bg-white/[0.02] border border-white/10 rounded-xl p-3" open>
+                                                                <summary className="cursor-pointer text-xs text-slate-400 hover:text-white">
+                                                                    Saved Decipher results ({saved.length}) — from Summary tab
+                                                                </summary>
+                                                                <div className="mt-3 space-y-2">
+                                                                    {saved.map(s => (
+                                                                        <button
+                                                                            key={s.id}
+                                                                            onClick={() => {
+                                                                                setDecipherResult({
+                                                                                    id: 'saved-' + s.id,
+                                                                                    jobId: null,
+                                                                                    text: s.rawNotes || '',
+                                                                                    fileName: null,
+                                                                                    ticker: s.topic && s.topic !== 'General' ? s.topic : null,
+                                                                                    mode: s.docType || 'synthesize',
+                                                                                    truncated: false,
+                                                                                    explanation: s.summary || '',
+                                                                                    isHtml: true,
+                                                                                    at: s.createdAt,
+                                                                                    _savedId: s.id,
+                                                                                    _title: s.title,
+                                                                                });
+                                                                            }}
+                                                                            className="w-full text-left p-2 bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 rounded text-xs"
+                                                                        >
+                                                                            <div className="flex items-center gap-2 text-[10px] text-slate-500 mb-1 flex-wrap">
+                                                                                {s.topic && s.topic !== 'General' && <span className="px-1.5 py-0.5 bg-white/10 rounded font-mono">{s.topic}</span>}
+                                                                                {s.docType && <span className="px-1.5 py-0.5 bg-amber-500/15 text-amber-300 rounded uppercase tracking-wider">{s.docType}</span>}
+                                                                                <span>{fmtETDateTime(s.createdAt)}</span>
+                                                                            </div>
+                                                                            <div className="text-slate-200 font-medium truncate">{s.title || '(untitled)'}</div>
+                                                                            {s.rawNotes && <div className="text-slate-500 text-[10px] truncate mt-0.5">{s.rawNotes.slice(0, 140)}</div>}
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                            </details>
+                                                        );
+                                                    })()}
                                                 </div>
                                             );
                                         })()}
