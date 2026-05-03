@@ -17183,19 +17183,36 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     </div>
                                                 </div>
 
-                                                {/* Expand/Collapse All Toggle */}
+                                                {/* Expand/Collapse All Toggle. Skips sections that aren't present
+                                                    on this summary (brief / meetingSummary / assessment / transcript
+                                                    are all conditional). The "all expanded" check uses the same
+                                                    presence guards as the renderers below. */}
                                                 <div className="flex justify-end">
                                                     <button
                                                         onClick={() => {
-                                                            const allExpanded = takeawaysExpanded && questionsExpanded && (!currentSummary.assessment || assessmentExpanded) && (currentSummary.sourceType !== 'audio' || transcriptExpanded);
-                                                            setTakeawaysExpanded(!allExpanded);
-                                                            setQuestionsExpanded(!allExpanded);
-                                                            setAssessmentExpanded(!allExpanded);
-                                                            if (currentSummary.sourceType === 'audio') setTranscriptExpanded(!allExpanded);
+                                                            const allExpanded =
+                                                                (!currentSummary.brief || briefExpanded) &&
+                                                                takeawaysExpanded &&
+                                                                questionsExpanded &&
+                                                                (!currentSummary.assessment || assessmentExpanded) &&
+                                                                (!currentSummary.meetingSummary || meetingSummaryExpanded) &&
+                                                                (currentSummary.sourceType !== 'audio' || transcriptExpanded);
+                                                            const next = !allExpanded;
+                                                            if (currentSummary.brief) setBriefExpanded(next);
+                                                            setTakeawaysExpanded(next);
+                                                            setQuestionsExpanded(next);
+                                                            if (currentSummary.assessment) setAssessmentExpanded(next);
+                                                            if (currentSummary.meetingSummary) setMeetingSummaryExpanded(next);
+                                                            if (currentSummary.sourceType === 'audio') setTranscriptExpanded(next);
                                                         }}
                                                         className="text-xs px-2 py-1 text-slate-400 hover:text-slate-200 hover:bg-white/10 rounded transition-colors flex items-center gap-1"
                                                     >
-                                                        {takeawaysExpanded && questionsExpanded && (currentSummary.sourceType !== 'audio' || transcriptExpanded) ? (
+                                                        {(!currentSummary.brief || briefExpanded) &&
+                                                         takeawaysExpanded &&
+                                                         questionsExpanded &&
+                                                         (!currentSummary.assessment || assessmentExpanded) &&
+                                                         (!currentSummary.meetingSummary || meetingSummaryExpanded) &&
+                                                         (currentSummary.sourceType !== 'audio' || transcriptExpanded) ? (
                                                             <>
                                                                 <ChevronsUp className="w-3.5 h-3.5" />
                                                                 Collapse All
