@@ -5495,6 +5495,37 @@ def save_summary():
         print(f"Error saving summary: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/admin/backfill-decipher-html', methods=['POST'])
+def backfill_decipher_html():
+    """One-shot: convert legacy Decipher rows from raw markdown to HTML.
+    Walks meeting_summaries WHERE source_type='decipher' AND summary does
+    not start with '<', runs markdown→HTML, writes back. Idempotent."""
+    try:
+        import markdown as _md
+        with get_db(commit=True) as (conn, cur):
+            cur.execute("""
+                SELECT id, summary FROM meeting_summaries
+                WHERE source_type = 'decipher'
+                  AND summary IS NOT NULL
+                  AND summary <> ''
+                  AND ltrim(summary) NOT LIKE '<%'
+            """)
+            rows = cur.fetchall()
+            converted = 0
+            for row in rows:
+                try:
+                    new_html = _md.markdown(row['summary'], extensions=['extra', 'sane_lists', 'nl2br'])
+                    cur.execute("UPDATE meeting_summaries SET summary = %s WHERE id = %s", (new_html, row['id']))
+                    converted += 1
+                except Exception as e:
+                    print(f'backfill: row {row["id"]} failed: {e}')
+        cache.invalidate('summaries')
+        return jsonify({'ok': True, 'scanned': len(rows), 'converted': converted})
+    except Exception as e:
+        print(f'backfill-decipher-html error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/delete-summary', methods=['POST'])
 def delete_summary():
     """Delete a meeting summary"""
