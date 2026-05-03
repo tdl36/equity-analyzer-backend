@@ -5436,6 +5436,19 @@ def save_summary():
         if isinstance(categories, list):
             categories = json.dumps(categories)
 
+        # Decipher posts raw markdown in `summary` (frontend buildFullMarkdown).
+        # Other source types post pre-rendered HTML, which the Summary tab
+        # renders via dangerouslySetInnerHTML. Convert markdown→HTML here so
+        # saved Decipher rows display the same as in the Decipher panel.
+        summary_value = data.get('summary', '')
+        if data.get('sourceType') == 'decipher' and summary_value and '<' not in summary_value[:200]:
+            try:
+                import markdown as _md
+                summary_value = _md.markdown(summary_value, extensions=['extra', 'sane_lists', 'nl2br'])
+            except Exception as _e:
+                print(f'save-summary: markdown conversion failed for decipher row: {_e}')
+                # leave as-is; better than failing the save
+
         with get_db(commit=True) as (conn, cur):
             cur.execute('''
                 INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, assessment, meeting_summary, brief, topic, topic_type, source_type, source_files, doc_type, categories, created_at)
@@ -5460,7 +5473,7 @@ def save_summary():
                 summary_id,
                 data.get('title', 'Meeting Summary'),
                 data.get('rawNotes', ''),
-                data.get('summary', ''),
+                summary_value,
                 data.get('questions', ''),
                 data.get('assessment', ''),
                 data.get('meetingSummary', ''),
