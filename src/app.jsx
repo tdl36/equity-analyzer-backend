@@ -2123,7 +2123,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [summaryFileUploading, setSummaryFileUploading] = useState(false);
             const [summaryUploadProgress, setSummaryUploadProgress] = useState('');
             const [showSummaryInputModal, setShowSummaryInputModal] = useState(false);
-            const [summaryInputType, setSummaryInputType] = useState('paste'); // 'paste' | 'upload'
+            const [summaryInputType, setSummaryInputType] = useState('paste'); // 'paste' | 'upload' | 'audio' | 'youtube'
+            const [summaryYoutubeUrl, setSummaryYoutubeUrl] = useState('');
+            const [summaryYoutubeTicker, setSummaryYoutubeTicker] = useState('');
+            const [summaryYoutubeStatus, setSummaryYoutubeStatus] = useState(null); // {phase, message, jobId, videoId, title, author}
             const [summaryTitleInput, setSummaryTitleInput] = useState(''); // Custom title for new summary
             const [editingSummaryTitle, setEditingSummaryTitle] = useState(false); // Is title being edited
             const [editingSummaryTitleValue, setEditingSummaryTitleValue] = useState(''); // Temp value while editing
@@ -3223,6 +3226,78 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 }
             };
             
+            // Process YouTube link: backend pulls transcript via youtube-transcript-api,
+            // runs Brief / Key Takeaways / Assessment, saves to meeting_summaries.
+            // Async-job pattern (POST returns jobId, frontend polls /api/transcribe/<id>
+            // — same job table as audio/text auto-process).
+            const processYoutubeUrl = async () => {
+                const url = (summaryYoutubeUrl || '').trim();
+                if (!url) return;
+                setSummaryYoutubeStatus({ phase: 'dispatch', message: 'Fetching transcript…' });
+                setSummaryLoading(true);
+                try {
+                    const dispatch = await fetch(`${API_URL}/api/youtube-summarize`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            url,
+                            ticker: (summaryYoutubeTicker || '').trim().toUpperCase(),
+                        }),
+                    });
+                    const dj = await dispatch.json();
+                    if (!dispatch.ok || !dj.success) {
+                        setSummaryYoutubeStatus({ phase: 'error', message: dj.error || `HTTP ${dispatch.status}` });
+                        setSummaryLoading(false);
+                        return;
+                    }
+                    setSummaryYoutubeStatus({
+                        phase: 'running',
+                        message: `Transcript captured (${(dj.transcriptChars || 0).toLocaleString()} chars). Generating Brief / Key Takeaways / Assessment…`,
+                        jobId: dj.jobId,
+                        videoId: dj.videoId,
+                        title: dj.title,
+                        author: dj.author,
+                    });
+                    // Poll /api/transcribe/<jobId> every 4s up to 15 min.
+                    const maxIter = Math.ceil((15 * 60 * 1000) / 4000);
+                    let summaryId = null;
+                    for (let i = 0; i < maxIter; i++) {
+                        await new Promise(r => setTimeout(r, 4000));
+                        try {
+                            const pr = await fetch(`${API_URL}/api/transcribe/${dj.jobId}`);
+                            if (!pr.ok) continue;
+                            const pj = await pr.json();
+                            if (pj.status === 'complete') {
+                                summaryId = pj.summaryId || null;
+                                break;
+                            }
+                            if (pj.status === 'failed' || pj.status === 'error') {
+                                setSummaryYoutubeStatus({ phase: 'error', message: pj.error || 'Pipeline failed', title: dj.title, author: dj.author });
+                                setSummaryLoading(false);
+                                return;
+                            }
+                            // status is 'starting' / 'running' / 'summarizing' — keep polling
+                        } catch {}
+                    }
+                    if (!summaryId) {
+                        setSummaryYoutubeStatus({ phase: 'error', message: 'Timed out after 15 min — check Render logs.', title: dj.title, author: dj.author });
+                        setSummaryLoading(false);
+                        return;
+                    }
+                    // Reload summaries from DB; the new row has the full pipeline output.
+                    await loadSummaries();
+                    setSummaryYoutubeUrl('');
+                    setSummaryYoutubeTicker('');
+                    setSummaryYoutubeStatus(null);
+                    setShowSummaryInputModal(false);
+                    setSummaryViewMode('list');
+                } catch (e) {
+                    setSummaryYoutubeStatus({ phase: 'error', message: String(e.message || e) });
+                } finally {
+                    setSummaryLoading(false);
+                }
+            };
+
             // Process audio file: upload first file, close modal, then poll + upload remaining in background
             const processAudioFile = async () => {
                 if (summaryFiles.length === 0) return;
@@ -3577,7 +3652,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
             // Generate summary from modal (handles paste, upload, and audio)
             const generateSummaryFromModal = async () => {
-                if (summaryInputType === 'audio' && summaryFiles.length > 0) {
+                if (summaryInputType === 'youtube' && summaryYoutubeUrl.trim()) {
+                    await processYoutubeUrl();
+                } else if (summaryInputType === 'audio' && summaryFiles.length > 0) {
                     await processAudioFile();
                 } else if (summaryInputType === 'upload' && summaryFiles.length > 0) {
                     await processUploadedFiles();
@@ -16905,6 +16982,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 )}
                                                                 {summary.sourceType === 'decipher' ? (
                                                                     <span className="text-cyan-400 flex-shrink-0 mt-0.5 text-base leading-none" title="Decipher result">🔍</span>
+                                                                ) : summary.sourceType === 'youtube' ? (
+                                                                    <span className="text-red-400 flex-shrink-0 mt-0.5 text-base leading-none" title="YouTube transcript">📺</span>
                                                                 ) : summary.sourceType === 'audio' ? (
                                                                     <Mic className="w-4 h-4 text-purple-400 flex-shrink-0 mt-0.5" />
                                                                 ) : summary.sourceType === 'upload' ? (
@@ -17949,6 +18028,17 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         <Mic className="w-4 h-4" />
                                                         Audio
                                                     </button>
+                                                    <button
+                                                        onClick={() => { setSummaryInputType('youtube'); setSummaryFiles([]); }}
+                                                        className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-1.5 transition-all ${
+                                                            summaryInputType === 'youtube'
+                                                                ? 'bg-red-600 text-white'
+                                                                : 'text-slate-400 hover:text-white'
+                                                        }`}
+                                                    >
+                                                        <span className="text-base leading-none">📺</span>
+                                                        YouTube
+                                                    </button>
                                                 </div>
 
                                                 {/* PASTE INPUT */}
@@ -18108,6 +18198,58 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     </div>
                                                 )}
 
+                                                {/* YOUTUBE LINK */}
+                                                {summaryInputType === 'youtube' && (
+                                                    <div className="space-y-3">
+                                                        <div className="border-2 border-dashed border-red-500/40 rounded-xl p-6 hover:border-red-400 hover:bg-red-500/5 transition-all">
+                                                            <div className="flex items-center gap-3 mb-3">
+                                                                <span className="text-3xl">📺</span>
+                                                                <div>
+                                                                    <p className="text-slate-200 font-medium">Paste a YouTube link</p>
+                                                                    <p className="text-xs text-slate-500">Charlie pulls the transcript and runs Brief + Key Takeaways + Assessment.</p>
+                                                                </div>
+                                                            </div>
+                                                            <input
+                                                                type="url"
+                                                                value={summaryYoutubeUrl}
+                                                                onChange={e => setSummaryYoutubeUrl(e.target.value)}
+                                                                placeholder="https://www.youtube.com/watch?v=… or youtu.be/…"
+                                                                className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded text-sm text-slate-200 placeholder:text-slate-500 font-mono"
+                                                            />
+                                                            <div className="flex items-center gap-2 mt-3">
+                                                                <label className="text-[10px] uppercase tracking-wider text-slate-500">Ticker (optional)</label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={summaryYoutubeTicker}
+                                                                    onChange={e => setSummaryYoutubeTicker(e.target.value.toUpperCase())}
+                                                                    placeholder="e.g. AAPL"
+                                                                    className="w-24 px-2 py-1 bg-black/30 border border-white/10 rounded text-xs font-mono text-slate-200"
+                                                                />
+                                                                <span className="text-[10px] text-slate-500">→ enables thesis injection if you cover this name</span>
+                                                            </div>
+                                                            <p className="mt-3 text-[10px] text-slate-500">
+                                                                Works with: standard videos, conference talks, podcast uploads. Skips: Shorts without captions, age-gated, live streams.
+                                                            </p>
+                                                        </div>
+
+                                                        {summaryYoutubeStatus && (
+                                                            <div className={`p-3 rounded-lg border text-xs ${
+                                                                summaryYoutubeStatus.phase === 'error' ? 'bg-red-500/10 border-red-500/30 text-red-300'
+                                                                    : summaryYoutubeStatus.phase === 'complete' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                                                                    : 'bg-red-600/10 border-red-500/30 text-red-200'
+                                                            }`}>
+                                                                {summaryYoutubeStatus.title && (
+                                                                    <div className="font-medium text-slate-200 mb-1">{summaryYoutubeStatus.title}</div>
+                                                                )}
+                                                                {summaryYoutubeStatus.author && (
+                                                                    <div className="text-[10px] text-slate-500 mb-1">{summaryYoutubeStatus.author}</div>
+                                                                )}
+                                                                <div>{summaryYoutubeStatus.message}</div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
                                                 {/* Progress indicator */}
                                                 {(summaryLoading || summaryFileUploading) && (
                                                     <div className="flex items-center gap-3 p-3 bg-amber-600/20 rounded-lg">
@@ -18134,13 +18276,15 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         summaryFileUploading ||
                                                         (summaryInputType === 'paste' && !summaryInput.trim()) ||
                                                         (summaryInputType === 'upload' && summaryFiles.length === 0) ||
-                                                        (summaryInputType === 'audio' && (summaryFiles.length === 0 || !loadGeminiKeyFromStorage()))
+                                                        (summaryInputType === 'audio' && (summaryFiles.length === 0 || !loadGeminiKeyFromStorage())) ||
+                                                        (summaryInputType === 'youtube' && !summaryYoutubeUrl.trim())
                                                     }
                                                     className={`flex-1 px-4 py-3 rounded-lg font-medium flex items-center justify-center gap-2 transition-all ${
                                                         summaryLoading || summaryFileUploading ||
                                                         (summaryInputType === 'paste' && !summaryInput.trim()) ||
                                                         (summaryInputType === 'upload' && summaryFiles.length === 0) ||
-                                                        (summaryInputType === 'audio' && (summaryFiles.length === 0 || !loadGeminiKeyFromStorage()))
+                                                        (summaryInputType === 'audio' && (summaryFiles.length === 0 || !loadGeminiKeyFromStorage())) ||
+                                                        (summaryInputType === 'youtube' && !summaryYoutubeUrl.trim())
                                                             ? 'bg-white/10 text-slate-500 cursor-not-allowed'
                                                             : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700'
                                                     }`}

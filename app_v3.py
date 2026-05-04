@@ -2336,6 +2336,16 @@ def init_db():
                                   WHERE table_name='meeting_summaries' AND column_name='brief') THEN
                         ALTER TABLE meeting_summaries ADD COLUMN brief TEXT DEFAULT '';
                     END IF;
+                    -- YouTube + general external-source URL (saved with the row
+                    -- so the Summary tab can show a clickable link / thumbnail).
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                  WHERE table_name='meeting_summaries' AND column_name='source_url') THEN
+                        ALTER TABLE meeting_summaries ADD COLUMN source_url TEXT DEFAULT '';
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                  WHERE table_name='meeting_summaries' AND column_name='source_meta') THEN
+                        ALTER TABLE meeting_summaries ADD COLUMN source_meta JSONB DEFAULT '{}';
+                    END IF;
                 END $$;
             ''')
 
@@ -5383,7 +5393,7 @@ def get_summaries():
 
         with get_db() as (conn, cur):
             cur.execute('''
-                SELECT id, title, raw_notes, summary, questions, assessment, meeting_summary, brief, topic, topic_type, source_type, source_files, doc_type, has_stored_files, categories, created_at
+                SELECT id, title, raw_notes, summary, questions, assessment, meeting_summary, brief, topic, topic_type, source_type, source_files, doc_type, has_stored_files, categories, source_url, source_meta, created_at
                 FROM meeting_summaries
                 ORDER BY created_at DESC
             ''')
@@ -5407,6 +5417,8 @@ def get_summaries():
                 'docType': row.get('doc_type') or 'other',
                 'hasStoredFiles': row.get('has_stored_files') or False,
                 'categories': row.get('categories') or [],
+                'sourceUrl': row.get('source_url') or '',
+                'sourceMeta': row.get('source_meta') or {},
                 'createdAt': row['created_at'].isoformat() if row['created_at'] else None
             })
 
@@ -5449,10 +5461,15 @@ def save_summary():
                 print(f'save-summary: markdown conversion failed for decipher row: {_e}')
                 # leave as-is; better than failing the save
 
+        # source_meta arrives as a dict; persist as JSONB.
+        source_meta = data.get('sourceMeta', {})
+        if isinstance(source_meta, dict):
+            source_meta = json.dumps(source_meta)
+
         with get_db(commit=True) as (conn, cur):
             cur.execute('''
-                INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, assessment, meeting_summary, brief, topic, topic_type, source_type, source_files, doc_type, categories, created_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, assessment, meeting_summary, brief, topic, topic_type, source_type, source_files, doc_type, categories, source_url, source_meta, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (id)
                 DO UPDATE SET
                     title = EXCLUDED.title,
@@ -5467,7 +5484,9 @@ def save_summary():
                     source_type = EXCLUDED.source_type,
                     source_files = EXCLUDED.source_files,
                     doc_type = EXCLUDED.doc_type,
-                    categories = EXCLUDED.categories
+                    categories = EXCLUDED.categories,
+                    source_url = EXCLUDED.source_url,
+                    source_meta = EXCLUDED.source_meta
                 RETURNING id
             ''', (
                 summary_id,
@@ -5484,6 +5503,8 @@ def save_summary():
                 source_files,
                 data.get('docType', 'other'),
                 categories,
+                data.get('sourceUrl', ''),
+                source_meta,
                 data.get('createdAt', datetime.utcnow().isoformat())
             ))
 
@@ -6890,27 +6911,216 @@ def auto_process_text():
         return jsonify({'error': str(e)}), 500
 
 
-def _run_auto_process_text(job_id, extracted_text, filename, anthropic_api_key):
+def _extract_youtube_video_id(url):
+    """Pull the video_id out of a YouTube URL. Handles youtube.com/watch?v=,
+    youtu.be/, youtube.com/shorts/, youtube.com/live/, and ?v= followed by
+    extra query params. Returns None on no match."""
+    import re as _re
+    if not url:
+        return None
+    patterns = [
+        r'(?:youtube\.com/watch\?(?:.*&)?v=)([A-Za-z0-9_-]{11})',
+        r'(?:youtu\.be/)([A-Za-z0-9_-]{11})',
+        r'(?:youtube\.com/shorts/)([A-Za-z0-9_-]{11})',
+        r'(?:youtube\.com/live/)([A-Za-z0-9_-]{11})',
+        r'(?:youtube\.com/embed/)([A-Za-z0-9_-]{11})',
+    ]
+    for p in patterns:
+        m = _re.search(p, url)
+        if m:
+            return m.group(1)
+    # Bare video_id fallback (already-clean input)
+    if _re.fullmatch(r'[A-Za-z0-9_-]{11}', url.strip()):
+        return url.strip()
+    return None
+
+
+def _fetch_youtube_metadata(video_id):
+    """Pull title + author_name + thumbnail via YouTube's public oEmbed
+    endpoint. No API key needed. Returns {} on any failure."""
+    try:
+        import requests as _rq
+        r = _rq.get(
+            f'https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json',
+            timeout=10,
+        )
+        if r.status_code == 200:
+            j = r.json()
+            return {
+                'videoId': video_id,
+                'title': j.get('title', ''),
+                'author': j.get('author_name', ''),
+                'authorUrl': j.get('author_url', ''),
+                'thumbnail': j.get('thumbnail_url', ''),
+                'providerName': j.get('provider_name', 'YouTube'),
+            }
+    except Exception as e:
+        print(f'youtube oembed failed for {video_id}: {e}')
+    return {'videoId': video_id}
+
+
+def _fetch_youtube_transcript(video_id):
+    """Fetch transcript via youtube-transcript-api. Tries common English
+    variants first, then any auto-generated track. Returns (text, segments)
+    where segments are the raw [{text, start, duration}, ...] for future
+    timestamp linking. Raises on failure with a user-friendly message."""
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi
+        from youtube_transcript_api._errors import (
+            TranscriptsDisabled, NoTranscriptFound, VideoUnavailable,
+        )
+    except ImportError:
+        raise RuntimeError('youtube-transcript-api not installed on backend')
+
+    try:
+        # Prefer manually-uploaded English; fall back to auto-generated.
+        try:
+            segments = YouTubeTranscriptApi.get_transcript(
+                video_id, languages=['en', 'en-US', 'en-GB']
+            )
+        except NoTranscriptFound:
+            # Try any language Whisper-style — some channels post in source language.
+            transcripts = YouTubeTranscriptApi.list_transcripts(video_id)
+            transcript = next(iter(transcripts), None)
+            if transcript is None:
+                raise NoTranscriptFound(video_id, ['*'], None)
+            segments = transcript.fetch()
+        text = '\n'.join((s.get('text') or '').strip() for s in segments if s.get('text'))
+        return text, segments
+    except TranscriptsDisabled:
+        raise RuntimeError('Transcripts are disabled on this video. (Owner has turned off captions.)')
+    except NoTranscriptFound:
+        raise RuntimeError('No transcript found for this video. (No captions, age-gated, or live stream.)')
+    except VideoUnavailable:
+        raise RuntimeError('Video is unavailable. (Private, deleted, or region-locked.)')
+    except Exception as e:
+        raise RuntimeError(f'Transcript fetch failed: {e}')
+
+
+@app.route('/api/youtube-summarize', methods=['POST'])
+def youtube_summarize():
+    """Pull a YouTube transcript and run it through the same Brief / Key
+    Takeaways / Assessment pipeline as the text auto-processor. Returns a
+    jobId immediately; client polls GET /api/transcribe/<jobId> for status."""
+    try:
+        data = request.get_json(silent=True) or {}
+        url = (data.get('url') or '').strip()
+        ticker = (data.get('ticker') or '').strip().upper()
+        anthropic_api_key = data.get('apiKey') or os.environ.get('ANTHROPIC_API_KEY', '')
+        if not url:
+            return jsonify({'error': 'url is required'}), 400
+        if not anthropic_api_key:
+            return jsonify({'error': 'Anthropic API key not configured'}), 500
+
+        video_id = _extract_youtube_video_id(url)
+        if not video_id:
+            return jsonify({'error': 'Could not parse a YouTube video ID from that URL'}), 400
+
+        # Synchronous: metadata + transcript fetch. These are fast (1-3s each)
+        # and let us return a clean error before kicking off the LLM pipeline.
+        meta = _fetch_youtube_metadata(video_id)
+        try:
+            transcript_text, segments = _fetch_youtube_transcript(video_id)
+        except Exception as e:
+            return jsonify({'error': str(e)}), 400
+
+        if not transcript_text or len(transcript_text.strip()) < 100:
+            return jsonify({'error': f'Transcript too short ({len(transcript_text)} chars) — likely empty captions.'}), 400
+
+        # Build a useful filename for thesis injection + display.
+        # Format: "<TICKER> — <Author> — <Title>" so the existing ticker
+        # heuristic in _run_auto_process_text picks it up when no explicit
+        # ticker was passed.
+        display_title = meta.get('title') or f'YouTube {video_id}'
+        author = meta.get('author') or 'YouTube'
+        filename_parts = []
+        if ticker:
+            filename_parts.append(ticker)
+        filename_parts.append(author)
+        filename_parts.append(display_title)
+        filename = ' — '.join(filename_parts) + '.youtube'
+
+        canonical_url = f'https://www.youtube.com/watch?v={video_id}'
+        source_meta = {
+            **meta,
+            'segmentCount': len(segments),
+            'transcriptChars': len(transcript_text),
+            'submittedUrl': url,
+        }
+
+        job_id = str(uuid.uuid4())[:8]
+        _transcription_jobs[job_id] = {
+            'status': 'starting',
+            'filename': filename,
+            'autoProcess': True,
+            'sourceType': 'youtube',
+            'videoId': video_id,
+            'title': display_title,
+            'author': author,
+        }
+
+        thread = threading.Thread(
+            target=_run_auto_process_text,
+            args=(job_id, transcript_text, filename, anthropic_api_key),
+            kwargs={
+                'source_type': 'youtube',
+                'source_url': canonical_url,
+                'source_meta': source_meta,
+                'ticker_hint': ticker,
+            },
+            daemon=True,
+            name=f'youtube-{job_id}',
+        )
+        thread.start()
+
+        print(f"[youtube {job_id}] Started for {video_id} ({len(transcript_text)} chars, '{display_title}')")
+        return jsonify({
+            'success': True,
+            'jobId': job_id,
+            'videoId': video_id,
+            'title': display_title,
+            'author': author,
+            'transcriptChars': len(transcript_text),
+        })
+    except Exception as e:
+        print(f"Error youtube-summarize: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+def _run_auto_process_text(job_id, extracted_text, filename, anthropic_api_key,
+                           source_type='text', source_url='', source_meta=None,
+                           ticker_hint=''):
     """Background worker: takes already-extracted text, runs the same Brief +
     Key Takeaways + Meeting Summary + Questions + Assessment pipeline as
-    audio, saves to meeting_summaries with source_type='text'.
+    audio, saves to meeting_summaries.
+
+    Optional kwargs let other source types (YouTube, web article) reuse this
+    pipeline without copying ~250 lines of prompt logic:
+      source_type: 'text' (default), 'youtube', 'article', etc. — recorded
+                   on the saved row so the Summary tab can render the right
+                   icon and source link.
+      source_url:  external link to embed on the saved row.
+      source_meta: JSON-serializable dict of metadata (channel, thumbnail,
+                   duration, etc.) — round-trips through GET /api/summaries.
+      ticker_hint: explicit ticker for thesis injection. If blank, the
+                   filename heuristic (existing behavior) still runs.
 
     Differs from audio path in two ways:
-    1. No transcription step (text already extracted by /api/auto-process-text).
+    1. No transcription step (text already extracted by the caller).
     2. PDF-aware prompt variant: drops disfluency-cleaning + transcript
        corrections sections (irrelevant for clean PDF text).
 
     Reuses the SAME thesis injection + hallucination guard rail as audio."""
     try:
         text = extracted_text
-        # Thesis injection: same logic as audio (filename ticker extraction).
-        audio_ticker = ''
+        # Thesis injection: explicit ticker_hint wins; otherwise filename heuristic.
+        audio_ticker = (ticker_hint or '').strip().upper() if ticker_hint else ''
         thesis_block = ''
         try:
             import re as _re
             base = os.path.splitext(filename)[0]
             m = _re.match(r'^[\s\-_]*([A-Z]{2,5})\b', base)
-            if m:
+            if not audio_ticker and m:
                 cand = m.group(1)
                 _NOT_TICKERS = {
                     'THE', 'AND', 'FOR', 'WITH', 'NEW', 'OLD', 'POST', 'PRE',
@@ -7136,14 +7346,19 @@ Use: <h2>Section Title</h2>, <p><strong>Topic:</strong> Description.</p>, <ul><l
             print(f"[auto-text {job_id}] assessment step failed (non-fatal): {e}")
             assessment_html = ''
 
-        # Save to DB. source_type='text' so frontend can render with appropriate icon.
+        # Save to DB. source_type tracks origin (text/youtube/article/etc.)
+        # so the Summary tab can render the right icon and source link.
         title = os.path.splitext(filename)[0].replace('_', ' ').replace('-', ' ')
         summary_id = str(uuid.uuid4())
+        meta_json = json.dumps(source_meta or {})
         with get_db(commit=True) as (conn, cur):
             cur.execute('''
-                INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, assessment, meeting_summary, brief, source_type, doc_type, created_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'text', 'text', NOW())
-            ''', (summary_id, title, text, summary_html, questions_html, assessment_html, meeting_summary_html, brief_html))
+                INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, assessment, meeting_summary, brief, source_type, doc_type, source_url, source_meta, topic, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            ''', (summary_id, title, text, summary_html, questions_html, assessment_html,
+                  meeting_summary_html, brief_html, source_type, source_type,
+                  source_url or '', meta_json,
+                  audio_ticker if audio_ticker else 'General'))
         try: cache.invalidate('summaries')
         except Exception: pass
 
