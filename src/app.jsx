@@ -3259,16 +3259,22 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         title: dj.title,
                         author: dj.author,
                     });
-                    // Poll /api/transcribe/<jobId> every 4s up to 15 min.
+                    // Poll /api/transcribe-audio/<jobId> every 4s up to 15 min.
+                    // Also refresh summaries on each tick so even if the polling
+                    // loop dies (iOS Safari background throttling), the new row
+                    // shows up in the Summary tab list automatically.
                     const maxIter = Math.ceil((15 * 60 * 1000) / 4000);
                     let summaryId = null;
                     for (let i = 0; i < maxIter; i++) {
                         await new Promise(r => setTimeout(r, 4000));
                         try {
-                            const pr = await fetch(`${API_URL}/api/transcribe/${dj.jobId}`);
+                            const pr = await fetch(`${API_URL}/api/transcribe-audio/${dj.jobId}`);
                             if (!pr.ok) continue;
                             const pj = await pr.json();
-                            if (pj.status === 'complete') {
+                            // Backend uses 'complete' (set by _run_auto_process_text)
+                            // and 'done' (legacy audio path) for success; 'failed' /
+                            // 'error' for failure. Match both to stay forward-compatible.
+                            if (pj.status === 'complete' || pj.status === 'done') {
                                 summaryId = pj.summaryId || null;
                                 break;
                             }
@@ -3276,6 +3282,19 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 setSummaryYoutubeStatus({ phase: 'error', message: pj.error || 'Pipeline failed', title: dj.title, author: dj.author });
                                 setSummaryLoading(false);
                                 return;
+                            }
+                            // Belt-and-suspenders: refresh summaries every ~20s and
+                            // if the new row appears (sourceMeta.videoId match), treat
+                            // it as complete. Survives polling outages.
+                            if (i > 0 && i % 5 === 0) {
+                                try {
+                                    const sr = await fetch(`${API_URL}/api/summaries`);
+                                    if (sr.ok) {
+                                        const summaries = await sr.json();
+                                        const hit = (summaries || []).find(s => s.sourceType === 'youtube' && s.sourceMeta && s.sourceMeta.videoId === dj.videoId);
+                                        if (hit) { summaryId = hit.id; break; }
+                                    }
+                                } catch {}
                             }
                             // Surface progress so the user can tell whether we're
                             // still waiting on the agent vs. running the LLM pipeline.
@@ -18005,14 +18024,14 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 <div className="flex gap-2 p-1 bg-white/5 backdrop-blur-lg rounded-lg">
                                                     <button
                                                         onClick={() => { setSummaryInputType('paste'); setSummaryFiles([]); }}
-                                                        className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-1.5 transition-all ${
+                                                        title="Paste text"
+                                                        className={`shrink-0 px-3 py-2 rounded-lg text-sm font-medium flex items-center justify-center transition-all ${
                                                             summaryInputType === 'paste'
                                                                 ? 'bg-amber-600 text-white'
                                                                 : 'text-slate-400 hover:text-white'
                                                         }`}
                                                     >
                                                         <FileText className="w-4 h-4" />
-                                                        Paste
                                                     </button>
                                                     <button
                                                         onClick={() => { setSummaryInputType('upload'); setSummaryFiles([]); }}
