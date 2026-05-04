@@ -531,6 +531,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
         // Icons
         const FileText = ({className = "w-6 h-6"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>;
+        const Youtube = ({className = "w-5 h-5"}) => <svg className={className} fill="currentColor" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.546 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>;
         const TrendingUp = ({className = "w-6 h-6"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>;
         const AlertTriangle = ({className = "w-5 h-5"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/></svg>;
         const Target = ({className = "w-5 h-5"}) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>;
@@ -16983,7 +16984,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 {summary.sourceType === 'decipher' ? (
                                                                     <span className="text-cyan-400 flex-shrink-0 mt-0.5 text-base leading-none" title="Decipher result">🔍</span>
                                                                 ) : summary.sourceType === 'youtube' ? (
-                                                                    <span className="text-red-400 flex-shrink-0 mt-0.5 text-base leading-none" title="YouTube transcript">📺</span>
+                                                                    <Youtube className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
                                                                 ) : summary.sourceType === 'audio' ? (
                                                                     <Mic className="w-4 h-4 text-purple-400 flex-shrink-0 mt-0.5" />
                                                                 ) : summary.sourceType === 'upload' ? (
@@ -18036,7 +18037,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 : 'text-slate-400 hover:text-white'
                                                         }`}
                                                     >
-                                                        <span className="text-base leading-none">📺</span>
+                                                        <Youtube className="w-4 h-4" />
                                                         YouTube
                                                     </button>
                                                 </div>
@@ -18203,7 +18204,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     <div className="space-y-3">
                                                         <div className="border-2 border-dashed border-red-500/40 rounded-xl p-6 hover:border-red-400 hover:bg-red-500/5 transition-all">
                                                             <div className="flex items-center gap-3 mb-3">
-                                                                <span className="text-3xl">📺</span>
+                                                                <Youtube className="w-8 h-8 text-red-500 flex-shrink-0" />
                                                                 <div>
                                                                     <p className="text-slate-200 font-medium">Paste a YouTube link</p>
                                                                     <p className="text-xs text-slate-500">Charlie pulls the transcript and runs Brief + Key Takeaways + Assessment.</p>

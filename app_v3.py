@@ -6960,10 +6960,15 @@ def _fetch_youtube_metadata(video_id):
 
 
 def _fetch_youtube_transcript(video_id):
-    """Fetch transcript via youtube-transcript-api. Tries common English
-    variants first, then any auto-generated track. Returns (text, segments)
-    where segments are the raw [{text, start, duration}, ...] for future
-    timestamp linking. Raises on failure with a user-friendly message."""
+    """Fetch transcript via youtube-transcript-api. Returns (text, segments)
+    as plain dicts [{text, start, duration}, ...] for future timestamp
+    linking. Raises with a user-friendly message on failure.
+
+    Handles both API generations:
+      - v0.x (legacy classmethod): YouTubeTranscriptApi.get_transcript(id)
+      - v1.x (instance API):       YouTubeTranscriptApi().fetch(id) →
+                                   FetchedTranscript with .snippets
+    """
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
         from youtube_transcript_api._errors import (
@@ -6972,21 +6977,54 @@ def _fetch_youtube_transcript(video_id):
     except ImportError:
         raise RuntimeError('youtube-transcript-api not installed on backend')
 
+    def _normalize(raw):
+        """Coerce v1.x FetchedTranscript objects (or v0.x list-of-dicts) into
+        a uniform list of {text, start, duration} dicts."""
+        out = []
+        # v1.x FetchedTranscript exposes .snippets (or is itself iterable
+        # over FetchedTranscriptSnippet objects with .text/.start/.duration).
+        snippets = getattr(raw, 'snippets', None)
+        items = snippets if snippets is not None else raw
+        for s in items:
+            if isinstance(s, dict):
+                out.append({
+                    'text': s.get('text', ''),
+                    'start': s.get('start'),
+                    'duration': s.get('duration'),
+                })
+            else:
+                out.append({
+                    'text': getattr(s, 'text', '') or '',
+                    'start': getattr(s, 'start', None),
+                    'duration': getattr(s, 'duration', None),
+                })
+        return out
+
+    languages = ['en', 'en-US', 'en-GB']
+    raw = None
     try:
-        # Prefer manually-uploaded English; fall back to auto-generated.
-        try:
-            segments = YouTubeTranscriptApi.get_transcript(
-                video_id, languages=['en', 'en-US', 'en-GB']
-            )
-        except NoTranscriptFound:
-            # Try any language Whisper-style — some channels post in source language.
-            transcripts = YouTubeTranscriptApi.list_transcripts(video_id)
-            transcript = next(iter(transcripts), None)
-            if transcript is None:
-                raise NoTranscriptFound(video_id, ['*'], None)
-            segments = transcript.fetch()
-        text = '\n'.join((s.get('text') or '').strip() for s in segments if s.get('text'))
-        return text, segments
+        # Prefer the v1.x instance API (current pip release).
+        if hasattr(YouTubeTranscriptApi, 'fetch') or callable(getattr(YouTubeTranscriptApi(), 'fetch', None)):
+            api = YouTubeTranscriptApi()
+            try:
+                raw = api.fetch(video_id, languages=languages)
+            except NoTranscriptFound:
+                # Try any language available — some channels publish only in source language.
+                tlist = api.list(video_id) if hasattr(api, 'list') else api.list_transcripts(video_id)
+                transcript = next(iter(tlist), None)
+                if transcript is None:
+                    raise
+                raw = transcript.fetch()
+        else:
+            # v0.x classmethod fallback.
+            try:
+                raw = YouTubeTranscriptApi.get_transcript(video_id, languages=languages)
+            except NoTranscriptFound:
+                tlist = YouTubeTranscriptApi.list_transcripts(video_id)
+                transcript = next(iter(tlist), None)
+                if transcript is None:
+                    raise
+                raw = transcript.fetch()
     except TranscriptsDisabled:
         raise RuntimeError('Transcripts are disabled on this video. (Owner has turned off captions.)')
     except NoTranscriptFound:
@@ -6995,6 +7033,10 @@ def _fetch_youtube_transcript(video_id):
         raise RuntimeError('Video is unavailable. (Private, deleted, or region-locked.)')
     except Exception as e:
         raise RuntimeError(f'Transcript fetch failed: {e}')
+
+    segments = _normalize(raw)
+    text = '\n'.join(s['text'].strip() for s in segments if s.get('text'))
+    return text, segments
 
 
 @app.route('/api/youtube-summarize', methods=['POST'])
