@@ -3558,6 +3558,124 @@ def process_ticker_directly(ticker: str, api_key: str, mode: str = "new") -> Non
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# YouTube transcript fetch — runs from the local agent because YouTube blocks
+# Render's cloud IP. Reads pending tasks from /api/youtube-tasks/pending,
+# fetches transcripts via youtube-transcript-api with the user's residential
+# IP, POSTs result back to /api/youtube-tasks/<id>/result.
+# ---------------------------------------------------------------------------
+
+def _fetch_youtube_transcript_local(video_id: str):
+    """Fetch transcript via youtube-transcript-api. Handles both v0.x
+    (classmethod) and v1.x (instance API). Returns (text, segments).
+    Raises RuntimeError with a user-friendly message on failure."""
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi
+        from youtube_transcript_api._errors import (
+            TranscriptsDisabled, NoTranscriptFound, VideoUnavailable,
+        )
+    except ImportError:
+        raise RuntimeError('youtube-transcript-api not installed locally — run: pip3 install youtube-transcript-api')
+
+    def _normalize(raw):
+        out = []
+        snippets = getattr(raw, 'snippets', None)
+        items = snippets if snippets is not None else raw
+        for s in items:
+            if isinstance(s, dict):
+                out.append({
+                    'text': s.get('text', ''),
+                    'start': s.get('start'),
+                    'duration': s.get('duration'),
+                })
+            else:
+                out.append({
+                    'text': getattr(s, 'text', '') or '',
+                    'start': getattr(s, 'start', None),
+                    'duration': getattr(s, 'duration', None),
+                })
+        return out
+
+    languages = ['en', 'en-US', 'en-GB']
+    raw = None
+    try:
+        if hasattr(YouTubeTranscriptApi, 'fetch') or callable(getattr(YouTubeTranscriptApi(), 'fetch', None)):
+            api = YouTubeTranscriptApi()
+            try:
+                raw = api.fetch(video_id, languages=languages)
+            except NoTranscriptFound:
+                tlist = api.list(video_id) if hasattr(api, 'list') else api.list_transcripts(video_id)
+                transcript = next(iter(tlist), None)
+                if transcript is None:
+                    raise
+                raw = transcript.fetch()
+        else:
+            try:
+                raw = YouTubeTranscriptApi.get_transcript(video_id, languages=languages)
+            except NoTranscriptFound:
+                tlist = YouTubeTranscriptApi.list_transcripts(video_id)
+                transcript = next(iter(tlist), None)
+                if transcript is None:
+                    raise
+                raw = transcript.fetch()
+    except TranscriptsDisabled:
+        raise RuntimeError('Transcripts are disabled on this video.')
+    except NoTranscriptFound:
+        raise RuntimeError('No transcript found (no captions, age-gated, or live stream).')
+    except VideoUnavailable:
+        raise RuntimeError('Video is unavailable (private, deleted, or region-locked).')
+    except Exception as e:
+        raise RuntimeError(f'Transcript fetch failed: {e}')
+
+    segments = _normalize(raw)
+    text = '\n'.join((s.get('text') or '').strip() for s in segments if s.get('text'))
+    return text, segments
+
+
+def fetch_pending_youtube_tasks() -> None:
+    """Poll backend for queued YouTube transcript tasks; fetch each locally
+    and POST the result back. Backend's pending endpoint atomically marks
+    them 'fetching' so concurrent agents don't double-claim."""
+    try:
+        r = requests.get(
+            f'{CHARLIE_API}/api/youtube-tasks/pending',
+            params={'limit': 5},
+            headers=_agent_headers(),
+            timeout=15,
+        )
+        if r.status_code != 200:
+            log.debug(f'youtube-tasks/pending HTTP {r.status_code}')
+            return
+        tasks = (r.json() or {}).get('tasks') or []
+    except Exception as e:
+        log.debug(f'youtube-tasks/pending fetch failed: {e}')
+        return
+
+    for t in tasks:
+        task_id = t.get('taskId')
+        video_id = t.get('videoId')
+        if not task_id or not video_id:
+            continue
+        log.info(f'[youtube] fetching transcript for {video_id} (task {task_id[:8]})')
+        try:
+            text, segments = _fetch_youtube_transcript_local(video_id)
+            payload = {'ok': True, 'transcript': text, 'segments': segments}
+            log.info(f'[youtube] {video_id}: got {len(text)} chars / {len(segments)} segments')
+        except Exception as e:
+            payload = {'ok': False, 'error': str(e)}
+            log.warning(f'[youtube] {video_id}: fetch failed — {e}')
+
+        try:
+            requests.post(
+                f'{CHARLIE_API}/api/youtube-tasks/{task_id}/result',
+                json=payload,
+                headers=_agent_headers(),
+                timeout=60,
+            )
+        except Exception as e:
+            log.warning(f'[youtube] failed to POST result for task {task_id[:8]}: {e}')
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Charlie Local Agent -- polls for note jobs and processes them locally"
@@ -3680,6 +3798,26 @@ def main() -> None:
     heartbeat_thread = threading.Thread(target=_heartbeat_loop, daemon=True, name='charlie-heartbeat')
     heartbeat_thread.start()
     log.info(f"Heartbeat thread started (every {HEARTBEAT_INTERVAL}s)")
+
+    # YouTube transcript fetch loop. YouTube blocks Render's cloud IP for
+    # caption fetches; the user's Mac has a residential IP that doesn't get
+    # rate-limited. Backend enqueues tasks in youtube_transcript_tasks; this
+    # thread polls every 15s, fetches via youtube-transcript-api locally,
+    # and POSTs the result back. Daemon thread so it auto-exits with main.
+    YOUTUBE_POLL_INTERVAL = 15
+    def _youtube_fetch_loop():
+        while not shutdown.is_set():
+            try:
+                fetch_pending_youtube_tasks()
+            except Exception as e:
+                log.debug(f"Youtube fetch loop error: {e}")
+            for _ in range(YOUTUBE_POLL_INTERVAL):
+                if shutdown.is_set():
+                    return
+                time.sleep(1)
+    youtube_thread = threading.Thread(target=_youtube_fetch_loop, daemon=True, name='charlie-youtube')
+    youtube_thread.start()
+    log.info(f"YouTube transcript-fetch thread started (every {YOUTUBE_POLL_INTERVAL}s)")
 
     while not shutdown.is_set():
         try:

@@ -2349,6 +2349,29 @@ def init_db():
                 END $$;
             ''')
 
+            # YouTube transcript task queue. The local agent polls this
+            # table because Render is on a cloud IP that YouTube blocks
+            # for transcript fetches; the user's Mac has a residential IP
+            # that doesn't get rate-limited.
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS youtube_transcript_tasks (
+                    id VARCHAR(40) PRIMARY KEY,
+                    video_id VARCHAR(20) NOT NULL,
+                    source_url TEXT NOT NULL,
+                    transcription_job_id VARCHAR(20) NOT NULL,
+                    ticker_hint VARCHAR(10) DEFAULT '',
+                    metadata JSONB DEFAULT '{}',
+                    anthropic_api_key TEXT DEFAULT '',
+                    status VARCHAR(20) DEFAULT 'queued',
+                    transcript TEXT DEFAULT '',
+                    segments JSONB DEFAULT '[]',
+                    error TEXT DEFAULT '',
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    fetched_at TIMESTAMP
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_yttasks_status ON youtube_transcript_tasks(status, created_at)')
+
             # Document Files table - stores actual document content for re-analysis
             cur.execute('''
                 CREATE TABLE IF NOT EXISTS document_files (
@@ -7041,9 +7064,18 @@ def _fetch_youtube_transcript(video_id):
 
 @app.route('/api/youtube-summarize', methods=['POST'])
 def youtube_summarize():
-    """Pull a YouTube transcript and run it through the same Brief / Key
-    Takeaways / Assessment pipeline as the text auto-processor. Returns a
-    jobId immediately; client polls GET /api/transcribe/<jobId> for status."""
+    """Enqueue a YouTube transcript fetch task for the local agent.
+
+    Direct transcript fetches from Render's cloud IP get blocked by
+    YouTube ('IpBlocked'). Instead we queue a task in
+    youtube_transcript_tasks; the local agent (residential IP) polls
+    /api/youtube-tasks/pending, fetches the transcript, and POSTs it
+    back via /api/youtube-tasks/<task_id>/result. The result handler
+    then kicks off the LLM pipeline.
+
+    Returns the transcription_jobs jobId immediately so the existing
+    /api/transcribe/<jobId> polling on the frontend keeps working.
+    """
     try:
         data = request.get_json(silent=True) or {}
         url = (data.get('url') or '').strip()
@@ -7058,21 +7090,156 @@ def youtube_summarize():
         if not video_id:
             return jsonify({'error': 'Could not parse a YouTube video ID from that URL'}), 400
 
-        # Synchronous: metadata + transcript fetch. These are fast (1-3s each)
-        # and let us return a clean error before kicking off the LLM pipeline.
+        # oEmbed runs from cloud IPs fine — it's a public unauthenticated
+        # endpoint. Just the captions feed is rate-limited.
         meta = _fetch_youtube_metadata(video_id)
-        try:
-            transcript_text, segments = _fetch_youtube_transcript(video_id)
-        except Exception as e:
-            return jsonify({'error': str(e)}), 400
+        display_title = meta.get('title') or f'YouTube {video_id}'
+        author = meta.get('author') or 'YouTube'
 
-        if not transcript_text or len(transcript_text.strip()) < 100:
-            return jsonify({'error': f'Transcript too short ({len(transcript_text)} chars) — likely empty captions.'}), 400
+        canonical_url = f'https://www.youtube.com/watch?v={video_id}'
 
-        # Build a useful filename for thesis injection + display.
-        # Format: "<TICKER> — <Author> — <Title>" so the existing ticker
-        # heuristic in _run_auto_process_text picks it up when no explicit
-        # ticker was passed.
+        job_id = str(uuid.uuid4())[:8]
+        task_id = str(uuid.uuid4())
+        _transcription_jobs[job_id] = {
+            'status': 'waiting_for_transcript',
+            'progress': 'Queued for local agent — fetching transcript via your Mac\'s IP…',
+            'filename': f'{author} — {display_title}.youtube',
+            'autoProcess': True,
+            'sourceType': 'youtube',
+            'videoId': video_id,
+            'title': display_title,
+            'author': author,
+            'taskId': task_id,
+        }
+
+        with get_db(commit=True) as (_, cur):
+            cur.execute('''
+                INSERT INTO youtube_transcript_tasks
+                    (id, video_id, source_url, transcription_job_id, ticker_hint, metadata, anthropic_api_key, status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 'queued')
+            ''', (
+                task_id, video_id, canonical_url, job_id, ticker,
+                json.dumps({**meta, 'submittedUrl': url}),
+                anthropic_api_key,
+            ))
+
+        print(f"[youtube {job_id}] Enqueued task {task_id} for video {video_id} ('{display_title}')")
+        return jsonify({
+            'success': True,
+            'jobId': job_id,
+            'taskId': task_id,
+            'videoId': video_id,
+            'title': display_title,
+            'author': author,
+            'status': 'waiting_for_transcript',
+        })
+    except Exception as e:
+        print(f"Error youtube-summarize: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/youtube-tasks/pending', methods=['GET'])
+def youtube_tasks_pending():
+    """Local agent polls this to claim pending YouTube transcript tasks.
+    Returns up to `limit` queued tasks (default 5). Marks them 'fetching'
+    so duplicate polls from racing agent threads don't double-claim."""
+    try:
+        limit = max(1, min(int(request.args.get('limit', 5)), 20))
+        with get_db(commit=True) as (_, cur):
+            cur.execute('''
+                UPDATE youtube_transcript_tasks
+                SET status = 'fetching'
+                WHERE id IN (
+                    SELECT id FROM youtube_transcript_tasks
+                    WHERE status = 'queued'
+                    ORDER BY created_at ASC
+                    LIMIT %s
+                    FOR UPDATE SKIP LOCKED
+                )
+                RETURNING id, video_id, source_url, transcription_job_id, ticker_hint, metadata, created_at
+            ''', (limit,))
+            rows = cur.fetchall()
+
+        tasks = []
+        for r in rows:
+            tasks.append({
+                'taskId': r['id'],
+                'videoId': r['video_id'],
+                'sourceUrl': r['source_url'],
+                'jobId': r['transcription_job_id'],
+                'ticker': r.get('ticker_hint') or '',
+                'metadata': r.get('metadata') or {},
+                'createdAt': r['created_at'].isoformat() if r.get('created_at') else None,
+            })
+        return jsonify({'ok': True, 'tasks': tasks})
+    except Exception as e:
+        print(f'youtube-tasks/pending error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/youtube-tasks/<task_id>/result', methods=['POST'])
+def youtube_tasks_result(task_id):
+    """Local agent posts transcript result here. Body:
+      success: { ok: true, transcript: str, segments: [{text,start,duration}, ...] }
+      failure: { ok: false, error: str }
+    On success, kicks off the LLM pipeline against the transcript so the
+    frontend's existing /api/transcribe/<jobId> polling sees status='complete'
+    once Brief / Key Takeaways / Assessment finish."""
+    try:
+        data = request.get_json(silent=True) or {}
+        ok = bool(data.get('ok'))
+
+        with get_db(commit=True) as (_, cur):
+            cur.execute('''
+                SELECT id, video_id, source_url, transcription_job_id, ticker_hint, metadata, anthropic_api_key, status
+                FROM youtube_transcript_tasks WHERE id = %s
+            ''', (task_id,))
+            task = cur.fetchone()
+            if not task:
+                return jsonify({'error': 'task not found'}), 404
+            if task['status'] in ('completed', 'failed'):
+                return jsonify({'ok': True, 'note': f'task already {task["status"]}'}), 200
+
+            job_id = task['transcription_job_id']
+            video_id = task['video_id']
+            canonical_url = task['source_url']
+            ticker = task.get('ticker_hint') or ''
+            api_key = task.get('anthropic_api_key') or os.environ.get('ANTHROPIC_API_KEY', '')
+            meta = task.get('metadata') or {}
+
+            if not ok:
+                err = (data.get('error') or 'unknown agent error')[:1000]
+                cur.execute('''
+                    UPDATE youtube_transcript_tasks
+                    SET status='failed', error=%s, fetched_at=NOW()
+                    WHERE id=%s
+                ''', (err, task_id))
+                if job_id in _transcription_jobs:
+                    _transcription_jobs[job_id]['status'] = 'failed'
+                    _transcription_jobs[job_id]['error'] = f'Local agent could not fetch transcript: {err}'
+                return jsonify({'ok': True})
+
+            transcript = (data.get('transcript') or '').strip()
+            segments = data.get('segments') or []
+            if not transcript or len(transcript) < 100:
+                err = f'Transcript too short ({len(transcript)} chars) — likely empty captions.'
+                cur.execute('''
+                    UPDATE youtube_transcript_tasks
+                    SET status='failed', error=%s, fetched_at=NOW()
+                    WHERE id=%s
+                ''', (err, task_id))
+                if job_id in _transcription_jobs:
+                    _transcription_jobs[job_id]['status'] = 'failed'
+                    _transcription_jobs[job_id]['error'] = err
+                return jsonify({'ok': True}), 200
+
+            cur.execute('''
+                UPDATE youtube_transcript_tasks
+                SET status='fetched', transcript=%s, segments=%s, fetched_at=NOW()
+                WHERE id=%s
+            ''', (transcript, json.dumps(segments), task_id))
+
+        # Build filename + source_meta for the LLM pipeline.
         display_title = meta.get('title') or f'YouTube {video_id}'
         author = meta.get('author') or 'YouTube'
         filename_parts = []
@@ -7081,29 +7248,19 @@ def youtube_summarize():
         filename_parts.append(author)
         filename_parts.append(display_title)
         filename = ' — '.join(filename_parts) + '.youtube'
-
-        canonical_url = f'https://www.youtube.com/watch?v={video_id}'
         source_meta = {
             **meta,
             'segmentCount': len(segments),
-            'transcriptChars': len(transcript_text),
-            'submittedUrl': url,
+            'transcriptChars': len(transcript),
         }
 
-        job_id = str(uuid.uuid4())[:8]
-        _transcription_jobs[job_id] = {
-            'status': 'starting',
-            'filename': filename,
-            'autoProcess': True,
-            'sourceType': 'youtube',
-            'videoId': video_id,
-            'title': display_title,
-            'author': author,
-        }
+        if job_id in _transcription_jobs:
+            _transcription_jobs[job_id]['status'] = 'starting'
+            _transcription_jobs[job_id]['progress'] = 'Transcript captured — generating Brief / Key Takeaways / Assessment…'
 
-        thread = threading.Thread(
+        threading.Thread(
             target=_run_auto_process_text,
-            args=(job_id, transcript_text, filename, anthropic_api_key),
+            args=(job_id, transcript, filename, api_key),
             kwargs={
                 'source_type': 'youtube',
                 'source_url': canonical_url,
@@ -7111,21 +7268,20 @@ def youtube_summarize():
                 'ticker_hint': ticker,
             },
             daemon=True,
-            name=f'youtube-{job_id}',
-        )
-        thread.start()
+            name=f'youtube-llm-{job_id}',
+        ).start()
 
-        print(f"[youtube {job_id}] Started for {video_id} ({len(transcript_text)} chars, '{display_title}')")
-        return jsonify({
-            'success': True,
-            'jobId': job_id,
-            'videoId': video_id,
-            'title': display_title,
-            'author': author,
-            'transcriptChars': len(transcript_text),
-        })
+        # Mark the task completed once the LLM thread is dispatched.
+        with get_db(commit=True) as (_, cur):
+            cur.execute('''
+                UPDATE youtube_transcript_tasks
+                SET status='completed' WHERE id=%s
+            ''', (task_id,))
+
+        print(f"[youtube {job_id}] Transcript received from agent ({len(transcript)} chars), LLM pipeline dispatched")
+        return jsonify({'ok': True})
     except Exception as e:
-        print(f"Error youtube-summarize: {e}")
+        print(f'youtube-tasks/result error: {e}')
         return jsonify({'error': str(e)}), 500
 
 

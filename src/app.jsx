@@ -3252,8 +3252,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         return;
                     }
                     setSummaryYoutubeStatus({
-                        phase: 'running',
-                        message: `Transcript captured (${(dj.transcriptChars || 0).toLocaleString()} chars). Generating Brief / Key Takeaways / Assessment…`,
+                        phase: 'waiting_for_transcript',
+                        message: 'Queued. Local agent will fetch transcript on its next 15-second poll…',
                         jobId: dj.jobId,
                         videoId: dj.videoId,
                         title: dj.title,
@@ -3277,7 +3277,14 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 setSummaryLoading(false);
                                 return;
                             }
-                            // status is 'starting' / 'running' / 'summarizing' — keep polling
+                            // Surface progress so the user can tell whether we're
+                            // still waiting on the agent vs. running the LLM pipeline.
+                            const progress = pj.progress || '';
+                            const phase = pj.status === 'waiting_for_transcript' ? 'waiting_for_transcript' : 'running';
+                            const message = pj.status === 'waiting_for_transcript'
+                                ? (progress || 'Waiting for local agent to fetch transcript…')
+                                : (progress || 'Generating Brief / Key Takeaways / Assessment…');
+                            setSummaryYoutubeStatus({ phase, message, jobId: dj.jobId, videoId: dj.videoId, title: dj.title, author: dj.author });
                         } catch {}
                     }
                     if (!summaryId) {
@@ -18237,6 +18244,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             <div className={`p-3 rounded-lg border text-xs ${
                                                                 summaryYoutubeStatus.phase === 'error' ? 'bg-red-500/10 border-red-500/30 text-red-300'
                                                                     : summaryYoutubeStatus.phase === 'complete' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                                                                    : summaryYoutubeStatus.phase === 'waiting_for_transcript' ? 'bg-amber-500/10 border-amber-500/30 text-amber-200'
                                                                     : 'bg-red-600/10 border-red-500/30 text-red-200'
                                                             }`}>
                                                                 {summaryYoutubeStatus.title && (
