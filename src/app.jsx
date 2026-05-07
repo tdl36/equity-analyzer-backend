@@ -1653,6 +1653,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [recapActiveTab, setRecapActiveTab] = useState({}); // {activityId: 'pm'|'quick'|'summary'|'comprehensive'}
             const [recapModel, setRecapModel] = useState({}); // {activityId: 'claude-sonnet-4-6'|...}
             const [recapProvider, setRecapProvider] = useState({}); // {activityId: 'anthropic'|'openai'|'google'}
+            const [recapSavedIds, setRecapSavedIds] = useState({}); // {activityId: summaryId} — flips Save → Saved ✓
+            const [recapSavingId, setRecapSavingId] = useState(null); // activityId currently being saved
             const RECAP_DEFAULT_PROVIDER = 'anthropic';
             const RECAP_DEFAULT_MODEL = 'claude-sonnet-4-6';
             // Parse the multi-version recap HTML into {pm, quick, summary, comprehensive}.
@@ -7461,6 +7463,81 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     else { const err = await r.json().catch(() => ({})); setAnalystToast('Email failed: ' + (err.error || r.status)); }
                 } catch (e) { setAnalystToast('Email error: ' + e.message); }
             };
+            // Persist a finished earnings recap to the Summary tab as a
+            // meeting_summaries row. Idempotent — re-saving updates the same
+            // row via ON CONFLICT in /api/save-summary. Maps the multi-tier
+            // recap onto the existing brief / summary / meeting_summary
+            // fields so it renders the same shape as audio/text summaries:
+            //   PM Take          → brief
+            //   Comprehensive    → summary  (Key Takeaways tier)
+            //   Summary tier     → meetingSummary  (narrative)
+            // All four tiers are also stashed in source_meta.versions for
+            // future re-export. When there's only one tier, dump it into
+            // summary.
+            const saveRecapToSummary = async (item, parsed) => {
+                if (!item) return;
+                const md = item.output?.synthesisMarkdown || '';
+                if (!md.trim()) { setAnalystToast('Nothing to save — recap is empty'); return; }
+                const ticker = item.ticker || '';
+                const topic = item.input?.topic || 'Earnings Recap';
+                const title = `${ticker} ${topic}`.trim();
+                const summaryId = recapSavedIds[item.id] || `recap-${item.id}`;
+                setRecapSavingId(item.id);
+                try {
+                    const briefHtml = (parsed && parsed.hasVersions && parsed.pm) ? parsed.pm : '';
+                    const summaryHtml = (parsed && parsed.hasVersions)
+                        ? (parsed.comprehensive || parsed.summary || parsed.quick || parsed.pm || md)
+                        : md;
+                    const meetingSummaryHtml = (parsed && parsed.hasVersions && parsed.summary && parsed.summary !== summaryHtml)
+                        ? parsed.summary : '';
+                    const sourceMeta = {
+                        activityId: item.id,
+                        activityType: item.activityType,
+                        ticker,
+                        topic,
+                        analystName: item.analystName || '',
+                        completedAt: item.completedAt || item.updatedAt || null,
+                        versions: parsed && parsed.hasVersions ? {
+                            pm: parsed.pm || '',
+                            quick: parsed.quick || '',
+                            summary: parsed.summary || '',
+                            comprehensive: parsed.comprehensive || '',
+                        } : null,
+                    };
+                    const res = await fetch(`${API_URL}/api/save-summary`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            id: summaryId,
+                            title,
+                            rawNotes: '',
+                            summary: summaryHtml,
+                            brief: briefHtml,
+                            meetingSummary: meetingSummaryHtml,
+                            sourceType: 'earnings_recap',
+                            docType: item.activityType || 'earnings_recap',
+                            topic: ticker || 'General',
+                            topicType: ticker ? 'ticker' : 'other',
+                            categories: ticker ? [ticker] : [],
+                            sourceMeta,
+                            createdAt: item.completedAt || new Date().toISOString(),
+                        }),
+                    });
+                    if (res.ok) {
+                        setRecapSavedIds(s => ({ ...s, [item.id]: summaryId }));
+                        await loadSummaries();
+                        setAnalystToast(`Saved to Summary tab — ${title}`);
+                    } else {
+                        const err = await res.json().catch(() => ({}));
+                        setAnalystToast('Save failed: ' + (err.error || res.status));
+                    }
+                } catch (e) {
+                    setAnalystToast('Save error: ' + (e.message || e));
+                } finally {
+                    setRecapSavingId(null);
+                }
+            };
+
             const openRecapEmailWithOptions = (activity) => {
                 const saved = localStorage.getItem('emailCredentials');
                 let defaultEmail = '';
@@ -16805,7 +16882,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     All
                                                 </button>
                                                 
-                                                {/* Topic buttons */}
+                                                {/* Topic buttons — match Thesis/Overview pill style: ticker text only,
+                                                    no type emoji, count kept as a quiet badge for context. */}
                                                 {getSummaryTopics().map(topic => (
                                                     <button
                                                         key={topic.name}
@@ -16816,10 +16894,6 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 : 'bg-white/5 hover:bg-white/10'
                                                         }`}
                                                     >
-                                                        {topic.type === 'ticker' && <span className="text-xs">📈</span>}
-                                                        {topic.type === 'macro' && <span className="text-xs">🌍</span>}
-                                                        {topic.type === 'industry' && <span className="text-xs">🏭</span>}
-                                                        {topic.type === 'other' && <span className="text-xs">📋</span>}
                                                         {topic.name}
                                                         <span className="text-xs opacity-60">({topic.count})</span>
                                                     </button>
@@ -25982,6 +26056,20 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                     )}
                                                                                     <button onClick={() => openRecapEmailWithOptions(item)} title="Email to someone else…" className="p-1 bg-yellow-500 hover:bg-yellow-400 text-slate-900 rounded">
                                                                                         <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                                                                    </button>
+                                                                                    <button
+                                                                                        onClick={() => saveRecapToSummary(item, parsed)}
+                                                                                        disabled={recapSavingId === item.id}
+                                                                                        title={recapSavedIds[item.id] ? 'Re-save (overwrite previous)' : 'Save a copy to Summary tab'}
+                                                                                        className={`p-1 rounded ${recapSavedIds[item.id] ? 'bg-emerald-600/30 text-emerald-300 hover:bg-emerald-600/40' : 'bg-emerald-600 hover:bg-emerald-500 text-white'} disabled:opacity-50`}
+                                                                                    >
+                                                                                        {recapSavingId === item.id ? (
+                                                                                            <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                                                                                        ) : recapSavedIds[item.id] ? (
+                                                                                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                                                                        ) : (
+                                                                                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                                                                                        )}
                                                                                     </button>
                                                                                     <button
                                                                                         onClick={() => {
