@@ -2495,7 +2495,12 @@ def _wait_for_audio_job_and_move(fname: str, fpath: Path, job_id: str) -> None:
         import time as _time
         processed_dir = SUMMARIES_DIR / "Processed"
         processed_dir.mkdir(exist_ok=True)
-        max_iters = 120  # 120 * 10s = 20 min max
+        # Long-form audio (1-2 hour CFO meetings/dinners) takes 30-60+ min
+        # through Gemini transcription + Anthropic Brief / Key Takeaways /
+        # Q&A Log / Drill-Down / Assessment. The previous 20-min cap fired
+        # during normal long-form processing and triggered a re-upload loop
+        # because we were also discarding from _known_audio_files below.
+        max_iters = 540  # 540 * 10s = 90 min max
         for i in range(max_iters):
             _time.sleep(10)
             try:
@@ -2545,11 +2550,13 @@ def _wait_for_audio_job_and_move(fname: str, fpath: Path, job_id: str) -> None:
                     return
             except Exception as e:
                 log.debug(f"Audio poll ({job_id}) error: {e}")
-        log.warning(f"Audio job {job_id} for {fname} still running after 20 min — leaving file in place for next tick to re-check")
-        try:
-            _known_audio_files.discard(fname)
-        except Exception:
-            pass
+        # Soft cap hit. The backend job MIGHT still be working — leave the
+        # file in place AND keep it in _known_audio_files so the scanner
+        # doesn't redetect-and-reupload (which would spawn a duplicate job
+        # while the original is still processing). User can check Render
+        # logs / move the file manually if it's truly stuck.
+        log.warning(f"Audio job {job_id} for {fname} still running after 90 min — leaving file in place; NOT re-uploading to avoid duplicate jobs")
+        notify(f"*Audio still processing after 90 min:* {fname}\nJob {job_id} may be stuck. Check Render logs.")
 
     _t.Thread(target=_poll, daemon=True).start()
 
