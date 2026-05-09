@@ -6796,9 +6796,24 @@ def transcribe_audio():
         return jsonify({'error': f'Failed to start transcription: {str(e)}'}), 500
 
 
+# Audio processing concurrency cap. With 5 concurrent 78-94MB uploads
+# in flight (CVS post-call, HUM CFO dinner, BSX, UNH all dropped at
+# once), Render's process OOM'd and killed all in-flight jobs. Cap at
+# 2 concurrent pipelines so memory peaks at ~2 × 100MB instead of 5+.
+# Subsequent uploads wait on the semaphore inside the daemon thread
+# (file already on disk by then, so no memory pressure while waiting).
+_audio_job_semaphore = threading.Semaphore(2)
+
+
 @app.route('/api/auto-process-audio', methods=['POST'])
 def auto_process_audio():
-    """Auto-process audio: transcribe + summarize + save. Used by local agent for iCloud auto-detection."""
+    """Auto-process audio: transcribe + summarize + save. Used by local agent for iCloud auto-detection.
+
+    Streams the upload directly to a temp file (no Python memory hold)
+    instead of `file.read()` into a 78-94MB bytes object. Previously
+    each concurrent upload pinned its full payload in RAM, OOM'd Render
+    under burst, and killed all in-flight jobs.
+    """
     try:
         if 'file' not in request.files:
             return jsonify({'error': 'No audio file provided'}), 400
@@ -6824,7 +6839,6 @@ def auto_process_audio():
         if not file.filename.lower().endswith(allowed_extensions):
             return jsonify({'error': f'Unsupported audio format'}), 400
 
-        file_content = file.read()
         filename = file.filename
         detail_level = request.form.get('detailLevel', 'standard')
         anthropic_api_key = request.form.get('apiKey', '') or os.environ.get('ANTHROPIC_API_KEY', '')
@@ -6833,22 +6847,59 @@ def auto_process_audio():
         file_ext = '.' + filename.lower().rsplit('.', 1)[-1]
         mime_type = mime_map.get(file_ext, 'audio/mpeg')
 
+        # Stream to disk immediately. Werkzeug's FileStorage.save() copies
+        # the request stream to disk in chunks without buffering the whole
+        # payload in Python memory.
+        import tempfile
+        fd, upload_path = tempfile.mkstemp(suffix=file_ext, prefix='upload_audio_')
+        os.close(fd)
+        try:
+            file.save(upload_path)
+        except Exception as e:
+            try: os.unlink(upload_path)
+            except Exception: pass
+            raise
+
         job_id = str(uuid.uuid4())[:8]
         _transcription_jobs[job_id] = {'status': 'starting', 'filename': filename, 'autoProcess': True}
         _mirror_transcription_state(job_id)
 
         thread = threading.Thread(
-            target=_run_auto_process_audio,
-            args=(job_id, file_content, filename, mime_type, gemini_api_key, anthropic_api_key, detail_level),
-            daemon=True
+            target=_run_auto_process_audio_path,
+            args=(job_id, upload_path, filename, mime_type, gemini_api_key, anthropic_api_key, detail_level),
+            daemon=True,
+            name=f'auto-audio-{job_id}',
         )
         thread.start()
 
-        print(f"[auto-audio {job_id}] Started for {filename}")
+        try:
+            sz_mb = os.path.getsize(upload_path) / (1024 * 1024)
+        except Exception:
+            sz_mb = 0
+        print(f"[auto-audio {job_id}] Streamed {sz_mb:.1f}MB to {upload_path}, dispatched daemon for {filename}")
         return jsonify({'success': True, 'jobId': job_id, 'filename': filename})
     except Exception as e:
         print(f"Error auto-processing audio: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+def _run_auto_process_audio_path(job_id, upload_path, filename, mime_type, gemini_api_key, anthropic_api_key, detail_level):
+    """Wrapper: acquires the audio concurrency semaphore (so we never run
+    more than N audio pipelines at once on this Render dyno), reads the
+    streamed-to-disk upload back into memory, then delegates to the
+    existing _run_auto_process_audio. Cleans up the temp file at the end."""
+    waited_at = time.time()
+    with _audio_job_semaphore:
+        wait_sec = time.time() - waited_at
+        if wait_sec > 1:
+            print(f"[auto-audio {job_id}] Acquired semaphore after {wait_sec:.1f}s wait")
+        try:
+            with open(upload_path, 'rb') as f:
+                file_content = f.read()
+            _run_auto_process_audio(job_id, file_content, filename, mime_type, gemini_api_key, anthropic_api_key, detail_level)
+        finally:
+            try: os.unlink(upload_path)
+            except Exception: pass
 
 
 @app.route('/api/auto-process-text', methods=['POST'])
