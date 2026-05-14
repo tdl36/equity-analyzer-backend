@@ -2729,9 +2729,20 @@ def check_for_new_audio():
             except Exception as e:
                 log.warning(f"Error preparing audio file {fname}: {e}")
                 _audio_in_flight.discard(fname)
-                _audio_failed_attempts[fname] = _audio_failed_attempts.get(fname, 0) + 1
-                if _audio_failed_attempts[fname] >= 5:
-                    log.error(f"AUDIO GIVE UP: {fname} failed {_audio_failed_attempts[fname]} times. Investigate manually.")
+                # Don't count transient iCloud-not-ready errors (errno 11
+                # EDEADLK / errno 35 EAGAIN) toward the 5-failure giveup
+                # cap — large files (30MB+) often need several minute-long
+                # ticks before iCloud finishes downloading. The brctl
+                # download forcer above is best-effort; eventually the
+                # file materializes and processing succeeds. Counting
+                # these as real failures locked MCK/MRK files into the
+                # giveup state until manual restart.
+                err_code = getattr(e, 'errno', None)
+                is_transient_icloud = err_code in (11, 35)
+                if not is_transient_icloud:
+                    _audio_failed_attempts[fname] = _audio_failed_attempts.get(fname, 0) + 1
+                    if _audio_failed_attempts[fname] >= 5:
+                        log.error(f"AUDIO GIVE UP: {fname} failed {_audio_failed_attempts[fname]} times. Investigate manually.")
                 # Drop from known-files so the next tick retries instead of
                 # silently giving up forever (until the giveup cap above).
                 try: _known_audio_files.discard(fname)
