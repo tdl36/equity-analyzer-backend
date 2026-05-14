@@ -3639,6 +3639,74 @@ def _fetch_youtube_transcript_local(video_id: str):
     return text, segments
 
 
+# ---------------------------------------------------------------------------
+# iCloud export tasks — backend can't write to iCloud (it's on Render).
+# This loop polls /api/icloud-export-tasks/pending, decodes the b64 blob
+# into a .docx, and writes it to SUMMARIES/Word Exports/. POSTs done back.
+# ---------------------------------------------------------------------------
+
+def fetch_pending_icloud_export_tasks() -> None:
+    try:
+        r = requests.get(
+            f'{CHARLIE_API}/api/icloud-export-tasks/pending',
+            params={'limit': 5},
+            headers=_agent_headers(),
+            timeout=15,
+        )
+        if r.status_code != 200:
+            log.debug(f'icloud-export-tasks/pending HTTP {r.status_code}')
+            return
+        tasks = (r.json() or {}).get('tasks') or []
+    except Exception as e:
+        log.debug(f'icloud-export-tasks/pending fetch failed: {e}')
+        return
+
+    for t in tasks:
+        task_id = t.get('taskId')
+        filename = t.get('filename') or 'export.docx'
+        sub = t.get('targetSubfolder') or 'Word Exports'
+        if not task_id or not t.get('fileData'):
+            continue
+        try:
+            target_dir = SUMMARIES_DIR / sub
+            target_dir.mkdir(exist_ok=True)
+            # Disambiguate if a file with the same name already exists.
+            base_path = target_dir / filename
+            final_path = base_path
+            if final_path.exists():
+                stem = base_path.stem
+                suffix = base_path.suffix
+                n = 2
+                while True:
+                    cand = target_dir / f'{stem} ({n}){suffix}'
+                    if not cand.exists():
+                        final_path = cand
+                        break
+                    n += 1
+            import base64 as _b64
+            with open(final_path, 'wb') as f:
+                f.write(_b64.b64decode(t['fileData']))
+            log.info(f'[icloud-export] Wrote {final_path.name} ({final_path.stat().st_size} bytes)')
+            payload = {'ok': True}
+            try:
+                notify(f'*Saved to iCloud:* {final_path.name}')
+            except Exception:
+                pass
+        except Exception as e:
+            log.warning(f'[icloud-export] write failed for task {task_id[:8]}: {e}')
+            payload = {'ok': False, 'error': str(e)}
+
+        try:
+            requests.post(
+                f'{CHARLIE_API}/api/icloud-export-tasks/{task_id}/done',
+                json=payload,
+                headers=_agent_headers(),
+                timeout=30,
+            )
+        except Exception as e:
+            log.warning(f'[icloud-export] failed to POST done for task {task_id[:8]}: {e}')
+
+
 def fetch_pending_youtube_tasks() -> None:
     """Poll backend for queued YouTube transcript tasks; fetch each locally
     and POST the result back. Backend's pending endpoint atomically marks
@@ -3818,13 +3886,19 @@ def main() -> None:
                 fetch_pending_youtube_tasks()
             except Exception as e:
                 log.debug(f"Youtube fetch loop error: {e}")
+            # Piggyback iCloud export tasks on the same cadence — same shape
+            # (poll → claim → write → POST done) and writes are tiny / fast.
+            try:
+                fetch_pending_icloud_export_tasks()
+            except Exception as e:
+                log.debug(f"iCloud export loop error: {e}")
             for _ in range(YOUTUBE_POLL_INTERVAL):
                 if shutdown.is_set():
                     return
                 time.sleep(1)
     youtube_thread = threading.Thread(target=_youtube_fetch_loop, daemon=True, name='charlie-youtube')
     youtube_thread.start()
-    log.info(f"YouTube transcript-fetch thread started (every {YOUTUBE_POLL_INTERVAL}s)")
+    log.info(f"YouTube + iCloud-export poll thread started (every {YOUTUBE_POLL_INTERVAL}s)")
 
     while not shutdown.is_set():
         try:

@@ -2372,6 +2372,26 @@ def init_db():
             ''')
             cur.execute('CREATE INDEX IF NOT EXISTS idx_yttasks_status ON youtube_transcript_tasks(status, created_at)')
 
+            # iCloud export task queue. The local agent polls this table to
+            # save Word .docx exports of summary sections into the user's
+            # iCloud SUMMARIES/Word Exports/ folder. Backend can't write to
+            # iCloud directly (it's on Render); the user's Mac can.
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS icloud_export_tasks (
+                    id VARCHAR(40) PRIMARY KEY,
+                    summary_id VARCHAR(50) NOT NULL,
+                    section VARCHAR(40) NOT NULL,
+                    filename TEXT NOT NULL,
+                    file_data_b64 TEXT NOT NULL,
+                    target_subfolder VARCHAR(100) DEFAULT 'Word Exports',
+                    status VARCHAR(20) DEFAULT 'queued',
+                    error TEXT DEFAULT '',
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    completed_at TIMESTAMP
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_icloud_export_status ON icloud_export_tasks(status, created_at)')
+
             # Document Files table - stores actual document content for re-analysis
             cur.execute('''
                 CREATE TABLE IF NOT EXISTS document_files (
@@ -8364,11 +8384,20 @@ def _generate_summary_docx_bytes(row, sections=None):
         p.runs[0].font.size = Pt(9)
         p.runs[0].font.color.rgb = RGBColor(128, 128, 128)
 
+    brief_html = row.get('brief') or ''
+    meeting_summary_html = row.get('meeting_summary') or ''
     summary_html = row.get('summary') or ''
     questions_html = row.get('questions') or ''
     assessment_html = row.get('assessment') or ''
     raw_notes = row.get('raw_notes') or ''
     source_type = row.get('source_type') or ''
+
+    if brief_html and (include_all or 'brief' in sect_set):
+        h = doc.add_heading('Brief', level=2)
+        for r in h.runs:
+            r.font.name = 'Calibri'
+            r.font.color.rgb = RGBColor(0, 0, 0)
+        _html_to_docx_elements(doc, brief_html)
 
     if summary_html and (include_all or 'takeaways' in sect_set):
         h = doc.add_heading('Key Takeaways', level=2)
@@ -8376,6 +8405,13 @@ def _generate_summary_docx_bytes(row, sections=None):
             r.font.name = 'Calibri'
             r.font.color.rgb = RGBColor(0, 0, 0)
         _html_to_docx_elements(doc, summary_html)
+
+    if meeting_summary_html and (include_all or 'meeting' in sect_set):
+        h = doc.add_heading('Meeting Summary', level=2)
+        for r in h.runs:
+            r.font.name = 'Calibri'
+            r.font.color.rgb = RGBColor(0, 0, 0)
+        _html_to_docx_elements(doc, meeting_summary_html)
 
     if questions_html and (include_all or 'questions' in sect_set):
         h = doc.add_heading('Follow-up Questions', level=2)
@@ -8391,7 +8427,7 @@ def _generate_summary_docx_bytes(row, sections=None):
             r.font.color.rgb = RGBColor(0, 0, 0)
         _html_to_docx_elements(doc, assessment_html)
 
-    if source_type == 'audio' and raw_notes and include_all:
+    if source_type == 'audio' and raw_notes and (include_all or 'transcript' in sect_set):
         h = doc.add_heading('Full Transcript', level=2)
         for r in h.runs:
             r.font.name = 'Calibri'
@@ -8485,6 +8521,182 @@ def summary_to_docx():
         })
     except Exception as e:
         print(f"Error creating summary docx: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# Allowed section keys for per-section docx export. 'all' means
+# include every section (same as omitting the field). Maps to the
+# branches inside _generate_summary_docx_bytes.
+_VALID_SECTION_KEYS = {'brief', 'takeaways', 'meeting', 'questions', 'assessment', 'transcript', 'all'}
+
+_SECTION_LABEL = {
+    'brief': 'Brief',
+    'takeaways': 'Key Takeaways',
+    'meeting': 'Meeting Summary',
+    'questions': 'Follow-up Questions',
+    'assessment': 'Assessment',
+    'transcript': 'Full Transcript',
+    'all': 'Full Summary',
+}
+
+
+def _safe_filename(text, maxlen=80):
+    """Strip a string down to something filesystem-safe."""
+    cleaned = re.sub(r'[^\w\s.\-]', '', text or '')[:maxlen].strip()
+    return cleaned.replace('  ', ' ') or 'Summary'
+
+
+@app.route('/api/summary-section-to-docx', methods=['POST'])
+def summary_section_to_docx():
+    """Generate a single-section (or all-sections) docx for a summary.
+    Body: { summaryId, section: 'brief'|'takeaways'|'meeting'|'questions'|
+            'assessment'|'transcript'|'all' }
+    Returns base64-encoded docx for the browser to download OR for the
+    iCloud-save handler to queue."""
+    try:
+        data = request.get_json() or {}
+        summary_id = data.get('summaryId')
+        section = (data.get('section') or 'all').lower().strip()
+        if not summary_id:
+            return jsonify({'error': 'summaryId required'}), 400
+        if section not in _VALID_SECTION_KEYS:
+            return jsonify({'error': f'invalid section: {section}'}), 400
+
+        with get_db() as (_, cur):
+            cur.execute('SELECT * FROM meeting_summaries WHERE id = %s', (summary_id,))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'error': 'summary not found'}), 404
+
+        sections = None if section == 'all' else [section]
+        docx_bytes = _generate_summary_docx_bytes(dict(row), sections=sections)
+        title_part = _safe_filename(row['title'] or 'Summary', 60)
+        label_part = _SECTION_LABEL.get(section, section.title())
+        filename = f"{title_part} - {label_part}.docx" if section != 'all' else f"{title_part}.docx"
+
+        return jsonify({
+            'success': True,
+            'fileData': base64.b64encode(docx_bytes).decode('utf-8'),
+            'filename': filename,
+            'fileSize': len(docx_bytes),
+            'section': section,
+        })
+    except Exception as e:
+        print(f"Error generating section docx: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/summaries/<summary_id>/save-to-icloud', methods=['POST'])
+def summary_save_to_icloud(summary_id):
+    """Queue a .docx export task. The local agent polls
+    /api/icloud-export-tasks/pending, downloads the file_data_b64, and
+    writes the file to the user's iCloud SUMMARIES/Word Exports/ folder.
+
+    Body: { section: 'brief'|'takeaways'|'meeting'|'questions'|
+            'assessment'|'transcript'|'all' }
+    Returns { taskId, filename } immediately."""
+    try:
+        data = request.get_json() or {}
+        section = (data.get('section') or 'all').lower().strip()
+        if section not in _VALID_SECTION_KEYS:
+            return jsonify({'error': f'invalid section: {section}'}), 400
+
+        with get_db() as (_, cur):
+            cur.execute('SELECT * FROM meeting_summaries WHERE id = %s', (summary_id,))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'error': 'summary not found'}), 404
+
+        sections = None if section == 'all' else [section]
+        docx_bytes = _generate_summary_docx_bytes(dict(row), sections=sections)
+        title_part = _safe_filename(row['title'] or 'Summary', 60)
+        label_part = _SECTION_LABEL.get(section, section.title())
+        filename = f"{title_part} - {label_part}.docx" if section != 'all' else f"{title_part}.docx"
+
+        task_id = str(uuid.uuid4())
+        with get_db(commit=True) as (_, cur):
+            cur.execute('''
+                INSERT INTO icloud_export_tasks
+                    (id, summary_id, section, filename, file_data_b64, status)
+                VALUES (%s, %s, %s, %s, %s, 'queued')
+            ''', (task_id, summary_id, section, filename,
+                  base64.b64encode(docx_bytes).decode('utf-8')))
+
+        print(f"[icloud-export {task_id[:8]}] Queued '{filename}' ({len(docx_bytes)}B) for summary {summary_id}")
+        return jsonify({
+            'success': True,
+            'taskId': task_id,
+            'filename': filename,
+            'fileSize': len(docx_bytes),
+        })
+    except Exception as e:
+        print(f"Error queuing icloud export: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/icloud-export-tasks/pending', methods=['GET'])
+def icloud_export_tasks_pending():
+    """Local agent polls this to claim pending iCloud export tasks.
+    Atomic claim via FOR UPDATE SKIP LOCKED so multiple agent threads
+    don't double-handle."""
+    try:
+        limit = max(1, min(int(request.args.get('limit', 5)), 20))
+        with get_db(commit=True) as (_, cur):
+            cur.execute('''
+                UPDATE icloud_export_tasks
+                SET status = 'fetching'
+                WHERE id IN (
+                    SELECT id FROM icloud_export_tasks
+                    WHERE status = 'queued'
+                    ORDER BY created_at ASC
+                    LIMIT %s
+                    FOR UPDATE SKIP LOCKED
+                )
+                RETURNING id, summary_id, section, filename, file_data_b64, target_subfolder, created_at
+            ''', (limit,))
+            rows = cur.fetchall()
+        tasks = []
+        for r in rows:
+            tasks.append({
+                'taskId': r['id'],
+                'summaryId': r['summary_id'],
+                'section': r['section'],
+                'filename': r['filename'],
+                'fileData': r['file_data_b64'],
+                'targetSubfolder': r.get('target_subfolder') or 'Word Exports',
+                'createdAt': r['created_at'].isoformat() if r.get('created_at') else None,
+            })
+        return jsonify({'ok': True, 'tasks': tasks})
+    except Exception as e:
+        print(f'icloud-export-tasks/pending error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/icloud-export-tasks/<task_id>/done', methods=['POST'])
+def icloud_export_tasks_done(task_id):
+    """Local agent posts result. Body: { ok: bool, error?: str }
+    On success, clears the file_data_b64 blob to keep the table tidy."""
+    try:
+        data = request.get_json(silent=True) or {}
+        ok = bool(data.get('ok'))
+        err = (data.get('error') or '')[:1000]
+        with get_db(commit=True) as (_, cur):
+            if ok:
+                cur.execute('''
+                    UPDATE icloud_export_tasks
+                    SET status='completed', error='', completed_at=NOW(),
+                        file_data_b64=''
+                    WHERE id=%s
+                ''', (task_id,))
+            else:
+                cur.execute('''
+                    UPDATE icloud_export_tasks
+                    SET status='failed', error=%s, completed_at=NOW()
+                    WHERE id=%s
+                ''', (err, task_id))
+        return jsonify({'ok': True})
+    except Exception as e:
+        print(f'icloud-export-tasks/done error: {e}')
         return jsonify({'error': str(e)}), 500
 
 

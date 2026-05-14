@@ -2305,6 +2305,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [transcriptExpanded, setTranscriptExpanded] = useState(false);
             const [assessmentExpanded, setAssessmentExpanded] = useState(true);
             const [meetingSummaryExpanded, setMeetingSummaryExpanded] = useState(true);
+            // iCloud save state: tracks which section is currently being
+            // queued so the per-section button can show a spinner. Resets
+            // on toast display.
+            const [iCloudSavingSection, setICloudSavingSection] = useState(null);
             const [editingAssessment, setEditingAssessment] = useState(false);
             const [editAssessmentValue, setEditAssessmentValue] = useState('');
             const [bgTranscriptionJob, setBgTranscriptionJob] = useState(null); // { jobId, files, title, topic, topicType, docType, detailLevel, startTime, progress }
@@ -2584,6 +2588,101 @@ Regulatory, execution, or macro risks that could derail the thesis:
             };
             
             // Email Meeting Summary only
+            // Queue a section (or 'all') as a Word .docx for the local
+            // agent to write into iCloud SUMMARIES/Word Exports/. Backend
+            // generates the file synchronously, agent picks it up on its
+            // next 15s poll. Toast confirms queueing; final landing in
+            // iCloud is reported via Telegram.
+            const saveSectionToICloud = async (section) => {
+                if (!currentSummary) return;
+                setICloudSavingSection(section);
+                try {
+                    const res = await fetch(`${API_URL}/api/summaries/${currentSummary.id}/save-to-icloud`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ section }),
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        alert(`Queued for iCloud:\n${data.filename}\n\nLocal agent will save it within ~15 seconds.`);
+                    } else {
+                        const err = await res.json().catch(() => ({}));
+                        alert('iCloud save failed: ' + (err.error || res.status));
+                    }
+                } catch (e) {
+                    alert('iCloud save error: ' + (e.message || e));
+                } finally {
+                    setICloudSavingSection(null);
+                }
+            };
+
+            // "Email all sections" — packs everything into a single email
+            // using the Brief / Key Takeaways / Meeting Summary / Q&A /
+            // Assessment / Transcript ordering. Reuses the existing
+            // /api/email-summary-section endpoint with section='takeaways'
+            // (which renders as the "Key Takeaways" header) — but content
+            // here is the concatenated HTML of all sections.
+            const emailAllSummarySections = async () => {
+                if (!currentSummary) return;
+                const saved = localStorage.getItem('emailCredentials');
+                if (!saved) { alert('Set email credentials in Settings first'); return; }
+                let creds; try { creds = JSON.parse(saved); } catch { alert('Invalid email credentials'); return; }
+                if (!creds.email) { alert('Set recipient email in Settings first'); return; }
+                const parts = [];
+                if (currentSummary.brief) parts.push('<h2>Brief</h2>' + currentSummary.brief);
+                if (currentSummary.summary) parts.push('<h2>Key Takeaways</h2>' + currentSummary.summary);
+                if (currentSummary.meetingSummary) parts.push('<h2>Meeting Summary</h2>' + currentSummary.meetingSummary);
+                if (currentSummary.questions) parts.push('<h2>Follow-up Questions</h2>' + currentSummary.questions);
+                if (currentSummary.assessment) parts.push("<h2>Claude's Assessment</h2>" + currentSummary.assessment);
+                if (currentSummary.sourceType === 'audio' && currentSummary.rawNotes) {
+                    const escaped = currentSummary.rawNotes
+                        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                        .replace(/\n/g, '<br/>');
+                    parts.push(`<h2>Full Transcript</h2><div style="font-size:11px;color:#555;">${escaped}</div>`);
+                }
+                if (parts.length === 0) { alert('No sections to email'); return; }
+                try {
+                    const r = await fetch(`${API_URL}/api/email-summary-section`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            email: creds.email,
+                            subject: `Full Summary: ${currentSummary.title}`,
+                            section: 'takeaways',  // header label for the email template
+                            content: parts.join('<hr style="margin:24px 0;border:0;border-top:1px solid #e5e7eb;">'),
+                            title: currentSummary.title,
+                            topic: currentSummary.topic || 'General',
+                            smtpConfig: { use_gmail: creds.useGmail, gmail_user: creds.gmailUser, gmail_app_password: creds.gmailPassword, from_email: creds.gmailUser },
+                        }),
+                    });
+                    if (r.ok) alert('All sections emailed.');
+                    else { const err = await r.json().catch(() => ({})); alert('Email failed: ' + (err.error || r.status)); }
+                } catch (e) { alert('Email error: ' + e.message); }
+            };
+
+            // "Copy all" — text-only concatenation of every section, in the
+            // same ordering as Email All. Plain text strips HTML tags.
+            const copyAllSummarySections = async () => {
+                if (!currentSummary) return;
+                const stripHtml = (h) => (h || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+                const lines = [];
+                if (currentSummary.title) lines.push(currentSummary.title, '');
+                if (currentSummary.brief) lines.push('=== BRIEF ===', stripHtml(currentSummary.brief), '');
+                if (currentSummary.summary) lines.push('=== KEY TAKEAWAYS ===', stripHtml(currentSummary.summary), '');
+                if (currentSummary.meetingSummary) lines.push('=== MEETING SUMMARY ===', stripHtml(currentSummary.meetingSummary), '');
+                if (currentSummary.questions) lines.push('=== FOLLOW-UP QUESTIONS ===', stripHtml(currentSummary.questions), '');
+                if (currentSummary.assessment) lines.push("=== CLAUDE'S ASSESSMENT ===", stripHtml(currentSummary.assessment), '');
+                if (currentSummary.sourceType === 'audio' && currentSummary.rawNotes) {
+                    lines.push('=== FULL TRANSCRIPT ===', currentSummary.rawNotes);
+                }
+                try {
+                    await navigator.clipboard.writeText(lines.join('\n'));
+                    alert('All sections copied to clipboard.');
+                } catch {
+                    alert('Copy failed.');
+                }
+            };
+
             const emailMeetingSummary = async () => {
                 if (!currentSummary || !currentSummary.meetingSummary) return;
                 const saved = localStorage.getItem('emailCredentials');
@@ -17406,6 +17505,38 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     </button>
                                                 </div>
 
+                                                {/* Top-level summary toolbar — Save All / Copy All / Email All
+                                                    operate across every section in one click. Sits above Brief
+                                                    so it's the first thing the user sees in the detail view. */}
+                                                <div className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 backdrop-blur-lg rounded-xl border border-amber-500/30 px-4 py-3 flex items-center gap-2 flex-wrap">
+                                                    <span className="text-xs uppercase tracking-wider text-amber-300 font-semibold flex-shrink-0 mr-1">All sections:</span>
+                                                    <button
+                                                        onClick={() => saveSectionToICloud('all')}
+                                                        disabled={iCloudSavingSection === 'all'}
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-lg text-xs font-medium shadow-lg shadow-emerald-500/20"
+                                                        title="Save full Word doc to iCloud"
+                                                    >
+                                                        <Save className="w-3.5 h-3.5" />
+                                                        {iCloudSavingSection === 'all' ? 'Saving…' : 'Save to iCloud'}
+                                                    </button>
+                                                    <button
+                                                        onClick={copyAllSummarySections}
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/10 rounded-lg text-xs font-medium"
+                                                        title="Copy all sections to clipboard"
+                                                    >
+                                                        <Copy className="w-3.5 h-3.5" />
+                                                        Copy
+                                                    </button>
+                                                    <button
+                                                        onClick={emailAllSummarySections}
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 rounded-lg text-xs font-medium shadow-lg shadow-amber-500/20"
+                                                        title="Email all sections to myself"
+                                                    >
+                                                        <Mail className="w-3.5 h-3.5" />
+                                                        Email me
+                                                    </button>
+                                                </div>
+
                                                 {/* BRIEF Section — top-tier scannable summary, sits ABOVE Key Takeaways.
                                                     Read-only (no inline edit) since the audit/edit tier is Key Takeaways.
                                                     Renders only when populated (older audio summaries pre-Brief have empty string). */}
@@ -17466,6 +17597,14 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 >
                                                                     <Mail className="w-4 h-4" />
                                                                 </button>
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); saveSectionToICloud('brief'); }}
+                                                                    disabled={iCloudSavingSection === 'brief'}
+                                                                    className="p-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-lg transition-colors shadow-lg shadow-emerald-500/20"
+                                                                    title="Save Brief to iCloud as Word doc"
+                                                                >
+                                                                    <Save className="w-4 h-4" />
+                                                                </button>
                                                             </div>
                                                         </div>
                                                         {briefExpanded && (
@@ -17519,9 +17658,17 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             >
                                                                 <Mails className="w-4 h-4" />
                                                             </button>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); saveSectionToICloud('takeaways'); }}
+                                                                disabled={iCloudSavingSection === 'takeaways'}
+                                                                className="p-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-lg transition-colors shadow-lg shadow-emerald-500/20"
+                                                                title="Save Key Takeaways to iCloud as Word doc"
+                                                            >
+                                                                <Save className="w-4 h-4" />
+                                                            </button>
                                                         </div>
                                                     </div>
-                                                    
+
                                                     {takeawaysExpanded && (
                                                         <>
                                                             {editingTakeaways ? (
@@ -17619,6 +17766,14 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             >
                                                                 <Mails className="w-4 h-4" />
                                                             </button>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); saveSectionToICloud('meeting'); }}
+                                                                disabled={iCloudSavingSection === 'meeting'}
+                                                                className="p-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-lg transition-colors shadow-lg shadow-emerald-500/20"
+                                                                title="Save Meeting Summary to iCloud as Word doc"
+                                                            >
+                                                                <Save className="w-4 h-4" />
+                                                            </button>
                                                         </div>
                                                     </div>
                                                     {meetingSummaryExpanded && (
@@ -17672,9 +17827,17 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             >
                                                                 <Mails className="w-4 h-4" />
                                                             </button>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); saveSectionToICloud('questions'); }}
+                                                                disabled={iCloudSavingSection === 'questions'}
+                                                                className="p-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-lg transition-colors shadow-lg shadow-emerald-500/20"
+                                                                title="Save Follow-up Questions to iCloud as Word doc"
+                                                            >
+                                                                <Save className="w-4 h-4" />
+                                                            </button>
                                                         </div>
                                                     </div>
-                                                    
+
                                                     {questionsExpanded && (
                                                         <>
                                                             {editingQuestions ? (
@@ -17781,6 +17944,14 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             >
                                                                 <Mails className="w-4 h-4" />
                                                             </button>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); saveSectionToICloud('assessment'); }}
+                                                                disabled={iCloudSavingSection === 'assessment'}
+                                                                className="p-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-lg transition-colors shadow-lg shadow-emerald-500/20"
+                                                                title="Save Assessment to iCloud as Word doc"
+                                                            >
+                                                                <Save className="w-4 h-4" />
+                                                            </button>
                                                         </div>
                                                     </div>
 
@@ -17884,6 +18055,14 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                     title="Email with Options"
                                                                 >
                                                                     <Mails className="w-4 h-4" />
+                                                                </button>
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); saveSectionToICloud('transcript'); }}
+                                                                    disabled={iCloudSavingSection === 'transcript'}
+                                                                    className="p-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-lg transition-colors shadow-lg shadow-emerald-500/20"
+                                                                    title="Save Transcript to iCloud as Word doc"
+                                                                >
+                                                                    <Save className="w-4 h-4" />
                                                                 </button>
                                                             </div>
                                                         </div>
