@@ -2713,9 +2713,29 @@ def check_for_new_audio():
                             _known_audio_files.discard(fn)
                     except Exception as e:
                         log.warning(f"Error in {kind.lower()} upload thread for {fn}: {e}")
-                        _audio_failed_attempts[fn] = _audio_failed_attempts.get(fn, 0) + 1
-                        if _audio_failed_attempts[fn] >= 5:
-                            log.error(f"{kind.upper()} GIVE UP: {fn} failed {_audio_failed_attempts[fn]} times. Investigate manually.")
+                        # Don't count transient transport errors toward the
+                        # 5-failure giveup cap. Render redeploys cause
+                        # "Response ended prematurely" / connection-reset /
+                        # remote-disconnect for ~3-4 min while gunicorn
+                        # workers swap; the file is fine, the upload just
+                        # needs to retry on the next tick.
+                        emsg = str(e).lower()
+                        is_transient = any(s in emsg for s in (
+                            'response ended prematurely',
+                            'remote end closed',
+                            'connection aborted',
+                            'connection reset',
+                            'connection refused',
+                            'broken pipe',
+                            'eof',
+                            'read timed out',
+                            'timed out',
+                            'temporarily unavailable',
+                        ))
+                        if not is_transient:
+                            _audio_failed_attempts[fn] = _audio_failed_attempts.get(fn, 0) + 1
+                            if _audio_failed_attempts[fn] >= 5:
+                                log.error(f"{kind.upper()} GIVE UP: {fn} failed {_audio_failed_attempts[fn]} times. Investigate manually.")
                         _known_audio_files.discard(fn)
                     finally:
                         _audio_in_flight.discard(fn)
