@@ -2536,6 +2536,7 @@ def _wait_for_audio_job_and_move(fname: str, fpath: Path, job_id: str) -> None:
                     # next time will fire a fresh job
                     try:
                         _known_audio_files.discard(fname)
+                        _audio_started_notified.discard(fname)
                     except Exception:
                         pass
                     return
@@ -2545,6 +2546,7 @@ def _wait_for_audio_job_and_move(fname: str, fpath: Path, job_id: str) -> None:
                     notify(f"*Audio summary FAILED:* {fname}\n{err[:200]}")
                     try:
                         _known_audio_files.discard(fname)
+                        _audio_started_notified.discard(fname)
                     except Exception:
                         pass
                     return
@@ -2563,6 +2565,11 @@ def _wait_for_audio_job_and_move(fname: str, fpath: Path, job_id: str) -> None:
 
 _audio_in_flight = set()  # filenames currently being uploaded or transcribed
 _audio_failed_attempts = {}  # fname -> consecutive-failure count
+# Filenames we've already fired the "Audio summary started" Telegram for.
+# Prevents Telegram spam when retries happen during Render redeploys
+# (one upload → one notify, regardless of how many backend job IDs cycle
+# through). Cleared on confirmed completion or non-transient failure.
+_audio_started_notified = set()
 
 # Bounded synthesis parallelism. Tony's Anthropic Tier 4 has 400K output
 # TPM. ~100K out per recap × 5 concurrent ≈ 170K TPM peak — comfortable
@@ -2702,7 +2709,12 @@ def check_for_new_audio():
                             data = res.json()
                             jid = data.get('jobId', '?')
                             log.info(f"{kind} auto-process started: {fn} (job {jid})")
-                            notify(f"*{kind} summary started:* {fn}")
+                            # Only fire the "started" Telegram once per filename
+                            # — retries during Render redeploys would otherwise
+                            # blast the channel with duplicates.
+                            if fn not in _audio_started_notified:
+                                notify(f"*{kind} summary started:* {fn}")
+                                _audio_started_notified.add(fn)
                             _audio_failed_attempts.pop(fn, None)
                             _wait_for_audio_job_and_move(fn, fp, jid)
                         else:
