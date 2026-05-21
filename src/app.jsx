@@ -3374,11 +3374,14 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         title: dj.title,
                         author: dj.author,
                     });
-                    // Poll /api/transcribe-audio/<jobId> every 4s up to 15 min.
-                    // Also refresh summaries on each tick so even if the polling
-                    // loop dies (iOS Safari background throttling), the new row
-                    // shows up in the Summary tab list automatically.
-                    const maxIter = Math.ceil((15 * 60 * 1000) / 4000);
+                    // Poll /api/transcribe-audio/<jobId> every 4s up to 25 min.
+                    // 25 min covers: 5 English LLM passes (Brief / Key Takeaways /
+                    // Meeting Summary / Questions / Assessment) + optional Korean
+                    // pass + queueing behind backend semaphore=2 for concurrent
+                    // YouTubes. Belt-and-suspenders: refresh summaries on each
+                    // tick so even if the polling loop dies (iOS Safari
+                    // background throttling), the new row shows up automatically.
+                    const maxIter = Math.ceil((25 * 60 * 1000) / 4000);
                     let summaryId = null;
                     for (let i = 0; i < maxIter; i++) {
                         await new Promise(r => setTimeout(r, 4000));
@@ -3422,7 +3425,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         } catch {}
                     }
                     if (!summaryId) {
-                        setSummaryYoutubeStatus({ phase: 'error', message: 'Timed out after 15 min — check Render logs.', title: dj.title, author: dj.author });
+                        setSummaryYoutubeStatus({ phase: 'error', message: 'Timed out after 25 min. Backend may still be working — check Summary tab list in a few minutes (it may show up via the fallback refresh) or check Render logs.', title: dj.title, author: dj.author });
                         setSummaryLoading(false);
                         return;
                     }
