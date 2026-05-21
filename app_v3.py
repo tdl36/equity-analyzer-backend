@@ -2346,6 +2346,14 @@ def init_db():
                                   WHERE table_name='meeting_summaries' AND column_name='source_meta') THEN
                         ALTER TABLE meeting_summaries ADD COLUMN source_meta JSONB DEFAULT '{}';
                     END IF;
+                    -- Korean-language key takeaways. Populated when the user
+                    -- opts in (e.g. Korean-language YouTube videos where the
+                    -- PM wants both the English pipeline output AND a Korean
+                    -- analyst-style summary that preserves verbatim nuance.
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                  WHERE table_name='meeting_summaries' AND column_name='korean_takeaways') THEN
+                        ALTER TABLE meeting_summaries ADD COLUMN korean_takeaways TEXT DEFAULT '';
+                    END IF;
                 END $$;
             ''')
 
@@ -5436,7 +5444,7 @@ def get_summaries():
 
         with get_db() as (conn, cur):
             cur.execute('''
-                SELECT id, title, raw_notes, summary, questions, assessment, meeting_summary, brief, topic, topic_type, source_type, source_files, doc_type, has_stored_files, categories, source_url, source_meta, created_at
+                SELECT id, title, raw_notes, summary, questions, assessment, meeting_summary, brief, topic, topic_type, source_type, source_files, doc_type, has_stored_files, categories, source_url, source_meta, korean_takeaways, created_at
                 FROM meeting_summaries
                 ORDER BY created_at DESC
             ''')
@@ -5462,6 +5470,7 @@ def get_summaries():
                 'categories': row.get('categories') or [],
                 'sourceUrl': row.get('source_url') or '',
                 'sourceMeta': row.get('source_meta') or {},
+                'koreanTakeaways': row.get('korean_takeaways') or '',
                 'createdAt': row['created_at'].isoformat() if row['created_at'] else None
             })
 
@@ -5511,8 +5520,8 @@ def save_summary():
 
         with get_db(commit=True) as (conn, cur):
             cur.execute('''
-                INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, assessment, meeting_summary, brief, topic, topic_type, source_type, source_files, doc_type, categories, source_url, source_meta, created_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, assessment, meeting_summary, brief, topic, topic_type, source_type, source_files, doc_type, categories, source_url, source_meta, korean_takeaways, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (id)
                 DO UPDATE SET
                     title = EXCLUDED.title,
@@ -5529,7 +5538,8 @@ def save_summary():
                     doc_type = EXCLUDED.doc_type,
                     categories = EXCLUDED.categories,
                     source_url = EXCLUDED.source_url,
-                    source_meta = EXCLUDED.source_meta
+                    source_meta = EXCLUDED.source_meta,
+                    korean_takeaways = EXCLUDED.korean_takeaways
                 RETURNING id
             ''', (
                 summary_id,
@@ -5548,6 +5558,7 @@ def save_summary():
                 categories,
                 data.get('sourceUrl', ''),
                 source_meta,
+                data.get('koreanTakeaways', ''),
                 data.get('createdAt', datetime.utcnow().isoformat())
             ))
 
@@ -5781,6 +5792,13 @@ def email_summary_section():
             except Exception as _e:
                 print(f'email-summary-section: markdown conversion failed: {_e}')
                 # leave content as-is; the plain-text alternative below is still readable
+        elif section == 'korean':
+            section_label, header_color, gradient_to = "핵심 정리 (Korean Key Takeaways)", "#6366f1", "#4338ca"
+            try:
+                import markdown as _md
+                content = _md.markdown(content, extensions=['extra', 'sane_lists', 'nl2br'])
+            except Exception as _e:
+                print(f'email-summary-section: korean markdown conversion failed: {_e}')
         else:
             section_label, header_color, gradient_to = "Follow-up Questions", "#d97706", "#ea580c"
 
@@ -7151,6 +7169,7 @@ def youtube_summarize():
         data = request.get_json(silent=True) or {}
         url = (data.get('url') or '').strip()
         ticker = (data.get('ticker') or '').strip().upper()
+        generate_korean = bool(data.get('generateKorean'))
         anthropic_api_key = data.get('apiKey') or os.environ.get('ANTHROPIC_API_KEY', '')
         if not url:
             return jsonify({'error': 'url is required'}), 400
@@ -7190,7 +7209,7 @@ def youtube_summarize():
                 VALUES (%s, %s, %s, %s, %s, %s, %s, 'queued')
             ''', (
                 task_id, video_id, canonical_url, job_id, ticker,
-                json.dumps({**meta, 'submittedUrl': url}),
+                json.dumps({**meta, 'submittedUrl': url, 'generateKorean': generate_korean}),
                 anthropic_api_key,
             ))
 
@@ -7337,6 +7356,7 @@ def youtube_tasks_result(task_id):
                 'source_url': canonical_url,
                 'source_meta': source_meta,
                 'ticker_hint': ticker,
+                'generate_korean': bool(meta.get('generateKorean')),
             },
             daemon=True,
             name=f'youtube-llm-{job_id}',
@@ -7358,7 +7378,7 @@ def youtube_tasks_result(task_id):
 
 def _run_auto_process_text(job_id, extracted_text, filename, anthropic_api_key,
                            source_type='text', source_url='', source_meta=None,
-                           ticker_hint=''):
+                           ticker_hint='', generate_korean=False):
     """Background worker: takes already-extracted text, runs the same Brief +
     Key Takeaways + Meeting Summary + Questions + Assessment pipeline as
     audio, saves to meeting_summaries.
@@ -7615,6 +7635,96 @@ Use: <h2>Section Title</h2>, <p><strong>Topic:</strong> Description.</p>, <ul><l
             print(f"[auto-text {job_id}] assessment step failed (non-fatal): {e}")
             assessment_html = ''
 
+        # === KOREAN KEY TAKEAWAYS (opt-in) ===
+        # Separate Korean-language analyst-style summary. Designed for cases
+        # where the user pastes a Korean YouTube interview / expert call and
+        # wants both the English pipeline AND a Korean summary that preserves
+        # verbatim numerical/quote nuance. Output is markdown (◆ headers,
+        # PM 시사점 + 화자 인용 sections, [TAG] markers, hallucination guard).
+        korean_takeaways_md = ''
+        if generate_korean:
+            korean_system_prompt = """ROLE
+당신은 시니어 에쿼티 애널리스트의 한국어 리서치 어시스턴트다. 사용자가 유튜브 영상(주로 한국어 금융 인터뷰, 전문가 콜, 기업 컨퍼런스, 팟캐스트)의 전사 본문을 제공하면, PM(포트폴리오 매니저)이 즉시 활용할 수 있는 한국어 핵심 정리를 작성한다.
+
+PM은 영어 자료도 읽지만, 한국어 원문은 한국어로 정리되어야 verbatim nuance와 화자의 정확한 hedge가 보존된다.
+
+INPUT
+- 한국어(또는 부분적으로 한국어인) 유튜브 전사. 자주 화자 태그(">>")와 타임스탬프가 섞여 있음.
+
+STEP 1 — 도메인 분류
+무엇이 논의되는가? (특정 기업 / 섹터 / 매크로 view / 정책 / 전략). 화자(들)와 전문 분야 식별 (예: "김한진 박사 — 40년 시장 경력의 이코노미스트").
+
+STEP 2 — 출력 형식 (markdown만, HTML 금지, code fence 금지)
+
+## 핵심 요약 (Executive Summary)
+
+2-3 문장으로 인터뷰 전체의 핵심 메시지 압축. PM이 알아야 할 가장 중요한 한 가지(어느 자산군, 어떤 view)를 명시하라.
+
+## 핵심 인사이트
+
+각 인사이트는 다음 형식:
+
+◆ [태그] 인사이트 헤드라인 (선언적, 5~12단어)
+
+첫 문장은 이 섹션의 thesis를 한 문장으로 단호하게.
+
+이어서 2~4 문단 본문:
+- 구체적 수치/날짜/이름 포함, 화자의 정확한 hedge 표현 보존 ("약 30%", "한 50%", "한 70~80%" 등)
+- 화자의 epistemic posture 보존 ("가능성이 높다" / "확신한다" / "걱정된다" 구분)
+- 비교 baseline 명시 ("10년 평균 대비", "2022년 대비")
+- 의미 있는 verbatim 인용은 인용부호로 보존 ("관세 해방의 날", "총알을 피하다 결국 포탄을 맞는")
+- 화자 attribution은 필요할 때만 ("김 박사의 진단", "본인 업력 기준")
+
+[태그] 카테고리: [밸류에이션] [금리/물가] [매크로] [섹터] [개별주] [구조적 변화] [정책/규제] [지정학] [수급/유동성] [리스크 플래그] [투자 결론]
+
+순서: thesis-moving한 인사이트부터 (밸류에이션·매크로 → 섹터/종목 → 구조적 변화 → 리스크 → 결론).
+
+섹션 개수: 5~8개. 너무 많으면 중요도가 희석되고, 너무 적으면 핵심을 놓친다.
+
+## PM 시사점 (Action Implications)
+
+3~5개 bullet (• 또는 -):
+- 어떤 시점/지표/이벤트를 watch해야 하는가
+- 어떤 종목/섹터에 대한 view가 강화/약화되는가
+- 어떤 추가 데이터/리서치를 확인해야 하는가
+- 어떤 thesis 가설이 confirm/challenge되었는가
+
+## 화자 인용 (Notable Quotes)
+
+3~5개의 의미 있는 verbatim 인용 (한국어 그대로). 각 인용 뒤에 (맥락 1줄) 표기.
+
+HARD RULES
+1. NO INVENTION. 전사 본문에 없는 사실(인물·수치·시점·회사·인용) 추가 금지.
+2. 수치 보존: "약 30%", "한 70~80%", "0.7배에서 두 배" 같은 화자의 정확한 표현 그대로.
+3. 정성·epistemic posture 보존 (확신/추정/희망/예측을 임의로 강화하지 말 것).
+4. 한국어 의역 시 의미 변형 금지.
+5. 영문 약어/회사명/지표는 원문 그대로 (S&P 500, ETF, PBR, PER, CPI, AI, IT 등).
+6. 명목 vs 실질, 분기 vs 연간 비교 혼동 금지.
+7. 화자가 직접 말하지 않은 가치판단을 추가하지 말 것.
+
+HALLUCINATION GUARD
+출력 직전에 모든 고유명사(인물·기업·지표·국가), 모든 수치, 모든 비교 baseline이 전사에 있는지 검토. 없으면 제거 또는 [미확인 — 원문에 없음] 표기.
+
+OUTPUT FORMAT: markdown만. HTML 금지. ```fence 금지.
+"""
+            korean_ask = (
+                "위 지침에 따라 아래 전사를 한국어 핵심 정리로 변환하라. "
+                "전사의 원래 화자 발화 순서가 아닌, 투자 중요도 순서로 인사이트를 재구성하라.\n\n"
+                f"전사:\n{text[:200000]}"
+            )
+            try:
+                korean_result = _call_llm_stream_with_retry(
+                    messages=[{"role": "user", "content": korean_ask}],
+                    system=korean_system_prompt,
+                    tier="standard", max_tokens=16384, api_key=anthropic_api_key,
+                    label=f"korean takeaways ({filename})",
+                )
+                korean_takeaways_md = korean_result.get('text', '') or ''
+                print(f"[auto-text {job_id}] korean takeaways: {len(korean_takeaways_md)} chars")
+            except Exception as e:
+                print(f"[auto-text {job_id}] korean takeaways step failed (non-fatal): {e}")
+                korean_takeaways_md = ''
+
         # Save to DB. source_type tracks origin (text/youtube/article/etc.)
         # so the Summary tab can render the right icon and source link.
         title = os.path.splitext(filename)[0].replace('_', ' ').replace('-', ' ')
@@ -7622,12 +7732,13 @@ Use: <h2>Section Title</h2>, <p><strong>Topic:</strong> Description.</p>, <ul><l
         meta_json = json.dumps(source_meta or {})
         with get_db(commit=True) as (conn, cur):
             cur.execute('''
-                INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, assessment, meeting_summary, brief, source_type, doc_type, source_url, source_meta, topic, created_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, assessment, meeting_summary, brief, source_type, doc_type, source_url, source_meta, topic, korean_takeaways, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
             ''', (summary_id, title, text, summary_html, questions_html, assessment_html,
                   meeting_summary_html, brief_html, source_type, source_type,
                   source_url or '', meta_json,
-                  audio_ticker if audio_ticker else 'General'))
+                  audio_ticker if audio_ticker else 'General',
+                  korean_takeaways_md))
         try: cache.invalidate('summaries')
         except Exception: pass
 
@@ -8389,6 +8500,7 @@ def _generate_summary_docx_bytes(row, sections=None):
     summary_html = row.get('summary') or ''
     questions_html = row.get('questions') or ''
     assessment_html = row.get('assessment') or ''
+    korean_takeaways_md = row.get('korean_takeaways') or ''
     raw_notes = row.get('raw_notes') or ''
     source_type = row.get('source_type') or ''
 
@@ -8426,6 +8538,21 @@ def _generate_summary_docx_bytes(row, sections=None):
             r.font.name = 'Calibri'
             r.font.color.rgb = RGBColor(0, 0, 0)
         _html_to_docx_elements(doc, assessment_html)
+
+    if korean_takeaways_md and (include_all or 'korean' in sect_set):
+        h = doc.add_heading('핵심 정리 (Korean Key Takeaways)', level=2)
+        for r in h.runs:
+            r.font.name = 'Calibri'
+            r.font.color.rgb = RGBColor(0, 0, 0)
+        # Convert markdown → HTML once, then reuse the existing HTML→docx
+        # element walker so headings/lists/bold all render correctly.
+        try:
+            import markdown as _md
+            kor_html = _md.markdown(korean_takeaways_md, extensions=['extra', 'sane_lists', 'nl2br'])
+        except Exception:
+            # Fall back to raw text dump if markdown lib unavailable.
+            kor_html = '<p>' + korean_takeaways_md.replace('\n\n', '</p><p>').replace('\n', '<br/>') + '</p>'
+        _html_to_docx_elements(doc, kor_html)
 
     if source_type == 'audio' and raw_notes and (include_all or 'transcript' in sect_set):
         h = doc.add_heading('Full Transcript', level=2)
@@ -8527,7 +8654,7 @@ def summary_to_docx():
 # Allowed section keys for per-section docx export. 'all' means
 # include every section (same as omitting the field). Maps to the
 # branches inside _generate_summary_docx_bytes.
-_VALID_SECTION_KEYS = {'brief', 'takeaways', 'meeting', 'questions', 'assessment', 'transcript', 'all'}
+_VALID_SECTION_KEYS = {'brief', 'takeaways', 'meeting', 'questions', 'assessment', 'transcript', 'korean', 'all'}
 
 _SECTION_LABEL = {
     'brief': 'Brief',
@@ -8536,6 +8663,7 @@ _SECTION_LABEL = {
     'questions': 'Follow-up Questions',
     'assessment': 'Assessment',
     'transcript': 'Full Transcript',
+    'korean': 'Korean Key Takeaways',
     'all': 'Full Summary',
 }
 

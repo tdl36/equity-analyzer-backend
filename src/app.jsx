@@ -2130,6 +2130,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [summaryYoutubeUrl, setSummaryYoutubeUrl] = useState('');
             const [summaryYoutubeTicker, setSummaryYoutubeTicker] = useState('');
             const [summaryYoutubeStatus, setSummaryYoutubeStatus] = useState(null); // {phase, message, jobId, videoId, title, author}
+            // Korean key takeaways toggle — runs a separate analyst-style
+            // Korean prompt against the same transcript when checked. Default
+            // off so existing English-only behavior stays untouched.
+            const [summaryYoutubeKorean, setSummaryYoutubeKorean] = useState(false);
+            const [koreanExpanded, setKoreanExpanded] = useState(true);
             const [summaryTitleInput, setSummaryTitleInput] = useState(''); // Custom title for new summary
             const [editingSummaryTitle, setEditingSummaryTitle] = useState(false); // Is title being edited
             const [editingSummaryTitleValue, setEditingSummaryTitleValue] = useState(''); // Temp value while editing
@@ -2634,6 +2639,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 if (currentSummary.meetingSummary) parts.push('<h2>Meeting Summary</h2>' + currentSummary.meetingSummary);
                 if (currentSummary.questions) parts.push('<h2>Follow-up Questions</h2>' + currentSummary.questions);
                 if (currentSummary.assessment) parts.push("<h2>Claude's Assessment</h2>" + currentSummary.assessment);
+                if (currentSummary.koreanTakeaways) {
+                    // Korean is markdown — let server-side markdown→HTML run.
+                    // For inline embedding here we just wrap in <pre> so newlines
+                    // survive; the email handler doesn't transform `section=takeaways`.
+                    const esc = currentSummary.koreanTakeaways.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    parts.push('<h2>핵심 정리 (Korean Key Takeaways)</h2><pre style="white-space:pre-wrap;font-family:inherit;font-size:13px;line-height:1.6;">' + esc + '</pre>');
+                }
                 if (currentSummary.sourceType === 'audio' && currentSummary.rawNotes) {
                     const escaped = currentSummary.rawNotes
                         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -2672,6 +2684,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 if (currentSummary.meetingSummary) lines.push('=== MEETING SUMMARY ===', stripHtml(currentSummary.meetingSummary), '');
                 if (currentSummary.questions) lines.push('=== FOLLOW-UP QUESTIONS ===', stripHtml(currentSummary.questions), '');
                 if (currentSummary.assessment) lines.push("=== CLAUDE'S ASSESSMENT ===", stripHtml(currentSummary.assessment), '');
+                if (currentSummary.koreanTakeaways) lines.push('=== 핵심 정리 (KOREAN KEY TAKEAWAYS) ===', currentSummary.koreanTakeaways, '');
                 if (currentSummary.sourceType === 'audio' && currentSummary.rawNotes) {
                     lines.push('=== FULL TRANSCRIPT ===', currentSummary.rawNotes);
                 }
@@ -3344,6 +3357,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         body: JSON.stringify({
                             url,
                             ticker: (summaryYoutubeTicker || '').trim().toUpperCase(),
+                            generateKorean: summaryYoutubeKorean,
                         }),
                     });
                     const dj = await dispatch.json();
@@ -17475,6 +17489,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 questionsExpanded &&
                                                                 (!currentSummary.assessment || assessmentExpanded) &&
                                                                 (!currentSummary.meetingSummary || meetingSummaryExpanded) &&
+                                                                (!currentSummary.koreanTakeaways || koreanExpanded) &&
                                                                 (currentSummary.sourceType !== 'audio' || transcriptExpanded);
                                                             const next = !allExpanded;
                                                             if (currentSummary.brief) setBriefExpanded(next);
@@ -17482,6 +17497,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             setQuestionsExpanded(next);
                                                             if (currentSummary.assessment) setAssessmentExpanded(next);
                                                             if (currentSummary.meetingSummary) setMeetingSummaryExpanded(next);
+                                                            if (currentSummary.koreanTakeaways) setKoreanExpanded(next);
                                                             if (currentSummary.sourceType === 'audio') setTranscriptExpanded(next);
                                                         }}
                                                         className="text-xs px-2 py-1 text-slate-400 hover:text-slate-200 hover:bg-white/10 rounded transition-colors flex items-center gap-1"
@@ -17491,6 +17507,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                          questionsExpanded &&
                                                          (!currentSummary.assessment || assessmentExpanded) &&
                                                          (!currentSummary.meetingSummary || meetingSummaryExpanded) &&
+                                                         (!currentSummary.koreanTakeaways || koreanExpanded) &&
                                                          (currentSummary.sourceType !== 'audio' || transcriptExpanded) ? (
                                                             <>
                                                                 <ChevronsUp className="w-3.5 h-3.5" />
@@ -18019,6 +18036,83 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 </div>
                                                 )}
 
+                                                {/* KOREAN KEY TAKEAWAYS Section — optional, populated when the
+                                                    user checks "Also generate Korean takeaways" on the YouTube
+                                                    input panel. Content is markdown (◆ headers, PM 시사점 + 화자
+                                                    인용 sections); rendered via renderMarkdown to preserve nuance. */}
+                                                {currentSummary.koreanTakeaways && (
+                                                    <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl border border-indigo-500/30 overflow-hidden">
+                                                        <div className="bg-indigo-500/15 backdrop-blur-lg border-b border-indigo-400/20 px-4 py-3 flex items-center gap-2">
+                                                            <button
+                                                                onClick={() => setKoreanExpanded(!koreanExpanded)}
+                                                                className="flex items-center gap-2 hover:opacity-80 transition-opacity flex-1 min-w-0"
+                                                            >
+                                                                <span className="text-lg flex-shrink-0">🇰🇷</span>
+                                                                <h3 className="font-semibold text-indigo-300 whitespace-nowrap">핵심 정리</h3>
+                                                                <span className="text-[10px] text-slate-500 uppercase tracking-wider">korean key takeaways</span>
+                                                                <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform flex-shrink-0 ${koreanExpanded ? 'rotate-180' : ''}`} />
+                                                            </button>
+                                                            <div className="flex items-center gap-1 flex-shrink-0">
+                                                                <button
+                                                                    onClick={async (e) => {
+                                                                        e.stopPropagation();
+                                                                        try {
+                                                                            await navigator.clipboard.writeText(currentSummary.koreanTakeaways || '');
+                                                                            alert('한국어 핵심 정리가 복사되었습니다.');
+                                                                        } catch {}
+                                                                    }}
+                                                                    className="p-1.5 bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/10 rounded-lg transition-colors"
+                                                                    title="Copy Korean Takeaways"
+                                                                >
+                                                                    <Copy className="w-4 h-4" />
+                                                                </button>
+                                                                <button
+                                                                    onClick={async (e) => {
+                                                                        e.stopPropagation();
+                                                                        const saved = localStorage.getItem('emailCredentials');
+                                                                        if (!saved) { alert('Set email credentials in Settings first'); return; }
+                                                                        let creds; try { creds = JSON.parse(saved); } catch { return; }
+                                                                        if (!creds.email) { alert('Set recipient email in Settings first'); return; }
+                                                                        try {
+                                                                            const r = await fetch(`${API_URL}/api/email-summary-section`, {
+                                                                                method: 'POST',
+                                                                                headers: { 'Content-Type': 'application/json' },
+                                                                                body: JSON.stringify({
+                                                                                    email: creds.email,
+                                                                                    subject: `핵심 정리: ${currentSummary.title}`,
+                                                                                    section: 'korean',
+                                                                                    content: currentSummary.koreanTakeaways || '',
+                                                                                    title: currentSummary.title,
+                                                                                    topic: currentSummary.topic || 'General',
+                                                                                    smtpConfig: { use_gmail: creds.useGmail, gmail_user: creds.gmailUser, gmail_app_password: creds.gmailPassword, from_email: creds.gmailUser },
+                                                                                })
+                                                                            });
+                                                                            if (r.ok) alert('Korean takeaways emailed.');
+                                                                            else { const err = await r.json().catch(() => ({})); alert('Email failed: ' + (err.error || r.status)); }
+                                                                        } catch (err) { alert('Email error: ' + err.message); }
+                                                                    }}
+                                                                    className="p-1.5 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 rounded-lg transition-colors shadow-lg shadow-indigo-500/20"
+                                                                    title="Quick Email"
+                                                                >
+                                                                    <Mail className="w-4 h-4" />
+                                                                </button>
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); saveSectionToICloud('korean'); }}
+                                                                    disabled={iCloudSavingSection === 'korean'}
+                                                                    className="p-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-lg transition-colors shadow-lg shadow-emerald-500/20"
+                                                                    title="Save Korean Takeaways to iCloud as Word doc"
+                                                                >
+                                                                    <Save className="w-4 h-4" />
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                        {koreanExpanded && (
+                                                            <div className="p-6 summary-content prose prose-invert prose-sm max-w-none text-slate-100"
+                                                                 dangerouslySetInnerHTML={{ __html: renderMarkdown(currentSummary.koreanTakeaways) }} />
+                                                        )}
+                                                    </div>
+                                                )}
+
                                                 {/* FULL TRANSCRIPT Section - Only for audio summaries */}
                                                 {currentSummary.sourceType === 'audio' && currentSummary.rawNotes && (
                                                     <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl border border-white/10 overflow-hidden">
@@ -18507,6 +18601,17 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 />
                                                                 <span className="text-[10px] text-slate-500">→ enables thesis injection if you cover this name</span>
                                                             </div>
+                                                            <label className="flex items-center gap-2 mt-3 cursor-pointer select-none">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={summaryYoutubeKorean}
+                                                                    onChange={e => setSummaryYoutubeKorean(e.target.checked)}
+                                                                    className="w-4 h-4 accent-indigo-500"
+                                                                />
+                                                                <span className="text-xs text-slate-300">
+                                                                    🇰🇷 핵심 정리도 한국어로 함께 생성 <span className="text-slate-500">(Korean key takeaways — analyst-style, preserves verbatim quotes)</span>
+                                                                </span>
+                                                            </label>
                                                             <p className="mt-3 text-[10px] text-slate-500">
                                                                 Works with: standard videos, conference talks, podcast uploads. Skips: Shorts without captions, age-gated, live streams.
                                                             </p>
