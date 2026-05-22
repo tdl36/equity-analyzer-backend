@@ -2243,6 +2243,15 @@ Write the takeaway note using the resolved facts from Phase 1.
   manufacture false precision.
 - Hold ONE consistent set of priors, targets, and model figures across all
   output tiers. Reconcile the tiers against each other before finishing.
+- Surface source conflicts at ANY magnitude. If two documents give different
+  values for the same metric — even a secondary one like a comparator's
+  median PFS, a market share figure, or a date — either present the
+  explicit range OR pick the more authoritative value and note the
+  discrepancy. Do not silently pick one. Surfaced conflicts belong in a
+  dedicated "Data Discrepancies" sub-section at the BOTTOM of the
+  Comprehensive tier (or as the final paragraph of Summary), never
+  mid-flow, so the main narrative reads cleanly. The PM Take and Quick
+  tiers can be silent on conflicts unless one is thesis-material.
 
 # ANALYTICAL RULES
 
@@ -2252,8 +2261,13 @@ Write the takeaway note using the resolved facts from Phase 1.
   and what the data does not yet show.
 - State the bear case (or bull case, if the note is cautious) in its
   STRONGEST real form before rebutting it. Frame it as my own anticipated
-  pushback ("the obvious objection is..."). If my rebuttal does not fully
-  answer it, concede that the concern stands.
+  pushback ("the obvious objection is...").
+- Do NOT rebut every objection. Where the data does not yet resolve a
+  risk — immature OS, unconfirmed geographic translation, unblinded
+  reviewer adjudication, pending price negotiation, etc. — state the
+  concern and LET IT STAND. A note where every bear point is neutralized
+  reads as advocacy, not analysis. The reader needs to see which concerns
+  I can answer and which I genuinely cannot.
 - Cross-trial or cross-dataset comparisons are the lowest-confidence
   evidence. Never put an illustrative cross-comparison in a headline. Embed
   its caveats in the same sentence.
@@ -2270,31 +2284,46 @@ Produce FOUR versions at increasing length, each as an HTML <section> with a
 data-version attribute. Use only <section>, <h2>, <h3>, <p>, <ul>, <li>,
 <strong>.
 
+ENFORCE LENGTH BUDGETS PER TIER. These caps are hard:
+  - PM Take: MAX 7 bullets, each ONE sentence.
+  - Quick: MAX 9 bullets, each 2-3 sentences. Bottom line ≤ 3 sentences.
+  - Summary: exactly 3 paragraphs.
+  - Comprehensive is the ONLY long-form tier.
+If a thought won't fit Quick's budget, push it down to Summary or
+Comprehensive — do NOT spill bullets across the cap. Length discipline is
+the signal of an analyst who has actually prioritized.
+
 <section data-version="pm"> — PM TAKE
   - <h2>: one line — [TOPIC]: directional verdict (POSITIVE / NEGATIVE /
     MIXED, with any nuance) · thesis status (CONFIRMED / CHALLENGED /
     UNCHANGED) · action (ADD / TRIM / HOLD)
-  - 5-7 <li> bullets, each one sentence, labeled with <strong>: Verdict,
-    Thesis check, Key nuance, Action, Magnitude, Offset/risk.
+  - 5-7 <li> bullets (HARD CAP 7), each one sentence, labeled with
+    <strong>: Verdict, Thesis check, Key nuance, Action, Magnitude,
+    Offset/risk.
 
 <section data-version="quick"> — QUICK
   - <h2>: one-line headline capturing the single most important takeaway.
   - <p><strong>Bottom line:</strong> 2-3 sentence synthesis.
-  - 10-14 <li> bullets covering the data, subgroups, comparators, safety,
-    read-throughs, valuation, action, and what to watch.
+  - 7-9 <li> bullets (HARD CAP 9), each 2-3 sentences, covering the data,
+    subgroups, comparators, safety, read-throughs, valuation, action, and
+    what to watch. Pick the highest-leverage items — do not list everything.
 
 <section data-version="summary"> — SUMMARY
   - <h2>: one-line headline.
-  - 3 prose paragraphs (no bullets): (1) the event and data, (2) the key
-    analytical debate and where I land, (3) action, valuation, risks, and
-    next signposts.
+  - Exactly 3 prose paragraphs (no bullets): (1) the event and data, (2)
+    the key analytical debate and where I land, (3) action, valuation,
+    risks, and next signposts. If there is a thesis-material source
+    discrepancy, append it as a final paragraph rather than weaving it
+    into the main three.
 
 <section data-version="comprehensive"> — COMPREHENSIVE
   - <h2>: one-line headline.
   - <h3> sections with prose under each: The Event; The Core Debate; the
     strongest counter-argument and my response; What Supports / Undermines
     the Thesis; Magnitude & Thesis Impact; Risks & Read-throughs; What I'd
-    Do; Next Signposts.
+    Do; Next Signposts; Data Discrepancies (only if source documents
+    conflicted on any figure — list each conflict with the divergent
+    values, which source reported what, and the value I'm carrying).
 
 All four tiers must tell the same story with the same figures, priors, and
 conclusion — only the depth changes.
@@ -2303,9 +2332,15 @@ conclusion — only the depth changes.
 
 Confirm: (1) no broker/source is named; (2) every figure traces to a
 resolved Phase 1 entry and maps to one definition; (3) conflicting figures
-were handled explicitly, not blended; (4) inferred/estimated numbers are
-hedged in the prose; (5) the strongest counter-argument is stated fairly;
-(6) priors, targets, and models are identical across all four tiers.
+were handled explicitly, not blended, and any source discrepancies are
+surfaced in the bottom Data Discrepancies sub-section of Comprehensive
+(or final paragraph of Summary if thesis-material) — NOT mid-flow;
+(4) inferred/estimated numbers are hedged in the prose;
+(5) the strongest counter-argument is stated fairly AND any unresolved
+risks (immature OS, geographic translation, etc.) are left standing rather
+than force-rebutted; (6) priors, targets, and models are identical across
+all four tiers; (7) length budgets respected — PM Take ≤ 7 one-sentence
+bullets, Quick ≤ 9 bullets of 2-3 sentences, Summary = 3 paragraphs.
 
 # OUTPUT WRAPPER REQUIREMENTS
 
