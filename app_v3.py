@@ -7483,7 +7483,7 @@ STEP 2 — OUTPUT STRUCTURE (raw HTML, no markdown, no code fences)
 
 <h1>Key Takeaways</h1>
 8-14 themes as <p> blocks. Each:
-<p><strong>[CONCEPT TAG] Bold lead-in (3-7 words):</strong> 2-4 sentences of substance, with verbatim tags on every number, date, comparison, and magnitude word per the rules below.</p>
+<p><strong>[CONCEPT TAG] Bold lead-in (3-7 words):</strong> 2-4 sentences of substance. Preserve the source's exact wording for material numbers, dates, comparisons, and notable phrases — drop in short direct quotes inside quotation marks where they tighten the point. Do NOT write meta-tags like "(verbatim: ...)".</p>
 
 Concept tags: [MARGIN TRAJECTORY] [CAPITAL ALLOCATION] [GUIDANCE] [PROGRAM MILESTONE] [CAPACITY/THROUGHPUT] [SUPPLY CHAIN] [LABOR/WORKFORCE] [REGULATORY] [COMPETITIVE POSITIONING] [M&amp;A] [CASH/WORKING CAPITAL] [TAX] [MACRO/POLICY] [TECHNOLOGY/AI] [DEMAND/ORDERS] [RISK FLAG] [OTHER]
 
@@ -7538,13 +7538,15 @@ HARD RULES
 6. DO NOT CONFLATE QUARTERLY VS. ALL-TIME COMPARISONS.
 7. NO MOOD MUSIC. Stick to claims and their hedges.
 
-QUANTITATIVE / DATED CLAIM TAGGING
-Every claim with a number, percentage, date, count, ratio, or magnitude word ("most," "majority," "small percentage") or directional comparison ("higher than," "below plan") must be followed by a verbatim source phrase tag.
-Format: (verbatim: "exact phrase from source")
-4-15 words; trim with ellipsis if longer but never alter wording inside the quote.
+QUOTATION DISCIPLINE
+Preserve the source's exact wording on every number, percentage, date, count, ratio, magnitude word ("most", "majority", "small percentage"), or directional comparison ("higher than", "below plan"). Use either:
+- A short inline direct quote in quotation marks, e.g. management said the ramp would be "north of 20%" by year-end, or
+- The exact source phrase rendered as the analyst's own statement (no quotes needed when you're reusing the source's wording verbatim in the natural flow of the sentence).
+Quote 4-15 words; trim mid-quote with an ellipsis but never paraphrase inside quotation marks.
+NEVER write "(verbatim: ...)", "(source: ...)", "(quote: ...)" or any meta tag exposing AI processing. The note must read like a senior analyst wrote it — quotation marks alone are the signal.
 
 HALLUCINATION GUARD RAIL
-Before returning, scan output for every named entity (person, product, drug, ticker, peer, geography) and every number. Each must trace to the source. If not, either remove or mark [unverified — not in source]. Do NOT fill in from general knowledge of the company.
+Before returning, scan output for every named entity (person, product, drug, ticker, peer, geography) and every number. Each must trace to the source. If not, either remove or silently drop — do not flag unverified items with brackets or notes that expose AI processing.
 
 OUTPUT FORMAT: raw HTML only. No markdown. No code fences.{thesis_addendum}"""
 
@@ -7983,7 +7985,7 @@ NEW SECTION (added to the output structure, AFTER Transcript Corrections Log):
 For each bull pillar in the user's thesis: one <p> assessing whether transcript content CONFIRMED / WEAKENED / NO MENTION. Format:
 <p><strong>Pillar:</strong> [pillar text quoted from user's thesis]</p>
 <p><strong>Verdict:</strong> CONFIRMED / WEAKENED / NO MENTION</p>
-<p><strong>Evidence from transcript:</strong> Cite specific takeaway numbers / Q&amp;A exchanges that bear on this pillar, with verbatim tag. If verdict is NO MENTION, write "Not addressed in this transcript."</p>
+<p><strong>Evidence from transcript:</strong> Cite specific takeaway numbers / Q&amp;A exchanges that bear on this pillar; quote the source's exact phrase in quotation marks where it tightens the point. If verdict is NO MENTION, write "Not addressed in this transcript."</p>
 
 <h2>Bear pillars</h2>
 Same format for each bear pillar.
@@ -7991,7 +7993,7 @@ Same format for each bear pillar.
 <h2>Signposts tripped</h2>
 For each signpost the user is tracking: was it touched in the transcript?
 <p><strong>Signpost:</strong> [signpost text]</p>
-<p><strong>Touched:</strong> YES (with verbatim tag) / NO</p>
+<p><strong>Touched:</strong> YES (quote the supporting source phrase in quotation marks) / NO</p>
 
 HARD RULE: Never put thesis-derived content in Key Takeaways or Q&amp;A Log. Those
 sections come from the transcript only. Thesis Check is the ONLY place where
@@ -8045,7 +8047,7 @@ STEP 2 — OUTPUT STRUCTURE (exactly this, in this order, as raw HTML — no mar
 
 <h1>Key Takeaways</h1>
 8-14 themes as <p> blocks (one per takeaway). {takeaway_count_hint} Each takeaway:
-<p><strong>[CONCEPT TAG] Bold lead-in phrase (3-7 words):</strong> 2-4 sentences of substance, with verbatim tags on every number, date, comparison, and magnitude word per the rules below.</p>
+<p><strong>[CONCEPT TAG] Bold lead-in phrase (3-7 words):</strong> 2-4 sentences of substance. Preserve management's exact wording for material numbers, dates, comparisons, and notable phrases — use short direct quotes inside quotation marks where they tighten the point. Do NOT write meta-tags like "(verbatim: ...)" or "(source: ...)".</p>
 - Group related Q&amp;A exchanges into one theme; do NOT produce one bullet per question.
 - Order by investor relevance, not transcript order. Lead with items most likely to move estimates or change the thesis (margin trajectory, cash conversion, capacity/throughput, capital allocation, key program milestones). Put softer items (macro, tax, day-count) later.
 
@@ -8063,7 +8065,7 @@ Every question-and-answer exchange in the transcript, in transcript order. Forma
 Every topic where management was evasive, declined to answer, redirected, or gave a non-answer. For each:
 <p><strong>Topic:</strong> one line</p>
 <ul>
-<li>Verbatim phrase used to deflect: "..."</li>
+<li>Phrase used to deflect: "..."</li>
 <li>What to chase next: [specific question, data source, or person]</li>
 </ul>
 
@@ -8071,7 +8073,7 @@ Every topic where management was evasive, declined to answer, redirected, or gav
 Issues management raised but didn't fully resolve — where the next meeting or quarterly print will close the gap. One <p> each.
 
 <h2>Tone / Posture Notes</h2>
-Include only items textually evidenced by a direct verbatim quote. Legitimate: "Management used 'hopeful' rather than 'confident' on margin durability (verbatim: 'we're hopeful that we deliver a little better than 100%')." Illegitimate: vague "optimism" or "caution" with no quoted basis. If nothing meets this bar, write: "No material posture signals beyond hedges already noted in Takeaways."
+Include only items textually evidenced by a direct quote. Legitimate: Management used "hopeful" rather than "confident" on margin durability — "we're hopeful that we deliver a little better than 100%." Illegitimate: vague "optimism" or "caution" with no quoted basis. If nothing meets this bar, write: "No material posture signals beyond hedges already noted in Takeaways."
 
 <h1>Transcript Corrections Log</h1>
 Every Bucket A and Bucket B correction. Format:
@@ -8088,11 +8090,13 @@ HARD RULES — VIOLATIONS DEGRADE OUTPUT
 7. NO MOOD MUSIC. Do not insert framing like "management struck an optimistic tone" unless management explicitly characterized their own stance. Stick to claims and their hedges.
 8. DUPLICATED TRANSCRIPT PASSAGES. Auto-transcription sometimes repeats a passage verbatim. Treat as a single exchange — do not log twice.
 
-QUANTITATIVE / DATED CLAIM TAGGING
-Every claim in BOTH Takeaways and Q&amp;A log containing a number, percentage, date, count, margin level, ratio, magnitude word ("most," "majority," "small percentage"), or directional comparison ("higher than," "below plan") must be followed by a parenthetical with the verbatim source phrase.
-Format: (verbatim: "exact phrase as said")
-Verbatim quotes should be 4-15 words. If longer than ~20 words, trim with ellipsis but never alter wording inside the quote. Purely qualitative claims with no number / date / comparison need no tag.
-INTERACTION WITH STEP 1 CORRECTIONS: When a corrected term appears inside a (verbatim: "...") tag, use the original transcript wording inside the quote and the corrected term in the surrounding prose.
+QUOTATION DISCIPLINE
+Preserve management's exact wording on every claim that carries a number, percentage, date, count, margin level, ratio, magnitude word ("most", "majority", "small percentage"), or directional comparison ("higher than", "below plan"). Use either:
+- A short inline direct quote in quotation marks, e.g. management called the ramp "north of 20%" by year-end, or
+- The exact source phrase rendered naturally in the analyst's voice (no quotes needed when reusing the source's wording verbatim in the flow of the sentence).
+Quote length: 4-15 words; trim mid-quote with an ellipsis but never paraphrase inside quotation marks. Purely qualitative claims with no number / date / comparison need no quotes.
+NEVER write "(verbatim: ...)", "(source: ...)", "(quote: ...)" or any meta tag exposing AI processing. The note must read like a senior analyst wrote it — quotation marks alone are the signal.
+INTERACTION WITH STEP 1 CORRECTIONS: When you quote a phrase that contains a Bucket A/B-corrected term, use the ORIGINAL transcript wording inside the quotation marks and the corrected term in the surrounding prose.
 
 Q&amp;A LOG CLEANING RULES
 - Each Q is one sentence. Compound questions: condense to the primary ask. Two distinct questions in one breath: split into two Q&amp;A entries.
@@ -8112,7 +8116,7 @@ SELF-CHECK BEFORE RETURNING (run silently, then output)
 2. Did I tighten any vague language? Search output for "low teens," "mid-teens," "approximately," "less than," "more than" — if the transcript didn't use them, remove.
 3. Did I add any company name, product, geography, or executive not in the transcript?
 4. Did I preserve every hedge ("not ready to declare victory," "that's the hope," "we don't parse that," "we'll see")?
-5. Does every quantitative / dated claim carry a (verbatim: "...") tag?
+5. Did every notable number / dated claim carry either quotation marks around the source's exact phrase OR the source's exact wording in the analyst's voice? Did I avoid all "(verbatim: ...)" / "(source: ...)" meta-tags?
 6. Did I keep clarifying follow-up Q&amp;As as separate entries?
 7. Is every Q one sentence and every A its single corresponding answer?
 8. Did I produce a Transcript Corrections Log (even if empty)?
@@ -8142,10 +8146,15 @@ After drafting your output but BEFORE returning, run this verification pass:
 5. Do NOT hallucinate from general knowledge of the company. If management
    didn't say it in this transcript, don't put it in the output — even if you
    know it to be true from prior earnings, news, or industry context.
+6. NEVER expose AI processing to the reader. No "[unverified — not in transcript]"
+   tags, no "(verbatim: ...)" meta-quotes, no "(source: ...)" annotations.
+   If you can't trace something to the transcript, silently drop it. The note
+   must read like a senior analyst wrote it.
 
-The verbatim quote tagging system above is your built-in self-check: every
-numeric claim should already have a (verbatim: "...") tag. If you wrote a
-numeric claim and can't write a verbatim tag for it, the claim doesn't belong.{thesis_addendum}"""
+The quotation discipline above is your built-in self-check: if you wrote a
+numeric claim and can't anchor it in the source's exact wording (either via
+quotation marks or by reusing the source phrase naturally), the claim
+doesn't belong.{thesis_addendum}"""
 
         # User-facing instruction is now minimal — the system prompt does
         # all the heavy lifting per Tony's full spec.
