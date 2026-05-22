@@ -7170,6 +7170,7 @@ def youtube_summarize():
         url = (data.get('url') or '').strip()
         ticker = (data.get('ticker') or '').strip().upper()
         generate_korean = bool(data.get('generateKorean'))
+        korean_only = bool(data.get('koreanOnly')) and generate_korean
         anthropic_api_key = data.get('apiKey') or os.environ.get('ANTHROPIC_API_KEY', '')
         if not url:
             return jsonify({'error': 'url is required'}), 400
@@ -7209,7 +7210,7 @@ def youtube_summarize():
                 VALUES (%s, %s, %s, %s, %s, %s, %s, 'queued')
             ''', (
                 task_id, video_id, canonical_url, job_id, ticker,
-                json.dumps({**meta, 'submittedUrl': url, 'generateKorean': generate_korean}),
+                json.dumps({**meta, 'submittedUrl': url, 'generateKorean': generate_korean, 'koreanOnly': korean_only}),
                 anthropic_api_key,
             ))
 
@@ -7357,6 +7358,7 @@ def youtube_tasks_result(task_id):
                 'source_meta': source_meta,
                 'ticker_hint': ticker,
                 'generate_korean': bool(meta.get('generateKorean')),
+                'korean_only': bool(meta.get('koreanOnly')),
             },
             daemon=True,
             name=f'youtube-llm-{job_id}',
@@ -7378,7 +7380,7 @@ def youtube_tasks_result(task_id):
 
 def _run_auto_process_text(job_id, extracted_text, filename, anthropic_api_key,
                            source_type='text', source_url='', source_meta=None,
-                           ticker_hint='', generate_korean=False):
+                           ticker_hint='', generate_korean=False, korean_only=False):
     """Background worker: takes already-extracted text, runs the same Brief +
     Key Takeaways + Meeting Summary + Questions + Assessment pipeline as
     audio, saves to meeting_summaries.
@@ -7550,16 +7552,20 @@ Before returning, scan output for every named entity (person, product, drug, tic
 
 OUTPUT FORMAT: raw HTML only. No markdown. No code fences.{thesis_addendum}"""
 
-        try:
-            summary_result = _call_llm_stream_with_retry(
-                messages=[{"role": "user", "content": f"Process the document per your instructions. Begin with the Source type line, then the sections in order.\n\nDOCUMENT:\n{text[:200000]}"}],
-                system=summary_system_prompt,
-                tier="standard", max_tokens=24576, api_key=anthropic_api_key,
-                label=f"text summary ({filename})",
-            )
-            summary_html = summary_result.get('text', '') or ''
-        except Exception as e:
-            raise Exception(f"summary LLM failed: {e}") from e
+        summary_html = ''
+        if korean_only:
+            print(f"[auto-text {job_id}] korean_only=True — skipping Key Takeaways tier")
+        else:
+            try:
+                summary_result = _call_llm_stream_with_retry(
+                    messages=[{"role": "user", "content": f"Process the document per your instructions. Begin with the Source type line, then the sections in order.\n\nDOCUMENT:\n{text[:200000]}"}],
+                    system=summary_system_prompt,
+                    tier="standard", max_tokens=24576, api_key=anthropic_api_key,
+                    label=f"text summary ({filename})",
+                )
+                summary_html = summary_result.get('text', '') or ''
+            except Exception as e:
+                raise Exception(f"summary LLM failed: {e}") from e
 
         # Brief tier (PDF-aware): same as audio Brief but Q&A section optional
         brief_system_prompt = """ROLE
@@ -7626,17 +7632,19 @@ HARD RULES
 
 OUTPUT FORMAT: raw HTML only."""
 
-        try:
-            brief_result = _call_llm_stream_with_retry(
-                messages=[{"role": "user", "content": f"Process the document per your instructions. Return only the Brief HTML.\n\nDOCUMENT:\n{text[:200000]}"}],
-                system=brief_system_prompt,
-                tier="standard", max_tokens=12288, api_key=anthropic_api_key,
-                label=f"text brief ({filename})",
-            )
-            brief_html = brief_result.get('text', '') or ''
-        except Exception as e:
-            print(f"[auto-text {job_id}] brief step failed (non-fatal): {e}")
-            brief_html = ''
+        brief_html = ''
+        if not korean_only:
+            try:
+                brief_result = _call_llm_stream_with_retry(
+                    messages=[{"role": "user", "content": f"Process the document per your instructions. Return only the Brief HTML.\n\nDOCUMENT:\n{text[:200000]}"}],
+                    system=brief_system_prompt,
+                    tier="standard", max_tokens=12288, api_key=anthropic_api_key,
+                    label=f"text brief ({filename})",
+                )
+                brief_html = brief_result.get('text', '') or ''
+            except Exception as e:
+                print(f"[auto-text {job_id}] brief step failed (non-fatal): {e}")
+                brief_html = ''
 
         # Meeting Summary (narrative topic-grouped) — same as audio path
         meeting_summary_instruction = """Generate a clear, well-structured narrative summary of the following document. Include key points, decisions, action items, context, and important details. This is a NARRATIVE summary grouped by logical topic sections — NOT a bullet list of takeaways and NOT a Q&A log.
@@ -7644,30 +7652,34 @@ OUTPUT FORMAT: raw HTML only."""
 OUTPUT FORMAT — Return raw HTML. No markdown. No code fences.
 Use: <h2>Section Title</h2>, <p><strong>Topic:</strong> Description text here.</p>, <ul><li>Sub-point</li></ul>
 Organize into 3-6 logical sections (e.g., Business Update, Strategic Priorities, Risks, Q&A Highlights)."""
-        try:
-            meeting_summary_result = _call_llm_stream_with_retry(
-                messages=[{"role": "user", "content": f"{meeting_summary_instruction}\n\nDOCUMENT:\n{text[:50000]}"}],
-                system="You are a meeting notes analyst. Generate narrative topic-grouped HTML summaries.",
-                tier="standard", max_tokens=8192, api_key=anthropic_api_key,
-                label=f"text meeting_summary ({filename})",
-            )
-            meeting_summary_html = meeting_summary_result.get('text', '') or ''
-        except Exception as e:
-            print(f"[auto-text {job_id}] meeting_summary step failed (non-fatal): {e}")
-            meeting_summary_html = ''
+        meeting_summary_html = ''
+        if not korean_only:
+            try:
+                meeting_summary_result = _call_llm_stream_with_retry(
+                    messages=[{"role": "user", "content": f"{meeting_summary_instruction}\n\nDOCUMENT:\n{text[:50000]}"}],
+                    system="You are a meeting notes analyst. Generate narrative topic-grouped HTML summaries.",
+                    tier="standard", max_tokens=8192, api_key=anthropic_api_key,
+                    label=f"text meeting_summary ({filename})",
+                )
+                meeting_summary_html = meeting_summary_result.get('text', '') or ''
+            except Exception as e:
+                print(f"[auto-text {job_id}] meeting_summary step failed (non-fatal): {e}")
+                meeting_summary_html = ''
 
         # Follow-up questions
-        try:
-            questions_result = _call_llm_stream_with_retry(
-                messages=[{"role": "user", "content": f"Based on this document, generate 3-5 key follow-up questions.\nReturn raw HTML: <ol><li>Question?</li></ol>\n\nDOCUMENT:\n{text[:20000]}"}],
-                system="Generate insightful follow-up questions.",
-                tier="fast", max_tokens=2048, api_key=anthropic_api_key,
-                label=f"text questions ({filename})",
-            )
-            questions_html = questions_result.get('text', '') or ''
-        except Exception as e:
-            print(f"[auto-text {job_id}] questions step failed (non-fatal): {e}")
-            questions_html = ''
+        questions_html = ''
+        if not korean_only:
+            try:
+                questions_result = _call_llm_stream_with_retry(
+                    messages=[{"role": "user", "content": f"Based on this document, generate 3-5 key follow-up questions.\nReturn raw HTML: <ol><li>Question?</li></ol>\n\nDOCUMENT:\n{text[:20000]}"}],
+                    system="Generate insightful follow-up questions.",
+                    tier="fast", max_tokens=2048, api_key=anthropic_api_key,
+                    label=f"text questions ({filename})",
+                )
+                questions_html = questions_result.get('text', '') or ''
+            except Exception as e:
+                print(f"[auto-text {job_id}] questions step failed (non-fatal): {e}")
+                questions_html = ''
 
         # Assessment — candid advisor take (same as audio path)
         assessment_instruction = """You are a sharp, experienced advisor giving your CANDID, UNFILTERED assessment of this document.
@@ -7677,17 +7689,19 @@ Be conversational and direct. Don't hedge.
 
 OUTPUT FORMAT — Return raw HTML. No markdown. No code fences.
 Use: <h2>Section Title</h2>, <p><strong>Topic:</strong> Description.</p>, <ul><li>Sub-point</li></ul>"""
-        try:
-            assessment_result = _call_llm_stream_with_retry(
-                messages=[{"role": "user", "content": f"{assessment_instruction}\n\nDOCUMENT:\n{text[:50000]}"}],
-                system="You are a sharp advisor giving candid document assessments.",
-                tier="standard", max_tokens=4096, api_key=anthropic_api_key,
-                label=f"text assessment ({filename})",
-            )
-            assessment_html = assessment_result.get('text', '') or ''
-        except Exception as e:
-            print(f"[auto-text {job_id}] assessment step failed (non-fatal): {e}")
-            assessment_html = ''
+        assessment_html = ''
+        if not korean_only:
+            try:
+                assessment_result = _call_llm_stream_with_retry(
+                    messages=[{"role": "user", "content": f"{assessment_instruction}\n\nDOCUMENT:\n{text[:50000]}"}],
+                    system="You are a sharp advisor giving candid document assessments.",
+                    tier="standard", max_tokens=4096, api_key=anthropic_api_key,
+                    label=f"text assessment ({filename})",
+                )
+                assessment_html = assessment_result.get('text', '') or ''
+            except Exception as e:
+                print(f"[auto-text {job_id}] assessment step failed (non-fatal): {e}")
+                assessment_html = ''
 
         # === KOREAN KEY TAKEAWAYS (opt-in) ===
         # Separate Korean-language analyst-style summary. Designed for cases

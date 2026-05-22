@@ -2134,6 +2134,12 @@ Regulatory, execution, or macro risks that could derail the thesis:
             // Korean prompt against the same transcript when checked. Default
             // off so existing English-only behavior stays untouched.
             const [summaryYoutubeKorean, setSummaryYoutubeKorean] = useState(false);
+            // Korean-only mode: when checked alongside the Korean toggle,
+            // skips the 5 English passes (Brief / Key Takeaways / Meeting
+            // Summary / Questions / Assessment) to save tokens. Default
+            // stays off so existing "generate everything" behavior is
+            // preserved unless the user explicitly opts in.
+            const [summaryYoutubeKoreanOnly, setSummaryYoutubeKoreanOnly] = useState(false);
             const [koreanExpanded, setKoreanExpanded] = useState(true);
             const [summaryTitleInput, setSummaryTitleInput] = useState(''); // Custom title for new summary
             const [editingSummaryTitle, setEditingSummaryTitle] = useState(false); // Is title being edited
@@ -3358,6 +3364,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             url,
                             ticker: (summaryYoutubeTicker || '').trim().toUpperCase(),
                             generateKorean: summaryYoutubeKorean,
+                            koreanOnly: summaryYoutubeKorean && summaryYoutubeKoreanOnly,
                         }),
                     });
                     const dj = await dispatch.json();
@@ -18608,13 +18615,29 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 <input
                                                                     type="checkbox"
                                                                     checked={summaryYoutubeKorean}
-                                                                    onChange={e => setSummaryYoutubeKorean(e.target.checked)}
+                                                                    onChange={e => {
+                                                                        setSummaryYoutubeKorean(e.target.checked);
+                                                                        if (!e.target.checked) setSummaryYoutubeKoreanOnly(false);
+                                                                    }}
                                                                     className="w-4 h-4 accent-indigo-500"
                                                                 />
                                                                 <span className="text-xs text-slate-300">
                                                                     🇰🇷 핵심 정리도 한국어로 함께 생성 <span className="text-slate-500">(Korean key takeaways — analyst-style, preserves verbatim quotes)</span>
                                                                 </span>
                                                             </label>
+                                                            {summaryYoutubeKorean && (
+                                                                <label className="flex items-center gap-2 mt-2 ml-6 cursor-pointer select-none">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={summaryYoutubeKoreanOnly}
+                                                                        onChange={e => setSummaryYoutubeKoreanOnly(e.target.checked)}
+                                                                        className="w-4 h-4 accent-indigo-500"
+                                                                    />
+                                                                    <span className="text-[11px] text-slate-400">
+                                                                        한국어만 생성 <span className="text-slate-500">(skip English Brief / Key Takeaways / Meeting Summary / Q&amp;A / Assessment — saves ~80% of tokens)</span>
+                                                                    </span>
+                                                                </label>
+                                                            )}
                                                             <p className="mt-3 text-[10px] text-slate-500">
                                                                 Works with: standard videos, conference talks, podcast uploads. Skips: Shorts without captions, age-gated, live streams.
                                                             </p>
