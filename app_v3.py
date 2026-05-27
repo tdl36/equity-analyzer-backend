@@ -17258,12 +17258,18 @@ def _decipher_attachment_block(att):
 
 
 def _run_decipher_job(job_id: str, text: str, attachments: list,
-                      ticker: str, mode: str, api_key: str):
+                      ticker: str, mode: str, api_key: str,
+                      generate_korean: bool = False):
     """Background worker. Updates _decipher_jobs[job_id] with status + result.
 
     `attachments` is a list of {fileData, fileName, fileType, mimeType} dicts.
     Each entry becomes a content block — PDFs as `document`, images as
     `image`. Empty list = text-only Decipher.
+
+    `generate_korean=True` runs a second Korean-language pass over the
+    same source material after the English Decipher completes. The
+    Korean output is appended to `explanation` under a "## 한국어 해설"
+    heading so Save / Email / Copy pick up both languages automatically.
 
     On success also stashes a `_chat_state` dict on the job so follow-up
     questions can replay the same source material against Anthropic with
@@ -17329,10 +17335,68 @@ def _run_decipher_job(job_id: str, text: str, attachments: list,
         if stop == 'max_tokens':
             print(f'decipher {job_id}: hit max_tokens cap ({max_out}); output truncated for mode={mode}')
 
+        # Optional Korean pass — same source material, Korean-language output.
+        # Runs as a separate Anthropic call after the English one so each
+        # pass gets its own max_tokens budget (avoids cutting either short).
+        # Appended to `explanation` under a "## 한국어 해설" heading so Save /
+        # Email / Copy naturally include both.
+        korean_text = ''
+        if generate_korean:
+            korean_system = """ROLE
+당신은 한국어 에쿼티 리서치 어시스턴트다. 같은 자료(첨부 PDF·이미지·텍스트)를 영어 분석가가 이미 한 번 deciphered했다. 이제 동일한 자료를 한국어로 다시 정리한다. PM이 한국어로 nuance를 보존된 채 보고 싶어한다.
+
+INPUT
+- 동일한 PDF / 스크린샷 / 텍스트.
+- 자료 자체가 한국어일 수도 영어일 수도 혼합일 수도 있다.
+
+작업:
+- 영어 출력과 동일한 깊이로 한국어 정리. 단순 번역이 아니라 한국 PM이 즉시 이해할 수 있는 분석가 어조의 해설.
+- 영어 약어 / 회사명 / 지표는 원문 그대로 (PER, PBR, ROE, S&P 500, ETF, AI, IT 등).
+- 화자 / 자료의 hedge 보존 ("약 30%", "한 70~80%" 등).
+- 수치 / 날짜 / 고유명사는 원문에 있는 그대로만 사용 (NO INVENTION).
+
+OUTPUT
+- markdown만, HTML 금지, code fence 금지.
+- 영어 출력과 동일한 섹션 구조를 따르되 한국어로. 짧은 시각적 가독성을 위해 ◆ 같은 마커 사용 가능.
+- 출력 직전에 모든 고유명사·수치가 원문 자료에 있는지 검토; 없으면 제거."""
+            korean_ask = (
+                "위 동일한 자료를 한국어로 다시 정리해라. 영어 출력과 같은 깊이·구조로, "
+                "단 한국 PM에게 자연스러운 분석가 어조로. 영어 출력은 이미 별도로 제공되므로 "
+                "여기서는 한국어 출력만 작성하라."
+                f"{ticker_block}"
+            )
+            korean_content = list(content)  # reuse same attachments/text
+            korean_content.append({"type": "text", "text": korean_ask})
+            korean_max = 12288 if mode == 'walkthrough' else 6144
+            try:
+                with client.messages.stream(
+                    model='claude-opus-4-7',
+                    max_tokens=korean_max,
+                    system=korean_system,
+                    messages=[{"role": "user", "content": korean_content}],
+                ) as kstream:
+                    kfinal = kstream.get_final_message()
+                kparts = []
+                for blk in (kfinal.content or []):
+                    t = getattr(blk, 'text', None)
+                    if t:
+                        kparts.append(t)
+                korean_text = ''.join(kparts).strip()
+                print(f"decipher {job_id}: korean pass {len(korean_text)} chars")
+            except Exception as ke:
+                print(f"decipher {job_id}: korean pass failed (non-fatal): {ke}")
+
+        explanation_final = explanation
+        if korean_text:
+            explanation_final = (
+                f"{explanation}\n\n---\n\n## 한국어 해설\n\n{korean_text}"
+            )
+
         usage = getattr(final, 'usage', None)
         _decipher_jobs[job_id].update({
             'status': 'complete',
-            'explanation': explanation,
+            'explanation': explanation_final,
+            'koreanIncluded': bool(korean_text),
             'model': 'claude-opus-4-7',
             'mode': mode,
             'truncated': stop == 'max_tokens',
@@ -17343,10 +17407,12 @@ def _run_decipher_job(job_id: str, text: str, attachments: list,
             # initial_content + first_response + any prior turns + the new
             # question on each follow-up. Kept in-process only — drops with
             # job GC (cap 100). Frontend treats expired sessions gracefully.
+            # Note: chat follow-ups always respond in the same language as
+            # the user's question; we don't auto-mirror Korean in chat.
             '_chat_state': {
                 'system_prompt': system_prompt,
                 'initial_content': content,
-                'first_response': explanation,
+                'first_response': explanation_final,
                 'turns': [],
             },
         })
@@ -17377,6 +17443,7 @@ def decipher():
         mode = (data.get('mode') or 'synthesize').strip().lower()
         if mode not in ('synthesize', 'walkthrough'):
             mode = 'synthesize'
+        generate_korean = bool(data.get('generateKorean'))
 
         # Accept either the new `attachments` array OR the legacy single-file
         # form (fileData / fileType / fileName). Fold legacy into the array
@@ -17429,6 +17496,7 @@ def decipher():
         threading.Thread(
             target=_run_decipher_job,
             args=(job_id, text, attachments, ticker, mode, api_key),
+            kwargs={'generate_korean': generate_korean},
             daemon=True,
             name=f'decipher-{job_id}',
         ).start()

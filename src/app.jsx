@@ -1484,6 +1484,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
             // Decipher attachments — array of { fileData, fileName, fileType,
             // mimeType }. Supports a mix of PDFs and images (screenshots).
             const [decipherFiles, setDecipherFiles] = useState([]);
+            // Opt-in Korean output. When checked, backend runs a second
+            // Korean-language pass over the same source and appends it
+            // to the explanation under a "## 한국어 해설" section.
+            const [decipherKorean, setDecipherKorean] = useState(false);
             const [decipherTicker, setDecipherTicker] = useState('');
             const [decipherMode, setDecipherMode] = useState('synthesize'); // 'synthesize' | 'walkthrough'
             const [decipherLoading, setDecipherLoading] = useState(false);
@@ -24473,6 +24477,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         text,
                                                         ticker: (decipherTicker || '').trim(),
                                                         mode: decipherMode,
+                                                        generateKorean: decipherKorean,
                                                         attachments: decipherFiles.map(f => ({
                                                             fileData: f.fileData,
                                                             fileName: f.fileName,
@@ -24624,6 +24629,17 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                     ? '~30-60s · 2-4 paragraphs covering top concepts'
                                                                     : '~3-8min · annotates every jargon-bearing line in document order (handles 60-80 page transcripts)'}
                                                             </span>
+                                                            <label className="flex items-center gap-1.5 ml-auto cursor-pointer select-none">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={decipherKorean}
+                                                                    onChange={e => setDecipherKorean(e.target.checked)}
+                                                                    className="w-3.5 h-3.5 accent-indigo-500"
+                                                                />
+                                                                <span className="text-[10px] text-slate-300">
+                                                                    🇰🇷 한국어 해설도 함께 <span className="text-slate-500">(adds a Korean section below the English output)</span>
+                                                                </span>
+                                                            </label>
                                                         </div>
                                                         <textarea
                                                             value={decipherText}
