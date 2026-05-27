@@ -1481,7 +1481,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
             // Decipher sub-tab state — one-shot agent that explains industry jargon
             // and Q&A subtext from pasted text or uploaded PDFs.
             const [decipherText, setDecipherText] = useState('');
-            const [decipherFile, setDecipherFile] = useState(null); // { fileData, fileName, fileType }
+            // Decipher attachments — array of { fileData, fileName, fileType,
+            // mimeType }. Supports a mix of PDFs and images (screenshots).
+            const [decipherFiles, setDecipherFiles] = useState([]);
             const [decipherTicker, setDecipherTicker] = useState('');
             const [decipherMode, setDecipherMode] = useState('synthesize'); // 'synthesize' | 'walkthrough'
             const [decipherLoading, setDecipherLoading] = useState(false);
@@ -24459,8 +24461,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             };
                                             const runDecipher = async () => {
                                                 const text = (decipherText || '').trim();
-                                                if (!text && !decipherFile) {
-                                                    setDecipherError('Paste some text or upload a PDF first.');
+                                                if (!text && decipherFiles.length === 0) {
+                                                    setDecipherError('Paste some text or attach a PDF / screenshot first.');
                                                     return;
                                                 }
                                                 setDecipherLoading(true);
@@ -24471,12 +24473,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         text,
                                                         ticker: (decipherTicker || '').trim(),
                                                         mode: decipherMode,
+                                                        attachments: decipherFiles.map(f => ({
+                                                            fileData: f.fileData,
+                                                            fileName: f.fileName,
+                                                            fileType: f.fileType,
+                                                            mimeType: f.mimeType || '',
+                                                        })),
                                                     };
-                                                    if (decipherFile) {
-                                                        body.fileData = decipherFile.fileData;
-                                                        body.fileName = decipherFile.fileName;
-                                                        body.fileType = decipherFile.fileType;
-                                                    }
                                                     // Use DIRECT_API_URL to bypass Cloudflare's 100s idle timeout.
                                                     // Backend now returns a jobId immediately and runs the
                                                     // Anthropic call in a daemon thread; we poll for completion.
@@ -24526,7 +24529,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         id: Date.now(),
                                                         jobId: result.jobId || jobId,
                                                         text: text,
-                                                        fileName: decipherFile?.fileName || null,
+                                                        fileName: decipherFiles[0]?.fileName || null,
+                                                        fileNames: decipherFiles.map(f => f.fileName),
+                                                        attachmentCount: decipherFiles.length,
                                                         ticker: decipherTicker || null,
                                                         mode: result.mode || decipherMode,
                                                         truncated: !!result.truncated,
@@ -24543,31 +24548,61 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     setDecipherLoading(false);
                                                 }
                                             };
-                                            const onPdfPick = async (e) => {
-                                                const f = e.target.files?.[0];
-                                                if (!f) return;
-                                                if (!/\.pdf$/i.test(f.name)) {
-                                                    setDecipherError('Only PDF uploads supported in v1');
-                                                    return;
+                                            // Convert a single File to a base64-encoded attachment dict.
+                                            // Returns null + sets an error if rejected.
+                                            const _fileToAttachment = async (f) => {
+                                                const ext = (f.name.split('.').pop() || '').toLowerCase();
+                                                const isPdf = ext === 'pdf' || /pdf/i.test(f.type);
+                                                const isImg = ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext) || /^image\//i.test(f.type);
+                                                if (!isPdf && !isImg) {
+                                                    setDecipherError(`${f.name}: unsupported file type. Use PDF or PNG/JPG/WEBP/GIF.`);
+                                                    return null;
                                                 }
-                                                if (f.size > 30 * 1024 * 1024) {
-                                                    setDecipherError('PDF too large (>30MB cap)');
-                                                    return;
+                                                const sizeMB = f.size / (1024 * 1024);
+                                                const cap = isPdf ? 30 : 10;
+                                                if (sizeMB > cap) {
+                                                    setDecipherError(`${f.name}: too large (${sizeMB.toFixed(1)}MB; cap ${cap}MB for ${isPdf ? 'PDF' : 'image'}).`);
+                                                    return null;
                                                 }
                                                 const buf = await f.arrayBuffer();
                                                 let bin = '';
                                                 const bytes = new Uint8Array(buf);
                                                 for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-                                                const b64 = btoa(bin);
-                                                setDecipherFile({ fileData: b64, fileName: f.name, fileType: 'pdf' });
+                                                return {
+                                                    fileData: btoa(bin),
+                                                    fileName: f.name,
+                                                    fileType: isPdf ? 'pdf' : 'image',
+                                                    mimeType: f.type || (isPdf ? 'application/pdf' : `image/${ext === 'jpg' ? 'jpeg' : ext}`),
+                                                };
+                                            };
+                                            const onFilesPick = async (e) => {
+                                                const files = Array.from(e.target.files || []);
+                                                if (!files.length) return;
                                                 setDecipherError(null);
+                                                const added = [];
+                                                for (const f of files) {
+                                                    const att = await _fileToAttachment(f);
+                                                    if (att) added.push(att);
+                                                }
+                                                if (added.length) {
+                                                    setDecipherFiles(prev => {
+                                                        const merged = [...prev, ...added];
+                                                        if (merged.length > 10) {
+                                                            setDecipherError(`Capped at 10 attachments — dropped ${merged.length - 10}.`);
+                                                            return merged.slice(0, 10);
+                                                        }
+                                                        return merged;
+                                                    });
+                                                }
+                                                // Reset the input so the same file can be re-picked later.
+                                                if (e.target) e.target.value = '';
                                             };
                                             return (
                                                 <div className="space-y-4">
                                                     <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4">
                                                         <div className="flex items-baseline justify-between mb-2 flex-wrap gap-2">
                                                             <h2 className="text-lg font-bold">Decipher</h2>
-                                                            <p className="text-xs text-slate-500">Paste a snippet or upload a PDF — get a plain-English explanation of jargon, Q&amp;A subtext, and KPIs from a patient senior analyst (Opus 4-7).</p>
+                                                            <p className="text-xs text-slate-500">Paste a snippet, upload PDFs, or attach screenshots — get a plain-English explanation of jargon, Q&amp;A subtext, and KPIs from a patient senior analyst (Opus 4-7).</p>
                                                         </div>
                                                         {/* Mode toggle: synthesize vs walkthrough */}
                                                         <div className="flex items-center gap-2 mb-2 flex-wrap">
@@ -24607,32 +24642,45 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 className="w-24 px-2 py-1 bg-black/30 border border-white/10 rounded text-xs font-mono text-slate-200"
                                                             />
                                                             <label className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded text-xs cursor-pointer">
-                                                                {decipherFile ? `📎 ${decipherFile.fileName}` : 'Attach PDF…'}
-                                                                <input type="file" accept="application/pdf,.pdf" onChange={onPdfPick} className="hidden" />
+                                                                📎 Attach PDF / screenshot…
+                                                                <input
+                                                                    type="file"
+                                                                    accept="application/pdf,.pdf,image/png,image/jpeg,image/webp,image/gif,.png,.jpg,.jpeg,.webp,.gif"
+                                                                    onChange={onFilesPick}
+                                                                    multiple
+                                                                    className="hidden"
+                                                                />
                                                             </label>
                                                             <button
                                                                 onClick={async () => {
                                                                     const files = await pickFromICloud({ mode: 'bytes', defaultTicker: (decipherTicker || '').toUpperCase() });
                                                                     if (!files || files.length === 0) return;
-                                                                    // Decipher v1 takes one file; if user picked many, take the first.
-                                                                    const f = files[0];
-                                                                    if (!/\.pdf$/i.test(f.name)) {
-                                                                        setDecipherError('Only PDFs supported in v1');
-                                                                        return;
-                                                                    }
-                                                                    const buf = await f.arrayBuffer();
-                                                                    let bin = '';
-                                                                    const bytes = new Uint8Array(buf);
-                                                                    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-                                                                    setDecipherFile({ fileData: btoa(bin), fileName: f.name, fileType: 'pdf' });
                                                                     setDecipherError(null);
-                                                                    if (files.length > 1) setDecipherError(`Note: only used ${f.name}; Decipher v1 is one file at a time.`);
+                                                                    const added = [];
+                                                                    for (const f of files) {
+                                                                        const att = await _fileToAttachment(f);
+                                                                        if (att) added.push(att);
+                                                                    }
+                                                                    if (added.length) {
+                                                                        setDecipherFiles(prev => {
+                                                                            const merged = [...prev, ...added];
+                                                                            if (merged.length > 10) {
+                                                                                setDecipherError(`Capped at 10 attachments — dropped ${merged.length - 10}.`);
+                                                                                return merged.slice(0, 10);
+                                                                            }
+                                                                            return merged;
+                                                                        });
+                                                                    }
                                                                 }}
                                                                 className="px-3 py-1 bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/30 rounded text-xs text-cyan-300"
                                                                 title="Pick from STOCKS or CATALYSTS folders"
                                                             >📁 iCloud</button>
-                                                            {decipherFile && (
-                                                                <button onClick={() => setDecipherFile(null)} className="text-xs text-slate-500 hover:text-red-400">Remove</button>
+                                                            {decipherFiles.length > 0 && (
+                                                                <button
+                                                                    onClick={() => setDecipherFiles([])}
+                                                                    className="text-xs text-slate-500 hover:text-red-400"
+                                                                    title="Remove all attachments"
+                                                                >Clear all</button>
                                                             )}
                                                             <div className="flex-1" />
                                                             <button
@@ -24641,6 +24689,29 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 rounded text-xs font-medium"
                                                             >{decipherLoading ? 'Deciphering…' : 'Decipher'}</button>
                                                         </div>
+                                                        {decipherFiles.length > 0 && (
+                                                            <div className="mt-2 flex flex-wrap gap-2">
+                                                                {decipherFiles.map((f, idx) => (
+                                                                    <div key={idx} className="flex items-center gap-2 px-2 py-1 bg-white/[0.04] border border-white/10 rounded text-[11px]">
+                                                                        {f.fileType === 'image' ? (
+                                                                            <img
+                                                                                src={`data:${f.mimeType || 'image/png'};base64,${f.fileData}`}
+                                                                                alt={f.fileName}
+                                                                                className="w-8 h-8 object-cover rounded border border-white/10"
+                                                                            />
+                                                                        ) : (
+                                                                            <span className="text-base">📄</span>
+                                                                        )}
+                                                                        <span className="text-slate-200 max-w-[180px] truncate" title={f.fileName}>{f.fileName}</span>
+                                                                        <button
+                                                                            onClick={() => setDecipherFiles(prev => prev.filter((_, i) => i !== idx))}
+                                                                            className="text-slate-500 hover:text-red-400 ml-1"
+                                                                            title="Remove this attachment"
+                                                                        >✕</button>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
                                                         {decipherError && (
                                                             <p className="mt-2 text-xs text-red-400">{decipherError}</p>
                                                         )}

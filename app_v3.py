@@ -17202,29 +17202,83 @@ Markdown only. No HTML."""
 _decipher_jobs: dict[str, dict] = {}  # job_id -> {status, result?, error?, meta}
 
 
-def _run_decipher_job(job_id: str, text: str, file_data: str, file_type: str,
-                      file_name: str, ticker: str, mode: str, api_key: str):
+# Image MIME map for Decipher attachments. Anthropic vision supports
+# png/jpeg/gif/webp; HEIC/HEIF must be converted client-side (browser
+# usually does this automatically on upload).
+_IMAGE_MIME_BY_EXT = {
+    'png': 'image/png',
+    'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+    'webp': 'image/webp',
+    'gif': 'image/gif',
+}
+
+
+def _decipher_attachment_block(att):
+    """Build an Anthropic content block from a {fileData, fileName,
+    fileType, mimeType} attachment dict. Returns (label_text_block, payload_block)
+    so the caller can also push a small label text block above the payload
+    for readability. Returns (None, None) if the attachment is malformed
+    or unsupported."""
+    data = att.get('fileData') or ''
+    name = (att.get('fileName') or '').strip()
+    ftype = (att.get('fileType') or '').strip().lower()
+    mime = (att.get('mimeType') or '').strip().lower()
+    if not data:
+        return None, None
+    # Infer type from extension if not specified.
+    ext = name.rsplit('.', 1)[-1].lower() if '.' in name else ''
+    if not ftype:
+        if ext == 'pdf':
+            ftype = 'pdf'
+        elif ext in _IMAGE_MIME_BY_EXT:
+            ftype = 'image'
+    if ftype == 'pdf':
+        label = f"PDF source: {name or 'document.pdf'}"
+        label_block = {"type": "text", "text": f"=== {label} ==="}
+        payload = {
+            "type": "document",
+            "source": {"type": "base64", "media_type": "application/pdf", "data": data},
+            # cache_control: follow-up turns within 5 min hit the cache
+            # (90% off the document tokens).
+            "cache_control": {"type": "ephemeral"},
+        }
+        return label_block, payload
+    if ftype == 'image':
+        img_mime = mime if mime.startswith('image/') else _IMAGE_MIME_BY_EXT.get(ext)
+        if not img_mime:
+            return None, None  # unsupported image type
+        label = f"Screenshot / image: {name or 'image'}"
+        label_block = {"type": "text", "text": f"=== {label} ==="}
+        payload = {
+            "type": "image",
+            "source": {"type": "base64", "media_type": img_mime, "data": data},
+        }
+        return label_block, payload
+    return None, None
+
+
+def _run_decipher_job(job_id: str, text: str, attachments: list,
+                      ticker: str, mode: str, api_key: str):
     """Background worker. Updates _decipher_jobs[job_id] with status + result.
+
+    `attachments` is a list of {fileData, fileName, fileType, mimeType} dicts.
+    Each entry becomes a content block — PDFs as `document`, images as
+    `image`. Empty list = text-only Decipher.
 
     On success also stashes a `_chat_state` dict on the job so follow-up
     questions can replay the same source material against Anthropic with
-    prompt caching (90% discount on the cached PDF block within the 5-min TTL).
+    prompt caching (90% discount on cached blocks within the 5-min TTL).
     """
     try:
         _decipher_jobs[job_id]['status'] = 'running'
         client = anthropic.Anthropic(api_key=api_key)
         content = []
 
-        if file_data and file_type == 'pdf':
-            label = f"PDF source: {file_name or 'document.pdf'}"
-            content.append({"type": "text", "text": f"=== {label} ==="})
-            # cache_control marks this block as cacheable. Follow-up turns
-            # within 5 min get a 90% discount on the document tokens.
-            content.append({
-                "type": "document",
-                "source": {"type": "base64", "media_type": "application/pdf", "data": file_data},
-                "cache_control": {"type": "ephemeral"},
-            })
+        for att in (attachments or []):
+            label_blk, payload_blk = _decipher_attachment_block(att)
+            if label_blk and payload_blk:
+                content.append(label_blk)
+                content.append(payload_blk)
 
         if text:
             content.append({"type": "text", "text": "=== User-provided text ===\n" + text})
@@ -17319,16 +17373,29 @@ def decipher():
     try:
         data = request.get_json(silent=True) or {}
         text = (data.get('text') or '').strip()
-        file_data = data.get('fileData') or ''
-        file_type = (data.get('fileType') or 'pdf').lower()
-        file_name = (data.get('fileName') or '').strip()
         ticker = (data.get('ticker') or '').strip().upper()
         mode = (data.get('mode') or 'synthesize').strip().lower()
         if mode not in ('synthesize', 'walkthrough'):
             mode = 'synthesize'
 
-        if not text and not file_data:
-            return jsonify({'error': 'Provide text or fileData (PDF)'}), 400
+        # Accept either the new `attachments` array OR the legacy single-file
+        # form (fileData / fileType / fileName). Fold legacy into the array
+        # so the worker is uniform.
+        attachments = list(data.get('attachments') or [])
+        if not attachments and data.get('fileData'):
+            attachments = [{
+                'fileData': data.get('fileData'),
+                'fileType': (data.get('fileType') or 'pdf').lower(),
+                'fileName': (data.get('fileName') or '').strip(),
+                'mimeType': (data.get('mimeType') or '').strip(),
+            }]
+        # Cap to 10 attachments per request to prevent runaway memory /
+        # token usage; the prompt-caching window also matters.
+        if len(attachments) > 10:
+            return jsonify({'error': f'Too many attachments ({len(attachments)}). Max 10 per request.'}), 400
+
+        if not text and not attachments:
+            return jsonify({'error': 'Provide text or at least one attachment (PDF or image)'}), 400
 
         if text and len(text) > 200_000:
             text = text[:200_000] + '\n\n[truncated to 200K chars]'
@@ -17346,17 +17413,22 @@ def decipher():
             for jid, _ in sorted_jobs[:len(_decipher_jobs) - 100]:
                 _decipher_jobs.pop(jid, None)
 
+        # Best-effort display name for the saved row title (first attachment
+        # name, or empty if text-only).
+        primary_name = (attachments[0].get('fileName') or '').strip() if attachments else ''
+
         job_id = str(uuid.uuid4())[:8]
         _decipher_jobs[job_id] = {
             'status': 'queued',
             'mode': mode,
-            'fileName': file_name,
+            'fileName': primary_name,
+            'attachmentCount': len(attachments),
             'ticker': ticker,
             'createdAt': datetime.utcnow().isoformat(),
         }
         threading.Thread(
             target=_run_decipher_job,
-            args=(job_id, text, file_data, file_type, file_name, ticker, mode, api_key),
+            args=(job_id, text, attachments, ticker, mode, api_key),
             daemon=True,
             name=f'decipher-{job_id}',
         ).start()
