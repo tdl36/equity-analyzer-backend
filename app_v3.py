@@ -6794,7 +6794,7 @@ def transcribe_audio():
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
 
-        gemini_api_key = os.environ.get('GEMINI_API_KEY', '') or request.form.get('geminiApiKey', '')
+        gemini_api_key = os.environ.get('GEMINI_API_KEY', '') or os.environ.get('GOOGLE_API_KEY', '') or request.form.get('geminiApiKey', '')
         if not gemini_api_key:
             return jsonify({'error': 'Gemini API key is required for audio transcription. Please add it in Settings.'}), 400
 
@@ -6859,7 +6859,7 @@ def auto_process_audio():
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
 
-        gemini_api_key = os.environ.get('GEMINI_API_KEY', '') or request.form.get('geminiApiKey', '')
+        gemini_api_key = os.environ.get('GEMINI_API_KEY', '') or os.environ.get('GOOGLE_API_KEY', '') or request.form.get('geminiApiKey', '')
         if not gemini_api_key:
             # Fall back to app_settings.geminiApiKey (set via Settings UI)
             try:
