@@ -19804,6 +19804,8 @@ def _mp_analyze_one_doc(api_key, ticker, company_name, doc):
 def _mp_synthesize_inline(api_key, ticker, company_name, sector, analyses, past_questions, timeframe):
     analyses_parts = []
     for i, a in enumerate(analyses):
+        if a is None:
+            continue  # skip docs whose analysis failed/was interrupted — don't crash the whole prep
         analyses_parts.append(f"### Document {i+1}: {a.get('_source_filename', 'unknown')}\n{json.dumps(a, indent=2)}")
     analyses_text = "\n\n".join(analyses_parts)
 
@@ -19900,7 +19902,7 @@ def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sect
 
         # -------- Stage 1: analyze --------
         analyses = cp.get('analyses')
-        if not analyses or len(analyses) != n_docs:
+        if not analyses or len(analyses) != n_docs or any(a is None for a in analyses):
             # Prior run either didn't get here or finished partially. Start/restart
             # analyze for any docs that don't yet have a completed analysis.
             prior = cp.get('analyses') or []
