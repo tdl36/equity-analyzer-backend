@@ -58,8 +58,16 @@ if (typeof window !== 'undefined') {
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-        // Local dev: set localStorage.charlie_local_backend='1' (+ reload) to hit the
-        // local backend on :5000 instead of prod. Guarded by localhost so prod is a no-op.
+        // Local dev: point the frontend at the local backend on :5000 instead of prod.
+        // Toggle without the console via URL:  ?local=1  (on, persists)  or  ?local=0  (off).
+        // Guarded by localhost so prod is always a no-op.
+        try {
+            if (_isLocalHost && typeof localStorage !== 'undefined') {
+                const _lp = new URLSearchParams(window.location.search).get('local');
+                if (_lp === '1') localStorage.setItem('charlie_local_backend', '1');
+                else if (_lp === '0') localStorage.removeItem('charlie_local_backend');
+            }
+        } catch (e) {}
         const _useLocalBackend = _isLocalHost && (typeof localStorage !== 'undefined')
             && localStorage.getItem('charlie_local_backend') === '1';
         const API_URL = _useLocalBackend
