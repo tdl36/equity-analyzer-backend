@@ -13,3 +13,4 @@ __pycache__/
 node_modules/
 # NOTE: dist/ is committed (built JSX + Tailwind artifacts deployed via wrangler).
 # Do NOT add dist/ to .gitignore — deploy depends on those files being in the repo.
+dev/

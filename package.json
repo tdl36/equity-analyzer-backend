@@ -8,6 +8,8 @@
     "test": "tests"
   },
   "scripts": {
+    "dev": "node dev.mjs",
+    "build": "./build-frontend.sh",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
