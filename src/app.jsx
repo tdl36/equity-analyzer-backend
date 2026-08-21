@@ -57,11 +57,18 @@ if (typeof window !== 'undefined') {
         const BUILD_VERSION = '2026-04-24T23';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
-        const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-            ? 'https://equity-analyzer-backend.onrender.com'
-            : '';
+        const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+        // Local dev: set localStorage.charlie_local_backend='1' (+ reload) to hit the
+        // local backend on :5000 instead of prod. Guarded by localhost so prod is a no-op.
+        const _useLocalBackend = _isLocalHost && (typeof localStorage !== 'undefined')
+            && localStorage.getItem('charlie_local_backend') === '1';
+        const API_URL = _useLocalBackend
+            ? 'http://127.0.0.1:5000'
+            : (_isLocalHost ? 'https://equity-analyzer-backend.onrender.com' : '');
         // Direct backend URL for long-running requests (bypasses Cloudflare 100s timeout)
-        const DIRECT_API_URL = 'https://equity-analyzer-backend.onrender.com';
+        const DIRECT_API_URL = _useLocalBackend
+            ? 'http://127.0.0.1:5000'
+            : 'https://equity-analyzer-backend.onrender.com';
 
         // Auth token management
         const getAuthToken = () => {
