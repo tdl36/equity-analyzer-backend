@@ -276,6 +276,32 @@ def _agent_headers() -> dict:
     return headers
 
 
+def _read_icloud_bytes(path, retries=3, wait=2.0):
+    """Read a file that may be an un-materialized iCloud placeholder.
+
+    iCloud lists files (with their full size) before the bytes are downloaded
+    locally, so a plain read can fail with errno 11 (EDEADLK / "Resource deadlock
+    avoided") or 35 (EAGAIN). On those, force a `brctl download` and retry a few
+    times. Raises the last error if the file never materializes.
+    """
+    p = Path(path)
+    for attempt in range(retries):
+        try:
+            return p.read_bytes()
+        except OSError as oe:
+            if oe.errno in (11, 35) and attempt < retries - 1:
+                log.info(f"  iCloud not ready for {p.name} (errno {oe.errno}); "
+                         f"forcing download (try {attempt + 1}/{retries})")
+                try:
+                    subprocess.run(['/usr/bin/brctl', 'download', str(p)],
+                                   capture_output=True, timeout=120)
+                except Exception as e:
+                    log.debug(f"brctl download failed for {p.name}: {e}")
+                time.sleep(wait)
+            else:
+                raise
+
+
 def poll_for_jobs() -> list[dict]:
     """Poll backend for pending note generation jobs."""
     try:
@@ -673,7 +699,7 @@ def import_existing_documents() -> None:
             documents = []
             for f in batch:
                 try:
-                    file_data = base64.b64encode(f.read_bytes()).decode("ascii")
+                    file_data = base64.b64encode(_read_icloud_bytes(f)).decode("ascii")
                     ext = f.suffix.lower()
                     documents.append(
                         {
@@ -801,7 +827,7 @@ def check_and_fulfill_doc_requests() -> None:
                 documents = []
                 for f in batch:
                     try:
-                        file_data = base64.b64encode(f.read_bytes()).decode("ascii")
+                        file_data = base64.b64encode(_read_icloud_bytes(f)).decode("ascii")
                         ext = f.suffix.lower()
                         documents.append({
                             "filename": f.name,
@@ -1094,7 +1120,7 @@ def read_ticker_files(
             if not _should_include(f.name, folder_label):
                 continue
             try:
-                raw = f.read_bytes()
+                raw = _read_icloud_bytes(f)
                 result.append(
                     {
                         "filename": f.name,
