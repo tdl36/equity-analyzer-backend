@@ -1,0 +1,28 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "frontend (dev.mjs)",
+      "type": "shell",
+      "command": "node dev.mjs",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "group": "dev", "panel": "dedicated", "reveal": "always" }
+    },
+    {
+      "label": "backend (run-local.sh)",
+      "type": "shell",
+      "command": "./run-local.sh",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "group": "dev", "panel": "dedicated", "reveal": "always" }
+    },
+    {
+      "label": "dev: all (frontend + backend)",
+      "dependsOn": ["frontend (dev.mjs)", "backend (run-local.sh)"],
+      "dependsOrder": "parallel",
+      "problemMatcher": [],
+      "group": { "kind": "build", "isDefault": true }
+    }
+  ]
+}
