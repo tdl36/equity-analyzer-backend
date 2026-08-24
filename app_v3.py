@@ -2238,6 +2238,21 @@ def init_db():
                 ADD COLUMN IF NOT EXISTS media_notes JSONB DEFAULT '[]'::jsonb
             ''')
 
+            # Investment one-pagers — normalized JSON rendered client-side by the
+            # OnePager component. Stored rather than regenerated on every view so
+            # the page is stable between reloads and cheap to re-open.
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS stock_onepagers (
+                    id SERIAL PRIMARY KEY,
+                    ticker VARCHAR(20) UNIQUE NOT NULL,
+                    company VARCHAR(255),
+                    onepager JSONB,
+                    history JSONB DEFAULT '[]',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
             # Stock Overviews table
             cur.execute('''
                 CREATE TABLE IF NOT EXISTS stock_overviews (
@@ -12266,6 +12281,200 @@ def _launch_infographic_job(ticker, mode, detail, style, gemini_key, color_schem
     )
     t.start()
     return job_id, total, None
+
+
+# ============================================================================
+# INVESTMENT ONE-PAGER
+# ----------------------------------------------------------------------------
+# ticker -> normalized JSON -> hand-drawn page rendered client-side.
+#
+# Deliberately NOT an image. The infographic styles above hand the whole page to
+# gemini-3-pro-image-preview, which is right for atmosphere and wrong for a page
+# whose value is its numbers — diffusion re-draws table cells and axis labels as
+# plausible glyphs. This path stops at data so the renderer can be exact.
+# See onepager.py for the schema and the sourcing rules.
+# ============================================================================
+
+# Charlie's existing Chat prompt for explaining a stock from scratch. Reused
+# verbatim so a one-pager researched here reads like the rest of the product.
+ONEPAGER_RESEARCH_PROMPT = (
+    "You are an AI agent specializing in helping clients understand the key tenets of an "
+    "investment thesis for any stock/equity. Your role is to research and explain in intuitive "
+    "and straightforward ways what a company does, what their business model and business mix "
+    "look like, and what the key opportunities and risks are to the stock."
+)
+
+
+def _onepager_research(ticker, anthropic_key='', gemini_key=''):
+    """Research a ticker Charlie has never seen. Returns source text for the assembler.
+
+    Web results are folded in when TAVILY_API_KEY is set; without it this still
+    works, just from model knowledge, and the assembler is told to treat the
+    whole block as uncurated either way.
+    """
+    queries = [
+        f"{ticker} stock company overview business segments revenue breakdown",
+        f"{ticker} investment thesis bull case bear case analyst",
+        f"{ticker} latest quarterly results guidance margins valuation",
+        f"{ticker} risks competition headwinds",
+    ]
+    snippets = []
+    for q in queries:
+        for r in _tavily_search(q, max_results=4):
+            title = r.get('title', '')
+            content = (r.get('content') or '')[:1200]
+            url = r.get('url', '')
+            if content:
+                snippets.append(f"[{title}]({url})\n{content}")
+
+    web_block = "\n\n".join(snippets[:24])
+    if web_block:
+        user_content = (
+            f"Research {ticker} and explain the key tenets of the investment thesis.\n\n"
+            f"WEB RESULTS:\n\n{web_block}\n\n"
+            "Cover: what the company does, business model, business mix by segment with "
+            "approximate revenue shares, key opportunities, and key risks. Include concrete "
+            "figures wherever the sources state them, and say so plainly when they do not."
+        )
+    else:
+        user_content = (
+            f"Research {ticker} and explain the key tenets of the investment thesis. "
+            "Cover what the company does, business model, business mix by segment with "
+            "approximate revenue shares, key opportunities, and key risks. State clearly "
+            "where you are uncertain rather than estimating figures."
+        )
+
+    result = call_llm(
+        messages=[{'role': 'user', 'content': user_content}],
+        system=ONEPAGER_RESEARCH_PROMPT,
+        tier='advanced',
+        max_tokens=8192,
+        timeout=300,
+        anthropic_api_key=anthropic_key,
+        gemini_api_key=gemini_key,
+    )
+    return result['text']
+
+
+def _run_onepager_job(job_id, ticker, anthropic_key, gemini_key, openai_key, force_research):
+    """Background worker: assemble and persist a one-pager."""
+    try:
+        import onepager as _op
+
+        def research_fn(tk):
+            return _onepager_research(tk, anthropic_key, gemini_key)
+
+        data, facts = _op.build_onepager(
+            ticker,
+            get_db=get_db,
+            parse_analysis_data=_parse_analysis_data,
+            call_llm=call_llm,
+            extract_json=_extract_json,
+            api_keys={
+                'anthropic': anthropic_key,
+                'gemini': gemini_key,
+                'openai': openai_key,
+            },
+            research_fn=research_fn,
+            force_research=force_research,
+        )
+        _op.save_onepager(ticker, data, get_db)
+
+        _mp_update_job(job_id, status='done', result={
+            'success': True,
+            'ticker': ticker,
+            'onepager': data,
+            'sources': facts.get('sources', []),
+            'isDraft': facts.get('is_draft', False),
+        })
+    except Exception as e:
+        print(f"One-pager job {job_id} error: {e}")
+        _mp_update_job(job_id, status='failed', error=str(e)[:2000])
+
+
+@app.route('/api/onepager/generate', methods=['POST'])
+def generate_onepager():
+    """Queue one-pager assembly for a ticker. Returns {jobId}. Poll /api/mp/jobs/:id."""
+    try:
+        data = request.get_json() or {}
+        ticker = (data.get('ticker') or '').upper().strip()
+        if not ticker:
+            return jsonify({'error': 'No ticker provided'}), 400
+
+        keys = _get_api_keys(
+            data.get('apiKey', ''),
+            data.get('geminiApiKey', ''),
+            data.get('openaiApiKey', ''),
+        )
+        if not any(keys.values()):
+            return jsonify({'error': 'No LLM API key available — add one in Settings'}), 400
+
+        job_id = str(uuid.uuid4())
+        with get_db(commit=True) as (_c, cur):
+            cur.execute('''
+                INSERT INTO mp_jobs (id, stage, ticker, status)
+                VALUES (%s, 'onepager', %s, 'running')
+            ''', (job_id, ticker))
+
+        threading.Thread(
+            target=_run_onepager_job,
+            args=(job_id, ticker, keys['anthropic'], keys['gemini'], keys['openai'],
+                  bool(data.get('forceResearch'))),
+            daemon=True,
+        ).start()
+        return jsonify({'jobId': job_id}), 202
+    except Exception as e:
+        print(f"Error queueing one-pager job: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/onepager/<ticker>', methods=['GET'])
+def get_onepager(ticker):
+    """Return the stored one-pager for a ticker."""
+    try:
+        import onepager as _op
+        data = _op.load_onepager(ticker, get_db)
+        if not data:
+            return jsonify({'error': f'No one-pager found for {ticker.upper()}'}), 404
+        return jsonify({'ticker': ticker.upper(), 'onepager': data})
+    except Exception as e:
+        print(f"Error getting one-pager: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/onepager/<ticker>', methods=['DELETE'])
+def delete_onepager(ticker):
+    """Delete the stored one-pager for a ticker."""
+    try:
+        with get_db(commit=True) as (_c, cur):
+            cur.execute('DELETE FROM stock_onepagers WHERE ticker = %s', (ticker.upper(),))
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error deleting one-pager: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/onepager', methods=['GET'])
+def list_onepagers():
+    """List tickers that already have a one-pager, newest first."""
+    try:
+        with get_db() as (_c, cur):
+            cur.execute('''
+                SELECT ticker, company, updated_at,
+                       onepager -> 'meta' ->> 'is_draft' AS is_draft
+                FROM stock_onepagers
+                ORDER BY updated_at DESC
+            ''')
+            rows = cur.fetchall()
+        return jsonify({'onepagers': [{
+            'ticker': r['ticker'],
+            'company': r['company'],
+            'updatedAt': r['updated_at'].isoformat() if r['updated_at'] else None,
+            'isDraft': (r.get('is_draft') == 'true'),
+        } for r in rows]})
+    except Exception as e:
+        print(f"Error listing one-pagers: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/thesis-format/infographic', methods=['POST'])
