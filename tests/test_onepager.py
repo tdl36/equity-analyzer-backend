@@ -244,3 +244,68 @@ def test_long_source_fields_are_truncated_not_dropped():
     text, _ = onepager.gather_source_material("DE", get_db, parse_analysis_data)
     assert "[truncated]" in text
     assert len(text) < 40000
+
+
+# --------------------------------------------------------------------------
+# depth variants
+# --------------------------------------------------------------------------
+
+def test_depth_directive_reaches_the_prompt():
+    get_db = make_get_db({"portfolio_analyses": THESIS_ROW})
+    capture = {}
+    onepager.build_onepager(
+        "DE", get_db=get_db, parse_analysis_data=parse_analysis_data,
+        call_llm=make_call_llm(capture), extract_json=extract_json,
+        research_fn=lambda t: "notes", depth="brief",
+    )
+    assert "DEPTH: BRIEF" in capture["user"]
+    assert "ONE printed page" in capture["user"]
+
+
+def test_each_depth_sends_a_distinct_directive():
+    seen = {}
+    for d in ("brief", "standard", "deep"):
+        get_db = make_get_db({"portfolio_analyses": THESIS_ROW})
+        capture = {}
+        onepager.build_onepager(
+            "DE", get_db=get_db, parse_analysis_data=parse_analysis_data,
+            call_llm=make_call_llm(capture), extract_json=extract_json,
+            research_fn=lambda t: "notes", depth=d,
+        )
+        seen[d] = capture["user"]
+    assert len({v for v in seen.values()}) == 3
+
+
+def test_unknown_depth_falls_back_to_standard():
+    get_db = make_get_db({"portfolio_analyses": THESIS_ROW})
+    capture = {}
+    data, _ = onepager.build_onepager(
+        "DE", get_db=get_db, parse_analysis_data=parse_analysis_data,
+        call_llm=make_call_llm(capture), extract_json=extract_json,
+        research_fn=lambda t: "notes", depth="nonsense",
+    )
+    assert "DEPTH: STANDARD" in capture["user"]
+    # meta records the resolved depth, not the bogus one the caller passed.
+    assert data["meta"]["depth"] == "standard"
+
+
+def test_depth_recorded_in_meta():
+    get_db = make_get_db({"portfolio_analyses": THESIS_ROW})
+    data, _ = onepager.build_onepager(
+        "DE", get_db=get_db, parse_analysis_data=parse_analysis_data,
+        call_llm=make_call_llm(), extract_json=extract_json,
+        research_fn=lambda t: "notes", depth="deep",
+    )
+    assert data["meta"]["depth"] == "deep"
+
+
+def test_brief_is_told_to_drop_summaries():
+    """The section summaries are what make the page scroll — Brief must cut them."""
+    d = onepager.depth_directive("brief")
+    assert "Omit investment_thesis.summary" in d
+    assert "company_overview.summary" in d
+
+
+def test_deep_still_forbids_inventing_figures():
+    """Depth must buy reasoning, never fabricated numbers."""
+    assert "never invent a figure" in onepager.depth_directive("deep")

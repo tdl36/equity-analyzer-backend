@@ -2244,13 +2244,29 @@ def init_db():
             cur.execute('''
                 CREATE TABLE IF NOT EXISTS stock_onepagers (
                     id SERIAL PRIMARY KEY,
-                    ticker VARCHAR(20) UNIQUE NOT NULL,
+                    ticker VARCHAR(20) NOT NULL,
+                    depth VARCHAR(20) NOT NULL DEFAULT 'standard',
                     company VARCHAR(255),
                     onepager JSONB,
                     history JSONB DEFAULT '[]',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
+            ''')
+            # Migration: the table originally had one row per ticker. Depth variants
+            # mean a name can hold Brief and Deep at once, so the key moves to
+            # (ticker, depth). Idempotent — safe on both new and existing databases.
+            cur.execute('''
+                ALTER TABLE stock_onepagers
+                ADD COLUMN IF NOT EXISTS depth VARCHAR(20) NOT NULL DEFAULT 'standard'
+            ''')
+            cur.execute('''
+                ALTER TABLE stock_onepagers
+                DROP CONSTRAINT IF EXISTS stock_onepagers_ticker_key
+            ''')
+            cur.execute('''
+                CREATE UNIQUE INDEX IF NOT EXISTS stock_onepagers_ticker_depth_key
+                ON stock_onepagers (ticker, depth)
             ''')
 
             # Stock Overviews table
@@ -12400,13 +12416,24 @@ def _onepager_caller(model_key, anthropic_key):
     return pinned
 
 
+@app.route('/api/onepager/depths', methods=['GET'])
+def list_onepager_depths_route():
+    """Depth variants the picker offers."""
+    import onepager as _op
+    return jsonify({
+        'depths': [{'key': k, 'label': v['label'], 'note': v['note']}
+                   for k, v in _op.ONEPAGER_DEPTHS.items()],
+        'default': _op.DEFAULT_DEPTH,
+    })
+
+
 @app.route('/api/onepager/models', methods=['GET'])
 def list_onepager_models():
     """Models the one-pager picker offers, and which is default."""
     return jsonify({'models': ONEPAGER_MODELS, 'default': ONEPAGER_DEFAULT_MODEL})
 
 
-def _run_onepager_job(job_id, ticker, anthropic_key, gemini_key, openai_key, force_research, model_key=None):
+def _run_onepager_job(job_id, ticker, anthropic_key, gemini_key, openai_key, force_research, model_key=None, depth=None):
     """Background worker: assemble and persist a one-pager."""
     try:
         import onepager as _op
@@ -12427,8 +12454,9 @@ def _run_onepager_job(job_id, ticker, anthropic_key, gemini_key, openai_key, for
             },
             research_fn=research_fn,
             force_research=force_research,
+            depth=depth or _op.DEFAULT_DEPTH,
         )
-        _op.save_onepager(ticker, data, get_db)
+        _op.save_onepager(ticker, data, get_db, depth=depth or _op.DEFAULT_DEPTH)
 
         _mp_update_job(job_id, status='done', result={
             'success': True,
@@ -12437,6 +12465,7 @@ def _run_onepager_job(job_id, ticker, anthropic_key, gemini_key, openai_key, for
             'sources': facts.get('sources', []),
             'isDraft': facts.get('is_draft', False),
             'model': (ONEPAGER_MODEL_BY_KEY.get(model_key) or {}).get('label'),
+            'depth': depth or 'standard',
         })
     except Exception as e:
         print(f"One-pager job {job_id} error: {e}")
@@ -12471,7 +12500,8 @@ def generate_onepager():
             target=_run_onepager_job,
             args=(job_id, ticker, keys['anthropic'], keys['gemini'], keys['openai'],
                   bool(data.get('forceResearch')),
-                  data.get('model') or ONEPAGER_DEFAULT_MODEL),
+                  data.get('model') or ONEPAGER_DEFAULT_MODEL,
+                  data.get('depth')),
             daemon=True,
         ).start()
         return jsonify({'jobId': job_id}), 202
@@ -12485,10 +12515,15 @@ def get_onepager(ticker):
     """Return the stored one-pager for a ticker."""
     try:
         import onepager as _op
-        data = _op.load_onepager(ticker, get_db)
+        depth = request.args.get('depth') or None
+        data = _op.load_onepager(ticker, get_db, depth=depth)
         if not data:
             return jsonify({'error': f'No one-pager found for {ticker.upper()}'}), 404
-        return jsonify({'ticker': ticker.upper(), 'onepager': data})
+        return jsonify({
+            'ticker': ticker.upper(),
+            'onepager': data,
+            'depths': _op.list_onepager_depths(ticker, get_db),
+        })
     except Exception as e:
         print(f"Error getting one-pager: {e}")
         return jsonify({'error': str(e)}), 500
@@ -12499,7 +12534,12 @@ def delete_onepager(ticker):
     """Delete the stored one-pager for a ticker."""
     try:
         with get_db(commit=True) as (_c, cur):
-            cur.execute('DELETE FROM stock_onepagers WHERE ticker = %s', (ticker.upper(),))
+            depth = request.args.get('depth')
+            if depth:
+                cur.execute('DELETE FROM stock_onepagers WHERE ticker = %s AND depth = %s',
+                            (ticker.upper(), depth))
+            else:
+                cur.execute('DELETE FROM stock_onepagers WHERE ticker = %s', (ticker.upper(),))
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error deleting one-pager: {e}")
@@ -12512,18 +12552,34 @@ def list_onepagers():
     try:
         with get_db() as (_c, cur):
             cur.execute('''
-                SELECT ticker, company, updated_at,
+                SELECT ticker, depth, company, updated_at,
                        onepager -> 'meta' ->> 'is_draft' AS is_draft
                 FROM stock_onepagers
-                ORDER BY updated_at DESC
+                ORDER BY ticker ASC, updated_at DESC
             ''')
             rows = cur.fetchall()
-        return jsonify({'onepagers': [{
-            'ticker': r['ticker'],
-            'company': r['company'],
-            'updatedAt': r['updated_at'].isoformat() if r['updated_at'] else None,
-            'isDraft': (r.get('is_draft') == 'true'),
-        } for r in rows]})
+
+        # Grouped by ticker so the sidebar can show one entry per name with its
+        # available depths, rather than a flat list with duplicate tickers.
+        grouped = {}
+        for r in rows:
+            g = grouped.setdefault(r['ticker'], {
+                'ticker': r['ticker'],
+                'company': r['company'],
+                'updatedAt': None,
+                'isDraft': False,
+                'depths': [],
+            })
+            stamp = r['updated_at'].isoformat() if r['updated_at'] else None
+            g['depths'].append({'depth': r['depth'], 'updatedAt': stamp})
+            if stamp and (g['updatedAt'] is None or stamp > g['updatedAt']):
+                g['updatedAt'] = stamp
+                g['company'] = r['company'] or g['company']
+            if r.get('is_draft') == 'true':
+                g['isDraft'] = True
+
+        out = sorted(grouped.values(), key=lambda x: x['updatedAt'] or '', reverse=True)
+        return jsonify({'onepagers': out})
     except Exception as e:
         print(f"Error listing one-pagers: {e}")
         return jsonify({'error': str(e)}), 500

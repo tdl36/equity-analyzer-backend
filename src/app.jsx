@@ -62,7 +62,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-08-23T02';
+        const BUILD_VERSION = '2026-08-23T03';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -2103,6 +2103,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [opForceResearch, setOpForceResearch] = useState(false);
             // Style is a view-time choice, not baked into the stored JSON — the
             // same page can be read as a Tearsheet and sent as a Broadsheet.
+            const [opSaved, setOpSaved] = useState([]);          // saved pages, grouped by ticker
+            const [opSavedLoading, setOpSavedLoading] = useState(false);
+            const [opDepths, setOpDepths] = useState([]);        // depth options from the backend
+            const [opDepth, setOpDepth] = useState('standard');
+            const [opAvailableDepths, setOpAvailableDepths] = useState([]); // depths saved for the open ticker
             const [opModels, setOpModels] = useState([]);
             const [opModel, setOpModel] = useState('opus-4-6');
             const [opEmailing, setOpEmailing] = useState(false);
@@ -2142,6 +2147,65 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 if (opData && opData.ticker === t) return;
                 loadOnePager(t);
             }, [activeTab, fmtTicker]);
+
+            const loadOnePagerList = useCallback(async () => {
+                setOpSavedLoading(true);
+                try {
+                    const r = await fetch(`${API_URL}/api/onepager`);
+                    if (r.ok) setOpSaved((await r.json()).onepagers || []);
+                } catch (e) { /* the list is a convenience, not load-bearing */ }
+                finally { setOpSavedLoading(false); }
+            }, []);
+
+            // Depth options come from the backend so the picker and the prompt
+            // directives cannot drift apart.
+            useEffect(() => {
+                (async () => {
+                    try {
+                        const r = await fetch(`${API_URL}/api/onepager/depths`);
+                        if (!r.ok) return;
+                        const j = await r.json();
+                        setOpDepths(j.depths || []);
+                        setOpDepth(d => (j.depths || []).some(x => x.key === d) ? d : (j.default || d));
+                    } catch (e) { /* picker keeps its default */ }
+                })();
+            }, []);
+
+            useEffect(() => {
+                if (activeTab === 'onepager') loadOnePagerList();
+            }, [activeTab, loadOnePagerList]);
+
+            // Open a saved page. Without an explicit depth the backend returns the
+            // most recently written one, so clicking a ticker shows what you last
+            // looked at rather than an arbitrary row.
+            const openOnePager = useCallback(async (ticker, depth) => {
+                const t = (ticker || '').toUpperCase();
+                setOpError(null);
+                setOpStatus('');
+                try {
+                    const url = `${API_URL}/api/onepager/${t}` + (depth ? `?depth=${depth}` : '');
+                    const r = await fetch(url);
+                    if (!r.ok) throw new Error('Not saved yet');
+                    const j = await r.json();
+                    setOpData(j.onepager);
+                    setOpTicker(t);
+                    setOpAvailableDepths(j.depths || []);
+                    const shown = j.onepager?.meta?.depth;
+                    if (shown) setOpDepth(shown);
+                } catch (e) {
+                    setOpError(`Could not open ${t}: ${e.message || e}`);
+                }
+            }, []);
+
+            const deleteOnePager = useCallback(async (ticker, depth) => {
+                if (!confirm(`Delete the ${depth || 'saved'} one-pager for ${ticker}?`)) return;
+                try {
+                    const url = `${API_URL}/api/onepager/${ticker}` + (depth ? `?depth=${depth}` : '');
+                    await fetch(url, { method: 'DELETE' });
+                    if (opData?.ticker === ticker) { setOpData(null); setOpAvailableDepths([]); }
+                    loadOnePagerList();
+                } catch (e) { alert('Delete failed: ' + (e.message || e)); }
+            }, [opData, loadOnePagerList]);
 
             // Model list is served by the backend so the two never drift.
             useEffect(() => {
@@ -2226,7 +2290,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     const res = await fetch(`${API_URL}/api/onepager/generate`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ ticker: t, forceResearch: opForceResearch, model: opModel }),
+                        body: JSON.stringify({ ticker: t, forceResearch: opForceResearch, model: opModel, depth: opDepth }),
                     });
                     const started = await res.json();
                     if (!res.ok) throw new Error(started.error || `HTTP ${res.status}`);
@@ -2251,6 +2315,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             setOpStatus(j.result?.isDraft
                                 ? 'Built from web research — review before circulating.'
                                 : `Built from ${(j.result?.sources || []).join(' + ') || 'Charlie'}.`);
+                            loadOnePagerList();
+                            openOnePager(t, opDepth);
                             break;
                         }
                         if (j.status === 'failed') {
@@ -2263,7 +2329,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 } finally {
                     setOpBusy(false);
                 }
-            }, [opTicker, fmtTicker, opForceResearch, opModel]);
+            }, [opTicker, fmtTicker, opForceResearch, opModel, opDepth, loadOnePagerList, openOnePager]);
 
             const [fmtInfographicMode, setFmtInfographicMode] = useState('1');
             const [fmtInfographicDetail, setFmtInfographicDetail] = useState('full');
@@ -14048,6 +14114,19 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 </span>
                             </button>
                             <button
+                                onClick={() => switchTab('onepager')}
+                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                                    activeTab === 'onepager'
+                                        ? 'bg-amber-600 text-white shadow-lg glow-teal'
+                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
+                                }`}
+                            >
+                                <span className="flex items-center gap-2">
+                                    <FileText className="w-4 h-4" />
+                                    One-Pager
+                                </span>
+                            </button>
+                            <button
                                 onClick={() => switchTab('pipeline')}
                                 className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
                                     activeTab === 'pipeline'
@@ -21798,105 +21877,161 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         )}
 
                         {/* THESIS FORMATS TAB */}
+                        {activeTab === 'onepager' && (
+                            <div className="flex-1 flex overflow-hidden">
+                                {/* Saved pages, newest first. Mirrors how Thesis and
+                                    Overview let you move between tickers. */}
+                                <aside className="hidden md:flex w-60 flex-col border-r border-white/[0.08] bg-white/[0.02] overflow-y-auto flex-shrink-0">
+                                    <div className="p-3 border-b border-white/[0.08] flex items-center justify-between">
+                                        <span className="label">Saved</span>
+                                        <button onClick={loadOnePagerList} title="Refresh"
+                                            className="text-xs text-slate-400 hover:text-white">↻</button>
+                                    </div>
+                                    {opSavedLoading && <p className="p-3 text-xs text-slate-500">Loading…</p>}
+                                    {!opSavedLoading && opSaved.length === 0 && (
+                                        <p className="p-3 text-xs text-slate-500">
+                                            Nothing saved yet. Generate one on the right.
+                                        </p>
+                                    )}
+                                    {opSaved.map(item => (
+                                        <div key={item.ticker}
+                                            className={`px-3 py-2.5 border-b border-white/[0.05] cursor-pointer hover:bg-white/[0.05] ${
+                                                opData?.ticker === item.ticker ? 'bg-white/[0.07]' : ''}`}
+                                            onClick={() => openOnePager(item.ticker)}>
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="font-mono font-bold text-sm">{item.ticker}</span>
+                                                {item.isDraft && (
+                                                    <span className="text-[9px] px-1 py-0.5 rounded border border-red-500/40 text-red-400">
+                                                        DRAFT
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {item.company && (
+                                                <div className="text-[11px] text-slate-400 truncate">{item.company}</div>
+                                            )}
+                                            <div className="flex gap-1 mt-1 flex-wrap">
+                                                {(item.depths || []).map(d => (
+                                                    <button key={d.depth}
+                                                        onClick={e => { e.stopPropagation(); openOnePager(item.ticker, d.depth); }}
+                                                        className={`text-[9px] px-1.5 py-0.5 rounded border transition-colors ${
+                                                            opData?.ticker === item.ticker && opData?.meta?.depth === d.depth
+                                                                ? 'bg-amber-500 text-slate-900 border-amber-400'
+                                                                : 'border-white/15 text-slate-400 hover:text-white'}`}>
+                                                        {d.depth}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </aside>
+
+                                <div className="flex-1 overflow-y-auto pb-24 md:pb-0"
+                                     onScroll={(e) => { setShowScrollTop(e.target.scrollTop > 300); scrollContainerRef.current = e.target; }}>
+                                    <div className="p-4 md:p-6">
+                                        <div className="flex items-center gap-3 mb-4 flex-wrap">
+                                            <FileText className="w-6 h-6 text-amber-400" />
+                                            <h1 className="text-xl font-bold">Investment One-Pager</h1>
+                                            <span className="text-xs text-slate-400">
+                                                Enter a ticker — Charlie researches whatever it doesn’t already know.
+                                            </span>
+                                        </div>
+
+                                        <div className="rounded-xl border border-white/10 bg-white/[0.04] p-4 mb-4">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <input
+                                                    value={opTicker}
+                                                    onChange={e => setOpTicker(e.target.value.toUpperCase())}
+                                                    onKeyDown={e => { if (e.key === 'Enter' && !opBusy) generateOnePager(); }}
+                                                    placeholder="DE"
+                                                    className="px-3 py-2 w-28 bg-white/10 border border-white/15 rounded-lg text-sm uppercase tracking-wider focus:outline-none focus:border-amber-500"
+                                                />
+                                                <select value={opDepth} onChange={e => setOpDepth(e.target.value)}
+                                                    title="How much the page says"
+                                                    className="px-2 py-2 bg-white/10 border border-white/15 rounded-lg text-xs focus:outline-none focus:border-amber-500">
+                                                    {(opDepths.length ? opDepths : [{ key: 'standard', label: 'Standard', note: '' }]).map(d => (
+                                                        <option key={d.key} value={d.key} className="bg-neutral-900">
+                                                            {d.label}{d.note ? ` — ${d.note}` : ''}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                <select value={opModel} onChange={e => setOpModel(e.target.value)}
+                                                    title="Model used for research and assembly"
+                                                    className="px-2 py-2 bg-white/10 border border-white/15 rounded-lg text-xs focus:outline-none focus:border-amber-500">
+                                                    {(opModels.length ? opModels : [{ key: 'opus-4-6', label: 'Opus 4.6', note: '' }]).map(m => (
+                                                        <option key={m.key} value={m.key} className="bg-neutral-900">
+                                                            {m.label}{m.note ? ` — ${m.note}` : ''}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                <button onClick={generateOnePager} disabled={opBusy}
+                                                    className="flex items-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:bg-neutral-700 rounded-xl text-sm font-medium transition-all">
+                                                    {opBusy
+                                                        ? <><div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent" /> Working…</>
+                                                        : <>Research &amp; Generate</>}
+                                                </button>
+                                                <label className="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer">
+                                                    <input type="checkbox" checked={opForceResearch}
+                                                           onChange={e => setOpForceResearch(e.target.checked)} />
+                                                    Refresh with new web research
+                                                </label>
+                                                {opData && (
+                                                    <div className="flex items-center gap-2 ml-auto">
+                                                        <button onClick={emailOnePager} disabled={opEmailing}
+                                                            className="flex items-center gap-1.5 px-3 py-2 bg-amber-600 hover:bg-amber-500 disabled:bg-neutral-700 rounded-lg text-xs font-medium">
+                                                            {opEmailing
+                                                                ? <><div className="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent" /> Sending…</>
+                                                                : <><Mail className="w-3.5 h-3.5" /> Email</>}
+                                                        </button>
+                                                        <button onClick={() => window.print()}
+                                                            className="flex items-center gap-1.5 px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-xs">
+                                                            <Download className="w-3.5 h-3.5" /> Print / PDF
+                                                        </button>
+                                                        <button onClick={() => deleteOnePager(opData.ticker, opData?.meta?.depth)}
+                                                            className="px-3 py-2 bg-white/10 hover:bg-red-600/30 rounded-lg text-xs">
+                                                            Delete
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            {opStatus && !opError && <p className="mt-2 text-xs text-slate-400">{opStatus}</p>}
+                                            {opError && <p className="mt-2 text-xs text-red-400">{opError}</p>}
+                                        </div>
+
+                                        {opData && (
+                                            <>
+                                                <div className="mb-3 flex items-center gap-2 flex-wrap">
+                                                    <span className="text-xs text-slate-400 mr-1">Style:</span>
+                                                    {ONEPAGER_STYLES.map(st => (
+                                                        <button key={st.key} onClick={() => setOpStyle(st.key)}
+                                                            title={st.blurb} aria-pressed={opStyle === st.key}
+                                                            className={`px-2.5 py-1 rounded-lg text-xs transition-all border ${
+                                                                opStyle === st.key
+                                                                    ? 'bg-amber-500 text-slate-900 border-amber-400 font-medium'
+                                                                    : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'}`}>
+                                                            {st.label}
+                                                        </button>
+                                                    ))}
+                                                    {opAvailableDepths.length > 1 && (
+                                                        <span className="ml-3 text-xs text-slate-400">
+                                                            Also saved: {opAvailableDepths
+                                                                .filter(d => d.depth !== opData?.meta?.depth)
+                                                                .map(d => d.depth).join(', ')}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="mb-8" ref={opSheetRef}>
+                                                    <OnePagerFit data={opData} style={opStyle} />
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         {activeTab === 'formats' && (
                             <div className="flex-1 flex flex-col bg-white/[0.02] overflow-y-auto pb-24 md:pb-0" onScroll={(e) => { setShowScrollTop(e.target.scrollTop > 300); scrollContainerRef.current = e.target; }}>
                                 <div className="p-4 md:p-6">
-                                    {/* ---- Investment one-pager -------------------------------
-                                        Ticker in, hand-drawn page out. Sits above the format
-                                        exports because it is the entry point people reach for:
-                                        it works from a ticker alone, where everything below
-                                        needs a thesis to already exist. */}
-                                    <div className="mb-6 rounded-xl border border-white/10 bg-white/[0.04] p-4">
-                                        <div className="flex items-center gap-3 mb-3 flex-wrap">
-                                            <FileText className="w-5 h-5 text-amber-400 flex-shrink-0" />
-                                            <h2 className="text-base font-bold">Investment One-Pager</h2>
-                                            <span className="text-xs text-slate-400">
-                                                Enter a ticker — Charlie researches what it doesn’t already know.
-                                            </span>
-                                        </div>
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                            <input
-                                                value={opTicker}
-                                                onChange={e => setOpTicker(e.target.value.toUpperCase())}
-                                                onKeyDown={e => { if (e.key === 'Enter' && !opBusy) generateOnePager(); }}
-                                                placeholder={fmtTicker || 'DE'}
-                                                className="px-3 py-2 w-32 bg-white/10 border border-white/15 rounded-lg text-sm uppercase tracking-wider focus:outline-none focus:border-amber-500"
-                                            />
-                                            <button
-                                                onClick={generateOnePager}
-                                                disabled={opBusy}
-                                                className="flex items-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:bg-neutral-700 rounded-xl text-sm font-medium transition-all"
-                                            >
-                                                {opBusy
-                                                    ? <><div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent" /> Working…</>
-                                                    : <>Research &amp; Generate</>}
-                                            </button>
-                                            <select
-                                                value={opModel}
-                                                onChange={e => setOpModel(e.target.value)}
-                                                title="Model used for research and assembly"
-                                                className="px-2 py-2 bg-white/10 border border-white/15 rounded-lg text-xs focus:outline-none focus:border-amber-500"
-                                            >
-                                                {(opModels.length ? opModels : [{ key: 'opus-4-6', label: 'Opus 4.6', note: '' }]).map(m => (
-                                                    <option key={m.key} value={m.key} className="bg-neutral-900">
-                                                        {m.label}{m.note ? ` — ${m.note}` : ''}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                            <label className="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer">
-                                                <input type="checkbox" checked={opForceResearch}
-                                                       onChange={e => setOpForceResearch(e.target.checked)} />
-                                                Refresh with new web research
-                                            </label>
-                                            {opData && (
-                                                <div className="flex items-center gap-2 ml-auto">
-                                                    <button onClick={emailOnePager} disabled={opEmailing}
-                                                        className="flex items-center gap-1.5 px-3 py-2 bg-amber-600 hover:bg-amber-500 disabled:bg-neutral-700 rounded-lg text-xs font-medium">
-                                                        {opEmailing
-                                                            ? <><div className="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent" /> Sending…</>
-                                                            : <><Mail className="w-3.5 h-3.5" /> Email</>}
-                                                    </button>
-                                                    <button onClick={() => window.print()}
-                                                        className="flex items-center gap-1.5 px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-xs">
-                                                        <Download className="w-3.5 h-3.5" /> Print / PDF
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </div>
-                                        {opStatus && !opError && (
-                                            <p className="mt-2 text-xs text-slate-400">{opStatus}</p>
-                                        )}
-                                        {opError && (
-                                            <p className="mt-2 text-xs text-red-400">{opError}</p>
-                                        )}
-                                    </div>
-
-                                    {opData && (
-                                        <>
-                                            <div className="mb-3 flex items-center gap-2 flex-wrap">
-                                                <span className="text-xs text-slate-400 mr-1">Style:</span>
-                                                {ONEPAGER_STYLES.map(s => (
-                                                    <button
-                                                        key={s.key}
-                                                        onClick={() => setOpStyle(s.key)}
-                                                        title={s.blurb}
-                                                        aria-pressed={opStyle === s.key}
-                                                        className={`px-2.5 py-1 rounded-lg text-xs transition-all border ${
-                                                            opStyle === s.key
-                                                                ? 'bg-amber-500 text-slate-900 border-amber-400 font-medium'
-                                                                : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'
-                                                        }`}
-                                                    >
-                                                        {s.label}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                            <div className="mb-8 overflow-x-auto" ref={opSheetRef}>
-                                                <OnePagerFit data={opData} style={opStyle} />
-                                            </div>
-                                        </>
-                                    )}
-
                                     {/* Header */}
                                     <div className="flex items-center justify-between mb-6">
                                         <div className="flex items-center gap-3">
@@ -28855,7 +28990,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 <button
                                     onClick={() => setShowMoreMenu(true)}
                                     className={`flex flex-col items-center justify-center gap-1 min-w-[56px] py-2 rounded-xl transition-all ${
-                                        activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' || activeTab === 'feed' || activeTab === 'analysts'
+                                        activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' || activeTab === 'feed' || activeTab === 'analysts' || activeTab === 'onepager'
                                             ? 'text-amber-400'
                                             : 'text-slate-400 active:text-slate-200'
                                     }`}

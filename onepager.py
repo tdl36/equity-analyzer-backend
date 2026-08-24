@@ -95,6 +95,60 @@ ONEPAGER_SCHEMA = """{
 }"""
 
 
+# Depth controls how much the assembler emits. It is orthogonal to visual style:
+# style is a view-time choice and free to switch, depth changes the content and
+# costs a generation. Brief is the one that actually earns the name "one-pager" —
+# it is tuned to fit a single page rather than scroll.
+ONEPAGER_DEPTHS = {
+    "brief": {
+        "label": "Brief",
+        "note": "Dense true one-pager — fits a page",
+        "directive": (
+            "DEPTH: BRIEF. This must fit on ONE printed page, so be ruthless.\n"
+            "- investment_thesis.points: at most 4, one line each, every one carrying a number.\n"
+            "- Omit investment_thesis.summary and company_overview.summary entirely — the\n"
+            "  core question and the bullets carry the argument.\n"
+            "- opportunities: at most 4. signposts: at most 4. threats: at most 3.\n"
+            "- business_model.profit_pools: at most 4, descriptions of 4 words or fewer.\n"
+            "- takeaway.summary: one sentence. bull/bear: 3 bullets each, 4 words each.\n"
+            "- Every field that survives must be shorter than you think is comfortable."
+        ),
+    },
+    "standard": {
+        "label": "Standard",
+        "note": "Balanced — the default",
+        "directive": (
+            "DEPTH: STANDARD.\n"
+            "- investment_thesis.points: 4-6. opportunities: 5. signposts: 5-6. threats: 4.\n"
+            "- Section summaries are 2-3 sentences.\n"
+            "- takeaway.bull / bear: 4-5 bullets each."
+        ),
+    },
+    "deep": {
+        "label": "Deep",
+        "note": "Comprehensive — a document to read",
+        "directive": (
+            "DEPTH: DEEP. This is read, not glanced at, so give the reasoning room.\n"
+            "- investment_thesis.points: 6-8, each 1-2 sentences, with the mechanism spelled\n"
+            "  out rather than just the claim.\n"
+            "- Section summaries are 3-4 sentences and may name second-order effects.\n"
+            "- opportunities: 5-7 with a sentence of substantiation each.\n"
+            "- signposts: every one the source supports, up to 8.\n"
+            "- threats: 4-6, each with a specific, falsifiable trigger.\n"
+            "- takeaway.summary: 3-4 sentences. bull/bear: 5 bullets each.\n"
+            "- Still never invent a figure — depth means more reasoning, not more numbers."
+        ),
+    },
+}
+DEFAULT_DEPTH = "standard"
+
+
+def depth_directive(depth):
+    """Prompt fragment for a depth key; falls back to standard."""
+    spec = ONEPAGER_DEPTHS.get(depth) or ONEPAGER_DEPTHS[DEFAULT_DEPTH]
+    return spec["directive"]
+
+
 SYSTEM_PROMPT = """You are a buy-side analyst compressing research into a single-page investment poster.
 
 You will be given whatever Charlie already holds on this company — an existing
@@ -228,6 +282,7 @@ def build_onepager(
     tier="advanced",
     research_fn=None,
     force_research=False,
+    depth=DEFAULT_DEPTH,
 ):
     """Assemble the one-pager JSON for `ticker`.
 
@@ -273,6 +328,8 @@ def build_onepager(
         + (f" ({facts['company']})" if facts["company"] else "")
         + ".\n\nSOURCE MATERIAL:\n\n"
         + source_text
+        + "\n\n---\n\n"
+        + depth_directive(depth)
         + "\n\n---\n\nEmit JSON matching exactly this schema:\n\n"
         + ONEPAGER_SCHEMA
     )
@@ -299,6 +356,7 @@ def build_onepager(
         data["company"] = facts["company"]
 
     data["meta"] = {
+        "depth": depth if depth in ONEPAGER_DEPTHS else DEFAULT_DEPTH,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "sources": facts["sources"],
         "is_draft": facts.get("is_draft", False),
@@ -308,12 +366,18 @@ def build_onepager(
     return data, facts
 
 
-def save_onepager(ticker, data, get_db, max_versions=10):
-    """Persist the one-pager, pushing the previous version into history."""
+def save_onepager(ticker, data, get_db, depth=DEFAULT_DEPTH, max_versions=10):
+    """Persist one (ticker, depth) page, pushing the previous version into history.
+
+    Keyed on (ticker, depth) rather than ticker alone so a name can hold Brief and
+    Deep at once and the UI can flip between them without paying for a new run.
+    """
     ticker = (ticker or "").upper().strip()
+    depth = depth if depth in ONEPAGER_DEPTHS else DEFAULT_DEPTH
     with get_db(commit=True) as (_, cur):
         cur.execute(
-            "SELECT onepager, history FROM stock_onepagers WHERE ticker = %s", (ticker,)
+            "SELECT onepager, history FROM stock_onepagers WHERE ticker = %s AND depth = %s",
+            (ticker, depth),
         )
         row = cur.fetchone()
 
@@ -343,9 +407,9 @@ def save_onepager(ticker, data, get_db, max_versions=10):
 
         cur.execute(
             """
-            INSERT INTO stock_onepagers (ticker, company, onepager, history, updated_at)
-            VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
-            ON CONFLICT (ticker) DO UPDATE
+            INSERT INTO stock_onepagers (ticker, depth, company, onepager, history, updated_at)
+            VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (ticker, depth) DO UPDATE
               SET company = EXCLUDED.company,
                   onepager = EXCLUDED.onepager,
                   history = EXCLUDED.history,
@@ -353,6 +417,7 @@ def save_onepager(ticker, data, get_db, max_versions=10):
             """,
             (
                 ticker,
+                depth,
                 data.get("company", ""),
                 json.dumps(data, ensure_ascii=False),
                 json.dumps(history, ensure_ascii=False),
@@ -361,14 +426,25 @@ def save_onepager(ticker, data, get_db, max_versions=10):
     return True
 
 
-def load_onepager(ticker, get_db):
-    """Return the stored one-pager dict for `ticker`, or None."""
+def load_onepager(ticker, get_db, depth=None):
+    """Return the stored page for (ticker, depth), or None.
+
+    With no depth, returns whichever depth was written most recently — so opening
+    a ticker shows what you last looked at rather than an arbitrary row.
+    """
     ticker = (ticker or "").upper().strip()
     with get_db() as (_, cur):
-        cur.execute(
-            "SELECT onepager, updated_at FROM stock_onepagers WHERE ticker = %s",
-            (ticker,),
-        )
+        if depth:
+            cur.execute(
+                "SELECT onepager FROM stock_onepagers WHERE ticker = %s AND depth = %s",
+                (ticker, depth),
+            )
+        else:
+            cur.execute(
+                "SELECT onepager FROM stock_onepagers WHERE ticker = %s "
+                "ORDER BY updated_at DESC LIMIT 1",
+                (ticker,),
+            )
         row = cur.fetchone()
     if not row or not row.get("onepager"):
         return None
@@ -379,3 +455,19 @@ def load_onepager(ticker, get_db):
         except Exception:
             return None
     return data
+
+
+def list_onepager_depths(ticker, get_db):
+    """Which depths exist for a ticker, newest first."""
+    ticker = (ticker or "").upper().strip()
+    with get_db() as (_, cur):
+        cur.execute(
+            "SELECT depth, updated_at FROM stock_onepagers WHERE ticker = %s "
+            "ORDER BY updated_at DESC",
+            (ticker,),
+        )
+        rows = cur.fetchall()
+    return [
+        {"depth": r["depth"], "updatedAt": r["updated_at"].isoformat() if r["updated_at"] else None}
+        for r in rows
+    ]
