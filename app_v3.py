@@ -4731,6 +4731,16 @@ def create_analysis_job():
 
         job_id = str(uuid.uuid4())[:12]
 
+        # _run_analysis_job analyses only the documents named in
+        # documentFilenames. A caller that omits them gets a job that completes
+        # having read nothing, which surfaces as "no analysis" much later and is
+        # very hard to trace. Default to everything stored for the ticker.
+        if not data.get('documentFilenames'):
+            with get_db() as (_c2, cur2):
+                cur2.execute('SELECT filename FROM document_files WHERE ticker = %s '
+                             'ORDER BY created_at', (ticker,))
+                data['documentFilenames'] = [r['filename'] for r in (cur2.fetchall() or [])]
+
         # Save any new inline documents to document_files first
         new_docs = data.get('newDocuments', [])
         if new_docs:
@@ -12636,6 +12646,29 @@ def _run_orchestrate_thesis(job_id, ticker, api_key):
         _mp_update_job(job_id, status='running')
         _orchestrate_set(job_id, stage='thesis', step='Re-reading documents...')
 
+        # _run_analysis_job only reads the documents named in documentFilenames —
+        # it does NOT discover them from the ticker. Passing just the ticker made
+        # it analyse zero documents and return no analysis at all.
+        with get_db() as (_c, cur):
+            cur.execute('SELECT filename FROM document_files WHERE ticker = %s ORDER BY created_at',
+                        (ticker,))
+            filenames = [r['filename'] for r in (cur.fetchall() or [])]
+        if not filenames:
+            raise RuntimeError(
+                f'No documents stored for {ticker}. Upload research to '
+                f'iCloud/STOCKS/{ticker}/ (the local agent ingests it) and try again.')
+
+        # Pass the live thesis so this is an incremental update that preserves
+        # existing judgement, rather than a rewrite from scratch.
+        with get_db() as (_c, cur):
+            cur.execute('SELECT analysis FROM portfolio_analyses WHERE ticker = %s', (ticker,))
+            _existing_row = cur.fetchone()
+        existing = (_existing_row or {}).get('analysis') or None
+        if isinstance(existing, str):
+            existing = json.loads(existing)
+
+        _orchestrate_set(job_id, step=f'Re-reading {len(filenames)} documents...')
+
         # Reuse the Thesis tab's own analysis job rather than a parallel
         # implementation, so this behaves exactly like a manual re-analysis.
         sub_id = str(uuid.uuid4())
@@ -12643,7 +12676,11 @@ def _run_orchestrate_thesis(job_id, ticker, api_key):
             cur.execute(
                 "INSERT INTO analysis_jobs (id, ticker, api_key, request_payload, status, progress) "
                 "VALUES (%s, %s, %s, %s::jsonb, 'pending', 'Queued')",
-                (sub_id, ticker, api_key, json.dumps({'ticker': ticker})))
+                (sub_id, ticker, api_key, json.dumps({
+                    'ticker': ticker,
+                    'documentFilenames': filenames,
+                    'existingAnalysis': existing if (existing or {}).get('thesis') else None,
+                })))
         _run_analysis_job(sub_id)
 
         with get_db() as (_c, cur):
@@ -12657,7 +12694,10 @@ def _run_orchestrate_thesis(job_id, ticker, api_key):
             payload = json.loads(payload)
         candidate = (payload or {}).get('analysis')
         if not candidate:
-            raise RuntimeError('Thesis analysis returned no analysis')
+            raise RuntimeError(
+                f'The analysis job completed but produced no thesis for {ticker}. '
+                f'It was given {len(filenames)} document(s); check the backend log '
+                f'for [analysis-job] errors.')
 
         with get_db() as (_c, cur):
             cur.execute('SELECT analysis FROM portfolio_analyses WHERE ticker = %s', (ticker,))
