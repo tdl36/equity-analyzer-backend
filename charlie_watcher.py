@@ -30,6 +30,8 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler, FileCreatedEvent, FileMovedEvent
 import requests
 
+import charlie_filer
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -38,6 +40,7 @@ WATCH_DIR = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/STOCKS"
 API_URL = "https://equity-analyzer-backend.onrender.com"
 UPLOAD_ENDPOINT = f"{API_URL}/api/documents/save"
 STATE_FILE = Path.home() / ".charlie_watcher_state.json"
+DOWNLOADS_DIR = Path.home() / "Downloads"
 
 IGNORE_DIRS: set[str] = {"Processed", "Prior Versions", ".icloud"}
 IGNORE_PREFIXES: tuple[str, ...] = ("~$", ".")
@@ -287,6 +290,80 @@ class PDFHandler(FileSystemEventHandler):
 # ---------------------------------------------------------------------------
 
 
+class DownloadsHandler(FileSystemEventHandler):
+    """File research PDFs landing in ~/Downloads into STOCKS/<TICKER>/.
+
+    Deliberately does no uploading: once a file is moved into a ticker folder,
+    the existing PDFHandler sees it and the normal path takes over. This class
+    only answers "which ticker is this, and am I sure enough to move it?"
+    """
+
+    def __init__(self, *, dry_run: bool = False) -> None:
+        super().__init__()
+        self.dry_run = dry_run
+        self._universe = charlie_filer.known_tickers(WATCH_DIR)
+        log.info("Downloads filer: %d covered tickers", len(self._universe))
+
+    def _process(self, filepath: Path) -> None:
+        if filepath.suffix.lower() != ".pdf" or filepath.name.startswith("."):
+            return
+        if not _wait_for_file_ready(filepath):
+            log.warning("Downloads: %s never settled, skipping", filepath.name)
+            return
+
+        # Refresh coverage occasionally so a newly added ticker folder is picked
+        # up without restarting the watcher.
+        self._universe = charlie_filer.known_tickers(WATCH_DIR) or self._universe
+
+        try:
+            moved, ticker, confidence, reason, dest = charlie_filer.file_document(
+                filepath, WATCH_DIR, dry_run=self.dry_run, universe=self._universe)
+        except Exception as e:
+            log.error("Downloads: failed to classify %s: %s", filepath.name, e)
+            return
+
+        if moved:
+            verb = "Would file" if self.dry_run else "Filed"
+            log.info("%s %s -> STOCKS/%s/  (%s)", verb, filepath.name, ticker, reason)
+        elif confidence == "low":
+            # Deliberately loud: this is the case a human should glance at.
+            log.info("Left %s in Downloads -- %s", filepath.name, reason)
+        else:
+            log.debug("Ignored %s -- %s", filepath.name, reason)
+
+    def on_created(self, event: FileCreatedEvent) -> None:
+        if not event.is_directory:
+            self._process(Path(event.src_path))
+
+    def on_moved(self, event: FileMovedEvent) -> None:
+        # Browsers download to a .crdownload/.part file and rename on completion,
+        # so the finished PDF usually arrives as a move, not a create.
+        if not event.is_directory:
+            self._process(Path(event.dest_path))
+
+
+def scan_downloads(*, dry_run: bool = False) -> tuple[int, int]:
+    """One-shot pass over ~/Downloads. Returns (filed, left)."""
+    if not DOWNLOADS_DIR.exists():
+        log.warning("Downloads folder not found: %s", DOWNLOADS_DIR)
+        return 0, 0
+    universe = charlie_filer.known_tickers(WATCH_DIR)
+    log.info("Scanning %s against %d covered tickers", DOWNLOADS_DIR, len(universe))
+    filed = left = 0
+    for pdf in sorted(DOWNLOADS_DIR.glob("*.pdf")):
+        moved, ticker, confidence, reason, _ = charlie_filer.file_document(
+            pdf, WATCH_DIR, dry_run=dry_run, universe=universe)
+        if moved:
+            filed += 1
+            log.info("%s %s -> STOCKS/%s/  (%s)",
+                     "Would file" if dry_run else "Filed", pdf.name, ticker, reason)
+        else:
+            left += 1
+            log.info("Leave %-55s %s", pdf.name[:55], reason)
+    log.info("Downloads scan: %d to file, %d left alone", filed, left)
+    return filed, left
+
+
 def initial_scan(state: UploadState, *, dry_run: bool = False) -> tuple[int, int]:
     """Scan all ticker folders for un-uploaded PDFs. Returns (found, uploaded)."""
     log.info("Starting initial scan of %s", WATCH_DIR)
@@ -443,6 +520,16 @@ def main() -> None:
         help="Show what would be uploaded without actually uploading",
     )
     parser.add_argument(
+        "--downloads",
+        action="store_true",
+        help="also watch ~/Downloads and file research PDFs into STOCKS/<TICKER>/",
+    )
+    parser.add_argument(
+        "--scan-downloads",
+        action="store_true",
+        help="one-shot pass over ~/Downloads, then exit",
+    )
+    parser.add_argument(
         "--status",
         action="store_true",
         help="Show sync status table (local files vs Charlie uploads) and exit",
@@ -468,6 +555,12 @@ def main() -> None:
         show_status(state)
         return
 
+    if args.scan_downloads:
+        if args.dry_run:
+            log.info("*** DRY RUN -- nothing will be moved ***")
+        scan_downloads(dry_run=args.dry_run)
+        return
+
     if args.dry_run:
         log.info("*** DRY RUN MODE -- no files will be uploaded ***")
 
@@ -479,6 +572,13 @@ def main() -> None:
     handler = PDFHandler(state, dry_run=args.dry_run)
     observer = Observer()
     observer.schedule(handler, str(WATCH_DIR), recursive=True)
+
+    if args.downloads:
+        # Not recursive: only the top of Downloads, so unpacked archives and
+        # browser scratch directories are left alone.
+        observer.schedule(DownloadsHandler(dry_run=args.dry_run),
+                          str(DOWNLOADS_DIR), recursive=False)
+        log.info("Also watching %s for research PDFs", DOWNLOADS_DIR)
 
     shutdown_event = Event()
 
