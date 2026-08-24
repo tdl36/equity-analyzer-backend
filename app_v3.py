@@ -12592,6 +12592,245 @@ def get_onepager_poster(ticker):
         return jsonify({'error': str(e)}), 500
 
 
+# ============================================================================
+# AGENT ORCHESTRATOR
+# ----------------------------------------------------------------------------
+# One trigger per ticker that runs the agents you would otherwise run by hand,
+# in the right order, with a human gate in the middle.
+#
+#   1. thesis agent      re-reads the ticker's documents, proposes a thesis
+#   2. >>> APPROVAL <<<  nothing downstream runs until the diff is accepted
+#   3. fan-out           one-pager and meeting-prep questions, in parallel,
+#                        off the APPROVED thesis
+#
+# The gate is the design. Agents that rewrite a thesis unattended are not a time
+# saver but a liability: a bad run silently replaces curated judgement and
+# everything downstream inherits it. Gating at the single point where judgement
+# changes is what lets the expensive work below it run unattended.
+#
+# State lives in mp_jobs (stage='orchestrate') so the existing /api/mp/jobs/:id
+# poller works unchanged.
+# ============================================================================
+
+def _orchestrate_set(job_id, **fields):
+    """Merge fields into the orchestrator job's result blob."""
+    with get_db(commit=True) as (_c, cur):
+        cur.execute('SELECT result FROM mp_jobs WHERE id = %s', (job_id,))
+        row = cur.fetchone()
+        cur_result = (row or {}).get('result') or {}
+        if isinstance(cur_result, str):
+            try:
+                cur_result = json.loads(cur_result)
+            except Exception:
+                cur_result = {}
+        cur_result.update(fields)
+        cur.execute('UPDATE mp_jobs SET result = %s::jsonb, updated_at = NOW() WHERE id = %s',
+                    (json.dumps(cur_result), job_id))
+    return cur_result
+
+
+def _run_orchestrate_thesis(job_id, ticker, api_key):
+    """Stage 1: propose a thesis from the ticker's documents, then stop."""
+    try:
+        import onepager as _op
+        _mp_update_job(job_id, status='running')
+        _orchestrate_set(job_id, stage='thesis', step='Re-reading documents...')
+
+        # Reuse the Thesis tab's own analysis job rather than a parallel
+        # implementation, so this behaves exactly like a manual re-analysis.
+        sub_id = str(uuid.uuid4())
+        with get_db(commit=True) as (_c, cur):
+            cur.execute(
+                "INSERT INTO analysis_jobs (id, ticker, api_key, request_payload, status, progress) "
+                "VALUES (%s, %s, %s, %s::jsonb, 'pending', 'Queued')",
+                (sub_id, ticker, api_key, json.dumps({'ticker': ticker})))
+        _run_analysis_job(sub_id)
+
+        with get_db() as (_c, cur):
+            cur.execute('SELECT status, result, error FROM analysis_jobs WHERE id = %s', (sub_id,))
+            sub = cur.fetchone() or {}
+        if sub.get('status') != 'complete':
+            raise RuntimeError(sub.get('error') or 'Thesis analysis did not complete')
+
+        payload = sub['result']
+        if isinstance(payload, str):
+            payload = json.loads(payload)
+        candidate = (payload or {}).get('analysis')
+        if not candidate:
+            raise RuntimeError('Thesis analysis returned no analysis')
+
+        with get_db() as (_c, cur):
+            cur.execute('SELECT analysis FROM portfolio_analyses WHERE ticker = %s', (ticker,))
+            row = cur.fetchone()
+        current = (row or {}).get('analysis') or {}
+        if isinstance(current, str):
+            current = json.loads(current)
+
+        diff = _op.diff_thesis(current, candidate)
+        _orchestrate_set(job_id, stage='thesis', step='', diff=diff, candidate=candidate,
+                         hasChanges=diff['has_changes'])
+
+        if not diff['has_changes']:
+            # Nothing moved, so there is nothing to approve and nothing downstream
+            # would differ. Stop rather than spend on a regeneration.
+            _mp_update_job(job_id, status='done')
+            _orchestrate_set(job_id, stage='done',
+                             summary='Documents did not change the thesis - nothing to update.')
+            return
+
+        _mp_update_job(job_id, status='awaiting_approval')
+    except Exception as e:
+        print(f"[orchestrate {job_id}] thesis stage failed: {e}")
+        _mp_update_job(job_id, status='failed', error=str(e)[:2000])
+
+
+def _run_orchestrate_fanout(job_id, ticker, depth, model_key, keys):
+    """Stage 3: everything that depends on an approved thesis, in parallel."""
+    import onepager as _op
+    results = {}
+
+    def one_pager():
+        try:
+            _orchestrate_set(job_id, onepagerStep='Rebuilding one-pager...')
+            data, facts = _op.build_onepager(
+                ticker, get_db=get_db, parse_analysis_data=_parse_analysis_data,
+                call_llm=_onepager_caller(model_key, keys.get('anthropic', '')),
+                extract_json=_extract_json, api_keys=keys,
+                research_fn=lambda t: _onepager_research(t, keys.get('anthropic', ''),
+                                                         keys.get('gemini', '')),
+                depth=depth,
+            )
+            _op.save_onepager(ticker, data, get_db, depth=depth)
+            results['onepager'] = {'ok': True, 'depth': depth}
+        except Exception as e:
+            results['onepager'] = {'ok': False, 'error': str(e)[:400]}
+        finally:
+            _orchestrate_set(job_id, onepagerStep='', onepager=results.get('onepager'))
+
+    def questions():
+        try:
+            _orchestrate_set(job_id, questionsStep='Drafting meeting questions...')
+            with get_db() as (_c, cur):
+                cur.execute('SELECT company, analysis FROM portfolio_analyses WHERE ticker = %s',
+                            (ticker,))
+                row = cur.fetchone() or {}
+            analysis = row.get('analysis') or {}
+            if isinstance(analysis, str):
+                analysis = json.loads(analysis)
+            qs = _mp_questions_inline(
+                keys.get('anthropic', ''), ticker, row.get('company') or ticker,
+                'unknown', json.dumps(analysis)[:20000], [],
+            )
+            results['questions'] = {'ok': True, 'questions': qs}
+        except Exception as e:
+            results['questions'] = {'ok': False, 'error': str(e)[:400]}
+        finally:
+            _orchestrate_set(job_id, questionsStep='', questions=results.get('questions'))
+
+    threads = [threading.Thread(target=fn, daemon=True) for fn in (one_pager, questions)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=900)
+
+    ok = [k for k, v in results.items() if v.get('ok')]
+    failed = [k for k, v in results.items() if not v.get('ok')]
+    _mp_update_job(job_id, status='done' if ok else 'failed')
+    _orchestrate_set(job_id, stage='done',
+                     summary='Thesis updated. Rebuilt: ' + (', '.join(ok) or 'nothing')
+                             + ('. Failed: ' + ', '.join(failed) if failed else ''))
+
+
+@app.route('/api/orchestrate', methods=['POST'])
+def start_orchestration():
+    """Run the agent chain for a ticker. Returns {jobId}; poll /api/mp/jobs/:id.
+
+    Stops at status='awaiting_approval' with a thesis diff in result. Nothing
+    downstream runs until POST /api/orchestrate/<job>/approve.
+    """
+    try:
+        data = request.get_json() or {}
+        ticker = (data.get('ticker') or '').upper().strip()
+        if not ticker:
+            return jsonify({'error': 'No ticker provided'}), 400
+        keys = _get_api_keys(data.get('apiKey', ''), data.get('geminiApiKey', ''),
+                             data.get('openaiApiKey', ''))
+        if not keys.get('anthropic'):
+            return jsonify({'error': 'Anthropic API key required - add it in Settings'}), 400
+
+        job_id = str(uuid.uuid4())
+        with get_db(commit=True) as (_c, cur):
+            cur.execute(
+                "INSERT INTO mp_jobs (id, stage, ticker, status, input) "
+                "VALUES (%s, 'orchestrate', %s, 'running', %s::jsonb)",
+                (job_id, ticker, json.dumps({
+                    'ticker': ticker,
+                    'depth': data.get('depth') or 'standard',
+                    'model': data.get('model') or ONEPAGER_DEFAULT_MODEL,
+                })))
+
+        threading.Thread(target=_run_orchestrate_thesis,
+                         args=(job_id, ticker, keys['anthropic']), daemon=True).start()
+        return jsonify({'jobId': job_id}), 202
+    except Exception as e:
+        print(f"Error starting orchestration: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/orchestrate/<job_id>/approve', methods=['POST'])
+def approve_orchestration(job_id):
+    """Accept or reject the proposed thesis. Acceptance releases the fan-out."""
+    try:
+        data = request.get_json() or {}
+        accept = bool(data.get('accept'))
+
+        with get_db() as (_c, cur):
+            cur.execute('SELECT ticker, status, input, result FROM mp_jobs WHERE id = %s', (job_id,))
+            job = cur.fetchone()
+        if not job:
+            return jsonify({'error': 'Job not found'}), 404
+        if job['status'] != 'awaiting_approval':
+            return jsonify({'error': "Job is '" + str(job['status']) + "', not awaiting approval"}), 409
+
+        if not accept:
+            _mp_update_job(job_id, status='done')
+            _orchestrate_set(job_id, stage='done',
+                             summary='Proposed thesis rejected - nothing changed.')
+            return jsonify({'success': True, 'applied': False})
+
+        job_input = job['input'] if isinstance(job['input'], dict) else json.loads(job['input'] or '{}')
+        result = job['result'] if isinstance(job['result'], dict) else json.loads(job['result'] or '{}')
+        candidate = result.get('candidate')
+        if not candidate:
+            return jsonify({'error': 'No proposed thesis on this job'}), 400
+
+        ticker = job['ticker']
+        # The same write the Thesis tab performs, so an approved run IS the thesis.
+        with get_db(commit=True) as (_c, cur):
+            cur.execute(
+                "INSERT INTO portfolio_analyses (ticker, company, analysis, updated_at) "
+                "VALUES (%s, %s, %s::jsonb, NOW()) "
+                "ON CONFLICT (ticker) DO UPDATE "
+                "  SET analysis = EXCLUDED.analysis, updated_at = NOW()",
+                (ticker, candidate.get('companyName') or candidate.get('company') or '',
+                 json.dumps(candidate)))
+
+        _mp_update_job(job_id, status='running')
+        _orchestrate_set(job_id, stage='fanout', approvedAt=datetime.utcnow().isoformat())
+
+        keys = _get_api_keys(data.get('apiKey', ''), data.get('geminiApiKey', ''),
+                             data.get('openaiApiKey', ''))
+        threading.Thread(
+            target=_run_orchestrate_fanout,
+            args=(job_id, ticker, job_input.get('depth', 'standard'),
+                  job_input.get('model'), keys),
+            daemon=True).start()
+        return jsonify({'success': True, 'applied': True})
+    except Exception as e:
+        print(f"Error approving orchestration: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/onepager/inputs/<ticker>', methods=['GET'])
 def get_onepager_inputs(ticker):
     """Freshness of the inputs a one-pager is built from.

@@ -80,7 +80,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-08-24T05';
+        const BUILD_VERSION = '2026-08-24T06';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -2341,6 +2341,81 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     setOpRefreshing(false);
                 }
             }, [opDiff, loadOnePagerInputs]);
+
+            // ---- Agent orchestrator -------------------------------------
+            // One trigger that runs the thesis agent, gates on approval, then
+            // fans out the one-pager and meeting-prep agents in parallel.
+            const [orchJob, setOrchJob] = useState(null);     // {jobId, status, result}
+            const [orchBusy, setOrchBusy] = useState(false);
+
+            const pollOrchestration = useCallback(async (jobId) => {
+                while (true) {
+                    await new Promise(r => setTimeout(r, 3000));
+                    let j;
+                    try {
+                        const r = await fetch(`${API_URL}/api/mp/jobs/${jobId}`);
+                        if (!r.ok) throw new Error(`Poll HTTP ${r.status}`);
+                        j = await r.json();
+                    } catch (e) { continue; }
+                    setOrchJob({ jobId, status: j.status, result: j.result || {}, error: j.error });
+                    // awaiting_approval is a resting state, not a finish — stop
+                    // polling and let the analyst decide.
+                    if (['awaiting_approval', 'done', 'failed'].includes(j.status)) return j;
+                }
+            }, []);
+
+            const runAgents = useCallback(async () => {
+                const t = (opData?.ticker || opTicker || '').toUpperCase().trim();
+                if (!t) { setOpError('Enter a ticker first.'); return; }
+                const apiKey = loadApiKeyFromStorage();
+                if (!apiKey) { setOpError('Add your Anthropic API key in Settings first.'); return; }
+
+                setOrchBusy(true);
+                setOpError(null);
+                setOrchJob(null);
+                try {
+                    const res = await fetch(`${API_URL}/api/orchestrate`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ticker: t, apiKey, depth: opDepth, model: opModel }),
+                    });
+                    const started = await res.json();
+                    if (!res.ok) throw new Error(started.error || `HTTP ${res.status}`);
+                    setOrchJob({ jobId: started.jobId, status: 'running', result: {} });
+                    await pollOrchestration(started.jobId);
+                } catch (e) {
+                    setOpError(`Agents failed: ${e.message || e}`);
+                } finally {
+                    setOrchBusy(false);
+                }
+            }, [opData, opTicker, opDepth, opModel, pollOrchestration]);
+
+            const decideOrchestration = useCallback(async (accept) => {
+                if (!orchJob?.jobId) return;
+                setOrchBusy(true);
+                try {
+                    const apiKey = loadApiKeyFromStorage();
+                    const r = await fetch(`${API_URL}/api/orchestrate/${orchJob.jobId}/approve`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ accept, apiKey }),
+                    });
+                    const j = await r.json();
+                    if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+                    if (accept) {
+                        await pollOrchestration(orchJob.jobId);
+                        // Downstream agents rewrote these — pull the new state in.
+                        await loadOnePagerInputs(orchJob.jobId && (opData?.ticker || opTicker));
+                        await loadOnePagerList();
+                        if (opData?.ticker) await openOnePager(opData.ticker, opDepth);
+                    } else {
+                        setOrchJob(null);
+                    }
+                } catch (e) {
+                    setOpError(`Could not apply: ${e.message || e}`);
+                } finally {
+                    setOrchBusy(false);
+                }
+            }, [orchJob, opData, opTicker, opDepth, pollOrchestration,
+                loadOnePagerInputs, loadOnePagerList, openOnePager]);
 
             const loadOnePagerList = useCallback(async () => {
                 setOpSavedLoading(true);
@@ -22278,15 +22353,96 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             Documents newer than the thesis
                                                         </span>
                                                     )}
-                                                    <button onClick={refreshInputs} disabled={opRefreshing || opBusy}
-                                                        className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 disabled:opacity-50 rounded-lg">
-                                                        {opRefreshing
-                                                            ? <><div className="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent" /> {opRefreshStep || 'Working…'}</>
-                                                            : <>Refresh thesis from documents</>}
-                                                    </button>
+                                                    <div className="ml-auto flex items-center gap-2">
+                                                        <button onClick={refreshInputs} disabled={opRefreshing || opBusy || orchBusy}
+                                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 disabled:opacity-50 rounded-lg">
+                                                            {opRefreshing
+                                                                ? <><div className="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent" /> {opRefreshStep || 'Working…'}</>
+                                                                : <>Refresh thesis only</>}
+                                                        </button>
+                                                        <button onClick={runAgents} disabled={orchBusy || opBusy || opRefreshing}
+                                                            title="Thesis agent, then one-pager and meeting-prep agents in parallel"
+                                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-neutral-700 rounded-lg font-medium">
+                                                            {orchBusy
+                                                                ? <><div className="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent" /> Agents running…</>
+                                                                : <>Run agents</>}
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
+
+                                        {/* Agent run — thesis, gate, then parallel fan-out. */}
+                                        {orchJob && (
+                                            <div className="mb-4 rounded-xl border border-blue-500/40 bg-blue-500/5 p-4">
+                                                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                                                    <h3 className="text-sm font-bold">Agent run — {opData?.ticker || opTicker}</h3>
+                                                    <span className="text-xs text-slate-400">
+                                                        {orchJob.status === 'awaiting_approval' ? 'waiting on you'
+                                                            : orchJob.status === 'done' ? 'finished'
+                                                            : orchJob.status === 'failed' ? 'failed' : 'running…'}
+                                                    </span>
+                                                </div>
+
+                                                <div className="text-xs text-slate-300 space-y-1 mb-2">
+                                                    <div>
+                                                        {orchJob.result?.diff ? '✓' : orchJob.status === 'failed' ? '✗' : '…'} Thesis agent
+                                                        {orchJob.result?.step ? ` — ${orchJob.result.step}` : ''}
+                                                    </div>
+                                                    {orchJob.result?.onepagerStep && <div>… One-pager agent — {orchJob.result.onepagerStep}</div>}
+                                                    {orchJob.result?.onepager && (
+                                                        <div>{orchJob.result.onepager.ok ? '✓' : '✗'} One-pager agent
+                                                            {orchJob.result.onepager.error ? ` — ${orchJob.result.onepager.error}` : ''}</div>
+                                                    )}
+                                                    {orchJob.result?.questionsStep && <div>… Meeting-prep agent — {orchJob.result.questionsStep}</div>}
+                                                    {orchJob.result?.questions && (
+                                                        <div>{orchJob.result.questions.ok ? '✓' : '✗'} Meeting-prep agent
+                                                            {orchJob.result.questions.error ? ` — ${orchJob.result.questions.error}` : ''}</div>
+                                                    )}
+                                                </div>
+
+                                                {orchJob.error && <p className="text-xs text-red-400">{orchJob.error}</p>}
+                                                {orchJob.result?.summary && (
+                                                    <p className="text-xs text-slate-400">{orchJob.result.summary}</p>
+                                                )}
+
+                                                {/* The gate. Downstream agents have not run yet. */}
+                                                {orchJob.status === 'awaiting_approval' && orchJob.result?.diff && (
+                                                    <div className="mt-3 pt-3 border-t border-white/10">
+                                                        <div className="flex items-center gap-2 mb-2 flex-wrap">
+                                                            <span className="text-xs text-slate-300">
+                                                                +{orchJob.result.diff.counts.added} added ·
+                                                                ~{orchJob.result.diff.counts.changed} reworded ·
+                                                                −{orchJob.result.diff.counts.removed} removed
+                                                            </span>
+                                                            <div className="ml-auto flex gap-2">
+                                                                <button onClick={() => decideOrchestration(true)} disabled={orchBusy}
+                                                                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:bg-neutral-700 rounded-lg text-xs font-medium">
+                                                                    Approve &amp; run the rest
+                                                                </button>
+                                                                <button onClick={() => decideOrchestration(false)} disabled={orchBusy}
+                                                                    className="px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs">
+                                                                    Reject
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                        {['pillars', 'signposts', 'threats'].map(section => {
+                                                            const sec = orchJob.result.diff[section];
+                                                            if (!sec || (!sec.added.length && !sec.removed.length && !sec.changed.length)) return null;
+                                                            const label = x => x.title || x.signpost || x.metric || x.name || JSON.stringify(x).slice(0, 70);
+                                                            return (
+                                                                <div key={section} className="mb-2">
+                                                                    <div className="label mb-1">{section}</div>
+                                                                    {sec.added.map((x, i) => <div key={`a${i}`} className="text-xs text-green-400">+ {label(x)}</div>)}
+                                                                    {sec.changed.map((x, i) => <div key={`c${i}`} className="text-xs text-amber-300">~ {x.label}</div>)}
+                                                                    {sec.removed.map((x, i) => <div key={`r${i}`} className="text-xs text-red-400">− {label(x)}</div>)}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
 
                                         {/* Proposed changes. Nothing is written until this is accepted —
                                             a refresh must never silently replace curated judgement. */}
