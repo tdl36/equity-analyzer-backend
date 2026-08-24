@@ -12592,6 +12592,85 @@ def get_onepager_poster(ticker):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/onepager/inputs/<ticker>', methods=['GET'])
+def get_onepager_inputs(ticker):
+    """Freshness of the inputs a one-pager is built from.
+
+    The one-pager reads the stored thesis and overview, so a stale thesis
+    silently produces a stale page with nothing on screen to say so. This is what
+    the UI needs to show input ages and offer a refresh.
+    """
+    try:
+        tk = ticker.upper()
+        now = datetime.utcnow()
+
+        def age(ts):
+            if not ts:
+                return None
+            return max(0, (now - ts.replace(tzinfo=None)).days)
+
+        with get_db() as (_c, cur):
+            cur.execute('SELECT updated_at FROM portfolio_analyses WHERE ticker = %s', (tk,))
+            th = cur.fetchone()
+            cur.execute('SELECT updated_at FROM stock_overviews WHERE ticker = %s', (tk,))
+            ov = cur.fetchone()
+            cur.execute('SELECT COUNT(*) AS n, MAX(created_at) AS newest '
+                        'FROM document_files WHERE ticker = %s', (tk,))
+            docs = cur.fetchone() or {}
+
+        thesis_at = th['updated_at'] if th else None
+        overview_at = ov['updated_at'] if ov else None
+        newest_doc = docs.get('newest')
+
+        # The signal that actually matters: documents newer than the thesis mean
+        # the thesis has not seen them yet.
+        stale = bool(newest_doc and thesis_at and newest_doc > thesis_at)
+
+        return jsonify({
+            'ticker': tk,
+            'thesis': {'exists': bool(th), 'updatedAt': thesis_at.isoformat() if thesis_at else None,
+                       'ageDays': age(thesis_at)},
+            'overview': {'exists': bool(ov), 'updatedAt': overview_at.isoformat() if overview_at else None,
+                         'ageDays': age(overview_at)},
+            'documents': {'count': docs.get('n', 0) or 0,
+                          'newestAt': newest_doc.isoformat() if newest_doc else None,
+                          'ageDays': age(newest_doc)},
+            'documentsNewerThanThesis': stale,
+        })
+    except Exception as e:
+        print(f"Error reading one-pager inputs: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/onepager/thesis-diff', methods=['POST'])
+def onepager_thesis_diff():
+    """Diff a freshly generated candidate thesis against the live one.
+
+    Deliberately does NOT write. The caller shows this for approval and then
+    saves through /api/save-analysis — the same path the Thesis tab uses, so an
+    approved refresh lands as a normal thesis update rather than a parallel copy.
+    """
+    try:
+        import onepager as _op
+        data = request.get_json() or {}
+        ticker = (data.get('ticker') or '').upper().strip()
+        candidate = data.get('candidate')
+        if not ticker or not isinstance(candidate, dict):
+            return jsonify({'error': 'ticker and candidate analysis required'}), 400
+
+        with get_db() as (_c, cur):
+            cur.execute('SELECT analysis FROM portfolio_analyses WHERE ticker = %s', (ticker,))
+            row = cur.fetchone()
+        current = (row or {}).get('analysis') or {}
+        if isinstance(current, str):
+            current = json.loads(current)
+
+        return jsonify({'ticker': ticker, 'diff': _op.diff_thesis(current, candidate)})
+    except Exception as e:
+        print(f"Error diffing thesis: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/onepager/depths', methods=['GET'])
 def list_onepager_depths_route():
     """Depth variants the picker offers."""

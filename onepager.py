@@ -594,3 +594,113 @@ Two facing boxes, a green "BULL CASE" and a red "BEAR CASE":
 
 Footer strip across the bottom: "Bottom line: {take.get('bottom_line','')}"
 """
+
+
+# ---------------------------------------------------------------------------
+# thesis diff
+# ---------------------------------------------------------------------------
+# A refresh must never silently replace curated judgement. The candidate thesis
+# produced from new documents is diffed against the live one and shown for
+# approval, so the analyst sees exactly what a document changed before it lands.
+# This doubles as document triage: the diff IS the answer to "did this filing
+# actually move anything?"
+
+def _norm(text):
+    return " ".join(str(text or "").lower().split())
+
+
+def _label(item):
+    """Best available human label for a pillar / signpost / threat."""
+    if not isinstance(item, dict):
+        return str(item or "")
+    for key in ("title", "signpost", "metric", "name", "pillar", "thesis"):
+        if item.get(key):
+            return str(item[key])
+    # Fall back to the first non-empty string value so unlabelled rows still pair up.
+    for v in item.values():
+        if isinstance(v, str) and v.strip():
+            return v
+    return ""
+
+
+def _body(item):
+    """Everything except the label, for detecting a reworded-but-same row."""
+    if not isinstance(item, dict):
+        return _norm(item)
+    return _norm(json.dumps({k: v for k, v in sorted(item.items())
+                             if k not in ("title", "signpost", "metric", "name")},
+                            ensure_ascii=False, sort_keys=True))
+
+
+def _diff_list(current, candidate):
+    """Pair rows by label, then classify as added / removed / changed / same."""
+    cur_items = [x for x in (current or []) if x]
+    new_items = [x for x in (candidate or []) if x]
+
+    cur_by = {}
+    for it in cur_items:
+        cur_by.setdefault(_norm(_label(it)), []).append(it)
+
+    added, changed, same = [], [], []
+    matched = set()
+
+    for it in new_items:
+        key = _norm(_label(it))
+        pool = cur_by.get(key)
+        if pool:
+            before = pool.pop(0)
+            matched.add(id(before))
+            if _body(before) == _body(it):
+                same.append(it)
+            else:
+                changed.append({"label": _label(it), "before": before, "after": it})
+        else:
+            added.append(it)
+
+    removed = [it for it in cur_items if id(it) not in matched]
+
+    return {
+        "added": added,
+        "removed": removed,
+        "changed": changed,
+        "unchanged": len(same),
+    }
+
+
+def diff_thesis(current_analysis, candidate_analysis):
+    """Structured diff between the live thesis and a freshly generated candidate.
+
+    Returns a dict the UI can render directly, plus a `has_changes` flag so a
+    no-op refresh can say "nothing moved" instead of showing an empty approval
+    dialog.
+    """
+    cur = current_analysis or {}
+    new = candidate_analysis or {}
+
+    cur_thesis = cur.get("thesis") or {}
+    new_thesis = new.get("thesis") or {}
+
+    out = {
+        "pillars": _diff_list(cur_thesis.get("pillars"), new_thesis.get("pillars")),
+        "signposts": _diff_list(cur.get("signposts"), new.get("signposts")),
+        "threats": _diff_list(cur.get("threats"), new.get("threats")),
+    }
+
+    cur_concl = _norm(cur.get("conclusion"))
+    new_concl = _norm(new.get("conclusion"))
+    out["conclusion"] = {
+        "changed": bool(new_concl) and cur_concl != new_concl,
+        "before": cur.get("conclusion", ""),
+        "after": new.get("conclusion", ""),
+    }
+
+    counts = {
+        "added": sum(len(out[k]["added"]) for k in ("pillars", "signposts", "threats")),
+        "removed": sum(len(out[k]["removed"]) for k in ("pillars", "signposts", "threats")),
+        "changed": sum(len(out[k]["changed"]) for k in ("pillars", "signposts", "threats")),
+    }
+    out["counts"] = counts
+    out["has_changes"] = bool(
+        counts["added"] or counts["removed"] or counts["changed"] or out["conclusion"]["changed"]
+    )
+    return out

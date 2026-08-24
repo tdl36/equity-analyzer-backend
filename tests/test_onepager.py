@@ -309,3 +309,79 @@ def test_brief_is_told_to_drop_summaries():
 def test_deep_still_forbids_inventing_figures():
     """Depth must buy reasoning, never fabricated numbers."""
     assert "never invent a figure" in onepager.depth_directive("deep")
+
+
+# --------------------------------------------------------------------------
+# thesis diff — a refresh must never silently overwrite curated judgement
+# --------------------------------------------------------------------------
+
+CUR = {
+    "thesis": {"pillars": [{"title": "Precision ag", "detail": "a"},
+                           {"title": "C&F", "detail": "b"}]},
+    "signposts": [{"signpost": "Engaged acres", "target": "600M"}],
+    "threats": [{"title": "Ag downcycle", "watch_for": "commodity prices"}],
+    "conclusion": "Great franchise, cyclical timing.",
+}
+
+
+def test_identical_thesis_reports_no_changes():
+    """A refresh that moved nothing must say so, not show an empty dialog."""
+    d = onepager.diff_thesis(CUR, CUR)
+    assert d["has_changes"] is False
+    assert d["counts"] == {"added": 0, "removed": 0, "changed": 0}
+
+
+def test_detects_added_removed_and_reworded():
+    new = {
+        "thesis": {"pillars": [{"title": "Precision ag", "detail": "REWORDED"},
+                               {"title": "Autonomy", "detail": "c"}]},
+        "signposts": [{"signpost": "Engaged acres", "target": "600M"}],
+        "threats": [],
+        "conclusion": "Great franchise, cyclical timing.",
+    }
+    d = onepager.diff_thesis(CUR, new)
+    assert [p["title"] for p in d["pillars"]["added"]] == ["Autonomy"]
+    assert [p["title"] for p in d["pillars"]["removed"]] == ["C&F"]
+    assert d["pillars"]["changed"][0]["label"] == "Precision ag"
+    # A row whose body is untouched is neither changed nor dropped.
+    assert d["signposts"]["unchanged"] == 1
+    assert len(d["threats"]["removed"]) == 1
+
+
+def test_changed_row_keeps_before_and_after():
+    """Approval is only meaningful if the analyst can see both sides."""
+    new = {"thesis": {"pillars": [{"title": "Precision ag", "detail": "NEW"}]}}
+    d = onepager.diff_thesis(CUR, new)
+    ch = d["pillars"]["changed"][0]
+    assert ch["before"]["detail"] == "a"
+    assert ch["after"]["detail"] == "NEW"
+
+
+def test_label_matching_is_case_and_space_insensitive():
+    new = {"thesis": {"pillars": [{"title": "  precision   AG ", "detail": "a"}]}}
+    d = onepager.diff_thesis(CUR, new)
+    # Same pillar, same body — must pair up rather than read as add + remove.
+    assert not d["pillars"]["added"]
+    assert d["pillars"]["unchanged"] == 1
+
+
+def test_empty_candidate_does_not_read_as_mass_deletion_of_nothing():
+    d = onepager.diff_thesis({}, {})
+    assert d["has_changes"] is False
+
+
+def test_conclusion_change_alone_counts_as_a_change():
+    new = dict(CUR, conclusion="Materially different view.")
+    d = onepager.diff_thesis(CUR, new)
+    assert d["conclusion"]["changed"] is True
+    assert d["has_changes"] is True
+    assert d["counts"]["changed"] == 0     # conclusion is tracked separately
+
+
+def test_unlabelled_rows_still_pair_up():
+    """Signposts sometimes arrive without a title key."""
+    cur = {"signposts": [{"metric": "Acres", "target": "600M"}]}
+    new = {"signposts": [{"metric": "Acres", "target": "650M"}]}
+    d = onepager.diff_thesis(cur, new)
+    assert len(d["signposts"]["changed"]) == 1
+    assert not d["signposts"]["added"] and not d["signposts"]["removed"]

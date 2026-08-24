@@ -80,7 +80,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-08-24T04';
+        const BUILD_VERSION = '2026-08-24T05';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -2134,6 +2134,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [opPosterBusy, setOpPosterBusy] = useState(false);
             const [opPosterModels, setOpPosterModels] = useState([]);
             const [opPosterProvider, setOpPosterProvider] = useState('openai');
+            // Input freshness + refresh-with-approval
+            const [opInputs, setOpInputs] = useState(null);      // staleness of thesis/overview/docs
+            const [opRefreshing, setOpRefreshing] = useState(false);
+            const [opRefreshStep, setOpRefreshStep] = useState('');
+            const [opDiff, setOpDiff] = useState(null);          // {diff, candidate}
             const [opStyle, setOpStyle] = useState(() => {
                 try {
                     const saved = localStorage.getItem('charlie_onepager_style');
@@ -2235,6 +2240,108 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 loadPoster(opData.ticker, opData?.meta?.depth, opPosterProvider);
             }, [opStyle, opData, opPosterProvider, loadPoster]);
 
+            // How old are the inputs this page is built from? The one-pager reads the
+            // stored thesis and overview, so without this a stale thesis silently
+            // produces a stale page.
+            const loadOnePagerInputs = useCallback(async (ticker) => {
+                const t = (ticker || '').toUpperCase().trim();
+                if (!t) { setOpInputs(null); return; }
+                try {
+                    const r = await fetch(`${API_URL}/api/onepager/inputs/${t}`);
+                    if (r.ok) setOpInputs(await r.json());
+                } catch (e) { setOpInputs(null); }
+            }, []);
+
+            // Re-run the thesis from the ticker's documents, then show what would
+            // change. Deliberately two steps: nothing is written until approved.
+            const refreshInputs = useCallback(async () => {
+                const t = (opData?.ticker || opTicker || '').toUpperCase().trim();
+                if (!t) { setOpError('Enter a ticker first.'); return; }
+                const apiKey = loadApiKeyFromStorage();
+                if (!apiKey) { setOpError('Add your Anthropic API key in Settings first.'); return; }
+
+                setOpRefreshing(true);
+                setOpError(null);
+                setOpDiff(null);
+                setOpRefreshStep('Re-analysing documents…');
+                try {
+                    // Same endpoint the Thesis tab uses, so behaviour cannot drift.
+                    const start = await fetch(`${API_URL}/api/analysis-job`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ apiKey, ticker: t }),
+                    });
+                    const started = await start.json();
+                    if (!start.ok) throw new Error(started.error || `HTTP ${start.status}`);
+
+                    let candidate = null;
+                    while (true) {
+                        await new Promise(r => setTimeout(r, 3000));
+                        let j;
+                        try {
+                            const r2 = await fetch(`${API_URL}/api/analysis-job/${started.jobId}/status`);
+                            if (!r2.ok) throw new Error(`Poll HTTP ${r2.status}`);
+                            j = await r2.json();
+                        } catch (e) { continue; }
+                        if (j.progress) setOpRefreshStep(j.progress);
+                        if (j.status === 'complete' || j.status === 'done') {
+                            candidate = j.result?.analysis || j.analysis || j.result;
+                            break;
+                        }
+                        if (j.status === 'failed' || j.status === 'error') {
+                            throw new Error(j.error || 'Analysis failed');
+                        }
+                    }
+                    if (!candidate) throw new Error('Analysis returned no thesis');
+
+                    setOpRefreshStep('Comparing with the current thesis…');
+                    const dr = await fetch(`${API_URL}/api/onepager/thesis-diff`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ticker: t, candidate }),
+                    });
+                    const dj = await dr.json();
+                    if (!dr.ok) throw new Error(dj.error || 'Diff failed');
+
+                    if (!dj.diff?.has_changes) {
+                        setOpRefreshStep('');
+                        setOpStatus('Re-analysed — the documents did not change the thesis.');
+                        await loadOnePagerInputs(t);
+                        return;
+                    }
+                    setOpDiff({ diff: dj.diff, candidate, ticker: t });
+                    setOpRefreshStep('');
+                } catch (e) {
+                    setOpError(`Refresh failed: ${e.message || e}`);
+                    setOpRefreshStep('');
+                } finally {
+                    setOpRefreshing(false);
+                }
+            }, [opData, opTicker, loadOnePagerInputs]);
+
+            // Approval writes through /api/save-analysis — the Thesis tab's own
+            // save path — so an accepted refresh IS the thesis, not a copy of it.
+            const applyRefresh = useCallback(async () => {
+                if (!opDiff) return;
+                setOpRefreshing(true);
+                try {
+                    const r = await fetch(`${API_URL}/api/save-analysis`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ticker: opDiff.ticker, analysis: opDiff.candidate }),
+                    });
+                    if (!r.ok) {
+                        const e = await r.json().catch(() => ({}));
+                        throw new Error(e.error || `HTTP ${r.status}`);
+                    }
+                    setOpDiff(null);
+                    setOpStatus('Thesis updated — visible in the Thesis tab too. Regenerate to use it.');
+                    await loadOnePagerInputs(opDiff.ticker);
+                    if (typeof loadSavedAnalyses === 'function') loadSavedAnalyses();
+                } catch (e) {
+                    setOpError(`Could not save the thesis: ${e.message || e}`);
+                } finally {
+                    setOpRefreshing(false);
+                }
+            }, [opDiff, loadOnePagerInputs]);
+
             const loadOnePagerList = useCallback(async () => {
                 setOpSavedLoading(true);
                 try {
@@ -2270,6 +2377,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
             useEffect(() => {
                 if (activeTab === 'onepager') loadOnePagerList();
             }, [activeTab, loadOnePagerList]);
+
+            useEffect(() => {
+                if (activeTab !== 'onepager') return;
+                loadOnePagerInputs(opData?.ticker || opTicker);
+            }, [activeTab, opData, opTicker, loadOnePagerInputs]);
 
             // Open a saved page. Without an explicit depth the backend returns the
             // most recently written one, so clicking a ticker shows what you last
@@ -22142,7 +22254,86 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             </div>
                                             {opStatus && !opError && <p className="mt-2 text-xs text-slate-400">{opStatus}</p>}
                                             {opError && <p className="mt-2 text-xs text-red-400">{opError}</p>}
+
+                                            {/* Input freshness. The page is only as current as the
+                                                thesis and overview it is assembled from. */}
+                                            {opInputs && (
+                                                <div className="mt-3 pt-3 border-t border-white/10 flex items-center gap-3 flex-wrap text-xs">
+                                                    <span className="text-slate-500">Inputs:</span>
+                                                    <span className={opInputs.thesis?.exists ? 'text-slate-300' : 'text-slate-500'}>
+                                                        Thesis {opInputs.thesis?.exists
+                                                            ? `${opInputs.thesis.ageDays}d old`
+                                                            : 'none'}
+                                                    </span>
+                                                    <span className={opInputs.overview?.exists ? 'text-slate-300' : 'text-slate-500'}>
+                                                        Overview {opInputs.overview?.exists
+                                                            ? `${opInputs.overview.ageDays}d old`
+                                                            : 'none'}
+                                                    </span>
+                                                    <span className="text-slate-400">
+                                                        {opInputs.documents?.count || 0} docs
+                                                    </span>
+                                                    {opInputs.documentsNewerThanThesis && (
+                                                        <span className="px-2 py-0.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-300">
+                                                            Documents newer than the thesis
+                                                        </span>
+                                                    )}
+                                                    <button onClick={refreshInputs} disabled={opRefreshing || opBusy}
+                                                        className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 disabled:opacity-50 rounded-lg">
+                                                        {opRefreshing
+                                                            ? <><div className="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent" /> {opRefreshStep || 'Working…'}</>
+                                                            : <>Refresh thesis from documents</>}
+                                                    </button>
+                                                </div>
+                                            )}
                                         </div>
+
+                                        {/* Proposed changes. Nothing is written until this is accepted —
+                                            a refresh must never silently replace curated judgement. */}
+                                        {opDiff && (
+                                            <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/5 p-4">
+                                                <div className="flex items-center gap-2 mb-3 flex-wrap">
+                                                    <h3 className="text-sm font-bold">Proposed thesis changes — {opDiff.ticker}</h3>
+                                                    <span className="text-xs text-slate-400">
+                                                        +{opDiff.diff.counts.added} added ·
+                                                        ~{opDiff.diff.counts.changed} reworded ·
+                                                        −{opDiff.diff.counts.removed} removed
+                                                    </span>
+                                                    <div className="ml-auto flex gap-2">
+                                                        <button onClick={applyRefresh} disabled={opRefreshing}
+                                                            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:bg-neutral-700 rounded-lg text-xs font-medium">
+                                                            Accept &amp; save
+                                                        </button>
+                                                        <button onClick={() => setOpDiff(null)}
+                                                            className="px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs">
+                                                            Discard
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                {['pillars', 'signposts', 'threats'].map(section => {
+                                                    const sec = opDiff.diff[section];
+                                                    if (!sec || (!sec.added.length && !sec.removed.length && !sec.changed.length)) return null;
+                                                    const label = x => x.title || x.signpost || x.metric || x.name || JSON.stringify(x).slice(0, 80);
+                                                    return (
+                                                        <div key={section} className="mb-3">
+                                                            <div className="label mb-1">{section}</div>
+                                                            {sec.added.map((x, i) => (
+                                                                <div key={`a${i}`} className="text-xs text-green-400">+ {label(x)}</div>
+                                                            ))}
+                                                            {sec.changed.map((x, i) => (
+                                                                <div key={`c${i}`} className="text-xs text-amber-300">~ {x.label}</div>
+                                                            ))}
+                                                            {sec.removed.map((x, i) => (
+                                                                <div key={`r${i}`} className="text-xs text-red-400">− {label(x)}</div>
+                                                            ))}
+                                                        </div>
+                                                    );
+                                                })}
+                                                {opDiff.diff.conclusion?.changed && (
+                                                    <div className="text-xs text-amber-300">~ conclusion reworded</div>
+                                                )}
+                                            </div>
+                                        )}
 
                                         {opData && (
                                             <>
