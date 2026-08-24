@@ -17,8 +17,12 @@ window.onerror=function(msg,url,line,col,error){var root=document.getElementById
                 <p><strong>Line:</strong> ${line}, Col: ${col}</p>
                 <p><strong>Stack:</strong> <pre style="white-space: pre-wrap; font-size: 12px;">${error?.stack||'N/A'}</pre></p>
                 <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #4ecdc4; border: none; border-radius: 5px; cursor: pointer;">Reload App</button>
-            </div>`;return true;};// Build version — auto-update mechanism compares against /version endpoint
-var BUILD_VERSION='2026-04-24T23';// Backend API URL — use same-origin proxy in production, direct URL for local dev
+            </div>`;return true;};// Build version — compared against the worker's /version on launch.
+// MUST match BUILD_VERSION in worker.js. When it does not, every fresh
+// session takes the mismatch branch below: unregister service workers,
+// delete all caches, reload once. That silently disables PWA caching, so
+// bump this together with worker.js and service-worker.js on every deploy.
+var BUILD_VERSION='2026-08-23T01';// Backend API URL — use same-origin proxy in production, direct URL for local dev
 var _isLocalHost=window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1';// Local dev: point the frontend at the local backend on :5000 instead of prod.
 // Toggle without the console via URL:  ?local=1  (on, persists)  or  ?local=0  (off).
 // Guarded by localhost so prod is always a no-op.
