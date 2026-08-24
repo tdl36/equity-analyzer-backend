@@ -80,7 +80,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-08-24T03';
+        const BUILD_VERSION = '2026-08-24T04';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -2129,6 +2129,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [opModels, setOpModels] = useState([]);
             const [opModel, setOpModel] = useState('opus-4-6');
             const [opEmailing, setOpEmailing] = useState(false);
+            // Poster (AI) state — the image path, kept separate from the HTML styles.
+            const [opPoster, setOpPoster] = useState(null);       // base64 png
+            const [opPosterBusy, setOpPosterBusy] = useState(false);
+            const [opPosterModels, setOpPosterModels] = useState([]);
+            const [opPosterProvider, setOpPosterProvider] = useState('openai');
             const [opStyle, setOpStyle] = useState(() => {
                 try {
                     const saved = localStorage.getItem('charlie_onepager_style');
@@ -2165,6 +2170,70 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 if (opData && opData.ticker === t) return;
                 loadOnePager(t);
             }, [activeTab, fmtTicker]);
+
+            useEffect(() => {
+                (async () => {
+                    try {
+                        const r = await fetch(`${API_URL}/api/onepager/poster/models`);
+                        if (!r.ok) return;
+                        const j = await r.json();
+                        setOpPosterModels(j.models || []);
+                    } catch (e) { /* falls back to the default provider */ }
+                })();
+            }, []);
+
+            // Posters are stored per (ticker, depth, provider) so switching back to
+            // the Poster style shows the existing render rather than re-spending.
+            const loadPoster = useCallback(async (ticker, depth, provider) => {
+                if (!ticker) return;
+                setOpPoster(null);
+                try {
+                    const r = await fetch(`${API_URL}/api/onepager/poster/${ticker}`
+                        + `?depth=${depth || 'standard'}&provider=${provider}`);
+                    if (r.ok) setOpPoster((await r.json()).image || null);
+                } catch (e) { /* absent poster is not an error */ }
+            }, []);
+
+            const generatePoster = useCallback(async () => {
+                const tk = opData?.ticker;
+                if (!tk) return;
+                setOpPosterBusy(true);
+                setOpError(null);
+                try {
+                    const res = await fetch(`${API_URL}/api/onepager/poster`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            ticker: tk,
+                            depth: opData?.meta?.depth || 'standard',
+                            provider: opPosterProvider,
+                        }),
+                    });
+                    const started = await res.json();
+                    if (!res.ok) throw new Error(started.error || `HTTP ${res.status}`);
+                    while (true) {
+                        await new Promise(r2 => setTimeout(r2, 3000));
+                        let j;
+                        try {
+                            const r2 = await fetch(`${API_URL}/api/mp/jobs/${started.jobId}`);
+                            if (!r2.ok) throw new Error(`Poll HTTP ${r2.status}`);
+                            j = await r2.json();
+                        } catch (e) { continue; }
+                        if (j.status === 'done') { setOpPoster(j.result?.image || null); break; }
+                        if (j.status === 'failed') throw new Error(j.error || 'Poster generation failed');
+                    }
+                } catch (e) {
+                    setOpError(String(e.message || e));
+                } finally {
+                    setOpPosterBusy(false);
+                }
+            }, [opData, opPosterProvider]);
+
+            // Selecting Poster, or changing ticker/depth/provider, looks for an
+            // existing render first.
+            useEffect(() => {
+                if (opStyle !== 'poster' || !opData?.ticker) return;
+                loadPoster(opData.ticker, opData?.meta?.depth, opPosterProvider);
+            }, [opStyle, opData, opPosterProvider, loadPoster]);
 
             const loadOnePagerList = useCallback(async () => {
                 setOpSavedLoading(true);
@@ -2268,7 +2337,15 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 if (!saved) { alert('Set your email credentials in Settings first.'); return; }
                 const creds = JSON.parse(saved);
                 const sheet = document.querySelector('.op-sheet');
-                if (!sheet) return;
+                if (!sheet) {
+                    // Poster (AI) renders an <img>, not a sheet. Emailing it would
+                    // circulate figures no one has verified, so send people back to
+                    // an exact style rather than quietly doing nothing.
+                    alert('Email sends the exact rendered page, and Poster (AI) has unverified figures.\n\n'
+                        + 'Switch to Notebook, Tearsheet, Broadsheet, Swiss, Deck or Ledger and email that.\n\n'
+                        + 'To share the poster itself, use the PNG download button.');
+                    return;
+                }
 
                 setOpEmailing(true);
                 try {
@@ -22089,9 +22166,55 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         </span>
                                                     )}
                                                 </div>
-                                                <div className="mb-8" ref={opSheetRef}>
-                                                    <OnePagerFit data={opData} style={opStyle} />
-                                                </div>
+                                                {opStyle === 'poster' ? (
+                                                    <div className="mb-8">
+                                                        <div className="flex items-center gap-2 flex-wrap mb-3 p-3 rounded-lg border border-amber-500/30 bg-amber-500/10">
+                                                            <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                                                            <span className="text-xs text-amber-200/90">
+                                                                Rendered by an image model. Figures are <strong>not verified</strong> —
+                                                                a diffusion model can redraw a number wrong. Use an HTML style for
+                                                                anything you act on or send.
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2 flex-wrap mb-3">
+                                                            <select value={opPosterProvider}
+                                                                onChange={e => setOpPosterProvider(e.target.value)}
+                                                                className="px-2 py-2 bg-white/10 border border-white/15 rounded-lg text-xs focus:outline-none focus:border-amber-500">
+                                                                {(opPosterModels.length ? opPosterModels : [{ key: 'openai', label: 'OpenAI', note: '' }]).map(m => (
+                                                                    <option key={m.key} value={m.key} className="bg-neutral-900">
+                                                                        {m.label}{m.note ? ` — ${m.note}` : ''}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                            <button onClick={generatePoster} disabled={opPosterBusy}
+                                                                className="flex items-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:bg-neutral-700 rounded-xl text-sm font-medium">
+                                                                {opPosterBusy
+                                                                    ? <><div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent" /> Rendering… (~1 min)</>
+                                                                    : <>{opPoster ? 'Re-render' : 'Render poster'}</>}
+                                                            </button>
+                                                            {opPoster && (
+                                                                <a href={`data:image/png;base64,${opPoster}`}
+                                                                   download={`${opData.ticker}_one_pager.png`}
+                                                                   className="flex items-center gap-1.5 px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-xs">
+                                                                    <Download className="w-3.5 h-3.5" /> PNG
+                                                                </a>
+                                                            )}
+                                                        </div>
+                                                        {opPoster ? (
+                                                            <img src={`data:image/png;base64,${opPoster}`}
+                                                                 alt={`${opData.ticker} one-pager`}
+                                                                 className="w-full max-w-[1024px] mx-auto block rounded-lg" />
+                                                        ) : !opPosterBusy && (
+                                                            <p className="text-xs text-slate-500">
+                                                                No poster yet for this ticker/depth/model. Hit “Render poster”.
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <div className="mb-8" ref={opSheetRef}>
+                                                        <OnePagerFit data={opData} style={opStyle} />
+                                                    </div>
+                                                )}
                                             </>
                                         )}
                                     </div>

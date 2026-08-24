@@ -80,6 +80,14 @@ export const ONEPAGER_STYLES = [
         blurb: 'Parchment and slab serif, fully ruled. Annual-report register.',
         segmentChart: 'pie', showIcons: true, columns: 2,
     },
+    {
+        // Not a CSS style: this one hands the same JSON to an image model and
+        // shows the picture. Flagged `ai` so the UI can render the image path
+        // and label it unverified — a diffusion model can redraw a figure wrong.
+        key: 'poster', label: 'Poster (AI)',
+        blurb: 'Image model renders the page. Beautiful, but figures are unverified.',
+        segmentChart: 'pie', showIcons: true, columns: 2, ai: true,
+    },
 ];
 
 const STYLE_BY_KEY = ONEPAGER_STYLES.reduce((m, s) => { m[s.key] = s; return m; }, {});

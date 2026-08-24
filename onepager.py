@@ -471,3 +471,126 @@ def list_onepager_depths(ticker, get_db):
         {"depth": r["depth"], "updatedAt": r["updated_at"].isoformat() if r["updated_at"] else None}
         for r in rows
     ]
+
+
+# ---------------------------------------------------------------------------
+# AI poster prompt
+# ---------------------------------------------------------------------------
+# Renders the SAME verified JSON through an image model, for when the hand-drawn
+# aesthetic matters more than exactness. The HTML styles remain the source of
+# truth: a diffusion model redraws table cells and axis labels as plausible
+# glyphs, so a figure here can be wrong and will differ between runs. The prompt
+# fights that as hard as a prompt can — every value is quoted and the model is
+# told to copy characters rather than compose them — but it cannot guarantee it,
+# which is why the UI labels this style as unverified.
+
+def _bullets(items, key=None, limit=6):
+    out = []
+    for it in (items or [])[:limit]:
+        v = it.get(key) if (key and isinstance(it, dict)) else it
+        if v:
+            out.append(f'  - "{v}"')
+    return "\n".join(out)
+
+
+def build_poster_prompt(data):
+    """Turn a one-pager JSON document into an image-generation prompt."""
+    d = data or {}
+    thesis = d.get("investment_thesis") or {}
+    overview = d.get("company_overview") or {}
+    model = d.get("business_model") or {}
+    fin = d.get("financial_snapshot") or {}
+    take = d.get("takeaway") or {}
+    glance = d.get("at_a_glance") or {}
+
+    segs = "\n".join(
+        f'  - "{s.get("name","")}" {s.get("share_label","")} — "{s.get("description","")}"'
+        for s in (overview.get("segments") or [])[:4]
+    )
+    pools = "\n".join(
+        f'  - "{p.get("name","")}": "{p.get("description","")}"'
+        for p in (model.get("profit_pools") or [])[:4]
+    )
+    opps = "\n".join(
+        f'  - "{o.get("title","")}": "{o.get("description","")}"'
+        for o in (d.get("opportunities") or [])[:5]
+    )
+    metrics = "\n".join(
+        f'  - "{m.get("label","")}: {m.get("value","")}"'
+        for m in (fin.get("metrics") or [])[:6]
+    )
+    signposts = "\n".join(
+        f'  - "{s.get("signpost","")}" | now: "{s.get("current","")}" | target: "{s.get("target","")}"'
+        for s in (d.get("signposts") or [])[:5]
+    )
+    threats = "\n".join(
+        f'  - "{t.get("title","")}": "{t.get("watch_for","")}"'
+        for t in (d.get("threats") or [])[:4]
+    )
+
+    return f"""Create a single-page hand-drawn investment research poster, portrait orientation.
+
+VISUAL STYLE
+A warm off-white notebook page. Everything drawn by hand in fine black pen with
+restrained pastel pencil accents — sage green, sky blue, soft yellow, lavender,
+muted red. Neat, confident handwriting throughout, not messy. Uneven hand-ruled
+boxes with slightly imperfect corners, hand-drawn arrows, small circled section
+numbers. A designer's analytical notebook page, not a corporate infographic and
+not a whiteboard photo. No gradients, no drop shadows, no 3D, no stock icons,
+no glossy finish. Leave comfortable margins; do not fill every pixel.
+
+TEXT ACCURACY — THE MOST IMPORTANT INSTRUCTION
+Every quoted string below must appear on the page reproduced EXACTLY, character
+for character. Copy the characters; do not paraphrase, round, translate or
+invent. Numbers, tickers, percentages, currency amounts and dates are the whole
+point of this page — a wrong digit makes it worthless. If you cannot fit a
+string legibly, leave that item out entirely rather than altering it. Do not add
+any figure that does not appear below. All text in English. No watermarks.
+
+LAYOUT — a masthead, then boxed sections in a two-column grid
+Masthead: large hand-lettered title "{d.get('company','')} ({d.get('ticker','')})"
+with the line "{d.get('tagline','')}" beneath it, underlined with a yellow
+highlighter stroke. Top-right, a small boxed "AT A GLANCE" panel:
+  - "Ticker: {glance.get('exchange','')}"
+  - "HQ: {glance.get('hq','')}"
+  - "Founded: {glance.get('founded','')}"
+  - "Employees: {glance.get('employees','')}"
+  - "FY End: {glance.get('fy_end','')}"
+
+Box 1 — "INVESTMENT THESIS". Show this question prominently in its own outlined
+box: "{thesis.get('core_question','')}"
+Then these as checkbox bullets:
+{_bullets(thesis.get('points'), limit=5)}
+
+Box 2 — "COMPANY OVERVIEW". A hand-drawn pie chart of the segment mix, each
+wedge labelled with its share, plus a legend:
+{segs}
+
+Box 3 — "BUSINESS MODEL". These profit pools as boxes joined by "+" signs:
+{pools}
+Caption underneath: "{model.get('caption','')}"
+
+Box 4 — "KEY OPPORTUNITIES", each with a small hand-drawn doodle icon:
+{opps}
+
+Box 5 — "FINANCIAL SNAPSHOT". These as a bulleted list:
+{metrics}
+Include a small hand-drawn line chart labelled "{(fin.get('eps_chart') or {}).get('label','Earnings')}"
+showing a cyclical earnings curve with peaks and troughs, the forward portion
+drawn as a dashed line.
+
+Box 6 — "KEY SIGNPOSTS". A hand-ruled table with columns Signpost / Current / Target:
+{signposts}
+
+Box 7 — "THESIS THREATS". A hand-ruled table of risk and what to watch for:
+{threats}
+
+Final box — "FINAL TAKEAWAY": "{take.get('summary','')}"
+Two facing boxes, a green "BULL CASE" and a red "BEAR CASE":
+  BULL:
+{_bullets(take.get('bull'), limit=4)}
+  BEAR:
+{_bullets(take.get('bear'), limit=4)}
+
+Footer strip across the bottom: "Bottom line: {take.get('bottom_line','')}"
+"""

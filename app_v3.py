@@ -2269,6 +2269,25 @@ def init_db():
                 ON stock_onepagers (ticker, depth)
             ''')
 
+            # AI-rendered posters. Kept in their own table rather than inside
+            # stock_onepagers because a PNG is ~1-2MB of base64 and would bloat
+            # every read of the (small, frequently loaded) one-pager JSON.
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS stock_onepager_posters (
+                    id SERIAL PRIMARY KEY,
+                    ticker VARCHAR(20) NOT NULL,
+                    depth VARCHAR(20) NOT NULL DEFAULT 'standard',
+                    provider VARCHAR(20) NOT NULL DEFAULT 'openai',
+                    image_data TEXT,
+                    prompt TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            cur.execute('''
+                CREATE UNIQUE INDEX IF NOT EXISTS stock_onepager_posters_key
+                ON stock_onepager_posters (ticker, depth, provider)
+            ''')
+
             # Stock Overviews table
             cur.execute('''
                 CREATE TABLE IF NOT EXISTS stock_overviews (
@@ -12414,6 +12433,163 @@ def _onepager_caller(model_key, anthropic_key):
                             max_tokens=max_tokens, timeout=timeout, **keys)
 
     return pinned
+
+
+# Image models for the "Poster (AI)" style. Both are already configured in
+# Charlie: OpenAI via OPENAI_API_KEY, Gemini via the same model powering the
+# existing infographic styles.
+ONEPAGER_IMAGE_MODELS = [
+    {'key': 'openai', 'label': 'OpenAI', 'model': 'gpt-image-1',
+     'note': 'Closest to the ChatGPT look'},
+    {'key': 'gemini', 'label': 'Gemini', 'model': 'gemini-3-pro-image-preview',
+     'note': 'Already used by Charlie infographics'},
+]
+ONEPAGER_IMAGE_BY_KEY = {m['key']: m for m in ONEPAGER_IMAGE_MODELS}
+
+
+def _onepager_poster_image(prompt, provider, keys):
+    """Render the poster prompt to a base64 PNG. Returns (b64, error)."""
+    spec = ONEPAGER_IMAGE_BY_KEY.get(provider)
+    if not spec:
+        return None, f'Unknown image model: {provider}'
+
+    if provider == 'openai':
+        if not keys.get('openai'):
+            return None, 'OpenAI API key required — add it in Settings'
+        try:
+            client = openai.OpenAI(api_key=keys['openai'], timeout=300)
+            # Portrait: a one-pager is a page, not a slide.
+            res = client.images.generate(
+                model=spec['model'], prompt=prompt,
+                size='1024x1536', quality='high', n=1,
+            )
+            b64 = getattr(res.data[0], 'b64_json', None)
+            if not b64:
+                return None, 'OpenAI returned no image data'
+            return b64, None
+        except Exception as e:
+            return None, f'OpenAI image generation failed: {e}'
+
+    if not keys.get('gemini'):
+        return None, 'Gemini API key required — add it in Settings'
+
+    # 3:4 is the right shape for a page, but elsewhere in Charlie only 16:9,
+    # 9:16 and 1:1 are exercised. Fall back rather than fail the whole job if
+    # this model build rejects it.
+    last_err = None
+    for aspect in ("3:4", "9:16"):
+        try:
+            client = genai.Client(api_key=keys['gemini'])
+            res = client.models.generate_content(
+                model=spec['model'],
+                contents=prompt,
+                config=genai_types.GenerateContentConfig(
+                    response_modalities=["TEXT", "IMAGE"],
+                    image_config=genai_types.ImageConfig(aspect_ratio=aspect),
+                ),
+            )
+            for part in res.candidates[0].content.parts:
+                if getattr(part, 'inline_data', None) is not None:
+                    return base64.b64encode(part.inline_data.data).decode('utf-8'), None
+            last_err = 'Gemini returned no image data'
+        except Exception as e:
+            last_err = f'Gemini image generation failed ({aspect}): {e}'
+            print(f"[one-pager poster] {last_err}")
+    return None, last_err
+
+
+def _run_onepager_poster_job(job_id, ticker, depth, provider, keys):
+    """Background worker: render a saved one-pager as an AI poster."""
+    try:
+        import onepager as _op
+        data = _op.load_onepager(ticker, get_db, depth=depth)
+        if not data:
+            _mp_update_job(job_id, status='failed',
+                           error=f'No {depth} one-pager saved for {ticker} — generate it first')
+            return
+
+        prompt = _op.build_poster_prompt(data)
+        b64, err = _onepager_poster_image(prompt, provider, keys)
+        if err:
+            _mp_update_job(job_id, status='failed', error=err[:2000])
+            return
+
+        with get_db(commit=True) as (_c, cur):
+            cur.execute("""
+                INSERT INTO stock_onepager_posters (ticker, depth, provider, image_data, prompt)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (ticker, depth, provider) DO UPDATE
+                  SET image_data = EXCLUDED.image_data,
+                      prompt = EXCLUDED.prompt,
+                      created_at = CURRENT_TIMESTAMP
+            """, (ticker, depth, provider, b64, prompt[:8000]))
+
+        _mp_update_job(job_id, status='done', result={
+            'success': True, 'ticker': ticker, 'depth': depth,
+            'provider': provider, 'image': b64,
+        })
+    except Exception as e:
+        print(f"One-pager poster job {job_id} error: {e}")
+        _mp_update_job(job_id, status='failed', error=str(e)[:2000])
+
+
+@app.route('/api/onepager/poster/models', methods=['GET'])
+def list_onepager_poster_models():
+    """Image models offered for the Poster (AI) style."""
+    return jsonify({'models': ONEPAGER_IMAGE_MODELS, 'default': 'openai'})
+
+
+@app.route('/api/onepager/poster', methods=['POST'])
+def generate_onepager_poster():
+    """Queue AI poster rendering for a saved one-pager. Poll /api/mp/jobs/:id."""
+    try:
+        data = request.get_json() or {}
+        ticker = (data.get('ticker') or '').upper().strip()
+        if not ticker:
+            return jsonify({'error': 'No ticker provided'}), 400
+        provider = data.get('provider') or 'openai'
+        if provider not in ONEPAGER_IMAGE_BY_KEY:
+            return jsonify({'error': f'Unknown image model: {provider}'}), 400
+
+        keys = _get_api_keys(data.get('apiKey', ''), data.get('geminiApiKey', ''),
+                             data.get('openaiApiKey', ''))
+        job_id = str(uuid.uuid4())
+        with get_db(commit=True) as (_c, cur):
+            cur.execute("INSERT INTO mp_jobs (id, stage, ticker, status) "
+                        "VALUES (%s, 'onepager-poster', %s, 'running')", (job_id, ticker))
+
+        threading.Thread(
+            target=_run_onepager_poster_job,
+            args=(job_id, ticker, data.get('depth') or 'standard', provider, keys),
+            daemon=True,
+        ).start()
+        return jsonify({'jobId': job_id}), 202
+    except Exception as e:
+        print(f"Error queueing poster job: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/onepager/poster/<ticker>', methods=['GET'])
+def get_onepager_poster(ticker):
+    """Fetch a stored AI poster for (ticker, depth, provider)."""
+    try:
+        depth = request.args.get('depth') or 'standard'
+        provider = request.args.get('provider') or 'openai'
+        with get_db() as (_c, cur):
+            cur.execute("SELECT image_data, created_at FROM stock_onepager_posters "
+                        "WHERE ticker = %s AND depth = %s AND provider = %s",
+                        (ticker.upper(), depth, provider))
+            row = cur.fetchone()
+        if not row or not row.get('image_data'):
+            return jsonify({'error': 'No poster generated yet'}), 404
+        return jsonify({
+            'ticker': ticker.upper(), 'depth': depth, 'provider': provider,
+            'image': row['image_data'],
+            'createdAt': row['created_at'].isoformat() if row['created_at'] else None,
+        })
+    except Exception as e:
+        print(f"Error fetching poster: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/onepager/depths', methods=['GET'])
