@@ -80,7 +80,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-08-24T09';
+        const BUILD_VERSION = '2026-08-24T10';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -2397,8 +2397,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         body: JSON.stringify({
                             ticker: t, apiKey, depth: opDepth, model: opModel,
                             documentConfig: {
-                                documents: orchDocs.filter(d => d.selected)
+                                documents: orchDocs.filter(d => d.selected && !d.purged)
                                     .map(d => ({ filename: d.filename, folder: d.folder || 'main' })),
+                                // Only a document the thesis actually absorbed can be
+                                // purged from it — same rule the Pipeline tab applies.
+                                excludedHistoricalDocs: orchDocs
+                                    .filter(d => d.purged && d.usedInThesis)
+                                    .map(d => d.filename),
                                 existingWeight: orchExistingWeight,
                                 rebuildFromScratch: orchRebuild,
                             },
@@ -22415,16 +22420,26 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             {orchOptsOpen && (
                                                 <div className="mt-3 pt-3 border-t border-white/10 space-y-3">
                                                     <div className="flex items-center gap-3 flex-wrap text-xs">
+                                                        {/* Phrased by consequence. "Keep 30%" reads as
+                                                            conservative but is the opposite — it lets new
+                                                            documents drive 70% of the thesis. */}
                                                         <label className="flex items-center gap-2">
-                                                            <span className="text-slate-400">Keep</span>
+                                                            <span className="text-slate-400">New documents drive</span>
                                                             <input type="number" min="0" max="100" step="5"
-                                                                value={orchExistingWeight}
+                                                                value={100 - orchExistingWeight}
                                                                 disabled={orchRebuild}
                                                                 onChange={e => setOrchExistingWeight(
-                                                                    Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+                                                                    100 - Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
                                                                 className="w-16 px-2 py-1 bg-white/10 border border-white/15 rounded disabled:opacity-40" />
                                                             <span className="text-slate-400">
-                                                                % of the existing thesis · new documents contribute {100 - orchExistingWeight}%
+                                                                % of the thesis · {orchExistingWeight}% of the existing thesis is preserved
+                                                            </span>
+                                                            <span className={`px-1.5 py-0.5 rounded text-[10px] ${
+                                                                orchExistingWeight >= 70 ? 'bg-green-500/20 text-green-400'
+                                                                : orchExistingWeight >= 40 ? 'bg-amber-500/20 text-amber-300'
+                                                                : 'bg-red-500/20 text-red-400'}`}>
+                                                                {orchExistingWeight >= 70 ? 'conservative'
+                                                                    : orchExistingWeight >= 40 ? 'balanced' : 'aggressive rewrite'}
                                                             </span>
                                                         </label>
                                                         <label className="flex items-center gap-1.5 text-slate-400 cursor-pointer">
@@ -22467,10 +22482,27 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                     title={d.inCharlie ? d.filename
                                                                                         : 'In iCloud — the local agent will fetch it before the run'}
                                                                                     className="flex items-center gap-2 text-xs py-0.5 text-slate-300 cursor-pointer">
-                                                                                    <input type="checkbox" checked={!!d.selected}
+                                                                                    <input type="checkbox" checked={!!d.selected && !d.purged}
+                                                                                        disabled={d.purged}
                                                                                         onChange={e => setOrchDocs(ds => ds.map((x, j) =>
                                                                                             j === i ? { ...x, selected: e.target.checked } : x))} />
-                                                                                    <span className="truncate flex-1">{d.filename}</span>
+                                                                                    <span className={`truncate flex-1 ${d.purged ? 'line-through text-red-300' : ''}`}>
+                                                                                        {d.filename}
+                                                                                    </span>
+                                                                                    {d.usedInThesis && (
+                                                                                        <button
+                                                                                            onClick={e => { e.preventDefault(); e.stopPropagation();
+                                                                                                setOrchDocs(ds => ds.map((x, j) =>
+                                                                                                    j === i ? { ...x, purged: !x.purged, selected: x.purged ? x.selected : false } : x)); }}
+                                                                                            title={d.purged
+                                                                                                ? 'Undo — its contribution stays in the thesis'
+                                                                                                : 'Forget this: actively scrub what it contributed out of the existing thesis. De-selecting alone does NOT do this.'}
+                                                                                            className={`text-[8px] px-1 py-0.5 rounded flex-shrink-0 border ${
+                                                                                                d.purged ? 'border-red-500/50 text-red-300 bg-red-500/10'
+                                                                                                    : 'border-white/15 text-slate-500 hover:text-red-300 hover:border-red-500/40'}`}>
+                                                                                            {d.purged ? 'purging' : 'forget'}
+                                                                                        </button>
+                                                                                    )}
                                                                                     {d.usedInThesis && d.usedInNote && (
                                                                                         <span className="text-[8px] px-1 py-0.5 rounded bg-green-500/20 text-green-400 font-medium flex-shrink-0">Thesis + Note</span>)}
                                                                                     {d.usedInThesis && !d.usedInNote && (
@@ -22487,6 +22519,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                     </div>
                                                                 ))}
                                                             </div>
+                                                        )}
+                                                        {orchDocs.some(d => d.purged) && (
+                                                            <p className="mt-1.5 text-[11px] text-red-300/80">
+                                                                Purged documents are scrubbed from the existing thesis — figures and
+                                                                arguments that came from them get revised out. De-selecting alone only
+                                                                stops a document being re-read; what it already contributed stays.
+                                                            </p>
                                                         )}
                                                         {orchDocs.some(d => !d.inCharlie) && (
                                                             <p className="mt-1.5 text-[11px] text-slate-500">
