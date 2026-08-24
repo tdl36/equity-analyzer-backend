@@ -12639,35 +12639,70 @@ def _orchestrate_set(job_id, **fields):
     return cur_result
 
 
-def _run_orchestrate_thesis(job_id, ticker, api_key):
+def _run_orchestrate_thesis(job_id, ticker, api_key, doc_config=None):
     """Stage 1: propose a thesis from the ticker's documents, then stop."""
     try:
         import onepager as _op
         _mp_update_job(job_id, status='running')
         _orchestrate_set(job_id, stage='thesis', step='Re-reading documents...')
 
-        # _run_analysis_job only reads the documents named in documentFilenames —
-        # it does NOT discover them from the ticker. Passing just the ticker made
-        # it analyse zero documents and return no analysis at all.
+        # Which documents, and how much of the existing thesis survives, are the
+        # inputs that decide what the thesis becomes. Leaving them on silent
+        # defaults gates the output while letting the inputs drift — so the
+        # orchestrator takes the SAME documentConfig contract the Pipeline tab
+        # uses, rather than a second, cruder set of controls.
+        doc_config = doc_config or {}
+        rebuild_from_scratch = bool(doc_config.get('rebuildFromScratch', False))
+        existing_weight = 0 if rebuild_from_scratch else int(doc_config.get('existingWeight', 70))
+        excluded_historical = doc_config.get('excludedHistoricalDocs', []) or []
+
         with get_db() as (_c, cur):
             cur.execute('SELECT filename FROM document_files WHERE ticker = %s ORDER BY created_at',
                         (ticker,))
-            filenames = [r['filename'] for r in (cur.fetchall() or [])]
-        if not filenames:
+            all_filenames = [r['filename'] for r in (cur.fetchall() or [])]
+
+        # An explicit selection wins; absent one, use everything stored.
+        chosen = doc_config.get('documents')
+        if chosen:
+            wanted = {d.get('filename') if isinstance(d, dict) else d for d in chosen}
+            filenames = [f for f in all_filenames if f in wanted]
+        else:
+            filenames = list(all_filenames)
+
+        if not filenames and not rebuild_from_scratch:
             raise RuntimeError(
-                f'No documents stored for {ticker}. Upload research to '
-                f'iCloud/STOCKS/{ticker}/ (the local agent ingests it) and try again.')
+                f'No documents selected for {ticker}. '
+                f'{len(all_filenames)} are stored; add research to '
+                f'iCloud/STOCKS/{ticker}/ or widen the selection.')
+
+        doc_details = [
+            {'filename': f, 'weight': 1, 'isNew': True} for f in filenames
+        ]
+        weighting_config = {
+            'mode': 'simple',
+            'existingAnalysisWeight': existing_weight,
+            'newDocsWeight': 100 - existing_weight,
+            'excludedHistoricalDocs': excluded_historical,
+            'rebuildFromScratch': rebuild_from_scratch,
+        }
 
         # Pass the live thesis so this is an incremental update that preserves
-        # existing judgement, rather than a rewrite from scratch.
+        # existing judgement — unless the caller explicitly asked to rebuild.
         with get_db() as (_c, cur):
             cur.execute('SELECT analysis FROM portfolio_analyses WHERE ticker = %s', (ticker,))
             _existing_row = cur.fetchone()
         existing = (_existing_row or {}).get('analysis') or None
         if isinstance(existing, str):
             existing = json.loads(existing)
+        if rebuild_from_scratch:
+            existing = None
 
-        _orchestrate_set(job_id, step=f'Re-reading {len(filenames)} documents...')
+        _orchestrate_set(
+            job_id,
+            step=f'Re-reading {len(filenames)} of {len(all_filenames)} documents...',
+            inputs={'documents': len(filenames), 'documentsAvailable': len(all_filenames),
+                    'existingWeight': existing_weight,
+                    'rebuildFromScratch': rebuild_from_scratch})
 
         # Reuse the Thesis tab's own analysis job rather than a parallel
         # implementation, so this behaves exactly like a manual re-analysis.
@@ -12679,7 +12714,9 @@ def _run_orchestrate_thesis(job_id, ticker, api_key):
                 (sub_id, ticker, api_key, json.dumps({
                     'ticker': ticker,
                     'documentFilenames': filenames,
+                    'documentDetails': doc_details,
                     'existingAnalysis': existing if (existing or {}).get('thesis') else None,
+                    'weightingConfig': weighting_config,
                 })))
         _run_analysis_job(sub_id)
 
@@ -12807,10 +12844,12 @@ def start_orchestration():
                     'ticker': ticker,
                     'depth': data.get('depth') or 'standard',
                     'model': data.get('model') or ONEPAGER_DEFAULT_MODEL,
+                    'documentConfig': data.get('documentConfig') or {},
                 })))
 
         threading.Thread(target=_run_orchestrate_thesis,
-                         args=(job_id, ticker, keys['anthropic']), daemon=True).start()
+                         args=(job_id, ticker, keys['anthropic'], data.get('documentConfig')),
+                         daemon=True).start()
         return jsonify({'jobId': job_id}), 202
     except Exception as e:
         print(f"Error starting orchestration: {e}")

@@ -80,7 +80,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-08-24T06';
+        const BUILD_VERSION = '2026-08-24T07';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -2342,6 +2342,27 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 }
             }, [opDiff, loadOnePagerInputs]);
 
+            // Inputs to the thesis agent. Defaults match the Pipeline tab so a
+            // run behaves the same however it was triggered; the panel is
+            // collapsed by default because a mandatory dialog would turn the
+            // orchestrator back into the Thesis tab with extra steps.
+            const [orchOptsOpen, setOrchOptsOpen] = useState(false);
+            const [orchDocs, setOrchDocs] = useState([]);          // [{filename, selected}]
+            const [orchExistingWeight, setOrchExistingWeight] = useState(70);
+            const [orchRebuild, setOrchRebuild] = useState(false);
+
+            const loadOrchDocs = useCallback(async (ticker) => {
+                const t = (ticker || '').toUpperCase().trim();
+                if (!t) { setOrchDocs([]); return; }
+                try {
+                    const r = await fetch(`${API_URL}/api/documents/${t}`);
+                    if (!r.ok) { setOrchDocs([]); return; }
+                    const j = await r.json();
+                    const list = Array.isArray(j) ? j : (j.documents || []);
+                    setOrchDocs(list.map(d => ({ filename: d.filename, selected: true })));
+                } catch (e) { setOrchDocs([]); }
+            }, []);
+
             // ---- Agent orchestrator -------------------------------------
             // One trigger that runs the thesis agent, gates on approval, then
             // fans out the one-pager and meeting-prep agents in parallel.
@@ -2376,7 +2397,14 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 try {
                     const res = await fetch(`${API_URL}/api/orchestrate`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ ticker: t, apiKey, depth: opDepth, model: opModel }),
+                        body: JSON.stringify({
+                            ticker: t, apiKey, depth: opDepth, model: opModel,
+                            documentConfig: {
+                                documents: orchDocs.filter(d => d.selected).map(d => ({ filename: d.filename })),
+                                existingWeight: orchExistingWeight,
+                                rebuildFromScratch: orchRebuild,
+                            },
+                        }),
                     });
                     const started = await res.json();
                     if (!res.ok) throw new Error(started.error || `HTTP ${res.status}`);
@@ -2387,7 +2415,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 } finally {
                     setOrchBusy(false);
                 }
-            }, [opData, opTicker, opDepth, opModel, pollOrchestration]);
+            }, [opData, opTicker, opDepth, opModel, pollOrchestration,
+                orchDocs, orchExistingWeight, orchRebuild]);
 
             const decideOrchestration = useCallback(async (accept) => {
                 if (!orchJob?.jobId) return;
@@ -2455,8 +2484,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
             useEffect(() => {
                 if (activeTab !== 'onepager') return;
-                loadOnePagerInputs(opData?.ticker || opTicker);
-            }, [activeTab, opData, opTicker, loadOnePagerInputs]);
+                const t = opData?.ticker || opTicker;
+                loadOnePagerInputs(t);
+                loadOrchDocs(t);
+            }, [activeTab, opData, opTicker, loadOnePagerInputs, loadOrchDocs]);
 
             // Open a saved page. Without an explicit depth the backend returns the
             // most recently written one, so clicking a ticker shows what you last
@@ -22354,6 +22385,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         </span>
                                                     )}
                                                     <div className="ml-auto flex items-center gap-2">
+                                                    <button onClick={() => setOrchOptsOpen(v => !v)}
+                                                        className="px-2 py-1.5 text-slate-400 hover:text-white rounded-lg"
+                                                        title="Choose documents and how much of the existing thesis to keep">
+                                                        {orchOptsOpen ? '▾' : '▸'} Inputs
+                                                    </button>
                                                         <button onClick={refreshInputs} disabled={opRefreshing || opBusy || orchBusy}
                                                             className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 disabled:opacity-50 rounded-lg">
                                                             {opRefreshing
@@ -22367,6 +22403,61 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 ? <><div className="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent" /> Agents running…</>
                                                                 : <>Run agents</>}
                                                         </button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {/* What the thesis agent is allowed to use. Same contract the
+                                                Pipeline tab sends, so a run behaves identically however it
+                                                was triggered. */}
+                                            {orchOptsOpen && (
+                                                <div className="mt-3 pt-3 border-t border-white/10 space-y-3">
+                                                    <div className="flex items-center gap-3 flex-wrap text-xs">
+                                                        <label className="flex items-center gap-2">
+                                                            <span className="text-slate-400">Keep</span>
+                                                            <input type="number" min="0" max="100" step="5"
+                                                                value={orchExistingWeight}
+                                                                disabled={orchRebuild}
+                                                                onChange={e => setOrchExistingWeight(
+                                                                    Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+                                                                className="w-16 px-2 py-1 bg-white/10 border border-white/15 rounded disabled:opacity-40" />
+                                                            <span className="text-slate-400">
+                                                                % of the existing thesis · new documents contribute {100 - orchExistingWeight}%
+                                                            </span>
+                                                        </label>
+                                                        <label className="flex items-center gap-1.5 text-slate-400 cursor-pointer">
+                                                            <input type="checkbox" checked={orchRebuild}
+                                                                onChange={e => setOrchRebuild(e.target.checked)} />
+                                                            Rebuild from scratch (ignore the existing thesis)
+                                                        </label>
+                                                    </div>
+
+                                                    <div>
+                                                        <div className="flex items-center gap-2 mb-1.5">
+                                                            <span className="label">
+                                                                Documents ({orchDocs.filter(d => d.selected).length}/{orchDocs.length})
+                                                            </span>
+                                                            <button onClick={() => setOrchDocs(ds => ds.map(d => ({ ...d, selected: true })))}
+                                                                className="text-xs text-slate-400 hover:text-white">All</button>
+                                                            <button onClick={() => setOrchDocs(ds => ds.map(d => ({ ...d, selected: false })))}
+                                                                className="text-xs text-slate-400 hover:text-white">None</button>
+                                                        </div>
+                                                        {orchDocs.length === 0 ? (
+                                                            <p className="text-xs text-slate-500">
+                                                                No documents stored for this ticker.
+                                                            </p>
+                                                        ) : (
+                                                            <div className="max-h-40 overflow-y-auto space-y-1 pr-1">
+                                                                {orchDocs.map((d, i) => (
+                                                                    <label key={d.filename}
+                                                                        className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                                                                        <input type="checkbox" checked={d.selected}
+                                                                            onChange={e => setOrchDocs(ds => ds.map((x, j) =>
+                                                                                j === i ? { ...x, selected: e.target.checked } : x))} />
+                                                                        <span className="truncate">{d.filename}</span>
+                                                                    </label>
+                                                                ))}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                             )}
