@@ -62,7 +62,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-08-23T03';
+        const BUILD_VERSION = '2026-08-23T04';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -28996,12 +28996,12 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     }`}
                                 >
                                     <div className="relative">
-                                        <MoreHorizontal className={`w-5 h-5 ${activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' || activeTab === 'feed' || activeTab === 'analysts' ? 'stroke-[2.5]' : 'stroke-[1.5]'}`} />
+                                        <MoreHorizontal className={`w-5 h-5 ${activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' || activeTab === 'feed' || activeTab === 'analysts' || activeTab === 'onepager' ? 'stroke-[2.5]' : 'stroke-[1.5]'}`} />
                                         {alertBadgeCount > 0 && (
                                             <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center">{alertBadgeCount > 9 ? '9+' : alertBadgeCount}</span>
                                         )}
                                     </div>
-                                    <span className={`text-[9px] ${activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' || activeTab === 'feed' || activeTab === 'analysts' ? 'font-semibold' : 'font-medium'}`}>More</span>
+                                    <span className={`text-[9px] ${activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' || activeTab === 'feed' || activeTab === 'analysts' || activeTab === 'onepager' ? 'font-semibold' : 'font-medium'}`}>More</span>
                                 </button>
                             </div>
                         </div>
@@ -29212,6 +29212,27 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             <div className="text-left">
                                                 <div className="font-semibold">Formats</div>
                                                 <div className="text-xs text-slate-400">Professional thesis export templates</div>
+                                            </div>
+                                            <ChevronRight className="w-5 h-5 text-slate-500 ml-auto" />
+                                        </button>
+
+                                        <button
+                                            onClick={() => {
+                                                setShowMoreMenu(false);
+                                                switchTab('onepager');
+                                            }}
+                                            className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
+                                                activeTab === 'onepager'
+                                                    ? 'bg-amber-600/20 border border-amber-500/50'
+                                                    : 'bg-white/5 hover:bg-white/10 border border-transparent'
+                                            }`}
+                                        >
+                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${activeTab === 'onepager' ? 'bg-amber-600' : 'bg-white/10'}`}>
+                                                <FileText className="w-5 h-5" />
+                                            </div>
+                                            <div className="text-left">
+                                                <div className="font-semibold">One-Pager</div>
+                                                <div className="text-xs text-slate-400">Ticker in, visual investment one-pager out</div>
                                             </div>
                                             <ChevronRight className="w-5 h-5 text-slate-500 ml-auto" />
                                         </button>
