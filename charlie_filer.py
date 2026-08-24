@@ -28,6 +28,8 @@ The known-ticker universe comes from the STOCKS folders that already exist, so
 it reflects actual coverage rather than a hardcoded list that would drift.
 """
 
+from __future__ import annotations   # PEP 604 syntax on the agent's Python 3.9
+
 import re
 import shutil
 from pathlib import Path
@@ -162,3 +164,52 @@ def file_document(path: Path, stocks_dir: Path, *, dry_run: bool = False,
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(path), str(dest))
     return True, ticker, confidence, reason, dest
+
+
+# ---------------------------------------------------------------------------
+# CLI — runnable on its own, so testing needs neither watchdog nor the watcher
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    import argparse
+    import logging
+
+    STOCKS = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/STOCKS"
+    DOWNLOADS = Path.home() / "Downloads"
+
+    ap = argparse.ArgumentParser(
+        description="File research PDFs from ~/Downloads into STOCKS/<TICKER>/")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="report what would move, change nothing")
+    ap.add_argument("--downloads", type=Path, default=DOWNLOADS,
+                    help=f"folder to sweep (default: {DOWNLOADS})")
+    ap.add_argument("--stocks", type=Path, default=STOCKS,
+                    help="STOCKS library root")
+    args = ap.parse_args()
+
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    log = logging.getLogger("filer")
+
+    uni = known_tickers(args.stocks)
+    log.info("Covered tickers: %d", len(uni))
+    if args.dry_run:
+        log.info("*** DRY RUN — nothing will be moved ***")
+
+    pdfs = sorted(args.downloads.glob("*.pdf")) if args.downloads.exists() else []
+    log.info("PDFs in %s: %d\n", args.downloads, len(pdfs))
+
+    filed = left = 0
+    for pdf in pdfs:
+        moved, ticker, confidence, reason, dest = file_document(
+            pdf, args.stocks, dry_run=args.dry_run, universe=uni)
+        if moved:
+            filed += 1
+            log.info("%-12s %-52s -> STOCKS/%s/",
+                     "WOULD FILE" if args.dry_run else "FILED", pdf.name[:52], ticker)
+        else:
+            left += 1
+            log.info("%-12s %-52s %s", "leave", pdf.name[:52], reason)
+
+    log.info("\n%s: %d   left alone: %d",
+             "Would file" if args.dry_run else "Filed", filed, left)
+    if filed and args.dry_run:
+        log.info("Re-run without --dry-run to move them.")
