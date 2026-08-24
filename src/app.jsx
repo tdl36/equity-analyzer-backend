@@ -8,7 +8,7 @@ import * as ReactDOM from 'react-dom';
 // Extensionless on purpose: Babel leaves the specifier alone, so esbuild resolves
 // it to src/onepager.jsx in dev and build/onepager.js in the prod bundle.
 import { OnePagerFit, ONEPAGER_STYLES } from './onepager';
-import html2canvas from 'html2canvas';
+import * as htmlToImage from 'html-to-image';
 
 // Expose on window for any inline consumers (pdf.js, etc.)
 if (typeof window !== 'undefined') {
@@ -80,7 +80,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-08-24T01';
+        const BUILD_VERSION = '2026-08-24T02';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -2272,13 +2272,24 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
                 setOpEmailing(true);
                 try {
-                    // Capture the unscaled sheet: html2canvas reads the element's own
-                    // box, so the .op-fit transform does not degrade the output.
-                    const canvas = await html2canvas(sheet, {
-                        scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false,
-                        windowWidth: 1024, width: 1024,
+                    // html-to-image, not html2canvas. html2canvas reimplements
+                    // layout and supports neither CSS Grid nor a transformed
+                    // ancestor — and the sheet sits inside .op-fit-inner, which is
+                    // both. It produced an email where every element collapsed to
+                    // the same coordinates. html-to-image serialises into an SVG
+                    // foreignObject, so the BROWSER lays it out and the capture
+                    // matches what is on screen.
+                    //
+                    // transform:none neutralises the fit-scale for the capture, so
+                    // the emailed page is full 1024px regardless of screen size.
+                    const dataUrl = await htmlToImage.toPng(sheet, {
+                        backgroundColor: '#ffffff',
+                        pixelRatio: 2,
+                        width: 1024,
+                        height: sheet.offsetHeight,
+                        style: { transform: 'none', transformOrigin: 'top left' },
                     });
-                    const b64 = canvas.toDataURL('image/png').split(',')[1];
+                    const b64 = dataUrl.split(',')[1];
                     const tk = opData?.ticker || opTicker;
                     const res = await fetch(`${API_URL}/api/email-infographic`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },

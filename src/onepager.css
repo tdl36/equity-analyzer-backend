@@ -765,3 +765,51 @@
 /* No small-screen override here on purpose: overflow:hidden is what stops the
    unscaled 1024px child from widening the wrapper, which would make clientWidth
    report 1024 and the computed scale collapse to 1. */
+
+/* ============================================================================
+   DENSITY — Brief tightens the whole sheet, not just the wording
+   ----------------------------------------------------------------------------
+   Telling the model to write less only got us a shorter scroll. The DE reference
+   is dense because its TYPOGRAPHY is dense: smaller base size, tighter leading,
+   less padding, smaller gaps. Depth 'brief' now applies that too, so Brief is
+   genuinely a page rather than a shorter document.
+   ========================================================================== */
+.op-sheet[data-op-density="dense"] {
+  font-size: 11.5px;
+  line-height: 1.38;
+  padding: 20px 22px 18px;
+}
+.op-sheet[data-op-density="dense"] .op-grid { gap: 10px; }
+.op-sheet[data-op-density="dense"] .op-box { padding: 9px 11px 10px; }
+.op-sheet[data-op-density="dense"] .op-h2 { font-size: 17px; margin: 0 0 6px; }
+.op-sheet[data-op-density="dense"] .op-num { width: 16px; height: 16px; font-size: 10px; }
+.op-sheet[data-op-density="dense"] .op-h3 { font-size: 11px; margin: 6px 0 4px; }
+.op-sheet[data-op-density="dense"] .op-title { font-size: 34px; }
+.op-sheet[data-op-density="dense"] .op-tagline { font-size: 12.5px; }
+.op-sheet[data-op-density="dense"] .op-header { margin-bottom: 11px; gap: 11px; }
+.op-sheet[data-op-density="dense"] .op-logo { width: 62px; height: 62px; }
+.op-sheet[data-op-density="dense"] .op-glance { padding: 7px 9px; min-width: 190px; }
+.op-sheet[data-op-density="dense"] .op-glance-row { font-size: 10.5px; line-height: 1.5; }
+.op-sheet[data-op-density="dense"] .op-body { margin: 0 0 5px; }
+.op-sheet[data-op-density="dense"] .op-question { padding: 6px 9px; margin: 6px 0; }
+.op-sheet[data-op-density="dense"] .op-checks li { margin-bottom: 3px; gap: 5px; }
+.op-sheet[data-op-density="dense"] .op-opps li { margin-bottom: 5px; gap: 7px; }
+.op-sheet[data-op-density="dense"] .op-opps strong,
+.op-sheet[data-op-density="dense"] .op-opps span { font-size: 11px; }
+.op-sheet[data-op-density="dense"] .op-icon { width: 16px; height: 16px; }
+.op-sheet[data-op-density="dense"] .op-pie { width: 132px; height: 132px; }
+.op-sheet[data-op-density="dense"] .op-legend { font-size: 10.5px; }
+.op-sheet[data-op-density="dense"] .op-legend li { margin-bottom: 5px; }
+.op-sheet[data-op-density="dense"] .op-pool { padding: 6px 8px; font-size: 11px; min-width: 108px; }
+.op-sheet[data-op-density="dense"] .op-metrics { font-size: 11px; }
+.op-sheet[data-op-density="dense"] .op-metrics li { margin-bottom: 3px; }
+.op-sheet[data-op-density="dense"] .op-mini { padding: 6px 9px; min-width: 148px; }
+.op-sheet[data-op-density="dense"] .op-kv { font-size: 10.5px; line-height: 1.5; }
+.op-sheet[data-op-density="dense"] .op-table { font-size: 10px; }
+.op-sheet[data-op-density="dense"] .op-table th,
+.op-sheet[data-op-density="dense"] .op-table td { padding: 3px 5px; }
+.op-sheet[data-op-density="dense"] .op-case { padding: 6px 8px; font-size: 10.5px; }
+.op-sheet[data-op-density="dense"] .op-case h3 { font-size: 11px; margin-bottom: 3px; }
+.op-sheet[data-op-density="dense"] .op-chart-wrap { margin-top: 7px; }
+.op-sheet[data-op-density="dense"] .op-bottom { margin-top: 10px; padding: 6px 12px; }
+.op-sheet[data-op-density="dense"] .op-arrow-note { padding: 4px 10px; margin-top: 6px; font-size: 11px; }

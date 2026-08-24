@@ -133,7 +133,8 @@ function Icon({
     viewBox: "0 0 24 24",
     "aria-hidden": "true"
   }, /*#__PURE__*/React.createElement("path", {
-    d: d
+    d: d,
+    fill: "none"
   }));
 }
 function Section({
@@ -311,10 +312,12 @@ function EpsChart({
     filter: "url(#op-rough)"
   }, actual.length > 1 && /*#__PURE__*/React.createElement("path", {
     d: line(actual),
-    className: "op-line"
+    className: "op-line",
+    fill: "none"
   }), bridge.length > 1 && /*#__PURE__*/React.createElement("path", {
     d: line(bridge),
-    className: "op-line op-line-est"
+    className: "op-line op-line-est",
+    fill: "none"
   })), sorted.map(p => /*#__PURE__*/React.createElement("circle", {
     key: `d-${p.year}`,
     cx: sx(Number(p.year)),
@@ -381,7 +384,8 @@ export function OnePager({
   return /*#__PURE__*/React.createElement("div", {
     className: "op-sheet",
     "data-op-ticker": ticker,
-    "data-op-style": sty.key
+    "data-op-style": sty.key,
+    "data-op-density": meta.depth === 'brief' ? 'dense' : 'normal'
   }, /*#__PURE__*/React.createElement("svg", {
     className: "op-defs",
     "aria-hidden": "true"

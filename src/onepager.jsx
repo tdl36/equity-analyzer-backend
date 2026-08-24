@@ -109,7 +109,7 @@ function Icon({ name }) {
     if (!d) return <span className="op-icon-dot" aria-hidden="true">•</span>;
     return (
         <svg className="op-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <path d={d} />
+            <path d={d} fill="none" />
         </svg>
     );
 }
@@ -275,10 +275,10 @@ function EpsChart({ chart }) {
             ))}
             <g filter="url(#op-rough)">
                 {actual.length > 1 && (
-                    <path d={line(actual)} className="op-line" />
+                    <path d={line(actual)} className="op-line" fill="none" />
                 )}
                 {bridge.length > 1 && (
-                    <path d={line(bridge)} className="op-line op-line-est" />
+                    <path d={line(bridge)} className="op-line op-line-est" fill="none" />
                 )}
             </g>
             {sorted.map(p => (
@@ -353,7 +353,8 @@ export function OnePager({ data, logoUrl, style = 'notebook' }) {
     ].filter(([, v]) => v)), [glance, ticker]);
 
     return (
-        <div className="op-sheet" data-op-ticker={ticker} data-op-style={sty.key}>
+        <div className="op-sheet" data-op-ticker={ticker} data-op-style={sty.key}
+             data-op-density={meta.depth === 'brief' ? 'dense' : 'normal'}>
             {/* One turbulence filter, reused by every frame and chart stroke.
                 baseFrequency low + scale small = a pen that wobbles, not a mess. */}
             <svg className="op-defs" aria-hidden="true">
