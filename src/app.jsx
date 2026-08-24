@@ -56,8 +56,12 @@ if (typeof window !== 'undefined') {
             return true;
         };
 
-        // Build version — auto-update mechanism compares against /version endpoint
-        const BUILD_VERSION = '2026-04-24T23';
+        // Build version — compared against the worker's /version on launch.
+        // MUST match BUILD_VERSION in worker.js. When it does not, every fresh
+        // session takes the mismatch branch below: unregister service workers,
+        // delete all caches, reload once. That silently disables PWA caching, so
+        // bump this together with worker.js and service-worker.js on every deploy.
+        const BUILD_VERSION = '2026-08-23T01';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
