@@ -80,7 +80,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-08-24T08';
+        const BUILD_VERSION = '2026-08-24T09';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -2397,7 +2397,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         body: JSON.stringify({
                             ticker: t, apiKey, depth: opDepth, model: opModel,
                             documentConfig: {
-                                documents: orchDocs.filter(d => d.selected && d.inCharlie).map(d => ({ filename: d.filename })),
+                                documents: orchDocs.filter(d => d.selected)
+                                    .map(d => ({ filename: d.filename, folder: d.folder || 'main' })),
                                 existingWeight: orchExistingWeight,
                                 rebuildFromScratch: orchRebuild,
                             },
@@ -22436,13 +22437,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     <div>
                                                         <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                                                             <span className="label">
-                                                                Documents ({orchDocs.filter(d => d.selected && d.inCharlie).length}/{orchDocs.filter(d => d.inCharlie).length} usable)
+                                                                Documents ({orchDocs.filter(d => d.selected).length}/{orchDocs.length})
                                                             </span>
-                                                            <button onClick={() => setOrchDocs(ds => ds.map(d => ({ ...d, selected: d.inCharlie })))}
+                                                            <button onClick={() => setOrchDocs(ds => ds.map(d => ({ ...d, selected: true })))}
                                                                 className="text-xs text-slate-400 hover:text-white">All</button>
                                                             <button onClick={() => setOrchDocs(ds => ds.map(d => ({ ...d, selected: false })))}
                                                                 className="text-xs text-slate-400 hover:text-white">None</button>
-                                                            <button onClick={() => setOrchDocs(ds => ds.map(d => ({ ...d, selected: d.inCharlie && !d.usedInThesis })))}
+                                                            <button onClick={() => setOrchDocs(ds => ds.map(d => ({ ...d, selected: !d.usedInThesis })))}
                                                                 title="Only documents the thesis has not already absorbed"
                                                                 className="text-xs text-amber-400 hover:text-amber-300">New only</button>
                                                         </div>
@@ -22464,10 +22465,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                             return (
                                                                                 <label key={d.filename}
                                                                                     title={d.inCharlie ? d.filename
-                                                                                        : 'In iCloud but not yet uploaded to Charlie — the agent cannot read it'}
-                                                                                    className={`flex items-center gap-2 text-xs py-0.5 ${
-                                                                                        d.inCharlie ? 'text-slate-300 cursor-pointer' : 'text-slate-500 cursor-not-allowed'}`}>
-                                                                                    <input type="checkbox" checked={!!d.selected} disabled={!d.inCharlie}
+                                                                                        : 'In iCloud — the local agent will fetch it before the run'}
+                                                                                    className="flex items-center gap-2 text-xs py-0.5 text-slate-300 cursor-pointer">
+                                                                                    <input type="checkbox" checked={!!d.selected}
                                                                                         onChange={e => setOrchDocs(ds => ds.map((x, j) =>
                                                                                             j === i ? { ...x, selected: e.target.checked } : x))} />
                                                                                     <span className="truncate flex-1">{d.filename}</span>
@@ -22490,8 +22490,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         )}
                                                         {orchDocs.some(d => !d.inCharlie) && (
                                                             <p className="mt-1.5 text-[11px] text-slate-500">
-                                                                “iCloud only” files aren’t in Charlie yet, so the agent can’t read them.
-                                                                The local agent ingests them on its next pass.
+                                                                “iCloud only” files aren’t in Charlie yet — selecting one makes the run
+                                                                fetch it from your Mac first (needs the local agent running). That adds
+                                                                up to ~90s before the analysis starts.
                                                             </p>
                                                         )}
                                                     </div>

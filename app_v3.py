@@ -12665,6 +12665,28 @@ def _run_orchestrate_thesis(job_id, ticker, api_key, doc_config=None):
         chosen = doc_config.get('documents')
         if chosen:
             wanted = {d.get('filename') if isinstance(d, dict) else d for d in chosen}
+
+            # Selected files that are in iCloud but not yet ingested cannot be
+            # read by the analysis job, which only sees document_files. Ask the
+            # local agent for them rather than silently analysing without them.
+            to_fetch = [
+                {'filename': d.get('filename'), 'folder': d.get('folder') or 'main'}
+                for d in chosen
+                if isinstance(d, dict) and d.get('filename')
+                and d['filename'] not in set(all_filenames)
+            ]
+            if to_fetch:
+                _orchestrate_set(job_id, step=f'Fetching {len(to_fetch)} file(s) from iCloud...')
+                present, missing = _request_icloud_files(
+                    ticker, to_fetch, job_id=job_id,
+                    on_progress=lambda m: _orchestrate_set(job_id, step=m))
+                if missing:
+                    _orchestrate_set(job_id, icloudMissing=sorted(missing))
+                with get_db() as (_c, cur):
+                    cur.execute('SELECT filename FROM document_files WHERE ticker = %s '
+                                'ORDER BY created_at', (ticker,))
+                    all_filenames = [r['filename'] for r in (cur.fetchall() or [])]
+
             filenames = [f for f in all_filenames if f in wanted]
         else:
             filenames = list(all_filenames)
@@ -17428,6 +17450,56 @@ Return ONLY valid JSON, no markdown fencing."""
 
 _local_file_manifest = {}
 _pending_doc_upload_requests = {}  # ticker -> {'requested_at': timestamp, 'job_id': str}
+
+
+def _request_icloud_files(ticker, wanted_files, job_id=None, on_progress=None, max_wait=90):
+    """Ask the local agent to upload specific iCloud files, and wait for them.
+
+    Render cannot read iCloud, so a file the user can SEE in the picker but that
+    has not been ingested yet is unusable until the agent fetches it. This is the
+    bridge: queue the request the agent polls on /api/agent/doc-requests, then
+    wait for the rows to appear in document_files.
+
+    wanted_files: [{'filename': str, 'folder': str}] where folder is 'main', a
+    STOCKS subfolder, or 'Catalysts/<topic>'.
+
+    Returns (present, missing) as sets of filenames. Never raises — a missing
+    file should degrade the run, not abort it.
+    """
+    wanted_files = [w for w in (wanted_files or []) if w.get('filename')]
+    if not wanted_files:
+        return set(), set()
+
+    targets = {w['filename'] for w in wanted_files}
+    _pending_doc_upload_requests[ticker] = {
+        'requested_at': datetime.utcnow(),
+        'job_id': job_id or '',
+        'wantedFiles': wanted_files,
+    }
+    if on_progress:
+        on_progress(f'Fetching {len(targets)} file(s) from iCloud via the local agent...')
+
+    have = set()
+    waited = 0
+    try:
+        while waited < max_wait:
+            time.sleep(3)
+            waited += 3
+            with get_db() as (_c, cur):
+                cur.execute('SELECT filename FROM document_files WHERE ticker = %s', (ticker,))
+                have = {r['filename'] for r in (cur.fetchall() or [])}
+            if targets.issubset(have):
+                break
+    except Exception as e:
+        print(f'[icloud-fetch {ticker}] wait failed: {e}')
+    finally:
+        _pending_doc_upload_requests.pop(ticker, None)
+
+    present = targets & have
+    missing = targets - have
+    if missing:
+        print(f'[icloud-fetch {ticker}] timed out; still missing: {sorted(missing)}')
+    return present, missing
 
 # ============================================
 # LOCAL AGENT API
