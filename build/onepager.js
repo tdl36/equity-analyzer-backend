@@ -143,11 +143,13 @@ function Section({
   accent = 'green',
   className = '',
   children,
-  seed
+  seed,
+  slug
 }) {
   var tilt = jitter(seed || title, 3) * 0.25;
   return /*#__PURE__*/React.createElement("section", {
     className: `op-box op-accent-${accent} ${className}`,
+    "data-op-sec": slug,
     style: {
       transform: `rotate(${tilt}deg)`
     }
@@ -435,6 +437,7 @@ export function OnePager({
   }, /*#__PURE__*/React.createElement(Section, {
     n: "1",
     title: "Investment Thesis",
+    slug: "thesis",
     accent: "green",
     seed: ticker
   }, thesis.summary && /*#__PURE__*/React.createElement("p", {
@@ -450,6 +453,7 @@ export function OnePager({
   }, "\u2611"), /*#__PURE__*/React.createElement("span", null, p))))), /*#__PURE__*/React.createElement(Section, {
     n: "2",
     title: "Company Overview",
+    slug: "overview",
     accent: "blue",
     seed: ticker
   }, overview.summary && /*#__PURE__*/React.createElement("p", {
@@ -476,6 +480,7 @@ export function OnePager({
   }, overview.footnote)), /*#__PURE__*/React.createElement(Section, {
     n: "3",
     title: "Business Model",
+    slug: "model",
     accent: "purple",
     seed: ticker,
     className: "op-span"
@@ -492,6 +497,7 @@ export function OnePager({
   }, model.caption, " \u27F6")), /*#__PURE__*/React.createElement(Section, {
     n: "4",
     title: "Key Opportunities",
+    slug: "opportunities",
     accent: "green",
     seed: ticker
   }, /*#__PURE__*/React.createElement("ul", {
@@ -503,6 +509,7 @@ export function OnePager({
   }), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", null, o.title), o.description && /*#__PURE__*/React.createElement("span", null, o.description)))))), /*#__PURE__*/React.createElement(Section, {
     n: "5",
     title: "Financial Snapshot",
+    slug: "financial",
     accent: "orange",
     seed: ticker,
     className: "op-span"
@@ -543,6 +550,7 @@ export function OnePager({
   }, fin.note)), signposts.length > 0 && /*#__PURE__*/React.createElement(Section, {
     n: "6",
     title: "Key Signposts",
+    slug: "signposts",
     accent: "blue",
     seed: ticker,
     className: "op-span"
@@ -553,6 +561,7 @@ export function OnePager({
   }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("strong", null, s.signpost)), /*#__PURE__*/React.createElement("td", null, s.current), /*#__PURE__*/React.createElement("td", null, s.target), /*#__PURE__*/React.createElement("td", null, s.why)))))), threats.length > 0 && /*#__PURE__*/React.createElement(Section, {
     n: "7",
     title: "Thesis Threats",
+    slug: "threats",
     accent: "red",
     seed: ticker
   }, /*#__PURE__*/React.createElement("table", {
@@ -565,6 +574,7 @@ export function OnePager({
     name: t.icon
   }), /*#__PURE__*/React.createElement("strong", null, t.title)), /*#__PURE__*/React.createElement("td", null, t.watch_for)))))), /*#__PURE__*/React.createElement(Section, {
     title: "Final Takeaway",
+    slug: "takeaway",
     accent: "gold",
     seed: ticker
   }, takeaway.summary && /*#__PURE__*/React.createElement("p", {

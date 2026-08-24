@@ -114,11 +114,12 @@ function Icon({ name }) {
     );
 }
 
-function Section({ n, title, accent = 'green', className = '', children, seed }) {
+function Section({ n, title, accent = 'green', className = '', children, seed, slug }) {
     const tilt = jitter(seed || title, 3) * 0.25;
     return (
         <section
             className={`op-box op-accent-${accent} ${className}`}
+            data-op-sec={slug}
             style={{ transform: `rotate(${tilt}deg)` }}
         >
             <h2 className="op-h2">
@@ -399,7 +400,7 @@ export function OnePager({ data, logoUrl, style = 'notebook' }) {
             )}
 
             <div className="op-grid">
-                <Section n="1" title="Investment Thesis" accent="green" seed={ticker}>
+                <Section n="1" title="Investment Thesis" slug="thesis" accent="green" seed={ticker}>
                     {thesis.summary && <p className="op-body">{thesis.summary}</p>}
                     {thesis.core_question && (
                         <p className="op-question">{thesis.core_question}</p>
@@ -411,7 +412,7 @@ export function OnePager({ data, logoUrl, style = 'notebook' }) {
                     </ul>
                 </Section>
 
-                <Section n="2" title="Company Overview" accent="blue" seed={ticker}>
+                <Section n="2" title="Company Overview" slug="overview" accent="blue" seed={ticker}>
                     {overview.summary && <p className="op-body">{overview.summary}</p>}
                     {(overview.segments || []).length > 0 && (
                         <>
@@ -441,7 +442,7 @@ export function OnePager({ data, logoUrl, style = 'notebook' }) {
                     {overview.footnote && <p className="op-note">{overview.footnote}</p>}
                 </Section>
 
-                <Section n="3" title="Business Model" accent="purple" seed={ticker}
+                <Section n="3" title="Business Model" slug="model" accent="purple" seed={ticker}
                          className="op-span">
                     <div className="op-pools">
                         {(model.profit_pools || []).map((p, i, arr) => (
@@ -457,7 +458,7 @@ export function OnePager({ data, logoUrl, style = 'notebook' }) {
                     {model.caption && <p className="op-arrow-note">{model.caption} ⟶</p>}
                 </Section>
 
-                <Section n="4" title="Key Opportunities" accent="green" seed={ticker}>
+                <Section n="4" title="Key Opportunities" slug="opportunities" accent="green" seed={ticker}>
                     <ul className="op-opps">
                         {opportunities.map((o, i) => (
                             <li key={i}>
@@ -471,7 +472,7 @@ export function OnePager({ data, logoUrl, style = 'notebook' }) {
                     </ul>
                 </Section>
 
-                <Section n="5" title="Financial Snapshot" accent="orange" seed={ticker}
+                <Section n="5" title="Financial Snapshot" slug="financial" accent="orange" seed={ticker}
                          className="op-span">
                     {fin.period && <span className="op-period">{fin.period}</span>}
                     <div className="op-fin">
@@ -517,7 +518,7 @@ export function OnePager({ data, logoUrl, style = 'notebook' }) {
                 </Section>
 
                 {signposts.length > 0 && (
-                    <Section n="6" title="Key Signposts" accent="blue" seed={ticker}
+                    <Section n="6" title="Key Signposts" slug="signposts" accent="blue" seed={ticker}
                              className="op-span">
                         <table className="op-table">
                             <thead>
@@ -538,7 +539,7 @@ export function OnePager({ data, logoUrl, style = 'notebook' }) {
                 )}
 
                 {threats.length > 0 && (
-                    <Section n="7" title="Thesis Threats" accent="red" seed={ticker}>
+                    <Section n="7" title="Thesis Threats" slug="threats" accent="red" seed={ticker}>
                         <table className="op-table op-table-threats">
                             <thead><tr><th /><th>Watch For</th></tr></thead>
                             <tbody>
@@ -555,7 +556,7 @@ export function OnePager({ data, logoUrl, style = 'notebook' }) {
                     </Section>
                 )}
 
-                <Section title="Final Takeaway" accent="gold" seed={ticker}>
+                <Section title="Final Takeaway" slug="takeaway" accent="gold" seed={ticker}>
                     {takeaway.summary && <p className="op-body">{takeaway.summary}</p>}
                     <div className="op-cases">
                         <div className="op-case op-bull">

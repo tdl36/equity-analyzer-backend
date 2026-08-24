@@ -31,7 +31,7 @@ window.onerror=function(msg,url,line,col,error){var text=String(msg||'');if(BENI
 // session takes the mismatch branch below: unregister service workers,
 // delete all caches, reload once. That silently disables PWA caching, so
 // bump this together with worker.js and service-worker.js on every deploy.
-var BUILD_VERSION='2026-08-24T02';// Backend API URL — use same-origin proxy in production, direct URL for local dev
+var BUILD_VERSION='2026-08-24T03';// Backend API URL — use same-origin proxy in production, direct URL for local dev
 var _isLocalHost=window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1';// Local dev: point the frontend at the local backend on :5000 instead of prod.
 // Toggle without the console via URL:  ?local=1  (on, persists)  or  ?local=0  (off).
 // Guarded by localhost so prod is always a no-op.
