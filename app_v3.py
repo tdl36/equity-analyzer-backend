@@ -12807,6 +12807,17 @@ def _run_orchestrate_thesis(job_id, ticker, api_key, doc_config=None):
 
         _orchestrate_set(job_id, step='')
         diff = _op.diff_thesis(current, candidate)
+
+        # Sort the changes by how durable the claim being changed is, so the
+        # review starts with what actually deserves attention. Passing the
+        # existing thesis lets the classifier tell "continues a direction already
+        # there" from "new this quarter" — the distinction that catches drift.
+        if diff.get('has_changes'):
+            _orchestrate_set(job_id, step='Sorting changes by what they affect...')
+            diff = _op.classify_diff(
+                diff, call_llm, _extract_json,
+                api_keys={'anthropic': api_key}, current_analysis=current)
+        _orchestrate_set(job_id, step='')
         _orchestrate_set(job_id, stage='thesis', step='', diff=diff, candidate=candidate,
                          hasChanges=diff['has_changes'])
 

@@ -704,3 +704,152 @@ def diff_thesis(current_analysis, candidate_analysis):
         counts["added"] or counts["removed"] or counts["changed"] or out["conclusion"]["changed"]
     )
     return out
+
+
+# ---------------------------------------------------------------------------
+# change classification
+# ---------------------------------------------------------------------------
+# A thesis has layers with different half-lives. What the company does and why we
+# own it should not move on a quarterly print; near-term setup, estimates and
+# live controversies should be superseded by the newest quarter outright.
+#
+# But the boundary is not binary, and treating it as binary is worse than not
+# classifying at all. Long-term claims move precisely BECAUSE short-term readings
+# accumulate: three consecutive quarters of margin deterioration is not three
+# cyclical blips, it is evidence the structural claim about pricing discipline is
+# wrong. A rigid classifier files each quarter as "cyclical, expected" and
+# suppresses the one signal worth surfacing.
+#
+# Hence three states, not two. STRUCTURAL_CHALLENGE exists specifically for a
+# change that looks cyclical in isolation but reads as accumulating evidence
+# against something structural — it is routed to the top of the review, because
+# slow drift caught late is the expensive failure.
+
+CLASSIFY_SYSTEM = """You classify proposed changes to an equity investment thesis by how
+durable the claim being changed is. Your output decides what a busy analyst reads
+first, so precision about WHICH changes deserve attention matters more than
+tidiness.
+
+Three classes:
+
+"structural" — the slow-moving core: what the company does, how it makes money,
+  segment economics, competitive position and moat, capital allocation posture,
+  the multi-year opportunity, and the reason the position is held at all. These
+  should rarely move on a single quarter. When one does move, that is the most
+  important thing on the page.
+
+"cyclical" — the fast-moving layer: the latest quarter's results, near-term
+  setup versus consensus, current estimates, guidance for the next period, live
+  controversies, and figures carrying a period label. These are EXPECTED to change
+  every quarter and should be superseded by the newest reading rather than
+  blended with the old one.
+
+"structural_challenge" — a change that looks cyclical in isolation but reads as
+  accumulating evidence against a structural claim. Use this when a short-term
+  movement continues a direction already visible in the existing thesis, or when
+  a quarterly datapoint contradicts a stated long-term assumption rather than
+  merely updating it. Examples: a third consecutive quarter of the same margin
+  deterioration; a "temporary" competitive loss recurring in a new market; churn
+  that the thesis calls one-off appearing again.
+
+  Do NOT reserve this for dramatic changes. Its purpose is catching slow drift
+  early, when each individual quarter still looks unremarkable.
+
+Judgement rules:
+- Structural does not mean frozen. Moat erosion is structural and is exactly what
+  must be caught. Classify by WHAT is changing, never by whether the change is
+  welcome.
+- When a change is genuinely ambiguous, prefer the higher-attention class
+  (structural_challenge over cyclical, structural over structural_challenge). A
+  false alarm costs seconds; a missed structural change costs a position.
+- For "structural" and "structural_challenge" give a one-sentence `why` naming the
+  specific evidence that forced it. For "cyclical", `why` may be brief.
+
+Respond with ONLY valid JSON."""
+
+
+def build_classify_prompt(diff, current_analysis=None):
+    """Prompt for classifying the changes in a diff."""
+    items = []
+    for section in ("pillars", "signposts", "threats"):
+        sec = (diff or {}).get(section) or {}
+        for it in sec.get("added", []):
+            items.append({"id": f"{section}:added:{_label(it)}", "section": section,
+                          "kind": "added", "label": _label(it), "after": it})
+        for it in sec.get("removed", []):
+            items.append({"id": f"{section}:removed:{_label(it)}", "section": section,
+                          "kind": "removed", "label": _label(it), "before": it})
+        for ch in sec.get("changed", []):
+            items.append({"id": f"{section}:changed:{ch.get('label')}", "section": section,
+                          "kind": "changed", "label": ch.get("label"),
+                          "before": ch.get("before"), "after": ch.get("after")})
+
+    if (diff or {}).get("conclusion", {}).get("changed"):
+        items.append({"id": "conclusion:changed", "section": "conclusion", "kind": "changed",
+                      "label": "conclusion",
+                      "before": diff["conclusion"].get("before"),
+                      "after": diff["conclusion"].get("after")})
+
+    context = ""
+    if current_analysis:
+        context = (
+            "\n\nEXISTING THESIS, for judging whether a change continues a direction "
+            "already present rather than starting a new one:\n"
+            + _clean(current_analysis, 12000)
+        )
+
+    return items, (
+        "Classify each proposed change below.\n\n"
+        "CHANGES:\n" + _clean(items, 24000) + context +
+        '\n\nReturn JSON: {"classifications": [{"id": "<id verbatim>", '
+        '"layer": "structural|cyclical|structural_challenge", "why": "one sentence"}]}'
+    )
+
+
+def classify_diff(diff, call_llm, extract_json, api_keys=None, current_analysis=None,
+                  tier="standard"):
+    """Annotate a diff with a layer per change.
+
+    Returns the diff with `layers` added: {id: {layer, why}} plus counts. On any
+    failure the diff is returned unchanged — classification is a review aid, and
+    losing it must never block an approval.
+    """
+    items, user_msg = build_classify_prompt(diff, current_analysis)
+    if not items:
+        return diff
+
+    keys = api_keys or {}
+    try:
+        result = call_llm(
+            messages=[{"role": "user", "content": user_msg}],
+            system=CLASSIFY_SYSTEM, tier=tier, max_tokens=4096, timeout=180,
+            anthropic_api_key=keys.get("anthropic", ""),
+            gemini_api_key=keys.get("gemini", ""),
+            openai_api_key=keys.get("openai", ""),
+        )
+        parsed = extract_json(result["text"]) or {}
+        by_id = {c.get("id"): c for c in parsed.get("classifications", []) if c.get("id")}
+    except Exception as e:
+        print(f"[classify] failed, leaving diff unclassified: {e}")
+        return diff
+
+    valid = {"structural", "cyclical", "structural_challenge"}
+    layers, counts = {}, {"structural": 0, "cyclical": 0, "structural_challenge": 0}
+    for it in items:
+        got = by_id.get(it["id"]) or {}
+        layer = got.get("layer") if got.get("layer") in valid else "cyclical"
+        layers[it["id"]] = {
+            "layer": layer,
+            "why": got.get("why", ""),
+            "section": it["section"],
+            "kind": it["kind"],
+            "label": it["label"],
+        }
+        counts[layer] += 1
+
+    out = dict(diff)
+    out["layers"] = layers
+    out["layerCounts"] = counts
+    # What the analyst must actually read before approving.
+    out["needsReview"] = counts["structural"] + counts["structural_challenge"]
+    return out

@@ -385,3 +385,103 @@ def test_unlabelled_rows_still_pair_up():
     d = onepager.diff_thesis(cur, new)
     assert len(d["signposts"]["changed"]) == 1
     assert not d["signposts"]["added"] and not d["signposts"]["removed"]
+
+
+# --------------------------------------------------------------------------
+# change classification — what the analyst must read before approving
+# --------------------------------------------------------------------------
+
+DIFF = {
+    "pillars": {"added": [{"title": "Oak Street inflects"}], "removed": [],
+                "changed": [{"label": "HCB pricing discipline",
+                             "before": {"detail": "holds"}, "after": {"detail": "eroding"}}],
+                "unchanged": 0},
+    "signposts": {"added": [], "removed": [],
+                  "changed": [{"label": "HCB MLR", "before": {"v": "89.5%"}, "after": {"v": "91.2%"}}],
+                  "unchanged": 0},
+    "threats": {"added": [], "removed": [], "changed": [], "unchanged": 0},
+    "conclusion": {"changed": False},
+}
+
+
+def _classifier(mapping, capture=None):
+    def call_llm(*, messages, system, tier, max_tokens, timeout, **keys):
+        if capture is not None:
+            capture["system"] = system
+            capture["user"] = messages[0]["content"]
+        return {"text": json.dumps({"classifications": [
+            {"id": k, "layer": v, "why": "because"} for k, v in mapping.items()
+        ]}), "provider": "x", "model": "y", "usage": {}}
+    return call_llm
+
+
+def test_classification_groups_and_counts_layers():
+    mapping = {
+        "pillars:added:Oak Street inflects": "structural",
+        "pillars:changed:HCB pricing discipline": "structural_challenge",
+        "signposts:changed:HCB MLR": "cyclical",
+    }
+    out = onepager.classify_diff(DIFF, _classifier(mapping), json.loads)
+    assert out["layerCounts"] == {"structural": 1, "cyclical": 1, "structural_challenge": 1}
+    # needsReview is what gates a careful read: structural + challenges, not churn.
+    assert out["needsReview"] == 2
+
+
+def test_all_cyclical_run_needs_no_careful_review():
+    """The common quarterly refresh should be approvable at a glance."""
+    mapping = {k: "cyclical" for k in
+               ["pillars:added:Oak Street inflects",
+                "pillars:changed:HCB pricing discipline",
+                "signposts:changed:HCB MLR"]}
+    out = onepager.classify_diff(DIFF, _classifier(mapping), json.loads)
+    assert out["needsReview"] == 0
+
+
+def test_unknown_layer_falls_back_rather_than_dropping_the_change():
+    mapping = {"pillars:added:Oak Street inflects": "nonsense"}
+    out = onepager.classify_diff(DIFF, _classifier(mapping), json.loads)
+    # every change is still accounted for
+    assert len(out["layers"]) == 3
+    assert out["layers"]["pillars:added:Oak Street inflects"]["layer"] == "cyclical"
+
+
+def test_classifier_failure_leaves_the_diff_usable():
+    """Classification is a review aid; losing it must never block approval."""
+    def boom(**kwargs):
+        raise RuntimeError("model down")
+    out = onepager.classify_diff(DIFF, boom, json.loads)
+    assert out is DIFF
+    assert "layers" not in out
+
+
+def test_empty_diff_is_not_sent_to_the_model():
+    calls = []
+    def call_llm(**kwargs):
+        calls.append(1)
+        return {"text": "{}", "provider": "x", "model": "y", "usage": {}}
+    empty = {"pillars": {"added": [], "removed": [], "changed": [], "unchanged": 3},
+             "signposts": {"added": [], "removed": [], "changed": [], "unchanged": 2},
+             "threats": {"added": [], "removed": [], "changed": [], "unchanged": 1},
+             "conclusion": {"changed": False}}
+    onepager.classify_diff(empty, call_llm, json.loads)
+    assert calls == []
+
+
+def test_prompt_carries_the_accumulation_rule():
+    """The reason for a third state: slow drift must not read as routine churn."""
+    capture = {}
+    onepager.classify_diff(DIFF, _classifier({}, capture), json.loads)
+    assert "structural_challenge" in capture["system"]
+    assert "consecutive" in capture["system"] or "already visible" in capture["system"]
+    assert "does not mean frozen" in capture["system"]
+
+
+def test_ambiguity_resolves_toward_attention():
+    assert "prefer the higher-attention class" in onepager.CLASSIFY_SYSTEM
+
+
+def test_existing_thesis_is_given_as_context_for_direction():
+    capture = {}
+    onepager.classify_diff(DIFF, _classifier({}, capture), json.loads,
+                           current_analysis={"thesis": {"pillars": [{"title": "MLR improves"}]}})
+    assert "EXISTING THESIS" in capture["user"]

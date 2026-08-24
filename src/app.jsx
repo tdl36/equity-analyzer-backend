@@ -80,7 +80,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-08-24T11';
+        const BUILD_VERSION = '2026-08-24T12';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -22592,6 +22592,16 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 ~{orchJob.result.diff.counts.changed} reworded ·
                                                                 −{orchJob.result.diff.counts.removed} removed
                                                             </span>
+                                                            {orchJob.result.diff.layerCounts && (
+                                                                <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                                                                    orchJob.result.diff.needsReview
+                                                                        ? 'bg-amber-500/20 text-amber-300'
+                                                                        : 'bg-green-500/20 text-green-400'}`}>
+                                                                    {orchJob.result.diff.needsReview
+                                                                        ? `${orchJob.result.diff.needsReview} need a careful read`
+                                                                        : 'all cyclical — routine quarterly churn'}
+                                                                </span>
+                                                            )}
                                                             <div className="ml-auto flex gap-2">
                                                                 <button onClick={() => decideOrchestration(true)} disabled={orchBusy}
                                                                     className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:bg-neutral-700 rounded-lg text-xs font-medium">
@@ -22603,7 +22613,43 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 </button>
                                                             </div>
                                                         </div>
-                                                        {['pillars', 'signposts', 'threats'].map(section => {
+                                                        {/* Grouped by what the change affects. A routine quarterly
+                                                            refresh should be all cyclical and approvable at a glance;
+                                                            anything structural is routed to the top. */}
+                                                        {orchJob.result.diff.layers ? (() => {
+                                                            const L = orchJob.result.diff.layers;
+                                                            const groups = {
+                                                                structural_challenge: { label: 'Challenges a structural claim', tone: 'text-red-300', border: 'border-red-500/40', note: 'A short-term move that continues a direction already in the thesis — read this first.' },
+                                                                structural: { label: 'Structural', tone: 'text-amber-300', border: 'border-amber-500/40', note: 'The slow-moving core. Should rarely move on one quarter.' },
+                                                                cyclical: { label: 'Cyclical', tone: 'text-slate-300', border: 'border-white/10', note: 'Expected to change every quarter.' },
+                                                            };
+                                                            return ['structural_challenge', 'structural', 'cyclical'].map(layer => {
+                                                                const rows = Object.entries(L).filter(([, v]) => v.layer === layer);
+                                                                if (!rows.length) return null;
+                                                                const g = groups[layer];
+                                                                return (
+                                                                    <div key={layer} className={`mb-2 pl-2 border-l-2 ${g.border}`}>
+                                                                        <div className={`text-xs font-medium ${g.tone}`}>
+                                                                            {g.label} ({rows.length})
+                                                                        </div>
+                                                                        <div className="text-[10px] text-slate-500 mb-1">{g.note}</div>
+                                                                        {rows.map(([id, v]) => (
+                                                                            <div key={id} className="text-xs mb-1">
+                                                                                <span className={
+                                                                                    v.kind === 'added' ? 'text-green-400'
+                                                                                    : v.kind === 'removed' ? 'text-red-400' : 'text-amber-300'}>
+                                                                                    {v.kind === 'added' ? '+' : v.kind === 'removed' ? '−' : '~'}
+                                                                                </span>{' '}
+                                                                                <span className="text-slate-300">{v.label}</span>
+                                                                                <span className="text-slate-500"> · {v.section}</span>
+                                                                                {v.why && <div className="text-[10px] text-slate-500 ml-3">{v.why}</div>}
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                );
+                                                            });
+                                                        })() : (
+                                                        ['pillars', 'signposts', 'threats'].map(section => {
                                                             const sec = orchJob.result.diff[section];
                                                             if (!sec || (!sec.added.length && !sec.removed.length && !sec.changed.length)) return null;
                                                             const label = x => x.title || x.signpost || x.metric || x.name || JSON.stringify(x).slice(0, 70);
@@ -22615,7 +22661,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                     {sec.removed.map((x, i) => <div key={`r${i}`} className="text-xs text-red-400">− {label(x)}</div>)}
                                                                 </div>
                                                             );
-                                                        })}
+                                                        }))}
                                                     </div>
                                                 )}
                                             </div>
