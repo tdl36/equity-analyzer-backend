@@ -1,31 +1,60 @@
-.git
-.wrangler
-.claude
-.omc
-.venv
-.pytest_cache
-__pycache__
-node_modules
-src
-tests
-media_trackers
-docs
-EXAMPLE
-*.py
-*.pyc
-requirements.txt
+# Wrangler asset-upload exclusions.
+#
+# wrangler.jsonc sets assets.directory = "." so the Worker can serve index.html
+# and dist/ from the repo root. Without this file that also publishes every dev
+# script, build intermediate and tool log sitting in the repo — they were being
+# served with a 200 on the public domain.
+#
+# Backend source (*.py, .env, tests/) is already safe: the Worker proxies unknown
+# paths to Render rather than serving them. This is about everything else.
+
+# Local dev tooling
+dev/
+dev.mjs
+run-local.sh
+start_agent.sh
 build.sh
 build-frontend.sh
-tailwind.config.js
-package.json
-package-lock.json
-wrangler.jsonc
+.vscode/
+
+# Build intermediates — only dist/ is actually referenced by index.html
+build/
+
+# Frontend sources (the bundle in dist/ is what ships)
+src/
+
+# Agent / tool state and logs
+.gstack/
+.omc/
+.claude/
+
+# Python backend (never served, excluded belt-and-braces)
+tests/
+media_trackers/
+__pycache__/
+*.py
+requirements.txt
+Procfile
+pytest.ini
+gunicorn.conf.py
+
+# Caches and tool scratch dirs
+.pytest_cache/
+.wrangler/
+.venv/
+venv/
+
+# Repo metadata
+.git/
 .gitignore
 .assetsignore
+.dockerignore
 Dockerfile
-Procfile
-gunicorn.conf.py
-pytest.ini
+node_modules/
+*.md
 nohup.out
-start_agent.sh
-*_backup.*
+package.json
+package-lock.json
+tailwind.config.js
+wrangler.jsonc
+worker.js
