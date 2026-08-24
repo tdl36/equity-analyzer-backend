@@ -341,14 +341,7 @@
   .op-box { break-inside: avoid; }
 }
 
-@media (max-width: 1080px) {
-  .op-sheet { width: 100%; padding: 18px; }
-  .op-grid { grid-template-columns: 1fr; }
-  .op-header { grid-template-columns: 1fr; justify-items: center; text-align: center; }
-  .op-fin { grid-template-columns: 1fr; }
-  .op-seg-wrap { flex-direction: column; align-items: flex-start; }
-  .op-cases { grid-template-columns: 1fr; }
-}
+/* (reflow breakpoint removed — the poster scales instead, see .op-fit) */
 
 /* ============================================================================
    SEGMENT BAR — the pie's flat alternative (Tearsheet, Swiss)
@@ -749,3 +742,26 @@
 .op-sheet[data-op-style="ledger"] .op-bottom-text { background: none; text-decoration: underline; }
 .op-sheet[data-op-style="ledger"] .op-pie g,
 .op-sheet[data-op-style="ledger"] .op-chart g { filter: none !important; }
+
+/* ============================================================================
+   FIT WRAPPER — poster scaled to the space available
+   ----------------------------------------------------------------------------
+   transform does not change layout box size, so the wrapper's height is set in
+   JS to the scaled height. Without that, a 3000px sheet scaled to 0.35 would
+   still reserve 3000px and leave a huge gap under the page.
+   ========================================================================== */
+.op-fit { position: relative; width: 100%; max-width: 100%; overflow: hidden; }
+
+/* Absolutely positioned so the unscaled 1024px sheet is out of flow and can
+   never widen an ancestor. In-flow it inflated the layout viewport, so the
+   wrapper measured 500px on a 393px phone and the poster stayed clipped. */
+.op-fit-inner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+}
+
+/* No small-screen override here on purpose: overflow:hidden is what stops the
+   unscaled 1024px child from widening the wrapper, which would make clientWidth
+   report 1024 and the computed scale collapse to 1. */

@@ -12356,7 +12356,57 @@ def _onepager_research(ticker, anthropic_key='', gemini_key=''):
     return result['text']
 
 
-def _run_onepager_job(job_id, ticker, anthropic_key, gemini_key, openai_key, force_research):
+# Models offered in the one-pager picker. Anthropic-only: the assembly step is a
+# long-context compression job where model choice actually changes the output, so
+# it is worth pinning explicitly rather than hiding behind a tier.
+#
+# A pinned model that errors (retired ID, no account access) falls back to the
+# normal call_llm tier chain rather than failing the job — see _onepager_caller.
+ONEPAGER_MODELS = [
+    {'key': 'opus-4-6',  'label': 'Opus 4.6',  'model': 'claude-opus-4-6',              'note': 'Current default'},
+    {'key': 'opus-5',    'label': 'Opus 5',    'model': 'claude-opus-5',                'note': 'Latest Opus'},
+    {'key': 'sonnet-5',  'label': 'Sonnet 5',  'model': 'claude-sonnet-5',              'note': 'Faster, cheaper'},
+    {'key': 'fable-5',   'label': 'Fable 5',   'model': 'claude-fable-5',               'note': 'Most expressive'},
+    {'key': 'haiku-4-5', 'label': 'Haiku 4.5', 'model': 'claude-haiku-4-5-20251001',    'note': 'Fastest'},
+]
+ONEPAGER_MODEL_BY_KEY = {m['key']: m for m in ONEPAGER_MODELS}
+ONEPAGER_DEFAULT_MODEL = 'opus-4-6'
+
+
+def _onepager_caller(model_key, anthropic_key):
+    """Return a call_llm-compatible callable pinned to one model.
+
+    onepager.build_onepager takes call_llm as an injected dependency, so pinning
+    a model needs no change there. Falls back to the standard multi-provider tier
+    chain if the pinned model fails, so a bad model id degrades instead of
+    failing the whole job.
+    """
+    spec = ONEPAGER_MODEL_BY_KEY.get(model_key)
+    if not spec or not anthropic_key:
+        return call_llm
+
+    def pinned(*, messages, system, tier, max_tokens, timeout, **keys):
+        try:
+            return _call_anthropic(
+                messages=messages, system=system, model=spec['model'],
+                max_tokens=max_tokens, timeout=timeout, api_key=anthropic_key,
+            )
+        except Exception as e:
+            print(f"[one-pager] pinned model {spec['model']} failed ({type(e).__name__}: {e}); "
+                  f"falling back to the {tier} tier chain")
+            return call_llm(messages=messages, system=system, tier=tier,
+                            max_tokens=max_tokens, timeout=timeout, **keys)
+
+    return pinned
+
+
+@app.route('/api/onepager/models', methods=['GET'])
+def list_onepager_models():
+    """Models the one-pager picker offers, and which is default."""
+    return jsonify({'models': ONEPAGER_MODELS, 'default': ONEPAGER_DEFAULT_MODEL})
+
+
+def _run_onepager_job(job_id, ticker, anthropic_key, gemini_key, openai_key, force_research, model_key=None):
     """Background worker: assemble and persist a one-pager."""
     try:
         import onepager as _op
@@ -12368,7 +12418,7 @@ def _run_onepager_job(job_id, ticker, anthropic_key, gemini_key, openai_key, for
             ticker,
             get_db=get_db,
             parse_analysis_data=_parse_analysis_data,
-            call_llm=call_llm,
+            call_llm=_onepager_caller(model_key, anthropic_key),
             extract_json=_extract_json,
             api_keys={
                 'anthropic': anthropic_key,
@@ -12386,6 +12436,7 @@ def _run_onepager_job(job_id, ticker, anthropic_key, gemini_key, openai_key, for
             'onepager': data,
             'sources': facts.get('sources', []),
             'isDraft': facts.get('is_draft', False),
+            'model': (ONEPAGER_MODEL_BY_KEY.get(model_key) or {}).get('label'),
         })
     except Exception as e:
         print(f"One-pager job {job_id} error: {e}")
@@ -12419,7 +12470,8 @@ def generate_onepager():
         threading.Thread(
             target=_run_onepager_job,
             args=(job_id, ticker, keys['anthropic'], keys['gemini'], keys['openai'],
-                  bool(data.get('forceResearch'))),
+                  bool(data.get('forceResearch')),
+                  data.get('model') or ONEPAGER_DEFAULT_MODEL),
             daemon=True,
         ).start()
         return jsonify({'jobId': job_id}), 202

@@ -12,8 +12,15 @@
 
 import * as React from 'react';
 var {
-  useMemo
+  useMemo,
+  useRef,
+  useState,
+  useLayoutEffect
 } = React;
+
+// The sheet is authored at a fixed width so every style composes against one
+// canvas and a rasterised export is deterministic. Scaling happens outside it.
+export var SHEET_WIDTH = 1024;
 
 // ---------------------------------------------------------------------------
 // small helpers
@@ -576,8 +583,73 @@ export function OnePager({
     className: "op-bottom-label"
   }, "Bottom line:"), /*#__PURE__*/React.createElement("span", {
     className: "op-bottom-text"
-  }, takeaway.bottom_line)), meta.generated_at && /*#__PURE__*/React.createElement("p", {
-    className: "op-meta"
-  }, "Generated ", String(meta.generated_at).slice(0, 10), meta.sources?.length ? ` · sources: ${meta.sources.join(', ')}` : '', meta.model ? ` · ${meta.model}` : ''));
+  }, takeaway.bottom_line)));
+}
+
+// ---------------------------------------------------------------------------
+// OnePagerFit — the poster, scaled to whatever space it has
+// ---------------------------------------------------------------------------
+// A one-pager is a poster, not a document: it must stay ONE composition. The
+// previous mobile treatment reflowed the grid to a single column, which turned
+// an iPhone view into roughly six screens of scrolling and stopped being a
+// one-pager at all.
+//
+// Instead the sheet keeps its 1024px canvas at every viewport and is scaled
+// down to fit the available width, exactly like viewing the reference image:
+// you see the whole page, then pinch to read a section. Nothing is reflowed,
+// nothing is dropped, and the layout is identical on phone and desktop.
+//
+// The wrapper takes the scaled height so surrounding layout does not inherit
+// the unscaled 3000px — transform does not affect layout box size.
+export function OnePagerFit({
+  data,
+  style,
+  logoUrl,
+  minScale = 0.18
+}) {
+  var wrapRef = useRef(null);
+  var sheetRef = useRef(null);
+  var [scale, setScale] = useState(1);
+  var [height, setHeight] = useState(0);
+  useLayoutEffect(() => {
+    var measure = () => {
+      var avail = wrapRef.current?.clientWidth || 0;
+      if (!avail) return;
+      // Never scale up — a 1024px poster on a 1600px screen stays 1024.
+      var next = Math.max(minScale, Math.min(1, avail / SHEET_WIDTH));
+      setScale(next);
+      var natural = sheetRef.current?.offsetHeight || 0;
+      setHeight(natural * next);
+    };
+    measure();
+    var ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    if (ro && wrapRef.current) ro.observe(wrapRef.current);
+    if (ro && sheetRef.current) ro.observe(sheetRef.current);
+    window.addEventListener('resize', measure);
+    // Web fonts land after first paint and change the sheet height.
+    if (document.fonts?.ready) document.fonts.ready.then(measure).catch(() => {});
+    return () => {
+      if (ro) ro.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [data, style, minScale]);
+  return /*#__PURE__*/React.createElement("div", {
+    className: "op-fit",
+    ref: wrapRef,
+    style: {
+      height: height || undefined
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "op-fit-inner",
+    ref: sheetRef,
+    style: {
+      transform: `scale(${scale})`,
+      width: SHEET_WIDTH
+    }
+  }, /*#__PURE__*/React.createElement(OnePager, {
+    data: data,
+    style: style,
+    logoUrl: logoUrl
+  })));
 }
 export default OnePager;

@@ -7,7 +7,8 @@ import * as React from 'react';
 import * as ReactDOM from 'react-dom';
 // Extensionless on purpose: Babel leaves the specifier alone, so esbuild resolves
 // it to src/onepager.jsx in dev and build/onepager.js in the prod bundle.
-import { OnePager, ONEPAGER_STYLES } from './onepager';
+import { OnePagerFit, ONEPAGER_STYLES } from './onepager';
+import html2canvas from 'html2canvas';
 
 // Expose on window for any inline consumers (pdf.js, etc.)
 if (typeof window !== 'undefined') {
@@ -61,7 +62,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-08-23T01';
+        const BUILD_VERSION = '2026-08-23T02';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -2102,6 +2103,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [opForceResearch, setOpForceResearch] = useState(false);
             // Style is a view-time choice, not baked into the stored JSON — the
             // same page can be read as a Tearsheet and sent as a Broadsheet.
+            const [opModels, setOpModels] = useState([]);
+            const [opModel, setOpModel] = useState('opus-4-6');
+            const [opEmailing, setOpEmailing] = useState(false);
             const [opStyle, setOpStyle] = useState(() => {
                 try {
                     const saved = localStorage.getItem('charlie_onepager_style');
@@ -2139,6 +2143,77 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 loadOnePager(t);
             }, [activeTab, fmtTicker]);
 
+            // Model list is served by the backend so the two never drift.
+            useEffect(() => {
+                (async () => {
+                    try {
+                        const r = await fetch(`${API_URL}/api/onepager/models`);
+                        if (!r.ok) return;
+                        const j = await r.json();
+                        setOpModels(j.models || []);
+                        setOpModel(m => (j.models || []).some(x => x.key === m) ? m : (j.default || m));
+                    } catch (e) { /* picker just stays on its default */ }
+                })();
+            }, []);
+
+            // The app ships user-scalable=no, which is fine for the regular UI and
+            // fatal for a dense poster — on a phone the sheet is scaled to ~0.38 and
+            // unreadable without zoom. Relax the viewport only while a one-pager is
+            // on screen, and restore it on the way out.
+            useEffect(() => {
+                if (!opData) return;
+                const meta = document.querySelector('meta[name="viewport"]');
+                if (!meta) return;
+                const previous = meta.getAttribute('content');
+                meta.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes');
+                return () => meta.setAttribute('content', previous);
+            }, [opData]);
+
+            // Email: rasterise the sheet and reuse /api/email-infographic, which
+            // already handles SMTP and inline image attachments. The poster is DOM,
+            // not an image, so the capture has to happen here on the client.
+            const emailOnePager = useCallback(async () => {
+                const saved = localStorage.getItem('emailCredentials');
+                if (!saved) { alert('Set your email credentials in Settings first.'); return; }
+                const creds = JSON.parse(saved);
+                const sheet = document.querySelector('.op-sheet');
+                if (!sheet) return;
+
+                setOpEmailing(true);
+                try {
+                    // Capture the unscaled sheet: html2canvas reads the element's own
+                    // box, so the .op-fit transform does not degrade the output.
+                    const canvas = await html2canvas(sheet, {
+                        scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false,
+                        windowWidth: 1024, width: 1024,
+                    });
+                    const b64 = canvas.toDataURL('image/png').split(',')[1];
+                    const tk = opData?.ticker || opTicker;
+                    const res = await fetch(`${API_URL}/api/email-infographic`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            images: [b64],
+                            ticker: tk,
+                            email: creds.email,
+                            customSubject: `${tk} — Investment One-Pager`,
+                            smtpConfig: {
+                                use_gmail: creds.useGmail !== false,
+                                gmail_user: creds.gmailUser,
+                                gmail_app_password: creds.gmailPassword,
+                                from_email: creds.gmailUser,
+                            },
+                        }),
+                    });
+                    if (!res.ok) { const e = await res.json(); throw new Error(e.error || `HTTP ${res.status}`); }
+                    const j = await res.json();
+                    alert(j.message || 'One-pager emailed.');
+                } catch (e) {
+                    alert('Email failed: ' + (e.message || e));
+                } finally {
+                    setOpEmailing(false);
+                }
+            }, [opData, opTicker]);
+
             const generateOnePager = useCallback(async () => {
                 const t = (opTicker || fmtTicker || '').toUpperCase().trim();
                 if (!t) { setOpError('Enter a ticker first.'); return; }
@@ -2151,7 +2226,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     const res = await fetch(`${API_URL}/api/onepager/generate`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ ticker: t, forceResearch: opForceResearch }),
+                        body: JSON.stringify({ ticker: t, forceResearch: opForceResearch, model: opModel }),
                     });
                     const started = await res.json();
                     if (!res.ok) throw new Error(started.error || `HTTP ${res.status}`);
@@ -2188,7 +2263,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 } finally {
                     setOpBusy(false);
                 }
-            }, [opTicker, fmtTicker, opForceResearch]);
+            }, [opTicker, fmtTicker, opForceResearch, opModel]);
 
             const [fmtInfographicMode, setFmtInfographicMode] = useState('1');
             const [fmtInfographicDetail, setFmtInfographicDetail] = useState('full');
@@ -21756,6 +21831,18 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     ? <><div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent" /> Working…</>
                                                     : <>Research &amp; Generate</>}
                                             </button>
+                                            <select
+                                                value={opModel}
+                                                onChange={e => setOpModel(e.target.value)}
+                                                title="Model used for research and assembly"
+                                                className="px-2 py-2 bg-white/10 border border-white/15 rounded-lg text-xs focus:outline-none focus:border-amber-500"
+                                            >
+                                                {(opModels.length ? opModels : [{ key: 'opus-4-6', label: 'Opus 4.6', note: '' }]).map(m => (
+                                                    <option key={m.key} value={m.key} className="bg-neutral-900">
+                                                        {m.label}{m.note ? ` — ${m.note}` : ''}
+                                                    </option>
+                                                ))}
+                                            </select>
                                             <label className="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer">
                                                 <input type="checkbox" checked={opForceResearch}
                                                        onChange={e => setOpForceResearch(e.target.checked)} />
@@ -21763,6 +21850,12 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             </label>
                                             {opData && (
                                                 <div className="flex items-center gap-2 ml-auto">
+                                                    <button onClick={emailOnePager} disabled={opEmailing}
+                                                        className="flex items-center gap-1.5 px-3 py-2 bg-amber-600 hover:bg-amber-500 disabled:bg-neutral-700 rounded-lg text-xs font-medium">
+                                                        {opEmailing
+                                                            ? <><div className="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent" /> Sending…</>
+                                                            : <><Mail className="w-3.5 h-3.5" /> Email</>}
+                                                    </button>
                                                     <button onClick={() => window.print()}
                                                         className="flex items-center gap-1.5 px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-xs">
                                                         <Download className="w-3.5 h-3.5" /> Print / PDF
@@ -21799,7 +21892,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 ))}
                                             </div>
                                             <div className="mb-8 overflow-x-auto" ref={opSheetRef}>
-                                                <OnePager data={opData} style={opStyle} />
+                                                <OnePagerFit data={opData} style={opStyle} />
                                             </div>
                                         </>
                                     )}
