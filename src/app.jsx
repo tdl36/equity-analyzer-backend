@@ -80,7 +80,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-08-24T07';
+        const BUILD_VERSION = '2026-08-24T08';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -2355,13 +2355,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 const t = (ticker || '').toUpperCase().trim();
                 if (!t) { setOrchDocs([]); return; }
                 try {
-                    const r = await fetch(`${API_URL}/api/documents/${t}`);
-                    if (!r.ok) { setOrchDocs([]); return; }
-                    const j = await r.json();
-                    const list = Array.isArray(j) ? j : (j.documents || []);
-                    setOrchDocs(list.map(d => ({ filename: d.filename, selected: true })));
+                    // Same list the Pipeline tab shows, badges and folders included.
+                    setOrchDocs(await fetchUnifiedDocuments(t));
                 } catch (e) { setOrchDocs([]); }
-            }, []);
+            }, [fetchUnifiedDocuments]);
 
             // ---- Agent orchestrator -------------------------------------
             // One trigger that runs the thesis agent, gates on approval, then
@@ -2400,7 +2397,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         body: JSON.stringify({
                             ticker: t, apiKey, depth: opDepth, model: opModel,
                             documentConfig: {
-                                documents: orchDocs.filter(d => d.selected).map(d => ({ filename: d.filename })),
+                                documents: orchDocs.filter(d => d.selected && d.inCharlie).map(d => ({ filename: d.filename })),
                                 existingWeight: orchExistingWeight,
                                 rebuildFromScratch: orchRebuild,
                             },
@@ -7489,74 +7486,79 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 URL.revokeObjectURL(url);
             };
 
+            // Unified document list: Charlie's DB merged with the local agent's
+            // iCloud listing. Shared by the Pipeline tab and the One-Pager agent
+            // inputs so the two can never show different pictures of the same
+            // ticker — the badges and the STOCKS/Catalysts split come from here.
+            const fetchUnifiedDocuments = useCallback(async (ticker) => {
+                const [charlieRes, localRes] = await Promise.all([
+                    fetch(`${API_URL}/api/pipeline/documents/${ticker}`).catch(() => null),
+                    fetch(`${API_URL}/api/agent/local-files/${ticker}`).catch(() => null),
+                ]);
+
+                const charlieDocs = charlieRes?.ok ? (await charlieRes.json()).documents || [] : [];
+                const localFiles = localRes?.ok ? (await localRes.json()).files || [] : [];
+
+                const merged = new Map();
+                for (const d of charlieDocs) {
+                    merged.set(d.filename, {
+                        filename: d.filename,
+                        inCharlie: true,
+                        inICloud: false,
+                        usedInAnalysis: d.usedInAnalysis || false,
+                        usedInThesis: d.usedInThesis || false,
+                        usedInNote: d.usedInNote || false,
+                        source: d.source,
+                        charlieId: d.id,
+                        fileSize: d.fileSize || 0,
+                        createdAt: d.createdAt,
+                        folder: 'main',
+                        extension: '.' + (d.filename.split('.').pop() || '').toLowerCase(),
+                        selected: true,
+                    });
+                }
+
+                for (const f of localFiles) {
+                    if (f.folder === 'Prior Versions') continue;
+                    const ext = f.extension || ('.' + (f.filename.split('.').pop() || '').toLowerCase());
+                    if (!['.pdf', '.xlsx', '.xls', '.csv', '.txt'].includes(ext)) continue;
+
+                    const existing = merged.get(f.filename);
+                    if (existing) {
+                        existing.inICloud = true;
+                        existing.folder = f.folder;
+                    } else {
+                        merged.set(f.filename, {
+                            filename: f.filename,
+                            inCharlie: false,
+                            inICloud: true,
+                            usedInAnalysis: false,
+                            usedInThesis: false,
+                            usedInNote: false,
+                            source: null,
+                            charlieId: null,
+                            fileSize: f.size || 0,
+                            createdAt: f.modified,
+                            folder: f.folder || 'main',
+                            extension: ext,
+                            // Only the ticker's main folder is selected by default;
+                            // Catalysts and Processed are opt-in.
+                            selected: f.folder === 'main',
+                        });
+                    }
+                }
+
+                return Array.from(merged.values()).sort((a, b) => {
+                    if (a.folder === 'main' && b.folder !== 'main') return -1;
+                    if (a.folder !== 'main' && b.folder === 'main') return 1;
+                    return a.filename.localeCompare(b.filename);
+                });
+            }, []);
+
             const fetchPipelineDocuments = async (ticker) => {
                 setPipelineDocModalLoading(true);
                 try {
-                    // Fetch from both sources in parallel
-                    const [charlieRes, localRes] = await Promise.all([
-                        fetch(`${API_URL}/api/pipeline/documents/${ticker}`).catch(() => null),
-                        fetch(`${API_URL}/api/agent/local-files/${ticker}`).catch(() => null),
-                    ]);
-
-                    const charlieDocs = charlieRes?.ok ? (await charlieRes.json()).documents || [] : [];
-                    const localFiles = localRes?.ok ? (await localRes.json()).files || [] : [];
-
-                    // Build unified list, deduplicating by filename
-                    const merged = new Map();
-
-                    // Add Charlie docs first
-                    for (const d of charlieDocs) {
-                        merged.set(d.filename, {
-                            filename: d.filename,
-                            inCharlie: true,
-                            inICloud: false,
-                            usedInAnalysis: d.usedInAnalysis || false,
-                            usedInThesis: d.usedInThesis || false,
-                            usedInNote: d.usedInNote || false,
-                            source: d.source,
-                            charlieId: d.id,
-                            fileSize: d.fileSize || 0,
-                            createdAt: d.createdAt,
-                            folder: 'main',
-                            extension: '.' + (d.filename.split('.').pop() || '').toLowerCase(),
-                            selected: true,
-                        });
-                    }
-
-                    // Merge local files (add new ones, update existing with iCloud flag)
-                    for (const f of localFiles) {
-                        if (f.folder === 'Prior Versions') continue;
-                        const ext = f.extension || ('.' + (f.filename.split('.').pop() || '').toLowerCase());
-                        if (!['.pdf', '.xlsx', '.xls', '.csv', '.txt'].includes(ext)) continue;
-
-                        const existing = merged.get(f.filename);
-                        if (existing) {
-                            existing.inICloud = true;
-                            existing.folder = f.folder;
-                        } else {
-                            merged.set(f.filename, {
-                                filename: f.filename,
-                                inCharlie: false,
-                                inICloud: true,
-                                usedInAnalysis: false,
-                                usedInThesis: false,
-                                usedInNote: false,
-                                source: null,
-                                charlieId: null,
-                                fileSize: f.size || 0,
-                                createdAt: f.modified,
-                                folder: f.folder || 'main',
-                                extension: ext,
-                                selected: f.folder === 'main',
-                            });
-                        }
-                    }
-
-                    const docList = Array.from(merged.values()).sort((a, b) => {
-                        if (a.folder === 'main' && b.folder !== 'main') return -1;
-                        if (a.folder !== 'main' && b.folder === 'main') return 1;
-                        return a.filename.localeCompare(b.filename);
-                    });
+                    const docList = await fetchUnifiedDocuments(ticker);
 
                     // Apply existing config if any
                     const existingCfg = pipelineDocConfig[ticker]?.documents || [];
@@ -22432,31 +22434,65 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     </div>
 
                                                     <div>
-                                                        <div className="flex items-center gap-2 mb-1.5">
+                                                        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                                                             <span className="label">
-                                                                Documents ({orchDocs.filter(d => d.selected).length}/{orchDocs.length})
+                                                                Documents ({orchDocs.filter(d => d.selected && d.inCharlie).length}/{orchDocs.filter(d => d.inCharlie).length} usable)
                                                             </span>
-                                                            <button onClick={() => setOrchDocs(ds => ds.map(d => ({ ...d, selected: true })))}
+                                                            <button onClick={() => setOrchDocs(ds => ds.map(d => ({ ...d, selected: d.inCharlie })))}
                                                                 className="text-xs text-slate-400 hover:text-white">All</button>
                                                             <button onClick={() => setOrchDocs(ds => ds.map(d => ({ ...d, selected: false })))}
                                                                 className="text-xs text-slate-400 hover:text-white">None</button>
+                                                            <button onClick={() => setOrchDocs(ds => ds.map(d => ({ ...d, selected: d.inCharlie && !d.usedInThesis })))}
+                                                                title="Only documents the thesis has not already absorbed"
+                                                                className="text-xs text-amber-400 hover:text-amber-300">New only</button>
                                                         </div>
                                                         {orchDocs.length === 0 ? (
-                                                            <p className="text-xs text-slate-500">
-                                                                No documents stored for this ticker.
-                                                            </p>
+                                                            <p className="text-xs text-slate-500">No documents found for this ticker.</p>
                                                         ) : (
-                                                            <div className="max-h-40 overflow-y-auto space-y-1 pr-1">
-                                                                {orchDocs.map((d, i) => (
-                                                                    <label key={d.filename}
-                                                                        className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
-                                                                        <input type="checkbox" checked={d.selected}
-                                                                            onChange={e => setOrchDocs(ds => ds.map((x, j) =>
-                                                                                j === i ? { ...x, selected: e.target.checked } : x))} />
-                                                                        <span className="truncate">{d.filename}</span>
-                                                                    </label>
+                                                            <div className="max-h-56 overflow-y-auto pr-1 space-y-2">
+                                                                {Object.entries(orchDocs.reduce((groups, d) => {
+                                                                    const key = d.folder === 'main' ? 'STOCKS' : d.folder;
+                                                                    (groups[key] = groups[key] || []).push(d);
+                                                                    return groups;
+                                                                }, {})).map(([folder, docs]) => (
+                                                                    <div key={folder}>
+                                                                        <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">
+                                                                            {folder} ({docs.length})
+                                                                        </div>
+                                                                        {docs.map(d => {
+                                                                            const i = orchDocs.indexOf(d);
+                                                                            return (
+                                                                                <label key={d.filename}
+                                                                                    title={d.inCharlie ? d.filename
+                                                                                        : 'In iCloud but not yet uploaded to Charlie — the agent cannot read it'}
+                                                                                    className={`flex items-center gap-2 text-xs py-0.5 ${
+                                                                                        d.inCharlie ? 'text-slate-300 cursor-pointer' : 'text-slate-500 cursor-not-allowed'}`}>
+                                                                                    <input type="checkbox" checked={!!d.selected} disabled={!d.inCharlie}
+                                                                                        onChange={e => setOrchDocs(ds => ds.map((x, j) =>
+                                                                                            j === i ? { ...x, selected: e.target.checked } : x))} />
+                                                                                    <span className="truncate flex-1">{d.filename}</span>
+                                                                                    {d.usedInThesis && d.usedInNote && (
+                                                                                        <span className="text-[8px] px-1 py-0.5 rounded bg-green-500/20 text-green-400 font-medium flex-shrink-0">Thesis + Note</span>)}
+                                                                                    {d.usedInThesis && !d.usedInNote && (
+                                                                                        <span className="text-[8px] px-1 py-0.5 rounded bg-green-500/20 text-green-400 font-medium flex-shrink-0">Thesis</span>)}
+                                                                                    {!d.usedInThesis && d.usedInNote && (
+                                                                                        <span className="text-[8px] px-1 py-0.5 rounded bg-blue-500/20 text-blue-400 font-medium flex-shrink-0">Note</span>)}
+                                                                                    {d.inCharlie && !d.usedInThesis && !d.usedInNote && (
+                                                                                        <span className="text-[8px] px-1 py-0.5 rounded bg-orange-500/20 text-orange-400 font-medium flex-shrink-0">New</span>)}
+                                                                                    {!d.inCharlie && (
+                                                                                        <span className="text-[8px] px-1 py-0.5 rounded bg-slate-500/20 text-slate-400 font-medium flex-shrink-0">iCloud only</span>)}
+                                                                                </label>
+                                                                            );
+                                                                        })}
+                                                                    </div>
                                                                 ))}
                                                             </div>
+                                                        )}
+                                                        {orchDocs.some(d => !d.inCharlie) && (
+                                                            <p className="mt-1.5 text-[11px] text-slate-500">
+                                                                “iCloud only” files aren’t in Charlie yet, so the agent can’t read them.
+                                                                The local agent ingests them on its next pass.
+                                                            </p>
                                                         )}
                                                     </div>
                                                 </div>
