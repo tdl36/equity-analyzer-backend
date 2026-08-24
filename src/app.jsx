@@ -44,8 +44,26 @@ if (typeof window !== 'undefined') {
         // Safe array helper - ensures we always have an array to map over
         const safeArray = (arr) => Array.isArray(arr) ? arr.filter(item => item != null) : [];
 
+        // Errors the browser emits that are NOT application faults. Replacing the
+        // whole UI for these is far worse than ignoring them.
+        //
+        // "ResizeObserver loop ..." is the big one: it is spec-benign (the spec
+        // says the observer simply retries on the next frame) and browsers fire it
+        // spuriously on any page that resizes in response to an observation. It
+        // arrives with no stack and line/col 0. Before this guard it blanked the
+        // entire app and showed "App Error" with a useless Line: 0, Col: 0.
+        const BENIGN_ERRORS = [
+            'ResizeObserver loop limit exceeded',
+            'ResizeObserver loop completed with undelivered notifications',
+        ];
+
         // Global error handler to show errors instead of white screen
         window.onerror = function(msg, url, line, col, error) {
+            const text = String(msg || '');
+            if (BENIGN_ERRORS.some(b => text.includes(b))) {
+                console.warn('[ignored benign error]', text);
+                return true;   // handled — do not tear the app down
+            }
             const root = document.getElementById('root');
             root.innerHTML = `<div style="padding: 20px; color: #ff6b6b; background: #1a1a2e; min-height: 100vh;">
                 <h2>⚠️ App Error</h2>
@@ -62,7 +80,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-08-23T04';
+        const BUILD_VERSION = '2026-08-24T01';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -2152,8 +2170,17 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 setOpSavedLoading(true);
                 try {
                     const r = await fetch(`${API_URL}/api/onepager`);
-                    if (r.ok) setOpSaved((await r.json()).onepagers || []);
-                } catch (e) { /* the list is a convenience, not load-bearing */ }
+                    if (r.ok) {
+                        setOpSaved((await r.json()).onepagers || []);
+                    } else {
+                        // A failing list looks identical to "nothing was saved",
+                        // so say which it is rather than showing a silent blank.
+                        const e = await r.json().catch(() => ({}));
+                        setOpError(`Could not load saved one-pagers: ${e.error || `HTTP ${r.status}`}`);
+                    }
+                } catch (e) {
+                    setOpError(`Could not load saved one-pagers: ${e.message || e}`);
+                }
                 finally { setOpSavedLoading(false); }
             }, []);
 
@@ -21934,6 +21961,38 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             <span className="text-xs text-slate-400">
                                                 Enter a ticker — Charlie researches whatever it doesn’t already know.
                                             </span>
+                                        </div>
+
+                                        {/* The sidebar is md+ only, so on a phone the saved
+                                            pages would be invisible — which looked exactly like
+                                            saving was broken. Same data, reachable on mobile. */}
+                                        <div className="md:hidden mb-3">
+                                            <div className="flex items-center justify-between mb-1.5">
+                                                <span className="label">Saved ({opSaved.length})</span>
+                                                <button onClick={loadOnePagerList}
+                                                    className="text-xs text-slate-400 hover:text-white">Refresh</button>
+                                            </div>
+                                            {opSaved.length === 0 ? (
+                                                <p className="text-xs text-slate-500">
+                                                    {opSavedLoading ? 'Loading…' : 'Nothing saved yet.'}
+                                                </p>
+                                            ) : (
+                                                <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
+                                                    {opSaved.map(item => (
+                                                        <button key={item.ticker}
+                                                            onClick={() => openOnePager(item.ticker)}
+                                                            className={`flex-shrink-0 px-3 py-1.5 rounded-lg border text-xs font-mono font-bold ${
+                                                                opData?.ticker === item.ticker
+                                                                    ? 'bg-amber-500 text-slate-900 border-amber-400'
+                                                                    : 'bg-white/5 text-slate-300 border-white/10'}`}>
+                                                            {item.ticker}
+                                                            <span className="ml-1.5 font-sans font-normal opacity-70">
+                                                                {(item.depths || []).map(d => d.depth[0]).join('')}
+                                                            </span>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
 
                                         <div className="rounded-xl border border-white/10 bg-white/[0.04] p-4 mb-4">

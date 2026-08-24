@@ -602,27 +602,61 @@ export function OnePagerFit({ data, style, logoUrl, minScale = 0.18 }) {
     const [scale, setScale] = useState(1);
     const [height, setHeight] = useState(0);
 
+    // Width is the only input that should drive a re-measure. The previous
+    // version observed BOTH the wrapper (whose height it sets) and the inner
+    // sheet (whose transform it sets), so every measurement resized something
+    // being observed — the classic "ResizeObserver loop completed with
+    // undelivered notifications" warning. Benign in itself, but Charlie's global
+    // window.onerror treats any error as fatal, so it blanked the whole app.
+    const lastWidth = useRef(0);
+    const raf = useRef(0);
+
     useLayoutEffect(() => {
-        const measure = () => {
+        const apply = () => {
             const avail = wrapRef.current?.clientWidth || 0;
             if (!avail) return;
+
             // Never scale up — a 1024px poster on a 1600px screen stays 1024.
             const next = Math.max(minScale, Math.min(1, avail / SHEET_WIDTH));
-            setScale(next);
+            // offsetHeight is the pre-transform layout height, so it is stable
+            // across scale changes and cannot feed back into the observer.
             const natural = sheetRef.current?.offsetHeight || 0;
-            setHeight(natural * next);
-        };
-        measure();
 
-        const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+            setScale(prev => (Math.abs(prev - next) < 0.0005 ? prev : next));
+            setHeight(prev => {
+                const want = natural * next;
+                return Math.abs(prev - want) < 0.5 ? prev : want;
+            });
+        };
+
+        // rAF-defer so a resize notification never triggers a synchronous
+        // layout write inside the observer callback.
+        const schedule = () => {
+            cancelAnimationFrame(raf.current);
+            raf.current = requestAnimationFrame(apply);
+        };
+
+        const onResize = (entries) => {
+            const w = entries?.[0]?.contentRect?.width ?? wrapRef.current?.clientWidth ?? 0;
+            // Height changes on the observed wrapper are our own doing — ignore
+            // them. Only a real width change means the poster must rescale.
+            if (Math.abs(w - lastWidth.current) < 0.5) return;
+            lastWidth.current = w;
+            schedule();
+        };
+
+        schedule();
+
+        const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(onResize) : null;
         if (ro && wrapRef.current) ro.observe(wrapRef.current);
-        if (ro && sheetRef.current) ro.observe(sheetRef.current);
-        window.addEventListener('resize', measure);
-        // Web fonts land after first paint and change the sheet height.
-        if (document.fonts?.ready) document.fonts.ready.then(measure).catch(() => {});
+        window.addEventListener('resize', schedule);
+        // Web fonts land after first paint and change the sheet's natural height.
+        if (document.fonts?.ready) document.fonts.ready.then(schedule).catch(() => {});
+
         return () => {
+            cancelAnimationFrame(raf.current);
             if (ro) ro.disconnect();
-            window.removeEventListener('resize', measure);
+            window.removeEventListener('resize', schedule);
         };
     }, [data, style, minScale]);
 
