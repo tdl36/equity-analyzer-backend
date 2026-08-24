@@ -12765,6 +12765,47 @@ def _run_orchestrate_thesis(job_id, ticker, api_key, doc_config=None):
         if isinstance(current, str):
             current = json.loads(current)
 
+        # Stale-fact reconciliation, the same polish pass pipeline updates run.
+        # The merge prompt under heavy preservation can leave an older quarter's
+        # figures intact even when a newer source is present; this walks every
+        # numeric claim and rewrites it to the latest reading while keeping the
+        # argument structure. Runs BEFORE the diff so what you approve is what
+        # gets saved, not a version that changes again afterwards.
+        #
+        # Only meaningful when an existing thesis was being preserved and there
+        # are fresh sources to reconcile against.
+        if existing and not rebuild_from_scratch and filenames:
+            try:
+                _orchestrate_set(job_id, step='Reconciling stale facts against the new sources...')
+                with get_db() as (_c, cur):
+                    ph = ','.join(['%s'] * len(filenames))
+                    cur.execute(
+                        f'SELECT filename, file_data, file_type, mime_type FROM document_files '
+                        f'WHERE ticker = %s AND filename IN ({ph})', [ticker] + filenames)
+                    source_docs = [{
+                        'filename': r['filename'],
+                        'file_data': r.get('file_data', ''),
+                        'file_type': r.get('file_type', 'pdf'),
+                        'mime_type': r.get('mime_type', 'application/pdf'),
+                        'weight': 1.0,
+                    } for r in (cur.fetchall() or [])]
+
+                if source_docs:
+                    recon = _reconcile_stale_facts(candidate, source_docs, api_key, ticker)
+                    candidate = recon.get('updatedAnalysis') or candidate
+                    corrections = recon.get('factCorrections') or []
+                    if corrections:
+                        candidate['_factCorrections'] = corrections
+                    if recon.get('factTable'):
+                        candidate['_factTable'] = recon['factTable']
+                    # Surface the count so the approval screen can say a figure
+                    # was superseded rather than leaving it to be noticed.
+                    _orchestrate_set(job_id, factCorrections=len(corrections))
+            except Exception as recon_err:
+                # Polish only: a failed reconciliation must never lose the merge.
+                print(f'[orchestrate {job_id}] reconciliation skipped: {recon_err}')
+
+        _orchestrate_set(job_id, step='')
         diff = _op.diff_thesis(current, candidate)
         _orchestrate_set(job_id, stage='thesis', step='', diff=diff, candidate=candidate,
                          hasChanges=diff['has_changes'])

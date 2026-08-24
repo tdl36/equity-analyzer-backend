@@ -80,7 +80,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-08-24T10';
+        const BUILD_VERSION = '2026-08-24T11';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -22556,6 +22556,16 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         {orchJob.result?.diff ? '✓' : orchJob.status === 'failed' ? '✗' : '…'} Thesis agent
                                                         {orchJob.result?.step ? ` — ${orchJob.result.step}` : ''}
                                                     </div>
+                                                    {orchJob.result?.factCorrections > 0 && (
+                                                        <div className="text-amber-300">
+                                                            ↻ {orchJob.result.factCorrections} stale figure(s) superseded by the newer sources
+                                                        </div>
+                                                    )}
+                                                    {orchJob.result?.icloudMissing?.length > 0 && (
+                                                        <div className="text-red-400">
+                                                            ✗ {orchJob.result.icloudMissing.length} iCloud file(s) never arrived — analysed without them
+                                                        </div>
+                                                    )}
                                                     {orchJob.result?.onepagerStep && <div>… One-pager agent — {orchJob.result.onepagerStep}</div>}
                                                     {orchJob.result?.onepager && (
                                                         <div>{orchJob.result.onepager.ok ? '✓' : '✗'} One-pager agent
