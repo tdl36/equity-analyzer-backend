@@ -1,0 +1,407 @@
+/* ============================================================================
+   CHARLIE THEME SYSTEM — Ink · Dusk · Oak · Bloc
+   ----------------------------------------------------------------------------
+   Port of design/theme.css from charlie-workflow-packs onto Charlie's existing
+   Tailwind UI. Four aesthetics, one component set, selected by `data-theme` on
+   <html>:
+
+     <html data-theme="dusk">   ← ink | dusk | oak | bloc   (default: dusk)
+
+   HOW IT REACHES 4,000+ EXISTING UTILITY CLASSES WITHOUT TOUCHING THE JSX
+   ----------------------------------------------------------------------------
+   tailwind.config.js redefines the `slate`, `amber`/`yellow`/`brand`, `green`,
+   `emerald`, `red`, `blue` and `white` palettes as `rgb(var(--c-…) / <alpha>)`.
+   Each theme block below supplies the RGB triples, so every `text-slate-400`,
+   `bg-white/10`, `border-amber-500` in app.jsx re-skins for free — including
+   alpha modifiers, which is why the triples are bare `R G B`, not hex.
+
+   THE TWO RAMPS — read this before changing a number
+   ----------------------------------------------------------------------------
+   · `slate` is a PROMINENCE ramp, not a lightness ramp. Low number = prominent
+     text, high number = de-emphasised. It therefore runs ink → faint in every
+     theme, dark-on-light and light-on-dark alike. Two rungs are special:
+       slate-800 = --surface     (panel ground)
+       slate-900 = --on-accent   (text sitting ON an accent button; app.jsx uses
+                                  `text-slate-900` only on amber buttons)
+   · `white` is the OVERLAY/primary-contrast colour, so it inverts per theme.
+     `bg-white/10` becomes a warm light film on Dusk and a warm dark film on
+     Ink/Oak/Bloc — which is what those 1,900 glass utilities actually mean.
+     `black` is deliberately NOT remapped: it stays true black so modal scrims
+     (`bg-black/30`) keep working on light grounds.
+
+   To add a fifth theme: copy a `[data-theme="…"]` block, change the values, add
+   a button to the switcher in app.jsx. No component code changes.
+   ========================================================================== */
+
+/* ---- 1 · INK — editorial broadsheet (light) ------------------------------ */
+:root,
+[data-theme="ink"] {
+  --bg: #f4efe4; --surface: #fbf7ee; --ink: #191714; --muted: #6c6456; --faint: #8f8676;
+  --line: #d9d0bd; --line-strong: #b7ac95; --line-weight: 1.5px;
+  --accent: #7c2128; --accent-ink: #7c2128; --on-accent: #fbf7ee;
+  --shadow: none; --shadow-panel: none;
+  --font-display: "Fraunces", Georgia, serif;
+  --font-body: "Newsreader", Georgia, serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --display-weight: 600; --display-tracking: -.01em; --title-transform: none;
+  --label-transform: uppercase; --label-tracking: .14em;
+  --radius: 3px; --radius-lg: 4px; --radius-xl: 6px; --radius-2xl: 8px; --radius-3xl: 12px;
+
+  --c-white: 25 23 20;            /* overlay / primary contrast = --ink */
+  --c-slate-50: 10 9 8;
+  --c-slate-100: 18 17 14;
+  --c-slate-200: 25 23 20;        /* --ink */
+  --c-slate-300: 62 57 48;
+  --c-slate-400: 108 100 86;      /* --muted */
+  --c-slate-500: 143 134 118;     /* --faint */
+  --c-slate-600: 160 151 133;
+  --c-slate-700: 183 172 149;     /* --line-strong */
+  --c-slate-800: 251 247 238;     /* --surface */
+  --c-slate-900: 251 247 238;     /* --on-accent */
+
+  --c-accent-300: 176 88 92;
+  --c-accent-400: 150 60 66;
+  --c-accent-500: 124 33 40;      /* --accent */
+  --c-accent-600: 106 28 34;
+  --c-accent-700: 88 23 28;
+  --c-accent-800: 68 18 22;
+  --c-accent-900: 48 13 16;
+
+  --c-pos-300: 122 176 134; --c-pos-400: 80 138 96;  --c-pos-500: 47 107 61;
+  --c-pos-600: 38 88 50;    --c-pos-700: 30 70 40;
+  --c-neg-300: 190 106 100; --c-neg-400: 164 70 62;  --c-neg-500: 138 43 36;
+  --c-neg-600: 116 34 28;   --c-neg-700: 94 27 22;
+  --c-info-300: 118 152 190; --c-info-400: 70 110 156; --c-info-500: 52 85 126;
+  --c-info-600: 42 68 102;  --c-info-700: 33 54 80;
+}
+
+/* ---- 2 · DUSK — editorial, dark + brass (Charlie's default) -------------- */
+[data-theme="dusk"] {
+  --bg: #14110c; --surface: #1d1911; --ink: #ede3d0; --muted: #9c907a; --faint: #6d6353;
+  --line: #332b1f; --line-strong: #4c4030; --line-weight: 1px;
+  --accent: #c9a24a; --accent-ink: #dcb968; --on-accent: #14110c;
+  --shadow: 0 30px 70px -40px rgba(0, 0, 0, .8); --shadow-panel: var(--shadow);
+  --font-display: "Fraunces", Georgia, serif;
+  --font-body: "Newsreader", Georgia, serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --display-weight: 500; --display-tracking: -.01em; --title-transform: none;
+  --label-transform: uppercase; --label-tracking: .16em;
+  --radius: 3px; --radius-lg: 4px; --radius-xl: 6px; --radius-2xl: 8px; --radius-3xl: 12px;
+
+  --c-white: 237 227 208;         /* --ink, warm */
+  --c-slate-50: 253 250 243;
+  --c-slate-100: 245 238 224;
+  --c-slate-200: 237 227 208;     /* --ink */
+  --c-slate-300: 198 184 161;
+  --c-slate-400: 156 144 122;     /* --muted */
+  --c-slate-500: 109 99 83;       /* --faint */
+  --c-slate-600: 90 81 68;
+  --c-slate-700: 76 64 48;        /* --line-strong */
+  --c-slate-800: 29 25 17;        /* --surface */
+  --c-slate-900: 20 17 12;        /* --on-accent */
+
+  --c-accent-300: 232 205 145;
+  --c-accent-400: 220 185 104;    /* --accent-ink */
+  --c-accent-500: 201 162 74;     /* --accent */
+  --c-accent-600: 176 138 58;
+  --c-accent-700: 140 108 44;
+  --c-accent-800: 100 76 30;
+  --c-accent-900: 64 48 20;
+
+  --c-pos-300: 174 208 158; --c-pos-400: 136 180 115; --c-pos-500: 110 156 90;
+  --c-pos-600: 88 130 70;   --c-pos-700: 68 104 54;
+  --c-neg-300: 226 162 150; --c-neg-400: 207 113 96;  --c-neg-500: 184 88 72;
+  --c-neg-600: 152 68 55;   --c-neg-700: 120 52 42;
+  --c-info-300: 158 184 214; --c-info-400: 111 143 184; --c-info-500: 86 117 156;
+  --c-info-600: 66 92 124;  --c-info-700: 50 71 96;
+}
+
+/* ---- 3 · OAK — heritage parchment + slab --------------------------------- */
+[data-theme="oak"] {
+  --bg: #ece1c9; --surface: #f3e9d3; --ink: #221f18; --muted: #6a614d; --faint: #8b8064;
+  --line: #d2c4a2; --line-strong: #a89873; --line-weight: 2px;
+  --accent: #2f5d47; --accent-ink: #2f5d47; --on-accent: #f3e9d3;
+  --shadow: none; --shadow-panel: none;
+  --font-display: "Zilla Slab", Georgia, serif;
+  --font-body: "Spectral", Georgia, serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --display-weight: 600; --display-tracking: 0; --title-transform: none;
+  --label-transform: uppercase; --label-tracking: .2em;
+  --radius: 2px; --radius-lg: 2px; --radius-xl: 3px; --radius-2xl: 4px; --radius-3xl: 6px;
+
+  --c-white: 34 31 24;            /* --ink */
+  --c-slate-50: 13 12 9;
+  --c-slate-100: 26 24 18;
+  --c-slate-200: 34 31 24;        /* --ink */
+  --c-slate-300: 74 68 54;
+  --c-slate-400: 106 97 77;       /* --muted */
+  --c-slate-500: 139 128 100;     /* --faint */
+  --c-slate-600: 156 144 114;
+  --c-slate-700: 168 152 115;     /* --line-strong */
+  --c-slate-800: 243 233 211;     /* --surface */
+  --c-slate-900: 243 233 211;     /* --on-accent */
+
+  --c-accent-300: 106 150 126;
+  --c-accent-400: 66 116 92;
+  --c-accent-500: 47 93 71;       /* --accent */
+  --c-accent-600: 40 79 60;
+  --c-accent-700: 33 65 50;
+  --c-accent-800: 26 51 39;
+  --c-accent-900: 18 36 28;
+
+  --c-pos-300: 106 150 126; --c-pos-400: 66 116 92;  --c-pos-500: 47 93 71;
+  --c-pos-600: 38 76 58;    --c-pos-700: 30 60 46;
+  --c-neg-300: 190 106 100; --c-neg-400: 164 70 62;  --c-neg-500: 138 43 36;
+  --c-neg-600: 116 34 28;   --c-neg-700: 94 27 22;
+  --c-info-300: 120 154 178; --c-info-400: 74 112 140; --c-info-500: 54 90 120;
+  --c-info-600: 43 72 96;   --c-info-700: 34 57 76;
+}
+
+/* ---- 4 · BLOC — brutalist, oversized grotesk, cobalt --------------------- */
+[data-theme="bloc"] {
+  --bg: #efece2; --surface: #efece2; --ink: #0d0d0b; --muted: #54544e; --faint: #86867e;
+  --line: #0d0d0b; --line-strong: #0d0d0b; --line-weight: 2px;
+  --accent: #1f2ed6; --accent-ink: #1f2ed6; --on-accent: #ffffff;
+  --shadow: 6px 6px 0 var(--ink); --shadow-panel: var(--shadow);
+  --font-display: "Archivo Expanded", "Archivo", sans-serif;
+  --font-body: "Archivo", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --display-weight: 900; --display-tracking: -.03em; --title-transform: uppercase;
+  --label-transform: uppercase; --label-tracking: .1em;
+  --radius: 0px; --radius-lg: 0px; --radius-xl: 0px; --radius-2xl: 0px; --radius-3xl: 0px;
+
+  --c-white: 13 13 11;            /* --ink */
+  --c-slate-50: 5 5 4;
+  --c-slate-100: 9 9 8;
+  --c-slate-200: 13 13 11;        /* --ink */
+  --c-slate-300: 46 46 42;
+  --c-slate-400: 84 84 78;        /* --muted */
+  --c-slate-500: 134 134 126;     /* --faint */
+  --c-slate-600: 150 150 142;
+  --c-slate-700: 13 13 11;        /* --line-strong */
+  --c-slate-800: 239 236 226;     /* --surface */
+  --c-slate-900: 255 255 255;     /* --on-accent */
+
+  --c-accent-300: 122 132 240;
+  --c-accent-400: 74 87 226;
+  --c-accent-500: 31 46 214;      /* --accent */
+  --c-accent-600: 26 38 180;
+  --c-accent-700: 21 31 148;
+  --c-accent-800: 16 24 114;
+  --c-accent-900: 11 16 78;
+
+  --c-pos-300: 92 176 124; --c-pos-400: 40 148 78;  --c-pos-500: 18 122 60;
+  --c-pos-600: 14 98 48;   --c-pos-700: 11 78 38;
+  --c-neg-300: 234 118 128; --c-neg-400: 224 50 68; --c-neg-500: 208 2 27;
+  --c-neg-600: 170 2 22;   --c-neg-700: 134 2 17;
+  --c-info-300: 122 132 240; --c-info-400: 74 87 226; --c-info-500: 31 46 214;
+  --c-info-600: 26 38 180; --c-info-700: 21 31 148;
+}
+
+/* ---- `.paper` — opt out of theming for the light-on-white islands --------
+   The Feed tab is authored as a light surface (opaque `bg-white`,
+   `border-slate-200`, `text-slate-700`) rather than in the dark app's glass
+   idiom, so the inverted ramps above read backwards there. `.paper` restores
+   stock Tailwind values inside that subtree while letting it keep the theme's
+   accent, fonts and radii. Add it to a container, never to a leaf. */
+.paper {
+  --c-white: 255 255 255;
+  --c-slate-50: 248 250 252;
+  --c-slate-100: 241 245 249;
+  --c-slate-200: 226 232 240;
+  --c-slate-300: 203 213 225;
+  --c-slate-400: 148 163 184;
+  --c-slate-500: 100 116 139;
+  --c-slate-600: 71 85 105;
+  --c-slate-700: 51 65 85;
+  --c-slate-800: 30 41 59;
+  --c-slate-900: 15 23 42;
+}
+
+/* ============================ base ======================================== */
+html {
+  background: var(--bg);
+}
+
+body {
+  font-family: var(--font-body);
+  color: var(--ink);
+  background: var(--bg);
+  transition: background .5s ease, color .5s ease;
+}
+
+/* Atmosphere — a whisper of the accent, not a "gradient hero". Charlie paints
+   its own animated mesh behind the shell (`.glass-bg-mesh`), so this only fills
+   in for the flat themes where the mesh is switched off. */
+[data-theme="ink"] .glass-bg-mesh,
+[data-theme="oak"] .glass-bg-mesh {
+  background: var(--bg);
+  animation: none;
+}
+
+[data-theme="bloc"] .glass-bg-mesh {
+  background: var(--bg);
+  animation: none;
+}
+
+[data-theme="dusk"] .glass-bg-mesh {
+  background: linear-gradient(135deg, #14110c 0%, #1d1911 20%, #241d10 50%, #191510 80%, #14110c 100%);
+  background-size: 400% 400%;
+}
+
+/* Typography — the mono all-caps micro-label is the signature of the system,
+   so anything already marked `font-mono` inherits the theme's label tracking. */
+.label,
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: var(--label-tracking);
+  text-transform: var(--label-transform);
+  color: var(--muted);
+}
+
+/* Numbers align in columns across every theme. */
+.font-mono {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Bloc is a display face: headings go uppercase and tighten, body does not. */
+[data-theme="bloc"] h1,
+[data-theme="bloc"] h2 {
+  font-family: var(--font-display);
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
+  text-transform: var(--title-transform);
+}
+
+[data-theme="ink"] h1,
+[data-theme="dusk"] h1,
+[data-theme="oak"] h1 {
+  font-family: var(--font-display);
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
+}
+
+/* ============================ shadows ====================================
+   Charlie leans on coloured glow shadows (`shadow-lg shadow-amber-500/20`),
+   which belong to Dusk's luxe register only. Ink and Oak are flat by design;
+   Bloc trades the glow for a hard offset block. Scoped to the shadow utilities
+   so Tailwind's `--tw-shadow-color` machinery is left intact. */
+[data-theme="ink"] [class*="shadow-"],
+[data-theme="oak"] [class*="shadow-"] {
+  box-shadow: none;
+}
+
+[data-theme="bloc"] [class*="shadow-lg"],
+[data-theme="bloc"] [class*="shadow-xl"],
+[data-theme="bloc"] [class*="shadow-2xl"] {
+  box-shadow: var(--shadow);
+}
+
+[data-theme="bloc"] [class*="shadow-sm"],
+[data-theme="bloc"] [class*="shadow-md"] {
+  box-shadow: none;
+}
+
+/* Bloc draws structure with hard rules, so borders thicken across the board. */
+[data-theme="bloc"] [class*="border-white"],
+[data-theme="bloc"] [class*="border-slate"] {
+  border-color: var(--line);
+}
+
+/* ============================ text on accent =============================
+   Charlie's solid buttons mostly declare no text colour: on the dark original
+   they simply inherited light body ink over an amber ground. On Ink/Oak/Bloc
+   the accent itself is dark, so that inheritance turns into dark-on-dark. Give
+   any element with a solid accent/status ground the on-accent token instead.
+
+   Two deliberate details:
+   · `:where()` zeroes the specificity, so any explicit `text-*` utility still
+     wins — translucent chips like `bg-amber-500/20 text-amber-300` keep theirs.
+   · `[class~="…"]` matches the whole class token, so `bg-amber-500` matches but
+     `bg-amber-500/20` does not. Only opaque grounds are recoloured. */
+:where([data-theme="ink"], [data-theme="oak"], [data-theme="bloc"])
+:where(
+  [class~="bg-amber-400"], [class~="bg-amber-500"], [class~="bg-amber-600"], [class~="bg-amber-700"],
+  [class~="bg-yellow-400"], [class~="bg-yellow-500"], [class~="bg-yellow-600"],
+  [class~="bg-emerald-500"], [class~="bg-emerald-600"], [class~="bg-green-500"], [class~="bg-green-600"],
+  [class~="bg-red-500"], [class~="bg-red-600"], [class~="bg-blue-500"], [class~="bg-blue-600"],
+  [class~="bg-gradient-to-r"], [class~="bg-gradient-to-br"]
+) {
+  color: var(--on-accent);
+}
+
+/* ============================ theme switcher ============================== */
+.theme-switch {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+}
+
+/* Each chip previews its OWN theme, not the active one, so these four pairs are
+   deliberately fixed values defined once at the root and never overridden by a
+   theme block — they are the only colours in this file that must NOT follow
+   `data-theme`. Keep them in step with each block's --bg / --accent. */
+.theme-chip[data-theme-key="ink"]  { --chip-bg: #f4efe4; --chip-accent: #7c2128; }
+.theme-chip[data-theme-key="dusk"] { --chip-bg: #14110c; --chip-accent: #c9a24a; }
+.theme-chip[data-theme-key="oak"]  { --chip-bg: #ece1c9; --chip-accent: #2f5d47; }
+.theme-chip[data-theme-key="bloc"] { --chip-bg: #efece2; --chip-accent: #1f2ed6; }
+
+.theme-chip {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  padding: 0;
+  cursor: pointer;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  /* Ground on one diagonal, accent on the other — the whole palette in 18px. */
+  background: linear-gradient(135deg, var(--chip-bg) 0 50%, var(--chip-accent) 50% 100%);
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+
+.theme-chip:hover { transform: scale(1.15); }
+
+.theme-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Ring is drawn in the page ground first so it reads as a gap, then the accent. */
+.theme-chip[aria-pressed="true"] {
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--accent);
+}
+
+/* Bloc is square everywhere, chips included. */
+[data-theme="bloc"] .theme-chip {
+  border-radius: 0;
+  border-width: 2px;
+  border-color: var(--line);
+}
+
+.theme-switch-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--label-tracking);
+  text-transform: var(--label-transform);
+  color: var(--muted);
+  white-space: nowrap;
+  margin-left: 2px;
+}
+
+/* ============================ motion ===================================== */
+@keyframes theme-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Re-triggered on every theme change so a switch feels like the screen
+   "arrives" rather than flickering — see applyTheme() in app.jsx. */
+.theme-arrive {
+  animation: theme-rise .55s cubic-bezier(.2, .7, .2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-arrive { animation: none; }
+  body { transition: none; }
+}

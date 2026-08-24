@@ -11,7 +11,7 @@
 import * as esbuild from 'esbuild';
 import babel from '@babel/core';
 import { spawn } from 'node:child_process';
-import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, createReadStream } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, createReadStream, watch } from 'node:fs';
 import { join, extname, normalize } from 'node:path';
 import http from 'node:http';
 
@@ -30,10 +30,32 @@ html = html.replace('</body>',
 writeFileSync(`${OUT}/index.html`, html);
 
 // 2) Tailwind --watch -> dev/tailwind.css (regenerates when you use new classes)
-const tw = spawn('npx',
+//
+// --watch follows the `content` globs (JSX class usage) but NOT the @import graph
+// of the input file. src/tailwind-input.css imports src/theme.css, so editing a
+// theme token block would leave dev/tailwind.css stale while dev/app.js rebuilt —
+// fresh JS against old CSS, which renders themed elements unstyled and invisible.
+// Respawn the watcher on any .css source change so the import graph is re-read.
+let tw;
+const startTailwind = () => spawn('npx',
   ['tailwindcss', '-i', 'src/tailwind-input.css', '-o', `${OUT}/tailwind.css`, '--watch'],
   { stdio: 'inherit' });
-process.on('exit', () => tw.kill());
+tw = startTailwind();
+tw.on('error', e => console.log('[tailwind] SPAWN ERROR:', e.message));
+tw.on('exit', (c, sig) => console.log('[tailwind] EXITED code=' + c + ' signal=' + sig));
+
+let cssDebounce;
+watch('src', { recursive: true }, (_event, file) => {
+  if (!file || !file.endsWith('.css')) return;
+  clearTimeout(cssDebounce);
+  cssDebounce = setTimeout(() => {
+    console.log('[tailwind] css source changed — restarting watcher');
+    tw.kill();
+    tw = startTailwind();
+  }, 150);
+});
+
+process.on('exit', () => tw && tw.kill());
 
 // 3) esbuild: bundle src/app.jsx -> dev/app.js in watch mode.
 // Match prod's transform exactly (JSX classic runtime + block-scoping const/let->var,

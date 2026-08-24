@@ -1,0 +1,751 @@
+/* ============================================================================
+   INVESTMENT ONE-PAGER — hand-drawn notebook page
+   ----------------------------------------------------------------------------
+   Scoped entirely under .op-sheet and using literal colours, NOT theme tokens.
+   That is deliberate: this page gets printed, exported and emailed, so it must
+   look identical regardless of whether the viewer is on Ink, Dusk, Oak or Bloc.
+   A research page is paper.
+
+   Two tricks carry the hand-drawn feel, and they are kept apart on purpose:
+
+   · FRAMES use asymmetric border-radius (the four-corner / four-corner syntax).
+     Every box gets slightly different curvature per corner, which reads as a
+     pen that did not quite close the rectangle — while leaving text perfectly
+     crisp.
+   · SVG STROKES use the feTurbulence displacement filter defined in the
+     component. That is applied ONLY to chart and pie geometry, never to
+     anything containing text, because displacement turns type to mush.
+   ========================================================================== */
+
+.op-sheet {
+  --ink: #2f2b26;
+  --ink-soft: #5b544a;
+  --faint: #8a8175;
+  --paper: #fdfbf4;
+  --rule: #d8d0bf;
+  --green: #4f7a3a;
+  --blue: #3f6fa8;
+  --purple: #6b5b9a;
+  --orange: #c07a2c;
+  --red: #a63d33;
+  --gold: #b8912f;
+
+  width: 1024px;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 30px 34px 26px;
+  box-sizing: border-box;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Architects Daughter", "Comic Sans MS", cursive;
+  font-size: 13px;
+  line-height: 1.5;
+  /* Faint ruled-paper warmth. Kept very low contrast so it never fights text. */
+  background-image:
+    radial-gradient(circle at 12% 8%, rgba(190, 175, 145, .10), transparent 42%),
+    radial-gradient(circle at 88% 92%, rgba(190, 175, 145, .08), transparent 45%);
+}
+
+.op-defs { position: absolute; width: 0; height: 0; }
+
+/* ============================ header ==================================== */
+.op-header {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 16px;
+  align-items: start;
+  margin-bottom: 18px;
+}
+
+.op-logo {
+  width: 84px; height: 84px;
+  object-fit: contain;
+  border-radius: 10px 8px 11px 9px / 9px 11px 8px 10px;
+}
+
+.op-logo-ph {
+  display: flex; align-items: center; justify-content: center;
+  border: 2px solid var(--ink);
+  font-family: "Caveat", cursive;
+  font-size: 30px; font-weight: 700;
+  letter-spacing: .04em;
+}
+
+.op-title-wrap { text-align: center; padding-top: 4px; }
+
+.op-title {
+  font-family: "Caveat", cursive;
+  font-size: 44px;
+  font-weight: 700;
+  letter-spacing: .01em;
+  line-height: 1.05;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.op-tagline {
+  font-size: 15px;
+  color: var(--ink-soft);
+  margin: 6px 0 0;
+  /* The hand-drawn highlighter swipe under the tagline. */
+  display: inline-block;
+  padding: 0 6px 2px;
+  background: linear-gradient(transparent 68%, rgba(245, 213, 118, .75) 68%);
+}
+
+.op-glance { min-width: 216px; padding: 10px 12px; }
+.op-glance dl { margin: 0; }
+.op-glance-row { display: flex; gap: 6px; font-size: 12px; line-height: 1.7; }
+.op-glance-row dt { margin: 0; color: var(--ink-soft); }
+.op-glance-row dd { margin: 0; font-weight: 700; }
+
+.op-draft {
+  border: 1.5px dashed var(--red);
+  border-radius: 9px 6px 10px 7px / 7px 10px 6px 9px;
+  background: rgba(166, 61, 51, .07);
+  color: var(--red);
+  padding: 7px 12px;
+  margin-bottom: 14px;
+  font-size: 12.5px;
+}
+
+/* ============================ boxes ===================================== */
+.op-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.op-box {
+  border: 1.6px solid var(--ink);
+  /* Uneven corners = the pen did not quite meet itself. */
+  border-radius: 13px 8px 12px 9px / 9px 12px 8px 13px;
+  padding: 13px 15px 15px;
+  background: rgba(255, 255, 255, .5);
+  break-inside: avoid;
+}
+
+.op-span { grid-column: 1 / -1; }
+
+.op-h2 {
+  display: flex; align-items: center; gap: 8px;
+  font-family: "Caveat", cursive;
+  font-size: 22px; font-weight: 700;
+  margin: 0 0 9px;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+}
+
+.op-h2-sm { font-size: 18px; }
+
+.op-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; flex: none;
+  border: 1.6px solid currentColor;
+  border-radius: 50%;
+  font-size: 13px;
+  font-family: "Architects Daughter", cursive;
+}
+
+.op-h2-text { border-bottom: 2px solid currentColor; padding-bottom: 1px; }
+
+.op-accent-green  .op-h2 { color: var(--green); }
+.op-accent-blue   .op-h2 { color: var(--blue); }
+.op-accent-purple .op-h2 { color: var(--purple); }
+.op-accent-orange .op-h2 { color: var(--orange); }
+.op-accent-red    .op-h2 { color: var(--red); }
+.op-accent-gold   .op-h2 { color: var(--gold); }
+
+.op-h3 {
+  font-size: 12.5px;
+  font-weight: 700;
+  margin: 10px 0 6px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.op-h3 em { font-weight: 400; font-style: normal; color: var(--ink-soft); }
+
+.op-body { margin: 0 0 8px; }
+.op-note { font-size: 12px; color: var(--ink-soft); margin: 8px 0 0; }
+.op-note-box {
+  border: 1.4px solid var(--rule);
+  border-radius: 8px 6px 9px 7px / 6px 9px 7px 8px;
+  padding: 6px 10px;
+}
+.op-period { font-size: 12px; color: var(--ink-soft); }
+
+/* The core question — the spine of the page, so it gets a box of its own. */
+.op-question {
+  border: 1.5px solid var(--green);
+  border-radius: 10px 7px 11px 8px / 8px 11px 7px 10px;
+  background: rgba(79, 122, 58, .07);
+  padding: 8px 11px;
+  margin: 9px 0;
+  font-weight: 700;
+}
+
+.op-checks { list-style: none; margin: 0; padding: 0; }
+.op-checks li { display: flex; gap: 7px; margin-bottom: 6px; align-items: flex-start; }
+.op-check { flex: none; color: var(--green); font-size: 13px; line-height: 1.35; }
+
+/* ============================ segments ================================== */
+.op-seg-wrap { display: flex; gap: 12px; align-items: center; }
+.op-pie { width: 168px; height: 168px; flex: none; }
+.op-pie-label { font-family: inherit; font-size: 11px; fill: var(--ink); }
+
+.op-legend { list-style: none; margin: 0; padding: 0; font-size: 12px; }
+.op-legend li { display: flex; gap: 7px; margin-bottom: 8px; align-items: flex-start; }
+.op-legend strong { display: block; }
+.op-legend span:not(.op-swatch) { color: var(--ink-soft); }
+.op-swatch {
+  width: 12px; height: 12px; flex: none; margin-top: 3px;
+  border: 1.3px solid var(--ink);
+  border-radius: 3px 2px 3px 2px;
+}
+
+/* ============================ profit pools ============================== */
+.op-pools { display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; }
+.op-pool {
+  flex: 1 1 0; min-width: 128px;
+  border: 1.5px solid var(--purple);
+  border-radius: 10px 7px 11px 8px / 8px 11px 7px 10px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+.op-pool strong { display: block; color: var(--purple); margin-bottom: 3px; }
+.op-pool span { color: var(--ink-soft); }
+.op-plus { align-self: center; font-size: 17px; color: var(--ink-soft); }
+.op-arrow-note {
+  margin: 9px 0 0;
+  border: 1.4px solid var(--rule);
+  border-radius: 9px 6px 10px 7px / 7px 10px 6px 9px;
+  padding: 5px 12px;
+  text-align: center;
+  font-size: 12.5px;
+}
+
+/* ============================ opportunities ============================= */
+.op-opps { list-style: none; margin: 0; padding: 0; }
+.op-opps li { display: flex; gap: 9px; margin-bottom: 9px; align-items: flex-start; }
+.op-opps strong { display: block; color: var(--green); font-size: 12.5px; }
+.op-opps span { color: var(--ink-soft); font-size: 12px; }
+
+.op-icon {
+  width: 21px; height: 21px; flex: none; margin-top: 1px;
+  fill: none; stroke: var(--ink); stroke-width: 1.5;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.op-icon-dot { flex: none; width: 21px; text-align: center; }
+
+/* ============================ financials ================================ */
+.op-fin { display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: start; }
+.op-metrics { list-style: none; margin: 0; padding: 0; font-size: 12.5px; }
+.op-metrics li { margin-bottom: 5px; padding-left: 13px; position: relative; }
+.op-metrics li::before { content: "•"; position: absolute; left: 0; color: var(--faint); }
+.op-metrics em { color: var(--ink-soft); font-style: normal; }
+
+.op-targets { display: flex; flex-direction: column; gap: 9px; }
+.op-mini { padding: 8px 11px; min-width: 168px; border-width: 1.4px; }
+.op-mini .op-h3 { margin-top: 0; }
+.op-mini-hl { background: rgba(245, 213, 118, .22); }
+.op-kv { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; line-height: 1.7; }
+.op-kv span { color: var(--ink-soft); }
+
+.op-fin-main { min-width: 0; }
+.op-chart-wrap { margin-top: 12px; }
+.op-chart { width: 100%; height: auto; }
+.op-grid-line, .op-grid { stroke: var(--rule); stroke-width: 1; }
+.op-axis { font-family: inherit; font-size: 10px; fill: var(--faint); }
+.op-line { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.op-line-est { stroke: var(--green); stroke-dasharray: 5 4; }
+.op-dot { fill: var(--ink); }
+.op-dot-est { fill: var(--paper); stroke: var(--green); stroke-width: 1.6; }
+.op-marker-line { stroke: var(--faint); stroke-width: 1; stroke-dasharray: 2 2; }
+.op-marker {
+  font-family: inherit;
+  font-size: 10.5px;
+  fill: var(--ink-soft);
+  /* Halo: a residual collision stays readable instead of turning to mud. */
+  paint-order: stroke;
+  stroke: var(--paper);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+/* ============================ tables ==================================== */
+.op-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+.op-table th, .op-table td {
+  border: 1.3px solid var(--rule);
+  padding: 5px 7px;
+  text-align: left;
+  vertical-align: top;
+}
+.op-table th {
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  border-bottom-width: 1.6px;
+  border-bottom-color: var(--ink);
+}
+.op-table-threats td:first-child { width: 44%; }
+.op-threat-name { display: flex; gap: 6px; align-items: flex-start; }
+.op-threat-name strong { flex: 1; min-width: 0; }
+.op-table-threats .op-icon { width: 16px; height: 16px; }
+.op-table-threats th:last-child { color: var(--red); }
+
+/* ============================ bull / bear =============================== */
+.op-cases { display: grid; grid-template-columns: 1fr auto 1fr; gap: 9px; align-items: center; }
+.op-case {
+  border: 1.5px solid;
+  border-radius: 10px 7px 11px 8px / 8px 11px 7px 10px;
+  padding: 8px 10px;
+  font-size: 11.5px;
+}
+.op-case h3 { margin: 0 0 5px; font-size: 12.5px; }
+.op-case ul { margin: 0; padding-left: 14px; }
+.op-case li { margin-bottom: 3px; }
+.op-bull { border-color: var(--green); background: rgba(79, 122, 58, .07); }
+.op-bull h3 { color: var(--green); }
+.op-bear { border-color: var(--red); background: rgba(166, 61, 51, .07); }
+.op-bear h3 { color: var(--red); }
+.op-vs { font-family: "Caveat", cursive; font-size: 17px; color: var(--ink-soft); }
+
+/* ============================ footer ==================================== */
+.op-bottom {
+  display: flex; gap: 10px; align-items: center; justify-content: center;
+  margin-top: 16px;
+  border: 1.6px solid var(--ink);
+  border-radius: 13px 8px 12px 9px / 9px 12px 8px 13px;
+  padding: 9px 16px;
+}
+.op-bottom-label { font-weight: 700; }
+.op-bottom-text {
+  padding: 0 6px 1px;
+  background: linear-gradient(transparent 66%, rgba(245, 213, 118, .8) 66%);
+}
+
+.op-meta { text-align: center; font-size: 10.5px; color: var(--faint); margin: 9px 0 0; }
+
+/* ============================ print / export ============================ */
+/* The sheet is authored at a fixed 1024px so an html2canvas capture and a print
+   both produce the same page. Print drops the app chrome around it. */
+@media print {
+  body * { visibility: hidden; }
+  .op-sheet, .op-sheet * { visibility: visible; }
+  .op-sheet {
+    position: absolute; left: 0; top: 0;
+    width: 100%; padding: 0;
+    background: #fff;
+  }
+  .op-box { break-inside: avoid; }
+}
+
+@media (max-width: 1080px) {
+  .op-sheet { width: 100%; padding: 18px; }
+  .op-grid { grid-template-columns: 1fr; }
+  .op-header { grid-template-columns: 1fr; justify-items: center; text-align: center; }
+  .op-fin { grid-template-columns: 1fr; }
+  .op-seg-wrap { flex-direction: column; align-items: flex-start; }
+  .op-cases { grid-template-columns: 1fr; }
+}
+
+/* ============================================================================
+   SEGMENT BAR — the pie's flat alternative (Tearsheet, Swiss)
+   ========================================================================== */
+.op-segbar-wrap { width: 100%; }
+
+.op-segbar {
+  display: flex;
+  width: 100%;
+  height: 26px;
+  overflow: hidden;
+  border: 1px solid var(--ink);
+}
+
+.op-segbar-part {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  font-size: 10px;
+  letter-spacing: .04em;
+  color: var(--ink);
+  border-right: 1px solid var(--ink);
+}
+.op-segbar-part:last-child { border-right: 0; }
+.op-segbar-part span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 4px; }
+
+.op-segbar-key { list-style: none; margin: 9px 0 0; padding: 0; font-size: 11.5px; }
+.op-segbar-key li { display: flex; align-items: baseline; gap: 7px; margin-bottom: 4px; }
+.op-segbar-key b { flex: 1; font-weight: 600; }
+.op-segbar-share { color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+
+/* ============================================================================
+   STYLE 2 · TEARSHEET — mono, dense, undecorated
+   ----------------------------------------------------------------------------
+   Built for comparison across many names. Every decorative affordance from
+   Notebook is removed: no wobble, no rotation, no icons, no rounded corners,
+   no pie. Boxes become a single rule above each section, which is enough
+   separation at this density and costs no vertical space.
+   ========================================================================== */
+.op-sheet[data-op-style="tearsheet"] {
+  --ink: #14161a; --ink-soft: #4a5058; --faint: #858c96;
+  --paper: #ffffff; --rule: #d5d8dd;
+  --green: #17694a; --blue: #1d4f8f; --purple: #4a4a6a;
+  --orange: #8a5a12; --red: #a02128; --gold: #7a6320;
+  --op-seg-1: #1d4f8f; --op-seg-2: #7f96b3; --op-seg-3: #c3ccd8;
+  --op-seg-4: #5c6b7d; --op-seg-5: #9fb0c4; --op-seg-6: #e0e5eb;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  line-height: 1.42;
+  background-image: none;
+}
+.op-sheet[data-op-style="tearsheet"] .op-box {
+  border: 0;
+  border-top: 2px solid var(--ink);
+  border-radius: 0;
+  background: none;
+  padding: 8px 0 12px;
+  transform: none !important;
+}
+.op-sheet[data-op-style="tearsheet"] .op-grid { gap: 14px 26px; }
+.op-sheet[data-op-style="tearsheet"] .op-h2 {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px; font-weight: 600;
+  letter-spacing: .16em;
+}
+.op-sheet[data-op-style="tearsheet"] .op-h2-text { border-bottom: 0; }
+.op-sheet[data-op-style="tearsheet"] .op-num {
+  border-radius: 0; width: 17px; height: 17px; font-size: 10px;
+}
+.op-sheet[data-op-style="tearsheet"] .op-title {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 27px; font-weight: 600; letter-spacing: .02em;
+}
+.op-sheet[data-op-style="tearsheet"] .op-tagline { background: none; font-size: 12px; }
+.op-sheet[data-op-style="tearsheet"] .op-bottom-text { background: none; font-weight: 600; }
+.op-sheet[data-op-style="tearsheet"] .op-logo-ph { font-family: "IBM Plex Mono", monospace; font-size: 20px; border-radius: 0; }
+.op-sheet[data-op-style="tearsheet"] .op-glance { border: 0; border-top: 2px solid var(--ink); border-radius: 0; padding: 8px 0 0; }
+.op-sheet[data-op-style="tearsheet"] .op-question,
+.op-sheet[data-op-style="tearsheet"] .op-pool,
+.op-sheet[data-op-style="tearsheet"] .op-case,
+.op-sheet[data-op-style="tearsheet"] .op-mini,
+.op-sheet[data-op-style="tearsheet"] .op-note-box,
+.op-sheet[data-op-style="tearsheet"] .op-arrow-note,
+.op-sheet[data-op-style="tearsheet"] .op-bottom { border-radius: 0; }
+.op-sheet[data-op-style="tearsheet"] .op-question { background: #f4f6f8; border-width: 0 0 0 3px; }
+.op-sheet[data-op-style="tearsheet"] .op-table { font-size: 10.5px; }
+.op-sheet[data-op-style="tearsheet"] .op-table th,
+.op-sheet[data-op-style="tearsheet"] .op-table td { padding: 4px 6px; }
+.op-sheet[data-op-style="tearsheet"] .op-metrics,
+.op-sheet[data-op-style="tearsheet"] .op-kv,
+.op-sheet[data-op-style="tearsheet"] .op-table { font-variant-numeric: tabular-nums; }
+.op-sheet[data-op-style="tearsheet"] .op-pie g,
+.op-sheet[data-op-style="tearsheet"] .op-chart g { filter: none !important; }
+
+/* ============================================================================
+   STYLE 3 · BROADSHEET — serif editorial, rules not boxes
+   ----------------------------------------------------------------------------
+   The version you send to someone who will actually read the argument. Frames
+   dissolve into hairlines, prose gets a drop cap and column flow, and the whole
+   page reads top-to-bottom like a research note rather than a dashboard.
+   ========================================================================== */
+.op-sheet[data-op-style="broadsheet"] {
+  --ink: #191714; --ink-soft: #5c554a; --faint: #8f8676;
+  --paper: #fbf9f4; --rule: #d9d0bd;
+  --green: #2f6b3d; --blue: #34557e; --purple: #5b4a7c;
+  --orange: #9a6a1a; --red: #7c2128; --gold: #8a6a1f;
+  --op-seg-1: #7c2128; --op-seg-2: #b0787c; --op-seg-3: #d9c3b0;
+  --op-seg-4: #6a6055; --op-seg-5: #a89c8c; --op-seg-6: #e2d8c8;
+  font-family: "Newsreader", Georgia, serif;
+  font-size: 14px;
+  line-height: 1.6;
+  background-image: none;
+}
+.op-sheet[data-op-style="broadsheet"] .op-box {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  border-radius: 0;
+  background: none;
+  padding: 12px 0 16px;
+  transform: none !important;
+}
+.op-sheet[data-op-style="broadsheet"] .op-grid { gap: 6px 34px; }
+.op-sheet[data-op-style="broadsheet"] .op-title {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 48px; font-weight: 600; text-transform: none;
+}
+.op-sheet[data-op-style="broadsheet"] .op-h2 {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 20px; font-weight: 600; text-transform: none; letter-spacing: 0;
+}
+.op-sheet[data-op-style="broadsheet"] .op-h2-text { border-bottom: 0; }
+.op-sheet[data-op-style="broadsheet"] .op-num { border-radius: 50%; font-family: "Fraunces", serif; }
+.op-sheet[data-op-style="broadsheet"] .op-logo-ph { font-family: "Fraunces", serif; }
+.op-sheet[data-op-style="broadsheet"] .op-glance {
+  border: 0; border-top: 3px double var(--ink); border-radius: 0; padding: 9px 0 0;
+}
+/* Drop cap on the thesis — the one place a reader enters the page. */
+.op-sheet[data-op-style="broadsheet"] .op-accent-green .op-body:first-of-type::first-letter {
+  float: left;
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 46px;
+  line-height: .82;
+  padding: 4px 7px 0 0;
+  color: var(--red);
+}
+.op-sheet[data-op-style="broadsheet"] .op-question {
+  border: 0; border-left: 3px solid var(--red); border-radius: 0;
+  background: none; font-style: italic; font-weight: 400; font-size: 16px;
+}
+.op-sheet[data-op-style="broadsheet"] .op-pool,
+.op-sheet[data-op-style="broadsheet"] .op-case,
+.op-sheet[data-op-style="broadsheet"] .op-mini,
+.op-sheet[data-op-style="broadsheet"] .op-note-box,
+.op-sheet[data-op-style="broadsheet"] .op-arrow-note {
+  border-radius: 0; border-width: 1px; background: none;
+}
+.op-sheet[data-op-style="broadsheet"] .op-bottom {
+  border: 0; border-top: 3px double var(--ink); border-radius: 0;
+}
+.op-sheet[data-op-style="broadsheet"] .op-bottom-text { background: none; font-style: italic; }
+.op-sheet[data-op-style="broadsheet"] .op-tagline { background: none; font-style: italic; font-size: 17px; }
+.op-sheet[data-op-style="broadsheet"] .op-table th { border-bottom: 2px solid var(--ink); }
+.op-sheet[data-op-style="broadsheet"] .op-pie g,
+.op-sheet[data-op-style="broadsheet"] .op-chart g { filter: none !important; }
+
+/* ============================================================================
+   STYLE 4 · SWISS — grid, oversized numerals, one accent
+   ----------------------------------------------------------------------------
+   International Typographic Style. No borders anywhere: separation comes from
+   flat grey blocks and whitespace. Numbers are the loudest thing on the page,
+   labels shrink to tiny uppercase, and exactly one accent (red) is permitted.
+   ========================================================================== */
+.op-sheet[data-op-style="swiss"] {
+  --ink: #111111; --ink-soft: #55585c; --faint: #8b8f94;
+  --paper: #ffffff; --rule: #e3e3e1;
+  --green: #111111; --blue: #111111; --purple: #111111;
+  --orange: #111111; --red: #e4002b; --gold: #111111;
+  --op-seg-1: #e4002b; --op-seg-2: #111111; --op-seg-3: #9a9a98;
+  --op-seg-4: #cfcfcd; --op-seg-5: #6a6a68; --op-seg-6: #e8e8e6;
+  font-family: "Archivo", Helvetica, Arial, sans-serif;
+  font-size: 12.5px;
+  line-height: 1.5;
+  background-image: none;
+}
+.op-sheet[data-op-style="swiss"] .op-box {
+  border: 0; border-radius: 0;
+  background: #f4f4f2;
+  padding: 16px 18px 18px;
+  transform: none !important;
+}
+.op-sheet[data-op-style="swiss"] .op-grid { gap: 10px; }
+.op-sheet[data-op-style="swiss"] .op-title {
+  font-family: "Archivo", Helvetica, sans-serif;
+  font-size: 40px; font-weight: 800; letter-spacing: -.02em; text-transform: none;
+}
+.op-sheet[data-op-style="swiss"] .op-h2 {
+  font-family: "Archivo", Helvetica, sans-serif;
+  font-size: 10.5px; font-weight: 700;
+  letter-spacing: .18em; text-transform: uppercase;
+  color: var(--ink) !important;
+}
+.op-sheet[data-op-style="swiss"] .op-h2-text { border-bottom: 0; }
+.op-sheet[data-op-style="swiss"] .op-num {
+  border: 0; background: var(--red); color: #fff;
+  border-radius: 0; width: 16px; height: 16px; font-size: 10px; font-weight: 700;
+}
+.op-sheet[data-op-style="swiss"] .op-logo-ph {
+  border-radius: 0; border-width: 0; background: var(--red); color: #fff;
+  font-family: "Archivo", sans-serif; font-size: 26px; font-weight: 800;
+}
+.op-sheet[data-op-style="swiss"] .op-glance { background: #f4f4f2; border: 0; border-radius: 0; padding: 14px 16px; }
+.op-sheet[data-op-style="swiss"] .op-tagline { background: none; font-weight: 500; }
+/* Numbers carry the page. */
+.op-sheet[data-op-style="swiss"] .op-kv b {
+  font-size: 19px; font-weight: 800; letter-spacing: -.02em;
+}
+.op-sheet[data-op-style="swiss"] .op-kv { align-items: baseline; padding: 3px 0; }
+.op-sheet[data-op-style="swiss"] .op-kv span {
+  font-size: 9.5px; text-transform: uppercase; letter-spacing: .12em;
+}
+.op-sheet[data-op-style="swiss"] .op-h3 {
+  font-size: 9.5px; letter-spacing: .16em; text-transform: uppercase;
+  text-decoration: none; color: var(--ink-soft);
+}
+.op-sheet[data-op-style="swiss"] .op-question {
+  border: 0; border-radius: 0; background: var(--red); color: #fff;
+  padding: 14px 16px; font-size: 16px; font-weight: 700; letter-spacing: -.01em;
+}
+.op-sheet[data-op-style="swiss"] .op-pool,
+.op-sheet[data-op-style="swiss"] .op-case,
+.op-sheet[data-op-style="swiss"] .op-mini,
+.op-sheet[data-op-style="swiss"] .op-note-box,
+.op-sheet[data-op-style="swiss"] .op-arrow-note,
+.op-sheet[data-op-style="swiss"] .op-bottom {
+  border: 0; border-radius: 0; background: #eaeae8;
+}
+.op-sheet[data-op-style="swiss"] .op-mini-hl { background: #fde5e9; }
+.op-sheet[data-op-style="swiss"] .op-bull { background: #eaeae8; }
+.op-sheet[data-op-style="swiss"] .op-bear { background: #fde5e9; }
+.op-sheet[data-op-style="swiss"] .op-bottom-text { background: none; font-weight: 700; }
+.op-sheet[data-op-style="swiss"] .op-table th,
+.op-sheet[data-op-style="swiss"] .op-table td { border: 0; border-bottom: 1px solid var(--rule); }
+.op-sheet[data-op-style="swiss"] .op-table th {
+  font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase;
+  text-decoration: none; border-bottom: 2px solid var(--ink);
+}
+.op-sheet[data-op-style="swiss"] .op-check { color: var(--red); }
+.op-sheet[data-op-style="swiss"] .op-pie g,
+.op-sheet[data-op-style="swiss"] .op-chart g { filter: none !important; }
+.op-sheet[data-op-style="swiss"] .op-segbar { border: 0; height: 30px; }
+.op-sheet[data-op-style="swiss"] .op-segbar-part { border-right: 2px solid #fff; color: #fff; font-weight: 700; }
+
+/* ============================================================================
+   STYLE 5 · DECK — dark, oversized, single column
+   ----------------------------------------------------------------------------
+   For showing on a screen in a room. Type scales up roughly 30%, the grid drops
+   to one column so nothing is half-width, and the core question becomes the
+   hero. Nothing is truncated — the page simply gets longer, which is the right
+   trade when you are scrolling through it live rather than printing it.
+   ========================================================================== */
+.op-sheet[data-op-style="deck"] {
+  --ink: #f0ece3; --ink-soft: #a49b8a; --faint: #7b7365;
+  --paper: #14120f; --rule: #34302a;
+  --green: #8fbc6d; --blue: #7fa8d8; --purple: #b09ade;
+  --orange: #e0a458; --red: #e0705e; --gold: #d9b061;
+  --op-seg-1: #d9b061; --op-seg-2: #7fa8d8; --op-seg-3: #8fbc6d;
+  --op-seg-4: #b09ade; --op-seg-5: #e0a458; --op-seg-6: #7fcdc0;
+  font-family: "Archivo", Helvetica, sans-serif;
+  font-size: 16px;
+  line-height: 1.55;
+  background-image: none;
+}
+.op-sheet[data-op-style="deck"] .op-grid { grid-template-columns: 1fr; gap: 18px; }
+.op-sheet[data-op-style="deck"] .op-box {
+  border: 1px solid rgba(240, 236, 227, .16);
+  border-radius: 6px;
+  background: rgba(240, 236, 227, .035);
+  padding: 20px 22px;
+  transform: none !important;
+}
+.op-sheet[data-op-style="deck"] .op-title {
+  font-family: "Archivo", Helvetica, sans-serif;
+  font-size: 52px; font-weight: 800; letter-spacing: -.025em; text-transform: none;
+}
+.op-sheet[data-op-style="deck"] .op-tagline { background: none; font-size: 20px; color: var(--ink-soft); }
+.op-sheet[data-op-style="deck"] .op-h2 {
+  font-family: "Archivo", Helvetica, sans-serif;
+  font-size: 15px; font-weight: 700; letter-spacing: .14em;
+}
+.op-sheet[data-op-style="deck"] .op-h2-text { border-bottom: 0; }
+.op-sheet[data-op-style="deck"] .op-num { width: 24px; height: 24px; font-size: 13px; font-weight: 700; }
+.op-sheet[data-op-style="deck"] .op-logo-ph {
+  font-family: "Archivo", sans-serif; font-weight: 800; border-radius: 6px;
+}
+.op-sheet[data-op-style="deck"] .op-glance {
+  border-radius: 6px; background: rgba(240, 236, 227, .035); font-size: 14px;
+}
+.op-sheet[data-op-style="deck"] .op-glance-row { font-size: 14px; }
+/* The core question is the slide. */
+.op-sheet[data-op-style="deck"] .op-question {
+  border: 0; border-left: 4px solid var(--gold); border-radius: 0;
+  background: rgba(217, 176, 97, .1);
+  font-size: 22px; line-height: 1.35; padding: 16px 20px;
+}
+.op-sheet[data-op-style="deck"] .op-kv b { font-size: 20px; font-weight: 700; }
+.op-sheet[data-op-style="deck"] .op-kv,
+.op-sheet[data-op-style="deck"] .op-metrics,
+.op-sheet[data-op-style="deck"] .op-legend { font-size: 15px; }
+.op-sheet[data-op-style="deck"] .op-table { font-size: 14px; }
+.op-sheet[data-op-style="deck"] .op-table th,
+.op-sheet[data-op-style="deck"] .op-table td { padding: 9px 11px; border-color: var(--rule); }
+.op-sheet[data-op-style="deck"] .op-case { font-size: 14.5px; border-radius: 6px; }
+.op-sheet[data-op-style="deck"] .op-bull { background: rgba(143, 188, 109, .1); }
+.op-sheet[data-op-style="deck"] .op-bear { background: rgba(224, 112, 94, .1); }
+.op-sheet[data-op-style="deck"] .op-mini,
+.op-sheet[data-op-style="deck"] .op-pool,
+.op-sheet[data-op-style="deck"] .op-note-box,
+.op-sheet[data-op-style="deck"] .op-arrow-note { border-radius: 6px; border-color: var(--rule); }
+.op-sheet[data-op-style="deck"] .op-mini-hl { background: rgba(217, 176, 97, .12); }
+.op-sheet[data-op-style="deck"] .op-bottom {
+  border-radius: 6px; border-color: var(--rule); font-size: 18px;
+}
+.op-sheet[data-op-style="deck"] .op-bottom-text { background: none; color: var(--gold); }
+.op-sheet[data-op-style="deck"] .op-pie g,
+.op-sheet[data-op-style="deck"] .op-chart g { filter: none !important; }
+.op-sheet[data-op-style="deck"] .op-dot-est { fill: var(--paper); }
+.op-sheet[data-op-style="deck"] .op-icon { stroke: var(--gold); }
+.op-sheet[data-op-style="deck"] .op-fin { grid-template-columns: 1fr auto; }
+
+/* ============================================================================
+   STYLE 6 · LEDGER — parchment, slab serif, fully ruled
+   ----------------------------------------------------------------------------
+   The annual-report register: square corners, double rules under headings, and
+   tables ruled on every side rather than hairlined. Warm where Swiss is
+   clinical, so the two never read as the same document.
+   ========================================================================== */
+.op-sheet[data-op-style="ledger"] {
+  --ink: #221f18; --ink-soft: #5f5745; --faint: #8b8064;
+  --paper: #ece1c9; --rule: #b9a882;
+  --green: #2f5d47; --blue: #365a78; --purple: #5a4a72;
+  --orange: #94670f; --red: #8a2b24; --gold: #7d6320;
+  --op-seg-1: #2f5d47; --op-seg-2: #8aa894; --op-seg-3: #d2c4a2;
+  --op-seg-4: #94670f; --op-seg-5: #c0a878; --op-seg-6: #e0d5bb;
+  font-family: "Spectral", Georgia, serif;
+  font-size: 13px;
+  line-height: 1.55;
+  background-image: none;
+}
+.op-sheet[data-op-style="ledger"] .op-box {
+  border: 1.5px solid var(--ink);
+  border-radius: 0;
+  background: #f3e9d3;
+  padding: 13px 15px 15px;
+  transform: none !important;
+}
+.op-sheet[data-op-style="ledger"] .op-title {
+  font-family: "Zilla Slab", Georgia, serif;
+  font-size: 42px; font-weight: 700; letter-spacing: 0;
+}
+.op-sheet[data-op-style="ledger"] .op-h2 {
+  font-family: "Zilla Slab", Georgia, serif;
+  font-size: 19px; font-weight: 600; letter-spacing: .06em;
+}
+.op-sheet[data-op-style="ledger"] .op-h2-text {
+  border-bottom: 4px double currentColor; padding-bottom: 2px;
+}
+.op-sheet[data-op-style="ledger"] .op-num { border-radius: 0; font-family: "Zilla Slab", serif; }
+.op-sheet[data-op-style="ledger"] .op-logo-ph { border-radius: 0; font-family: "Zilla Slab", serif; }
+.op-sheet[data-op-style="ledger"] .op-glance {
+  border-radius: 0; border-width: 1.5px; background: #f3e9d3;
+}
+.op-sheet[data-op-style="ledger"] .op-tagline {
+  background: none; font-style: italic; border-bottom: 1px solid var(--rule);
+}
+.op-sheet[data-op-style="ledger"] .op-question,
+.op-sheet[data-op-style="ledger"] .op-pool,
+.op-sheet[data-op-style="ledger"] .op-case,
+.op-sheet[data-op-style="ledger"] .op-mini,
+.op-sheet[data-op-style="ledger"] .op-note-box,
+.op-sheet[data-op-style="ledger"] .op-arrow-note,
+.op-sheet[data-op-style="ledger"] .op-bottom { border-radius: 0; }
+/* Ruled on every side, like a printed accounts table. */
+.op-sheet[data-op-style="ledger"] .op-table th,
+.op-sheet[data-op-style="ledger"] .op-table td {
+  border: 1px solid var(--rule);
+}
+.op-sheet[data-op-style="ledger"] .op-table th {
+  border-bottom: 3px double var(--ink);
+  text-decoration: none;
+  font-family: "Zilla Slab", serif;
+  letter-spacing: .06em;
+}
+.op-sheet[data-op-style="ledger"] .op-h3 {
+  font-family: "Zilla Slab", serif; text-decoration: none;
+  border-bottom: 1px solid var(--rule); padding-bottom: 2px;
+}
+.op-sheet[data-op-style="ledger"] .op-bottom-text { background: none; text-decoration: underline; }
+.op-sheet[data-op-style="ledger"] .op-pie g,
+.op-sheet[data-op-style="ledger"] .op-chart g { filter: none !important; }

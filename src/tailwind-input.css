@@ -1,3 +1,8 @@
+/* Theme tokens must come first: @import has to precede the @tailwind
+   directives, and the token blocks define the vars the palette reads. */
+@import "./theme.css";
+@import "./onepager.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

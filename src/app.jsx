@@ -5,6 +5,9 @@
 // calls inside the main app body continue to work unchanged.
 import * as React from 'react';
 import * as ReactDOM from 'react-dom';
+// Extensionless on purpose: Babel leaves the specifier alone, so esbuild resolves
+// it to src/onepager.jsx in dev and build/onepager.js in the prod bundle.
+import { OnePager, ONEPAGER_STYLES } from './onepager';
 
 // Expose on window for any inline consumers (pdf.js, etc.)
 if (typeof window !== 'undefined') {
@@ -77,6 +80,101 @@ if (typeof window !== 'undefined') {
         const DIRECT_API_URL = _useLocalBackend
             ? 'http://127.0.0.1:5000'
             : 'https://equity-analyzer-backend.onrender.com';
+
+        // ==== Theme system — Ink · Dusk · Oak · Bloc ==========================
+        // The look lives entirely in CSS custom properties (src/theme.css) that
+        // Tailwind's palette reads through, so switching themes is one attribute
+        // on <html>. Nothing here touches component markup.
+        //
+        // `ground` must stay in sync with each block's --bg: it paints the
+        // <html> element and the PWA status bar before the stylesheet resolves.
+        // The pre-paint copy of this map lives inline in index.html — update both.
+        const THEMES = [
+            { key: 'ink',  label: 'Ink',  ground: '#f4efe4' },
+            { key: 'dusk', label: 'Dusk', ground: '#14110c' },
+            { key: 'oak',  label: 'Oak',  ground: '#ece1c9' },
+            { key: 'bloc', label: 'Bloc', ground: '#efece2' },
+        ];
+        const DEFAULT_THEME = 'dusk';
+        const THEME_STORAGE_KEY = 'charlie_theme';
+
+        const getStoredTheme = () => {
+            try {
+                const t = localStorage.getItem(THEME_STORAGE_KEY);
+                return THEMES.some(t2 => t2.key === t) ? t : DEFAULT_THEME;
+            } catch (e) { return DEFAULT_THEME; }
+        };
+
+        const applyTheme = (key) => {
+            const theme = THEMES.find(t => t.key === key) || THEMES.find(t => t.key === DEFAULT_THEME);
+            const root = document.documentElement;
+            root.setAttribute('data-theme', theme.key);
+            root.style.backgroundColor = theme.ground;
+            try { localStorage.setItem(THEME_STORAGE_KEY, theme.key); } catch (e) {}
+
+            const meta = document.querySelector('meta[name="theme-color"]');
+            if (meta) meta.setAttribute('content', theme.ground);
+
+            // Re-trigger the page-load reveal so a switch feels like the screen
+            // "arrives" instead of flickering between palettes.
+            const el = document.getElementById('root');
+            if (el) {
+                el.classList.remove('theme-arrive');
+                void el.offsetWidth; // force reflow so the animation restarts
+                el.classList.add('theme-arrive');
+            }
+        };
+
+        // The switcher is mounted more than once (header and mobile sidebar), so
+        // the selection lives in one module-level store rather than in component
+        // state — otherwise picking a theme in the sidebar would leave the header
+        // copy highlighting the old one.
+        let _currentTheme = getStoredTheme();
+        const _themeListeners = new Set();
+
+        const setTheme = (key) => {
+            if (key === _currentTheme) return;
+            _currentTheme = key;
+            applyTheme(key);
+            _themeListeners.forEach(fn => fn(key));
+        };
+
+        // Four swatch chips, each previewing its own ground + accent, followed by
+        // the active theme's name. `alwaysLabel` keeps that name visible at every
+        // width (the sidebar has room); without it the label only appears at xl,
+        // where the 16 nav buttons beside it stop competing for space.
+        const ThemeSwitch = ({ alwaysLabel = false }) => {
+            const [theme, setThemeState] = useState(_currentTheme);
+
+            useEffect(() => {
+                _themeListeners.add(setThemeState);
+                // Another instance may have changed it between render and effect.
+                setThemeState(_currentTheme);
+                return () => { _themeListeners.delete(setThemeState); };
+            }, []);
+
+            const active = THEMES.find(t => t.key === theme) || THEMES[1];
+
+            return (
+                <div className="theme-switch" role="group" aria-label="Colour theme">
+                    {THEMES.map(t => (
+                        <button
+                            key={t.key}
+                            type="button"
+                            data-theme-key={t.key}
+                            onClick={() => setTheme(t.key)}
+                            aria-pressed={theme === t.key}
+                            aria-label={`${t.label} theme`}
+                            title={`${t.label} theme`}
+                            className="theme-chip"
+                        />
+                    ))}
+                    <span className={`theme-switch-label ${alwaysLabel ? 'inline' : 'hidden xl:inline'}`}>
+                        {active.label}
+                    </span>
+                </div>
+            );
+        };
 
         // Auth token management
         const getAuthToken = () => {
@@ -1989,6 +2087,105 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [fmtLastOutputType, setFmtLastOutputType] = useState('pdf');
 
             // Thesis Infographic state
+            // Investment one-pager — ticker in, structured JSON out, rendered
+            // client-side by <OnePager>. See onepager.py for why this is data
+            // rather than another image style.
+            const [opTicker, setOpTicker] = useState('');
+            const [opData, setOpData] = useState(null);
+            const [opBusy, setOpBusy] = useState(false);
+            const [opStatus, setOpStatus] = useState('');
+            const [opError, setOpError] = useState(null);
+            const [opForceResearch, setOpForceResearch] = useState(false);
+            // Style is a view-time choice, not baked into the stored JSON — the
+            // same page can be read as a Tearsheet and sent as a Broadsheet.
+            const [opStyle, setOpStyle] = useState(() => {
+                try {
+                    const saved = localStorage.getItem('charlie_onepager_style');
+                    return ONEPAGER_STYLES.some(s => s.key === saved) ? saved : 'notebook';
+                } catch (e) { return 'notebook'; }
+            });
+            useEffect(() => {
+                try { localStorage.setItem('charlie_onepager_style', opStyle); } catch (e) {}
+            }, [opStyle]);
+            const opSheetRef = useRef(null);
+
+            const loadOnePager = useCallback(async (tk) => {
+                const t = (tk || '').toUpperCase().trim();
+                if (!t) return;
+                setOpError(null);
+                try {
+                    const r = await fetch(`${API_URL}/api/onepager/${t}`);
+                    if (r.ok) {
+                        const j = await r.json();
+                        setOpData(j.onepager);
+                        setOpStatus('');
+                        return true;
+                    }
+                } catch (e) { /* fall through — a missing page is not an error */ }
+                return false;
+            }, []);
+
+            // Opening Formats on a ticker that already has a page shows it
+            // immediately rather than making the user re-run the research.
+            useEffect(() => {
+                if (activeTab !== 'formats') return;
+                const t = (fmtTicker || '').toUpperCase().trim();
+                if (!t || opBusy) return;
+                if (opData && opData.ticker === t) return;
+                loadOnePager(t);
+            }, [activeTab, fmtTicker]);
+
+            const generateOnePager = useCallback(async () => {
+                const t = (opTicker || fmtTicker || '').toUpperCase().trim();
+                if (!t) { setOpError('Enter a ticker first.'); return; }
+
+                setOpBusy(true);
+                setOpError(null);
+                setOpData(null);
+                setOpStatus('Reading Charlie’s thesis and overview…');
+                try {
+                    const res = await fetch(`${API_URL}/api/onepager/generate`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ticker: t, forceResearch: opForceResearch }),
+                    });
+                    const started = await res.json();
+                    if (!res.ok) throw new Error(started.error || `HTTP ${res.status}`);
+
+                    // Same 3s poll the other long jobs use; transient blips retry.
+                    const jobId = started.jobId;
+                    setOpStatus('Assembling the one-pager…');
+                    while (true) {
+                        await new Promise(r2 => setTimeout(r2, 3000));
+                        let j;
+                        try {
+                            const r2 = await fetch(`${API_URL}/api/mp/jobs/${jobId}`);
+                            if (!r2.ok) throw new Error(`Poll HTTP ${r2.status}`);
+                            j = await r2.json();
+                        } catch (e) {
+                            console.warn('One-pager poll blip:', e);
+                            continue;
+                        }
+                        if (j.status === 'done') {
+                            setOpData(j.result?.onepager || null);
+                            setOpTicker(t);
+                            setOpStatus(j.result?.isDraft
+                                ? 'Built from web research — review before circulating.'
+                                : `Built from ${(j.result?.sources || []).join(' + ') || 'Charlie'}.`);
+                            break;
+                        }
+                        if (j.status === 'failed') {
+                            throw new Error(j.error || 'Generation failed');
+                        }
+                    }
+                } catch (e) {
+                    setOpError(String(e.message || e));
+                    setOpStatus('');
+                } finally {
+                    setOpBusy(false);
+                }
+            }, [opTicker, fmtTicker, opForceResearch]);
+
             const [fmtInfographicMode, setFmtInfographicMode] = useState('1');
             const [fmtInfographicDetail, setFmtInfographicDetail] = useState('full');
             const [fmtInfographicShowRiskDetail, setFmtInfographicShowRiskDetail] = useState(false);
@@ -13414,17 +13611,17 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 <>
                     {/* Auth Loading Screen */}
                     {authLoading && (
-                        <div className="fixed inset-0 z-[200] min-h-screen bg-[#0f0f0f] flex items-center justify-center">
+                        <div className="fixed inset-0 z-[200] min-h-screen bg-[color:var(--bg)] flex items-center justify-center">
                             <div className="animate-pulse text-amber-500 text-lg font-semibold">Loading...</div>
                         </div>
                     )}
 
                     {/* Login Screen */}
                     {!authLoading && !authToken && (
-                        <div className="fixed inset-0 z-[200] min-h-screen bg-[#0f0f0f] flex items-center justify-center p-4">
+                        <div className="fixed inset-0 z-[200] min-h-screen bg-[color:var(--bg)] flex items-center justify-center p-4">
                             <div className="max-w-sm w-full text-center space-y-8">
                                 <div>
-                                    <h1 className="text-4xl font-bold text-amber-500 tracking-tight" style={{fontFamily: 'Georgia, serif'}}>CHARLIE</h1>
+                                    <h1 className="text-4xl font-bold text-amber-500 tracking-tight" style={{fontFamily: 'var(--font-display)'}}>CHARLIE</h1>
                                     <p className="text-xs text-slate-500 mt-2 tracking-widest uppercase">Equity Research Platform</p>
                                 </div>
                                 <div className="space-y-3">
@@ -13440,7 +13637,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     <button
                                         onClick={handlePasswordLogin}
                                         disabled={loginSubmitting || !loginPassword.trim()}
-                                        className="w-full py-3 bg-white text-black text-sm font-semibold tracking-widest uppercase hover:bg-amber-500 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                                        className="w-full py-3 bg-amber-500 text-slate-900 text-sm font-semibold tracking-widest uppercase hover:bg-amber-400 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                                     >
                                         {loginSubmitting ? 'Verifying...' : 'ENTER'}
                                     </button>
@@ -13455,7 +13652,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     {/* Splash Screen */}
                     {showSplash && (
                         <div 
-                            className={`fixed inset-0 z-[100] flex items-center justify-center bg-[#111c2f] transition-opacity duration-500 ${splashFading ? 'opacity-0' : 'opacity-100'}`}
+                            className={`fixed inset-0 z-[100] flex items-center justify-center bg-[color:var(--bg)] transition-opacity duration-500 ${splashFading ? 'opacity-0' : 'opacity-100'}`}
                         >
                             <div className="flex flex-col items-center">
                                 <img 
@@ -13620,7 +13817,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     })()}
                     {/* DESKTOP TOP NAVIGATION - Hidden on mobile */}
                     <nav className="hidden md:flex items-center justify-between px-6 py-3 bg-white/5 backdrop-blur-xl border-b border-white/10">
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 shrink-0">
                             <div className="w-9 h-9 rounded-lg flex items-center justify-center overflow-hidden shadow-lg">
                                 <img 
                                     src="data:image/webp;base64,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"
@@ -13629,6 +13826,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 />
                             </div>
                             <span className="font-bold text-lg">Charlie</span>
+                            {/* Theme switcher. One instance: the chips always show,
+                                the name only at xl where the nav stops competing.
+                                shrink-0 keeps the nav's flex-wrap from squeezing the
+                                chips or clipping the label against the pill bar. */}
+                            <div className="flex shrink-0 pl-3 pr-1 ml-1 mr-2 border-l border-white/10">
+                                <ThemeSwitch />
+                            </div>
                         </div>
                         {/* 16 nav buttons — too wide for sub-2560px screens, so allow wrap.
                             Without flex-wrap, Analysts/Alerts/Settings get clipped off the right edge
@@ -13991,6 +14195,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             </div>
                         )}
 
+                        {/* Theme switcher — the header control is hidden below md,
+                            so the sidebar carries it for mobile and tablet. */}
+                        <div className="px-4 pt-4 pb-2 border-t border-white/[0.08]">
+                            <div className="label mb-2">Theme</div>
+                            <ThemeSwitch alwaysLabel />
+                        </div>
+
                         <div className="p-4 border-t border-white/[0.08]">
                             <button
                                 onClick={() => {
@@ -14025,14 +14236,19 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     />
                                 </div>
                                 <div className="min-w-0 flex-1">
-                                    <h1 className="text-sm sm:text-xl font-bold">
+                                    <h1 className="text-sm sm:text-xl font-bold flex items-center gap-2">
                                         <span className="hidden sm:inline">Charlie</span>
                                         <span className="sm:hidden">{currentTicker || 'Charlie'}</span>
+                                        {_isLocalHost && (
+                                            <span className="px-1.5 py-0.5 rounded border border-amber-400/30 bg-amber-500/10 text-amber-400/80 text-[10px] font-medium tracking-wider uppercase flex-shrink-0">
+                                                Local Dev
+                                            </span>
+                                        )}
                                     </h1>
                                     <p className="text-xs text-slate-400 truncate">{currentTicker ? `Viewing: ${currentTicker}` : 'Thesis analysis'}</p>
                                 </div>
                             </div>
-                            <div className="hidden sm:flex flex-wrap gap-1 sm:gap-2 flex-shrink-0 justify-end">
+                            <div className="hidden sm:flex flex-wrap gap-1 sm:gap-2 flex-shrink-0 justify-end items-center">
                                 {documents.length > 0 && !analysis && (
                                     <div className="text-xs text-slate-400 hidden md:block">{enabled}/{documents.length} docs • 100% weight</div>
                                 )}
@@ -21506,6 +21722,84 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         {activeTab === 'formats' && (
                             <div className="flex-1 flex flex-col bg-white/[0.02] overflow-y-auto pb-24 md:pb-0" onScroll={(e) => { setShowScrollTop(e.target.scrollTop > 300); scrollContainerRef.current = e.target; }}>
                                 <div className="p-4 md:p-6">
+                                    {/* ---- Investment one-pager -------------------------------
+                                        Ticker in, hand-drawn page out. Sits above the format
+                                        exports because it is the entry point people reach for:
+                                        it works from a ticker alone, where everything below
+                                        needs a thesis to already exist. */}
+                                    <div className="mb-6 rounded-xl border border-white/10 bg-white/[0.04] p-4">
+                                        <div className="flex items-center gap-3 mb-3 flex-wrap">
+                                            <FileText className="w-5 h-5 text-amber-400 flex-shrink-0" />
+                                            <h2 className="text-base font-bold">Investment One-Pager</h2>
+                                            <span className="text-xs text-slate-400">
+                                                Enter a ticker — Charlie researches what it doesn’t already know.
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <input
+                                                value={opTicker}
+                                                onChange={e => setOpTicker(e.target.value.toUpperCase())}
+                                                onKeyDown={e => { if (e.key === 'Enter' && !opBusy) generateOnePager(); }}
+                                                placeholder={fmtTicker || 'DE'}
+                                                className="px-3 py-2 w-32 bg-white/10 border border-white/15 rounded-lg text-sm uppercase tracking-wider focus:outline-none focus:border-amber-500"
+                                            />
+                                            <button
+                                                onClick={generateOnePager}
+                                                disabled={opBusy}
+                                                className="flex items-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:bg-neutral-700 rounded-xl text-sm font-medium transition-all"
+                                            >
+                                                {opBusy
+                                                    ? <><div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent" /> Working…</>
+                                                    : <>Research &amp; Generate</>}
+                                            </button>
+                                            <label className="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer">
+                                                <input type="checkbox" checked={opForceResearch}
+                                                       onChange={e => setOpForceResearch(e.target.checked)} />
+                                                Refresh with new web research
+                                            </label>
+                                            {opData && (
+                                                <div className="flex items-center gap-2 ml-auto">
+                                                    <button onClick={() => window.print()}
+                                                        className="flex items-center gap-1.5 px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-xs">
+                                                        <Download className="w-3.5 h-3.5" /> Print / PDF
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                        {opStatus && !opError && (
+                                            <p className="mt-2 text-xs text-slate-400">{opStatus}</p>
+                                        )}
+                                        {opError && (
+                                            <p className="mt-2 text-xs text-red-400">{opError}</p>
+                                        )}
+                                    </div>
+
+                                    {opData && (
+                                        <>
+                                            <div className="mb-3 flex items-center gap-2 flex-wrap">
+                                                <span className="text-xs text-slate-400 mr-1">Style:</span>
+                                                {ONEPAGER_STYLES.map(s => (
+                                                    <button
+                                                        key={s.key}
+                                                        onClick={() => setOpStyle(s.key)}
+                                                        title={s.blurb}
+                                                        aria-pressed={opStyle === s.key}
+                                                        className={`px-2.5 py-1 rounded-lg text-xs transition-all border ${
+                                                            opStyle === s.key
+                                                                ? 'bg-amber-500 text-slate-900 border-amber-400 font-medium'
+                                                                : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'
+                                                        }`}
+                                                    >
+                                                        {s.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            <div className="mb-8 overflow-x-auto" ref={opSheetRef}>
+                                                <OnePager data={opData} style={opStyle} />
+                                            </div>
+                                        </>
+                                    )}
+
                                     {/* Header */}
                                     <div className="flex items-center justify-between mb-6">
                                         <div className="flex items-center gap-3">
@@ -23886,7 +24180,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                     });
                                                                     loadCatalystProposals();
                                                                 }}
-                                                                className={`px-4 py-1.5 rounded-md text-xs font-semibold ${catalystAutoMode.enabled ? 'bg-amber-500 text-black hover:bg-amber-400' : 'bg-white/10 text-slate-300 hover:bg-white/20'}`}
+                                                                className={`px-4 py-1.5 rounded-md text-xs font-semibold ${catalystAutoMode.enabled ? 'bg-amber-500 text-slate-900 hover:bg-amber-400' : 'bg-white/10 text-slate-300 hover:bg-white/20'}`}
                                                             >
                                                                 {catalystAutoMode.enabled ? 'Auto-fire: ON' : 'Auto-fire: OFF'}
                                                             </button>
@@ -26887,7 +27181,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         )}
 
                         {activeTab === 'feed' && (
-                            <div className="flex-1 flex flex-col bg-slate-50 overflow-y-auto pb-24 md:pb-0">
+                            <div className="paper flex-1 flex flex-col bg-slate-50 overflow-y-auto pb-24 md:pb-0">
                                 <div className="max-w-5xl mx-auto w-full p-4">
                                     <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
                                         <div>
