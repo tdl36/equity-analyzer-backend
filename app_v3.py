@@ -29,6 +29,128 @@ from google.genai import types as genai_types
 MARKET_TZ = ZoneInfo('America/New_York')
 
 
+def _load_thesis(ticker):
+    """The thesis as currently stored, or {} -- used to diff against a new one."""
+    try:
+        with get_db() as (_c, cur):
+            cur.execute('SELECT analysis FROM portfolio_analyses WHERE ticker = %s',
+                        ((ticker or '').upper().strip(),))
+            row = cur.fetchone()
+        current = (row or {}).get('analysis') or {}
+        if isinstance(current, str):
+            current = json.loads(current)
+        return current if isinstance(current, dict) else {}
+    except Exception as e:
+        print(f'_load_thesis({ticker}) failed: {e}')
+        return {}
+
+
+def _signpost_material(analysis):
+    """Text for the signpost checker, drawn from what the update already extracted.
+
+    The reconciliation pass builds a canonical fact table -- metric, value,
+    period, source document -- out of the freshest filings. That is exactly the
+    grounded, quoted material a signpost check needs, and it is already paid for,
+    so checking costs one cheap call rather than a re-read of every PDF.
+    """
+    analysis = analysis or {}
+    lines = []
+
+    fact_table = analysis.get('_factTable') or []
+    if fact_table:
+        lines.append('=== LATEST VERIFIED FIGURES (extracted from the newest filings) ===')
+        for f in fact_table[:120]:
+            if not isinstance(f, dict):
+                continue
+            metric = f.get('metric') or ''
+            value = f.get('value') or ''
+            unit = f.get('unit') or ''
+            period = f.get('asOfPeriod') or ''
+            src = f.get('sourceDoc') or ''
+            if not metric:
+                continue
+            lines.append(f"- {metric}: {value}{(' ' + unit) if unit else ''}"
+                         f"{(' as of ' + period) if period else ''}"
+                         f"{(' [' + src + ']') if src else ''}")
+
+    corrections = analysis.get('_factCorrections') or []
+    if corrections:
+        lines.append('')
+        lines.append('=== FIGURES THAT MOVED IN THIS UPDATE ===')
+        for c in corrections[:60]:
+            if not isinstance(c, dict):
+                continue
+            lines.append(f"- {c.get('metric') or c.get('location') or ''}: "
+                         f"was \"{(c.get('oldText') or '')[:160]}\" "
+                         f"now \"{(c.get('newText') or '')[:160]}\"")
+
+    info = analysis.get('_lastUpdateInfo') or {}
+    if info.get('docNames'):
+        lines.append('')
+        lines.append('=== SOURCE DOCUMENTS BEHIND THESE FIGURES ===')
+        for n in info['docNames'][:40]:
+            lines.append(f'- {n}')
+
+    return '\n'.join(lines)
+
+
+def _check_signposts(ticker, analysis, api_key, source='', store=True):
+    """Evaluate a thesis's signposts against the newest material; alert on movement.
+
+    Never raises. Monitoring runs off the back of a thesis save, and a failure
+    here must not fail that save.
+    """
+    try:
+        import signposts as _sp
+        signpost_rows = (analysis or {}).get('signposts') or []
+        if not signpost_rows:
+            return {'evaluations': [], 'counts': {}, 'alerts': []}
+
+        material = _signpost_material(analysis)
+        if not material.strip():
+            # Nothing new was extracted, so there is nothing to check against.
+            # Guessing from an empty page is exactly how alert fatigue starts.
+            return {'evaluations': [], 'counts': {}, 'alerts': []}
+
+        evaluations = _sp.evaluate(
+            ticker, signpost_rows, material, call_llm, _extract_json,
+            api_keys={'anthropic': api_key})
+        if not evaluations:
+            return {'evaluations': [], 'counts': {}, 'alerts': []}
+
+        counts = _sp.summarize(evaluations)
+        alerts = _sp.record_alerts(get_db, ticker, evaluations, source=source)
+
+        if store:
+            with get_db(commit=True) as (_c, cur):
+                cur.execute('''
+                    INSERT INTO signpost_status (ticker, evaluations, counts, source, checked_at)
+                    VALUES (%s, %s::jsonb, %s::jsonb, %s, NOW())
+                    ON CONFLICT (ticker) DO UPDATE
+                       SET evaluations = EXCLUDED.evaluations,
+                           counts = EXCLUDED.counts,
+                           source = EXCLUDED.source,
+                           checked_at = NOW()
+                ''', (ticker.upper(), json.dumps(evaluations), json.dumps(counts), source))
+
+        print(f'[signposts] {ticker}: {counts.get("notable", 0)} notable of {len(evaluations)}')
+        return {'evaluations': evaluations, 'counts': counts, 'alerts': alerts}
+    except Exception as e:
+        print(f'_check_signposts({ticker}) failed: {e}')
+        return {'evaluations': [], 'counts': {}, 'alerts': []}
+
+
+def _journal_thesis(ticker, previous, current, source, diff=None, layers=None):
+    """Append a thesis revision. Never raises -- journalling must not fail a save."""
+    try:
+        import thesis_history
+        return thesis_history.record_revision(
+            get_db, ticker, previous, current, source, diff=diff, layers=layers)
+    except Exception as e:
+        print(f'_journal_thesis({ticker}) failed: {e}')
+        return None
+
+
 def market_today():
     """Today's date on the US market calendar."""
     return datetime.now(MARKET_TZ).date()
@@ -3116,6 +3238,32 @@ def init_db():
                     created_at TIMESTAMP DEFAULT NOW()
                 )
             ''')
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS thesis_revisions (
+                    id          SERIAL PRIMARY KEY,
+                    ticker      VARCHAR(20) NOT NULL,
+                    source      VARCHAR(30) NOT NULL,
+                    summary     TEXT,
+                    counts      JSONB DEFAULT '{}'::jsonb,
+                    diff        JSONB DEFAULT '{}'::jsonb,
+                    layers      JSONB DEFAULT '{}'::jsonb,
+                    snapshot    JSONB,
+                    created_at  TIMESTAMP DEFAULT NOW()
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_thesis_revisions_ticker '
+                        'ON thesis_revisions (ticker, created_at DESC)')
+
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS signpost_status (
+                    ticker      VARCHAR(20) PRIMARY KEY,
+                    evaluations JSONB DEFAULT '[]'::jsonb,
+                    counts      JSONB DEFAULT '{}'::jsonb,
+                    source      TEXT,
+                    checked_at  TIMESTAMP DEFAULT NOW()
+                )
+            ''')
+
             cur.execute('CREATE INDEX IF NOT EXISTS idx_agent_alerts_status ON agent_alerts(status)')
             cur.execute('CREATE INDEX IF NOT EXISTS idx_agent_alerts_created ON agent_alerts(created_at DESC)')
 
@@ -4049,6 +4197,7 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
                 analysis_data['company'] = company
                 analysis_data['ticker'] = ticker
 
+                _previous_thesis = _load_thesis(ticker)
                 with get_db(commit=True) as (conn, cur):
                     cur.execute('''
                         INSERT INTO portfolio_analyses (ticker, company, analysis, updated_at)
@@ -4056,6 +4205,11 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
                         ON CONFLICT (ticker)
                         DO UPDATE SET company = EXCLUDED.company, analysis = EXCLUDED.analysis, updated_at = EXCLUDED.updated_at
                     ''', (ticker, company, json.dumps(analysis_data), datetime.utcnow()))
+                _journal_thesis(ticker, _previous_thesis, analysis_data, 'pipeline')
+                # The thesis just told us what it is watching, and this update
+                # just extracted the newest figures. Check one against the other
+                # now rather than waiting for someone to remember.
+                _check_signposts(ticker, analysis_data, api_key, source=f'pipeline job {job_id}')
                 print(f'[pipeline {job_id}] Saved analysis to portfolio_analyses for {ticker}')
 
                 # Auto-snapshot for thesis evolution tracking
@@ -5102,6 +5256,7 @@ def save_analysis():
             if not analysis.get('updatedAt'):
                 analysis['updatedAt'] = datetime.utcnow().isoformat()
 
+        _previous_thesis = _load_thesis(ticker)
         with get_db(commit=True) as (conn, cur):
             # Upsert - insert or update
             cur.execute('''
@@ -5116,6 +5271,8 @@ def save_analysis():
             ''', (ticker, company, json.dumps(analysis), datetime.utcnow()))
 
             result = cur.fetchone()
+
+        _journal_thesis(ticker, _previous_thesis, analysis, 'manual')
 
         cache.invalidate('analyses')
         cache.invalidate('portfolio_dashboard')
@@ -13051,6 +13208,11 @@ def approve_orchestration(job_id):
                 if candidate.get(k) is not None:
                     merged[k] = candidate[k]
             candidate = merged
+        # Journalled against whatever is actually stored right now, not against
+        # `live` -- that name only exists on the selective-approval path.
+        _previous_thesis = _load_thesis(ticker)
+        _approved_diff = result.get('diff') or {}
+
         # The same write the Thesis tab performs, so an approved run IS the thesis.
         with get_db(commit=True) as (_c, cur):
             cur.execute(
@@ -13061,11 +13223,20 @@ def approve_orchestration(job_id):
                 (ticker, candidate.get('companyName') or candidate.get('company') or '',
                  json.dumps(candidate)))
 
-        _mp_update_job(job_id, status='running')
-        _orchestrate_set(job_id, stage='fanout', approvedAt=datetime.utcnow().isoformat())
+        # The approval carries a classified diff, so the entry records not just
+        # what changed but which layer each change was judged to sit in.
+        _journal_thesis(ticker, _previous_thesis, candidate, 'orchestrator',
+                        diff=_approved_diff, layers=_approved_diff.get('layers'))
 
         keys = _get_api_keys(data.get('apiKey', ''), data.get('geminiApiKey', ''),
                              data.get('openaiApiKey', ''))
+        # The approved thesis names what to watch and carries the figures this
+        # run extracted, so the first check happens now, not next quarter.
+        _check_signposts(ticker, candidate, keys.get('anthropic', ''),
+                         source=f'agent run {job_id}')
+
+        _mp_update_job(job_id, status='running')
+        _orchestrate_set(job_id, stage='fanout', approvedAt=datetime.utcnow().isoformat())
         threading.Thread(
             target=_run_orchestrate_fanout,
             args=(job_id, ticker, job_input.get('depth', 'standard'),
@@ -13266,6 +13437,127 @@ def get_onepager(ticker):
         })
     except Exception as e:
         print(f"Error getting one-pager: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/signposts/<ticker>', methods=['GET'])
+def get_signpost_status(ticker):
+    """Latest signpost readings for a ticker, with the thesis's own targets."""
+    try:
+        with get_db() as (_c, cur):
+            cur.execute('SELECT evaluations, counts, source, checked_at '
+                        'FROM signpost_status WHERE ticker = %s', (ticker.upper(),))
+            row = cur.fetchone()
+        analysis = _load_thesis(ticker)
+        if not row:
+            return jsonify({'ticker': ticker.upper(), 'evaluations': [], 'counts': {},
+                            'checkedAt': None,
+                            'signpostCount': len(analysis.get('signposts') or [])})
+        evaluations = row['evaluations']
+        if isinstance(evaluations, str):
+            evaluations = json.loads(evaluations)
+        counts = row['counts']
+        if isinstance(counts, str):
+            counts = json.loads(counts)
+        return jsonify({
+            'ticker': ticker.upper(),
+            'evaluations': evaluations or [],
+            'counts': counts or {},
+            'source': row['source'],
+            'checkedAt': row['checked_at'].isoformat() if row['checked_at'] else None,
+            'signpostCount': len(analysis.get('signposts') or []),
+        })
+    except Exception as e:
+        print(f"Error reading signpost status: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/signposts/<ticker>/check', methods=['POST'])
+def check_signposts(ticker):
+    """Run a signpost check on demand against the newest extracted material."""
+    try:
+        data = request.get_json() or {}
+        api_key = data.get('apiKey') or _get_api_keys().get('anthropic', '')
+        analysis = _load_thesis(ticker)
+        if not analysis:
+            return jsonify({'error': f'No thesis stored for {ticker.upper()}'}), 404
+        if not (analysis.get('signposts') or []):
+            return jsonify({'error': 'This thesis has no signposts to check. '
+                                     'Add signposts to the thesis first.'}), 400
+
+        out = _check_signposts(ticker.upper(), analysis, api_key, source='manual check')
+        if not out['evaluations']:
+            return jsonify({'success': False, 'evaluations': [], 'counts': {},
+                            'message': 'Nothing new to check against — run a thesis '
+                                       'update so fresh figures are extracted first.'})
+        return jsonify({'success': True, **out})
+    except Exception as e:
+        print(f"Error checking signposts: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/thesis/<ticker>/revisions', methods=['GET'])
+def thesis_revisions(ticker):
+    """The change-log for one thesis: what moved, when, and from which surface."""
+    try:
+        import thesis_history
+        limit = min(int(request.args.get('limit', 50)), 200)
+        return jsonify({
+            'ticker': ticker.upper(),
+            'revisions': thesis_history.list_revisions(get_db, ticker, limit=limit),
+            'drift': thesis_history.drift(get_db, ticker),
+        })
+    except Exception as e:
+        print(f"Error listing thesis revisions: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/thesis/<ticker>/revisions/<int:revision_id>', methods=['GET'])
+def thesis_revision_detail(ticker, revision_id):
+    """One revision with its full diff, layer classification and snapshot."""
+    try:
+        import thesis_history
+        rev = thesis_history.get_revision(get_db, revision_id)
+        if not rev or rev['ticker'].upper() != ticker.upper():
+            return jsonify({'error': 'No such revision'}), 404
+        return jsonify(rev)
+    except Exception as e:
+        print(f"Error reading thesis revision: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/thesis/<ticker>/revisions/<int:revision_id>/restore', methods=['POST'])
+def thesis_revision_restore(ticker, revision_id):
+    """Put the thesis back to what it was at a given revision.
+
+    Goes through the same journalled write as any other save, so the state being
+    replaced is itself recorded and the restore is undoable.
+    """
+    try:
+        import thesis_history
+        rev = thesis_history.get_revision(get_db, revision_id)
+        if not rev or rev['ticker'].upper() != ticker.upper():
+            return jsonify({'error': 'No such revision'}), 404
+        snapshot = rev.get('snapshot') or {}
+        if not snapshot:
+            return jsonify({'error': 'That revision has no snapshot stored'}), 404
+
+        ticker_u = ticker.upper()
+        previous = _load_thesis(ticker_u)
+        with get_db(commit=True) as (_c, cur):
+            cur.execute(
+                "INSERT INTO portfolio_analyses (ticker, company, analysis, updated_at) "
+                "VALUES (%s, %s, %s::jsonb, NOW()) "
+                "ON CONFLICT (ticker) DO UPDATE "
+                "  SET analysis = EXCLUDED.analysis, updated_at = NOW()",
+                (ticker_u, snapshot.get('companyName') or snapshot.get('company') or '',
+                 json.dumps(snapshot)))
+        _journal_thesis(ticker_u, previous, snapshot, 'restore')
+        cache.invalidate('analyses')
+        cache.invalidate('portfolio_dashboard')
+        return jsonify({'success': True, 'analysis': snapshot})
+    except Exception as e:
+        print(f"Error restoring thesis revision: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -16419,9 +16711,12 @@ def catalyst_auto_mode_set():
     enabled = bool(data.get('enabled'))
     duration_min = int(data.get('durationMin', 60))  # default 60 min
     expires_at = None
-    if enabled:
+    if enabled and duration_min > 0:
         from datetime import timedelta as _td
         expires_at = (datetime.utcnow() + _td(minutes=max(1, min(720, duration_min)))).isoformat()
+    # durationMin <= 0 means "leave it on". Auto-fire could only ever be armed for
+    # a countdown, so it always lapsed back to manual and the proposals it should
+    # have handled queued up unseen inside a subtab nobody had reason to open.
     payload = {'enabled': enabled, 'expires_at': expires_at}
     with get_db(commit=True) as (_, cur):
         cur.execute('''

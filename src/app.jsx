@@ -80,7 +80,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-08-24T15';
+        const BUILD_VERSION = '2026-08-25T01';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -1466,6 +1466,18 @@ Regulatory, execution, or macro risks that could derail the thesis:
             // Stale-fact reconciliation results from the pipeline's reconciler pass.
             // Each entry: {location, metric, oldText, newText, oldPeriod, newPeriod, sourceDoc}
             const [factCorrections, setFactCorrections] = useState([]);
+
+            // Signpost monitoring — the thesis names what it is watching, and the
+            // backend now checks those against each update's extracted figures.
+            const [signpostStatus, setSignpostStatus] = useState(null);
+            const [signpostChecking, setSignpostChecking] = useState(false);
+            const [signpostsOpen, setSignpostsOpen] = useState(false);
+
+            // Thesis change-log — what moved, when, and which rows keep moving.
+            const [thesisRevisions, setThesisRevisions] = useState([]);
+            const [thesisDrift, setThesisDrift] = useState([]);
+            const [revisionsOpen, setRevisionsOpen] = useState(false);
+            const [revisionDetail, setRevisionDetail] = useState(null);
             const [loading, setLoading] = useState(false);
             const [error, setError] = useState(null);
             const [analysisProgress, setAnalysisProgress] = useState(null);
@@ -1721,11 +1733,14 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     }
                 } catch (e) { console.warn('loadCatalystProposals:', e); }
             };
-            // Poll for proposals while Catalysts view is open
+            // Poll for proposals app-wide, not just while the Catalysts view is
+            // open. Polling only inside that view meant the count that tells you
+            // to go there was only ever fetched once you were already there --
+            // so work queued up silently and the feature looked unused.
             useEffect(() => {
-                if (activeTab !== 'agents' || agentView !== 'catalysts') return;
                 loadCatalystProposals();
-                const id = setInterval(loadCatalystProposals, 30000);
+                const id = setInterval(loadCatalystProposals,
+                                       activeTab === 'agents' ? 30000 : 120000);
                 return () => clearInterval(id);
             }, [activeTab, agentView]);
 
@@ -1891,6 +1906,12 @@ Regulatory, execution, or macro risks that could derail the thesis:
             // Meeting Prep tab state
             const [mpMeetings, setMpMeetings] = useState([]);
             const [mpSelectedMeeting, setMpSelectedMeeting] = useState(null);
+            // Meetings were listed in one flat run of generated-date order, so
+            // every question set a company had ever had was scattered through the
+            // list. Thesis groups by ticker for exactly this reason.
+            const [mpGroupByTicker, setMpGroupByTicker] = useState(true);
+            const [mpSearch, setMpSearch] = useState('');
+            const [mpCollapsedTickers, setMpCollapsedTickers] = useState(new Set());
             const [mpDocuments, setMpDocuments] = useState([]);
             const [mpQuestionSet, setMpQuestionSet] = useState(null);
             const [mpFiles, setMpFiles] = useState([]);
@@ -10118,6 +10139,42 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 } catch (err) { console.error('Failed to load meetings:', err); }
             };
 
+            // Meetings grouped by company, each company's newest first. The
+            // ticker order is alphabetical so a name sits in the same place every
+            // visit, rather than jumping around as meetings are added.
+            const mpGrouped = React.useMemo(() => {
+                const q = mpSearch.trim().toLowerCase();
+                const visible = (mpMeetings || []).filter(m => !q
+                    || (m.ticker || '').toLowerCase().includes(q)
+                    || (m.company_name || '').toLowerCase().includes(q));
+
+                if (!mpGroupByTicker) return [{ ticker: null, meetings: visible }];
+
+                const by = new Map();
+                for (const m of visible) {
+                    const key = m.ticker || '—';
+                    if (!by.has(key)) by.set(key, []);
+                    by.get(key).push(m);
+                }
+                return [...by.entries()]
+                    .map(([ticker, meetings]) => ({
+                        ticker,
+                        companyName: meetings.find(x => x.company_name)?.company_name || '',
+                        meetings: meetings.slice().sort((a, b) =>
+                            String(b.meeting_date || b.created_at || '')
+                                .localeCompare(String(a.meeting_date || a.created_at || ''))),
+                    }))
+                    .sort((a, b) => a.ticker.localeCompare(b.ticker));
+            }, [mpMeetings, mpGroupByTicker, mpSearch]);
+
+            const toggleMpTicker = useCallback((ticker) => {
+                setMpCollapsedTickers(prev => {
+                    const next = new Set(prev);
+                    next.has(ticker) ? next.delete(ticker) : next.add(ticker);
+                    return next;
+                });
+            }, []);
+
             const loadMpMeeting = async (meetingId) => {
                 try {
                     const res = await fetch(`${API_URL}/api/mp/meetings/${meetingId}`);
@@ -11062,6 +11119,78 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     )
                 );
             };
+
+            // ---- signpost monitoring -------------------------------------
+            const loadSignpostStatus = useCallback(async (ticker) => {
+                if (!ticker) { setSignpostStatus(null); return; }
+                try {
+                    const r = await fetch(`${API_URL}/api/signposts/${ticker}`);
+                    if (!r.ok) return;
+                    setSignpostStatus(await r.json());
+                } catch (e) { console.warn('loadSignpostStatus:', e); }
+            }, []);
+
+            const runSignpostCheck = useCallback(async (ticker) => {
+                if (!ticker) return;
+                setSignpostChecking(true);
+                try {
+                    const r = await fetch(`${API_URL}/api/signposts/${ticker}/check`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ apiKey: loadApiKeyFromStorage() || '' }),
+                    });
+                    const j = await r.json();
+                    if (!r.ok) throw new Error(j.error || 'Check failed');
+                    if (j.message) alert(j.message);
+                    await loadSignpostStatus(ticker);
+                    setSignpostsOpen(true);
+                } catch (e) {
+                    alert('Signpost check failed: ' + (e.message || e));
+                } finally { setSignpostChecking(false); }
+            }, [loadSignpostStatus]);
+
+            // ---- thesis change-log ---------------------------------------
+            const loadThesisRevisions = useCallback(async (ticker) => {
+                if (!ticker) { setThesisRevisions([]); setThesisDrift([]); return; }
+                try {
+                    const r = await fetch(`${API_URL}/api/thesis/${ticker}/revisions`);
+                    if (!r.ok) return;
+                    const j = await r.json();
+                    setThesisRevisions(j.revisions || []);
+                    setThesisDrift(j.drift || []);
+                } catch (e) { console.warn('loadThesisRevisions:', e); }
+            }, []);
+
+            const openThesisRevision = useCallback(async (ticker, id) => {
+                try {
+                    const r = await fetch(`${API_URL}/api/thesis/${ticker}/revisions/${id}`);
+                    if (!r.ok) throw new Error('Could not load that revision');
+                    setRevisionDetail(await r.json());
+                } catch (e) { alert(e.message || e); }
+            }, []);
+
+            const restoreThesisRevision = useCallback(async (ticker, id) => {
+                if (!confirm('Put the thesis back to this version? The current one is '
+                             + 'recorded first, so this is undoable.')) return;
+                try {
+                    const r = await fetch(`${API_URL}/api/thesis/${ticker}/revisions/${id}/restore`,
+                                          { method: 'POST' });
+                    const j = await r.json();
+                    if (!r.ok) throw new Error(j.error || 'Restore failed');
+                    setRevisionDetail(null);
+                    await loadAnalysis(ticker);
+                    await loadThesisRevisions(ticker);
+                } catch (e) { alert('Restore failed: ' + (e.message || e)); }
+            }, [loadThesisRevisions]);
+
+            // Both panels follow whichever thesis is open.
+            useEffect(() => {
+                if (!currentTicker) {
+                    setSignpostStatus(null); setThesisRevisions([]); setThesisDrift([]);
+                    return;
+                }
+                loadSignpostStatus(currentTicker);
+                loadThesisRevisions(currentTicker);
+            }, [currentTicker, loadSignpostStatus, loadThesisRevisions]);
 
             const loadAnalysis = async (ticker) => {
                 console.log('Loading analysis for:', ticker);
@@ -14543,6 +14672,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 <span className="flex items-center gap-2">
                                     <Bot className="w-4 h-4" />
                                     Agents
+                                    {/* Catalyst syntheses waiting on approval. Without this the
+                                        only way to learn work was queued was to go looking. */}
+                                    {catalystProposals.length > 0 && (
+                                        <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-slate-900 text-[9px] font-bold leading-none">
+                                            {catalystProposals.length}
+                                        </span>
+                                    )}
                                 </span>
                             </button>
                             <button
@@ -16211,6 +16347,170 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             <div className="bg-white/[0.04] backdrop-blur-lg border border-white/10 rounded-xl p-8 text-center">
                                                 <div className="w-8 h-8 border-2 border-amber-400/30 border-t-amber-400 rounded-full animate-spin mx-auto mb-3" />
                                                 <p className="text-slate-400">Generating {thesisTier} thesis...</p>
+                                            </div>
+                                        )}
+
+                                        {/* Signposts: the thesis already named what would prove it
+                                            right or wrong. Until now nothing looked at them again. */}
+                                        {currentTicker && (activeSignposts || []).length > 0 && (
+                                            <div className="bg-white/[0.04] backdrop-blur-lg border border-blue-500/20 rounded-xl overflow-hidden">
+                                                <div className="w-full px-6 py-4 flex items-center justify-between gap-3 flex-wrap">
+                                                    <button onClick={() => setSignpostsOpen(o => !o)}
+                                                        className="flex gap-3 text-left flex-1 min-w-0">
+                                                        <div className="w-5 h-5 rounded-full bg-blue-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                                            <span className="text-blue-400 text-xs font-bold">◎</span>
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <h3 className="font-bold">Signpost watch</h3>
+                                                            <p className="text-xs text-slate-400 truncate">
+                                                                {signpostStatus?.checkedAt ? (
+                                                                    <>
+                                                                        {signpostStatus.counts?.notable
+                                                                            ? <span className="text-amber-300 font-semibold">
+                                                                                {signpostStatus.counts.notable} need attention · </span>
+                                                                            : <span className="text-slate-400">nothing moved · </span>}
+                                                                        checked {new Date(signpostStatus.checkedAt).toLocaleString()}
+                                                                    </>
+                                                                ) : (
+                                                                    <>{(activeSignposts || []).length} signpost{(activeSignposts || []).length === 1 ? '' : 's'} defined — never checked</>
+                                                                )}
+                                                            </p>
+                                                        </div>
+                                                    </button>
+                                                    <div className="flex items-center gap-2">
+                                                        <button onClick={() => runSignpostCheck(currentTicker)}
+                                                            disabled={signpostChecking}
+                                                            className="px-3 py-1.5 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/40 text-blue-200 text-xs font-medium disabled:opacity-50">
+                                                            {signpostChecking ? 'Checking…' : 'Check now'}
+                                                        </button>
+                                                        <ChevronDown className={`w-5 h-5 transition ${signpostsOpen ? 'rotate-180' : ''}`} />
+                                                    </div>
+                                                </div>
+                                                {signpostsOpen && (
+                                                    <div className="px-6 pb-6">
+                                                        {!(signpostStatus?.evaluations || []).length ? (
+                                                            <p className="text-xs text-slate-500">
+                                                                No readings yet. A check runs automatically after each thesis
+                                                                update, or press “Check now”.
+                                                            </p>
+                                                        ) : (
+                                                            <ul className="space-y-2">
+                                                                {signpostStatus.evaluations.map((ev, i) => {
+                                                                    const tone = ev.status === 'hit' ? 'text-green-300 bg-green-500/15 border-green-500/30'
+                                                                        : ev.status === 'broken' ? 'text-red-300 bg-red-500/15 border-red-500/30'
+                                                                        : ev.status === 'approaching' ? 'text-amber-300 bg-amber-500/15 border-amber-500/30'
+                                                                        : ev.status === 'on_track' ? 'text-slate-300 bg-white/5 border-white/10'
+                                                                        : 'text-slate-500 bg-white/[0.03] border-white/5';
+                                                                    return (
+                                                                        <li key={i} className="text-xs bg-black/20 border border-white/5 rounded p-3">
+                                                                            <div className="flex items-center gap-2 flex-wrap mb-1">
+                                                                                <span className="font-semibold text-slate-200">{ev.signpost}</span>
+                                                                                <span className={`px-1.5 py-0.5 rounded border text-[9px] uppercase tracking-wider ${tone}`}>
+                                                                                    {String(ev.status || '').replace('_', ' ')}
+                                                                                </span>
+                                                                                {ev.confidence && ev.status !== 'no_evidence' && (
+                                                                                    <span className="text-[9px] text-slate-500">{ev.confidence} confidence</span>
+                                                                                )}
+                                                                                {ev.target && <span className="ml-auto text-[10px] text-slate-500">target: {ev.target}</span>}
+                                                                            </div>
+                                                                            {ev.observed && (
+                                                                                <div className="text-slate-300">Now: {ev.observed}</div>
+                                                                            )}
+                                                                            {ev.why && <div className="text-slate-400 mt-0.5">{ev.why}</div>}
+                                                                            {/* Every alert answers "says who?" before being asked. */}
+                                                                            {ev.evidence && (
+                                                                                <div className="mt-1.5 pl-2 border-l-2 border-blue-500/40 text-slate-400 italic">
+                                                                                    “{ev.evidence}”
+                                                                                </div>
+                                                                            )}
+                                                                        </li>
+                                                                    );
+                                                                })}
+                                                            </ul>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* Change-log: what did I believe, and what changed my mind. */}
+                                        {currentTicker && thesisRevisions.length > 0 && (
+                                            <div className="bg-white/[0.04] backdrop-blur-lg border border-purple-500/20 rounded-xl overflow-hidden">
+                                                <button onClick={() => setRevisionsOpen(o => !o)}
+                                                    className="w-full px-6 py-4 flex justify-between hover:bg-white/[0.04]">
+                                                    <div className="flex gap-3">
+                                                        <div className="w-5 h-5 rounded-full bg-purple-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                                            <span className="text-purple-400 text-xs font-bold">⟲</span>
+                                                        </div>
+                                                        <div className="text-left">
+                                                            <h3 className="font-bold">Thesis history</h3>
+                                                            <p className="text-xs text-slate-400">
+                                                                {thesisRevisions.length} revision{thesisRevisions.length === 1 ? '' : 's'}
+                                                                {thesisDrift.some(d => d.accumulating) && (
+                                                                    <span className="text-amber-300">
+                                                                        {' · '}{thesisDrift.filter(d => d.accumulating).length} keep moving
+                                                                    </span>
+                                                                )}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <ChevronDown className={`w-5 h-5 transition ${revisionsOpen ? 'rotate-180' : ''}`} />
+                                                </button>
+                                                {revisionsOpen && (
+                                                    <div className="px-6 pb-6 space-y-4">
+                                                        {/* Drift first — this is the thing a timeline alone
+                                                            cannot tell you: which views are eroding gradually. */}
+                                                        {thesisDrift.filter(d => d.accumulating).length > 0 && (
+                                                            <div>
+                                                                <p className="label mb-1.5">Moving repeatedly</p>
+                                                                <ul className="space-y-1.5">
+                                                                    {thesisDrift.filter(d => d.accumulating).map((d, i) => (
+                                                                        <li key={i} className="text-xs bg-amber-500/10 border border-amber-500/25 rounded p-2.5">
+                                                                            <div className="flex items-center gap-2 flex-wrap">
+                                                                                <span className="font-semibold text-amber-200">{d.label}</span>
+                                                                                <span className="text-[9px] uppercase tracking-wider text-slate-500">{d.section}</span>
+                                                                                <span className="ml-auto text-[10px] text-slate-400">
+                                                                                    revised {d.timesRevised}×
+                                                                                </span>
+                                                                            </div>
+                                                                            {d.structuralDrift && (
+                                                                                <p className="text-[11px] text-amber-300/90 mt-1">
+                                                                                    Judged structural, yet it has moved every time — a long-term
+                                                                                    view changing one quarter at a time.
+                                                                                </p>
+                                                                            )}
+                                                                        </li>
+                                                                    ))}
+                                                                </ul>
+                                                            </div>
+                                                        )}
+
+                                                        <div>
+                                                            <p className="label mb-1.5">Timeline</p>
+                                                            <ul className="space-y-1.5">
+                                                                {thesisRevisions.map(rev => (
+                                                                    <li key={rev.id}
+                                                                        className="flex items-center gap-3 text-xs bg-black/20 border border-white/5 rounded p-2.5">
+                                                                        <div className="min-w-0 flex-1">
+                                                                            <div className="text-slate-200 truncate">{rev.summary}</div>
+                                                                            <div className="text-[10px] text-slate-500">
+                                                                                {rev.createdAt ? new Date(rev.createdAt).toLocaleString() : ''}
+                                                                            </div>
+                                                                        </div>
+                                                                        <button onClick={() => openThesisRevision(currentTicker, rev.id)}
+                                                                            className="flex-shrink-0 px-2 py-0.5 rounded bg-white/10 hover:bg-white/20 text-[11px]">
+                                                                            View
+                                                                        </button>
+                                                                        <button onClick={() => restoreThesisRevision(currentTicker, rev.id)}
+                                                                            className="flex-shrink-0 px-2 py-0.5 rounded bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 text-purple-200 text-[11px]">
+                                                                            Restore
+                                                                        </button>
+                                                                    </li>
+                                                                ))}
+                                                            </ul>
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
 
@@ -20951,29 +21251,95 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 </div>
                                             )}
 
-                                            {/* Meeting Cards */}
-                                            {mpMeetings.map(m => (
-                                                <div key={m.id} onClick={() => loadMpMeeting(m.id)}
-                                                    className="p-4 bg-white/[0.07] backdrop-blur-lg rounded-xl border border-white/10 hover:border-amber-500/40 cursor-pointer transition-all"
-                                                >
-                                                    <div className="flex items-center justify-between">
-                                                        <div>
-                                                            <span className="font-bold text-amber-400 text-lg">{m.ticker}</span>
-                                                            {m.company_name && <span className="ml-2 text-slate-400 text-sm">{m.company_name}</span>}
-                                                        </div>
-                                                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                                                            m.status === 'ready' ? 'bg-green-500/20 text-green-400' :
-                                                            m.status === 'error' ? 'bg-red-500/20 text-red-400' :
-                                                            'bg-slate-500/20 text-slate-400'
-                                                        }`}>{m.status}</span>
-                                                    </div>
-                                                    <div className="flex gap-3 mt-1.5 text-xs text-slate-300">
-                                                        <span>{m.meeting_type}</span>
-                                                        {m.meeting_date && <span>{m.meeting_date}</span>}
-                                                        <span>{m.doc_count || 0} doc{m.doc_count !== 1 ? 's' : ''}</span>
+                                            {/* Search + grouping. With every company's meetings in
+                                                one date-ordered run, finding a ticker's questions meant
+                                                scanning the whole list. */}
+                                            {mpMeetings.length > 0 && (
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <input
+                                                        value={mpSearch}
+                                                        onChange={e => setMpSearch(e.target.value)}
+                                                        placeholder="Filter by ticker or company…"
+                                                        className="flex-1 min-w-[180px] px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm" />
+                                                    <div className="flex rounded-lg overflow-hidden border border-white/10">
+                                                        {[{v: true, label: 'By ticker'}, {v: false, label: 'By date'}].map(({v, label}) => (
+                                                            <button key={label} onClick={() => setMpGroupByTicker(v)}
+                                                                className={`px-3 py-2 text-xs font-medium transition-colors ${
+                                                                    mpGroupByTicker === v
+                                                                        ? 'bg-amber-600 text-white'
+                                                                        : 'bg-white/[0.06] text-slate-400 hover:text-white'}`}>
+                                                                {label}
+                                                            </button>
+                                                        ))}
                                                     </div>
                                                 </div>
-                                            ))}
+                                            )}
+
+                                            {/* Meeting Cards */}
+                                            {mpGrouped.map(group => {
+                                                const collapsed = group.ticker && mpCollapsedTickers.has(group.ticker);
+                                                return (
+                                                <div key={group.ticker || 'all'} className={group.ticker ? 'space-y-2' : 'space-y-3'}>
+                                                    {group.ticker && (
+                                                        <button onClick={() => toggleMpTicker(group.ticker)}
+                                                            className="w-full flex items-center gap-2 px-1 py-1 text-left group">
+                                                            <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${collapsed ? '-rotate-90' : ''}`} />
+                                                            <span className="font-bold text-amber-400">{group.ticker}</span>
+                                                            {group.companyName && (
+                                                                <span className="text-xs text-slate-500 truncate">{group.companyName}</span>
+                                                            )}
+                                                            <span className="ml-auto text-xs text-slate-500">
+                                                                {group.meetings.length} meeting{group.meetings.length === 1 ? '' : 's'}
+                                                                {group.meetings.some(m => m.qs_count > 0) && ' · questions ready'}
+                                                            </span>
+                                                        </button>
+                                                    )}
+                                                    {!collapsed && group.meetings.map(m => (
+                                                        <div key={m.id} onClick={() => loadMpMeeting(m.id)}
+                                                            className={`p-4 bg-white/[0.07] backdrop-blur-lg rounded-xl border border-white/10 hover:border-amber-500/40 cursor-pointer transition-all ${group.ticker ? 'ml-6' : ''}`}
+                                                        >
+                                                            <div className="flex items-center justify-between">
+                                                                <div>
+                                                                    {/* Inside a ticker group the ticker is the heading,
+                                                                        so the card leads with what distinguishes it. */}
+                                                                    {group.ticker ? (
+                                                                        <span className="font-medium text-slate-200">
+                                                                            {m.meeting_date || 'undated'}
+                                                                            <span className="ml-2 text-xs text-slate-500">{m.meeting_type}</span>
+                                                                        </span>
+                                                                    ) : (
+                                                                        <>
+                                                                            <span className="font-bold text-amber-400 text-lg">{m.ticker}</span>
+                                                                            {m.company_name && <span className="ml-2 text-slate-400 text-sm">{m.company_name}</span>}
+                                                                        </>
+                                                                    )}
+                                                                </div>
+                                                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                                                    m.status === 'ready' ? 'bg-green-500/20 text-green-400' :
+                                                                    m.status === 'error' ? 'bg-red-500/20 text-red-400' :
+                                                                    'bg-slate-500/20 text-slate-400'
+                                                                }`}>{m.status}</span>
+                                                            </div>
+                                                            <div className="flex gap-3 mt-1.5 text-xs text-slate-300">
+                                                                {!group.ticker && <span>{m.meeting_type}</span>}
+                                                                {!group.ticker && m.meeting_date && <span>{m.meeting_date}</span>}
+                                                                <span>{m.doc_count || 0} doc{m.doc_count !== 1 ? 's' : ''}</span>
+                                                                {m.qs_count > 0 && (
+                                                                    <span className="text-amber-400">
+                                                                        {m.qs_count} question set{m.qs_count === 1 ? '' : 's'}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                );
+                                            })}
+                                            {mpMeetings.length > 0 && mpGrouped.every(g => !g.meetings.length) && (
+                                                <p className="text-center text-slate-500 text-sm py-8">
+                                                    Nothing matches “{mpSearch}”.
+                                                </p>
+                                            )}
                                             {mpMeetings.length === 0 && !showMpCreateForm && (
                                                 <div className="text-center text-slate-400 py-12">
                                                     <Target className="w-12 h-12 mx-auto mb-3 opacity-30" />
@@ -20983,6 +21349,92 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                         </div>
                                     </div>
                                 )}
+                                {/* One revision in full: what moved, and how each change was
+                                    classified at the time it was accepted. */}
+                                {revisionDetail && (
+                                    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"
+                                         onClick={() => setRevisionDetail(null)}>
+                                        <div className="bg-neutral-900 border border-white/10 rounded-xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col"
+                                             onClick={e => e.stopPropagation()}>
+                                            <div className="p-4 border-b border-white/10 flex items-center justify-between">
+                                                <div className="min-w-0">
+                                                    <h3 className="font-bold text-sm truncate">{revisionDetail.summary}</h3>
+                                                    <p className="text-[11px] text-slate-500">
+                                                        {revisionDetail.ticker}
+                                                        {revisionDetail.createdAt ? ` · ${new Date(revisionDetail.createdAt).toLocaleString()}` : ''}
+                                                    </p>
+                                                </div>
+                                                <button onClick={() => setRevisionDetail(null)}
+                                                    className="text-slate-400 hover:text-white text-sm px-2">Close</button>
+                                            </div>
+                                            <div className="p-4 overflow-y-auto space-y-4 text-xs">
+                                                {['pillars', 'signposts', 'threats'].map(section => {
+                                                    const sec = (revisionDetail.diff || {})[section] || {};
+                                                    const rows = [
+                                                        ...(sec.added || []).map(x => ({ kind: 'added', item: x })),
+                                                        ...(sec.changed || []).map(x => ({ kind: 'changed', item: x })),
+                                                        ...(sec.removed || []).map(x => ({ kind: 'removed', item: x })),
+                                                    ];
+                                                    if (!rows.length) return null;
+                                                    return (
+                                                        <div key={section}>
+                                                            <p className="label mb-1.5">{section}</p>
+                                                            <ul className="space-y-1.5">
+                                                                {rows.map((r, i) => {
+                                                                    const label = r.item?.label || r.item?.title
+                                                                        || r.item?.signpost || r.item?.metric || r.item?.threat || '';
+                                                                    const layer = Object.values(revisionDetail.layers || {})
+                                                                        .find(v => v && v.label === label)?.layer;
+                                                                    const tone = r.kind === 'added' ? 'text-green-300'
+                                                                        : r.kind === 'removed' ? 'text-red-300' : 'text-amber-300';
+                                                                    return (
+                                                                        <li key={i} className="bg-black/20 border border-white/5 rounded p-2.5">
+                                                                            <div className="flex items-center gap-2 flex-wrap">
+                                                                                <span className={`text-[9px] uppercase tracking-wider ${tone}`}>{r.kind}</span>
+                                                                                <span className="text-slate-200">{label || '(unlabelled)'}</span>
+                                                                                {layer && (
+                                                                                    <span className="ml-auto px-1.5 py-0.5 rounded bg-white/10 text-[9px] uppercase tracking-wider text-slate-400">
+                                                                                        {layer.replace('_', ' ')}
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
+                                                                            {r.kind === 'changed' && (
+                                                                                <div className="mt-1.5 space-y-1">
+                                                                                    <div className="text-slate-500 line-through">
+                                                                                        {JSON.stringify(r.item?.before || {}).slice(0, 400)}
+                                                                                    </div>
+                                                                                    <div className="text-slate-300">
+                                                                                        {JSON.stringify(r.item?.after || {}).slice(0, 400)}
+                                                                                    </div>
+                                                                                </div>
+                                                                            )}
+                                                                        </li>
+                                                                    );
+                                                                })}
+                                                            </ul>
+                                                        </div>
+                                                    );
+                                                })}
+                                                {((revisionDetail.diff || {}).conclusion || {}).changed && (
+                                                    <div>
+                                                        <p className="label mb-1.5">conclusion</p>
+                                                        <div className="bg-black/20 border border-white/5 rounded p-2.5 space-y-1">
+                                                            <div className="text-slate-500 line-through">{revisionDetail.diff.conclusion.before}</div>
+                                                            <div className="text-slate-300">{revisionDetail.diff.conclusion.after}</div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="p-3 border-t border-white/10 flex justify-end gap-2">
+                                                <button onClick={() => restoreThesisRevision(revisionDetail.ticker, revisionDetail.id)}
+                                                    className="px-3 py-1.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 text-purple-200 text-xs font-medium">
+                                                    Restore this version
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* iCloud picker modal — browse STOCKS + CATALYSTS files monitored by local agent */}
                                 {mpICloudPickerOpen && (
                                     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => !mpICloudImporting && setMpICloudPickerOpen(false)}>
@@ -25052,11 +25504,26 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 <p className="text-xs text-slate-400 mt-0.5">Multi-agent LLM analysis: fundamentals, sentiment, news, risk</p>
                                             </div>
                                             <div className="flex flex-wrap gap-1 shrink-0">
-                                                {[{v: 'research', label: 'Research'}, {v: 'catalysts', label: 'Catalysts'}, {v: 'decipher', label: 'Decipher'}, {v: 'new', label: 'Agents'}, {v: 'batch', label: 'Batch'}, {v: 'dashboard', label: 'Dashboard'}, {v: 'history', label: 'History'}].map(({v, label}) => (
+                                                {[{v: 'catalysts', label: 'Catalysts', badge: catalystProposals.length},
+                                                  {v: 'research', label: 'Research'},
+                                                  {v: 'decipher', label: 'Decipher'},
+                                                  {v: 'new', label: 'Agents'},
+                                                  {v: 'batch', label: 'Batch'},
+                                                  {v: 'dashboard', label: 'Dashboard'},
+                                                  {v: 'history', label: 'History'}].map(({v, label, badge}) => (
                                                     <button key={v} onClick={() => { setAgentView(v); if (v === 'dashboard') fetchAgentDashboard(); if (v === 'catalysts') fetchCatalystHistory(); }}
-                                                        className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors ${
+                                                        className={`relative px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors ${
                                                             agentView === v ? 'bg-amber-600 text-white' : 'bg-white/[0.06] text-slate-400 hover:text-white'
-                                                        }`}>{label}</button>
+                                                        }`}>
+                                                        {label}
+                                                        {/* Proposals were only discoverable by opening the subtab
+                                                            that contained them. */}
+                                                        {badge > 0 && (
+                                                            <span className="ml-1.5 px-1 py-0.5 rounded bg-amber-500 text-slate-900 text-[9px] font-bold">
+                                                                {badge}
+                                                            </span>
+                                                        )}
+                                                    </button>
                                                 ))}
                                             </div>
                                         </div>
@@ -25376,7 +25843,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         <div>
                                                             <h3 className="text-sm font-semibold text-white">Auto-Pilot</h3>
                                                             <p className="text-[10px] text-slate-400">
-                                                                Local agent watches CATALYSTS/{`{TICKER}`}/{`{topic}`}/ folders. Default: proposes syntheses you approve. Toggle on to auto-fire without approval (expires after duration).
+                                                                Local agent watches CATALYSTS/{`{TICKER}`}/{`{topic}`}/ folders. Default: proposes syntheses you approve. Auto-fire synthesises without asking — set “Always on” to leave it running.
                                                             </p>
                                                         </div>
                                                         <div className="flex items-center gap-2 shrink-0">
@@ -25386,6 +25853,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 disabled={catalystAutoMode.enabled}
                                                                 className="px-2 py-1 bg-black/30 border border-white/10 rounded-md text-xs text-slate-200 disabled:opacity-40"
                                                             >
+                                                                <option value={0}>Always on</option>
                                                                 <option value={15}>15 min</option>
                                                                 <option value={60}>1 hr</option>
                                                                 <option value={180}>3 hr</option>
@@ -25407,9 +25875,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             </button>
                                                         </div>
                                                     </div>
-                                                    {catalystAutoMode.enabled && catalystAutoMode.expires_at && (
+                                                    {catalystAutoMode.enabled && (
                                                         <div className="text-[10px] text-amber-300/80 -mt-1">
-                                                            Auto-fire expires at {fmtETDateTime(catalystAutoMode.expires_at)}
+                                                            {catalystAutoMode.expires_at
+                                                                ? <>Auto-fire expires at {fmtETDateTime(catalystAutoMode.expires_at)} — after that, new documents queue up as proposals again.</>
+                                                                : <>Auto-fire is on with no expiry. New catalyst documents synthesise on arrival.</>}
                                                         </div>
                                                     )}
 
@@ -30262,8 +30732,19 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 <Bot className="w-5 h-5" />
                                             </div>
                                             <div className="text-left">
-                                                <div className="font-semibold">Agents</div>
-                                                <div className="text-xs text-slate-400">Multi-agent LLM analysis</div>
+                                                <div className="font-semibold flex items-center gap-2">
+                                                    Agents
+                                                    {catalystProposals.length > 0 && (
+                                                        <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-slate-900 text-[9px] font-bold leading-none">
+                                                            {catalystProposals.length}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="text-xs text-slate-400">
+                                                    {catalystProposals.length > 0
+                                                        ? `${catalystProposals.length} catalyst synthesis${catalystProposals.length === 1 ? '' : 'es'} awaiting approval`
+                                                        : 'Multi-agent LLM analysis'}
+                                                </div>
                                             </div>
                                             <ChevronRight className="w-5 h-5 text-slate-500 ml-auto" />
                                         </button>
