@@ -80,7 +80,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-08-24T12';
+        const BUILD_VERSION = '2026-08-24T13';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -2365,6 +2365,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
             // fans out the one-pager and meeting-prep agents in parallel.
             const [orchJob, setOrchJob] = useState(null);     // {jobId, status, result}
             const [orchBusy, setOrchBusy] = useState(false);
+            // Per-change approval. Every change starts accepted; rejecting is the
+            // deliberate act, which matches how the diff is read.
+            const [orchAccepted, setOrchAccepted] = useState({});   // {id: bool}
+            const [orchEdits, setOrchEdits] = useState({});         // {id: text}
+            const [orchEditing, setOrchEditing] = useState(null);   // id being edited
 
             const pollOrchestration = useCallback(async (jobId) => {
                 while (true) {
@@ -2376,6 +2381,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         j = await r.json();
                     } catch (e) { continue; }
                     setOrchJob({ jobId, status: j.status, result: j.result || {}, error: j.error });
+                    if (j.status === 'awaiting_approval' && j.result?.diff?.layers) {
+                        setOrchAccepted(prev => Object.keys(prev).length ? prev
+                            : Object.fromEntries(Object.keys(j.result.diff.layers).map(id => [id, true])));
+                    }
                     // awaiting_approval is a resting state, not a finish — stop
                     // polling and let the analyst decide.
                     if (['awaiting_approval', 'done', 'failed'].includes(j.status)) return j;
@@ -2428,7 +2437,14 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     const apiKey = loadApiKeyFromStorage();
                     const r = await fetch(`${API_URL}/api/orchestrate/${orchJob.jobId}/approve`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ accept, apiKey }),
+                        body: JSON.stringify({
+                            accept, apiKey,
+                            ...(accept ? {
+                                acceptedIds: Object.entries(orchAccepted)
+                                    .filter(([, v]) => v).map(([id]) => id),
+                                edits: orchEdits,
+                            } : {}),
+                        }),
                     });
                     const j = await r.json();
                     if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
@@ -2437,7 +2453,15 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         // Downstream agents rewrote these — pull the new state in.
                         await loadOnePagerInputs(orchJob.jobId && (opData?.ticker || opTicker));
                         await loadOnePagerList();
-                        if (opData?.ticker) await openOnePager(opData.ticker, opDepth);
+                        // Open by the RUN's ticker, not the one that happened to be
+                        // on screen — otherwise a run started without a one-pager
+                        // loaded saves one and never shows it.
+                        const ranTicker = orchJob?.result?.onepager?.ticker
+                            || opData?.ticker || opTicker;
+                        if (ranTicker) {
+                            await openOnePager(ranTicker,
+                                orchJob?.result?.onepager?.depth || opDepth);
+                        }
                     } else {
                         setOrchJob(null);
                     }
@@ -2446,7 +2470,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 } finally {
                     setOrchBusy(false);
                 }
-            }, [orchJob, opData, opTicker, opDepth, pollOrchestration,
+            }, [orchJob, opData, opTicker, opDepth, pollOrchestration, orchAccepted, orchEdits,
                 loadOnePagerInputs, loadOnePagerList, openOnePager]);
 
             const loadOnePagerList = useCallback(async () => {
@@ -22603,9 +22627,25 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 </span>
                                                             )}
                                                             <div className="ml-auto flex gap-2">
+                                                                {orchJob.result.diff.layers && (
+                                                                    <>
+                                                                        <button onClick={() => setOrchAccepted(Object.fromEntries(
+                                                                            Object.keys(orchJob.result.diff.layers).map(id => [id, true])))}
+                                                                            className="px-2 py-1.5 text-xs text-slate-400 hover:text-white">All</button>
+                                                                        <button onClick={() => setOrchAccepted(Object.fromEntries(
+                                                                            Object.keys(orchJob.result.diff.layers).map(id => [id, false])))}
+                                                                            className="px-2 py-1.5 text-xs text-slate-400 hover:text-white">None</button>
+                                                                        <button onClick={() => setOrchAccepted(Object.fromEntries(
+                                                                            Object.entries(orchJob.result.diff.layers).map(([id, v]) => [id, v.layer === 'cyclical'])))}
+                                                                            title="Take the routine quarterly updates, hold the rest for review"
+                                                                            className="px-2 py-1.5 text-xs text-slate-400 hover:text-white">Cyclical only</button>
+                                                                    </>
+                                                                )}
                                                                 <button onClick={() => decideOrchestration(true)} disabled={orchBusy}
                                                                     className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:bg-neutral-700 rounded-lg text-xs font-medium">
-                                                                    Approve &amp; run the rest
+                                                                    Apply {orchJob.result.diff.layers
+                                                                        ? Object.values(orchAccepted).filter(Boolean).length
+                                                                        : 'all'} &amp; run the rest
                                                                 </button>
                                                                 <button onClick={() => decideOrchestration(false)} disabled={orchBusy}
                                                                     className="px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs">
@@ -22633,18 +22673,60 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                             {g.label} ({rows.length})
                                                                         </div>
                                                                         <div className="text-[10px] text-slate-500 mb-1">{g.note}</div>
-                                                                        {rows.map(([id, v]) => (
-                                                                            <div key={id} className="text-xs mb-1">
-                                                                                <span className={
-                                                                                    v.kind === 'added' ? 'text-green-400'
-                                                                                    : v.kind === 'removed' ? 'text-red-400' : 'text-amber-300'}>
-                                                                                    {v.kind === 'added' ? '+' : v.kind === 'removed' ? '−' : '~'}
-                                                                                </span>{' '}
-                                                                                <span className="text-slate-300">{v.label}</span>
-                                                                                <span className="text-slate-500"> · {v.section}</span>
-                                                                                {v.why && <div className="text-[10px] text-slate-500 ml-3">{v.why}</div>}
-                                                                            </div>
-                                                                        ))}
+                                                                        {rows.map(([id, v]) => {
+                                                                            const accepted = orchAccepted[id] !== false;
+                                                                            const edited = orchEdits[id] !== undefined;
+                                                                            return (
+                                                                                <div key={id} className={`text-xs mb-1 flex items-start gap-2 ${accepted ? '' : 'opacity-40'}`}>
+                                                                                    <input type="checkbox" checked={accepted} className="mt-0.5 flex-shrink-0"
+                                                                                        onChange={e => setOrchAccepted(a => ({ ...a, [id]: e.target.checked }))} />
+                                                                                    <div className="flex-1 min-w-0">
+                                                                                        <div>
+                                                                                            <span className={
+                                                                                                v.kind === 'added' ? 'text-green-400'
+                                                                                                : v.kind === 'removed' ? 'text-red-400' : 'text-amber-300'}>
+                                                                                                {v.kind === 'added' ? '+' : v.kind === 'removed' ? '−' : '~'}
+                                                                                            </span>{' '}
+                                                                                            <span className={`text-slate-300 ${accepted ? '' : 'line-through'}`}>{v.label}</span>
+                                                                                            <span className="text-slate-500"> · {v.section}</span>
+                                                                                            {edited && <span className="ml-1 text-[9px] px-1 rounded bg-blue-500/20 text-blue-300">edited</span>}
+                                                                                            {v.kind !== 'removed' && (
+                                                                                                <button onClick={() => setOrchEditing(orchEditing === id ? null : id)}
+                                                                                                    className="ml-2 text-[10px] text-slate-500 hover:text-white">
+                                                                                                    {orchEditing === id ? 'close' : 'edit'}
+                                                                                                </button>
+                                                                                            )}
+                                                                                        </div>
+                                                                                        {v.why && <div className="text-[10px] text-slate-500">{v.why}</div>}
+                                                                                        {orchEditing === id && (
+                                                                                            <div className="mt-1">
+                                                                                                <textarea
+                                                                                                    defaultValue={orchEdits[id] !== undefined ? orchEdits[id]
+                                                                                                        : JSON.stringify(
+                                                                                                            (orchJob.result.diff[v.section]?.changed || [])
+                                                                                                                .find(c => c.label === v.label)?.after
+                                                                                                            ?? (orchJob.result.diff[v.section]?.added || [])
+                                                                                                                .find(x => (x.title || x.signpost || x.metric || x.name) === v.label)
+                                                                                                            ?? '', null, 2)}
+                                                                                                    onBlur={e => setOrchEdits(m => ({ ...m, [id]: e.target.value }))}
+                                                                                                    rows={6}
+                                                                                                    className="w-full px-2 py-1 bg-black/30 border border-white/15 rounded text-[11px] font-mono" />
+                                                                                                <div className="flex gap-2 mt-1">
+                                                                                                    <span className="text-[10px] text-slate-500">
+                                                                                                        Editing implies accepting. Must stay valid JSON.
+                                                                                                    </span>
+                                                                                                    {edited && (
+                                                                                                        <button onClick={() => setOrchEdits(m => { const n = { ...m }; delete n[id]; return n; })}
+                                                                                                            className="text-[10px] text-slate-400 hover:text-white ml-auto">revert</button>
+                                                                                                    )}
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        )}
+                                                                                    </div>
+                                                                                </div>
+                                                                            );
+                                                                        })}
+
                                                                     </div>
                                                                 );
                                                             });

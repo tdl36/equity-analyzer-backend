@@ -853,3 +853,114 @@ def classify_diff(diff, call_llm, extract_json, api_keys=None, current_analysis=
     # What the analyst must actually read before approving.
     out["needsReview"] = counts["structural"] + counts["structural_challenge"]
     return out
+
+
+# ---------------------------------------------------------------------------
+# selective approval
+# ---------------------------------------------------------------------------
+# All-or-nothing approval is unusable at 20+ changes: one bad reword forces you
+# to reject a run that got the other nineteen right, and re-running costs money
+# without any guarantee the next attempt is better. So changes are applied
+# individually, starting from the CURRENT thesis and adding only what was
+# accepted — never from the candidate with rejected parts stripped out, which
+# would silently carry through edits nobody looked at.
+#
+# Ids match the ones classify_diff assigns, so the UI can key selections,
+# classifications and edits off a single identifier.
+
+def _change_id(section, kind, label):
+    return f"{section}:{kind}:{label}"
+
+
+def apply_selected_changes(current_analysis, diff, accepted_ids, edits=None):
+    """Apply only the accepted changes to the current thesis.
+
+    accepted_ids: iterable of change ids to apply. Anything absent is left as it
+                  is in the current thesis.
+    edits:        {change_id: replacement_object_or_text} for changes the analyst
+                  hand-edited before accepting. An edit implies acceptance.
+
+    Returns (new_analysis, applied_count).
+    """
+    accepted = set(accepted_ids or [])
+
+    # The editor hands back text. Parse it when it is JSON so a hand-edited
+    # pillar lands as an object; keep it as a string when it is not, which is
+    # correct for free-text fields like the conclusion. Never let a malformed
+    # edit raise here — that would fail the whole approval.
+    parsed_edits = {}
+    for cid, val in (edits or {}).items():
+        if isinstance(val, str):
+            stripped = val.strip()
+            if stripped.startswith(("{", "[")):
+                try:
+                    parsed_edits[cid] = json.loads(stripped)
+                    continue
+                except Exception:
+                    pass
+            parsed_edits[cid] = val
+        else:
+            parsed_edits[cid] = val
+    edits = parsed_edits
+    accepted |= set(edits.keys())
+
+    out = json.loads(json.dumps(current_analysis or {}))   # deep copy
+    applied = 0
+
+    section_paths = {
+        "pillars": ("thesis", "pillars"),
+        "signposts": (None, "signposts"),
+        "threats": (None, "threats"),
+    }
+
+    for section, (parent, key) in section_paths.items():
+        sec = (diff or {}).get(section) or {}
+        container = out.setdefault(parent, {}) if parent else out
+        items = list(container.get(key) or [])
+
+        # Removals first, so a remove+add on the same label cannot collide.
+        for it in sec.get("removed", []):
+            cid = _change_id(section, "removed", _label(it))
+            if cid not in accepted:
+                continue
+            before = len(items)
+            items = [x for x in items if _norm(_label(x)) != _norm(_label(it))]
+            if len(items) != before:
+                applied += 1
+
+        for ch in sec.get("changed", []):
+            cid = _change_id(section, "changed", ch.get("label"))
+            if cid not in accepted:
+                continue
+            replacement = edits.get(cid, ch.get("after"))
+            target = _norm(ch.get("label") or "")
+            hit = False
+            for i, x in enumerate(items):
+                if _norm(_label(x)) == target:
+                    items[i] = replacement
+                    hit = True
+                    break
+            if not hit:
+                # The row it meant to change is gone; adding it back loses less
+                # than dropping an accepted change silently.
+                items.append(replacement)
+            applied += 1
+
+        for it in sec.get("added", []):
+            cid = _change_id(section, "added", _label(it))
+            if cid not in accepted:
+                continue
+            items.append(edits.get(cid, it))
+            applied += 1
+
+        container[key] = items
+
+    concl = (diff or {}).get("conclusion") or {}
+    if concl.get("changed"):
+        cid = "conclusion:changed:conclusion"
+        legacy = "conclusion:changed"          # id used before labels were added
+        if cid in accepted or legacy in accepted:
+            out["conclusion"] = edits.get(cid, edits.get(legacy, concl.get("after", "")))
+            applied += 1
+
+    return out, applied

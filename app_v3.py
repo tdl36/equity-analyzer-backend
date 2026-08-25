@@ -12852,7 +12852,7 @@ def _run_orchestrate_fanout(job_id, ticker, depth, model_key, keys):
                 depth=depth,
             )
             _op.save_onepager(ticker, data, get_db, depth=depth)
-            results['onepager'] = {'ok': True, 'depth': depth}
+            results['onepager'] = {'ok': True, 'depth': depth, 'ticker': ticker}
         except Exception as e:
             results['onepager'] = {'ok': False, 'error': str(e)[:400]}
         finally:
@@ -12868,11 +12868,50 @@ def _run_orchestrate_fanout(job_id, ticker, depth, model_key, keys):
             analysis = row.get('analysis') or {}
             if isinstance(analysis, str):
                 analysis = json.loads(analysis)
-            qs = _mp_questions_inline(
-                keys.get('anthropic', ''), ticker, row.get('company') or ticker,
+            company_name = row.get('company') or ticker
+
+            # Returns (topics, tokens) — storing the tuple was why the output
+            # looked opaque and went nowhere useful.
+            topics, tokens = _mp_questions_inline(
+                keys.get('anthropic', ''), ticker, company_name,
                 'unknown', json.dumps(analysis)[:20000], [],
             )
-            results['questions'] = {'ok': True, 'questions': qs}
+
+            # Questions belong to a MEETING, not a ticker — mp_question_sets is
+            # keyed by meeting_id. Without one the generated set had nowhere to
+            # live and was silently discarded. Attach to today's refresh meeting,
+            # creating the company and meeting rows if this is the first time.
+            with get_db(commit=True) as (_c, cur):
+                cur.execute('SELECT id FROM mp_companies WHERE ticker = %s', (ticker,))
+                comp = cur.fetchone()
+                if comp:
+                    company_id = comp['id']
+                else:
+                    cur.execute('INSERT INTO mp_companies (ticker, name) VALUES (%s, %s) '
+                                'RETURNING id', (ticker, company_name))
+                    company_id = cur.fetchone()['id']
+
+                today = datetime.utcnow().date()
+                cur.execute("SELECT id FROM mp_meetings WHERE company_id = %s AND meeting_date = %s "
+                            "AND meeting_type = 'thesis-refresh' ORDER BY id DESC LIMIT 1",
+                            (company_id, today))
+                mtg = cur.fetchone()
+                if mtg:
+                    meeting_id = mtg['id']
+                else:
+                    cur.execute("INSERT INTO mp_meetings (company_id, meeting_date, meeting_type, "
+                                "status, notes) VALUES (%s, %s, 'thesis-refresh', 'draft', %s) "
+                                "RETURNING id",
+                                (company_id, today,
+                                 f'Auto-created by the agent run on {today.isoformat()}'))
+                    meeting_id = cur.fetchone()['id']
+
+            _mp_save_results_inline(meeting_id, topics, None, tokens,
+                                    'claude-sonnet-4-5-20250929')
+
+            topic_count = len(topics) if isinstance(topics, list) else len(topics or {})
+            results['questions'] = {'ok': True, 'meetingId': meeting_id,
+                                    'topicCount': topic_count}
         except Exception as e:
             results['questions'] = {'ok': False, 'error': str(e)[:400]}
         finally:
@@ -12958,6 +12997,39 @@ def approve_orchestration(job_id):
             return jsonify({'error': 'No proposed thesis on this job'}), 400
 
         ticker = job['ticker']
+
+        # Selective approval. With a selection, rebuild from the CURRENT thesis
+        # and add only the accepted changes — never the candidate with rejected
+        # parts stripped, which would carry through edits nobody reviewed.
+        # No selection means accept everything, so old callers behave as before.
+        accepted_ids = data.get('acceptedIds')
+        edits = data.get('edits') or {}
+        applied_count = None
+        if accepted_ids is not None or edits:
+            import onepager as _op2
+            with get_db() as (_c, cur):
+                cur.execute('SELECT analysis FROM portfolio_analyses WHERE ticker = %s', (ticker,))
+                cur_row = cur.fetchone()
+            live = (cur_row or {}).get('analysis') or {}
+            if isinstance(live, str):
+                live = json.loads(live)
+
+            diff = result.get('diff') or {}
+            merged, applied_count = _op2.apply_selected_changes(
+                live, diff, accepted_ids or [], edits)
+
+            if applied_count == 0:
+                _mp_update_job(job_id, status='done')
+                _orchestrate_set(job_id, stage='done',
+                                 summary='No changes accepted - the thesis is unchanged.')
+                return jsonify({'success': True, 'applied': False, 'appliedCount': 0})
+
+            # Carry forward the bookkeeping the merge produced, so accepting a
+            # subset does not lose documentHistory or the reconciled fact table.
+            for k in ('documentHistory', '_factCorrections', '_factTable'):
+                if candidate.get(k) is not None:
+                    merged[k] = candidate[k]
+            candidate = merged
         # The same write the Thesis tab performs, so an approved run IS the thesis.
         with get_db(commit=True) as (_c, cur):
             cur.execute(
@@ -12978,7 +13050,7 @@ def approve_orchestration(job_id):
             args=(job_id, ticker, job_input.get('depth', 'standard'),
                   job_input.get('model'), keys),
             daemon=True).start()
-        return jsonify({'success': True, 'applied': True})
+        return jsonify({'success': True, 'applied': True, 'appliedCount': applied_count})
     except Exception as e:
         print(f"Error approving orchestration: {e}")
         return jsonify({'error': str(e)}), 500

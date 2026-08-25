@@ -485,3 +485,121 @@ def test_existing_thesis_is_given_as_context_for_direction():
     onepager.classify_diff(DIFF, _classifier({}, capture), json.loads,
                            current_analysis={"thesis": {"pillars": [{"title": "MLR improves"}]}})
     assert "EXISTING THESIS" in capture["user"]
+
+
+# --------------------------------------------------------------------------
+# selective approval — accept some changes, reject others, edit any
+# --------------------------------------------------------------------------
+
+SEL_CUR = {
+    "thesis": {"pillars": [{"title": "A", "d": 1}, {"title": "B", "d": 2}]},
+    "signposts": [{"signpost": "S1", "v": "old"}],
+    "threats": [{"title": "T1"}],
+    "conclusion": "old",
+}
+
+SEL_DIFF = {
+    "pillars": {"added": [{"title": "C"}],
+                "removed": [{"title": "B", "d": 2}],
+                "changed": [{"label": "A", "before": {"title": "A", "d": 1},
+                             "after": {"title": "A", "d": 99}}]},
+    "signposts": {"added": [], "removed": [],
+                  "changed": [{"label": "S1", "before": {},
+                               "after": {"signpost": "S1", "v": "new"}}]},
+    "threats": {"added": [], "removed": [{"title": "T1"}], "changed": []},
+    "conclusion": {"changed": True, "before": "old", "after": "new"},
+}
+
+
+def test_rejected_changes_leave_the_current_thesis_untouched():
+    out, applied = onepager.apply_selected_changes(
+        SEL_CUR, SEL_DIFF, ["pillars:added:C", "signposts:changed:S1"])
+    titles = [p["title"] for p in out["thesis"]["pillars"]]
+    assert titles == ["A", "B", "C"]          # B not removed, C added
+    assert out["thesis"]["pillars"][0]["d"] == 1   # A's reword rejected
+    assert out["signposts"][0]["v"] == "new"       # this one accepted
+    assert len(out["threats"]) == 1                # removal rejected
+    assert out["conclusion"] == "old"
+    assert applied == 2
+
+
+def test_accepting_everything_matches_the_candidate_shape():
+    ids = ["pillars:added:C", "pillars:removed:B", "pillars:changed:A",
+           "signposts:changed:S1", "threats:removed:T1", "conclusion:changed:conclusion"]
+    out, applied = onepager.apply_selected_changes(SEL_CUR, SEL_DIFF, ids)
+    titles = [p["title"] for p in out["thesis"]["pillars"]]
+    assert titles == ["A", "C"] and out["thesis"]["pillars"][0]["d"] == 99
+    assert out["threats"] == []
+    assert out["conclusion"] == "new"
+    assert applied == 6
+
+
+def test_an_edit_implies_acceptance():
+    out, applied = onepager.apply_selected_changes(
+        SEL_CUR, SEL_DIFF, [], edits={"pillars:changed:A": {"title": "A", "d": "EDITED"}})
+    assert out["thesis"]["pillars"][0]["d"] == "EDITED"
+    assert applied == 1
+
+
+def test_edit_overrides_the_models_wording():
+    out, _ = onepager.apply_selected_changes(
+        SEL_CUR, SEL_DIFF, ["pillars:changed:A"],
+        edits={"pillars:changed:A": {"title": "A", "d": "MINE"}})
+    assert out["thesis"]["pillars"][0]["d"] == "MINE"
+
+
+def test_the_source_analysis_is_never_mutated():
+    """Applying must not corrupt the live thesis if anything downstream fails."""
+    before = json.dumps(SEL_CUR, sort_keys=True)
+    onepager.apply_selected_changes(SEL_CUR, SEL_DIFF,
+                                    ["pillars:removed:B", "conclusion:changed:conclusion"])
+    assert json.dumps(SEL_CUR, sort_keys=True) == before
+
+
+def test_accepting_nothing_returns_the_current_thesis():
+    out, applied = onepager.apply_selected_changes(SEL_CUR, SEL_DIFF, [])
+    assert applied == 0
+    assert json.dumps(out, sort_keys=True) == json.dumps(SEL_CUR, sort_keys=True)
+
+
+def test_changed_row_that_vanished_is_appended_not_dropped():
+    """Losing an accepted change silently is worse than re-adding the row."""
+    cur = {"thesis": {"pillars": []}}
+    diff = {"pillars": {"added": [], "removed": [],
+                        "changed": [{"label": "Gone", "before": {}, "after": {"title": "Gone", "d": 5}}]},
+            "signposts": {"added": [], "removed": [], "changed": []},
+            "threats": {"added": [], "removed": [], "changed": []},
+            "conclusion": {"changed": False}}
+    out, applied = onepager.apply_selected_changes(cur, diff, ["pillars:changed:Gone"])
+    assert applied == 1
+    assert out["thesis"]["pillars"][0]["d"] == 5
+
+
+def test_ids_match_the_ones_classification_assigns():
+    """Selections, classifications and edits must key off one identifier."""
+    items, _ = onepager.build_classify_prompt(SEL_DIFF)
+    ids = {i["id"] for i in items}
+    assert "pillars:added:C" in ids
+    assert "pillars:changed:A" in ids
+    assert "threats:removed:T1" in ids
+
+
+def test_json_text_edits_are_parsed_into_objects():
+    """The editor hands back text; a hand-edited pillar must land as an object."""
+    out, _ = onepager.apply_selected_changes(
+        SEL_CUR, SEL_DIFF, [], edits={"pillars:changed:A": '{"title": "A", "d": 42}'})
+    assert out["thesis"]["pillars"][0] == {"title": "A", "d": 42}
+
+
+def test_free_text_edits_stay_text():
+    out, _ = onepager.apply_selected_changes(
+        SEL_CUR, SEL_DIFF, [], edits={"conclusion:changed:conclusion": "my own wording"})
+    assert out["conclusion"] == "my own wording"
+
+
+def test_malformed_json_edit_does_not_break_approval():
+    """A broken edit must degrade to text, never raise mid-approval."""
+    out, applied = onepager.apply_selected_changes(
+        SEL_CUR, SEL_DIFF, [], edits={"pillars:changed:A": '{"title": "A", broken'})
+    assert applied == 1
+    assert isinstance(out["thesis"]["pillars"][0], str)
