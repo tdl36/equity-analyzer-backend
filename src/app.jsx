@@ -80,7 +80,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-08-24T13';
+        const BUILD_VERSION = '2026-08-24T14';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -22317,17 +22317,27 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             ) : (
                                                 <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
                                                     {opSaved.map(item => (
-                                                        <button key={item.ticker}
+                                                        <React.Fragment key={item.ticker}>
+                                                        <button
                                                             onClick={() => openOnePager(item.ticker)}
                                                             className={`flex-shrink-0 px-3 py-1.5 rounded-lg border text-xs font-mono font-bold ${
                                                                 opData?.ticker === item.ticker
                                                                     ? 'bg-amber-500 text-slate-900 border-amber-400'
                                                                     : 'bg-white/5 text-slate-300 border-white/10'}`}>
                                                             {item.ticker}
-                                                            <span className="ml-1.5 font-sans font-normal opacity-70">
-                                                                {(item.depths || []).map(d => d.depth[0]).join('')}
-                                                            </span>
                                                         </button>
+                                                        {(item.depths || []).map(dp => (
+                                                            <button key={item.ticker + dp.depth}
+                                                                onClick={() => openOnePager(item.ticker, dp.depth)}
+                                                                title={`${item.ticker} — ${dp.depth}`}
+                                                                className={`flex-shrink-0 px-2 py-1.5 rounded-lg border text-[10px] -ml-1 ${
+                                                                    opData?.ticker === item.ticker && opData?.meta?.depth === dp.depth
+                                                                        ? 'bg-amber-500 text-slate-900 border-amber-400'
+                                                                        : 'bg-white/5 text-slate-400 border-white/10'}`}>
+                                                                {dp.depth}
+                                                            </button>
+                                                        ))}
+                                                        </React.Fragment>
                                                     ))}
                                                 </div>
                                             )}
@@ -22360,6 +22370,21 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         </option>
                                                     ))}
                                                 </select>
+                                                {(opData || opTicker) && (
+                                                    <button
+                                                        onClick={() => {
+                                                            // The tab remembered the last ticker across navigation with
+                                                            // no way back to an empty state.
+                                                            setOpTicker(''); setOpData(null); setOpPoster(null);
+                                                            setOpAvailableDepths([]); setOpStatus(''); setOpError(null);
+                                                            setOrchJob(null); setOrchAccepted({}); setOrchEdits({});
+                                                            setOrchDocs([]); setOpInputs(null);
+                                                        }}
+                                                        title="Clear and start on another ticker"
+                                                        className="px-2.5 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs text-slate-400">
+                                                        New ticker
+                                                    </button>
+                                                )}
                                                 <button onClick={generateOnePager} disabled={opBusy}
                                                     className="flex items-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:bg-neutral-700 rounded-xl text-sm font-medium transition-all">
                                                     {opBusy
@@ -22810,13 +22835,29 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             {st.label}
                                                         </button>
                                                     ))}
-                                                    {opAvailableDepths.length > 1 && (
-                                                        <span className="ml-3 text-xs text-slate-400">
-                                                            Also saved: {opAvailableDepths
-                                                                .filter(d => d.depth !== opData?.meta?.depth)
-                                                                .map(d => d.depth).join(', ')}
-                                                        </span>
-                                                    )}
+                                                    {/* Depth is a saved variant, not a view setting: switching
+                                                        loads a different stored page. It was previously only
+                                                        reachable from tiny chips in the desktop sidebar, and
+                                                        "Also saved: brief" was dead text. */}
+                                                    <span className="ml-3 text-xs text-slate-400">Depth:</span>
+                                                    {(opDepths.length ? opDepths : [{ key: 'brief', label: 'Brief' }, { key: 'standard', label: 'Standard' }, { key: 'deep', label: 'Deep' }]).map(dp => {
+                                                        const saved = opAvailableDepths.some(a => a.depth === dp.key);
+                                                        const current = (opData?.meta?.depth || 'standard') === dp.key;
+                                                        return (
+                                                            <button key={dp.key}
+                                                                onClick={() => saved
+                                                                    ? openOnePager(opData.ticker, dp.key)
+                                                                    : (setOpDepth(dp.key), setOpStatus(`No ${dp.label} version saved for ${opData.ticker} yet — hit Research & Generate.`))}
+                                                                title={saved ? `Open the saved ${dp.label} version`
+                                                                    : `Not generated yet — selects ${dp.label} for the next run`}
+                                                                className={`px-2.5 py-1 rounded-lg text-xs border transition-all ${
+                                                                    current ? 'bg-amber-500 text-slate-900 border-amber-400 font-medium'
+                                                                    : saved ? 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'
+                                                                    : 'bg-transparent text-slate-600 border-white/5 border-dashed hover:text-slate-400'}`}>
+                                                                {dp.label}{!saved && ' +'}
+                                                            </button>
+                                                        );
+                                                    })}
                                                 </div>
                                                 {opStyle === 'poster' ? (
                                                     <div className="mb-8">
