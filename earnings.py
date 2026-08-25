@@ -16,7 +16,11 @@ import app_v3
 
 
 def _today() -> date:
-    return datetime.utcnow().date()
+    # US market date, not UTC. UTC rolls over at 8pm ET, which left the last
+    # four hours of every trading day reading tomorrow's calendar: entries dated
+    # tomorrow were dispatched early, and the agent went looking for a press
+    # release that had not been published yet.
+    return app_v3.market_today()
 
 
 def upcoming(window_days: int = 14) -> list[dict]:

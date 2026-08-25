@@ -7,6 +7,33 @@ from media_trackers import poller
 
 FIXTURE = Path(__file__).parent / 'fixtures' / 'odd_lots_sample.xml'
 
+# The poller ignores anything older than BACKFILL_DAYS. The fixture's pubDates
+# are fixed points in time, so the suite passed when it was written and then
+# began failing silently once those dates aged past the window -- the poller was
+# fine, the fixture had simply expired. Dates are therefore stamped relative to
+# now, and the guids stay stable so the assertions below remain readable.
+NEWER_GUID = 'odd-lots-2026-04-20'
+OLDER_GUID = 'odd-lots-2026-04-18'
+
+
+def _feed_body(newer_days_ago=1, older_days_ago=3):
+    """The fixture with its pubDates moved inside the backfill window."""
+    from datetime import datetime, timedelta, timezone
+
+    def _stamp(days):
+        d = datetime.now(timezone.utc) - timedelta(days=days)
+        return d.strftime('%a, %d %b %Y %H:%M:%S GMT')
+
+    return (FIXTURE.read_text()
+            .replace('Mon, 20 Apr 2026 10:00:00 GMT', _stamp(newer_days_ago))
+            .replace('Fri, 18 Apr 2026 10:00:00 GMT', _stamp(older_days_ago)))
+
+
+def _between_stamp(days_ago=2):
+    """A timestamp that sits between the two fixture episodes."""
+    from datetime import datetime, timedelta, timezone
+    return (datetime.now(timezone.utc) - timedelta(days=days_ago)).isoformat()
+
 
 def _create_feed(url='https://fake.example/rss', name='Odd Lots'):
     with app_v3.get_db(commit=True) as (_c, cur):
@@ -21,21 +48,21 @@ def _create_feed(url='https://fake.example/rss', name='Odd Lots'):
 def test_poll_feed_inserts_episodes(clean_db):
     feed_id = _create_feed()
     responses.add(responses.GET, 'https://fake.example/rss',
-                  body=FIXTURE.read_text(), status=200,
+                  body=_feed_body(), status=200,
                   content_type='application/rss+xml')
     poller.poll_feed(feed_id)
     with app_v3.get_db() as (_c, cur):
         cur.execute("SELECT guid, title FROM media_episodes WHERE feed_id=%s ORDER BY guid", (feed_id,))
         rows = cur.fetchall()
     guids = {r['guid'] for r in rows}
-    assert guids == {'odd-lots-2026-04-20', 'odd-lots-2026-04-18'}
+    assert guids == {NEWER_GUID, OLDER_GUID}
 
 
 @responses.activate
 def test_poll_feed_is_idempotent(clean_db):
     feed_id = _create_feed()
     responses.add(responses.GET, 'https://fake.example/rss',
-                  body=FIXTURE.read_text(), status=200)
+                  body=_feed_body(), status=200)
     poller.poll_feed(feed_id)
     poller.poll_feed(feed_id)
     with app_v3.get_db() as (_c, cur):
@@ -71,13 +98,14 @@ def test_poll_feed_auto_mutes_after_5_errors(clean_db):
 def test_poll_feed_skips_episodes_older_than_last_episode_at(clean_db):
     feed_id = _create_feed()
     with app_v3.get_db(commit=True) as (_c, cur):
-        cur.execute("UPDATE media_feeds SET last_episode_at='2026-04-19'::timestamp WHERE id=%s", (feed_id,))
-    responses.add(responses.GET, 'https://fake.example/rss', body=FIXTURE.read_text(), status=200)
+        cur.execute("UPDATE media_feeds SET last_episode_at=%s::timestamptz WHERE id=%s",
+                    (_between_stamp(), feed_id))
+    responses.add(responses.GET, 'https://fake.example/rss', body=_feed_body(), status=200)
     poller.poll_feed(feed_id)
     with app_v3.get_db() as (_c, cur):
         cur.execute("SELECT guid FROM media_episodes WHERE feed_id=%s", (feed_id,))
         guids = {r['guid'] for r in cur.fetchall()}
-    assert guids == {'odd-lots-2026-04-20'}
+    assert guids == {NEWER_GUID}
 
 
 def test_poll_all_feeds_iterates(clean_db, monkeypatch):

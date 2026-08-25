@@ -80,7 +80,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-08-24T14';
+        const BUILD_VERSION = '2026-08-24T15';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -2126,6 +2126,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [opDepths, setOpDepths] = useState([]);        // depth options from the backend
             const [opDepth, setOpDepth] = useState('standard');
             const [opAvailableDepths, setOpAvailableDepths] = useState([]); // depths saved for the open ticker
+            // Every regenerate overwrote the page in place. The old version was
+            // kept in the database the whole time but nothing could reach it.
+            const [opHistory, setOpHistory] = useState([]);
+            const [opHistoryOpen, setOpHistoryOpen] = useState(false);
             const [opModels, setOpModels] = useState([]);
             const [opModel, setOpModel] = useState('opus-4-6');
             const [opEmailing, setOpEmailing] = useState(false);
@@ -2547,6 +2551,30 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     loadOnePagerList();
                 } catch (e) { alert('Delete failed: ' + (e.message || e)); }
             }, [opData, loadOnePagerList]);
+
+            const loadOnePagerHistory = useCallback(async (ticker, depth) => {
+                try {
+                    const r = await fetch(`${API_URL}/api/onepager/${ticker}/history?depth=${depth || 'standard'}`);
+                    if (!r.ok) throw new Error('Could not read history');
+                    const j = await r.json();
+                    setOpHistory(j.versions || []);
+                    setOpHistoryOpen(true);
+                } catch (e) { alert('History unavailable: ' + (e.message || e)); }
+            }, []);
+
+            const restoreOnePagerVersion = useCallback(async (ticker, depth, index) => {
+                if (!confirm('Restore this version? The page currently on screen is kept in history, so this is undoable.')) return;
+                try {
+                    const r = await fetch(`${API_URL}/api/onepager/${ticker}/restore`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ depth: depth || 'standard', index }),
+                    });
+                    const j = await r.json();
+                    if (!r.ok) throw new Error(j.error || 'Restore failed');
+                    setOpHistoryOpen(false);
+                    await openOnePager(ticker, depth);
+                } catch (e) { alert('Restore failed: ' + (e.message || e)); }
+            }, [openOnePager]);
 
             // Model list is served by the backend so the two never drift.
             useEffect(() => {
@@ -22408,6 +22436,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             className="flex items-center gap-1.5 px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-xs">
                                                             <Download className="w-3.5 h-3.5" /> Print / PDF
                                                         </button>
+                                                        <button onClick={() => loadOnePagerHistory(opData.ticker, opData?.meta?.depth)}
+                                                            title="Earlier versions of this page"
+                                                            className="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-xs">
+                                                            Versions
+                                                        </button>
                                                         <button onClick={() => deleteOnePager(opData.ticker, opData?.meta?.depth)}
                                                             className="px-3 py-2 bg-white/10 hover:bg-red-600/30 rounded-lg text-xs">
                                                             Delete
@@ -22417,6 +22450,38 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             </div>
                                             {opStatus && !opError && <p className="mt-2 text-xs text-slate-400">{opStatus}</p>}
                                             {opError && <p className="mt-2 text-xs text-red-400">{opError}</p>}
+
+                                            {opHistoryOpen && (
+                                                <div className="mt-3 p-3 bg-black/20 border border-white/10 rounded-xl">
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <span className="label">Earlier versions ({opHistory.length})</span>
+                                                        <button onClick={() => setOpHistoryOpen(false)}
+                                                            className="text-xs text-slate-400 hover:text-white">Close</button>
+                                                    </div>
+                                                    {opHistory.length === 0 ? (
+                                                        <p className="text-xs text-slate-500">
+                                                            No earlier versions — this page has only been generated once.
+                                                        </p>
+                                                    ) : (
+                                                        <div className="space-y-1">
+                                                            {opHistory.map(v => (
+                                                                <div key={v.index}
+                                                                    className="flex items-center justify-between gap-3 px-2 py-1.5 rounded-lg bg-white/5">
+                                                                    <span className="text-xs text-slate-300 truncate">
+                                                                        {v.timestamp ? new Date(v.timestamp).toLocaleString() : `version ${v.index + 1}`}
+                                                                        {v.company ? ` · ${v.company}` : ''}
+                                                                    </span>
+                                                                    <button
+                                                                        onClick={() => restoreOnePagerVersion(opData.ticker, opData?.meta?.depth, v.index)}
+                                                                        className="flex-shrink-0 px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-[11px]">
+                                                                        Restore
+                                                                    </button>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
 
                                             {/* Input freshness. The page is only as current as the
                                                 thesis and overview it is assembled from. */}
@@ -22613,17 +22678,55 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     {orchJob.result?.icloudMissing?.length > 0 && (
                                                         <div className="text-red-400">
                                                             ✗ {orchJob.result.icloudMissing.length} iCloud file(s) never arrived — analysed without them
+                                                            {/* Naming them is the difference between a warning and
+                                                                something you can go fix on the Mac. */}
+                                                            <ul className="mt-1 ml-3 list-disc text-[11px] text-slate-500">
+                                                                {orchJob.result.icloudMissing.slice(0, 8).map((f, i) => (
+                                                                    <li key={i} className="break-all">{typeof f === 'string' ? f : (f?.filename || JSON.stringify(f))}</li>
+                                                                ))}
+                                                                {orchJob.result.icloudMissing.length > 8 && (
+                                                                    <li>…and {orchJob.result.icloudMissing.length - 8} more</li>
+                                                                )}
+                                                            </ul>
                                                         </div>
                                                     )}
                                                     {orchJob.result?.onepagerStep && <div>… One-pager agent — {orchJob.result.onepagerStep}</div>}
                                                     {orchJob.result?.onepager && (
-                                                        <div>{orchJob.result.onepager.ok ? '✓' : '✗'} One-pager agent
-                                                            {orchJob.result.onepager.error ? ` — ${orchJob.result.onepager.error}` : ''}</div>
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <span>{orchJob.result.onepager.ok ? '✓' : '✗'} One-pager agent
+                                                                {orchJob.result.onepager.error ? ` — ${orchJob.result.onepager.error}` : ''}</span>
+                                                            {/* It reported success and then left you to go find it. */}
+                                                            {orchJob.result.onepager.ok && (
+                                                                <button
+                                                                    onClick={() => openOnePager(
+                                                                        orchJob.result.onepager.ticker || opData?.ticker || opTicker,
+                                                                        orchJob.result.onepager.depth)}
+                                                                    className="px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-[11px]">
+                                                                    Open the {orchJob.result.onepager.depth || ''} page →
+                                                                </button>
+                                                            )}
+                                                        </div>
                                                     )}
                                                     {orchJob.result?.questionsStep && <div>… Meeting-prep agent — {orchJob.result.questionsStep}</div>}
                                                     {orchJob.result?.questions && (
-                                                        <div>{orchJob.result.questions.ok ? '✓' : '✗'} Meeting-prep agent
-                                                            {orchJob.result.questions.error ? ` — ${orchJob.result.questions.error}` : ''}</div>
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <span>{orchJob.result.questions.ok ? '✓' : '✗'} Meeting-prep agent
+                                                                {orchJob.result.questions.topicCount
+                                                                    ? ` — ${orchJob.result.questions.topicCount} topic(s)` : ''}
+                                                                {orchJob.result.questions.error ? ` — ${orchJob.result.questions.error}` : ''}</span>
+                                                            {/* The questions were saved against a meeting the panel
+                                                                never named, so they were effectively unreachable. */}
+                                                            {orchJob.result.questions.ok && orchJob.result.questions.meetingId && (
+                                                                <button
+                                                                    onClick={async () => {
+                                                                        await loadMpMeeting(orchJob.result.questions.meetingId);
+                                                                        switchTab('meetingprep');
+                                                                    }}
+                                                                    className="px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-[11px]">
+                                                                    Open the questions →
+                                                                </button>
+                                                            )}
+                                                        </div>
                                                     )}
                                                 </div>
 

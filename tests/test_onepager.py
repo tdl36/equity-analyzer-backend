@@ -603,3 +603,15 @@ def test_malformed_json_edit_does_not_break_approval():
         SEL_CUR, SEL_DIFF, [], edits={"pillars:changed:A": '{"title": "A", broken'})
     assert applied == 1
     assert isinstance(out["thesis"]["pillars"][0], str)
+
+
+def test_removal_takes_one_row_not_every_matching_label():
+    """Two pillars can share a title; removing one must not delete both."""
+    cur = {"thesis": {"pillars": [{"title": "Dup", "d": 1}, {"title": "Dup", "d": 2}]}}
+    diff = {"pillars": {"added": [], "removed": [{"title": "Dup", "d": 1}], "changed": []},
+            "signposts": {"added": [], "removed": [], "changed": []},
+            "threats": {"added": [], "removed": [], "changed": []},
+            "conclusion": {"changed": False}}
+    out, applied = onepager.apply_selected_changes(cur, diff, ["pillars:removed:Dup"])
+    assert applied == 1
+    assert len(out["thesis"]["pillars"]) == 1

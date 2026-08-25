@@ -54,7 +54,9 @@ def _briefing_enabled(playbook: dict | None, context: str) -> bool:
 
 
 def _today() -> date:
-    return datetime.utcnow().date()
+    # A before/after-market briefing is defined by the trading day, so it has to
+    # use the market date. On UTC the evening run read tomorrow's earnings.
+    return app_v3.market_today()
 
 
 def _fetch_earnings_today(tickers: list[str]) -> list[dict]:

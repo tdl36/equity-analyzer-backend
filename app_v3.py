@@ -16,10 +16,23 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from psycopg2.pool import ThreadedConnectionPool
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import anthropic
 import openai
 from google import genai
 from google.genai import types as genai_types
+
+# Everything this app schedules -- earnings fetches, before/after-market
+# briefings, meeting dates -- is anchored to the US trading day. UTC rolls over
+# at 8pm ET, so using it for "today" made the last four hours of every trading
+# day read the next day's calendar.
+MARKET_TZ = ZoneInfo('America/New_York')
+
+
+def market_today():
+    """Today's date on the US market calendar."""
+    return datetime.now(MARKET_TZ).date()
+
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max upload size
@@ -12623,20 +12636,21 @@ def get_onepager_poster(ticker):
 # ============================================================================
 
 def _orchestrate_set(job_id, **fields):
-    """Merge fields into the orchestrator job's result blob."""
+    """Merge fields into the orchestrator job's result blob.
+
+    The merge happens in SQL, not in Python. The fan-out updates progress from
+    two threads at once, and a read-modify-write here loses one of them: both
+    read the same blob, both write, and whichever commits second erases the
+    other's field. jsonb `||` merges server-side under the row lock, so
+    concurrent writers to different keys cannot clobber each other.
+    """
+    if not fields:
+        return
     with get_db(commit=True) as (_c, cur):
-        cur.execute('SELECT result FROM mp_jobs WHERE id = %s', (job_id,))
-        row = cur.fetchone()
-        cur_result = (row or {}).get('result') or {}
-        if isinstance(cur_result, str):
-            try:
-                cur_result = json.loads(cur_result)
-            except Exception:
-                cur_result = {}
-        cur_result.update(fields)
-        cur.execute('UPDATE mp_jobs SET result = %s::jsonb, updated_at = NOW() WHERE id = %s',
-                    (json.dumps(cur_result), job_id))
-    return cur_result
+        cur.execute(
+            "UPDATE mp_jobs SET result = COALESCE(result, '{}'::jsonb) || %s::jsonb, "
+            "updated_at = NOW() WHERE id = %s",
+            (json.dumps(fields), job_id))
 
 
 def _run_orchestrate_thesis(job_id, ticker, api_key, doc_config=None):
@@ -12691,7 +12705,14 @@ def _run_orchestrate_thesis(job_id, ticker, api_key, doc_config=None):
         else:
             filenames = list(all_filenames)
 
-        if not filenames and not rebuild_from_scratch:
+        if not filenames:
+            if rebuild_from_scratch:
+                # Rebuilding discards the existing thesis, so with no documents
+                # there is nothing left to build from — that would destroy the
+                # thesis rather than refresh it.
+                raise RuntimeError(
+                    f'Rebuild from scratch needs documents: none are selected for '
+                    f'{ticker}, so there would be nothing to build the thesis from.')
             raise RuntimeError(
                 f'No documents selected for {ticker}. '
                 f'{len(all_filenames)} are stored; add research to '
@@ -12891,7 +12912,7 @@ def _run_orchestrate_fanout(job_id, ticker, depth, model_key, keys):
                                 'RETURNING id', (ticker, company_name))
                     company_id = cur.fetchone()['id']
 
-                today = datetime.utcnow().date()
+                today = market_today()
                 cur.execute("SELECT id FROM mp_meetings WHERE company_id = %s AND meeting_date = %s "
                             "AND meeting_type = 'thesis-refresh' ORDER BY id DESC LIMIT 1",
                             (company_id, today))
@@ -13245,6 +13266,72 @@ def get_onepager(ticker):
         })
     except Exception as e:
         print(f"Error getting one-pager: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/onepager/<ticker>/history', methods=['GET'])
+def get_onepager_history(ticker):
+    """Previous versions of a saved one-pager.
+
+    save_onepager has been pushing the prior version into `history` on every
+    write, keeping the last 10 — but nothing ever read it back, so a regeneration
+    that came out worse than the page it replaced was unrecoverable.
+    """
+    try:
+        depth = request.args.get('depth') or 'standard'
+        with get_db() as (_c, cur):
+            cur.execute('SELECT history, updated_at FROM stock_onepagers '
+                        'WHERE ticker = %s AND depth = %s', (ticker.upper(), depth))
+            row = cur.fetchone()
+        if not row:
+            return jsonify({'ticker': ticker.upper(), 'depth': depth, 'versions': []})
+        history = row.get('history') or []
+        if isinstance(history, str):
+            history = json.loads(history)
+        # Newest first, and without the full payload — the list is for choosing.
+        versions = [{
+            'index': i,
+            'timestamp': (h or {}).get('timestamp'),
+            'company': ((h or {}).get('onepager') or {}).get('company'),
+        } for i, h in enumerate(history)]
+        versions.reverse()
+        return jsonify({'ticker': ticker.upper(), 'depth': depth, 'versions': versions})
+    except Exception as e:
+        print(f"Error reading one-pager history: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/onepager/<ticker>/restore', methods=['POST'])
+def restore_onepager(ticker):
+    """Restore a previous version, saving the current one into history first."""
+    try:
+        import onepager as _op
+        data = request.get_json() or {}
+        depth = data.get('depth') or 'standard'
+        index = data.get('index')
+        if index is None:
+            return jsonify({'error': 'index required'}), 400
+
+        with get_db() as (_c, cur):
+            cur.execute('SELECT history FROM stock_onepagers WHERE ticker = %s AND depth = %s',
+                        (ticker.upper(), depth))
+            row = cur.fetchone()
+        history = (row or {}).get('history') or []
+        if isinstance(history, str):
+            history = json.loads(history)
+        if not (0 <= int(index) < len(history)):
+            return jsonify({'error': 'No such version'}), 404
+
+        restored = (history[int(index)] or {}).get('onepager')
+        if not restored:
+            return jsonify({'error': 'That version has no page stored'}), 404
+
+        # Goes through save_onepager so the version being replaced is itself
+        # pushed into history — restoring is undoable.
+        _op.save_onepager(ticker.upper(), restored, get_db, depth=depth)
+        return jsonify({'success': True, 'onepager': restored})
+    except Exception as e:
+        print(f"Error restoring one-pager: {e}")
         return jsonify({'error': str(e)}), 500
 
 

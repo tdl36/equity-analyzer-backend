@@ -49,8 +49,9 @@ def test_transcribe_episode_falls_back_to_show_notes_when_no_audio(clean_db):
     assert row['transcript'] is None
 
 
-def test_transcribe_skips_if_duration_over_2hr(clean_db):
-    _seed_episode(audio_url='https://x/a.mp3', duration_sec=7201)
+def test_transcribe_skips_if_duration_over_cap(clean_db):
+    _seed_episode(audio_url='https://x/a.mp3',
+                  duration_sec=transcribe.MAX_DURATION_SEC + 1)
     transcribe.transcribe_episode('e1')
     with app_v3.get_db() as (_c, cur):
         cur.execute("SELECT status, error_message FROM media_episodes WHERE id='e1'")
@@ -59,13 +60,13 @@ def test_transcribe_skips_if_duration_over_2hr(clean_db):
     assert '7201' in (row['error_message'] or '') or 'cap' in (row['error_message'] or '').lower()
 
 
-def test_process_transcribe_batch_picks_up_to_3(clean_db):
+def test_process_transcribe_batch_respects_the_batch_cap(clean_db):
     with app_v3.get_db(commit=True) as (_c, cur):
         cur.execute('''
             INSERT INTO media_feeds (id, source_type, name, feed_url)
             VALUES ('f1','podcast','X','u') ON CONFLICT DO NOTHING
         ''')
-        for i in range(5):
+        for i in range(transcribe.MAX_EPISODES_PER_BATCH + 2):
             cur.execute('''
                 INSERT INTO media_episodes (id, feed_id, guid, title, show_notes, status)
                 VALUES (%s, 'f1', %s, 't', 'notes', 'new')
@@ -79,4 +80,4 @@ def test_process_transcribe_batch_picks_up_to_3(clean_db):
     with patch.object(transcribe, 'transcribe_episode', side_effect=fake_transcribe):
         transcribe.process_transcribe_batch()
 
-    assert len(calls) == 3
+    assert len(calls) == transcribe.MAX_EPISODES_PER_BATCH

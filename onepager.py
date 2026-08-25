@@ -923,10 +923,15 @@ def apply_selected_changes(current_analysis, diff, accepted_ids, edits=None):
             cid = _change_id(section, "removed", _label(it))
             if cid not in accepted:
                 continue
-            before = len(items)
-            items = [x for x in items if _norm(_label(x)) != _norm(_label(it))]
-            if len(items) != before:
-                applied += 1
+            # Remove ONE match, not every row sharing the label. Two pillars can
+            # legitimately carry the same title, and deleting both when the diff
+            # proposed removing one silently loses content.
+            target = _norm(_label(it))
+            for i, x in enumerate(items):
+                if _norm(_label(x)) == target:
+                    items.pop(i)
+                    applied += 1
+                    break
 
         for ch in sec.get("changed", []):
             cid = _change_id(section, "changed", ch.get("label"))
