@@ -80,7 +80,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-08-25T01';
+        const BUILD_VERSION = '2026-08-25T02';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -1722,7 +1722,31 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [catalystProposals, setCatalystProposals] = useState([]);
             const [catalystAutoMode, setCatalystAutoMode] = useState({enabled: false, expires_at: null});
             const [catalystSelectedProposals, setCatalystSelectedProposals] = useState(new Set());
-            const [catalystAutoDurationMin, setCatalystAutoDurationMin] = useState(60);
+            const [catalystAutoSaving, setCatalystAutoSaving] = useState(false);
+
+            // What the select shows is derived from what the server actually has,
+            // so the control can never disagree with the live setting.
+            const catalystAutoValue = !catalystAutoMode.enabled ? 'off'
+                : (catalystAutoMode.expires_at ? 'timed' : 'always');
+
+            const setCatalystAutoMode_ = async (choice) => {
+                if (choice === 'timed') return;          // that entry only reports state
+                setCatalystAutoSaving(true);
+                try {
+                    await fetch(`${API_URL}/api/catalysts/auto-mode`, {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/json'},
+                        // durationMin 0 means no expiry; the backend reads it that way.
+                        body: JSON.stringify({
+                            enabled: choice !== 'off',
+                            durationMin: choice === 'always' ? 0 : Number(choice) || 0,
+                        }),
+                    });
+                    await loadCatalystProposals();
+                } catch (e) {
+                    alert('Could not change auto-fire: ' + (e.message || e));
+                } finally { setCatalystAutoSaving(false); }
+            };
             const loadCatalystProposals = async () => {
                 try {
                     const r = await fetch(`${API_URL}/api/catalysts/proposals`);
@@ -25846,33 +25870,37 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 Local agent watches CATALYSTS/{`{TICKER}`}/{`{topic}`}/ folders. Default: proposes syntheses you approve. Auto-fire synthesises without asking — set “Always on” to leave it running.
                                                             </p>
                                                         </div>
+                                                        {/* One control, applied on change, showing the state that is
+                                                            actually stored. It used to be a toggle plus a separate
+                                                            duration select that was disabled whenever auto-fire was on
+                                                            — so changing the duration meant switching off first, and the
+                                                            select showed a local default rather than the real setting. */}
                                                         <div className="flex items-center gap-2 shrink-0">
                                                             <select
-                                                                value={catalystAutoDurationMin}
-                                                                onChange={e => setCatalystAutoDurationMin(Number(e.target.value))}
-                                                                disabled={catalystAutoMode.enabled}
-                                                                className="px-2 py-1 bg-black/30 border border-white/10 rounded-md text-xs text-slate-200 disabled:opacity-40"
+                                                                value={catalystAutoValue}
+                                                                onChange={e => setCatalystAutoMode_(e.target.value)}
+                                                                disabled={catalystAutoSaving}
+                                                                className={`px-3 py-1.5 border rounded-md text-xs font-semibold disabled:opacity-40 ${
+                                                                    catalystAutoMode.enabled
+                                                                        ? 'bg-amber-500 text-slate-900 border-amber-400'
+                                                                        : 'bg-black/30 text-slate-200 border-white/10'}`}
                                                             >
-                                                                <option value={0}>Always on</option>
-                                                                <option value={15}>15 min</option>
-                                                                <option value={60}>1 hr</option>
-                                                                <option value={180}>3 hr</option>
-                                                                <option value={480}>8 hr</option>
+                                                                <option value="off">Auto-fire: off (propose only)</option>
+                                                                <option value="always">Auto-fire: always on</option>
+                                                                <option value="15">Auto-fire: for 15 min</option>
+                                                                <option value="60">Auto-fire: for 1 hr</option>
+                                                                <option value="180">Auto-fire: for 3 hr</option>
+                                                                <option value="480">Auto-fire: for 8 hr</option>
+                                                                {/* A countdown already running matches none of the fixed
+                                                                    options, so it needs its own entry or the select would
+                                                                    silently misreport the live setting. */}
+                                                                {catalystAutoValue === 'timed' && (
+                                                                    <option value="timed">Auto-fire: on until {fmtETDateTime(catalystAutoMode.expires_at)}</option>
+                                                                )}
                                                             </select>
-                                                            <button
-                                                                onClick={async () => {
-                                                                    const next = !catalystAutoMode.enabled;
-                                                                    await fetch(`${API_URL}/api/catalysts/auto-mode`, {
-                                                                        method: 'PUT',
-                                                                        headers: {'Content-Type': 'application/json'},
-                                                                        body: JSON.stringify({enabled: next, durationMin: catalystAutoDurationMin}),
-                                                                    });
-                                                                    loadCatalystProposals();
-                                                                }}
-                                                                className={`px-4 py-1.5 rounded-md text-xs font-semibold ${catalystAutoMode.enabled ? 'bg-amber-500 text-slate-900 hover:bg-amber-400' : 'bg-white/10 text-slate-300 hover:bg-white/20'}`}
-                                                            >
-                                                                {catalystAutoMode.enabled ? 'Auto-fire: ON' : 'Auto-fire: OFF'}
-                                                            </button>
+                                                            {catalystAutoSaving && (
+                                                                <span className="text-[10px] text-slate-400">saving…</span>
+                                                            )}
                                                         </div>
                                                     </div>
                                                     {catalystAutoMode.enabled && (
