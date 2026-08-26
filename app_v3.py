@@ -7400,6 +7400,9 @@ def youtube_summarize():
         url = (data.get('url') or '').strip()
         ticker = (data.get('ticker') or '').strip().upper()
         generate_korean = bool(data.get('generateKorean'))
+        depth = (data.get('depth') or 'standard').strip().lower()
+        if depth not in EXPLAIN_DEPTH_TEXT:
+            depth = 'standard'
         korean_only = bool(data.get('koreanOnly')) and generate_korean
         anthropic_api_key = data.get('apiKey') or os.environ.get('ANTHROPIC_API_KEY', '')
         if not url:
@@ -18725,9 +18728,27 @@ def _decipher_attachment_block(att):
     return None, None
 
 
+# The depth dial. Not a different prompt -- an instruction prepended to whichever
+# prompt the mode selected, so mode (what shape of output) and depth (how much
+# background it assumes) stay independent and do not multiply into four prompts.
+EXPLAIN_DEPTHS = [
+    ("standard", "Standard", ""),
+    ("simple", "Simple",
+     "Explain as if to a smart person with no background in this field. Prefer "
+     "everyday words over correct-but-opaque ones, and give a concrete analogy "
+     "for every abstract concept."),
+    ("simplest", "Simplest",
+     "Explain as if to a bright fifteen-year-old. One idea per sentence. No term "
+     "goes undefined, including ones you would normally assume are common "
+     "knowledge in finance. Short sentences. Concrete over abstract, always."),
+]
+
+EXPLAIN_DEPTH_TEXT = {key: text for key, _label, text in EXPLAIN_DEPTHS}
+
+
 def _run_decipher_job(job_id: str, text: str, attachments: list,
                       ticker: str, mode: str, api_key: str,
-                      generate_korean: bool = False):
+                      generate_korean: bool = False, depth: str = 'standard'):
     """Background worker. Updates _decipher_jobs[job_id] with status + result.
 
     `attachments` is a list of {fileData, fileName, fileType, mimeType} dicts.
@@ -18782,6 +18803,12 @@ def _run_decipher_job(job_id: str, text: str, attachments: list,
                 f"{ticker_block}"
             )
             max_out = 8192
+
+        # Depth rides in front of the task, after the mode's own instructions, so
+        # it colours the whole answer rather than reading as an afterthought.
+        depth_text = EXPLAIN_DEPTH_TEXT.get(depth or 'standard', '')
+        if depth_text:
+            ask = f"{depth_text}\n\n{ask}"
 
         content.append({"type": "text", "text": ask})
 
@@ -18893,6 +18920,14 @@ OUTPUT
         })
 
 
+@app.route('/api/explain/depths', methods=['GET'])
+def explain_depths():
+    """Depth options, served by the backend so the picker cannot drift from it."""
+    return jsonify({'depths': [{'key': k, 'label': l, 'note': t}
+                               for k, l, t in EXPLAIN_DEPTHS],
+                    'default': 'standard'})
+
+
 @app.route('/api/decipher', methods=['POST'])
 def decipher():
     """Start an async Decipher job. Returns {jobId, status} immediately —
@@ -18964,7 +18999,7 @@ def decipher():
         threading.Thread(
             target=_run_decipher_job,
             args=(job_id, text, attachments, ticker, mode, api_key),
-            kwargs={'generate_korean': generate_korean},
+            kwargs={'generate_korean': generate_korean, 'depth': depth},
             daemon=True,
             name=f'decipher-{job_id}',
         ).start()

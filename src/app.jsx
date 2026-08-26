@@ -80,7 +80,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-08-26T01';
+        const BUILD_VERSION = '2026-08-26T02';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -1672,7 +1672,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [agentModel, setAgentModel] = useState('claude-haiku-4-5-20251001');
             const [agentActiveRun, setAgentActiveRun] = useState(null);
             const [agentHistory, setAgentHistory] = useState([]);
-            const [agentView, setAgentView] = useState('new'); // 'new' | 'history' | 'detail' | 'decipher'
+            const [agentView, setAgentView] = useState('new'); // 'new' | 'history' | 'detail'  (decipher moved to the Explain tab)
             // Decipher sub-tab state — one-shot agent that explains industry jargon
             // and Q&A subtext from pasted text or uploaded PDFs.
             const [decipherText, setDecipherText] = useState('');
@@ -1685,6 +1685,42 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [decipherKorean, setDecipherKorean] = useState(false);
             const [decipherTicker, setDecipherTicker] = useState('');
             const [decipherMode, setDecipherMode] = useState('synthesize'); // 'synthesize' | 'walkthrough'
+            // Depth is independent of mode: mode is what shape the output takes,
+            // depth is how much background it assumes. Options come from the
+            // backend so the picker cannot drift from the instructions it sends.
+            // Documents Charlie already holds for a ticker, so a filing that is
+            // already in the library can be explained without finding the file
+            // on disk and uploading it again. /api/documents/<t>/content already
+            // returned exactly this shape; nothing had ever called it.
+            const [explainStored, setExplainStored] = useState([]);
+            const [explainStoredLoading, setExplainStoredLoading] = useState(false);
+            const [explainStoredOpen, setExplainStoredOpen] = useState(false);
+            const [explainDepth, setExplainDepth] = useState('standard');
+            const [explainDepths, setExplainDepths] = useState([]);
+            const loadStoredDocsForExplain = useCallback(async (ticker) => {
+                const t = (ticker || '').trim().toUpperCase();
+                if (!t) { alert('Enter a ticker first so Charlie knows which documents to look for.'); return; }
+                setExplainStoredLoading(true);
+                try {
+                    const r = await fetch(`${API_URL}/api/documents/${t}/content`);
+                    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                    const j = await r.json();
+                    setExplainStored(j.documents || []);
+                    setExplainStoredOpen(true);
+                } catch (e) {
+                    alert(`Could not load stored documents for ${t}: ${e.message || e}`);
+                } finally { setExplainStoredLoading(false); }
+            }, []);
+            useEffect(() => {
+                (async () => {
+                    try {
+                        const r = await fetch(`${API_URL}/api/explain/depths`);
+                        if (!r.ok) return;
+                        const j = await r.json();
+                        setExplainDepths(j.depths || []);
+                    } catch (e) { /* picker falls back to its built-in list */ }
+                })();
+            }, []);
             const [decipherLoading, setDecipherLoading] = useState(false);
             const [decipherStartedAt, setDecipherStartedAt] = useState(null);
             // Save / catalog / email state for Decipher results.
@@ -14707,6 +14743,19 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 </span>
                             </button>
                             <button
+                                onClick={() => switchTab('explain')}
+                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                                    activeTab === 'explain'
+                                        ? 'bg-amber-600 text-white shadow-lg glow-teal'
+                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
+                                }`}
+                            >
+                                <span className="flex items-center gap-2">
+                                    <FileText className="w-4 h-4" />
+                                    Explain
+                                </span>
+                            </button>
+                            <button
                                 onClick={() => switchTab('onepager')}
                                 className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
                                     activeTab === 'onepager'
@@ -25574,6 +25623,829 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         )}
 
                         {/* AGENTS TAB */}
+                        {activeTab === 'explain' && (
+                            <div className="flex-1 flex flex-col bg-white/[0.02] overflow-y-auto pb-24 md:pb-0" onScroll={(e) => { setShowScrollTop(e.target.scrollTop > 300); scrollContainerRef.current = e.target; }}>
+                                <div className="p-4 md:p-6">
+                                    <div className="max-w-4xl mx-auto space-y-6">
+                                        <div>
+                                            <h1 className="text-xl font-bold">Explain it to me</h1>
+                                            <p className="text-xs text-slate-400 mt-0.5">
+                                                Paste anything dense — a filing, a transcript, a contract — and get it in plain language. Ask follow-ups against the same document.
+                                            </p>
+                                        </div>
+                                        {(() => {
+                                            // Compose the explanation + any follow-up chat turns into one
+                                            // markdown blob — used by Save / Catalog / Email / Copy so the
+                                            // saved/emailed artifact captures the full conversation.
+                                            const buildFullMarkdown = (r) => {
+                                                let md = r.explanation || '';
+                                                const chat = decipherChats[r.id];
+                                                if (chat?.turns?.length > 0) {
+                                                    md += '\n\n---\n\n## Follow-up chat\n\n';
+                                                    chat.turns.forEach((t, i) => {
+                                                        md += `### Q${i + 1}\n\n${t.q}\n\n**Answer:**\n\n${t.a}\n\n`;
+                                                    });
+                                                }
+                                                return md;
+                                            };
+                                            const runDecipher = async () => {
+                                                const text = (decipherText || '').trim();
+                                                if (!text && decipherFiles.length === 0) {
+                                                    setDecipherError('Paste some text or attach a PDF / screenshot first.');
+                                                    return;
+                                                }
+                                                setDecipherLoading(true);
+                                                setDecipherStartedAt(Date.now());
+                                                setDecipherError(null);
+                                                try {
+                                                    const body = {
+                                                        text,
+                                                        ticker: (decipherTicker || '').trim(),
+                                                        mode: decipherMode,
+                                                        depth: explainDepth,
+                                                        generateKorean: decipherKorean,
+                                                        attachments: decipherFiles.map(f => ({
+                                                            fileData: f.fileData,
+                                                            fileName: f.fileName,
+                                                            fileType: f.fileType,
+                                                            mimeType: f.mimeType || '',
+                                                        })),
+                                                    };
+                                                    // Use DIRECT_API_URL to bypass Cloudflare's 100s idle timeout.
+                                                    // Backend now returns a jobId immediately and runs the
+                                                    // Anthropic call in a daemon thread; we poll for completion.
+                                                    const dispatchRes = await fetch(`${DIRECT_API_URL}/api/decipher`, {
+                                                        method: 'POST',
+                                                        headers: { 'Content-Type': 'application/json' },
+                                                        body: JSON.stringify(body),
+                                                    });
+                                                    const dispatch = await dispatchRes.json();
+                                                    if (!dispatchRes.ok || dispatch.error || !dispatch.jobId) {
+                                                        setDecipherError(dispatch.error || `Dispatch failed: HTTP ${dispatchRes.status}`);
+                                                        setDecipherLoading(false);
+                                                        return;
+                                                    }
+                                                    const jobId = dispatch.jobId;
+                                                    // Poll until complete or failed. Walk-throughs can take
+                                                    // 3-8 min so cap at 12 min total. Poll every 4s.
+                                                    const pollInterval = 4000;
+                                                    const maxIterations = Math.ceil((12 * 60 * 1000) / pollInterval);
+                                                    let result = null;
+                                                    for (let i = 0; i < maxIterations; i++) {
+                                                        await new Promise(r => setTimeout(r, pollInterval));
+                                                        try {
+                                                            const r = await fetch(`${DIRECT_API_URL}/api/decipher/${jobId}`);
+                                                            if (!r.ok) continue; // transient error, keep trying
+                                                            const j = await r.json();
+                                                            if (j.status === 'complete') {
+                                                                result = j;
+                                                                break;
+                                                            }
+                                                            if (j.status === 'failed') {
+                                                                setDecipherError(j.error || 'Decipher job failed');
+                                                                setDecipherLoading(false);
+                                                                return;
+                                                            }
+                                                            // status is 'queued' or 'running' — keep polling
+                                                        } catch (e) {
+                                                            // Network blip on a single poll is fine — keep trying
+                                                        }
+                                                    }
+                                                    if (!result) {
+                                                        setDecipherError('Job timed out after 12 minutes. Backend may still be running — check Render logs.');
+                                                        setDecipherLoading(false);
+                                                        return;
+                                                    }
+                                                    const entry = {
+                                                        id: Date.now(),
+                                                        jobId: result.jobId || jobId,
+                                                        text: text,
+                                                        fileName: decipherFiles[0]?.fileName || null,
+                                                        fileNames: decipherFiles.map(f => f.fileName),
+                                                        attachmentCount: decipherFiles.length,
+                                                        ticker: decipherTicker || null,
+                                                        mode: result.mode || decipherMode,
+                                                        truncated: !!result.truncated,
+                                                        explanation: result.explanation || '',
+                                                        tokensIn: result.inputTokens,
+                                                        tokensOut: result.outputTokens,
+                                                        at: new Date().toISOString(),
+                                                    };
+                                                    setDecipherResult(entry);
+                                                    setDecipherHistory(prev => [entry, ...prev].slice(0, 20));
+                                                } catch (e) {
+                                                    setDecipherError(String(e));
+                                                } finally {
+                                                    setDecipherLoading(false);
+                                                }
+                                            };
+                                            // Convert a single File to a base64-encoded attachment dict.
+                                            // Returns null + sets an error if rejected.
+                                            const _fileToAttachment = async (f) => {
+                                                const ext = (f.name.split('.').pop() || '').toLowerCase();
+                                                const isPdf = ext === 'pdf' || /pdf/i.test(f.type);
+                                                const isImg = ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext) || /^image\//i.test(f.type);
+                                                if (!isPdf && !isImg) {
+                                                    setDecipherError(`${f.name}: unsupported file type. Use PDF or PNG/JPG/WEBP/GIF.`);
+                                                    return null;
+                                                }
+                                                const sizeMB = f.size / (1024 * 1024);
+                                                const cap = isPdf ? 30 : 10;
+                                                if (sizeMB > cap) {
+                                                    setDecipherError(`${f.name}: too large (${sizeMB.toFixed(1)}MB; cap ${cap}MB for ${isPdf ? 'PDF' : 'image'}).`);
+                                                    return null;
+                                                }
+                                                const buf = await f.arrayBuffer();
+                                                let bin = '';
+                                                const bytes = new Uint8Array(buf);
+                                                for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+                                                return {
+                                                    fileData: btoa(bin),
+                                                    fileName: f.name,
+                                                    fileType: isPdf ? 'pdf' : 'image',
+                                                    mimeType: f.type || (isPdf ? 'application/pdf' : `image/${ext === 'jpg' ? 'jpeg' : ext}`),
+                                                };
+                                            };
+                                            const onFilesPick = async (e) => {
+                                                const files = Array.from(e.target.files || []);
+                                                if (!files.length) return;
+                                                setDecipherError(null);
+                                                const added = [];
+                                                for (const f of files) {
+                                                    const att = await _fileToAttachment(f);
+                                                    if (att) added.push(att);
+                                                }
+                                                if (added.length) {
+                                                    setDecipherFiles(prev => {
+                                                        const merged = [...prev, ...added];
+                                                        if (merged.length > 10) {
+                                                            setDecipherError(`Capped at 10 attachments — dropped ${merged.length - 10}.`);
+                                                            return merged.slice(0, 10);
+                                                        }
+                                                        return merged;
+                                                    });
+                                                }
+                                                // Reset the input so the same file can be re-picked later.
+                                                if (e.target) e.target.value = '';
+                                            };
+                                            return (
+                                                <div className="space-y-4">
+                                                    <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4">
+                                                        <div className="flex items-baseline justify-between mb-2 flex-wrap gap-2">
+                                                            <h2 className="text-lg font-bold">Decipher a document</h2>
+                                                            <p className="text-xs text-slate-500">Paste a snippet, upload PDFs, or attach screenshots — get a plain-English explanation of jargon, Q&amp;A subtext, and KPIs from a patient senior analyst (Opus 4-7).</p>
+                                                        </div>
+                                                        {/* Mode toggle: synthesize vs walkthrough */}
+                                                        <div className="flex items-center gap-2 mb-2 flex-wrap">
+                                                            <span className="text-[10px] uppercase tracking-wider text-slate-500">Mode</span>
+                                                            <div className="flex bg-white/5 rounded-lg p-0.5 border border-white/10">
+                                                                <button
+                                                                    onClick={() => setDecipherMode('synthesize')}
+                                                                    className={`px-3 py-1 text-xs rounded transition-colors ${decipherMode === 'synthesize' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                                                                    title="One holistic 2-4 paragraph explainer covering the 3-5 most-confusing concepts. Best for snippets, single questions, one paragraph."
+                                                                >Synthesize</button>
+                                                                <button
+                                                                    onClick={() => setDecipherMode('walkthrough')}
+                                                                    className={`px-3 py-1 text-xs rounded transition-colors ${decipherMode === 'walkthrough' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                                                                    title="Sentence-by-sentence walk-through with inline annotations on every jargon-bearing line. Best for full transcripts, research reports, long Q&A."
+                                                                >Walk through</button>
+                                                            </div>
+                                                            <span className="text-[10px] text-slate-500 italic">
+                                                                {decipherMode === 'synthesize'
+                                                                    ? '~30-60s · 2-4 paragraphs covering top concepts'
+                                                                    : '~3-8min · annotates every jargon-bearing line in document order (handles 60-80 page transcripts)'}
+                                                            </span>
+                                                            {/* Depth dial. Standard is a true no-op so the default
+                                                                voice is unchanged; the other two add an instruction. */}
+                                                            <span className="text-[10px] uppercase tracking-wider text-slate-500 ml-2">Depth</span>
+                                                            <select
+                                                                value={explainDepth}
+                                                                onChange={e => setExplainDepth(e.target.value)}
+                                                                title={(explainDepths.find(d => d.key === explainDepth) || {}).note || 'The house voice, unchanged.'}
+                                                                className="px-2 py-1 bg-black/30 border border-white/10 rounded-md text-xs text-slate-200"
+                                                            >
+                                                                {(explainDepths.length ? explainDepths : [
+                                                                    {key: 'standard', label: 'Standard'},
+                                                                    {key: 'simple', label: 'Simple'},
+                                                                    {key: 'simplest', label: 'Simplest'},
+                                                                ]).map(d => (
+                                                                    <option key={d.key} value={d.key}>{d.label}</option>
+                                                                ))}
+                                                            </select>
+                                                            {explainDepth !== 'standard' && (
+                                                                <span className="text-[10px] text-slate-500 italic max-w-[26ch] truncate"
+                                                                      title={(explainDepths.find(d => d.key === explainDepth) || {}).note || ''}>
+                                                                    {(explainDepths.find(d => d.key === explainDepth) || {}).note || ''}
+                                                                </span>
+                                                            )}
+                                                            <label className="flex items-center gap-1.5 ml-auto cursor-pointer select-none">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={decipherKorean}
+                                                                    onChange={e => setDecipherKorean(e.target.checked)}
+                                                                    className="w-3.5 h-3.5 accent-indigo-500"
+                                                                />
+                                                                <span className="text-[10px] text-slate-300">
+                                                                    🇰🇷 한국어 해설도 함께 <span className="text-slate-500">(adds a Korean section below the English output)</span>
+                                                                </span>
+                                                            </label>
+                                                        </div>
+                                                        <textarea
+                                                            value={decipherText}
+                                                            onChange={e => setDecipherText(e.target.value)}
+                                                            placeholder='Paste a paragraph, sentence, or question. Examples: "What does AMT mean by &apos;straight-line revenue&apos;?" or paste a Q&amp;A excerpt from an earnings call.'
+                                                            rows={6}
+                                                            className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded text-sm text-slate-200 placeholder:text-slate-500 resize-y"
+                                                        />
+                                                        <div className="flex flex-wrap items-center gap-2 mt-2">
+                                                            <label className="text-[10px] uppercase tracking-wider text-slate-500">Ticker (optional)</label>
+                                                            <input
+                                                                type="text"
+                                                                value={decipherTicker}
+                                                                onChange={e => setDecipherTicker(e.target.value.toUpperCase())}
+                                                                placeholder="AMT"
+                                                                className="w-24 px-2 py-1 bg-black/30 border border-white/10 rounded text-xs font-mono text-slate-200"
+                                                            />
+                                                            <label className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded text-xs cursor-pointer">
+                                                                📎 Attach PDF / screenshot…
+                                                                <input
+                                                                    type="file"
+                                                                    accept="application/pdf,.pdf,image/png,image/jpeg,image/webp,image/gif,.png,.jpg,.jpeg,.webp,.gif"
+                                                                    onChange={onFilesPick}
+                                                                    multiple
+                                                                    className="hidden"
+                                                                />
+                                                            </label>
+                                                            <button
+                                                                onClick={async () => {
+                                                                    const files = await pickFromICloud({ mode: 'bytes', defaultTicker: (decipherTicker || '').toUpperCase() });
+                                                                    if (!files || files.length === 0) return;
+                                                                    setDecipherError(null);
+                                                                    const added = [];
+                                                                    for (const f of files) {
+                                                                        const att = await _fileToAttachment(f);
+                                                                        if (att) added.push(att);
+                                                                    }
+                                                                    if (added.length) {
+                                                                        setDecipherFiles(prev => {
+                                                                            const merged = [...prev, ...added];
+                                                                            if (merged.length > 10) {
+                                                                                setDecipherError(`Capped at 10 attachments — dropped ${merged.length - 10}.`);
+                                                                                return merged.slice(0, 10);
+                                                                            }
+                                                                            return merged;
+                                                                        });
+                                                                    }
+                                                                }}
+                                                                className="px-3 py-1 bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/30 rounded text-xs text-cyan-300"
+                                                                title="Pick from STOCKS or CATALYSTS folders"
+                                                            >📁 iCloud</button>
+                                                            {/* Charlie's own library. A filing already stored against a
+                                                                ticker should not have to be found on disk and re-uploaded. */}
+                                                            <button
+                                                                onClick={() => loadStoredDocsForExplain(decipherTicker)}
+                                                                disabled={explainStoredLoading}
+                                                                className="px-3 py-1 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/30 rounded text-xs text-amber-300 disabled:opacity-50"
+                                                                title="Attach a document Charlie already holds for this ticker"
+                                                            >{explainStoredLoading ? 'Loading…' : '📚 In Charlie'}</button>
+                                                            {explainStoredOpen && (
+                                                                <div className="w-full order-last mt-2 p-2 bg-black/20 border border-white/10 rounded-lg">
+                                                                    <div className="flex items-center justify-between mb-1.5">
+                                                                        <span className="text-[10px] uppercase tracking-wider text-slate-500">
+                                                                            In Charlie for {(decipherTicker || '').toUpperCase()} ({explainStored.length})
+                                                                        </span>
+                                                                        <button onClick={() => setExplainStoredOpen(false)}
+                                                                            className="text-[10px] text-slate-400 hover:text-white">Close</button>
+                                                                    </div>
+                                                                    {explainStored.length === 0 ? (
+                                                                        <p className="text-[11px] text-slate-500">
+                                                                            Nothing stored for this ticker yet — upload a file above, or add one via Pipeline.
+                                                                        </p>
+                                                                    ) : (
+                                                                        <div className="space-y-1 max-h-48 overflow-y-auto">
+                                                                            {explainStored.map((d, i) => (
+                                                                                <button key={i}
+                                                                                    onClick={() => {
+                                                                                        setDecipherFiles(prev => {
+                                                                                            if (prev.some(f => f.fileName === d.filename)) return prev;
+                                                                                            if (prev.length >= 10) {
+                                                                                                setDecipherError('Capped at 10 attachments.');
+                                                                                                return prev;
+                                                                                            }
+                                                                                            return [...prev, {
+                                                                                                fileData: d.fileData,
+                                                                                                fileName: d.filename,
+                                                                                                fileType: d.fileType || 'pdf',
+                                                                                                mimeType: d.mimeType || '',
+                                                                                            }];
+                                                                                        });
+                                                                                        setExplainStoredOpen(false);
+                                                                                    }}
+                                                                                    className="w-full text-left px-2 py-1.5 rounded bg-white/5 hover:bg-white/10 text-[11px] text-slate-300 truncate">
+                                                                                    {d.filename}
+                                                                                </button>
+                                                                            ))}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                            {decipherFiles.length > 0 && (
+                                                                <button
+                                                                    onClick={() => setDecipherFiles([])}
+                                                                    className="text-xs text-slate-500 hover:text-red-400"
+                                                                    title="Remove all attachments"
+                                                                >Clear all</button>
+                                                            )}
+                                                            <div className="flex-1" />
+                                                            <button
+                                                                onClick={runDecipher}
+                                                                disabled={decipherLoading}
+                                                                className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 rounded text-xs font-medium"
+                                                            >{decipherLoading ? 'Deciphering…' : 'Decipher'}</button>
+                                                        </div>
+                                                        {decipherFiles.length > 0 && (
+                                                            <div className="mt-2 flex flex-wrap gap-2">
+                                                                {decipherFiles.map((f, idx) => (
+                                                                    <div key={idx} className="flex items-center gap-2 px-2 py-1 bg-white/[0.04] border border-white/10 rounded text-[11px]">
+                                                                        {f.fileType === 'image' ? (
+                                                                            <img
+                                                                                src={`data:${f.mimeType || 'image/png'};base64,${f.fileData}`}
+                                                                                alt={f.fileName}
+                                                                                className="w-8 h-8 object-cover rounded border border-white/10"
+                                                                            />
+                                                                        ) : (
+                                                                            <span className="text-base">📄</span>
+                                                                        )}
+                                                                        <span className="text-slate-200 max-w-[180px] truncate" title={f.fileName}>{f.fileName}</span>
+                                                                        <button
+                                                                            onClick={() => setDecipherFiles(prev => prev.filter((_, i) => i !== idx))}
+                                                                            className="text-slate-500 hover:text-red-400 ml-1"
+                                                                            title="Remove this attachment"
+                                                                        >✕</button>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                        {decipherError && (
+                                                            <p className="mt-2 text-xs text-red-400">{decipherError}</p>
+                                                        )}
+                                                    </div>
+
+                                                    {decipherLoading && (() => {
+                                                        // Expected duration for the progress bar
+                                                        const expectedSec = decipherMode === 'walkthrough' ? 240 : 45;
+                                                        const pct = Math.min(99, Math.round((decipherElapsedSec / expectedSec) * 100));
+                                                        const mm = Math.floor(decipherElapsedSec / 60);
+                                                        const ss = decipherElapsedSec % 60;
+                                                        const elapsedStr = mm > 0 ? `${mm}m ${ss}s` : `${ss}s`;
+                                                        return (
+                                                            <div className="bg-white/[0.03] border border-amber-500/30 rounded-xl p-6">
+                                                                <div className="flex items-center gap-3 mb-3">
+                                                                    {/* Animated spinner */}
+                                                                    <svg className="animate-spin w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24">
+                                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                                                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                                                    </svg>
+                                                                    <div className="flex-1">
+                                                                        <div className="text-amber-400 text-sm font-medium">
+                                                                            {decipherMode === 'walkthrough' ? 'Walking through document…' : 'Reading and explaining…'}
+                                                                        </div>
+                                                                        <div className="text-xs text-slate-400 mt-0.5">
+                                                                            {elapsedStr} elapsed · expected ~{decipherMode === 'walkthrough' ? '3-8 min' : '30-60s'} on Opus 4-7
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+                                                                    <div className="h-full bg-amber-500 transition-all duration-1000" style={{ width: `${pct}%` }} />
+                                                                </div>
+                                                                <p className="mt-2 text-[10px] text-slate-500">You can switch tabs — this keeps running in the background. Don't close the page.</p>
+                                                            </div>
+                                                        );
+                                                    })()}
+
+                                                    {decipherResult && !decipherLoading && (
+                                                        <div className="bg-white/[0.03] border border-amber-500/30 rounded-xl p-5">
+                                                            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                                                                <div className="flex items-center gap-2 text-xs text-slate-400 flex-wrap">
+                                                                    {decipherResult.mode && <span className={`px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-semibold ${decipherResult.mode === 'walkthrough' ? 'bg-cyan-500/20 text-cyan-300' : 'bg-amber-500/20 text-amber-300'}`}>{decipherResult.mode === 'walkthrough' ? 'Walk through' : 'Synthesize'}</span>}
+                                                                    {decipherResult.ticker && <span className="px-2 py-0.5 bg-white/10 rounded font-mono font-bold text-slate-200">{decipherResult.ticker}</span>}
+                                                                    {decipherResult.fileName && <span>📎 {decipherResult.fileName}</span>}
+                                                                    <span>· {fmtETDateTime(decipherResult.at)}</span>
+                                                                    {decipherResult.tokensOut && <span className="text-slate-600">· {decipherResult.tokensIn}→{decipherResult.tokensOut} tok</span>}
+                                                                    {decipherResult.truncated && <span className="px-2 py-0.5 bg-red-500/20 text-red-300 rounded text-[10px] uppercase tracking-wider font-semibold" title="Output hit max_tokens cap mid-response. Re-run with a smaller selection or contact dev.">Truncated</span>}
+                                                                </div>
+                                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                                    {/* Save: persists to meeting_summaries with source_type='decipher'.
+                                                                        Shows in Summary tab list with a 'decipher' badge.
+                                                                        Idempotent — flips to "Saved ✓" once persisted (uses ON CONFLICT). */}
+                                                                    <button
+                                                                        onClick={async () => {
+                                                                            const r = decipherResult;
+                                                                            const existingId = decipherSavedIds[r.id];
+                                                                            const summaryId = existingId || `decipher-${r.id}`;
+                                                                            setDecipherSavingId(r.id);
+                                                                            try {
+                                                                                const titleGuess = r.fileName?.replace(/\.[^.]+$/, '') ||
+                                                                                                    (r.text || '').split('\n')[0].slice(0, 80) ||
+                                                                                                    `Decipher ${new Date(r.at).toLocaleString()}`;
+                                                                                const res = await fetch(`${API_URL}/api/save-summary`, {
+                                                                                    method: 'POST',
+                                                                                    headers: { 'Content-Type': 'application/json' },
+                                                                                    body: JSON.stringify({
+                                                                                        id: summaryId,
+                                                                                        title: r.ticker ? `${r.ticker} — ${titleGuess}` : titleGuess,
+                                                                                        rawNotes: r.text || (r.fileName ? `[PDF: ${r.fileName}]` : ''),
+                                                                                        summary: buildFullMarkdown(r),
+                                                                                        sourceType: 'decipher',
+                                                                                        topic: r.ticker || 'General',
+                                                                                        topicType: 'decipher',
+                                                                                        docType: r.mode || 'synthesize',
+                                                                                        createdAt: r.at,
+                                                                                    })
+                                                                                });
+                                                                                if (res.ok) {
+                                                                                    setDecipherSavedIds(s => ({ ...s, [r.id]: summaryId }));
+                                                                                    setDecipherToast({ text: existingId ? 'Updated ✓' : 'Saved to Summary tab ✓', kind: 'ok' });
+                                                                                } else {
+                                                                                    const err = await res.json().catch(() => ({}));
+                                                                                    setDecipherToast({ text: 'Save failed: ' + (err.error || res.status), kind: 'err' });
+                                                                                }
+                                                                            } catch (e) {
+                                                                                setDecipherToast({ text: 'Save error: ' + e.message, kind: 'err' });
+                                                                            } finally {
+                                                                                setDecipherSavingId(null);
+                                                                            }
+                                                                        }}
+                                                                        disabled={decipherSavingId === decipherResult.id}
+                                                                        className={`text-[10px] px-2 py-1 rounded font-medium ${decipherSavedIds[decipherResult.id] ? 'bg-emerald-600/30 text-emerald-300 hover:bg-emerald-600/40' : 'bg-amber-600 hover:bg-amber-500 text-white'}`}
+                                                                        title="Save to Summary tab — searchable, taggable, exportable"
+                                                                    >{decipherSavingId === decipherResult.id ? 'Saving…' : (decipherSavedIds[decipherResult.id] ? 'Saved ✓' : '💾 Save')}</button>
+
+                                                                    {/* Catalog: open dialog to set title / ticker / topic before saving */}
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            const r = decipherResult;
+                                                                            const titleGuess = r.fileName?.replace(/\.[^.]+$/, '') ||
+                                                                                                (r.text || '').split('\n')[0].slice(0, 80) ||
+                                                                                                `Decipher ${new Date(r.at).toLocaleString()}`;
+                                                                            setDecipherCatalogTitle(titleGuess);
+                                                                            setDecipherCatalogTicker(r.ticker || '');
+                                                                            setDecipherCatalogTopic('');
+                                                                            setDecipherCatalogOpen(r);
+                                                                        }}
+                                                                        className="text-[10px] px-2 py-1 bg-cyan-600/30 hover:bg-cyan-600/40 text-cyan-200 rounded font-medium"
+                                                                        title="Save with custom title, ticker, and topic"
+                                                                    >📂 Catalog…</button>
+
+                                                                    {/* Email: uses the Summary tab's email infrastructure (/api/email-summary-section). */}
+                                                                    <button
+                                                                        onClick={async () => {
+                                                                            const saved = localStorage.getItem('emailCredentials');
+                                                                            if (!saved) {
+                                                                                setDecipherToast({ text: 'Set email credentials in Settings first', kind: 'err' });
+                                                                                return;
+                                                                            }
+                                                                            let creds; try { creds = JSON.parse(saved); } catch {
+                                                                                setDecipherToast({ text: 'Invalid email credentials', kind: 'err' }); return;
+                                                                            }
+                                                                            if (!creds.email) {
+                                                                                setDecipherToast({ text: 'Set recipient email in Settings first', kind: 'err' });
+                                                                                return;
+                                                                            }
+                                                                            const r = decipherResult;
+                                                                            const subj = r.ticker ? `Decipher: ${r.ticker} — ${(r.fileName || (r.text || '').slice(0, 60))}` : `Decipher: ${(r.fileName || (r.text || '').slice(0, 60))}`;
+                                                                            try {
+                                                                                const resp = await fetch(`${API_URL}/api/email-summary-section`, {
+                                                                                    method: 'POST',
+                                                                                    headers: { 'Content-Type': 'application/json' },
+                                                                                    body: JSON.stringify({
+                                                                                        email: creds.email,
+                                                                                        subject: subj,
+                                                                                        section: 'decipher',
+                                                                                        content: buildFullMarkdown(r),
+                                                                                        title: subj,
+                                                                                        topic: r.ticker || 'General',
+                                                                                        smtpConfig: {
+                                                                                            use_gmail: creds.useGmail,
+                                                                                            gmail_user: creds.gmailUser,
+                                                                                            gmail_app_password: creds.gmailPassword,
+                                                                                            from_email: creds.gmailUser,
+                                                                                        },
+                                                                                    })
+                                                                                });
+                                                                                if (resp.ok) setDecipherToast({ text: 'Emailed ✓', kind: 'ok' });
+                                                                                else {
+                                                                                    const err = await resp.json().catch(() => ({}));
+                                                                                    setDecipherToast({ text: 'Email failed: ' + (err.error || resp.status), kind: 'err' });
+                                                                                }
+                                                                            } catch (e) {
+                                                                                setDecipherToast({ text: 'Email error: ' + e.message, kind: 'err' });
+                                                                            }
+                                                                        }}
+                                                                        className="text-[10px] px-2 py-1 bg-purple-600/30 hover:bg-purple-600/40 text-purple-200 rounded font-medium"
+                                                                        title="Email to your configured recipient"
+                                                                    >✉ Email</button>
+
+                                                                    <button
+                                                                        onClick={async () => {
+                                                                            try {
+                                                                                await navigator.clipboard.writeText(buildFullMarkdown(decipherResult));
+                                                                                setDecipherToast({ text: 'Copied ✓', kind: 'ok' });
+                                                                            } catch { setDecipherToast({ text: 'Copy failed', kind: 'err' }); }
+                                                                        }}
+                                                                        className="text-[10px] px-2 py-1 bg-white/10 hover:bg-white/20 rounded"
+                                                                    >Copy</button>
+                                                                </div>
+                                                            </div>
+                                                            {decipherToast && (
+                                                                <div className={`mb-3 px-3 py-1.5 rounded text-xs ${decipherToast.kind === 'err' ? 'bg-red-500/20 text-red-300' : 'bg-emerald-500/20 text-emerald-300'}`}>
+                                                                    {decipherToast.text}
+                                                                </div>
+                                                            )}
+                                                            <div className="prose prose-invert prose-sm max-w-none text-slate-100" dangerouslySetInnerHTML={{ __html: decipherResult.isHtml ? (sanitizeHtml(decipherResult.explanation)) : renderMarkdown(decipherResult.explanation) }} />
+
+                                                            {/* Follow-up chat. Replays original PDF + ask + first response
+                                                                + prior turns + new question on each send. Backend uses
+                                                                Anthropic prompt caching (90% off the cached PDF block within
+                                                                the 5-min TTL), so chat is cheap. Chat is keyed by result.id
+                                                                so switching history doesn't bleed turns. */}
+                                                            {(() => {
+                                                                const r = decipherResult;
+                                                                const chat = decipherChats[r.id] || { turns: [], inFlight: false, error: null, elapsedSec: 0, startedAt: null };
+                                                                const sendFollowup = async () => {
+                                                                    const q = (decipherChatInput || '').trim();
+                                                                    if (!q) return;
+                                                                    if (!r.jobId) {
+                                                                        setDecipherChats(prev => ({ ...prev, [r.id]: { ...chat, error: 'This is a saved/historical result — open it fresh to chat. (Server keeps chat state for the most recent ~100 sessions only.)' } }));
+                                                                        return;
+                                                                    }
+                                                                    setDecipherChatInput('');
+                                                                    setDecipherChats(prev => ({ ...prev, [r.id]: { ...chat, inFlight: true, error: null, startedAt: Date.now(), elapsedSec: 0 } }));
+                                                                    try {
+                                                                        const dispatch = await fetch(`${DIRECT_API_URL}/api/decipher/${r.jobId}/followup`, {
+                                                                            method: 'POST',
+                                                                            headers: { 'Content-Type': 'application/json' },
+                                                                            body: JSON.stringify({ question: q }),
+                                                                        });
+                                                                        const dj = await dispatch.json();
+                                                                        if (!dispatch.ok || !dj.followupId) throw new Error(dj.error || `Dispatch failed: HTTP ${dispatch.status}`);
+                                                                        // Poll every 3s, cap at 8 min (followups are typically <1 min).
+                                                                        const fid = dj.followupId;
+                                                                        const maxIter = Math.ceil((8 * 60 * 1000) / 3000);
+                                                                        let answer = null;
+                                                                        let meta = {};
+                                                                        for (let i = 0; i < maxIter; i++) {
+                                                                            await new Promise(res => setTimeout(res, 3000));
+                                                                            try {
+                                                                                const pr = await fetch(`${DIRECT_API_URL}/api/decipher/followup/${fid}`);
+                                                                                if (!pr.ok) continue;
+                                                                                const pj = await pr.json();
+                                                                                if (pj.status === 'complete') { answer = pj.answer || ''; meta = { tokensIn: pj.inputTokens, tokensOut: pj.outputTokens, cacheRead: pj.cacheReadTokens }; break; }
+                                                                                if (pj.status === 'failed') throw new Error(pj.error || 'Follow-up failed');
+                                                                            } catch (pollErr) {
+                                                                                // single-poll network blips are fine; keep trying unless the server returned 'failed' explicitly above
+                                                                                if (String(pollErr.message || '').toLowerCase().includes('follow-up failed') || String(pollErr.message || '').toLowerCase().includes('original decipher')) throw pollErr;
+                                                                            }
+                                                                        }
+                                                                        if (answer == null) throw new Error('Follow-up timed out after 8 minutes');
+                                                                        setDecipherChats(prev => {
+                                                                            const cur = prev[r.id] || { turns: [], inFlight: false };
+                                                                            return { ...prev, [r.id]: {
+                                                                                turns: [...(cur.turns || []), { q, a: answer, at: new Date().toISOString(), ...meta }],
+                                                                                inFlight: false, error: null, elapsedSec: 0, startedAt: null,
+                                                                            }};
+                                                                        });
+                                                                    } catch (e) {
+                                                                        setDecipherChats(prev => ({ ...prev, [r.id]: { ...(prev[r.id] || chat), inFlight: false, error: String(e.message || e), startedAt: null, elapsedSec: 0 } }));
+                                                                    }
+                                                                };
+                                                                const resetChat = () => {
+                                                                    setDecipherChats(prev => ({ ...prev, [r.id]: { turns: [], inFlight: false, error: null, elapsedSec: 0, startedAt: null } }));
+                                                                    setDecipherChatInput('');
+                                                                };
+                                                                return (
+                                                                    <div className="mt-5 pt-4 border-t border-white/10">
+                                                                        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                                                                            <div className="flex items-center gap-2">
+                                                                                <span className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Follow-up chat</span>
+                                                                                {chat.turns.length > 0 && <span className="text-[10px] text-slate-500">· {chat.turns.length} turn{chat.turns.length === 1 ? '' : 's'}</span>}
+                                                                            </div>
+                                                                            {chat.turns.length > 0 && !chat.inFlight && (
+                                                                                <button onClick={resetChat} className="text-[10px] text-slate-500 hover:text-red-400">Reset chat</button>
+                                                                            )}
+                                                                        </div>
+
+                                                                        {/* Q/A bubble pairs */}
+                                                                        {chat.turns.length > 0 && (
+                                                                            <div className="space-y-3 mb-3">
+                                                                                {chat.turns.map((t, i) => (
+                                                                                    <div key={i} className="space-y-2">
+                                                                                        <div className="flex justify-end">
+                                                                                            <div className="max-w-[85%] bg-amber-600/20 border border-amber-500/30 rounded-lg rounded-br-sm px-3 py-2 text-sm text-slate-100 whitespace-pre-wrap">{t.q}</div>
+                                                                                        </div>
+                                                                                        <div className="flex justify-start">
+                                                                                            <div className="max-w-[95%] bg-white/[0.04] border border-white/10 rounded-lg rounded-bl-sm px-3 py-2 text-sm text-slate-100">
+                                                                                                <div className="prose prose-invert prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: renderMarkdown(t.a) }} />
+                                                                                                <div className="mt-2 flex items-center gap-2 text-[9px] text-slate-600">
+                                                                                                    <span>{fmtETDateTime(t.at)}</span>
+                                                                                                    {t.tokensOut && <span>· {t.tokensIn}→{t.tokensOut} tok</span>}
+                                                                                                    {t.cacheRead != null && t.cacheRead > 0 && <span title="Cached PDF tokens (90% discount)">· cache hit {t.cacheRead}</span>}
+                                                                                                    <button onClick={async () => {
+                                                                                                        try { await navigator.clipboard.writeText(t.a); setDecipherToast({ text: 'Copied ✓', kind: 'ok' }); }
+                                                                                                        catch { setDecipherToast({ text: 'Copy failed', kind: 'err' }); }
+                                                                                                    }} className="ml-auto text-slate-500 hover:text-slate-300">Copy</button>
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        )}
+
+                                                                        {chat.inFlight && (
+                                                                            <div className="mb-3 px-3 py-2 bg-amber-500/10 border border-amber-500/20 rounded-lg flex items-center gap-2 text-xs text-amber-300">
+                                                                                <svg className="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
+                                                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                                                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                                                                </svg>
+                                                                                <span>Thinking… {chat.elapsedSec}s elapsed</span>
+                                                                            </div>
+                                                                        )}
+
+                                                                        {chat.error && (
+                                                                            <div className="mb-3 px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-lg text-xs text-red-300">{chat.error}</div>
+                                                                        )}
+
+                                                                        {/* Composer */}
+                                                                        <div className="flex gap-2">
+                                                                            <textarea
+                                                                                value={decipherChatInput}
+                                                                                onChange={e => setDecipherChatInput(e.target.value)}
+                                                                                onKeyDown={e => {
+                                                                                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); sendFollowup(); }
+                                                                                }}
+                                                                                placeholder={r.jobId ? "Ask a follow-up about the source above. Cmd/Ctrl+Enter to send." : "Chat unavailable for saved/historical results — re-run Decipher to enable."}
+                                                                                rows={2}
+                                                                                disabled={chat.inFlight || !r.jobId}
+                                                                                className="flex-1 px-3 py-2 bg-black/30 border border-white/10 rounded text-sm text-slate-200 placeholder:text-slate-500 resize-y disabled:opacity-50"
+                                                                            />
+                                                                            <button
+                                                                                onClick={sendFollowup}
+                                                                                disabled={chat.inFlight || !decipherChatInput.trim() || !r.jobId}
+                                                                                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-medium rounded self-end"
+                                                                            >Send</button>
+                                                                        </div>
+                                                                        <p className="mt-1.5 text-[10px] text-slate-600">
+                                                                            Source stays loaded · prompt-cached for cheap re-sends · Save/Email above will include this chat.
+                                                                        </p>
+                                                                    </div>
+                                                                );
+                                                            })()}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Catalog dialog — set title/ticker/topic before saving */}
+                                                    {decipherCatalogOpen && (
+                                                        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4" onClick={() => setDecipherCatalogOpen(null)}>
+                                                            <div className="bg-neutral-900 border border-white/10 rounded-xl w-full max-w-md p-5 space-y-3" onClick={e => e.stopPropagation()}>
+                                                                <h3 className="font-bold text-lg">Catalog Decipher result</h3>
+                                                                <p className="text-xs text-slate-400">Save to Summary tab with custom title, ticker, and topic.</p>
+                                                                <div>
+                                                                    <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Title</label>
+                                                                    <input type="text" value={decipherCatalogTitle} onChange={e => setDecipherCatalogTitle(e.target.value)} className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded text-sm text-slate-200" />
+                                                                </div>
+                                                                <div className="grid grid-cols-2 gap-2">
+                                                                    <div>
+                                                                        <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Ticker</label>
+                                                                        <input type="text" value={decipherCatalogTicker} onChange={e => setDecipherCatalogTicker(e.target.value.toUpperCase())} placeholder="e.g. AMT" className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded text-sm font-mono text-slate-200" />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Topic / Category</label>
+                                                                        <input type="text" value={decipherCatalogTopic} onChange={e => setDecipherCatalogTopic(e.target.value)} placeholder="e.g. Tower REIT primer" className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded text-sm text-slate-200" />
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex justify-end gap-2 pt-2">
+                                                                    <button onClick={() => setDecipherCatalogOpen(null)} className="px-3 py-1.5 text-xs text-slate-400 hover:text-white">Cancel</button>
+                                                                    <button
+                                                                        onClick={async () => {
+                                                                            const r = decipherCatalogOpen;
+                                                                            const summaryId = decipherSavedIds[r.id] || `decipher-${r.id}`;
+                                                                            try {
+                                                                                const res = await fetch(`${API_URL}/api/save-summary`, {
+                                                                                    method: 'POST',
+                                                                                    headers: { 'Content-Type': 'application/json' },
+                                                                                    body: JSON.stringify({
+                                                                                        id: summaryId,
+                                                                                        title: decipherCatalogTitle.trim() || 'Decipher',
+                                                                                        rawNotes: r.text || (r.fileName ? `[PDF: ${r.fileName}]` : ''),
+                                                                                        summary: buildFullMarkdown(r),
+                                                                                        sourceType: 'decipher',
+                                                                                        topic: decipherCatalogTopic.trim() || decipherCatalogTicker.trim() || 'General',
+                                                                                        topicType: 'decipher',
+                                                                                        docType: r.mode || 'synthesize',
+                                                                                        categories: decipherCatalogTicker.trim() ? [decipherCatalogTicker.trim()] : [],
+                                                                                        createdAt: r.at,
+                                                                                    })
+                                                                                });
+                                                                                if (res.ok) {
+                                                                                    setDecipherSavedIds(s => ({ ...s, [r.id]: summaryId }));
+                                                                                    setDecipherToast({ text: 'Cataloged ✓', kind: 'ok' });
+                                                                                    setDecipherCatalogOpen(null);
+                                                                                } else {
+                                                                                    const err = await res.json().catch(() => ({}));
+                                                                                    setDecipherToast({ text: 'Save failed: ' + (err.error || res.status), kind: 'err' });
+                                                                                }
+                                                                            } catch (e) {
+                                                                                setDecipherToast({ text: 'Save error: ' + e.message, kind: 'err' });
+                                                                            }
+                                                                        }}
+                                                                        className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium rounded-lg"
+                                                                    >Save</button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {decipherHistory.length > 1 && (
+                                                        <details className="bg-white/[0.02] border border-white/10 rounded-xl p-3">
+                                                            <summary className="cursor-pointer text-xs text-slate-400 hover:text-white">
+                                                                Session history ({decipherHistory.length} earlier decipher{decipherHistory.length === 1 ? '' : 's'})
+                                                            </summary>
+                                                            <div className="mt-3 space-y-2">
+                                                                {decipherHistory.slice(1).map(h => (
+                                                                    <button
+                                                                        key={h.id}
+                                                                        onClick={() => setDecipherResult(h)}
+                                                                        className="w-full text-left p-2 bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 rounded text-xs"
+                                                                    >
+                                                                        <div className="flex items-center gap-2 text-[10px] text-slate-500 mb-1 flex-wrap">
+                                                                            {h.ticker && <span className="px-1.5 py-0.5 bg-white/10 rounded font-mono">{h.ticker}</span>}
+                                                                            {h.fileName && <span>📎 {h.fileName}</span>}
+                                                                            <span>{fmtETDateTime(h.at)}</span>
+                                                                        </div>
+                                                                        <div className="text-slate-300 truncate">
+                                                                            {(h.text || h.fileName || '(empty)').slice(0, 140)}
+                                                                        </div>
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </details>
+                                                    )}
+
+                                                    {/* Saved Decipher results — rows persisted to meeting_summaries
+                                                        with source_type='decipher'. Click to load into the viewer
+                                                        (chat is disabled because server-side _chat_state is dropped
+                                                        with job GC; the explanation alone survives). */}
+                                                    {(() => {
+                                                        const saved = (savedSummaries || []).filter(s => s.sourceType === 'decipher');
+                                                        if (saved.length === 0) return null;
+                                                        return (
+                                                            <details className="bg-white/[0.02] border border-white/10 rounded-xl p-3" open>
+                                                                <summary className="cursor-pointer text-xs text-slate-400 hover:text-white">
+                                                                    Saved Decipher results ({saved.length}) — from Summary tab
+                                                                </summary>
+                                                                <div className="mt-3 space-y-2">
+                                                                    {saved.map(s => (
+                                                                        <button
+                                                                            key={s.id}
+                                                                            onClick={() => {
+                                                                                setDecipherResult({
+                                                                                    id: 'saved-' + s.id,
+                                                                                    jobId: null,
+                                                                                    text: s.rawNotes || '',
+                                                                                    fileName: null,
+                                                                                    ticker: s.topic && s.topic !== 'General' ? s.topic : null,
+                                                                                    mode: s.docType || 'synthesize',
+                                                                                    truncated: false,
+                                                                                    explanation: s.summary || '',
+                                                                                    isHtml: true,
+                                                                                    at: s.createdAt,
+                                                                                    _savedId: s.id,
+                                                                                    _title: s.title,
+                                                                                });
+                                                                            }}
+                                                                            className="w-full text-left p-2 bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 rounded text-xs"
+                                                                        >
+                                                                            <div className="flex items-center gap-2 text-[10px] text-slate-500 mb-1 flex-wrap">
+                                                                                {s.topic && s.topic !== 'General' && <span className="px-1.5 py-0.5 bg-white/10 rounded font-mono">{s.topic}</span>}
+                                                                                {s.docType && <span className="px-1.5 py-0.5 bg-amber-500/15 text-amber-300 rounded uppercase tracking-wider">{s.docType}</span>}
+                                                                                <span>{fmtETDateTime(s.createdAt)}</span>
+                                                                            </div>
+                                                                            <div className="text-slate-200 font-medium truncate">{s.title || '(untitled)'}</div>
+                                                                            {s.rawNotes && <div className="text-slate-500 text-[10px] truncate mt-0.5">{s.rawNotes.slice(0, 140)}</div>}
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                            </details>
+                                                        );
+                                                    })()}
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                         {activeTab === 'agents' && (
                             <div className="flex-1 flex flex-col bg-white/[0.02] overflow-y-auto pb-24 md:pb-0" onScroll={(e) => { setShowScrollTop(e.target.scrollTop > 300); scrollContainerRef.current = e.target; }}>
                                 <div className="p-4 md:p-6">
@@ -25587,7 +26459,6 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             <div className="flex flex-wrap gap-1 shrink-0">
                                                 {[{v: 'catalysts', label: 'Catalysts', badge: catalystProposals.length},
                                                   {v: 'research', label: 'Research'},
-                                                  {v: 'decipher', label: 'Decipher'},
                                                   {v: 'new', label: 'Agents'},
                                                   {v: 'batch', label: 'Batch'},
                                                   {v: 'dashboard', label: 'Dashboard'},
@@ -26533,742 +27404,6 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             </>
                                         )}
 
-                                        {agentView === 'decipher' && (() => {
-                                            // Compose the explanation + any follow-up chat turns into one
-                                            // markdown blob — used by Save / Catalog / Email / Copy so the
-                                            // saved/emailed artifact captures the full conversation.
-                                            const buildFullMarkdown = (r) => {
-                                                let md = r.explanation || '';
-                                                const chat = decipherChats[r.id];
-                                                if (chat?.turns?.length > 0) {
-                                                    md += '\n\n---\n\n## Follow-up chat\n\n';
-                                                    chat.turns.forEach((t, i) => {
-                                                        md += `### Q${i + 1}\n\n${t.q}\n\n**Answer:**\n\n${t.a}\n\n`;
-                                                    });
-                                                }
-                                                return md;
-                                            };
-                                            const runDecipher = async () => {
-                                                const text = (decipherText || '').trim();
-                                                if (!text && decipherFiles.length === 0) {
-                                                    setDecipherError('Paste some text or attach a PDF / screenshot first.');
-                                                    return;
-                                                }
-                                                setDecipherLoading(true);
-                                                setDecipherStartedAt(Date.now());
-                                                setDecipherError(null);
-                                                try {
-                                                    const body = {
-                                                        text,
-                                                        ticker: (decipherTicker || '').trim(),
-                                                        mode: decipherMode,
-                                                        generateKorean: decipherKorean,
-                                                        attachments: decipherFiles.map(f => ({
-                                                            fileData: f.fileData,
-                                                            fileName: f.fileName,
-                                                            fileType: f.fileType,
-                                                            mimeType: f.mimeType || '',
-                                                        })),
-                                                    };
-                                                    // Use DIRECT_API_URL to bypass Cloudflare's 100s idle timeout.
-                                                    // Backend now returns a jobId immediately and runs the
-                                                    // Anthropic call in a daemon thread; we poll for completion.
-                                                    const dispatchRes = await fetch(`${DIRECT_API_URL}/api/decipher`, {
-                                                        method: 'POST',
-                                                        headers: { 'Content-Type': 'application/json' },
-                                                        body: JSON.stringify(body),
-                                                    });
-                                                    const dispatch = await dispatchRes.json();
-                                                    if (!dispatchRes.ok || dispatch.error || !dispatch.jobId) {
-                                                        setDecipherError(dispatch.error || `Dispatch failed: HTTP ${dispatchRes.status}`);
-                                                        setDecipherLoading(false);
-                                                        return;
-                                                    }
-                                                    const jobId = dispatch.jobId;
-                                                    // Poll until complete or failed. Walk-throughs can take
-                                                    // 3-8 min so cap at 12 min total. Poll every 4s.
-                                                    const pollInterval = 4000;
-                                                    const maxIterations = Math.ceil((12 * 60 * 1000) / pollInterval);
-                                                    let result = null;
-                                                    for (let i = 0; i < maxIterations; i++) {
-                                                        await new Promise(r => setTimeout(r, pollInterval));
-                                                        try {
-                                                            const r = await fetch(`${DIRECT_API_URL}/api/decipher/${jobId}`);
-                                                            if (!r.ok) continue; // transient error, keep trying
-                                                            const j = await r.json();
-                                                            if (j.status === 'complete') {
-                                                                result = j;
-                                                                break;
-                                                            }
-                                                            if (j.status === 'failed') {
-                                                                setDecipherError(j.error || 'Decipher job failed');
-                                                                setDecipherLoading(false);
-                                                                return;
-                                                            }
-                                                            // status is 'queued' or 'running' — keep polling
-                                                        } catch (e) {
-                                                            // Network blip on a single poll is fine — keep trying
-                                                        }
-                                                    }
-                                                    if (!result) {
-                                                        setDecipherError('Job timed out after 12 minutes. Backend may still be running — check Render logs.');
-                                                        setDecipherLoading(false);
-                                                        return;
-                                                    }
-                                                    const entry = {
-                                                        id: Date.now(),
-                                                        jobId: result.jobId || jobId,
-                                                        text: text,
-                                                        fileName: decipherFiles[0]?.fileName || null,
-                                                        fileNames: decipherFiles.map(f => f.fileName),
-                                                        attachmentCount: decipherFiles.length,
-                                                        ticker: decipherTicker || null,
-                                                        mode: result.mode || decipherMode,
-                                                        truncated: !!result.truncated,
-                                                        explanation: result.explanation || '',
-                                                        tokensIn: result.inputTokens,
-                                                        tokensOut: result.outputTokens,
-                                                        at: new Date().toISOString(),
-                                                    };
-                                                    setDecipherResult(entry);
-                                                    setDecipherHistory(prev => [entry, ...prev].slice(0, 20));
-                                                } catch (e) {
-                                                    setDecipherError(String(e));
-                                                } finally {
-                                                    setDecipherLoading(false);
-                                                }
-                                            };
-                                            // Convert a single File to a base64-encoded attachment dict.
-                                            // Returns null + sets an error if rejected.
-                                            const _fileToAttachment = async (f) => {
-                                                const ext = (f.name.split('.').pop() || '').toLowerCase();
-                                                const isPdf = ext === 'pdf' || /pdf/i.test(f.type);
-                                                const isImg = ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext) || /^image\//i.test(f.type);
-                                                if (!isPdf && !isImg) {
-                                                    setDecipherError(`${f.name}: unsupported file type. Use PDF or PNG/JPG/WEBP/GIF.`);
-                                                    return null;
-                                                }
-                                                const sizeMB = f.size / (1024 * 1024);
-                                                const cap = isPdf ? 30 : 10;
-                                                if (sizeMB > cap) {
-                                                    setDecipherError(`${f.name}: too large (${sizeMB.toFixed(1)}MB; cap ${cap}MB for ${isPdf ? 'PDF' : 'image'}).`);
-                                                    return null;
-                                                }
-                                                const buf = await f.arrayBuffer();
-                                                let bin = '';
-                                                const bytes = new Uint8Array(buf);
-                                                for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-                                                return {
-                                                    fileData: btoa(bin),
-                                                    fileName: f.name,
-                                                    fileType: isPdf ? 'pdf' : 'image',
-                                                    mimeType: f.type || (isPdf ? 'application/pdf' : `image/${ext === 'jpg' ? 'jpeg' : ext}`),
-                                                };
-                                            };
-                                            const onFilesPick = async (e) => {
-                                                const files = Array.from(e.target.files || []);
-                                                if (!files.length) return;
-                                                setDecipherError(null);
-                                                const added = [];
-                                                for (const f of files) {
-                                                    const att = await _fileToAttachment(f);
-                                                    if (att) added.push(att);
-                                                }
-                                                if (added.length) {
-                                                    setDecipherFiles(prev => {
-                                                        const merged = [...prev, ...added];
-                                                        if (merged.length > 10) {
-                                                            setDecipherError(`Capped at 10 attachments — dropped ${merged.length - 10}.`);
-                                                            return merged.slice(0, 10);
-                                                        }
-                                                        return merged;
-                                                    });
-                                                }
-                                                // Reset the input so the same file can be re-picked later.
-                                                if (e.target) e.target.value = '';
-                                            };
-                                            return (
-                                                <div className="space-y-4">
-                                                    <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4">
-                                                        <div className="flex items-baseline justify-between mb-2 flex-wrap gap-2">
-                                                            <h2 className="text-lg font-bold">Decipher</h2>
-                                                            <p className="text-xs text-slate-500">Paste a snippet, upload PDFs, or attach screenshots — get a plain-English explanation of jargon, Q&amp;A subtext, and KPIs from a patient senior analyst (Opus 4-7).</p>
-                                                        </div>
-                                                        {/* Mode toggle: synthesize vs walkthrough */}
-                                                        <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                                            <span className="text-[10px] uppercase tracking-wider text-slate-500">Mode</span>
-                                                            <div className="flex bg-white/5 rounded-lg p-0.5 border border-white/10">
-                                                                <button
-                                                                    onClick={() => setDecipherMode('synthesize')}
-                                                                    className={`px-3 py-1 text-xs rounded transition-colors ${decipherMode === 'synthesize' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                                                                    title="One holistic 2-4 paragraph explainer covering the 3-5 most-confusing concepts. Best for snippets, single questions, one paragraph."
-                                                                >Synthesize</button>
-                                                                <button
-                                                                    onClick={() => setDecipherMode('walkthrough')}
-                                                                    className={`px-3 py-1 text-xs rounded transition-colors ${decipherMode === 'walkthrough' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                                                                    title="Sentence-by-sentence walk-through with inline annotations on every jargon-bearing line. Best for full transcripts, research reports, long Q&A."
-                                                                >Walk through</button>
-                                                            </div>
-                                                            <span className="text-[10px] text-slate-500 italic">
-                                                                {decipherMode === 'synthesize'
-                                                                    ? '~30-60s · 2-4 paragraphs covering top concepts'
-                                                                    : '~3-8min · annotates every jargon-bearing line in document order (handles 60-80 page transcripts)'}
-                                                            </span>
-                                                            <label className="flex items-center gap-1.5 ml-auto cursor-pointer select-none">
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={decipherKorean}
-                                                                    onChange={e => setDecipherKorean(e.target.checked)}
-                                                                    className="w-3.5 h-3.5 accent-indigo-500"
-                                                                />
-                                                                <span className="text-[10px] text-slate-300">
-                                                                    🇰🇷 한국어 해설도 함께 <span className="text-slate-500">(adds a Korean section below the English output)</span>
-                                                                </span>
-                                                            </label>
-                                                        </div>
-                                                        <textarea
-                                                            value={decipherText}
-                                                            onChange={e => setDecipherText(e.target.value)}
-                                                            placeholder='Paste a paragraph, sentence, or question. Examples: "What does AMT mean by &apos;straight-line revenue&apos;?" or paste a Q&amp;A excerpt from an earnings call.'
-                                                            rows={6}
-                                                            className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded text-sm text-slate-200 placeholder:text-slate-500 resize-y"
-                                                        />
-                                                        <div className="flex flex-wrap items-center gap-2 mt-2">
-                                                            <label className="text-[10px] uppercase tracking-wider text-slate-500">Ticker (optional)</label>
-                                                            <input
-                                                                type="text"
-                                                                value={decipherTicker}
-                                                                onChange={e => setDecipherTicker(e.target.value.toUpperCase())}
-                                                                placeholder="AMT"
-                                                                className="w-24 px-2 py-1 bg-black/30 border border-white/10 rounded text-xs font-mono text-slate-200"
-                                                            />
-                                                            <label className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded text-xs cursor-pointer">
-                                                                📎 Attach PDF / screenshot…
-                                                                <input
-                                                                    type="file"
-                                                                    accept="application/pdf,.pdf,image/png,image/jpeg,image/webp,image/gif,.png,.jpg,.jpeg,.webp,.gif"
-                                                                    onChange={onFilesPick}
-                                                                    multiple
-                                                                    className="hidden"
-                                                                />
-                                                            </label>
-                                                            <button
-                                                                onClick={async () => {
-                                                                    const files = await pickFromICloud({ mode: 'bytes', defaultTicker: (decipherTicker || '').toUpperCase() });
-                                                                    if (!files || files.length === 0) return;
-                                                                    setDecipherError(null);
-                                                                    const added = [];
-                                                                    for (const f of files) {
-                                                                        const att = await _fileToAttachment(f);
-                                                                        if (att) added.push(att);
-                                                                    }
-                                                                    if (added.length) {
-                                                                        setDecipherFiles(prev => {
-                                                                            const merged = [...prev, ...added];
-                                                                            if (merged.length > 10) {
-                                                                                setDecipherError(`Capped at 10 attachments — dropped ${merged.length - 10}.`);
-                                                                                return merged.slice(0, 10);
-                                                                            }
-                                                                            return merged;
-                                                                        });
-                                                                    }
-                                                                }}
-                                                                className="px-3 py-1 bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/30 rounded text-xs text-cyan-300"
-                                                                title="Pick from STOCKS or CATALYSTS folders"
-                                                            >📁 iCloud</button>
-                                                            {decipherFiles.length > 0 && (
-                                                                <button
-                                                                    onClick={() => setDecipherFiles([])}
-                                                                    className="text-xs text-slate-500 hover:text-red-400"
-                                                                    title="Remove all attachments"
-                                                                >Clear all</button>
-                                                            )}
-                                                            <div className="flex-1" />
-                                                            <button
-                                                                onClick={runDecipher}
-                                                                disabled={decipherLoading}
-                                                                className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 rounded text-xs font-medium"
-                                                            >{decipherLoading ? 'Deciphering…' : 'Decipher'}</button>
-                                                        </div>
-                                                        {decipherFiles.length > 0 && (
-                                                            <div className="mt-2 flex flex-wrap gap-2">
-                                                                {decipherFiles.map((f, idx) => (
-                                                                    <div key={idx} className="flex items-center gap-2 px-2 py-1 bg-white/[0.04] border border-white/10 rounded text-[11px]">
-                                                                        {f.fileType === 'image' ? (
-                                                                            <img
-                                                                                src={`data:${f.mimeType || 'image/png'};base64,${f.fileData}`}
-                                                                                alt={f.fileName}
-                                                                                className="w-8 h-8 object-cover rounded border border-white/10"
-                                                                            />
-                                                                        ) : (
-                                                                            <span className="text-base">📄</span>
-                                                                        )}
-                                                                        <span className="text-slate-200 max-w-[180px] truncate" title={f.fileName}>{f.fileName}</span>
-                                                                        <button
-                                                                            onClick={() => setDecipherFiles(prev => prev.filter((_, i) => i !== idx))}
-                                                                            className="text-slate-500 hover:text-red-400 ml-1"
-                                                                            title="Remove this attachment"
-                                                                        >✕</button>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        )}
-                                                        {decipherError && (
-                                                            <p className="mt-2 text-xs text-red-400">{decipherError}</p>
-                                                        )}
-                                                    </div>
-
-                                                    {decipherLoading && (() => {
-                                                        // Expected duration for the progress bar
-                                                        const expectedSec = decipherMode === 'walkthrough' ? 240 : 45;
-                                                        const pct = Math.min(99, Math.round((decipherElapsedSec / expectedSec) * 100));
-                                                        const mm = Math.floor(decipherElapsedSec / 60);
-                                                        const ss = decipherElapsedSec % 60;
-                                                        const elapsedStr = mm > 0 ? `${mm}m ${ss}s` : `${ss}s`;
-                                                        return (
-                                                            <div className="bg-white/[0.03] border border-amber-500/30 rounded-xl p-6">
-                                                                <div className="flex items-center gap-3 mb-3">
-                                                                    {/* Animated spinner */}
-                                                                    <svg className="animate-spin w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24">
-                                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
-                                                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                                                                    </svg>
-                                                                    <div className="flex-1">
-                                                                        <div className="text-amber-400 text-sm font-medium">
-                                                                            {decipherMode === 'walkthrough' ? 'Walking through document…' : 'Reading and explaining…'}
-                                                                        </div>
-                                                                        <div className="text-xs text-slate-400 mt-0.5">
-                                                                            {elapsedStr} elapsed · expected ~{decipherMode === 'walkthrough' ? '3-8 min' : '30-60s'} on Opus 4-7
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                                <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
-                                                                    <div className="h-full bg-amber-500 transition-all duration-1000" style={{ width: `${pct}%` }} />
-                                                                </div>
-                                                                <p className="mt-2 text-[10px] text-slate-500">You can switch tabs — this keeps running in the background. Don't close the page.</p>
-                                                            </div>
-                                                        );
-                                                    })()}
-
-                                                    {decipherResult && !decipherLoading && (
-                                                        <div className="bg-white/[0.03] border border-amber-500/30 rounded-xl p-5">
-                                                            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-                                                                <div className="flex items-center gap-2 text-xs text-slate-400 flex-wrap">
-                                                                    {decipherResult.mode && <span className={`px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-semibold ${decipherResult.mode === 'walkthrough' ? 'bg-cyan-500/20 text-cyan-300' : 'bg-amber-500/20 text-amber-300'}`}>{decipherResult.mode === 'walkthrough' ? 'Walk through' : 'Synthesize'}</span>}
-                                                                    {decipherResult.ticker && <span className="px-2 py-0.5 bg-white/10 rounded font-mono font-bold text-slate-200">{decipherResult.ticker}</span>}
-                                                                    {decipherResult.fileName && <span>📎 {decipherResult.fileName}</span>}
-                                                                    <span>· {fmtETDateTime(decipherResult.at)}</span>
-                                                                    {decipherResult.tokensOut && <span className="text-slate-600">· {decipherResult.tokensIn}→{decipherResult.tokensOut} tok</span>}
-                                                                    {decipherResult.truncated && <span className="px-2 py-0.5 bg-red-500/20 text-red-300 rounded text-[10px] uppercase tracking-wider font-semibold" title="Output hit max_tokens cap mid-response. Re-run with a smaller selection or contact dev.">Truncated</span>}
-                                                                </div>
-                                                                <div className="flex items-center gap-1.5 flex-wrap">
-                                                                    {/* Save: persists to meeting_summaries with source_type='decipher'.
-                                                                        Shows in Summary tab list with a 'decipher' badge.
-                                                                        Idempotent — flips to "Saved ✓" once persisted (uses ON CONFLICT). */}
-                                                                    <button
-                                                                        onClick={async () => {
-                                                                            const r = decipherResult;
-                                                                            const existingId = decipherSavedIds[r.id];
-                                                                            const summaryId = existingId || `decipher-${r.id}`;
-                                                                            setDecipherSavingId(r.id);
-                                                                            try {
-                                                                                const titleGuess = r.fileName?.replace(/\.[^.]+$/, '') ||
-                                                                                                    (r.text || '').split('\n')[0].slice(0, 80) ||
-                                                                                                    `Decipher ${new Date(r.at).toLocaleString()}`;
-                                                                                const res = await fetch(`${API_URL}/api/save-summary`, {
-                                                                                    method: 'POST',
-                                                                                    headers: { 'Content-Type': 'application/json' },
-                                                                                    body: JSON.stringify({
-                                                                                        id: summaryId,
-                                                                                        title: r.ticker ? `${r.ticker} — ${titleGuess}` : titleGuess,
-                                                                                        rawNotes: r.text || (r.fileName ? `[PDF: ${r.fileName}]` : ''),
-                                                                                        summary: buildFullMarkdown(r),
-                                                                                        sourceType: 'decipher',
-                                                                                        topic: r.ticker || 'General',
-                                                                                        topicType: 'decipher',
-                                                                                        docType: r.mode || 'synthesize',
-                                                                                        createdAt: r.at,
-                                                                                    })
-                                                                                });
-                                                                                if (res.ok) {
-                                                                                    setDecipherSavedIds(s => ({ ...s, [r.id]: summaryId }));
-                                                                                    setDecipherToast({ text: existingId ? 'Updated ✓' : 'Saved to Summary tab ✓', kind: 'ok' });
-                                                                                } else {
-                                                                                    const err = await res.json().catch(() => ({}));
-                                                                                    setDecipherToast({ text: 'Save failed: ' + (err.error || res.status), kind: 'err' });
-                                                                                }
-                                                                            } catch (e) {
-                                                                                setDecipherToast({ text: 'Save error: ' + e.message, kind: 'err' });
-                                                                            } finally {
-                                                                                setDecipherSavingId(null);
-                                                                            }
-                                                                        }}
-                                                                        disabled={decipherSavingId === decipherResult.id}
-                                                                        className={`text-[10px] px-2 py-1 rounded font-medium ${decipherSavedIds[decipherResult.id] ? 'bg-emerald-600/30 text-emerald-300 hover:bg-emerald-600/40' : 'bg-amber-600 hover:bg-amber-500 text-white'}`}
-                                                                        title="Save to Summary tab — searchable, taggable, exportable"
-                                                                    >{decipherSavingId === decipherResult.id ? 'Saving…' : (decipherSavedIds[decipherResult.id] ? 'Saved ✓' : '💾 Save')}</button>
-
-                                                                    {/* Catalog: open dialog to set title / ticker / topic before saving */}
-                                                                    <button
-                                                                        onClick={() => {
-                                                                            const r = decipherResult;
-                                                                            const titleGuess = r.fileName?.replace(/\.[^.]+$/, '') ||
-                                                                                                (r.text || '').split('\n')[0].slice(0, 80) ||
-                                                                                                `Decipher ${new Date(r.at).toLocaleString()}`;
-                                                                            setDecipherCatalogTitle(titleGuess);
-                                                                            setDecipherCatalogTicker(r.ticker || '');
-                                                                            setDecipherCatalogTopic('');
-                                                                            setDecipherCatalogOpen(r);
-                                                                        }}
-                                                                        className="text-[10px] px-2 py-1 bg-cyan-600/30 hover:bg-cyan-600/40 text-cyan-200 rounded font-medium"
-                                                                        title="Save with custom title, ticker, and topic"
-                                                                    >📂 Catalog…</button>
-
-                                                                    {/* Email: uses the Summary tab's email infrastructure (/api/email-summary-section). */}
-                                                                    <button
-                                                                        onClick={async () => {
-                                                                            const saved = localStorage.getItem('emailCredentials');
-                                                                            if (!saved) {
-                                                                                setDecipherToast({ text: 'Set email credentials in Settings first', kind: 'err' });
-                                                                                return;
-                                                                            }
-                                                                            let creds; try { creds = JSON.parse(saved); } catch {
-                                                                                setDecipherToast({ text: 'Invalid email credentials', kind: 'err' }); return;
-                                                                            }
-                                                                            if (!creds.email) {
-                                                                                setDecipherToast({ text: 'Set recipient email in Settings first', kind: 'err' });
-                                                                                return;
-                                                                            }
-                                                                            const r = decipherResult;
-                                                                            const subj = r.ticker ? `Decipher: ${r.ticker} — ${(r.fileName || (r.text || '').slice(0, 60))}` : `Decipher: ${(r.fileName || (r.text || '').slice(0, 60))}`;
-                                                                            try {
-                                                                                const resp = await fetch(`${API_URL}/api/email-summary-section`, {
-                                                                                    method: 'POST',
-                                                                                    headers: { 'Content-Type': 'application/json' },
-                                                                                    body: JSON.stringify({
-                                                                                        email: creds.email,
-                                                                                        subject: subj,
-                                                                                        section: 'decipher',
-                                                                                        content: buildFullMarkdown(r),
-                                                                                        title: subj,
-                                                                                        topic: r.ticker || 'General',
-                                                                                        smtpConfig: {
-                                                                                            use_gmail: creds.useGmail,
-                                                                                            gmail_user: creds.gmailUser,
-                                                                                            gmail_app_password: creds.gmailPassword,
-                                                                                            from_email: creds.gmailUser,
-                                                                                        },
-                                                                                    })
-                                                                                });
-                                                                                if (resp.ok) setDecipherToast({ text: 'Emailed ✓', kind: 'ok' });
-                                                                                else {
-                                                                                    const err = await resp.json().catch(() => ({}));
-                                                                                    setDecipherToast({ text: 'Email failed: ' + (err.error || resp.status), kind: 'err' });
-                                                                                }
-                                                                            } catch (e) {
-                                                                                setDecipherToast({ text: 'Email error: ' + e.message, kind: 'err' });
-                                                                            }
-                                                                        }}
-                                                                        className="text-[10px] px-2 py-1 bg-purple-600/30 hover:bg-purple-600/40 text-purple-200 rounded font-medium"
-                                                                        title="Email to your configured recipient"
-                                                                    >✉ Email</button>
-
-                                                                    <button
-                                                                        onClick={async () => {
-                                                                            try {
-                                                                                await navigator.clipboard.writeText(buildFullMarkdown(decipherResult));
-                                                                                setDecipherToast({ text: 'Copied ✓', kind: 'ok' });
-                                                                            } catch { setDecipherToast({ text: 'Copy failed', kind: 'err' }); }
-                                                                        }}
-                                                                        className="text-[10px] px-2 py-1 bg-white/10 hover:bg-white/20 rounded"
-                                                                    >Copy</button>
-                                                                </div>
-                                                            </div>
-                                                            {decipherToast && (
-                                                                <div className={`mb-3 px-3 py-1.5 rounded text-xs ${decipherToast.kind === 'err' ? 'bg-red-500/20 text-red-300' : 'bg-emerald-500/20 text-emerald-300'}`}>
-                                                                    {decipherToast.text}
-                                                                </div>
-                                                            )}
-                                                            <div className="prose prose-invert prose-sm max-w-none text-slate-100" dangerouslySetInnerHTML={{ __html: decipherResult.isHtml ? (sanitizeHtml(decipherResult.explanation)) : renderMarkdown(decipherResult.explanation) }} />
-
-                                                            {/* Follow-up chat. Replays original PDF + ask + first response
-                                                                + prior turns + new question on each send. Backend uses
-                                                                Anthropic prompt caching (90% off the cached PDF block within
-                                                                the 5-min TTL), so chat is cheap. Chat is keyed by result.id
-                                                                so switching history doesn't bleed turns. */}
-                                                            {(() => {
-                                                                const r = decipherResult;
-                                                                const chat = decipherChats[r.id] || { turns: [], inFlight: false, error: null, elapsedSec: 0, startedAt: null };
-                                                                const sendFollowup = async () => {
-                                                                    const q = (decipherChatInput || '').trim();
-                                                                    if (!q) return;
-                                                                    if (!r.jobId) {
-                                                                        setDecipherChats(prev => ({ ...prev, [r.id]: { ...chat, error: 'This is a saved/historical result — open it fresh to chat. (Server keeps chat state for the most recent ~100 sessions only.)' } }));
-                                                                        return;
-                                                                    }
-                                                                    setDecipherChatInput('');
-                                                                    setDecipherChats(prev => ({ ...prev, [r.id]: { ...chat, inFlight: true, error: null, startedAt: Date.now(), elapsedSec: 0 } }));
-                                                                    try {
-                                                                        const dispatch = await fetch(`${DIRECT_API_URL}/api/decipher/${r.jobId}/followup`, {
-                                                                            method: 'POST',
-                                                                            headers: { 'Content-Type': 'application/json' },
-                                                                            body: JSON.stringify({ question: q }),
-                                                                        });
-                                                                        const dj = await dispatch.json();
-                                                                        if (!dispatch.ok || !dj.followupId) throw new Error(dj.error || `Dispatch failed: HTTP ${dispatch.status}`);
-                                                                        // Poll every 3s, cap at 8 min (followups are typically <1 min).
-                                                                        const fid = dj.followupId;
-                                                                        const maxIter = Math.ceil((8 * 60 * 1000) / 3000);
-                                                                        let answer = null;
-                                                                        let meta = {};
-                                                                        for (let i = 0; i < maxIter; i++) {
-                                                                            await new Promise(res => setTimeout(res, 3000));
-                                                                            try {
-                                                                                const pr = await fetch(`${DIRECT_API_URL}/api/decipher/followup/${fid}`);
-                                                                                if (!pr.ok) continue;
-                                                                                const pj = await pr.json();
-                                                                                if (pj.status === 'complete') { answer = pj.answer || ''; meta = { tokensIn: pj.inputTokens, tokensOut: pj.outputTokens, cacheRead: pj.cacheReadTokens }; break; }
-                                                                                if (pj.status === 'failed') throw new Error(pj.error || 'Follow-up failed');
-                                                                            } catch (pollErr) {
-                                                                                // single-poll network blips are fine; keep trying unless the server returned 'failed' explicitly above
-                                                                                if (String(pollErr.message || '').toLowerCase().includes('follow-up failed') || String(pollErr.message || '').toLowerCase().includes('original decipher')) throw pollErr;
-                                                                            }
-                                                                        }
-                                                                        if (answer == null) throw new Error('Follow-up timed out after 8 minutes');
-                                                                        setDecipherChats(prev => {
-                                                                            const cur = prev[r.id] || { turns: [], inFlight: false };
-                                                                            return { ...prev, [r.id]: {
-                                                                                turns: [...(cur.turns || []), { q, a: answer, at: new Date().toISOString(), ...meta }],
-                                                                                inFlight: false, error: null, elapsedSec: 0, startedAt: null,
-                                                                            }};
-                                                                        });
-                                                                    } catch (e) {
-                                                                        setDecipherChats(prev => ({ ...prev, [r.id]: { ...(prev[r.id] || chat), inFlight: false, error: String(e.message || e), startedAt: null, elapsedSec: 0 } }));
-                                                                    }
-                                                                };
-                                                                const resetChat = () => {
-                                                                    setDecipherChats(prev => ({ ...prev, [r.id]: { turns: [], inFlight: false, error: null, elapsedSec: 0, startedAt: null } }));
-                                                                    setDecipherChatInput('');
-                                                                };
-                                                                return (
-                                                                    <div className="mt-5 pt-4 border-t border-white/10">
-                                                                        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-                                                                            <div className="flex items-center gap-2">
-                                                                                <span className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Follow-up chat</span>
-                                                                                {chat.turns.length > 0 && <span className="text-[10px] text-slate-500">· {chat.turns.length} turn{chat.turns.length === 1 ? '' : 's'}</span>}
-                                                                            </div>
-                                                                            {chat.turns.length > 0 && !chat.inFlight && (
-                                                                                <button onClick={resetChat} className="text-[10px] text-slate-500 hover:text-red-400">Reset chat</button>
-                                                                            )}
-                                                                        </div>
-
-                                                                        {/* Q/A bubble pairs */}
-                                                                        {chat.turns.length > 0 && (
-                                                                            <div className="space-y-3 mb-3">
-                                                                                {chat.turns.map((t, i) => (
-                                                                                    <div key={i} className="space-y-2">
-                                                                                        <div className="flex justify-end">
-                                                                                            <div className="max-w-[85%] bg-amber-600/20 border border-amber-500/30 rounded-lg rounded-br-sm px-3 py-2 text-sm text-slate-100 whitespace-pre-wrap">{t.q}</div>
-                                                                                        </div>
-                                                                                        <div className="flex justify-start">
-                                                                                            <div className="max-w-[95%] bg-white/[0.04] border border-white/10 rounded-lg rounded-bl-sm px-3 py-2 text-sm text-slate-100">
-                                                                                                <div className="prose prose-invert prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: renderMarkdown(t.a) }} />
-                                                                                                <div className="mt-2 flex items-center gap-2 text-[9px] text-slate-600">
-                                                                                                    <span>{fmtETDateTime(t.at)}</span>
-                                                                                                    {t.tokensOut && <span>· {t.tokensIn}→{t.tokensOut} tok</span>}
-                                                                                                    {t.cacheRead != null && t.cacheRead > 0 && <span title="Cached PDF tokens (90% discount)">· cache hit {t.cacheRead}</span>}
-                                                                                                    <button onClick={async () => {
-                                                                                                        try { await navigator.clipboard.writeText(t.a); setDecipherToast({ text: 'Copied ✓', kind: 'ok' }); }
-                                                                                                        catch { setDecipherToast({ text: 'Copy failed', kind: 'err' }); }
-                                                                                                    }} className="ml-auto text-slate-500 hover:text-slate-300">Copy</button>
-                                                                                                </div>
-                                                                                            </div>
-                                                                                        </div>
-                                                                                    </div>
-                                                                                ))}
-                                                                            </div>
-                                                                        )}
-
-                                                                        {chat.inFlight && (
-                                                                            <div className="mb-3 px-3 py-2 bg-amber-500/10 border border-amber-500/20 rounded-lg flex items-center gap-2 text-xs text-amber-300">
-                                                                                <svg className="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
-                                                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
-                                                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                                                                                </svg>
-                                                                                <span>Thinking… {chat.elapsedSec}s elapsed</span>
-                                                                            </div>
-                                                                        )}
-
-                                                                        {chat.error && (
-                                                                            <div className="mb-3 px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-lg text-xs text-red-300">{chat.error}</div>
-                                                                        )}
-
-                                                                        {/* Composer */}
-                                                                        <div className="flex gap-2">
-                                                                            <textarea
-                                                                                value={decipherChatInput}
-                                                                                onChange={e => setDecipherChatInput(e.target.value)}
-                                                                                onKeyDown={e => {
-                                                                                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); sendFollowup(); }
-                                                                                }}
-                                                                                placeholder={r.jobId ? "Ask a follow-up about the source above. Cmd/Ctrl+Enter to send." : "Chat unavailable for saved/historical results — re-run Decipher to enable."}
-                                                                                rows={2}
-                                                                                disabled={chat.inFlight || !r.jobId}
-                                                                                className="flex-1 px-3 py-2 bg-black/30 border border-white/10 rounded text-sm text-slate-200 placeholder:text-slate-500 resize-y disabled:opacity-50"
-                                                                            />
-                                                                            <button
-                                                                                onClick={sendFollowup}
-                                                                                disabled={chat.inFlight || !decipherChatInput.trim() || !r.jobId}
-                                                                                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-medium rounded self-end"
-                                                                            >Send</button>
-                                                                        </div>
-                                                                        <p className="mt-1.5 text-[10px] text-slate-600">
-                                                                            Source stays loaded · prompt-cached for cheap re-sends · Save/Email above will include this chat.
-                                                                        </p>
-                                                                    </div>
-                                                                );
-                                                            })()}
-                                                        </div>
-                                                    )}
-
-                                                    {/* Catalog dialog — set title/ticker/topic before saving */}
-                                                    {decipherCatalogOpen && (
-                                                        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4" onClick={() => setDecipherCatalogOpen(null)}>
-                                                            <div className="bg-neutral-900 border border-white/10 rounded-xl w-full max-w-md p-5 space-y-3" onClick={e => e.stopPropagation()}>
-                                                                <h3 className="font-bold text-lg">Catalog Decipher result</h3>
-                                                                <p className="text-xs text-slate-400">Save to Summary tab with custom title, ticker, and topic.</p>
-                                                                <div>
-                                                                    <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Title</label>
-                                                                    <input type="text" value={decipherCatalogTitle} onChange={e => setDecipherCatalogTitle(e.target.value)} className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded text-sm text-slate-200" />
-                                                                </div>
-                                                                <div className="grid grid-cols-2 gap-2">
-                                                                    <div>
-                                                                        <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Ticker</label>
-                                                                        <input type="text" value={decipherCatalogTicker} onChange={e => setDecipherCatalogTicker(e.target.value.toUpperCase())} placeholder="e.g. AMT" className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded text-sm font-mono text-slate-200" />
-                                                                    </div>
-                                                                    <div>
-                                                                        <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Topic / Category</label>
-                                                                        <input type="text" value={decipherCatalogTopic} onChange={e => setDecipherCatalogTopic(e.target.value)} placeholder="e.g. Tower REIT primer" className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded text-sm text-slate-200" />
-                                                                    </div>
-                                                                </div>
-                                                                <div className="flex justify-end gap-2 pt-2">
-                                                                    <button onClick={() => setDecipherCatalogOpen(null)} className="px-3 py-1.5 text-xs text-slate-400 hover:text-white">Cancel</button>
-                                                                    <button
-                                                                        onClick={async () => {
-                                                                            const r = decipherCatalogOpen;
-                                                                            const summaryId = decipherSavedIds[r.id] || `decipher-${r.id}`;
-                                                                            try {
-                                                                                const res = await fetch(`${API_URL}/api/save-summary`, {
-                                                                                    method: 'POST',
-                                                                                    headers: { 'Content-Type': 'application/json' },
-                                                                                    body: JSON.stringify({
-                                                                                        id: summaryId,
-                                                                                        title: decipherCatalogTitle.trim() || 'Decipher',
-                                                                                        rawNotes: r.text || (r.fileName ? `[PDF: ${r.fileName}]` : ''),
-                                                                                        summary: buildFullMarkdown(r),
-                                                                                        sourceType: 'decipher',
-                                                                                        topic: decipherCatalogTopic.trim() || decipherCatalogTicker.trim() || 'General',
-                                                                                        topicType: 'decipher',
-                                                                                        docType: r.mode || 'synthesize',
-                                                                                        categories: decipherCatalogTicker.trim() ? [decipherCatalogTicker.trim()] : [],
-                                                                                        createdAt: r.at,
-                                                                                    })
-                                                                                });
-                                                                                if (res.ok) {
-                                                                                    setDecipherSavedIds(s => ({ ...s, [r.id]: summaryId }));
-                                                                                    setDecipherToast({ text: 'Cataloged ✓', kind: 'ok' });
-                                                                                    setDecipherCatalogOpen(null);
-                                                                                } else {
-                                                                                    const err = await res.json().catch(() => ({}));
-                                                                                    setDecipherToast({ text: 'Save failed: ' + (err.error || res.status), kind: 'err' });
-                                                                                }
-                                                                            } catch (e) {
-                                                                                setDecipherToast({ text: 'Save error: ' + e.message, kind: 'err' });
-                                                                            }
-                                                                        }}
-                                                                        className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium rounded-lg"
-                                                                    >Save</button>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    )}
-
-                                                    {decipherHistory.length > 1 && (
-                                                        <details className="bg-white/[0.02] border border-white/10 rounded-xl p-3">
-                                                            <summary className="cursor-pointer text-xs text-slate-400 hover:text-white">
-                                                                Session history ({decipherHistory.length} earlier decipher{decipherHistory.length === 1 ? '' : 's'})
-                                                            </summary>
-                                                            <div className="mt-3 space-y-2">
-                                                                {decipherHistory.slice(1).map(h => (
-                                                                    <button
-                                                                        key={h.id}
-                                                                        onClick={() => setDecipherResult(h)}
-                                                                        className="w-full text-left p-2 bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 rounded text-xs"
-                                                                    >
-                                                                        <div className="flex items-center gap-2 text-[10px] text-slate-500 mb-1 flex-wrap">
-                                                                            {h.ticker && <span className="px-1.5 py-0.5 bg-white/10 rounded font-mono">{h.ticker}</span>}
-                                                                            {h.fileName && <span>📎 {h.fileName}</span>}
-                                                                            <span>{fmtETDateTime(h.at)}</span>
-                                                                        </div>
-                                                                        <div className="text-slate-300 truncate">
-                                                                            {(h.text || h.fileName || '(empty)').slice(0, 140)}
-                                                                        </div>
-                                                                    </button>
-                                                                ))}
-                                                            </div>
-                                                        </details>
-                                                    )}
-
-                                                    {/* Saved Decipher results — rows persisted to meeting_summaries
-                                                        with source_type='decipher'. Click to load into the viewer
-                                                        (chat is disabled because server-side _chat_state is dropped
-                                                        with job GC; the explanation alone survives). */}
-                                                    {(() => {
-                                                        const saved = (savedSummaries || []).filter(s => s.sourceType === 'decipher');
-                                                        if (saved.length === 0) return null;
-                                                        return (
-                                                            <details className="bg-white/[0.02] border border-white/10 rounded-xl p-3" open>
-                                                                <summary className="cursor-pointer text-xs text-slate-400 hover:text-white">
-                                                                    Saved Decipher results ({saved.length}) — from Summary tab
-                                                                </summary>
-                                                                <div className="mt-3 space-y-2">
-                                                                    {saved.map(s => (
-                                                                        <button
-                                                                            key={s.id}
-                                                                            onClick={() => {
-                                                                                setDecipherResult({
-                                                                                    id: 'saved-' + s.id,
-                                                                                    jobId: null,
-                                                                                    text: s.rawNotes || '',
-                                                                                    fileName: null,
-                                                                                    ticker: s.topic && s.topic !== 'General' ? s.topic : null,
-                                                                                    mode: s.docType || 'synthesize',
-                                                                                    truncated: false,
-                                                                                    explanation: s.summary || '',
-                                                                                    isHtml: true,
-                                                                                    at: s.createdAt,
-                                                                                    _savedId: s.id,
-                                                                                    _title: s.title,
-                                                                                });
-                                                                            }}
-                                                                            className="w-full text-left p-2 bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 rounded text-xs"
-                                                                        >
-                                                                            <div className="flex items-center gap-2 text-[10px] text-slate-500 mb-1 flex-wrap">
-                                                                                {s.topic && s.topic !== 'General' && <span className="px-1.5 py-0.5 bg-white/10 rounded font-mono">{s.topic}</span>}
-                                                                                {s.docType && <span className="px-1.5 py-0.5 bg-amber-500/15 text-amber-300 rounded uppercase tracking-wider">{s.docType}</span>}
-                                                                                <span>{fmtETDateTime(s.createdAt)}</span>
-                                                                            </div>
-                                                                            <div className="text-slate-200 font-medium truncate">{s.title || '(untitled)'}</div>
-                                                                            {s.rawNotes && <div className="text-slate-500 text-[10px] truncate mt-0.5">{s.rawNotes.slice(0, 140)}</div>}
-                                                                        </button>
-                                                                    ))}
-                                                                </div>
-                                                            </details>
-                                                        );
-                                                    })()}
-                                                </div>
-                                            );
-                                        })()}
 
                                         {agentView === 'new' && (
                                             <>
@@ -30569,18 +30704,18 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 <button
                                     onClick={() => setShowMoreMenu(true)}
                                     className={`flex flex-col items-center justify-center gap-1 min-w-[56px] py-2 rounded-xl transition-all ${
-                                        activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' || activeTab === 'feed' || activeTab === 'analysts' || activeTab === 'onepager'
+                                        activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' || activeTab === 'feed' || activeTab === 'analysts' || activeTab === 'onepager' || activeTab === 'explain'
                                             ? 'text-amber-400'
                                             : 'text-slate-400 active:text-slate-200'
                                     }`}
                                 >
                                     <div className="relative">
-                                        <MoreHorizontal className={`w-5 h-5 ${activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' || activeTab === 'feed' || activeTab === 'analysts' || activeTab === 'onepager' ? 'stroke-[2.5]' : 'stroke-[1.5]'}`} />
+                                        <MoreHorizontal className={`w-5 h-5 ${activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' || activeTab === 'feed' || activeTab === 'analysts' || activeTab === 'onepager' || activeTab === 'explain' ? 'stroke-[2.5]' : 'stroke-[1.5]'}`} />
                                         {alertBadgeCount > 0 && (
                                             <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center">{alertBadgeCount > 9 ? '9+' : alertBadgeCount}</span>
                                         )}
                                     </div>
-                                    <span className={`text-[9px] ${activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' || activeTab === 'feed' || activeTab === 'analysts' || activeTab === 'onepager' ? 'font-semibold' : 'font-medium'}`}>More</span>
+                                    <span className={`text-[9px] ${activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' || activeTab === 'feed' || activeTab === 'analysts' || activeTab === 'onepager' || activeTab === 'explain' ? 'font-semibold' : 'font-medium'}`}>More</span>
                                 </button>
                             </div>
                         </div>
@@ -30791,6 +30926,27 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             <div className="text-left">
                                                 <div className="font-semibold">Formats</div>
                                                 <div className="text-xs text-slate-400">Professional thesis export templates</div>
+                                            </div>
+                                            <ChevronRight className="w-5 h-5 text-slate-500 ml-auto" />
+                                        </button>
+
+                                        <button
+                                            onClick={() => {
+                                                setShowMoreMenu(false);
+                                                switchTab('explain');
+                                            }}
+                                            className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
+                                                activeTab === 'explain'
+                                                    ? 'bg-amber-600/20 border border-amber-500/50'
+                                                    : 'bg-white/5 hover:bg-white/10 border border-transparent'
+                                            }`}
+                                        >
+                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${activeTab === 'explain' ? 'bg-amber-600' : 'bg-white/10'}`}>
+                                                <FileText className="w-5 h-5" />
+                                            </div>
+                                            <div className="text-left">
+                                                <div className="font-semibold">Explain</div>
+                                                <div className="text-xs text-slate-400">Dense document in, plain language out</div>
                                             </div>
                                             <ChevronRight className="w-5 h-5 text-slate-500 ml-auto" />
                                         </button>
