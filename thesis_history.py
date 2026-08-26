@@ -215,10 +215,16 @@ def drift(get_db, ticker, limit=200, threshold=DRIFT_REVISION_THRESHOLD):
                     entry = tracked.setdefault(_key(label), {
                         'label': label, 'section': section, 'revisions': 0,
                         'kinds': [], 'layers': [], 'firstSeen': when, 'lastChanged': when,
+                        # Which revisions actually moved this row, so the UI can
+                        # offer "show me those" rather than stating a count the
+                        # reader has no way to investigate.
+                        'revisionIds': [],
                     })
                     entry['revisions'] += 1
                     entry['kinds'].append(kind)
                     entry['lastChanged'] = when
+                    if row['id'] not in entry['revisionIds']:
+                        entry['revisionIds'].append(row['id'])
                     layer = by_label.get(_key(label))
                     if layer and layer not in entry['layers']:
                         entry['layers'].append(layer)

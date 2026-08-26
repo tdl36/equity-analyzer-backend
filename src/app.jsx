@@ -80,7 +80,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-08-25T02';
+        const BUILD_VERSION = '2026-08-26T01';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -821,6 +821,30 @@ Regulatory, execution, or macro risks that could derail the thesis:
             return '';
         };
 
+        const escapeHtml = (str) => String(str == null ? '' : str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+
+        // Sanitise HTML a model produced before it reaches the page.
+        //
+        // Fails CLOSED. DOMPurify is loaded from a CDN, and the previous pattern
+        // -- `sanitizeHtml(x)` --
+        // fell through to injecting the raw markup whenever it was missing. That
+        // is a sanitiser that switches itself off exactly when the network is
+        // hostile or the CDN is blocked. Escaped text is worse-looking; raw
+        // model HTML in the page is worse.
+        const sanitizeHtml = (html) => {
+            const text = String(html == null ? '' : html);
+            if (typeof DOMPurify !== 'undefined' && typeof DOMPurify.sanitize === 'function') {
+                return DOMPurify.sanitize(text);
+            }
+            console.warn('DOMPurify unavailable — showing escaped text instead of raw HTML');
+            return escapeHtml(text);
+        };
+
         // Simple markdown renderer
         const renderMarkdown = (text) => {
             if (!text) return '';
@@ -829,6 +853,19 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 text = safeStr(text);
             }
             if (!text) return '';
+
+            // Escape BEFORE formatting, never after. The output of this function
+            // goes straight into dangerouslySetInnerHTML, and the input is model
+            // output or document text neither of which is trusted markup. Doing
+            // it here rather than at each call site means a new caller cannot
+            // forget. Markdown syntax still works: escaping touches < > & " '
+            // and leaves * _ ` # | alone, so the formatter below adds the only
+            // tags that ever reach the page.
+            //
+            // This also fixes ordinary rendering: financial prose is full of
+            // "EPS > $2" and "<5% margin", which previously produced broken or
+            // silently swallowed markup.
+            text = escapeHtml(text);
             
             // Helper for inline formatting (bold, italic)
             function formatInline(str) {
@@ -960,7 +997,17 @@ Regulatory, execution, or macro risks that could derail the thesis:
             }
             
             const html = result.join('');
-            return typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(html) : html;
+            // Safe by construction: the input was escaped at the top of this
+            // function, so every tag below was written here, not by the model.
+            // DOMPurify still runs when it is available as a second line of
+            // defence -- but it must NOT be the fail-closed variant. Escaping
+            // this string would escape the tags this function just generated,
+            // turning the whole app into visible markup whenever the CDN is
+            // unreachable. That failure mode was caught by the render tests.
+            if (typeof DOMPurify !== 'undefined' && typeof DOMPurify.sanitize === 'function') {
+                return DOMPurify.sanitize(html);
+            }
+            return html;
         };
 
         // Chat Interface Component - built-in chat UI
@@ -16493,9 +16540,19 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                             <div className="flex items-center gap-2 flex-wrap">
                                                                                 <span className="font-semibold text-amber-200">{d.label}</span>
                                                                                 <span className="text-[9px] uppercase tracking-wider text-slate-500">{d.section}</span>
-                                                                                <span className="ml-auto text-[10px] text-slate-400">
-                                                                                    revised {d.timesRevised}×
-                                                                                </span>
+                                                                                {/* The count is only useful if you can go and look. */}
+                                                                                {(d.revisionIds || []).length > 0 ? (
+                                                                                    <button
+                                                                                        onClick={() => openThesisRevision(currentTicker,
+                                                                                            d.revisionIds[d.revisionIds.length - 1])}
+                                                                                        className="ml-auto px-1.5 py-0.5 rounded bg-white/10 hover:bg-white/20 text-[10px] text-slate-300">
+                                                                                        revised {d.timesRevised}× — see latest
+                                                                                    </button>
+                                                                                ) : (
+                                                                                    <span className="ml-auto text-[10px] text-slate-400">
+                                                                                        revised {d.timesRevised}×
+                                                                                    </span>
+                                                                                )}
                                                                             </div>
                                                                             {d.structuralDrift && (
                                                                                 <p className="text-[11px] text-amber-300/90 mt-1">
@@ -18749,7 +18806,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         {briefExpanded && (
                                                             <div
                                                                 className="p-6 summary-content"
-                                                                dangerouslySetInnerHTML={{ __html: typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(currentSummary.brief) : currentSummary.brief }}
+                                                                dangerouslySetInnerHTML={{ __html: sanitizeHtml(currentSummary.brief) }}
                                                             />
                                                         )}
                                                     </div>
@@ -18839,7 +18896,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 <>
                                                                     <div 
                                                                         className="p-6 summary-content"
-                                                                        dangerouslySetInnerHTML={{ __html: typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(currentSummary.summary) : currentSummary.summary }}
+                                                                        dangerouslySetInnerHTML={{ __html: sanitizeHtml(currentSummary.summary) }}
                                                                     />
                                                                     <div className="border-t border-white/10 px-4 py-3 flex gap-2">
                                                                         <button
@@ -18918,7 +18975,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     {meetingSummaryExpanded && (
                                                         <div
                                                             className="p-6 summary-content"
-                                                            dangerouslySetInnerHTML={{ __html: typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(currentSummary.meetingSummary) : currentSummary.meetingSummary }}
+                                                            dangerouslySetInnerHTML={{ __html: sanitizeHtml(currentSummary.meetingSummary) }}
                                                         />
                                                     )}
                                                 </div>
@@ -19008,7 +19065,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 <>
                                                                     <div 
                                                                         className="p-6 summary-content"
-                                                                        dangerouslySetInnerHTML={{ __html: typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(currentSummary.questions) : currentSummary.questions }}
+                                                                        dangerouslySetInnerHTML={{ __html: sanitizeHtml(currentSummary.questions) }}
                                                                     />
                                                                     <div className="border-t border-white/10 px-4 py-3 flex gap-2">
                                                                         <button
@@ -19125,7 +19182,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 <>
                                                                     <div
                                                                         className="p-6 summary-content"
-                                                                        dangerouslySetInnerHTML={{ __html: typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(currentSummary.assessment) : currentSummary.assessment }}
+                                                                        dangerouslySetInnerHTML={{ __html: sanitizeHtml(currentSummary.assessment) }}
                                                                     />
                                                                     <div className="border-t border-white/10 px-4 py-3 flex gap-2">
                                                                         <button
@@ -20791,7 +20848,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                                 </div>
                                                                                             )}
                                                                                             {looksHtml ? (
-                                                                                                <div className="prose prose-invert prose-sm max-w-none text-slate-300" dangerouslySetInnerHTML={{ __html: currentHtml }} />
+                                                                                                <div className="prose prose-invert prose-sm max-w-none text-slate-300" dangerouslySetInnerHTML={{ __html: sanitizeHtml(currentHtml) }} />
                                                                                             ) : (
                                                                                                 <div className="prose prose-invert prose-sm max-w-none text-slate-300" dangerouslySetInnerHTML={{ __html: renderMarkdown(currentHtml) }} />
                                                                                             )}
@@ -26932,7 +26989,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                     {decipherToast.text}
                                                                 </div>
                                                             )}
-                                                            <div className="prose prose-invert prose-sm max-w-none text-slate-100" dangerouslySetInnerHTML={{ __html: decipherResult.isHtml ? (typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(decipherResult.explanation) : decipherResult.explanation) : renderMarkdown(decipherResult.explanation) }} />
+                                                            <div className="prose prose-invert prose-sm max-w-none text-slate-100" dangerouslySetInnerHTML={{ __html: decipherResult.isHtml ? (sanitizeHtml(decipherResult.explanation)) : renderMarkdown(decipherResult.explanation) }} />
 
                                                             {/* Follow-up chat. Replays original PDF + ask + first response
                                                                 + prior turns + new question on each send. Backend uses
@@ -28021,7 +28078,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                                             </div>
                                                                                                             <div className="px-3 pb-3 max-h-96 overflow-y-auto">
                                                                                                                 {looksHtml ? (
-                                                                                                                    <div className="prose prose-invert prose-sm max-w-none text-slate-200" dangerouslySetInnerHTML={{ __html: currentHtml }} />
+                                                                                                                    <div className="prose prose-invert prose-sm max-w-none text-slate-200" dangerouslySetInnerHTML={{ __html: sanitizeHtml(currentHtml) }} />
                                                                                                                 ) : (
                                                                                                                     <pre className="whitespace-pre-wrap text-xs text-slate-200 font-sans leading-relaxed">{currentHtml}</pre>
                                                                                                                 )}
@@ -28299,7 +28356,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                         </div>
                                                                                         <div className="px-3 pb-3 max-h-96 overflow-y-auto">
                                                                                             {looksHtml ? (
-                                                                                                <div className="prose prose-invert prose-sm max-w-none text-slate-200" dangerouslySetInnerHTML={{ __html: currentHtml }} />
+                                                                                                <div className="prose prose-invert prose-sm max-w-none text-slate-200" dangerouslySetInnerHTML={{ __html: sanitizeHtml(currentHtml) }} />
                                                                                             ) : (
                                                                                                 <pre className="whitespace-pre-wrap text-xs text-slate-200 font-sans leading-relaxed">{currentHtml}</pre>
                                                                                             )}
@@ -28523,7 +28580,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                             </div>
                                                                             <div className="px-3 pb-3 max-h-96 overflow-y-auto">
                                                                                 {looksHtml ? (
-                                                                                    <div className="prose prose-invert prose-sm max-w-none text-slate-200" dangerouslySetInnerHTML={{ __html: currentHtml }} />
+                                                                                    <div className="prose prose-invert prose-sm max-w-none text-slate-200" dangerouslySetInnerHTML={{ __html: sanitizeHtml(currentHtml) }} />
                                                                                 ) : (
                                                                                     <pre className="whitespace-pre-wrap text-xs text-slate-200 font-sans leading-relaxed">{currentHtml}</pre>
                                                                                 )}
@@ -28795,10 +28852,36 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 {alert.ticker && (
                                                                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-mono font-medium">{alert.ticker}</span>
                                                                 )}
-                                                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-slate-400">{alert.alertType === 'new_files' ? 'New Files' : alert.alertType === 'audio_summary' ? 'Audio Summary' : alert.alertType === 'web_sweep' ? 'Web Sweep' : alert.alertType}</span>
+                                                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-slate-400">{alert.alertType === 'new_files' ? 'New Files' : alert.alertType === 'audio_summary' ? 'Audio Summary' : alert.alertType === 'web_sweep' ? 'Web Sweep' : alert.alertType === 'signpost' ? 'Signpost' : alert.alertType}</span>
                                                                 <span className="text-[9px] text-slate-600 ml-auto">{alert.createdAt ? fmtETDateTime(alert.createdAt) : ''}</span>
                                                             </div>
                                                             <p className="text-sm text-slate-200 font-medium">{alert.title}</p>
+                                                            {/* A signpost alert asserts something moved. Showing the
+                                                                quote that justifies it answers "says who?" here, rather
+                                                                than making someone open the thesis to find out. */}
+                                                            {alert.alertType === 'signpost' && (
+                                                                <div className="mt-1.5 space-y-1">
+                                                                    {alert.detail?.observed && (
+                                                                        <div className="text-[11px] text-slate-300">
+                                                                            Now: {alert.detail.observed}
+                                                                            {alert.detail?.target && (
+                                                                                <span className="text-slate-500"> · target: {alert.detail.target}</span>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                    {alert.detail?.evidence && (
+                                                                        <div className="pl-2 border-l-2 border-blue-500/40 text-[11px] text-slate-400 italic">
+                                                                            “{alert.detail.evidence}”
+                                                                        </div>
+                                                                    )}
+                                                                    {alert.detail?.confidence && (
+                                                                        <div className="text-[10px] text-slate-500">
+                                                                            {alert.detail.confidence} confidence
+                                                                            {alert.detail?.source ? ` · from ${alert.detail.source}` : ''}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
                                                             {alert.detail?.newFiles && (
                                                                 <div className="mt-1.5 space-y-0.5">
                                                                     {alert.detail.newFiles.map((f, i) => (
@@ -28874,6 +28957,15 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                             }
                                                                         }} className="px-3 py-1.5 text-[10px] bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-medium">
                                                                             Re-route to analysts
+                                                                        </button>
+                                                                    )}
+                                                                    {alert.alertType === 'signpost' && alert.ticker && (
+                                                                        <button onClick={() => {
+                                                                            actionAlert(alert.id);
+                                                                            loadAnalysis(alert.ticker);
+                                                                            switchTab('portfolio');
+                                                                        }} className="px-3 py-1.5 text-[10px] bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium">
+                                                                            Open {alert.ticker} thesis
                                                                         </button>
                                                                     )}
                                                                     {alert.alertType === 'audio_summary' && (

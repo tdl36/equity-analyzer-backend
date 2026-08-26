@@ -210,3 +210,16 @@ def test_signpost_check_says_so_when_there_is_nothing_to_check_against(client, c
     body = client.post('/api/signposts/CVS/check', json={}).get_json()
     assert body['success'] is False
     assert 'thesis update' in body['message']
+
+
+def test_drift_names_the_revisions_that_moved_a_row(clean_db, clean_revisions):
+    """A count nobody can investigate is not actionable; carry the ids."""
+    th.record_revision(app_v3.get_db, 'CVS', None, _thesis('v0'), 'manual')
+    for i in range(3):
+        th.record_revision(app_v3.get_db, 'CVS', _thesis(f'v{i}'), _thesis(f'v{i+1}'), 'pipeline')
+
+    pillar = next(r for r in th.drift(app_v3.get_db, 'CVS') if r['label'] == 'Margin expansion')
+    assert len(pillar['revisionIds']) == pillar['revisions']
+    # every id must resolve to a real revision the UI can open
+    for rid in pillar['revisionIds']:
+        assert th.get_revision(app_v3.get_db, rid) is not None
