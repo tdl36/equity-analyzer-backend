@@ -49,3 +49,63 @@ def test_a_real_depth_is_not_flattened_to_standard():
         resolved = good.strip().lower()
         assert resolved in app_v3.EXPLAIN_DEPTH_TEXT
         assert app_v3.EXPLAIN_DEPTH_TEXT[resolved] != ''
+
+
+# ---------------------------------------------------------------------------
+# the route itself
+# ---------------------------------------------------------------------------
+# These exist because the depth dial shipped broken: the route referenced a
+# `depth` local that had been inserted into a different function by a
+# non-unique anchor, so every Explain run died with
+# "name 'depth' is not defined". Testing the constants and the /depths listing
+# said nothing about it -- only exercising POST /api/decipher does.
+
+def _capture_worker(monkeypatch):
+    """Run the route without threads or an Anthropic call; record the kwargs."""
+    captured = {}
+
+    class _FakeThread:
+        def __init__(self, target=None, args=(), kwargs=None, **_ignored):
+            captured['args'] = args
+            captured['kwargs'] = kwargs or {}
+
+        def start(self):
+            captured['started'] = True
+
+    monkeypatch.setattr(app_v3.threading, 'Thread', _FakeThread)
+    monkeypatch.setenv('ANTHROPIC_API_KEY', 'test-key')
+    return captured
+
+
+def test_decipher_route_dispatches_without_a_nameerror(client, monkeypatch):
+    captured = _capture_worker(monkeypatch)
+    r = client.post('/api/decipher', json={'text': 'Some dense filing text.'})
+    assert r.status_code == 200, r.get_data(as_text=True)
+    assert r.get_json().get('jobId')
+    assert captured.get('started') is True
+
+
+def test_decipher_route_passes_the_chosen_depth_to_the_worker(client, monkeypatch):
+    captured = _capture_worker(monkeypatch)
+    client.post('/api/decipher', json={'text': 'x', 'depth': 'simplest'})
+    assert captured['kwargs']['depth'] == 'simplest'
+
+
+def test_decipher_route_defaults_depth_when_omitted(client, monkeypatch):
+    captured = _capture_worker(monkeypatch)
+    client.post('/api/decipher', json={'text': 'x'})
+    assert captured['kwargs']['depth'] == 'standard'
+
+
+def test_decipher_route_rejects_a_bogus_depth_without_failing(client, monkeypatch):
+    captured = _capture_worker(monkeypatch)
+    r = client.post('/api/decipher', json={'text': 'x', 'depth': 'eli5'})
+    assert r.status_code == 200
+    assert captured['kwargs']['depth'] == 'standard'
+
+
+def test_depth_is_not_leaked_into_the_youtube_route(client, monkeypatch):
+    """The original bug put `depth` in youtube_summarize(). Keep it out."""
+    import inspect
+    src = inspect.getsource(app_v3.youtube_summarize)
+    assert 'EXPLAIN_DEPTH_TEXT' not in src

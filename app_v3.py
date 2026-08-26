@@ -7400,9 +7400,6 @@ def youtube_summarize():
         url = (data.get('url') or '').strip()
         ticker = (data.get('ticker') or '').strip().upper()
         generate_korean = bool(data.get('generateKorean'))
-        depth = (data.get('depth') or 'standard').strip().lower()
-        if depth not in EXPLAIN_DEPTH_TEXT:
-            depth = 'standard'
         korean_only = bool(data.get('koreanOnly')) and generate_korean
         anthropic_api_key = data.get('apiKey') or os.environ.get('ANTHROPIC_API_KEY', '')
         if not url:
@@ -18947,6 +18944,9 @@ def decipher():
         if mode not in ('synthesize', 'walkthrough'):
             mode = 'synthesize'
         generate_korean = bool(data.get('generateKorean'))
+        depth = (data.get('depth') or 'standard').strip().lower()
+        if depth not in EXPLAIN_DEPTH_TEXT:
+            depth = 'standard'
 
         # Accept either the new `attachments` array OR the legacy single-file
         # form (fileData / fileType / fileName). Fold legacy into the array
