@@ -1,0 +1,364 @@
+/* Deep Dive — fixed-canvas styles for the three research artifacts.
+ *
+ * DELIBERATELY NOT THEME-TOKENED. Charlie's Ink/Dusk/Oak/Bloc themes reskin the
+ * app chrome, but a research page is paper: it prints, it gets emailed, it is
+ * read next to a competitor's tearsheet. It must look identical regardless of
+ * which theme the app is wearing, so these are literal colours.
+ *
+ * Every page is exactly 1024x1536px = 768x1152pt at 96dpi, matching the
+ * reviewed v29 PDF baseline. Do not make these pages responsive: the whole
+ * value of a composed one-pager is that content lands where it was designed to.
+ */
+
+.dd-page {
+    width: 1024px;
+    height: 1536px;
+    background: #fdfdfa;
+    color: #22252a;
+    box-sizing: border-box;
+    padding: 40px 44px 34px;
+    position: relative;
+    overflow: hidden;      /* a fixed canvas must clip visibly, not silently grow */
+    font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* On-screen scaling. position:absolute on the inner page is what stops the
+   scaled element from still occupying its unscaled height. */
+.dd-fit { position: relative; width: 100%; overflow: hidden; }
+.dd-fit-inner { position: absolute; top: 0; left: 0; transform-origin: top left; }
+
+/* --- shared type ------------------------------------------------------- */
+
+.dd-body { font-size: 13.5px; line-height: 1.55; margin: 0 0 8px; color: #2c3037; }
+.dd-md   { font-size: 15px;   line-height: 1.6; }   /* memo body */
+.dd-lg   { font-size: 16px;   line-height: 1.62; }  /* two-pager body */
+
+.dd-tick { color: #5d646e; font-weight: 500; }
+
+.dd-sec { margin-bottom: 14px; min-width: 0; }
+.dd-sec-h {
+    display: flex; align-items: baseline; gap: 8px;
+    margin: 0 0 7px; padding-bottom: 4px;
+    border-bottom: 1.5px solid #d9d5c8;
+}
+.dd-sec-n {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 19px; height: 19px; border-radius: 50%;
+    background: #2f6b3f; color: #fff; font-size: 11px; font-weight: 700;
+}
+.dd-sec-t { font-size: 16px; font-weight: 700; color: #23502f; letter-spacing: .01em; }
+.dd-sec-note { font-size: 11px; color: #7b7f87; font-style: italic; }
+
+.dd-bullets { margin: 0; padding-left: 17px; font-size: 13px; line-height: 1.5; }
+.dd-bullets li { margin-bottom: 4px; }
+.dd-falsify li { color: #8a3b3b; }
+
+.dd-note {
+    font-size: 11.5px; color: #5c6068; line-height: 1.45;
+    border: 1px solid #ded9c6; background: #fbf9ef;
+    padding: 6px 9px; border-radius: 3px; margin-top: 7px;
+}
+
+.dd-question {
+    border: 1.5px solid #2f6b3f; background: #f2f8f2;
+    color: #23502f; font-weight: 600;
+    padding: 8px 11px; border-radius: 3px; margin: 8px 0;
+    font-size: 13px; line-height: 1.45;
+}
+
+.dd-callout {
+    border: 1px solid #b9bfd4; background: #f6f7fc;
+    padding: 6px 9px; border-radius: 3px; font-size: 11.5px;
+    line-height: 1.45; margin-top: 7px; color: #3a4050;
+}
+
+.dd-variant {
+    border-left: 3px solid #2f6b3f; background: #f7faf7;
+    padding: 8px 12px; font-size: 13px; line-height: 1.5; margin: 0 0 14px;
+}
+
+/* --- charts ------------------------------------------------------------- */
+
+.dd-pie-label { font-size: 11px; font-weight: 700; fill: #2b2f36; }
+.dd-chart-grid { stroke: #e2ded0; stroke-width: 1; }
+.dd-chart-tick { font-size: 10.5px; fill: #6b7079; }
+.dd-chart-note { font-size: 10.5px; fill: #2b2f36; font-weight: 600; }
+.dd-chart-line { stroke: #23502f; stroke-width: 2.1; stroke-linejoin: round; }
+.dd-chart-dot { fill: #fff; stroke: #23502f; stroke-width: 1.9; }
+.dd-chart-dot-est { fill: #cfe3cf; stroke: #4d8a5d; stroke-width: 1.7; }
+.dd-chart-h { font-size: 13px; font-weight: 700; color: #2b2f36; margin-bottom: 5px; }
+.dd-chart-row { display: flex; gap: 18px; align-items: flex-start; margin-top: 10px; }
+.dd-chart-row > div { min-width: 0; }
+
+/* --- segments ----------------------------------------------------------- */
+
+.dd-seg-wrap { display: flex; gap: 14px; align-items: flex-start; }
+.dd-seg-wide { gap: 22px; }
+.dd-seg-list { list-style: none; margin: 0; padding: 0; flex: 1; min-width: 0; }
+.dd-seg-list li { display: flex; gap: 7px; margin-bottom: 7px; font-size: 11.5px; line-height: 1.4; }
+.dd-seg-key { width: 11px; height: 11px; border-radius: 2px; flex-shrink: 0; margin-top: 2px; border: 1px solid #4a4a4a; }
+.dd-seg-list b { color: #23502f; }
+.dd-seg-list em { font-style: normal; color: #5d646e; font-weight: 600; }
+.dd-seg-d { display: block; color: #565b63; }
+
+.dd-seg-rows { flex: 1; min-width: 0; }
+.dd-seg-row { padding: 6px 0; border-bottom: 1px dashed #ded9c6; }
+.dd-seg-row:last-child { border-bottom: none; }
+.dd-seg-row-t { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.dd-seg-row-t b { font-size: 14px; color: #23502f; }
+.dd-seg-mix { font-size: 15px; font-weight: 700; color: #2f6b3f; }
+.dd-seg-row .dd-seg-d { font-size: 12.5px; margin-top: 1px; }
+
+/* --- business model / opportunities ------------------------------------- */
+
+.dd-bm { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.dd-bm-2 { grid-template-columns: repeat(2, 1fr); }
+.dd-bm-card { border: 1px solid #cdd2dd; border-radius: 4px; padding: 8px 9px; background: #fafbfe; }
+.dd-bm-t { font-size: 12.5px; font-weight: 700; color: #2f4468; margin-bottom: 3px; }
+.dd-bm-d { font-size: 11px; line-height: 1.4; color: #5a6070; }
+.dd-bm-flow {
+    margin-top: 7px; text-align: center; font-size: 11.5px; color: #4a5468;
+    border: 1px solid #cdd2dd; border-radius: 3px; padding: 4px; background: #f4f6fb;
+}
+
+.dd-opps { list-style: none; margin: 0; padding: 0; }
+.dd-opps li { margin-bottom: 7px; font-size: 12px; line-height: 1.42; }
+.dd-opps b { display: block; color: #23502f; font-size: 12.5px; }
+.dd-opps span { color: #565b63; }
+.dd-opps.dd-lg li { font-size: 13.5px; }
+.dd-opps.dd-lg b { font-size: 14px; }
+
+/* --- financials --------------------------------------------------------- */
+
+.dd-fin { display: flex; gap: 14px; align-items: flex-start; }
+.dd-fin-wide { gap: 20px; }
+.dd-fin-bullets { margin: 0; padding-left: 16px; font-size: 12px; line-height: 1.5; flex: 1; min-width: 0; }
+.dd-fin-bullets.dd-lg { font-size: 14px; line-height: 1.55; }
+.dd-fin-bullets li { margin-bottom: 3px; }
+
+.dd-targets { border: 1px solid #ded9c6; border-radius: 4px; padding: 7px 9px; background: #fbf9ef; min-width: 150px; }
+.dd-targets-h { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: #7b7f87; margin-bottom: 5px; }
+.dd-target { display: flex; justify-content: space-between; gap: 8px; font-size: 11.5px; padding: 2px 0; }
+.dd-target-v { font-weight: 700; color: #2f6b3f; }
+
+.dd-kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; min-width: 260px; }
+.dd-kpis-2 { grid-template-columns: repeat(2, 1fr); margin-bottom: 10px; }
+.dd-kpi { border: 1px dashed #c9cfd9; border-radius: 4px; padding: 7px 9px; text-align: center; background: #fbfcfe; }
+.dd-kpi-l { display: block; font-size: 10px; color: #7b7f87; text-transform: uppercase; letter-spacing: .05em; }
+.dd-kpi-v { display: block; font-size: 19px; font-weight: 700; color: #2f6b3f; line-height: 1.2; }
+.dd-kpi-c { display: block; font-size: 10px; color: #7b7f87; }
+
+.dd-kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin-bottom: 12px; }
+.dd-kpi-card {
+    border: 1px solid #d5dae4; border-radius: 5px; padding: 10px 12px;
+    background: #fafbfd; font-size: 13px; line-height: 1.45; color: #2c3037;
+}
+
+.dd-val { border: 1px solid #ded9c6; border-radius: 4px; padding: 8px 10px; background: #fbf9ef; }
+.dd-val-side { min-width: 250px; }
+.dd-val-h { font-size: 12.5px; font-weight: 700; color: #2b2f36; margin-bottom: 5px; }
+.dd-val-row { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; padding: 3px 0; border-bottom: 1px dotted #ded9c6; }
+.dd-val-row:last-of-type { border-bottom: none; }
+.dd-val-row b { color: #2b2f36; }
+.dd-val-callout {
+    margin-top: 6px; padding: 5px 7px; background: #fdf6dc;
+    border: 1px solid #e0cf8a; border-radius: 3px; font-size: 11px; line-height: 1.4;
+}
+.dd-fin-foot { display: flex; gap: 12px; align-items: flex-start; margin-top: 8px; }
+.dd-fin-foot > .dd-note { flex: 1; margin-top: 0; }
+
+/* --- tables ------------------------------------------------------------- */
+
+.dd-signposts, .dd-scenarios, .dd-sens { width: 100%; border-collapse: collapse; }
+
+.dd-signposts th, .dd-signposts td {
+    border: 1px solid #d3cfc0; padding: 6px 8px;
+    font-size: 12px; line-height: 1.38; text-align: left; vertical-align: top;
+}
+.dd-signposts thead th {
+    background: #f1efe4; font-size: 10px; text-transform: uppercase;
+    letter-spacing: .05em; color: #5d646e; text-align: center;
+}
+.dd-signposts tbody th { font-weight: 700; color: #2b2f36; width: 21%; }
+.dd-signposts-dense th, .dd-signposts-dense td { padding: 4px 6px; font-size: 10.5px; line-height: 1.32; }
+
+.dd-sens th, .dd-sens td {
+    border: 1px solid #d3cfc0; padding: 6px 8px; font-size: 12.5px; text-align: center;
+}
+.dd-sens thead th { background: #f1efe4; font-weight: 700; color: #2f4468; }
+.dd-sens tbody th { background: #fafaf5; font-weight: 700; }
+.dd-sens-cap { caption-side: bottom; font-size: 10px; color: #7b7f87; text-align: left; padding-top: 4px; }
+.dd-sens-wrap { margin-top: 12px; }
+
+.dd-scenarios th, .dd-scenarios td {
+    border: 1px solid #d3cfc0; padding: 7px 9px; font-size: 12px;
+    line-height: 1.4; text-align: left; vertical-align: top;
+}
+.dd-scenarios thead th { background: #f1efe4; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: #5d646e; }
+.dd-scn-bear th[scope="row"] { border-left: 3px solid #a44a4a; }
+.dd-scn-base th[scope="row"] { border-left: 3px solid #c9a227; }
+.dd-scn-bull th[scope="row"] { border-left: 3px solid #2f6b3f; }
+
+/* --- threats / kill criteria ------------------------------------------- */
+
+.dd-threats { list-style: none; margin: 0; padding: 0; }
+.dd-threats li { margin-bottom: 7px; padding-left: 9px; border-left: 2.5px solid #a44a4a; font-size: 11.5px; line-height: 1.4; }
+.dd-threats b { display: block; color: #8a3b3b; font-size: 12.5px; }
+.dd-threats span { color: #565b63; }
+.dd-threats.dd-lg li { font-size: 13px; }
+.dd-threats.dd-lg b { font-size: 14px; }
+
+.dd-kill-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.dd-kill { border: 1px solid #e0cccc; border-left: 4px solid #a44a4a; border-radius: 4px; padding: 9px 11px; background: #fdfafa; }
+.dd-kill-t { font-weight: 700; color: #8a3b3b; font-size: 13.5px; margin-bottom: 3px; }
+.dd-kill-d { font-size: 12.5px; line-height: 1.45; color: #4d525b; }
+
+/* --- catalysts ---------------------------------------------------------- */
+
+.dd-cats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.dd-cat { border-top: 3px solid #2f6b3f; padding-top: 7px; }
+.dd-cat-when { font-size: 11px; font-weight: 700; color: #2f6b3f; }
+.dd-cat-what { font-size: 13.5px; font-weight: 700; color: #2b2f36; margin: 2px 0; }
+.dd-cat-why { font-size: 12px; color: #565b63; line-height: 1.42; }
+
+/* --- decision lens ------------------------------------------------------ */
+
+.dd-decision { display: grid; grid-template-columns: 1.35fr 1fr; gap: 16px; align-items: start; }
+.dd-lens { border: 1px solid #cdd2dd; border-radius: 5px; padding: 11px 13px; background: #fafbfd; }
+.dd-lens-h { font-size: 14px; font-weight: 700; color: #2f4468; margin-bottom: 8px; }
+.dd-lens-block { border-top: 2px solid #2f6b3f; padding-top: 6px; margin-bottom: 10px; }
+.dd-lens-neg { border-top-color: #a44a4a; }
+.dd-lens-label { font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em; color: #7b7f87; margin-bottom: 3px; }
+.dd-lens ul { margin: 0; padding-left: 16px; font-size: 12px; line-height: 1.45; }
+.dd-lens li { margin-bottom: 3px; }
+.dd-lens-variant { font-size: 12px; line-height: 1.45; border-top: 1px solid #ded9c6; padding-top: 7px; }
+
+/* --- bull / bear -------------------------------------------------------- */
+
+.dd-bullbear { display: flex; gap: 9px; align-items: stretch; margin-top: 8px; }
+.dd-bull, .dd-bear { flex: 1; border-radius: 4px; padding: 7px 9px; min-width: 0; }
+.dd-bull { border: 1px solid #a8c9a8; background: #f4faf4; }
+.dd-bear { border: 1px solid #d9b3b3; background: #fdf6f6; }
+.dd-bb-h { font-size: 11px; font-weight: 700; margin-bottom: 4px; }
+.dd-bull .dd-bb-h { color: #2f6b3f; }
+.dd-bear .dd-bb-h { color: #a44a4a; }
+.dd-bullbear ul { margin: 0; padding-left: 15px; font-size: 11px; line-height: 1.42; }
+.dd-vs { align-self: center; font-size: 11px; font-weight: 700; color: #7b7f87; }
+
+.dd-final {
+    font-size: 15px; line-height: 1.6; border-left: 4px solid #2f6b3f;
+    padding: 4px 0 4px 14px; margin: 0 0 8px; color: #2c3037;
+}
+
+/* --- page chrome -------------------------------------------------------- */
+
+.dd-ph { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; padding-bottom: 12px; border-bottom: 2px solid #2b3a4a; margin-bottom: 16px; }
+.dd-ph-kicker { font-size: 9.5px; text-transform: uppercase; letter-spacing: .12em; color: #6b7079; margin-bottom: 3px; }
+.dd-ph-title { font-size: 26px; font-weight: 700; margin: 0; color: #1f3c2a; line-height: 1.15; }
+.dd-ph-sub { font-size: 12.5px; color: #6b7079; font-style: italic; margin: 2px 0 0; }
+.dd-ph-metrics { display: flex; gap: 16px; flex-shrink: 0; }
+.dd-ph-metrics div { text-align: right; }
+.dd-ph-metrics span { display: block; font-size: 9px; text-transform: uppercase; letter-spacing: .08em; color: #7b7f87; }
+.dd-ph-metrics b { font-size: 15px; color: #2b2f36; }
+
+.dd-pf {
+    position: absolute; left: 44px; right: 44px; bottom: 18px;
+    display: flex; justify-content: space-between; gap: 12px;
+    border-top: 1px solid #ded9c6; padding-top: 7px;
+    font-size: 10.5px; color: #7b7f87;
+}
+
+.dd-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+.dd-three-col { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; align-items: start; margin-bottom: 12px; }
+
+/* --- one-pager specific ------------------------------------------------- */
+
+.dd-onepager { font-family: "Segoe Print", "Bradley Hand", "Inter", sans-serif; padding: 22px 32px 20px; }
+.dd-onepager .dd-sec { border: 1.5px solid #cfd3c6; border-radius: 7px; padding: 9px 11px; margin-bottom: 0; background: #fffef9; min-height: 0; }
+.dd-onepager .dd-sec-h { border-bottom: none; padding-bottom: 2px; margin-bottom: 5px; }
+.dd-onepager .dd-sec-t { font-size: 14px; }
+.dd-onepager .dd-fin-bullets { font-size: 11px; line-height: 1.42; }
+.dd-onepager .dd-threats li { margin-bottom: 3px; line-height: 1.34; }
+/* Bull/bear bullets are the least information-dense text on the page (5-10
+   words each, budget-capped), so this is where the last few pixels come from
+   rather than from a table cell or a kill criterion. */
+.dd-onepager .dd-bullbear ul { font-size: 10px; line-height: 1.28; }
+.dd-onepager .dd-bullbear { margin-top: 5px; }
+.dd-onepager .dd-bull, .dd-onepager .dd-bear { padding: 6px 8px; }
+.dd-onepager .dd-signposts-dense th,
+.dd-onepager .dd-signposts-dense td { padding: 3px 5px; font-size: 10px; line-height: 1.28; }
+
+.dd-op-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; margin-bottom: 7px; }
+.dd-op-title h1 { font-size: 34px; margin: 0; color: #1f3c2a; letter-spacing: .01em; line-height: 1.1; }
+.dd-op-sub { font-size: 14px; color: #4d525b; margin: 3px 0 0; border-bottom: 2px solid #e8d98a; display: inline-block; }
+.dd-glance { border: 1.5px solid #9ec49e; border-radius: 6px; padding: 7px 10px; background: #f5faf5; flex-shrink: 0; min-width: 210px; }
+.dd-glance-h { font-size: 11px; font-weight: 700; color: #2f6b3f; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 3px; }
+.dd-glance ul { list-style: none; margin: 0; padding: 0; font-size: 10.5px; line-height: 1.5; color: #3a4048; }
+
+/* Placed by name, not nth-child: sections render conditionally, and positional
+   rules silently reshuffle the page the moment one is absent. */
+.dd-op-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    /* Explicit row heights, not `auto`. With auto rows the tall Financial row
+       took whatever it needed and pushed Threats + Final Takeaway off the fixed
+       canvas, where overflow:hidden silently ate a kill criterion. These sum to
+       the available height, so every section has a known box and the page
+       cannot grow. Measured against the DE golden fixture. */
+    /* Tuned against the DE golden fixture by measuring each section's own box,
+       not by eye: rows 1-3 were each losing their last item. */
+    grid-template-rows: 350px 241px 490px 232px;
+    gap: 5px;
+    height: 1328px;
+    grid-template-areas:
+        "a b"
+        "c d"
+        "e f"
+        "g h";
+}
+.dd-a { grid-area: a; } .dd-b { grid-area: b; }
+.dd-c { grid-area: c; } .dd-d { grid-area: d; }
+.dd-e { grid-area: e; } .dd-f { grid-area: f; }
+.dd-g { grid-area: g; } .dd-h { grid-area: h; }
+
+.dd-checks { list-style: none; margin: 6px 0 0; padding: 0; font-size: 11.5px; line-height: 1.42; }
+.dd-checks li { position: relative; padding-left: 17px; margin-bottom: 4px; }
+.dd-checks li::before { content: "☑"; position: absolute; left: 0; color: #2f6b3f; }
+
+.dd-op-foot {
+    display: flex; justify-content: space-between; align-items: center; gap: 14px;
+    margin-top: 6px; border: 1.5px solid #cfd3c6; border-radius: 20px;
+    padding: 8px 16px; font-size: 12.5px; background: #fffef9;
+}
+.dd-foot-tag { border: 1.5px solid #e0cf8a; background: #fdf6dc; border-radius: 14px; padding: 3px 11px; font-size: 11.5px; }
+
+/* --- print -------------------------------------------------------------- */
+
+@media print {
+    @page { size: 1024px 1536px; margin: 0; }
+    html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; }
+
+    /* Print the page at TRUE size — never the on-screen scale transform, which
+       would shrink the artifact to whatever the browser window happened to be. */
+    .dd-fit { height: auto !important; overflow: visible !important; }
+    .dd-fit-inner { position: static !important; transform: none !important; }
+
+    .dd-page {
+        box-shadow: none !important;
+        break-inside: avoid;
+        page-break-inside: avoid;
+        break-after: page;
+        page-break-after: always;
+    }
+    /* Without this the final page emits a trailing break and the export gains a
+       blank last page — an explicit acceptance-criteria failure. */
+    .dd-page:last-child { break-after: auto; page-break-after: auto; }
+
+    .dd-print-hide { display: none !important; }
+
+    * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+}

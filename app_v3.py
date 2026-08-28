@@ -18917,6 +18917,176 @@ OUTPUT
         })
 
 
+# ---------------------------------------------------------------------------
+# Deep Dive — one canonical research run, three artifacts
+# ---------------------------------------------------------------------------
+_deepdive_jobs = {}   # job_id -> {status, step, result?, error?}
+
+DEEPDIVE_GOLDEN = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               'fixtures', 'deepdive_de_golden.json')
+
+
+def _run_deepdive_job(job_id, ticker, keys, force=False):
+    """Background worker: market snapshot -> research -> compress -> persist."""
+    import deepdive as _dd
+
+    def step(msg):
+        job = _deepdive_jobs.get(job_id)
+        if job is not None:
+            job['step'] = msg
+
+    try:
+        _deepdive_jobs[job_id]['status'] = 'running'
+
+        if not force:
+            existing = _dd.load_latest(get_db, ticker)
+            if existing and _dd.is_fresh(existing):
+                # Inside the cache window: hand back the stored run rather than
+                # spending minutes and money reproducing it.
+                _deepdive_jobs[job_id].update(
+                    {'status': 'done', 'step': '', 'result': existing, 'cached': True})
+                return
+
+        step('Fetching market snapshot...')
+        market = _dd.market_snapshot(ticker)
+        company = market.get('company') or ''
+
+        master, sources = _dd.research_company(
+            ticker, company, market, call_llm, _extract_json, _tavily_search,
+            api_keys=keys, on_step=step)
+        master = _dd.merge_live_market(master, market)
+
+        problems = _dd.master_violations(master)
+        if problems:
+            # Structural gaps break renderers, so surface them rather than
+            # letting a half-empty memo look like a finished one.
+            print(f'[deepdive] {ticker} master issues: {problems}')
+
+        onepager, violations = _dd.compress_onepager(
+            master, call_llm, _extract_json, api_keys=keys, on_step=step)
+
+        step('Saving...')
+        meta = {
+            'generated_at': datetime.utcnow().isoformat(),
+            'schema_version': _dd.SCHEMA_VERSION,
+            'prompt_version': __import__('deepdive_prompts').PROMPT_VERSION,
+            'market_ok': bool(market.get('ok')),
+            'source_count': len(sources),
+            'master_issues': problems,
+        }
+        run_id = _dd.save_run(get_db, ticker, master.get('company') or company,
+                              master, onepager, sources, violations, meta)
+        run = _dd.load_run(get_db, run_id)
+        _deepdive_jobs[job_id].update(
+            {'status': 'done', 'step': '', 'result': run, 'cached': False})
+    except Exception as e:
+        print(f'[deepdive] job {job_id} failed: {e}')
+        _deepdive_jobs[job_id].update({'status': 'failed', 'step': '',
+                                       'error': str(e)[:600]})
+
+
+@app.route('/api/deepdive/analyze', methods=['POST'])
+def deepdive_analyze():
+    """Start a Deep Dive research run. Returns a jobId to poll.
+
+    Async because a full research pass runs for minutes, well past Cloudflare's
+    100s idle timeout.
+    """
+    try:
+        import deepdive as _dd
+        _dd.ensure_schema(get_db)
+        data = request.get_json(silent=True) or {}
+        ticker = (data.get('ticker') or '').strip().upper()
+        if not ticker or not re.match(r'^[A-Z][A-Z0-9.\-]{0,9}$', ticker):
+            return jsonify({'error': 'Enter a valid ticker, e.g. DE or BRK.B'}), 400
+
+        keys = _get_api_keys(data.get('apiKey', ''), data.get('geminiApiKey', ''),
+                             data.get('openaiApiKey', ''))
+        if not any(keys.values()):
+            return jsonify({'error': 'No model API key configured.'}), 400
+
+        job_id = str(uuid.uuid4())[:8]
+        _deepdive_jobs[job_id] = {'status': 'queued', 'step': 'Queued...',
+                                  'ticker': ticker,
+                                  'createdAt': datetime.utcnow().isoformat()}
+        threading.Thread(
+            target=_run_deepdive_job,
+            args=(job_id, ticker, keys, bool(data.get('force'))),
+            daemon=True, name=f'deepdive-{job_id}').start()
+        return jsonify({'ok': True, 'jobId': job_id, 'status': 'queued'})
+    except Exception as e:
+        print(f'Error starting deep dive: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/deepdive/job/<job_id>', methods=['GET'])
+def deepdive_job(job_id):
+    job = _deepdive_jobs.get(job_id)
+    if not job:
+        return jsonify({'error': 'No such job (the server may have restarted).'}), 404
+    return jsonify({k: v for k, v in job.items()})
+
+
+@app.route('/api/deepdive/demo', methods=['POST'])
+def deepdive_demo():
+    """Load the Deere golden fixture.
+
+    Calibration without a research call: renderer work is visual iteration, and
+    paying for a research pass on every layout tweak is what made the prototype
+    slow to refine.
+    """
+    try:
+        import deepdive as _dd
+        _dd.ensure_schema(get_db)
+        master, onepager, sources = _dd.load_golden_fixture(DEEPDIVE_GOLDEN)
+        meta = {'generated_at': datetime.utcnow().isoformat(),
+                'golden_fixture': True, 'schema_version': _dd.SCHEMA_VERSION}
+        run_id = _dd.save_run(get_db, master.get('ticker', 'DE'),
+                              master.get('company', ''), master, onepager,
+                              sources, _dd.onepager_violations(onepager), meta)
+        return jsonify({'ok': True, 'run': _dd.load_run(get_db, run_id)})
+    except Exception as e:
+        print(f'Error loading deep dive demo: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/deepdive', methods=['GET'])
+def deepdive_list():
+    try:
+        import deepdive as _dd
+        _dd.ensure_schema(get_db)
+        return jsonify({'runs': _dd.list_runs(get_db)})
+    except Exception as e:
+        print(f'Error listing deep dives: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/deepdive/<ticker>', methods=['GET'])
+def deepdive_get(ticker):
+    try:
+        import deepdive as _dd
+        _dd.ensure_schema(get_db)
+        run = _dd.load_latest(get_db, ticker)
+        if not run:
+            return jsonify({'error': f'No Deep Dive stored for {ticker.upper()}'}), 404
+        return jsonify({'run': run})
+    except Exception as e:
+        print(f'Error reading deep dive: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/deepdive/<ticker>', methods=['DELETE'])
+def deepdive_delete(ticker):
+    try:
+        with get_db(commit=True) as (_c, cur):
+            cur.execute('DELETE FROM deepdive_runs WHERE ticker = %s',
+                        (ticker.upper(),))
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f'Error deleting deep dive: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/explain/depths', methods=['GET'])
 def explain_depths():
     """Depth options, served by the backend so the picker cannot drift from it."""

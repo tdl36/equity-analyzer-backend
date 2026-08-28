@@ -1,0 +1,685 @@
+{
+  "master": {
+    "company": "Deere & Company",
+    "ticker": "DE",
+    "tagline": "The world runs. Farmers feed. Deere equips.",
+    "at_glance": {
+      "exchange": "NYSE",
+      "hq": "Moline, Illinois, USA",
+      "founded": "1837",
+      "employees": "~79,000",
+      "fy_end": "Oct 31",
+      "website": "https://www.deere.com",
+      "sector": "Industrials",
+      "industry": "Agricultural & Construction Machinery",
+      "market_cap": "~$170B",
+      "share_price": "~$620",
+      "data_as_of": "Reference calibration"
+    },
+    "investment_thesis": {
+      "summary": "Deere is a dominant agricultural and construction equipment franchise with industry-leading distribution, brand power, and a growing technology ecosystem. The investment debate is whether precision agriculture, autonomy, lifecycle solutions and proprietary data can materially improve through-cycle earnings quality beyond what a normal agricultural recovery would deliver. Management's long-term framework points toward stronger margins, higher operating returns and mid-cycle EPS of roughly $40-45 by 2030. The complication is valuation: with the stock around the low-$600s and trading far above Deere's historical mid-cycle multiple, investors are already paying for both a cyclical recovery and some structural re-rating. The thesis therefore requires technology attach, C&F execution and farmer economics to translate into measurable P&L improvement rather than remaining a strategic narrative.",
+      "core_question": "Can technology-enabled solutions lift mid-cycle EPS to $40-45 by 2030 and justify a structurally higher multiple?",
+      "what_market_prices_in": [
+        "A full agricultural recovery from the 2026 trough",
+        "Higher through-cycle equipment margins and returns",
+        "A sustained premium valuation for technology and recurring economics"
+      ],
+      "what_must_be_true": [
+        "Precision-ag attach and engagement must rise materially",
+        "Farmer income and replacement demand must stabilize",
+        "C&F excavator launch and supply tightening must lift profitability"
+      ],
+      "falsification": [
+        "Peak-cycle EPS remains below $40",
+        "Software/lifecycle monetization stays immaterial despite engagement",
+        "Mid-cycle valuation reverts toward historical norms before earnings catch up"
+      ],
+      "variant_view": "Technology can improve Deere's earnings quality, but the stock may be discounting that outcome earlier than the P&L proves it."
+    },
+    "company_overview": {
+      "summary": "Deere designs, manufactures and distributes equipment and technology across agriculture, construction, forestry and turf. Agriculture remains the economic core, while Construction & Forestry provides diversification and Financial Services supports customer purchases. Deere's dealer network, installed base, precision-ag hardware/software and proprietary farm data create a lifecycle ecosystem that can monetize customers beyond the original equipment sale.",
+      "segments": [
+        {
+          "name": "Production & Precision Ag",
+          "short_name": "PPA",
+          "mix": "~45-50%",
+          "mix_numeric": 48,
+          "description": "Large agricultural equipment plus precision-ag technology and solutions."
+        },
+        {
+          "name": "Small Ag & Turf",
+          "short_name": "SAT",
+          "mix": "~20-25%",
+          "mix_numeric": 23,
+          "description": "Small ag, utility tractors, turf and lawn-care equipment."
+        },
+        {
+          "name": "Construction & Forestry",
+          "short_name": "C&F",
+          "mix": "~25-30%",
+          "mix_numeric": 29,
+          "description": "Construction, earthmoving, forestry and material-handling equipment."
+        }
+      ],
+      "other_profit_pools": [
+        "Financial Services provides retail and wholesale financing to customers and dealers, supporting equipment sales and customer stickiness."
+      ]
+    },
+    "business_model": [
+      {
+        "name": "Equipment Sales",
+        "description": "High-ticket machines with powerful replacement cycles and premium pricing."
+      },
+      {
+        "name": "Financial Services",
+        "description": "Loans and leases enable purchases and deepen customer relationships."
+      },
+      {
+        "name": "Parts & Service",
+        "description": "Recurring, higher-margin aftermarket economics across a long-lived installed base."
+      },
+      {
+        "name": "Technology & Software",
+        "description": "Automation, data, analytics and subscriptions raise content and lifetime value."
+      }
+    ],
+    "opportunities": [
+      {
+        "title": "Precision Ag & Autonomy Leadership",
+        "detail": "Higher attach, engagement and automation can raise equipment content, margins and recurring revenue.",
+        "icon": "technology"
+      },
+      {
+        "title": "Lifecycle & Retrofit Monetization",
+        "detail": "Monetize Deere's installed base through upgrades, subscriptions and dealer-delivered lifecycle solutions.",
+        "icon": "replacement"
+      },
+      {
+        "title": "C&F Excavator Share Capture",
+        "detail": "Deere-designed excavators expand earthmoving share and create another precision-tech attach point.",
+        "icon": "growth"
+      },
+      {
+        "title": "Aging Fleet / Replacement Cycle",
+        "detail": "A normalized replacement cycle can amplify earnings recovery when farmer economics stabilize.",
+        "icon": "replacement"
+      },
+      {
+        "title": "Dealer + Data Moat",
+        "detail": "Dense dealer coverage and proprietary farm data support share, service economics and customer stickiness.",
+        "icon": "moat"
+      }
+    ],
+    "financial_snapshot": {
+      "revenue": "~$61.0B",
+      "revenue_context": "FY2025E; vs. ~$68.4B peak FY2023",
+      "operating_margin": "~18.5%",
+      "margin_context": "Equipment Ops.; ~20% through-cycle target",
+      "eps": "~$18-20",
+      "eps_context": "2026 trough; $40-45 mid-cycle target by 2030",
+      "free_cash_flow": "~$5B+",
+      "fcf_context": "Normal-cycle reference",
+      "leverage": "~1.0x net debt / EBITDA",
+      "returns": "~30%+ operating ROA; 45% target",
+      "forward_pe": "~33-35x",
+      "historical_pe": "~17.5x mid-cycle; ~23x historical peak average",
+      "ev_ebitda": "N/A",
+      "fcf_yield": "N/A",
+      "valuation_comment": "The market appears to price in a full earnings recovery plus meaningful structural re-rating.",
+      "financial_bullets": [
+        "Net Sales: ~$61.0B versus ~$68.4B peak FY2023.",
+        "Operating Margin (Equipment Ops.): ~18.5%; through-cycle target ~20%.",
+        "Operating ROA: ~30%+ with a 45% long-term target.",
+        "EPS: ~$18-20 at 2026 trough; $40-45 mid-cycle target by 2030.",
+        "Free Cash Flow: ~$5B+ in a normal-cycle framework.",
+        "Net Debt / EBITDA: ~1.0x, supporting a conservative balance sheet."
+      ],
+      "management_targets": [
+        {
+          "label": "Sales CAGR",
+          "value": "~10%",
+          "context": "through 2030"
+        },
+        {
+          "label": "OROS Margin",
+          "value": "18.5-20%",
+          "context": "through-cycle"
+        },
+        {
+          "label": "EPS",
+          "value": "$40-45",
+          "context": "2030 mid-cycle"
+        },
+        {
+          "label": "OROA",
+          "value": "45%",
+          "context": "long-term target"
+        }
+      ]
+    },
+    "earnings_history": {
+      "metric": "EPS",
+      "unit": "$",
+      "points": [
+        {
+          "period": "'08",
+          "value": 28,
+          "kind": "actual",
+          "annotation": ""
+        },
+        {
+          "period": "'10",
+          "value": 23,
+          "kind": "actual",
+          "annotation": ""
+        },
+        {
+          "period": "'12",
+          "value": 36,
+          "kind": "actual",
+          "annotation": ""
+        },
+        {
+          "period": "'14",
+          "value": 45,
+          "kind": "actual",
+          "annotation": "peak"
+        },
+        {
+          "period": "'16",
+          "value": 23,
+          "kind": "actual",
+          "annotation": ""
+        },
+        {
+          "period": "'18",
+          "value": 34,
+          "kind": "actual",
+          "annotation": ""
+        },
+        {
+          "period": "'20",
+          "value": 16,
+          "kind": "actual",
+          "annotation": "trough"
+        },
+        {
+          "period": "'23",
+          "value": 34.5,
+          "kind": "actual",
+          "annotation": "2023 peak $34.50"
+        },
+        {
+          "period": "'26E",
+          "value": 19,
+          "kind": "estimate",
+          "annotation": "2026 trough ~$18-20"
+        },
+        {
+          "period": "'30E",
+          "value": 42.5,
+          "kind": "estimate",
+          "annotation": "2030 target $40-45"
+        }
+      ],
+      "cycle_note": "Last four cycles: trough-to-peak revenue growth ~65% average; management targets ~75% next cycle."
+    },
+    "valuation_scenarios": [
+      {
+        "case": "Bear",
+        "earnings": "<$40",
+        "multiple": "15-20x",
+        "implied_value": "Downside",
+        "logic": "Technology disappoints and valuation normalizes."
+      },
+      {
+        "case": "Base",
+        "earnings": "$40-45",
+        "multiple": "20-24x",
+        "implied_value": "Balanced",
+        "logic": "Recovery plus some structural premium."
+      },
+      {
+        "case": "Bull",
+        "earnings": "$45+",
+        "multiple": "Premium",
+        "implied_value": "Upside",
+        "logic": "Technology lifts margins and earnings resilience."
+      }
+    ],
+    "signposts": [
+      {
+        "signpost": "Engaged Acres & Digital Users",
+        "current": "~500M engaged acres; ~400K monthly users",
+        "target": "600M acres; 50% highly engaged; 1M users",
+        "why_it_matters": "Adoption scale drives recurring revenue and stickiness."
+      },
+      {
+        "signpost": "Equipment Ops Revenue & Margins",
+        "current": "~$37B revenue; ~18.5% OROS; ~30% OROA",
+        "target": "~$63B revenue; 18.5-20% OROS; 45% OROA",
+        "why_it_matters": "Core earnings-power expansion."
+      },
+      {
+        "signpost": "Tech-Enabled Revenue",
+        "current": "~$1B+ lifecycle + SaaS; still early",
+        "target": "$2-3B lifecycle + SaaS",
+        "why_it_matters": "Proof of technology monetization."
+      },
+      {
+        "signpost": "Construction Lead Times",
+        "current": "Normalizing after inventory rebalancing",
+        "target": "Sustained extension / supply-constrained market",
+        "why_it_matters": "Supports pricing and unit profitability."
+      },
+      {
+        "signpost": "Ag Market Inflection Indicators",
+        "current": "Farmer income down; commodities weak",
+        "target": "Income stabilization and commodity recovery",
+        "why_it_matters": "Drives equipment demand recovery."
+      },
+      {
+        "signpost": "Excavator Launch Execution",
+        "current": "Pre-launch / mid-2026 rollout",
+        "target": "Successful launch + precision-tech adoption",
+        "why_it_matters": "Tests C&F share gains and profitability."
+      }
+    ],
+    "catalysts": [
+      {
+        "timing": "Mid-2026",
+        "event": "New Deere-designed excavator launch",
+        "why_it_matters": "Tests C&F share gains and integrated precision technology."
+      },
+      {
+        "timing": "2026-2027",
+        "event": "Agricultural trough / recovery",
+        "why_it_matters": "Determines timing of the earnings inflection."
+      },
+      {
+        "timing": "Through 2030",
+        "event": "Precision-ag engagement and lifecycle milestones",
+        "why_it_matters": "Tests the structural technology thesis."
+      }
+    ],
+    "thesis_threats": [
+      {
+        "threat": "Prolonged Ag Downcycle",
+        "watch_for": "Commodity prices stay low through '27; farmer balance sheets weaken; retail sales keep falling; trough >36 mos.",
+        "icon": "cycle"
+      },
+      {
+        "threat": "Tech Monetization Failure",
+        "watch_for": "SaaS <5% of sales by '28; engaged acres <40% highly engaged; farmers resist subscriptions.",
+        "icon": "adoption"
+      },
+      {
+        "threat": "Valuation Compression at Mid-Cycle",
+        "watch_for": "Peak EPS < $40; recovery delayed 12\u201324 mos.; multiple re-rates to 15\u201320x mid-cycle.",
+        "icon": "valuation"
+      },
+      {
+        "threat": "Margin Compression",
+        "watch_for": "Tariffs >80% of historical burden; cost inflation outpaces pricing; tech attach drops; C&F margins miss.",
+        "icon": "margin"
+      }
+    ],
+    "bull_case": [
+      "Tech adoption accelerates",
+      "C&F margin inflection",
+      "Ag recovery by 2027",
+      "EPS hits $40\u201345+",
+      "Premium multiple justified"
+    ],
+    "bear_case": [
+      "Ag trough extends",
+      "Tech adoption disappoints",
+      "Margins compress",
+      "EPS stays < $40",
+      "Multiple re-rates lower"
+    ],
+    "final_takeaway": "Deere combines a best-in-class franchise with a credible technology roadmap. The stock already discounts a lot. The investment hinges on execution: turning early technology leadership and a C&F inflection into structurally higher margins and $40-45 mid-cycle EPS by 2030.",
+    "bottom_line": "Great company, cyclical timing, execution risk.",
+    "sources": []
+  },
+  "onepager": {
+    "company": "Deere & Company",
+    "ticker": "DE",
+    "headline": "The world runs. Farmers feed. Deere equips.",
+    "subheadline": "Technology has to change Deere's earnings cycle\u2014not merely decorate it.",
+    "identity": {
+      "exchange": "NYSE",
+      "hq": "Moline, Illinois, USA",
+      "founded": "1837",
+      "employees": "~79,000",
+      "fy_end": "Oct 31",
+      "website": "Deere.com"
+    },
+    "thesis_summary": "Deere is a dominant ag & construction equipment franchise with industry-leading distribution, brand power, and a growing technology ecosystem. The question for investors is whether precision agriculture, autonomy and lifecycle solutions can create structurally higher earnings power\u2014not merely a normal cyclical rebound.",
+    "core_question": "Can technology-enabled solutions lift mid-cycle EPS to $40-45 by 2030 and justify a structurally higher multiple?",
+    "thesis_bullets": [
+      "Targets ~$150B incremental opportunity from precision ag, autonomy and data.",
+      "Mid-cycle EPS ambition of $40-45 by 2030 vs. prior peak $34.50.",
+      "Early C&F inflection: tighter supply plus new Deere-designed excavators.",
+      "Trading ~33-35x forward P/E versus ~17.5x historical mid-cycle.",
+      "2026 is the earnings trough; volumes remain ~50% below peak."
+    ],
+    "overview_summary": "Deere designs, manufactures and distributes equipment and technology across agriculture, construction, forestry and turf. It also provides financing to support customer purchases.",
+    "segments": [
+      {
+        "name": "Production & Precision Ag",
+        "short_name": "PPA",
+        "mix": "~45-50%",
+        "mix_numeric": 48,
+        "description": "Large ag equipment + precision-ag technology."
+      },
+      {
+        "name": "Small Ag & Turf",
+        "short_name": "SAT",
+        "mix": "~20-25%",
+        "mix_numeric": 23,
+        "description": "Small ag, utility tractors, turf & lawn care."
+      },
+      {
+        "name": "Construction & Forestry",
+        "short_name": "C&F",
+        "mix": "~25-30%",
+        "mix_numeric": 29,
+        "description": "Construction, earthmoving, forestry, material handling."
+      }
+    ],
+    "other_profit_pool": "Financial Services provides retail & wholesale financing to customers and dealers. Drives stickiness and earnings.",
+    "business_model": [
+      {
+        "name": "Equipment Sales",
+        "description": "High-ticket machines and replacement cycles."
+      },
+      {
+        "name": "Financial Services",
+        "description": "Loans & leases to enable sales."
+      },
+      {
+        "name": "Parts & Service",
+        "description": "Recurring, high-margin installed-base economics."
+      },
+      {
+        "name": "Technology & Software",
+        "description": "Subscriptions, data, analytics and automation."
+      }
+    ],
+    "opportunities": [
+      {
+        "title": "Precision Ag & Autonomy",
+        "detail": "Higher attach can lift content, margins and recurring revenue.",
+        "icon": "technology"
+      },
+      {
+        "title": "Lifecycle & Retrofit Monetization",
+        "detail": "Monetize the installed base through upgrades and subscriptions.",
+        "icon": "replacement"
+      },
+      {
+        "title": "C&F Excavator Share Capture",
+        "detail": "New excavators expand share and precision-tech attach.",
+        "icon": "growth"
+      },
+      {
+        "title": "Replacement Cycle",
+        "detail": "Demand recovery can amplify earnings off the 2026 trough.",
+        "icon": "replacement"
+      },
+      {
+        "title": "Dealer + Data Moat",
+        "detail": "Distribution and proprietary farm data deepen customer stickiness.",
+        "icon": "moat"
+      }
+    ],
+    "financial_bullets": [
+      "Net Sales: ~$61.0B vs. ~$68.4B peak FY2023.",
+      "Operating Margin (Equipment Ops.): ~18.5%; through-cycle target 20%.",
+      "ROA (Operating): ~30%+ \u2192 target 45%.",
+      "EPS: ~$18-20 at trough \u2192 $40-45 mid-cycle by 2030.",
+      "Free Cash Flow: ~$5B+ normal-cycle reference.",
+      "Net Debt / EBITDA: ~1.0x; conservative balance sheet."
+    ],
+    "targets": [
+      {
+        "label": "Sales CAGR",
+        "value": "~10%",
+        "context": "By 2030"
+      },
+      {
+        "label": "OROS Margin",
+        "value": "18.5-20%",
+        "context": "Through-cycle"
+      },
+      {
+        "label": "EPS",
+        "value": "$40-45",
+        "context": "2030 mid-cycle"
+      },
+      {
+        "label": "OROA",
+        "value": "45%",
+        "context": "Long-term"
+      }
+    ],
+    "valuation_metrics": [
+      {
+        "label": "Forward P/E",
+        "value": "~33-35x",
+        "context": "today"
+      },
+      {
+        "label": "Historical mid-cycle",
+        "value": "~17.5x",
+        "context": "average"
+      },
+      {
+        "label": "Historical peak avg",
+        "value": "~23x",
+        "context": "reference"
+      }
+    ],
+    "valuation_callout": "Market pricing in full recovery + multiple expansion.",
+    "earnings_history": {
+      "metric": "EPS",
+      "unit": "$",
+      "points": [
+        {
+          "period": "'08",
+          "value": 28,
+          "kind": "actual",
+          "annotation": ""
+        },
+        {
+          "period": "'10",
+          "value": 23,
+          "kind": "actual",
+          "annotation": ""
+        },
+        {
+          "period": "'12",
+          "value": 36,
+          "kind": "actual",
+          "annotation": ""
+        },
+        {
+          "period": "'14",
+          "value": 45,
+          "kind": "actual",
+          "annotation": "peak"
+        },
+        {
+          "period": "'16",
+          "value": 23,
+          "kind": "actual",
+          "annotation": ""
+        },
+        {
+          "period": "'18",
+          "value": 34,
+          "kind": "actual",
+          "annotation": ""
+        },
+        {
+          "period": "'20",
+          "value": 16,
+          "kind": "actual",
+          "annotation": "trough"
+        },
+        {
+          "period": "'23",
+          "value": 34.5,
+          "kind": "actual",
+          "annotation": "2023 peak $34.50"
+        },
+        {
+          "period": "'26E",
+          "value": 19,
+          "kind": "estimate",
+          "annotation": "2026 trough ~$18-20"
+        },
+        {
+          "period": "'30E",
+          "value": 42.5,
+          "kind": "estimate",
+          "annotation": "2030 target $40-45"
+        }
+      ],
+      "cycle_note": "Last 4 cycles: trough-to-peak revenue growth ~65% avg. Management target: ~75% next cycle."
+    },
+    "signposts": [
+      {
+        "signpost": "Engaged Acres & Digital Users",
+        "current": "~500M acres; ~400K users/mo",
+        "target": "600M acres; 50% highly engaged; 1M users",
+        "why": "Adoption scale drives recurring revenue + stickiness."
+      },
+      {
+        "signpost": "Equipment Ops Revenue & Margins",
+        "current": "~$37B rev; ~18.5% OROS; ~30% OROA",
+        "target": "~$63B rev; 18.5\u201320% OROS; 45% OROA",
+        "why": "Core earnings-power expansion."
+      },
+      {
+        "signpost": "Tech-Enabled Revenue",
+        "current": "~$1B+ lifecycle + SaaS",
+        "target": "$2\u20133B lifecycle + SaaS",
+        "why": "Proof of technology monetization."
+      },
+      {
+        "signpost": "Construction Lead Times",
+        "current": "Post-inventory normalization",
+        "target": "Lead times extend / supply tight",
+        "why": "Supports pricing + unit profitability."
+      },
+      {
+        "signpost": "Ag Market Inflection",
+        "current": "Farmer income weak; commodities soft",
+        "target": "Income stabilization / commodity recovery",
+        "why": "Drives ag demand recovery."
+      },
+      {
+        "signpost": "Excavator Launch",
+        "current": "Mid-2026 rollout",
+        "target": "Successful launch + tech attach",
+        "why": "C&F profitability inflection."
+      }
+    ],
+    "threats": [
+      {
+        "threat": "Prolonged Ag Downcycle",
+        "watch_for": "Commodity prices stay low through '27; farmer balance sheets weaken; retail sales keep falling; trough >36 mos.",
+        "icon": "cycle"
+      },
+      {
+        "threat": "Tech Monetization Failure",
+        "watch_for": "SaaS <5% of sales by '28; engaged acres <40% highly engaged; farmers resist subscriptions.",
+        "icon": "adoption"
+      },
+      {
+        "threat": "Valuation Compression at Mid-Cycle",
+        "watch_for": "Peak EPS < $40; recovery delayed 12\u201324 mos.; multiple re-rates to 15\u201320x mid-cycle.",
+        "icon": "valuation"
+      },
+      {
+        "threat": "Margin Compression",
+        "watch_for": "Tariffs >80% of historical burden; cost inflation outpaces pricing; tech attach drops; C&F margins miss.",
+        "icon": "margin"
+      }
+    ],
+    "bull_case": [
+      "Tech adoption accelerates",
+      "C&F margin inflection",
+      "Ag recovery by 2027",
+      "EPS hits $40\u201345+",
+      "Premium multiple justified"
+    ],
+    "bear_case": [
+      "Ag trough extends",
+      "Tech adoption disappoints",
+      "Margins compress",
+      "EPS stays < $40",
+      "Multiple re-rates lower"
+    ],
+    "final_takeaway": "Deere combines a best-in-class franchise with a credible technology roadmap. The stock already discounts a lot. The investment hinges on execution: turning early technology leadership and C&F inflection into structurally higher margins and $40-45 mid-cycle EPS by 2030.",
+    "bottom_line": "Great company, cyclical timing, execution risk.",
+    "secondary_bottom_line": "Patience + discipline required.",
+    "visuals": [
+      {
+        "type": "segment_mix",
+        "title": "Equipment Sales Mix",
+        "items": [
+          {
+            "label": "PPA",
+            "value": 48,
+            "detail": "Large ag + precision"
+          },
+          {
+            "label": "SAT",
+            "value": 23,
+            "detail": "Small ag + turf"
+          },
+          {
+            "label": "C&F",
+            "value": 29,
+            "detail": "Construction + forestry"
+          }
+        ]
+      },
+      {
+        "type": "flow",
+        "title": "The Earnings Upgrade",
+        "items": [
+          {
+            "label": "Recovery",
+            "value": 0,
+            "detail": "Units normalize"
+          },
+          {
+            "label": "Tech Mix",
+            "value": 0,
+            "detail": "Higher content"
+          },
+          {
+            "label": "Margins",
+            "value": 0,
+            "detail": "20% through-cycle"
+          },
+          {
+            "label": "EPS",
+            "value": 0,
+            "detail": "$40-45 mid-cycle"
+          }
+        ]
+      }
+    ]
+  },
+  "meta": {
+    "generated_at": "reference calibration",
+    "openai_enabled": false,
+    "cached": false,
+    "onepager_violations": []
+  }
+}

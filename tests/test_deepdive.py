@@ -1,0 +1,299 @@
+"""Tests for Deep Dive — canonical research object and its editorial budgets.
+
+The budgets are not style preferences. The one-pager renders onto a FIXED
+1024x1536 canvas, so text that exceeds its budget does not reflow, it clips —
+and a silently clipped kill-criterion is a research artifact that lies. These
+tests pin the measurement, and use the Deere golden fixture (the reviewed
+calibration standard) as the reference for what a correct object looks like.
+"""
+import json
+import os
+
+import pytest
+
+import app_v3
+import deepdive as dd
+
+GOLDEN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                      'fixtures', 'deepdive_de_golden.json')
+
+
+@pytest.fixture(scope='module')
+def golden():
+    return dd.load_golden_fixture(GOLDEN)
+
+
+@pytest.fixture
+def clean_runs():
+    dd.ensure_schema(app_v3.get_db)
+    with app_v3.get_db(commit=True) as (_c, cur):
+        cur.execute('DELETE FROM deepdive_runs')
+    yield
+    with app_v3.get_db(commit=True) as (_c, cur):
+        cur.execute('DELETE FROM deepdive_runs')
+
+
+# ---------------------------------------------------------------------------
+# the golden fixture is the calibration standard
+# ---------------------------------------------------------------------------
+
+def test_golden_onepager_passes_every_editorial_budget(golden):
+    """If the reviewed reference artifact fails, the checker is wrong."""
+    _master, onepager, _sources = golden
+    assert dd.onepager_violations(onepager) == []
+
+
+def test_golden_master_is_structurally_renderable(golden):
+    master, _op, _s = golden
+    assert dd.master_violations(master) == []
+
+
+def test_golden_carries_the_shapes_the_renderers_index_into(golden):
+    """The DE fixture deliberately exercises the hard cases."""
+    _m, op, _s = golden
+    assert len(op['signposts']) == 6          # six rows, all must be visible
+    assert len(op['threats']) == 4            # four kill criteria
+    assert len(op['bull_case']) == 5 and len(op['bear_case']) == 5
+
+
+def test_golden_segments_sum_to_a_drawable_pie(golden):
+    master, _op, _s = golden
+    segs = master['company_overview']['segments']
+    total = sum(s.get('mix_numeric') or 0 for s in segs)
+    assert 85 <= total <= 115, f'pie would not close: {total}'
+
+
+# ---------------------------------------------------------------------------
+# budget enforcement
+# ---------------------------------------------------------------------------
+
+def test_overlong_prose_is_caught(golden):
+    _m, op, _s = golden
+    bad = dict(op, bottom_line=' '.join(['word'] * 30))
+    assert any('bottom_line' in v for v in dd.onepager_violations(bad))
+
+
+def test_a_short_thesis_summary_is_not_a_violation(golden):
+    """The reference one-pager runs ~42 words here on purpose.
+
+    Only the upper bound can clip the canvas; under-length just leaves space.
+    """
+    _m, op, _s = golden
+    assert dd._words(op['thesis_summary']) < 80
+    assert dd.onepager_violations(op) == []
+    over = dict(op, thesis_summary=' '.join(['word'] * 200))
+    assert any('thesis_summary' in v for v in dd.onepager_violations(over))
+
+
+def test_wrong_list_lengths_are_caught(golden):
+    """Renderers index these directly — five signposts leaves a hole."""
+    _m, op, _s = golden
+    short = dict(op, signposts=op['signposts'][:5])
+    assert any('signposts' in v and 'exactly 6' in v
+               for v in dd.onepager_violations(short))
+
+
+def test_a_verbose_signpost_cell_is_caught(golden):
+    """A long cell wraps the row taller and pushes the last signpost off-page."""
+    _m, op, _s = golden
+    sps = [dict(s) for s in op['signposts']]
+    sps[0]['current'] = ' '.join(['word'] * 25)
+    assert any('signposts[0].current' in v
+               for v in dd.onepager_violations(dict(op, signposts=sps)))
+
+
+def test_violations_name_the_field_so_repair_can_be_targeted(golden):
+    _m, op, _s = golden
+    bad = dict(op, headline=' '.join(['word'] * 40), threats=op['threats'][:2])
+    problems = dd.onepager_violations(bad)
+    assert any('headline' in p for p in problems)
+    assert any('threats' in p for p in problems)
+
+
+def test_master_violations_flags_an_unclosable_pie():
+    master = {'company': 'X', 'ticker': 'X',
+              'investment_thesis': {'summary': 's'},
+              'signposts': [1], 'thesis_threats': [1], 'opportunities': [1],
+              'company_overview': {'segments': [{'mix_numeric': 20},
+                                                {'mix_numeric': 30}]}}
+    assert any('mix_numeric' in v for v in dd.master_violations(master))
+
+
+def test_master_violations_accepts_all_zero_segments():
+    """All-zero is the documented way to say 'shares unsupported' — not an error."""
+    master = {'company': 'X', 'ticker': 'X',
+              'investment_thesis': {'summary': 's'},
+              'signposts': [1], 'thesis_threats': [1], 'opportunities': [1],
+              'company_overview': {'segments': [{'mix_numeric': 0},
+                                                {'mix_numeric': 0}]}}
+    assert dd.master_violations(master) == []
+
+
+# ---------------------------------------------------------------------------
+# persistence
+# ---------------------------------------------------------------------------
+
+def test_a_run_round_trips(golden, clean_db, clean_runs):
+    master, op, sources = golden
+    rid = dd.save_run(app_v3.get_db, 'DE', 'Deere & Company', master, op,
+                      sources, [], {'golden_fixture': True})
+    run = dd.load_run(app_v3.get_db, rid)
+    assert run['ticker'] == 'DE'
+    assert run['master']['company'] == 'Deere & Company'
+    assert len(run['onepager']['signposts']) == 6
+
+
+def test_latest_wins_and_history_is_capped(golden, clean_db, clean_runs):
+    master, op, _s = golden
+    for i in range(6):
+        dd.save_run(app_v3.get_db, 'DE', f'run{i}', dict(master, company=f'run{i}'),
+                    op, [], [], {}, max_runs=3)
+    assert dd.load_latest(app_v3.get_db, 'DE')['master']['company'] == 'run5'
+    with app_v3.get_db() as (_c, cur):
+        cur.execute("SELECT COUNT(*) c FROM deepdive_runs WHERE ticker='DE'")
+        assert cur.fetchone()['c'] == 3
+
+
+def test_list_shows_one_entry_per_ticker(golden, clean_db, clean_runs):
+    master, op, _s = golden
+    dd.save_run(app_v3.get_db, 'DE', 'Deere', master, op, [], [], {})
+    dd.save_run(app_v3.get_db, 'DE', 'Deere', master, op, [], [], {})
+    dd.save_run(app_v3.get_db, 'CVS', 'CVS', dict(master, ticker='CVS'), op, [], [], {})
+    tickers = [r['ticker'] for r in dd.list_runs(app_v3.get_db)]
+    assert sorted(tickers) == ['CVS', 'DE']
+
+
+def test_freshness_window(golden, clean_db, clean_runs):
+    master, op, _s = golden
+    rid = dd.save_run(app_v3.get_db, 'DE', 'Deere', master, op, [], [], {})
+    assert dd.is_fresh(dd.load_run(app_v3.get_db, rid)) is True
+    assert dd.is_fresh(dd.load_run(app_v3.get_db, rid), ttl_minutes=0) is False
+    assert dd.is_fresh(None) is False
+
+
+# ---------------------------------------------------------------------------
+# market snapshot must never block the run
+# ---------------------------------------------------------------------------
+
+def test_market_snapshot_survives_a_broken_provider(monkeypatch):
+    """Research is the expensive part; a quote outage must not abort it."""
+    import sys, types
+    broken = types.ModuleType('yfinance')
+
+    def _boom(*a, **k):
+        raise RuntimeError('yfinance down')
+    broken.Ticker = _boom
+    monkeypatch.setitem(sys.modules, 'yfinance', broken)
+    out = dd.market_snapshot('DE')
+    assert out['ok'] is False and out['ticker'] == 'DE'
+
+
+def test_merge_live_market_overlays_only_verified_fields(golden):
+    master, _op, _s = golden
+    before_hq = master['at_glance'].get('hq')
+    merged = dd.merge_live_market(dict(master), {
+        'ok': True, 'share_price': '$999.00', 'market_cap': '~$1.0T'})
+    assert merged['at_glance']['share_price'] == '$999.00'
+    assert merged['at_glance']['hq'] == before_hq   # researched fields untouched
+
+
+def test_merge_is_a_noop_when_the_snapshot_failed(golden):
+    master, _op, _s = golden
+    merged = dd.merge_live_market(dict(master), {'ok': False})
+    assert merged['at_glance'] == master['at_glance']
+
+
+# ---------------------------------------------------------------------------
+# the one rule: the one-pager never re-researches
+# ---------------------------------------------------------------------------
+
+def test_compress_onepager_sees_only_the_canonical_object(golden):
+    """Its prompt must carry the master object and no search tool."""
+    master, op, _s = golden
+    captured = {}
+
+    def fake_llm(**kwargs):
+        captured['user'] = kwargs['messages'][0]['content']
+        captured['system'] = kwargs['system']
+        return {'text': json.dumps(op)}
+
+    out, violations = dd.compress_onepager(master, fake_llm, json.loads)
+    assert violations == []
+    assert 'CANONICAL RESEARCH OBJECT' in captured['user']
+    assert 'Do NOT add new facts' in captured['system']
+    assert out['ticker'] == 'DE'
+
+
+def test_a_repair_pass_that_makes_things_worse_is_discarded(golden):
+    """Last answer should not win merely by being last."""
+    master, op, _s = golden
+    bad = dict(op, headline=' '.join(['word'] * 40))     # 1 violation
+    worse = dict(op, headline=' '.join(['word'] * 40),
+                 signposts=op['signposts'][:3])          # more violations
+    calls = []
+
+    def fake_llm(**kwargs):
+        calls.append(1)
+        return {'text': json.dumps(bad if len(calls) == 1 else worse)}
+
+    out, violations = dd.compress_onepager(master, fake_llm, json.loads)
+    assert len(calls) == 2, 'a violating object should trigger one repair pass'
+    assert len(violations) == 1, 'the worse repair must be rejected'
+    assert dd._words(out['headline']) == 40
+
+
+def test_a_failed_repair_call_keeps_the_original(golden):
+    master, op, _s = golden
+    bad = dict(op, headline=' '.join(['word'] * 40))
+    calls = []
+
+    def fake_llm(**kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            return {'text': json.dumps(bad)}
+        raise RuntimeError('model down')
+
+    out, violations = dd.compress_onepager(master, fake_llm, json.loads)
+    assert len(violations) == 1 and out['headline'].startswith('word')
+
+
+def test_research_requires_a_usable_json_object(golden):
+    """Three renderers fed an empty dict is worse than a loud failure."""
+    with pytest.raises(RuntimeError, match='no usable JSON'):
+        dd.research_company('DE', 'Deere', {}, lambda **k: {'text': 'not json'},
+                            lambda t: None, lambda q, **k: [])
+
+
+def test_search_failures_degrade_to_less_context_not_a_crash():
+    def boom(query, **kwargs):
+        raise RuntimeError('tavily down')
+    context, sources = dd.gather_web_context('DE', 'Deere', boom)
+    assert context == '' and sources == []
+
+
+def test_sources_are_deduplicated_and_carry_urls():
+    def fake_search(query, **kwargs):
+        return [{'title': 'A', 'url': 'https://x.com/a', 'content': 'body a'},
+                {'title': 'A dup', 'url': 'https://x.com/a', 'content': 'dup'}]
+    context, sources = dd.gather_web_context('DE', 'Deere', fake_search)
+    assert len(sources) == 1
+    assert sources[0]['url'] == 'https://x.com/a'
+    assert 'body a' in context
+
+
+def test_a_freshly_saved_run_is_actually_fresh(golden, clean_db, clean_runs):
+    """Regression: created_at was stored with a bare NOW().
+
+    On a server whose local time is not UTC that made every run read as hours
+    old the instant it was written, so the 30-minute cache never hit and every
+    request paid for a full research pass.
+    """
+    master, op, _s = golden
+    rid = dd.save_run(app_v3.get_db, 'DE', 'Deere', master, op, [], [], {})
+    run = dd.load_run(app_v3.get_db, rid)
+
+    from datetime import datetime
+    age_min = (datetime.utcnow() - datetime.fromisoformat(run['createdAt'])
+               ).total_seconds() / 60
+    assert abs(age_min) < 5, f'stored clock is skewed by {age_min:.0f} minutes'
+    assert dd.is_fresh(run) is True

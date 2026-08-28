@@ -8,6 +8,7 @@ import * as ReactDOM from 'react-dom';
 // Extensionless on purpose: Babel leaves the specifier alone, so esbuild resolves
 // it to src/onepager.jsx in dev and build/onepager.js in the prod bundle.
 import { OnePagerFit, ONEPAGER_STYLES } from './onepager';
+import { DeepDiveOnePager, DeepDiveTwoPager, DeepDiveMemo, PageFit, preflightPages } from './deepdive';
 import * as htmlToImage from 'html-to-image';
 
 // Expose on window for any inline consumers (pdf.js, etc.)
@@ -80,7 +81,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-08-26T02';
+        const BUILD_VERSION = '2026-08-27T01';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -2254,6 +2255,19 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [opDepths, setOpDepths] = useState([]);        // depth options from the backend
             const [opDepth, setOpDepth] = useState('standard');
             const [opAvailableDepths, setOpAvailableDepths] = useState([]); // depths saved for the open ticker
+
+            // ---- Deep Dive: one canonical research run, three artifacts -----
+            const [ddTicker, setDdTicker] = useState('');
+            const [ddRun, setDdRun] = useState(null);          // {master, onepager, sources, ...}
+            const [ddView, setDdView] = useState('onepager');  // onepager | twopager | memo
+            const [ddBusy, setDdBusy] = useState(false);
+            const [ddStep, setDdStep] = useState('');
+            const [ddError, setDdError] = useState(null);
+            const [ddForce, setDdForce] = useState(false);
+            const [ddList, setDdList] = useState([]);
+            const [ddSourcesOpen, setDdSourcesOpen] = useState(false);
+            const [ddQA, setDdQA] = useState([]);              // per-page preflight
+            const ddPagesRef = useRef(null);
             // Every regenerate overwrote the page in place. The old version was
             // kept in the database the whole time but nothing could reach it.
             const [opHistory, setOpHistory] = useState([]);
@@ -2679,6 +2693,123 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     loadOnePagerList();
                 } catch (e) { alert('Delete failed: ' + (e.message || e)); }
             }, [opData, loadOnePagerList]);
+
+            // ---- Deep Dive ---------------------------------------------------
+            const loadDeepDiveList = useCallback(async () => {
+                try {
+                    const r = await fetch(`${API_URL}/api/deepdive`);
+                    if (!r.ok) return;
+                    setDdList((await r.json()).runs || []);
+                } catch (e) { console.warn('loadDeepDiveList:', e); }
+            }, []);
+
+            const openDeepDive = useCallback(async (ticker) => {
+                if (!ticker) return;
+                setDdError(null);
+                try {
+                    const r = await fetch(`${API_URL}/api/deepdive/${ticker}`);
+                    const j = await r.json();
+                    if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+                    setDdRun(j.run);
+                    setDdTicker(j.run.ticker);
+                } catch (e) { setDdError(e.message || String(e)); }
+            }, []);
+
+            const runDeepDive = useCallback(async () => {
+                const t = (ddTicker || '').trim().toUpperCase();
+                if (!t) { setDdError('Enter a ticker first.'); return; }
+                setDdBusy(true); setDdError(null); setDdStep('Starting...');
+                try {
+                    // Long research runs go through DIRECT_API_URL for the same
+                    // reason the Explain tab does: Cloudflare kills an idle
+                    // connection at 100s and a full pass takes minutes.
+                    const start = await fetch(`${DIRECT_API_URL}/api/deepdive/analyze`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            ticker: t, force: ddForce,
+                            apiKey: loadApiKeyFromStorage() || '',
+                            geminiApiKey: loadGeminiKeyFromStorage() || '',
+                        }),
+                    });
+                    const started = await start.json();
+                    if (!start.ok || !started.jobId) {
+                        throw new Error(started.error || `Dispatch failed: HTTP ${start.status}`);
+                    }
+
+                    // Poll with a hard cap. An unbounded loop against a job that
+                    // died server-side spins until the tab is closed.
+                    const deadlineMs = Date.now() + 15 * 60 * 1000;
+                    while (Date.now() < deadlineMs) {
+                        await new Promise(res => setTimeout(res, 4000));
+                        const pr = await fetch(`${DIRECT_API_URL}/api/deepdive/job/${started.jobId}`);
+                        if (!pr.ok) continue;
+                        const job = await pr.json();
+                        setDdStep(job.step || '');
+                        if (job.status === 'done') {
+                            setDdRun(job.result);
+                            setDdStep(job.cached ? 'Loaded a recent run (use Force fresh to re-research).' : '');
+                            await loadDeepDiveList();
+                            return;
+                        }
+                        if (job.status === 'failed') throw new Error(job.error || 'Research failed');
+                    }
+                    throw new Error('Timed out after 15 minutes. The run may still finish — reopen the ticker shortly.');
+                } catch (e) {
+                    setDdError(e.message || String(e));
+                } finally { setDdBusy(false); }
+            }, [ddTicker, ddForce, loadDeepDiveList]);
+
+            const loadDeepDiveDemo = useCallback(async () => {
+                setDdBusy(true); setDdError(null); setDdStep('Loading Deere calibration fixture...');
+                try {
+                    const r = await fetch(`${API_URL}/api/deepdive/demo`, { method: 'POST' });
+                    const j = await r.json();
+                    if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+                    setDdRun(j.run); setDdTicker(j.run.ticker);
+                    await loadDeepDiveList();
+                } catch (e) { setDdError(e.message || String(e)); }
+                finally { setDdBusy(false); setDdStep(''); }
+            }, [loadDeepDiveList]);
+
+            const deleteDeepDive = useCallback(async (ticker) => {
+                if (!confirm(`Delete every stored Deep Dive run for ${ticker}?`)) return;
+                try {
+                    await fetch(`${API_URL}/api/deepdive/${ticker}`, { method: 'DELETE' });
+                    if (ddRun?.ticker === ticker) { setDdRun(null); setDdQA([]); }
+                    await loadDeepDiveList();
+                } catch (e) { alert('Delete failed: ' + (e.message || e)); }
+            }, [ddRun, loadDeepDiveList]);
+
+            const exportDeepDiveJson = useCallback(() => {
+                if (!ddRun) return;
+                // Master + one-pager + the full source trail. The printed pages
+                // deliberately omit a Sources block; this is where it lives.
+                const blob = new Blob([JSON.stringify({
+                    ticker: ddRun.ticker, generatedAt: ddRun.createdAt,
+                    meta: ddRun.meta, master: ddRun.master,
+                    onepager: ddRun.onepager, sources: ddRun.sources,
+                }, null, 2)], { type: 'application/json' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = `deepdive_${ddRun.ticker}_${(ddRun.createdAt || '').slice(0, 10)}.json`;
+                a.click();
+                URL.revokeObjectURL(a.href);
+            }, [ddRun]);
+
+            // Preflight runs after paint, on the rendered pages, because the
+            // whole point is measuring what the browser actually painted.
+            useEffect(() => {
+                if (!ddRun || activeTab !== 'deepdive') { setDdQA([]); return; }
+                const id = setTimeout(() => {
+                    try { setDdQA(preflightPages(ddPagesRef.current)); }
+                    catch (e) { console.warn('deep dive preflight:', e); }
+                }, 350);
+                return () => clearTimeout(id);
+            }, [ddRun, ddView, activeTab]);
+
+            useEffect(() => {
+                if (activeTab === 'deepdive') loadDeepDiveList();
+            }, [activeTab, loadDeepDiveList]);
 
             const loadOnePagerHistory = useCallback(async (ticker, depth) => {
                 try {
@@ -14743,6 +14874,19 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 </span>
                             </button>
                             <button
+                                onClick={() => switchTab('deepdive')}
+                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                                    activeTab === 'deepdive'
+                                        ? 'bg-amber-600 text-white shadow-lg glow-teal'
+                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
+                                }`}
+                            >
+                                <span className="flex items-center gap-2">
+                                    <BarChart2 className="w-4 h-4" />
+                                    Deep Dive
+                                </span>
+                            </button>
+                            <button
                                 onClick={() => switchTab('explain')}
                                 className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
                                     activeTab === 'explain'
@@ -25623,6 +25767,192 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         )}
 
                         {/* AGENTS TAB */}
+                        {activeTab === 'deepdive' && (
+                            <div className="flex-1 flex flex-col bg-white/[0.02] overflow-y-auto pb-24 md:pb-0" onScroll={(e) => { setShowScrollTop(e.target.scrollTop > 300); scrollContainerRef.current = e.target; }}>
+                                <div className="p-4 md:p-6">
+                                    <div className="max-w-6xl mx-auto space-y-4">
+                                        <div className="flex items-start justify-between gap-3 flex-wrap dd-print-hide">
+                                            <div>
+                                                <h1 className="text-xl font-bold">Deep Dive</h1>
+                                                <p className="text-xs text-slate-400 mt-0.5">
+                                                    One research run, three artifacts: a dense one-pager, a readable two-pager, and a 3-page investment memo.
+                                                </p>
+                                            </div>
+                                            {ddRun && (
+                                                <div className="text-[11px] text-slate-500 text-right">
+                                                    <div>{ddRun.ticker} · {ddRun.createdAt ? new Date(ddRun.createdAt).toLocaleString() : ''}</div>
+                                                    <div>{(ddRun.sources || []).length} sources · schema {ddRun.meta?.schema_version || '—'}</div>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* controls */}
+                                        <div className="flex items-center gap-2 flex-wrap dd-print-hide">
+                                            <input
+                                                value={ddTicker}
+                                                onChange={e => setDdTicker(e.target.value.toUpperCase())}
+                                                onKeyDown={e => { if (e.key === 'Enter' && !ddBusy) runDeepDive(); }}
+                                                placeholder="Ticker, e.g. DE"
+                                                className="w-40 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm font-mono" />
+                                            <button onClick={runDeepDive} disabled={ddBusy}
+                                                className="flex items-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:bg-neutral-700 rounded-xl text-sm font-medium">
+                                                {ddBusy
+                                                    ? <><div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent" /> Researching…</>
+                                                    : <>Research &amp; Build</>}
+                                            </button>
+                                            <label className="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer">
+                                                <input type="checkbox" checked={ddForce}
+                                                       onChange={e => setDdForce(e.target.checked)} />
+                                                Force fresh research
+                                            </label>
+                                            <button onClick={loadDeepDiveDemo} disabled={ddBusy}
+                                                title="Load the reviewed Deere fixture — calibrates rendering without spending a research call"
+                                                className="px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs text-slate-300">
+                                                Load DE calibration
+                                            </button>
+                                            {ddRun && (
+                                                <div className="flex items-center gap-2 ml-auto">
+                                                    <button onClick={() => setDdSourcesOpen(o => !o)}
+                                                        className="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-xs">
+                                                        Source trail ({(ddRun.sources || []).length})
+                                                    </button>
+                                                    <button onClick={exportDeepDiveJson}
+                                                        className="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-xs">
+                                                        Export JSON
+                                                    </button>
+                                                    <button onClick={() => window.print()}
+                                                        className="flex items-center gap-1.5 px-3 py-2 bg-amber-600 hover:bg-amber-500 rounded-lg text-xs font-medium">
+                                                        <Download className="w-3.5 h-3.5" /> Print / PDF
+                                                    </button>
+                                                    <button onClick={() => deleteDeepDive(ddRun.ticker)}
+                                                        className="px-3 py-2 bg-white/10 hover:bg-red-600/30 rounded-lg text-xs">
+                                                        Delete
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {ddStep && !ddError && <p className="text-xs text-slate-400 dd-print-hide">{ddStep}</p>}
+                                        {ddError && <p className="text-xs text-red-400 dd-print-hide">{ddError}</p>}
+
+                                        {/* saved runs */}
+                                        {ddList.length > 0 && (
+                                            <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 dd-print-hide">
+                                                {ddList.map(item => (
+                                                    <button key={item.ticker} onClick={() => openDeepDive(item.ticker)}
+                                                        title={item.createdAt ? new Date(item.createdAt).toLocaleString() : ''}
+                                                        className={`flex-shrink-0 px-3 py-1.5 rounded-lg border text-xs font-mono font-bold ${
+                                                            ddRun?.ticker === item.ticker
+                                                                ? 'bg-amber-500 text-slate-900 border-amber-400'
+                                                                : 'bg-white/5 text-slate-300 border-white/10'}`}>
+                                                        {item.ticker}
+                                                        {item.violationCount > 0 && (
+                                                            <span className="ml-1 text-[9px] text-amber-300"
+                                                                  title={`${item.violationCount} editorial overrun(s)`}>!</span>
+                                                        )}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        {/* output selector */}
+                                        {ddRun && (
+                                            <div className="flex items-center gap-2 flex-wrap dd-print-hide">
+                                                <div className="flex rounded-lg overflow-hidden border border-white/10">
+                                                    {[{v: 'onepager', label: 'One-Pager'},
+                                                      {v: 'twopager', label: 'Two-Pager'},
+                                                      {v: 'memo', label: 'Investment Memo'}].map(({v, label}) => (
+                                                        <button key={v} onClick={() => setDdView(v)}
+                                                            className={`px-3 py-2 text-xs font-medium transition-colors ${
+                                                                ddView === v ? 'bg-amber-600 text-white'
+                                                                             : 'bg-white/[0.06] text-slate-400 hover:text-white'}`}>
+                                                            {label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                {/* Preflight measures painted bounds on the rendered pages.
+                                                    A PASS here is not proof of a good PDF, so it says what it checked. */}
+                                                {ddQA.length > 0 && (
+                                                    <span className={`text-[11px] ${ddQA.every(q => q.ok) ? 'text-green-400' : 'text-amber-300'}`}>
+                                                        {ddQA.every(q => q.ok)
+                                                            ? `Layout OK · ${ddQA.length} page(s) · ${ddQA.map(q => q.utilization + '%').join(' / ')} used`
+                                                            : `Layout issues on ${ddQA.filter(q => !q.ok).length} page(s)`}
+                                                    </span>
+                                                )}
+                                                {(ddRun.violations || []).length > 0 && (
+                                                    <span className="text-[11px] text-amber-300"
+                                                          title={(ddRun.violations || []).join('\n')}>
+                                                        {(ddRun.violations || []).length} editorial overrun(s)
+                                                    </span>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {ddQA.some(q => !q.ok) && (
+                                            <ul className="text-[11px] text-amber-300/90 list-disc ml-5 dd-print-hide">
+                                                {ddQA.filter(q => !q.ok).flatMap(q =>
+                                                    q.issues.map((iss, i) => <li key={`${q.page}-${i}`}>Page {q.page}: {iss}</li>))}
+                                            </ul>
+                                        )}
+
+                                        {ddSourcesOpen && ddRun && (
+                                            <div className="p-3 bg-black/20 border border-white/10 rounded-xl dd-print-hide">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="label">Research source trail</span>
+                                                    <button onClick={() => setDdSourcesOpen(false)}
+                                                        className="text-xs text-slate-400 hover:text-white">Close</button>
+                                                </div>
+                                                {(ddRun.sources || []).length === 0 ? (
+                                                    <p className="text-xs text-slate-500">
+                                                        No sources recorded — this run came from the calibration fixture.
+                                                    </p>
+                                                ) : (
+                                                    <ol className="space-y-1 list-decimal ml-5">
+                                                        {(ddRun.sources || []).map((src, i) => (
+                                                            <li key={i} className="text-xs">
+                                                                <a href={src.url} target="_blank" rel="noopener noreferrer"
+                                                                   className="text-amber-300 hover:underline break-all">
+                                                                    {src.title || src.url}
+                                                                </a>
+                                                                {src.date && <span className="text-slate-500"> · {src.date}</span>}
+                                                            </li>
+                                                        ))}
+                                                    </ol>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* the artifacts */}
+                                        {ddRun ? (
+                                            <div ref={ddPagesRef} className="space-y-4">
+                                                {ddView === 'onepager' && (
+                                                    <PageFit><DeepDiveOnePager data={ddRun.onepager} /></PageFit>
+                                                )}
+                                                {ddView === 'twopager' && (
+                                                    <PageFit height={1536 * 2}>
+                                                        <DeepDiveTwoPager master={ddRun.master} />
+                                                    </PageFit>
+                                                )}
+                                                {ddView === 'memo' && (
+                                                    <PageFit height={1536 * 3}>
+                                                        <DeepDiveMemo master={ddRun.master} />
+                                                    </PageFit>
+                                                )}
+                                            </div>
+                                        ) : !ddBusy && (
+                                            <div className="text-center text-slate-500 py-16 dd-print-hide">
+                                                <p className="text-sm">Enter a ticker to research, or load the Deere calibration fixture.</p>
+                                                <p className="text-xs mt-1">
+                                                    One canonical research pass feeds all three artifacts — the one-pager is an
+                                                    editorial compression of it, never a second opinion.
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         {activeTab === 'explain' && (
                             <div className="flex-1 flex flex-col bg-white/[0.02] overflow-y-auto pb-24 md:pb-0" onScroll={(e) => { setShowScrollTop(e.target.scrollTop > 300); scrollContainerRef.current = e.target; }}>
                                 <div className="p-4 md:p-6">
@@ -30704,18 +31034,18 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 <button
                                     onClick={() => setShowMoreMenu(true)}
                                     className={`flex flex-col items-center justify-center gap-1 min-w-[56px] py-2 rounded-xl transition-all ${
-                                        activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' || activeTab === 'feed' || activeTab === 'analysts' || activeTab === 'onepager' || activeTab === 'explain'
+                                        activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' || activeTab === 'feed' || activeTab === 'analysts' || activeTab === 'onepager' || activeTab === 'explain' || activeTab === 'deepdive'
                                             ? 'text-amber-400'
                                             : 'text-slate-400 active:text-slate-200'
                                     }`}
                                 >
                                     <div className="relative">
-                                        <MoreHorizontal className={`w-5 h-5 ${activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' || activeTab === 'feed' || activeTab === 'analysts' || activeTab === 'onepager' || activeTab === 'explain' ? 'stroke-[2.5]' : 'stroke-[1.5]'}`} />
+                                        <MoreHorizontal className={`w-5 h-5 ${activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' || activeTab === 'feed' || activeTab === 'analysts' || activeTab === 'onepager' || activeTab === 'explain' || activeTab === 'deepdive' ? 'stroke-[2.5]' : 'stroke-[1.5]'}`} />
                                         {alertBadgeCount > 0 && (
                                             <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center">{alertBadgeCount > 9 ? '9+' : alertBadgeCount}</span>
                                         )}
                                     </div>
-                                    <span className={`text-[9px] ${activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' || activeTab === 'feed' || activeTab === 'analysts' || activeTab === 'onepager' || activeTab === 'explain' ? 'font-semibold' : 'font-medium'}`}>More</span>
+                                    <span className={`text-[9px] ${activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' || activeTab === 'feed' || activeTab === 'analysts' || activeTab === 'onepager' || activeTab === 'explain' || activeTab === 'deepdive' ? 'font-semibold' : 'font-medium'}`}>More</span>
                                 </button>
                             </div>
                         </div>
@@ -30926,6 +31256,27 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             <div className="text-left">
                                                 <div className="font-semibold">Formats</div>
                                                 <div className="text-xs text-slate-400">Professional thesis export templates</div>
+                                            </div>
+                                            <ChevronRight className="w-5 h-5 text-slate-500 ml-auto" />
+                                        </button>
+
+                                        <button
+                                            onClick={() => {
+                                                setShowMoreMenu(false);
+                                                switchTab('deepdive');
+                                            }}
+                                            className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
+                                                activeTab === 'deepdive'
+                                                    ? 'bg-amber-600/20 border border-amber-500/50'
+                                                    : 'bg-white/5 hover:bg-white/10 border border-transparent'
+                                            }`}
+                                        >
+                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${activeTab === 'deepdive' ? 'bg-amber-600' : 'bg-white/10'}`}>
+                                                <BarChart2 className="w-5 h-5" />
+                                            </div>
+                                            <div className="text-left">
+                                                <div className="font-semibold">Deep Dive</div>
+                                                <div className="text-xs text-slate-400">One-pager, two-pager and 3-page memo</div>
                                             </div>
                                             <ChevronRight className="w-5 h-5 text-slate-500 ml-auto" />
                                         </button>

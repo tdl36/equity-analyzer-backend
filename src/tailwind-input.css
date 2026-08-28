@@ -2,6 +2,7 @@
    directives, and the token blocks define the vars the palette reads. */
 @import "./theme.css";
 @import "./onepager.css";
+@import "./deepdive.css";
 
 @tailwind base;
 @tailwind components;
