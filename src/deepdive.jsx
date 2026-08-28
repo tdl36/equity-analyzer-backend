@@ -112,9 +112,42 @@ export const DeepDiveArtifact = ({ run, view, template }) => {
         }
     }, [run, view, template]);
 
+    // The v24 print rules key off `.onepager-view` / `.twopager-view` /
+    // `.report-view`, so the artifact keeps the wrapper it was written for.
+    const viewClass = view === 'twopager' ? 'twopager-view'
+                    : view === 'memo' ? 'report-view' : 'onepager-view';
+
     // Every interpolated value is escaped by the renderer's own esc() at the
     // point of use, so the only unescaped markup here is its template structure.
-    return <div className="dd-artifact" dangerouslySetInnerHTML={{ __html: html }} />;
+    return (
+        <div className={`dd-artifact ${viewClass}`}
+             dangerouslySetInnerHTML={{ __html: html }} />
+    );
+};
+
+/**
+ * Print one artifact.
+ *
+ * The prototype set a body class before printing because its stylesheet hides
+ * every view by default and reveals exactly one. Charlie has to do the same, and
+ * additionally suppress its own chrome, or the PDF is a shrunken canvas
+ * surrounded by navigation.
+ */
+export const printArtifact = (view) => {
+    if (typeof document === 'undefined') return;
+    const viewCls = view === 'twopager' ? 'print-twopager'
+                  : view === 'memo' ? 'print-report' : 'print-onepager';
+    const body = document.body;
+    body.classList.add('dd-printing', viewCls);
+    const cleanup = () => body.classList.remove(
+        'dd-printing', 'print-onepager', 'print-twopager', 'print-report');
+    try {
+        window.print();
+    } finally {
+        // afterprint is not reliable everywhere, so belt-and-braces.
+        window.addEventListener('afterprint', cleanup, { once: true });
+        setTimeout(cleanup, 1000);
+    }
 };
 
 /**

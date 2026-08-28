@@ -8,7 +8,7 @@ import * as ReactDOM from 'react-dom';
 // Extensionless on purpose: Babel leaves the specifier alone, so esbuild resolves
 // it to src/onepager.jsx in dev and build/onepager.js in the prod bundle.
 import { OnePagerFit, ONEPAGER_STYLES } from './onepager';
-import { DeepDiveArtifact, PageFit, preflightPages, ONEPAGER_TEMPLATES, TWOPAGER_TEMPLATES } from './deepdive';
+import { DeepDiveArtifact, PageFit, preflightPages, printArtifact, ONEPAGER_TEMPLATES, TWOPAGER_TEMPLATES } from './deepdive';
 import * as htmlToImage from 'html-to-image';
 
 // Expose on window for any inline consumers (pdf.js, etc.)
@@ -25821,7 +25821,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         className="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-xs">
                                                         Export JSON
                                                     </button>
-                                                    <button onClick={() => window.print()}
+                                                    <button onClick={() => printArtifact(ddView)}
                                                         className="flex items-center gap-1.5 px-3 py-2 bg-amber-600 hover:bg-amber-500 rounded-lg text-xs font-medium">
                                                         <Download className="w-3.5 h-3.5" /> Print / PDF
                                                     </button>
@@ -25936,7 +25936,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
                                         {/* the artifacts */}
                                         {ddRun ? (
-                                            <div ref={ddPagesRef}>
+                                            <div ref={ddPagesRef} className="dd-stage">
                                                 <PageFit>
                                                     <DeepDiveArtifact run={ddRun} view={ddView}
                                                                       template={ddTemplate} />

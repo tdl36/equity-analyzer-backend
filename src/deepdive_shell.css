@@ -1,0 +1,62 @@
+/* Charlie-side shell for the Deep Dive artifacts.
+ *
+ * deepdive_v24.css is the prototype's stylesheet, ported verbatim. It knows how
+ * to draw the artifacts and nothing about Charlie, because in the prototype the
+ * page WAS the artifact. This file is the adapter: the fit wrapper that scales a
+ * fixed 1024px canvas into a tab, and the print rules that get it back out at
+ * true size.
+ *
+ * Both halves were missing at first, which broke the tab and the PDF in the same
+ * way: without transform-origin the artifact scaled from its centre and fell out
+ * of view, and without print overrides the export captured a shrunken canvas
+ * wrapped in Charlie's navigation.
+ */
+
+.dd-fit { position: relative; width: 100%; overflow: hidden; }
+.dd-fit-inner {
+    position: absolute;
+    top: 0;
+    left: 0;
+    /* Without this the scale happens about the element's centre and most of the
+       page ends up outside the clipping box. */
+    transform-origin: top left;
+}
+
+.dd-artifact { display: block; }
+
+.dd-render-error {
+    padding: 16px; border: 1px solid #a44a4a; border-radius: 8px;
+    background: #fdf6f6; color: #8a3b3b; font-size: 13px;
+}
+
+/* The artifacts carry their own background; keep Charlie's tab neutral behind
+   them so a dark theme does not bleed through the paper. */
+.dd-stage { background: #6b6b6b; padding: 12px; border-radius: 10px; }
+
+@media print {
+    /* Print the artifact at TRUE size. The on-screen scale is a viewing
+       convenience; carrying it into the PDF is what produced a shrunken page. */
+    .dd-fit { height: auto !important; overflow: visible !important; }
+    .dd-fit-inner {
+        position: static !important;
+        transform: none !important;
+        width: 1024px !important;
+    }
+    .dd-stage { background: none !important; padding: 0 !important; }
+
+    /* Show only the artifact. Charlie's chrome is deeply nested, so hiding by
+       visibility and re-showing the subtree is the reliable way to do this
+       without knowing the tree shape. */
+    body.dd-printing * { visibility: hidden !important; }
+    body.dd-printing .dd-artifact,
+    body.dd-printing .dd-artifact * { visibility: visible !important; }
+    body.dd-printing .dd-artifact {
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        margin: 0 !important;
+    }
+    body.dd-printing { background: #fff !important; }
+
+    @page { size: 1024px 1536px; margin: 0; }
+}

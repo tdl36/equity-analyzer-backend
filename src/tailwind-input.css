@@ -3,6 +3,7 @@
 @import "./theme.css";
 @import "./onepager.css";
 @import "./deepdive_v24.css";
+@import "./deepdive_shell.css";
 
 @tailwind base;
 @tailwind components;
