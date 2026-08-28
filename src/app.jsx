@@ -8,7 +8,7 @@ import * as ReactDOM from 'react-dom';
 // Extensionless on purpose: Babel leaves the specifier alone, so esbuild resolves
 // it to src/onepager.jsx in dev and build/onepager.js in the prod bundle.
 import { OnePagerFit, ONEPAGER_STYLES } from './onepager';
-import { DeepDiveOnePager, DeepDiveTwoPager, DeepDiveMemo, PageFit, preflightPages } from './deepdive';
+import { DeepDiveArtifact, PageFit, preflightPages, ONEPAGER_TEMPLATES, TWOPAGER_TEMPLATES } from './deepdive';
 import * as htmlToImage from 'html-to-image';
 
 // Expose on window for any inline consumers (pdf.js, etc.)
@@ -81,7 +81,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-08-27T01';
+        const BUILD_VERSION = '2026-08-28T01';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -2267,6 +2267,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [ddList, setDdList] = useState([]);
             const [ddSourcesOpen, setDdSourcesOpen] = useState(false);
             const [ddQA, setDdQA] = useState([]);              // per-page preflight
+            const [ddTemplate, setDdTemplate] = useState('notebook');
             const ddPagesRef = useRef(null);
             // Every regenerate overwrote the page in place. The old version was
             // kept in the database the whole time but nothing could reach it.
@@ -2805,7 +2806,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     catch (e) { console.warn('deep dive preflight:', e); }
                 }, 350);
                 return () => clearTimeout(id);
-            }, [ddRun, ddView, activeTab]);
+            }, [ddRun, ddView, ddTemplate, activeTab]);
 
             useEffect(() => {
                 if (activeTab === 'deepdive') loadDeepDiveList();
@@ -25862,7 +25863,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     {[{v: 'onepager', label: 'One-Pager'},
                                                       {v: 'twopager', label: 'Two-Pager'},
                                                       {v: 'memo', label: 'Investment Memo'}].map(({v, label}) => (
-                                                        <button key={v} onClick={() => setDdView(v)}
+                                                        <button key={v} onClick={() => { setDdView(v); setDdTemplate('notebook'); }}
                                                             className={`px-3 py-2 text-xs font-medium transition-colors ${
                                                                 ddView === v ? 'bg-amber-600 text-white'
                                                                              : 'bg-white/[0.06] text-slate-400 hover:text-white'}`}>
@@ -25870,13 +25871,24 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         </button>
                                                     ))}
                                                 </div>
+                                                {/* Template selector, matching the prototype's. Only the
+                                                    one-pager and two-pager have alternates; the memo has one
+                                                    institutional layout by design. */}
+                                                {ddView !== 'memo' && (
+                                                    <select value={ddTemplate}
+                                                        onChange={e => setDdTemplate(e.target.value)}
+                                                        className="px-2 py-2 bg-black/30 border border-white/10 rounded-lg text-xs text-slate-200">
+                                                        {(ddView === 'twopager' ? TWOPAGER_TEMPLATES : ONEPAGER_TEMPLATES)
+                                                            .map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+                                                    </select>
+                                                )}
                                                 {/* Preflight measures painted bounds on the rendered pages.
                                                     A PASS here is not proof of a good PDF, so it says what it checked. */}
                                                 {ddQA.length > 0 && (
                                                     <span className={`text-[11px] ${ddQA.every(q => q.ok) ? 'text-green-400' : 'text-amber-300'}`}>
                                                         {ddQA.every(q => q.ok)
-                                                            ? `Layout OK · ${ddQA.length} page(s) · ${ddQA.map(q => q.utilization + '%').join(' / ')} used`
-                                                            : `Layout issues on ${ddQA.filter(q => !q.ok).length} page(s)`}
+                                                            ? `Layout OK · ${ddQA.length} page(s)`
+                                                            : `${ddQA.flatMap(q => q.issues).length} layout issue(s)`}
                                                     </span>
                                                 )}
                                                 {(ddRun.violations || []).length > 0 && (
@@ -25924,20 +25936,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
                                         {/* the artifacts */}
                                         {ddRun ? (
-                                            <div ref={ddPagesRef} className="space-y-4">
-                                                {ddView === 'onepager' && (
-                                                    <PageFit><DeepDiveOnePager data={ddRun.onepager} /></PageFit>
-                                                )}
-                                                {ddView === 'twopager' && (
-                                                    <PageFit height={1536 * 2}>
-                                                        <DeepDiveTwoPager master={ddRun.master} />
-                                                    </PageFit>
-                                                )}
-                                                {ddView === 'memo' && (
-                                                    <PageFit height={1536 * 3}>
-                                                        <DeepDiveMemo master={ddRun.master} />
-                                                    </PageFit>
-                                                )}
+                                            <div ref={ddPagesRef}>
+                                                <PageFit>
+                                                    <DeepDiveArtifact run={ddRun} view={ddView}
+                                                                      template={ddTemplate} />
+                                                </PageFit>
                                             </div>
                                         ) : !ddBusy && (
                                             <div className="text-center text-slate-500 py-16 dd-print-hide">
