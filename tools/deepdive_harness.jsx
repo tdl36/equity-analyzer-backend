@@ -1,17 +1,21 @@
-// Deterministic golden-render harness: the three artifacts from the reviewed
-// Deere fixture, with no backend, auth or app chrome. This is what makes a
-// side-by-side against best_proven_outputs/DE_v29_*.pdf possible.
+// Deterministic golden-render harness.
+//   ?view=onepager|twopager|memo   ?fixture=de|unh   ?template=notebook|...
+// UNH is the hard case: a long company name, four overlapping segments whose
+// shares sum to 119%, and no logo asset -- exactly what a universal template
+// has to survive.
 import * as React from 'react';
 import * as ReactDOM from 'react-dom';
 import { DeepDiveArtifact, preflightPages } from '../src/deepdive';
-import fixture from '../fixtures/deepdive_de_golden.json';
+import de from '../fixtures/deepdive_de_golden.json';
+import unh from '../fixtures/deepdive_unh_sample.json';
 
 const q = new URLSearchParams(location.search);
-const view = q.get('view') || 'onepager';
-const template = q.get('template') || 'notebook';
+const src = q.get('fixture') === 'unh' ? unh : de;
 const root = document.getElementById('root');
-const run = { master: fixture.master, onepager: fixture.onepager };
+const run = { master: src.master, onepager: src.onepager };
 
-ReactDOM.render(<DeepDiveArtifact run={run} view={view} template={template} />, root, () => {
-    setTimeout(() => { window.__ddQA = preflightPages(root); window.__ddReady = true; }, 600);
-});
+ReactDOM.render(
+    <DeepDiveArtifact run={run} view={q.get('view') || 'onepager'}
+                      template={q.get('template') || 'notebook'} />,
+    root,
+    () => setTimeout(() => { window.__ddQA = preflightPages(root); window.__ddReady = true; }, 700));

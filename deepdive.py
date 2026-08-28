@@ -44,16 +44,30 @@ CACHE_TTL_MINUTES = 30
 # Editorial budgets from ONEPAGER_EDITOR_SYSTEM, restated as machine-checkable
 # limits. The prompt asks; this enforces. (field, max_words) for prose and
 # (field, exact_count) for lists that the renderers assume are fixed-length.
+# CALIBRATED TO THE ARTIFACT THAT FITS, NOT TO TASTE.
+#
+# The one-pager's boxes are fixed foreignObject rectangles at absolute
+# coordinates; content that exceeds them does not reflow, it overlaps the next
+# section. So the only budget that means anything is the volume the reviewed DE
+# golden fixture actually uses, plus modest headroom.
+#
+# The first version of these numbers was ~2.5x too generous (thesis_summary
+# allowed 115 words where the fitting artifact uses 42), so a fully "compliant"
+# one-pager still overlapped its own sections. UNH came back at roughly double
+# DE in every field and passed with six trivial violations.
+#
+# Format: (field, max_words). DE actuals are in the comments so the next person
+# can see where each number came from.
 _WORD_BUDGETS = [
-    ("headline", 10),
-    ("subheadline", 20),
-    ("core_question", 30),
-    ("overview_summary", 70),
-    ("other_profit_pool", 24),
-    ("valuation_callout", 24),
-    ("final_takeaway", 65),
-    ("bottom_line", 12),
-    ("secondary_bottom_line", 7),
+    ("headline", 10),               # DE 6
+    ("subheadline", 16),            # DE 11
+    ("core_question", 24),          # DE 16
+    ("overview_summary", 34),       # DE 22
+    ("other_profit_pool", 20),      # DE 15
+    ("valuation_callout", 22),      # DE 17
+    ("final_takeaway", 50),         # DE 38
+    ("bottom_line", 12),            # DE 9
+    ("secondary_bottom_line", 7),   # DE 5
 ]
 
 # Renderers index into these directly, so a short list is a layout hole and a
@@ -71,10 +85,18 @@ _EXACT_COUNTS = [
 ]
 
 _LIST_ITEM_WORDS = [
-    ("thesis_bullets", 20),
-    ("financial_bullets", 17),
-    ("bull_case", 10),
-    ("bear_case", 10),
+    ("thesis_bullets", 14),      # DE max item 11
+    ("financial_bullets", 12),   # DE max item 9
+    ("bull_case", 6),            # DE max item 4
+    ("bear_case", 6),            # DE max item 4
+]
+
+# Per-item limits inside object lists, same derivation.
+_NESTED_ITEM_WORDS = [
+    ("opportunities", "detail", 12),      # DE max 9
+    ("business_model", "description", 9), # DE max 6
+    ("segments", "description", 11),      # DE max 8
+    ("threats", "watch_for", 22),         # DE max 17
 ]
 
 
@@ -104,8 +126,8 @@ def onepager_violations(d):
     # the space goes to the core-question box and the bullets -- so treating
     # under-length as a violation would condemn the calibration standard itself.
     thesis_words = _words(d.get("thesis_summary"))
-    if thesis_words > 115:
-        out.append(f"thesis_summary: {thesis_words} words (max 115)")
+    if thesis_words > 60:                       # DE 42
+        out.append(f"thesis_summary: {thesis_words} words (max 60)")
 
     for field, count in _EXACT_COUNTS:
         got = d.get(field)
@@ -126,14 +148,104 @@ def onepager_violations(d):
             continue
         for cell in ("signpost", "current", "target", "why"):
             n = _words(sp.get(cell))
-            if n > 12:
-                out.append(f"signposts[{i}].{cell}: {n} words (max 12)")
+            if n > 9:                           # DE max 7
+                out.append(f"signposts[{i}].{cell}: {n} words (max 9)")
 
-    for i, th in enumerate(d.get("threats") or []):
-        if isinstance(th, dict) and _words(th.get("watch_for")) > 28:
-            out.append(f"threats[{i}].watch_for: {_words(th.get('watch_for'))} words (max 28)")
+    for field, sub, limit in _NESTED_ITEM_WORDS:
+        for i, item in enumerate(d.get(field) or []):
+            if not isinstance(item, dict):
+                continue
+            n = _words(item.get(sub))
+            if n > limit:
+                out.append(f"{field}[{i}].{sub}: {n} words (max {limit})")
 
     return out
+
+
+def _trim_words(text, limit):
+    """Cut to `limit` words on a word boundary, with an ellipsis when cut."""
+    words = [w for w in re.split(r"\s+", str(text or "").strip()) if w]
+    if len(words) <= limit:
+        return text
+    return " ".join(words[:limit]).rstrip(",;:.") + "\u2026"
+
+
+def enforce_budgets(d):
+    """Hard-trim a one-pager to its budgets. Returns (object, trimmed_fields).
+
+    The prompt asks and the repair pass retries, but neither is a guarantee, and
+    the consequence of an overrun is not a slightly long paragraph -- the
+    one-pager's boxes are fixed rectangles at absolute coordinates, so excess
+    text silently overlaps the next section and the artifact becomes unreadable.
+
+    A universal template cannot depend on the model behaving. This is the last
+    line of defence: deterministic, applied on save, and reported so the overrun
+    is visible rather than hidden. Trimming loses the tail of a sentence;
+    not trimming loses whole sections behind other sections.
+    """
+    if not isinstance(d, dict):
+        return d, []
+    out = dict(d)
+    trimmed = []
+
+    for field, limit in _WORD_BUDGETS:
+        new = _trim_words(out.get(field), limit)
+        if new != out.get(field):
+            out[field] = new
+            trimmed.append(field)
+
+    if _words(out.get("thesis_summary")) > 60:
+        out["thesis_summary"] = _trim_words(out.get("thesis_summary"), 60)
+        trimmed.append("thesis_summary")
+
+    for field, limit in _LIST_ITEM_WORDS:
+        items = out.get(field)
+        if isinstance(items, list):
+            new_items = [_trim_words(x, limit) for x in items]
+            if new_items != items:
+                out[field] = new_items
+                trimmed.append(field)
+
+    for field, sub, limit in _NESTED_ITEM_WORDS:
+        items = out.get(field)
+        if isinstance(items, list):
+            new_items = []
+            changed = False
+            for x in items:
+                if isinstance(x, dict) and _words(x.get(sub)) > limit:
+                    x = dict(x)
+                    x[sub] = _trim_words(x.get(sub), limit)
+                    changed = True
+                new_items.append(x)
+            if changed:
+                out[field] = new_items
+                trimmed.append(f"{field}.{sub}")
+
+    signposts = out.get("signposts")
+    if isinstance(signposts, list):
+        new_sps, changed = [], False
+        for sp in signposts:
+            if isinstance(sp, dict):
+                sp2 = dict(sp)
+                for cell in ("signpost", "current", "target", "why"):
+                    if _words(sp2.get(cell)) > 9:
+                        sp2[cell] = _trim_words(sp2.get(cell), 9)
+                        changed = True
+                sp = sp2
+            new_sps.append(sp)
+        if changed:
+            out["signposts"] = new_sps
+            trimmed.append("signposts")
+
+    # Fixed-length lists: the renderers index into these, so a long list pushes
+    # rows off the canvas and a short one leaves a hole.
+    for field, count in _EXACT_COUNTS:
+        items = out.get(field)
+        if isinstance(items, list) and len(items) > count:
+            out[field] = items[:count]
+            trimmed.append(f"{field}(count)")
+
+    return out, sorted(set(trimmed))
 
 
 def master_violations(d):
@@ -164,7 +276,13 @@ def master_violations(d):
     numeric = [s.get("mix_numeric") or 0 for s in segs if isinstance(s, dict)]
     total = sum(n for n in numeric if isinstance(n, (int, float)))
     if numeric and total and not (85 <= total <= 115):
-        out.append(f"segment mix_numeric sums to {total:.0f} (want ~100, or all 0)")
+        # UNH came back as 72/16/23/8 = 119, because the model mixed a parent
+        # segment with its own sub-units. The pie then cannot both match the
+        # geometry and show the stated numbers, so the renderer normalises and
+        # says so -- but the underlying research is still wrong, and this is
+        # where that gets surfaced rather than quietly drawn.
+        out.append(f"segment mix_numeric sums to {total:.0f}, not ~100 — segments "
+                   f"are probably overlapping (parent and child reported together)")
 
     return out
 
@@ -414,6 +532,19 @@ def compress_onepager(master, call_llm, extract_json, api_keys=None,
 
     onepager.setdefault("ticker", master.get("ticker", ""))
     onepager.setdefault("company", master.get("company", ""))
+
+    # Last line of defence. Whatever the model did, what gets stored fits.
+    #
+    # The returned `violations` describe the object that is actually STORED, not
+    # the draft the model handed over. Once a field has been trimmed it is
+    # within budget, so continuing to report "headline: 40 words (max 10)" would
+    # flag a problem that no longer exists. What the reader needs to know is
+    # that the research came back too verbose and was cut -- that is a signal
+    # about research quality, and it is reported as exactly that.
+    onepager, trimmed = enforce_budgets(onepager)
+    if trimmed:
+        print(f"[deepdive] hard-trimmed to budget: {', '.join(trimmed)}")
+        violations = [f"auto-trimmed to fit: {', '.join(trimmed)}"]
     return onepager, violations
 
 

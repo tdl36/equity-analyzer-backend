@@ -60,3 +60,33 @@
 
     @page { size: 1024px 1536px; margin: 0; }
 }
+
+/* Logo fallback plate.
+ *
+ * Shown whenever no curated high-resolution mark exists for a ticker. The
+ * handoff forbids favicon upscaling, so this is the designed alternative and it
+ * should read as intentional typography, not as a broken image. Scoped here
+ * rather than edited into the ported sheet so the port stays a clean copy. */
+.dd-artifact .nbv-logo-fallback {
+    display: grid;
+    place-items: center;
+    font-weight: 800;
+    letter-spacing: .04em;
+    color: #2f6b3f;
+    background: #f3f7f1;
+    border: 2px solid #2f6b3f;
+    border-radius: 14px;
+    line-height: 1;
+}
+
+/* Four-segment companies.
+ *
+ * The notebook's legend panel is sized for the three segments the DE reference
+ * has. A fourth row pushed past the panel and landed on the profit-pool note
+ * below it. Tightening the rows keeps all four visible and legible rather than
+ * dropping one or letting them collide -- the segment mix is the point of the
+ * section. */
+.dd-artifact .nbv-seg-legend-4 .nbv-seg { margin-bottom: 2px; }
+.dd-artifact .nbv-seg-legend-4 .nbv-segcopy b { font-size: 11.5px; }
+.dd-artifact .nbv-seg-legend-4 .nbv-segcopy strong { font-size: 11px; }
+.dd-artifact .nbv-seg-legend-4 .nbv-segcopy small { font-size: 9.5px; line-height: 1.24; }

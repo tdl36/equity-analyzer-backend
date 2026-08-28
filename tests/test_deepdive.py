@@ -238,8 +238,10 @@ def test_a_repair_pass_that_makes_things_worse_is_discarded(golden):
 
     out, violations = dd.compress_onepager(master, fake_llm, json.loads)
     assert len(calls) == 2, 'a violating object should trigger one repair pass'
-    assert len(violations) == 1, 'the worse repair must be rejected'
-    assert dd._words(out['headline']) == 40
+    # Identify the winner by a structural difference rather than by length:
+    # output is hard-trimmed to budget afterwards, so word counts no longer
+    # distinguish the two candidates. `worse` dropped to three signposts.
+    assert len(out['signposts']) == 6, 'the worse repair must be rejected'
 
 
 def test_a_failed_repair_call_keeps_the_original(golden):
@@ -297,3 +299,66 @@ def test_a_freshly_saved_run_is_actually_fresh(golden, clean_db, clean_runs):
                ).total_seconds() / 60
     assert abs(age_min) < 5, f'stored clock is skewed by {age_min:.0f} minutes'
     assert dd.is_fresh(run) is True
+
+
+# ---------------------------------------------------------------------------
+# budgets must stay calibrated to the artifact that fits
+# ---------------------------------------------------------------------------
+
+def test_budgets_are_tight_enough_to_catch_a_two_times_overrun(golden):
+    """The universal-template failure, pinned.
+
+    The one-pager's boxes are fixed rectangles at absolute coordinates, so
+    over-budget text overlaps the next section rather than reflowing. The first
+    set of budgets allowed ~2.5x the reference volume (115 words of
+    thesis_summary where the fitting artifact uses 42), so a real company came
+    back at roughly double DE in every field, passed with six trivial
+    violations, and rendered as overlapping mush.
+    """
+    _m, de_op, _s = golden
+
+    # Roughly what a verbose company returns: every prose field doubled.
+    verbose = dict(de_op)
+    verbose['thesis_summary'] = ' '.join(['word'] * 93)
+    verbose['overview_summary'] = ' '.join(['word'] * 58)
+    verbose['final_takeaway'] = ' '.join(['word'] * 62)
+    verbose['bull_case'] = [' '.join(['word'] * 11)] * 5
+
+    problems = dd.onepager_violations(verbose)
+    for field in ('thesis_summary', 'overview_summary', 'final_takeaway', 'bull_case'):
+        assert any(field in p for p in problems), f'{field} overrun not caught'
+
+
+def test_the_reference_artifact_still_passes_the_tighter_budgets(golden):
+    """Tightening must not condemn the calibration standard itself."""
+    _m, de_op, _s = golden
+    assert dd.onepager_violations(de_op) == []
+
+
+def test_nested_item_budgets_are_enforced(golden):
+    """Opportunity/threat/segment prose sits in fixed boxes too."""
+    _m, de_op, _s = golden
+    op = dict(de_op)
+    op['opportunities'] = [dict(o, detail=' '.join(['word'] * 30))
+                           for o in de_op['opportunities']]
+    assert any('opportunities[0].detail' in p for p in dd.onepager_violations(op))
+
+
+def test_reported_violations_describe_what_was_stored(golden):
+    """A trimmed field is no longer over budget, so it must not still be flagged.
+
+    Reporting "headline: 40 words (max 10)" after the headline has been cut to
+    10 would point at a problem that no longer exists in the saved artifact.
+    What matters to the reader is that the research came back too verbose.
+    """
+    master, op, _s = golden
+    verbose = dict(op, headline=' '.join(['word'] * 40))
+
+    def fake_llm(**kwargs):
+        return {'text': json.dumps(verbose)}
+
+    stored, violations = dd.compress_onepager(master, fake_llm, json.loads)
+    assert dd.onepager_violations(stored) == [], 'stored object must be in budget'
+    assert len(violations) == 1
+    assert violations[0].startswith('auto-trimmed to fit:')
+    assert 'headline' in violations[0]

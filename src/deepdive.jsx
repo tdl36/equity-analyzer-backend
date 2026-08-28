@@ -16,7 +16,7 @@ import * as React from 'react';
 import {
     notebookHTML, institutionalHTML, dashboardHTML, strategyHTML, editorialHTML,
     twopagerNotebookHTML, twopagerInstitutionalHTML, memoHTML, setCurrent,
-    strictClipFailures, collectLayoutQA,
+    strictClipFailures, collectLayoutQA, rebalanceLongform,
 } from './deepdive_render';
 
 const { useState, useEffect, useRef } = React;
@@ -112,6 +112,21 @@ export const DeepDiveArtifact = ({ run, view, template }) => {
         }
     }, [run, view, template]);
 
+    // The multi-page artifacts are laid out on fixed grid rows, and the
+    // prototype re-measured painted content after render to redistribute those
+    // rows. Skipping that step is why the memo clipped its financial and
+    // signpost sections on any company whose prose ran longer than Deere's --
+    // the rows stayed at their DE-calibrated proportions no matter what was in
+    // them. Runs after paint, and again once webfonts settle and change metrics.
+    useEffect(() => {
+        if (!html) return;
+        const run = () => { try { rebalanceLongform(); } catch (e) { console.warn('rebalance:', e); } };
+        const a = requestAnimationFrame(run);
+        const b = setTimeout(run, 450);
+        const c = setTimeout(run, 1200);
+        return () => { cancelAnimationFrame(a); clearTimeout(b); clearTimeout(c); };
+    }, [html]);
+
     // The v24 print rules key off `.onepager-view` / `.twopager-view` /
     // `.report-view`, so the artifact keeps the wrapper it was written for.
     const viewClass = view === 'twopager' ? 'twopager-view'
@@ -139,6 +154,9 @@ export const printArtifact = (view) => {
                   : view === 'memo' ? 'print-report' : 'print-onepager';
     const body = document.body;
     body.classList.add('dd-printing', viewCls);
+    // The prototype rebalanced once more with the print class active, because
+    // print styles change the available height.
+    try { rebalanceLongform(); } catch (e) { console.warn('rebalance before print:', e); }
     const cleanup = () => body.classList.remove(
         'dd-printing', 'print-onepager', 'print-twopager', 'print-report');
     try {

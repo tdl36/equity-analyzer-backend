@@ -126,6 +126,8 @@ Research standards:
 - Historical valuation figures must be sourced or marked N/A.
 - earnings_history: include 6-10 annual points ONLY when you can support them from reliable sources. It may mix actual and explicit forward estimates/management targets, but label estimates. If not reliable, return an empty points array.
 - segment mix_numeric must be a number only when mix is reasonably supported and the shares approximately sum to 100. Otherwise use 0.
+- CRITICAL, segments must be MUTUALLY EXCLUSIVE and COLLECTIVELY EXHAUSTIVE. Do not mix parent and child segments (e.g. reporting a services division AND its sub-units alongside it), and do not let overlapping eliminations push the total past 100. If the company's reported segments overlap or gross up above 100, choose one consistent level of the hierarchy and set mix_numeric so the shares sum to 100 (+/- 3). If you cannot do that honestly, set every mix_numeric to 0 and describe the split in words instead.
+- `mix` is a SHORT label rendered inside a pie slice, not a sentence. Use the share alone, e.g. "38%". Put any second metric (operating earnings share, growth) in `description`, never in `mix`.
 - financial_bullets should capture six decision-relevant facts, including cycle, margin/returns, balance sheet, or earnings context as appropriate.
 - management_targets should be 2-4 company-specific forward targets if publicly stated; otherwise use fewer items.
 - Great company and great stock are different questions.
@@ -175,25 +177,30 @@ Return VALID JSON ONLY with this exact schema:
   ]
 }
 
-EDITORIAL BUDGETS — these are MAXIMUMS, not targets. Preserve useful numbers and facts before explanatory prose:
+EDITORIAL BUDGETS — HARD MAXIMUMS, calibrated against a reference one-pager that
+is known to fit the fixed 1024x1536 canvas. These are not stylistic preferences:
+the page has fixed-size boxes at absolute coordinates, so text that exceeds a
+budget does not reflow, it overlaps the next section and content is lost.
+Compress ruthlessly. Preserve numbers and facts before explanatory prose:
 - headline <= 10 words
-- subheadline <= 20 words
-- thesis_summary 80-115 words
-- core_question <= 30 words
-- thesis_bullets exactly 5; each <= 20 words
-- overview_summary <= 70 words
-- segments max 4; description <= 18 words each
-- other_profit_pool <= 24 words
-- business_model exactly 4; description <= 18 words each
-- opportunities exactly 5; detail <= 16 words each; prioritize company-specific monetization, share-gain, installed-base, product-cycle, or capital-allocation drivers. Avoid generic macro themes such as population growth or infrastructure spending unless unusually company-specific, quantified, and central to the stock thesis
-- financial_bullets exactly 6; each <= 17 words
+- subheadline <= 16 words
+- thesis_summary <= 60 words (the reference uses 42 — aim near that, not at the cap)
+- core_question <= 24 words
+- thesis_bullets exactly 5; each <= 14 words
+- overview_summary <= 34 words
+- segments max 4; description <= 11 words each
+- other_profit_pool <= 20 words
+- business_model exactly 4; description <= 9 words each
+- opportunities exactly 5; detail <= 12 words each; prioritize company-specific monetization, share-gain, installed-base, product-cycle, or capital-allocation drivers. Avoid generic macro themes such as population growth or infrastructure spending unless unusually company-specific, quantified, and central to the stock thesis
+- financial_bullets exactly 6; each <= 12 words
 - targets 2-4; context <= 10 words each
 - valuation_metrics exactly 3; context <= 8 words each
-- valuation_callout <= 24 words
-- signposts exactly 6; each cell <= 12 words; prefer abbreviations such as rev, users/mo, GM, OROS when unambiguous
-- threats exactly 4; watch_for <= 28 words; prioritize explicit kill criteria, timing, and thresholds
-- bull_case and bear_case exactly 5 each; each <= 10 words; include an explicit stock/valuation outcome
-- final_takeaway <= 65 words
+- valuation_callout <= 22 words
+- signposts exactly 6; each cell <= 9 words; prefer abbreviations such as rev, users/mo, GM, OROS when unambiguous
+- threats exactly 4; watch_for <= 22 words; prioritize explicit kill criteria, timing, and thresholds
+- bull_case and bear_case exactly 5 each; each <= 6 words; these are telegraphic
+  bullets, not sentences — the reference averages 4 words per line
+- final_takeaway <= 50 words
 - bottom_line <= 12 words
 - secondary_bottom_line <= 7 words
 

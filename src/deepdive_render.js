@@ -391,8 +391,19 @@ const NB_LOGOS = {
   JPM:'https://cdn.simpleicons.org/chase/117ACA',
   CAT:'https://cdn.simpleicons.org/caterpillar/FFCD11'
 };
+// Logo policy, following the handoff's rule: a real high-resolution mark when
+// one is available, otherwise a crisp ticker plate. Deliberately NOT a favicon
+// service -- those are 16-32px and upscaling them is called out explicitly as
+// something never to do. Clearbit's logo API used to fill this gap but no longer
+// resolves at all, and firing a request that always fails is worse than not
+// firing one. So: curated marks, then the plate, which is a designed fallback
+// rather than a failure state.
+function nbLogoSrc(d){
+  return NB_LOGOS[String(d.ticker||'').toUpperCase()] || '';
+}
+
 function nbLogoHTML(d){
-  const src=NB_LOGOS[String(d.ticker||'').toUpperCase()];
+  const src=nbLogoSrc(d);
   if(!src) return `<div class="nbv-logo-fallback">${esc(d.ticker)}</div>`;
   return `<div class="nbv-logo-wrap"><img src="${src}" alt="${esc(d.company)} logo" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><div class="nbv-logo-fallback" style="display:none">${esc(d.ticker)}</div></div>`;
 }
@@ -404,9 +415,42 @@ function nbFrame(x,y,w,h,cls=''){
   const d=`M ${x+r} ${y+.6*j} Q ${x+w*.35} ${y-.5*j} ${x2-r} ${y+.35*j} Q ${x2+1} ${y} ${x2+.3*j} ${y+r} L ${x2-.25*j} ${y2-r} Q ${x2} ${y2+1} ${x2-r} ${y2-.3*j} Q ${x+w*.55} ${y2+.5*j} ${x+r} ${y2-.25*j} Q ${x-1} ${y2} ${x+.2*j} ${y2-r} L ${x-.2*j} ${y+r} Q ${x} ${y} ${x+r} ${y+.6*j} Z`;
   return `<path d="${d}" class="nbv-frame ${cls}"/>`;
 }
+// Registrant names carry legal suffixes that no research note prints. Dropping
+// them is what an analyst does by hand, and it is the difference between a
+// title that fits and one that shrinks to unreadable or clips. Applied only
+// when the full name will not fit, so short names are untouched.
+const LEGAL_SUFFIX_RE = /,?\s+(incorporated|corporation|company limited|limited|holdings? (plc|inc|ltd)|plc|inc\.?|corp\.?|ltd\.?|s\.a\.?|n\.v\.?|ag|sa|nv)$/i;
+
+function displayCompany(d){
+  const full = String(d.company||'').trim();
+  const ticker = String(d.ticker||'');
+  if (full.length + ticker.length + 3 <= 34) return full;
+  let short = full;
+  // Strip repeatedly: "Taiwan Semiconductor Manufacturing Company Limited"
+  // loses "Limited" then "Company".
+  for (let i = 0; i < 3; i++) {
+    const next = short.replace(LEGAL_SUFFIX_RE, '').trim();
+    if (next === short || next.length < 4) break;
+    short = next;
+    if (short.length + ticker.length + 3 <= 34) break;
+  }
+  return short || full;
+}
+
 function nbTitleSize(d){
-  const n=String(d.company||'').length + String(d.ticker||'').length + 3;
-  return n<=21?41:n<=27?37:n<=34?34:31;
+  // The floor used to be 31px, which still overflowed the header band for a
+  // name like "UnitedHealth Group Incorporated" and printed as
+  // "UNITEDHEALTH GROUP INCORPORAT". The ramp now continues down far enough
+  // that any realistic registrant name fits on one line.
+  // Measured against the header band, not guessed: the title is rendered in a
+  // condensed display face at roughly 0.62em per character, and the band is
+  // ~600px wide before the AT A GLANCE panel. "UnitedHealth Group Incorporated
+  // (UNH)" is 37 characters and lost its final D at 29px, so the ramp is
+  // derived rather than hand-tuned.
+  const n=displayCompany(d).length + String(d.ticker||'').length + 3;
+  const BAND_PX = 596, PER_CHAR_EM = 0.62;
+  const fitted = Math.floor(BAND_PX / (n * PER_CHAR_EM));
+  return Math.max(19, Math.min(41, fitted));
 }
 function nbSectionTitle(n,title,extra=''){
   return `<div class="nbv-title"><span class="nbv-num">${esc(n)}</span><b>${esc(title)}</b>${extra?`<small>${esc(extra)}</small>`:''}</div>`;
@@ -416,14 +460,59 @@ function pieArc(cx,cy,r,a0,a1){
   const p0=piePoint(cx,cy,r,a0),p1=piePoint(cx,cy,r,a1),large=(a1-a0)>180?1:0;
   return `M ${cx} ${cy} L ${p0[0].toFixed(2)} ${p0[1].toFixed(2)} A ${r} ${r} 0 ${large} 1 ${p1[0].toFixed(2)} ${p1[1].toFixed(2)} Z`;
 }
+// A slice can only carry a couple of characters. `mix` is prose in the wild --
+// UNH returns "72% rev, 55% op earnings" -- and printing that inside the wedge
+// is what turned the chart into overlapping mush. Take the leading percentage
+// when there is one, else the computed share, so the label always fits and
+// always agrees with the geometry.
+// The prototype hardcoded "(By Equipment Sales)", which is true of Deere and
+// false of every other company. Say what the shares are actually of, and say
+// nothing when the numbers do not add up rather than implying precision.
+function segmentBasis(d){
+  const segs = (d.segments||[]).filter(x=>Number(x.mix_numeric)>0);
+  const total = segs.reduce((a,x)=>a+Number(x.mix_numeric||0),0);
+  if (!segs.length) return '';
+  if (Math.abs(total-100) > 6) return '(share of revenue, indicative)';
+  return '(share of revenue)';
+}
+
+function pieLabel(item, value, total){
+  const share = total ? Math.round(value / total * 100) : 0;
+  const m = String((item && item.mix) || '').match(/(\d{1,3}(?:\.\d)?)\s*%/);
+  if (m) {
+    const stated = Number(m[1]);
+    // If the stated shares do not close to 100 the wedge cannot match the
+    // label; show the normalised share so the picture is not a lie.
+    if (Math.abs(total - 100) <= 6) return `${m[1]}%`;
+    return `${share}%`;
+  }
+  return share ? `${share}%` : '';
+}
+
 function nbPieSVG(items,cx,cy,r){
   const vals=(items||[]).map(x=>Math.max(0,Number(x.mix_numeric??x.value)||0)), total=vals.reduce((a,b)=>a+b,0)||1;
   const cols=['#98bf65','#9fc3e7','#ebc85d','#baa2d2']; let a=0; const out=[];
-  vals.forEach((v,i)=>{const a1=a+v/total*360;out.push(`<path class="nbv-pie-slice" d="${pieArc(cx,cy,r,a,a1)}" fill="${cols[i%cols.length]}" stroke="#3f3b34" stroke-width="1.05" filter="url(#nbRough)"/>`); const mid=(a+a1)/2, pt=piePoint(cx,cy,r*.58,mid); out.push(`<text x="${pt[0].toFixed(1)}" y="${pt[1].toFixed(1)}" class="nbv-pie-label" text-anchor="middle">${esc(items[i].mix||'')}</text>`); a=a1;});
+  vals.forEach((v,i)=>{const a1=a+v/total*360;out.push(`<path class="nbv-pie-slice" d="${pieArc(cx,cy,r,a,a1)}" fill="${cols[i%cols.length]}" stroke="#3f3b34" stroke-width="1.05" filter="url(#nbRough)"/>`); const mid=(a+a1)/2, pt=piePoint(cx,cy,r*.58,mid); out.push(`<text x="${pt[0].toFixed(1)}" y="${pt[1].toFixed(1)}" class="nbv-pie-label" text-anchor="middle">${esc(pieLabel(items[i],v,total))}</text>`); a=a1;});
   return out.join('');
 }
 function nbIcon(name, size=24){return `<span class="nbv-icon" style="width:${size}px;height:${size}px">${ICONS[name]||ICONS.product}</span>`;}
-function nbRich(text){const safe=esc(text||'');return safe.replace(/(\$?~?\d[\d,.]*(?:[-–]\d[\d,.]*)?%?x?|\$\d[\d,.]*(?:[-–]\d[\d,.]*)?\+?)/g,'<strong class="nbv-numhi">$1</strong>');}
+const NUM_RE = /(\$?~?\d[\d,.]*(?:[-–]\d[\d,.]*)?%?x?\+?)/g;
+// Highlight numbers on the RAW string, escaping each fragment as it is emitted.
+// The original escaped first and highlighted second, so the number regex matched
+// the "39" inside the &#39; that esc() had just produced for an apostrophe,
+// split the entity across a <strong>, and the browser printed a literal
+// "&#39;" -- which is why "Q3'24" rendered as "Q3&#39;24".
+function nbRich(text){
+  const raw = String(text ?? 'N/A');
+  let out = '', last = 0, m;
+  NUM_RE.lastIndex = 0;
+  while ((m = NUM_RE.exec(raw)) !== null) {
+    out += esc(raw.slice(last, m.index));
+    out += `<strong class="nbv-numhi">${esc(m[0])}</strong>`;
+    last = m.index + m[0].length;
+  }
+  return out + esc(raw.slice(last));
+}
 function nbIdentity(d){const x=d.identity||{};return [['Ticker',`${d.ticker} (${x.exchange||'N/A'})`],['HQ',x.hq],['Founded',x.founded],['Employees',x.employees],['FY End',x.fy_end],['Website',x.website]].map(r=>`<div><b>${esc(r[0])}:</b> ${esc(r[1])}</div>`).join('');}
 function nbThesisArtwork(d){
   if(String(d.ticker||'').toUpperCase()!=='DE') return `<div class="nbv-thesis-note">${esc(d.subheadline||'')}</div>`;
@@ -444,9 +533,14 @@ function notebookHTML(d,m){
   const Y3=800,H3=438;
   const Y4=1246,H4=228;
   const segs=(d.segments||[]).slice(0,4);
+  // The legend box is calibrated for three segments, which is what the DE
+  // reference has. A four-segment company (UNH: UHC / Health / Rx / Insight)
+  // overflowed it and the fourth row landed on top of the profit-pool note.
+  // Tag the count so CSS can tighten the rows instead of losing one.
+  const segCountCls = segs.length >= 4 ? ' nbv-seg-legend-4' : '';
   const segLegend=segs.map((x,i)=>`<div class="nbv-seg"><span class="swatch s${i}"></span><div class="nbv-segcopy"><b>${esc(x.short_name||x.name)}</b><strong>${esc(x.mix)}</strong><small>${esc(x.description)}</small></div></div>`).join('');
   const thesis=`${nbSectionTitle('1','INVESTMENT THESIS')}<p class="lead">${esc(d.thesis_summary)}</p><div class="nbv-question">${esc(d.core_question)}</div><ul class="nbv-checks">${(d.thesis_bullets||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul>${nbThesisArtwork(d)}`;
-  const overview=`${nbSectionTitle('2','COMPANY OVERVIEW')}<p class="lead">${esc(d.overview_summary)}</p><div class="nbv-minihead">KEY SEGMENTS <span>(By Equipment Sales)</span></div><div class="nbv-seg-legend">${segLegend}</div><div class="nbv-profit-note">${esc(d.other_profit_pool)}</div>`;
+  const overview=`${nbSectionTitle('2','COMPANY OVERVIEW')}<p class="lead">${esc(d.overview_summary)}</p><div class="nbv-minihead">KEY SEGMENTS <span>${esc(segmentBasis(d))}</span></div><div class="nbv-seg-legend${segCountCls}">${segLegend}</div><div class="nbv-profit-note">${esc(d.other_profit_pool)}</div>`;
   const business=`${nbSectionTitle('3','BUSINESS MODEL','— MULTIPLE PROFIT POOLS')}<div class="nbv-pools">${(d.business_model||[]).slice(0,4).map((x,i)=>`${i?'<i class="nbv-plus">+</i>':''}<div class="nbv-pool">${nbIcon(poolIconName(x.name),28)}<b>${esc(x.name)}</b><span>${esc(x.description)}</span></div>`).join('')}</div><div class="nbv-life">Captures value across the customer life cycle. <b>→</b></div>`;
   const opps=`${nbSectionTitle('4','KEY OPPORTUNITIES')}<div class="nbv-opps">${(d.opportunities||[]).slice(0,5).map(x=>`<div class="nbv-opp">${nbIcon(x.icon,31)}<div><b>${esc(x.title)}</b><span>${esc(x.detail)}</span></div></div>`).join('')}</div>`;
   const financial=`${nbSectionTitle('5','FINANCIAL SNAPSHOT','(FY / Latest)')}<div class="nbv-fin-top"><ul>${(d.financial_bullets||[]).slice(0,6).map(x=>`<li>${nbRich(x)}</li>`).join('')}</ul><div class="nbv-target"><h3>MID-CYCLE<br/>TARGETS</h3>${(d.targets||[]).slice(0,4).map(x=>`<div><span>${esc(x.label)}</span><b>${esc(x.value)}</b></div>`).join('')}</div></div><div class="nbv-chart-title">Earnings Are Cyclical <span>${esc(d.earnings_history?.metric||'')}</span></div><div class="nbv-fin-lower"><div class="nbv-chart">${earningsChartSVG(d.earnings_history,'nbv-chart-svg')}<div class="nbv-cycle-note">${esc(d.earnings_history?.cycle_note||'')}</div></div><div class="nbv-val"><h3>VALUATION <span>(Today)</span></h3>${(d.valuation_metrics||[]).slice(0,4).map(x=>`<div class="nbv-val-row"><span>${esc(x.label)}</span><b>${esc(x.value)}</b></div>`).join('')}<strong>${esc(d.valuation_callout)}</strong></div></div>`;
@@ -460,7 +554,7 @@ function notebookHTML(d,m){
     </defs>
     <rect width="1024" height="1536" fill="#f7f1e5"/><rect width="1024" height="1536" filter="url(#paperNoise)" opacity=".31"/>
     ${fo(18,12,196,154,nbLogoHTML(d),'nbv-logo-area')}
-    ${fo(228,20,558,134,`<h1 style="font-size:${nbTitleSize(d)}px">${esc(d.company.toUpperCase())} <span>(${esc(d.ticker)})</span></h1><h2>${esc(d.headline)}</h2><div class="goldline"></div>`,'nbv-head')}
+    ${fo(228,20,558,134,`<h1 style="font-size:${nbTitleSize(d)}px">${esc(displayCompany(d).toUpperCase())} <span>(${esc(d.ticker)})</span></h1><h2>${esc(d.headline)}</h2><div class="goldline"></div>`,'nbv-head')}
     ${nbFrame(804,14,206,154,'glance')}${fo(814,24,186,134,`<h3>AT A GLANCE</h3>${nbIdentity(d)}`,'nbv-glance')}
     <path d="M14 170 Q258 168 520 170 T1010 170" class="nbv-rule"/>
     ${nbFrame(X1,Y1,W1,H1)}${fo(X1+12,Y1+8,W1-24,H1-16,thesis,'nbv-section thesis')}
@@ -480,10 +574,10 @@ function notebookHTML(d,m){
 
 // ---------- READABLE TWO-PAGER · v13 REBUILD ----------
 function tpHeader(d,page,subtitle=''){
-  return `<header class="tp-header">${nbLogoHTML(d)}<div class="tp-header-title"><div class="tp-kicker">INVESTMENT RESEARCH · ${esc(d.ticker)} · PAGE ${page}/2</div><h1>${esc(d.company)} <span>(${esc(d.ticker)})</span></h1><p>${esc(subtitle||d.headline)}</p></div>${CURRENT?.master?tpMarketSnapshot(CURRENT.master):''}</header>`;
+  return `<header class="tp-header">${nbLogoHTML(d)}<div class="tp-header-title"><div class="tp-kicker">INVESTMENT RESEARCH · ${esc(d.ticker)} · PAGE ${page}/2</div><h1>${esc(displayCompany(d))} <span>(${esc(d.ticker)})</span></h1><p>${esc(subtitle||d.headline)}</p></div>${CURRENT?.master?tpMarketSnapshot(CURRENT.master):''}</header>`;
 }
 function tpRunningHeader(d,page,subtitle=''){
-  return `<header class="tp-running-header"><div><b>${esc(d.company)} <span>(${esc(d.ticker)})</span></b><small>${esc(subtitle)}</small></div><em>PAGE ${page}/2</em></header>`;
+  return `<header class="tp-running-header"><div><b>${esc(displayCompany(d))} <span>(${esc(d.ticker)})</span></b><small>${esc(subtitle)}</small></div><em>PAGE ${page}/2</em></header>`;
 }
 function tpPieSVG(items){
   const vals=(items||[]).map(x=>Math.max(0,Number(x.mix_numeric??x.value)||0)), total=vals.reduce((a,b)=>a+b,0)||1;
