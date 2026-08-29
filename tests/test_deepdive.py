@@ -564,3 +564,19 @@ def test_the_reference_master_survives_every_cap(golden):
     master, _op, _s = golden
     _out, trimmed = dd.enforce_master_budgets(master)
     assert trimmed == [], f'DE reference was trimmed: {trimmed}'
+
+
+def test_buildinfo_reports_deployed_features_without_auth(client):
+    """Deploy state must be observable from outside.
+
+    The auth gate 401s every path including ones that do not exist, so a missing
+    route and an unauthenticated caller are indistinguishable. That ambiguity
+    made "is this deployed?" unanswerable during a live incident.
+    """
+    body = client.get('/api/buildinfo').get_json()
+    assert body['ok'] is True
+    assert body['features']['deepdive'] is True
+    assert body['features']['explain'] is True
+    assert body['routeCount'] > 50
+    # nothing sensitive
+    assert 'password' not in json.dumps(body).lower()

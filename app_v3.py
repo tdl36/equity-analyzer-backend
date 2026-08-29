@@ -229,7 +229,10 @@ CHARLIE_API_KEY = os.environ.get('CHARLIE_API_KEY', '')
 _AUTH_SECRET = os.environ.get('CHARLIE_AUTH_SECRET', CHARLIE_API_KEY or 'charlie-default-secret')
 
 # Public paths that don't require auth
-AUTH_EXEMPT_PATHS = {'/health', '/api/agent/health', '/api/auth/config', '/api/auth/login'}
+_PROCESS_STARTED_AT = datetime.utcnow().isoformat()
+
+AUTH_EXEMPT_PATHS = {'/health', '/api/agent/health', '/api/auth/config', '/api/auth/login',
+                     '/api/buildinfo'}
 
 def _make_session_token(password):
     """Create an HMAC session token from the password."""
@@ -18994,6 +18997,34 @@ def _run_deepdive_job(job_id, ticker, keys, force=False):
         print(f'[deepdive] job {job_id} failed: {e}')
         _deepdive_jobs[job_id].update({'status': 'failed', 'step': '',
                                        'error': str(e)[:600]})
+
+
+@app.route('/api/buildinfo', methods=['GET'])
+def buildinfo():
+    """What is actually deployed. Deliberately exempt from the auth gate.
+
+    The gate returns 401 for every path including ones that do not exist, so
+    from outside there is no way to tell "route missing because the deploy did
+    not land" from "route present, you are just not signed in". That ambiguity
+    cost a lot of guesswork; this makes deploy state observable without
+    exposing anything sensitive -- just which feature routes the running
+    process has registered.
+    """
+    try:
+        rules = {r.rule for r in app.url_map.iter_rules()}
+        return jsonify({
+            'ok': True,
+            'startedAt': _PROCESS_STARTED_AT,
+            'features': {
+                'deepdive': '/api/deepdive/analyze' in rules,
+                'explain': '/api/explain/depths' in rules,
+                'signposts': '/api/signposts/<ticker>/check' in rules,
+                'thesisRevisions': '/api/thesis/<ticker>/revisions' in rules,
+            },
+            'routeCount': len(rules),
+        })
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
 
 
 @app.route('/api/deepdive/analyze', methods=['POST'])
