@@ -547,9 +547,10 @@ def test_kpi_values_are_figures_not_sentences(golden):
     master, _op, _s = golden
     verbose = json.loads(json.dumps(master))
     verbose['financial_snapshot']['revenue'] = (
-        '$445-448 billion for 2025 under current management guidance, adjusted')
+        '$445-448 billion for full year 2025 under current management guidance, '
+        'adjusted for divestitures')
     out, trimmed = dd.enforce_master_budgets(verbose)
-    assert dd._words(out['financial_snapshot']['revenue']) <= 5
+    assert dd._words(out['financial_snapshot']['revenue']) <= 8
     assert any('revenue' in t for t in trimmed)
 
 

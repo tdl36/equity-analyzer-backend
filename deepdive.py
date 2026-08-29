@@ -328,6 +328,23 @@ def enforce_budgets(d):
 
 # MEMO BUDGETS.
 #
+# THESE ARE A BACKSTOP, NOT A FIT MECHANISM.
+#
+# They were briefly tightened to Deere parity to force UNH's memo to fit, and
+# printed exactly what that implies: sentences cut mid-clause -- "Bear: Aetna
+# margin...", "must translate...", "Signify's...". That is deleting research to
+# fit a box, and it reads as broken rather than concise.
+#
+# Fitting is mostly autoFitSections()' job: it scales an overflowing section
+# down to 0.86 and keeps every word. The floor is not lowered further because
+# below it the memo's body type drops under the readability threshold the
+# handoff treats as non-negotiable -- so the two sections that still overran at
+# the floor (overview, financial) carry moderate caps, at roughly 2-3x Deere
+# rather than the parity that produced mid-sentence cuts. Everything else exists
+# only to stop genuinely absurd output -- a 190-word "bottom line", seven threats in a grid built for
+# four -- and sit well clear of what a normal company returns. Where a limit
+# does bite, it should be cutting waffle, not the end of an argument.
+#
 # The two-pager and the 3-page memo render from the MASTER object, which had no
 # budgets at all -- only the one-pager was ever compressed. So a verbose company
 # walked straight into fixed-height memo sections: UNH returned a 190-word final
@@ -342,63 +359,63 @@ _MASTER_WORD_BUDGETS = [
     # cap sits ~30% above DE's own value; where a field had no cap at all the
     # gap was enormous -- variant_view came back at 86 words against Deere's 20,
     # and it feeds both the thesis and decision sections.
-    (("investment_thesis", "summary"), 118),        # DE 118 exactly
-    (("investment_thesis", "variant_view"), 28),    # DE 20
-    (("company_overview", "summary"), 58),          # DE 55
-    (("final_takeaway",), 44),                      # DE 39
-    (("bottom_line",), 14),                         # DE 6
+    (("investment_thesis", "summary"), 260),        # DE 118; research prompt asks 160-240
+    (("investment_thesis", "variant_view"), 70),    # DE 20
+    (("company_overview", "summary"), 100),         # DE 55
+    (("final_takeaway",), 110),                     # DE 39
+    (("bottom_line",), 30),                         # DE 6
     # The valuation panel and metric captions on memo page 2. All were
     # uncapped, and a live run returned a 101-word valuation_comment against
     # Deere's 14 -- the panel rendered 787px tall inside a 390px box, which was
     # the single largest source of clipping anywhere in the memo.
-    (("financial_snapshot", "valuation_comment"), 20),   # DE 14
-    (("financial_snapshot", "revenue_context"), 10),     # DE 5
-    (("financial_snapshot", "margin_context"), 10),      # DE 5
-    (("financial_snapshot", "eps_context"), 10),         # DE 7
-    (("financial_snapshot", "fcf_context"), 10),         # DE 2
-    (("financial_snapshot", "returns"), 9),              # DE 5
-    (("financial_snapshot", "leverage"), 9),             # DE 5
-    (("financial_snapshot", "historical_pe"), 9),        # DE 6
+    (("financial_snapshot", "valuation_comment"), 40),   # DE 14
+    (("financial_snapshot", "revenue_context"), 26),     # DE 5
+    (("financial_snapshot", "margin_context"), 26),      # DE 5
+    (("financial_snapshot", "eps_context"), 26),         # DE 7
+    (("financial_snapshot", "fcf_context"), 26),         # DE 2
+    (("financial_snapshot", "returns"), 20),             # DE 5
+    (("financial_snapshot", "leverage"), 20),            # DE 5
+    (("financial_snapshot", "historical_pe"), 20),       # DE 6
     # The note under the earnings chart on every artifact. Uncapped, and the
     # largest remaining gap: 61 words against Deere's 13.
-    (("earnings_history", "cycle_note"), 18),            # DE 13
-    (("investment_thesis", "core_question"), 22),        # DE 16
-    (("tagline",), 10),                                  # DE 7
+    (("earnings_history", "cycle_note"), 45),            # DE 13
+    (("investment_thesis", "core_question"), 45),        # DE 16
+    (("tagline",), 24),                                  # DE 7
     # The headline numbers on the six KPI cards. Uncapped, and a live run
     # returned values like "$445-448 billion (2025 guidance)" where Deere has
     # "$51.7B" -- each card grew to 165px against Deere's ~110, which is the
     # whole of the remaining page-2 overflow. These are figures, not sentences;
     # the qualifier belongs in the card's context line.
-    (("financial_snapshot", "revenue"), 5),
-    (("financial_snapshot", "operating_margin"), 5),
-    (("financial_snapshot", "eps"), 5),
-    (("financial_snapshot", "free_cash_flow"), 5),
-    (("financial_snapshot", "forward_pe"), 5),
-    (("financial_snapshot", "ev_ebitda"), 5),
-    (("financial_snapshot", "fcf_yield"), 5),
+    (("financial_snapshot", "revenue"), 8),
+    (("financial_snapshot", "operating_margin"), 8),
+    (("financial_snapshot", "eps"), 8),
+    (("financial_snapshot", "free_cash_flow"), 8),
+    (("financial_snapshot", "forward_pe"), 8),
+    (("financial_snapshot", "ev_ebitda"), 8),
+    (("financial_snapshot", "fcf_yield"), 8),
 ]
 
 # (path, exact_count) -- the memo renderers lay these out in fixed grids, so a
 # long list overruns the page and a short one leaves a hole.
 _MASTER_LIST_CAPS = [
-    (("investment_thesis", "what_market_prices_in"), 3, 12),   # DE max 9
-    (("investment_thesis", "what_must_be_true"), 3, 12),       # DE max 9
-    (("investment_thesis", "falsification"), 3, 12),           # DE max 10
+    (("investment_thesis", "what_market_prices_in"), 3, 30),   # DE max 9
+    (("investment_thesis", "what_must_be_true"), 3, 30),       # DE max 9
+    (("investment_thesis", "falsification"), 3, 30),           # DE max 10
     # The two-pager renders these into a fixed box and they were never capped:
     # they drove tp-financial 41px past its bounds on the live UNH run.
     # These become the six KPI cards on memo page 2 and the bullet column on the
     # two-pager. At 14 words they wrapped to extra lines and pushed the metrics
     # block from Deere's 231px to 336px, which is most of the overflow on that
     # page. DE's own maximum is 10.
-    (("financial_snapshot", "financial_bullets"), 6, 10),
+    (("financial_snapshot", "financial_bullets"), 6, 14),
     (("opportunities",), 5, None),
     (("business_model",), 4, None),
     (("signposts",), 6, None),
     (("thesis_threats",), 4, None),
     (("catalysts",), 3, None),
     # These render as telegraphic lines, not sentences: Deere averages 4 words.
-    (("bull_case",), 5, 8),    # DE has 5, max 4 words
-    (("bear_case",), 5, 8),    # DE has 5, max 4 words
+    (("bull_case",), 5, 18),   # DE has 5
+    (("bear_case",), 5, 18),   # DE has 5
 ]
 
 # Per-item prose inside those lists.
@@ -406,18 +423,18 @@ _MASTER_ITEM_WORDS = [
     # Uncapped until a live run returned 40-word segment descriptions against
     # Deere's 8, which is most of why the memo's overview section ran 170px past
     # its box. These sit in a three-across grid; they are labels, not prose.
-    (("company_overview", "segments"), "description", 8),    # DE max 8 exactly:
+    (("company_overview", "segments"), "description", 13),   # DE max 8
     # a four-segment company has to fit the space Deere's three occupy
-    (("opportunities",), "detail", 18),             # DE max 14
-    (("business_model",), "description", 13),       # DE max 10
-    (("thesis_threats",), "watch_for", 22),         # DE max 17
-    (("signposts",), "why_it_matters", 10),         # DE max 7
-    (("catalysts",), "why_it_matters", 11),         # DE max 8
-    (("financial_snapshot", "management_targets"), "context", 6),   # DE max 2
+    (("opportunities",), "detail", 40),             # DE max 14
+    (("business_model",), "description", 30),       # DE max 10
+    (("thesis_threats",), "watch_for", 45),         # DE max 17
+    (("signposts",), "why_it_matters", 42),         # DE max 7
+    (("catalysts",), "why_it_matters", 26),         # DE max 8
+    (("financial_snapshot", "management_targets"), "context", 20),  # DE max 2
     # Never capped before, and the worst offender: UNH returned 50-word scenario
     # logic against Deere's 6, which is most of why the decision section on page
     # 3 ran 127px past its box.
-    (("valuation_scenarios",), "logic", 10),        # DE max 6
+    (("valuation_scenarios",), "logic", 26),        # DE max 6
 ]
 
 

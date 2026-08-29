@@ -1,3 +1,4 @@
+
 // Deep Dive — a thin React wrapper around the ported v24 renderers.
 //
 // The artifacts are built by src/deepdive_render.js, which is the prototype's
@@ -206,23 +207,55 @@ export const autoFitSections = (root) => {
  * additionally suppress its own chrome, or the PDF is a shrunken canvas
  * surrounded by navigation.
  */
+
 export const printArtifact = (view) => {
     if (typeof document === 'undefined') return;
     const viewCls = view === 'twopager' ? 'print-twopager'
                   : view === 'memo' ? 'print-report' : 'print-onepager';
     const body = document.body;
+    const art = document.querySelector('.dd-artifact');
+    if (!art) { window.print(); return; }
+
+    // Move the artifact to be a direct child of <body> for the duration of the
+    // print, and put it back afterwards.
+    //
+    // Hiding Charlie's chrome with visibility:hidden PRESERVES its layout, so
+    // every hidden toolbar and nav still occupied space above the artifact and
+    // the printed page opened with a huge white gap. Absolute positioning did
+    // not rescue it either, because `top:0` resolves against the nearest
+    // positioned ancestor -- of which the app has several -- not against the
+    // page. Reparenting to <body> removes both problems: there is nothing above
+    // it and nothing between it and the page box.
+    const home = art.parentNode;
+    const marker = document.createComment('dd-artifact-home');
+    home.insertBefore(marker, art);
+    body.appendChild(art);
     body.classList.add('dd-printing', viewCls);
-    // The prototype rebalanced once more with the print class active, because
-    // print styles change the available height.
+
+    // Print styles change the available height, so rows and fit are recomputed
+    // with the print class active, exactly as the prototype did.
     try { rebalanceLongform(); } catch (e) { console.warn('rebalance before print:', e); }
-    const cleanup = () => body.classList.remove(
-        'dd-printing', 'print-onepager', 'print-twopager', 'print-report');
+    try { autoFitSections(art); } catch (e) { console.warn('autofit before print:', e); }
+
+    let restored = false;
+    const restore = () => {
+        if (restored) return;
+        restored = true;
+        body.classList.remove('dd-printing', 'print-onepager', 'print-twopager', 'print-report');
+        if (marker.parentNode) {
+            marker.parentNode.insertBefore(art, marker);
+            marker.remove();
+        }
+        // Re-fit for the screen, whose available height differs again.
+        try { rebalanceLongform(); autoFitSections(art); } catch (e) { /* screen only */ }
+    };
+
+    window.addEventListener('afterprint', restore, { once: true });
     try {
         window.print();
     } finally {
-        // afterprint is not reliable everywhere, so belt-and-braces.
-        window.addEventListener('afterprint', cleanup, { once: true });
-        setTimeout(cleanup, 1000);
+        // afterprint is not reliable everywhere; never leave the DOM rearranged.
+        setTimeout(restore, 1500);
     }
 };
 

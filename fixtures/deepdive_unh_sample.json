@@ -314,7 +314,7 @@
     "title": "The Change Healthcare Cyberattack"
    }
   ],
-  "tagline": "America's largest health insurer and diversified health-services conglomerate navigating margin\u2026",
+  "tagline": "America's largest health insurer and diversified health-services conglomerate navigating margin pressures while targeting 13\u201316% long-term EPS growth",
   "at_glance": {
    "hq": "Minnetonka, Minnesota",
    "fy_end": "December 31",
@@ -329,16 +329,16 @@
    "share_price": "$395\u2013400"
   },
   "bear_case": [
-   "Structural margin reset: Medicare cuts, persistent commercial inflation\u2026",
-   "Medicare Advantage enrollment in secular decline: benefit reductions\u2026",
-   "Regulatory and political risk underappreciated: DOJ antitrust scrutiny\u2026",
-   "Valuation not cheap on trough earnings: ~20\u00d7 multiple\u2026"
+   "Structural margin reset: Medicare cuts, persistent commercial inflation, and Optum ramp costs may prove\u2026",
+   "Medicare Advantage enrollment in secular decline: benefit reductions and competitor exits leave seniors disillusioned\u2026",
+   "Regulatory and political risk underappreciated: DOJ antitrust scrutiny of Optum-UnitedHealthcare integration, PBM rebate clawbacks\u2026",
+   "Valuation not cheap on trough earnings: ~20\u00d7 multiple on cyclically depressed base-case EPS is\u2026"
   ],
   "bull_case": [
-   "Self-help in motion: benefit cuts, selective MA exits\u2026",
-   "Optum integration is undervalued: vertical model capturing margin\u2026",
-   "Demographics remain favorable: Medicare aging wave continues through\u2026",
-   "Valuation discount unwarranted: trading ~20\u00d7 2026E vs. 22\u00d7\u2026"
+   "Self-help in motion: benefit cuts, selective MA exits, and pricing discipline are management-controlled levers\u2026",
+   "Optum integration is undervalued: vertical model capturing margin from pharmacy, care delivery, and IT\u2026",
+   "Demographics remain favorable: Medicare aging wave continues through 2030; even at flat penetration, absolute\u2026",
+   "Valuation discount unwarranted: trading ~20\u00d7 2026E vs. 22\u00d7 historical average despite fortress balance sheet\u2026"
   ],
   "catalysts": [
    {
@@ -362,37 +362,37 @@
     "target": "<85% by Q4 2026",
     "current": "86.7% (Q2 2026)",
     "signpost": "UnitedHealthcare Medical-Loss Ratio",
-    "why_it_matters": "Normalized MCR in low-80s is required to restore UnitedHealthcare segment\u2026"
+    "why_it_matters": "Normalized MCR in low-80s is required to restore UnitedHealthcare segment margins to 5%+. Two consecutive quarters below 85% would confirm pricing and benefit redesigns are working, validating the earnings recovery thesis."
    },
    {
     "target": "Stabilize or grow in 2027",
     "current": "-1.1M expected 2026",
     "signpost": "Medicare Advantage Net Member Change",
-    "why_it_matters": "Deliberate membership pruning to shed unprofitable lives is defensible if\u2026"
+    "why_it_matters": "Deliberate membership pruning to shed unprofitable lives is defensible if margins improve and growth resumes in 2027. Continued declines beyond 2026 would signal competitive or regulatory pressure is structural, threatening long-term algorithm."
    },
    {
     "target": "6\u20138% by late 2026",
     "current": "1.0% (Q3 2025)",
     "signpost": "Optum Health Operating Margin",
-    "why_it_matters": "Optum Health historically earned high-single-digit margins; current 1% reflects expansion\u2026"
+    "why_it_matters": "Optum Health historically earned high-single-digit margins; current 1% reflects expansion costs and coding headwinds. Recovery to 6%+ is essential for consolidated margin targets; failure would indicate value-based care model is not scaling profitably."
    },
    {
     "target": "8\u201310% sustained",
     "current": "~2% Y/Y (Q1 2026)",
     "signpost": "Quarterly Revenue Growth (Consolidated)",
-    "why_it_matters": "UNH historically grew revenue high-single digits to low-teens. Anemic Q1\u2026"
+    "why_it_matters": "UNH historically grew revenue high-single digits to low-teens. Anemic Q1 2026 growth (2%) raises questions about volume trends; reacceleration to 8\u201310% would confirm top-line momentum supports margin leverage and 13\u201316% EPS target."
    },
    {
     "target": ">$35B (2026)",
     "current": "$32\u201333B (2025E)",
     "signpost": "Operating Cash Flow Conversion",
-    "why_it_matters": "Cash generation exceeding $35 billion annually validates that reported earnings\u2026"
+    "why_it_matters": "Cash generation exceeding $35 billion annually validates that reported earnings are real and supports aggressive capital returns ($14+ billion dividends + buybacks). Deterioration below $30 billion would be a red flag on underlying earnings quality."
    },
    {
     "target": "\u2265$20.00 delivered",
     "current": "$19.50\u201320.00 (guidance)",
     "signpost": "Full-Year 2026 Adjusted EPS (Actual)",
-    "why_it_matters": "Management has raised 2026 guidance twice; delivering at or above\u2026"
+    "why_it_matters": "Management has raised 2026 guidance twice; delivering at or above the high end would restore Street confidence and set up 2027 for mid-teens growth. A miss below $19.50 would reignite concerns that margin pressures are more severe than acknowledged."
    }
   ],
   "bottom_line": "BUY for disciplined value investors willing to give management two years to demonstrate margin\u2026",
@@ -441,7 +441,7 @@
     "description": "Optum Insight sells software subscriptions, consulting, and outsourced administrative services to hospitals, physician\u2026"
    }
   ],
-  "final_takeaway": "UnitedHealth Group's investment case hinges on execution of a margin-recovery playbook after the most challenging period in company history. Management contends 2025 represented a perfect storm\u2014cyberattack costs, Medicare funding cuts, elevated medical trends\u2014and that deliberate actions (pricing, benefit design, MA membership pruning) will restore\u2026",
+  "final_takeaway": "UnitedHealth Group's investment case hinges on execution of a margin-recovery playbook after the most challenging period in company history. Management contends 2025 represented a perfect storm\u2014cyberattack costs, Medicare funding cuts, elevated medical trends\u2014and that deliberate actions (pricing, benefit design, MA membership pruning) will restore profitability to historical norms by 2027. The 2026 guidance raise to $19.50\u201320.00 EPS and reaffirmed 13\u201316%\u2026",
   "thesis_threats": [
    {
     "icon": "regulation",
@@ -465,34 +465,34 @@
    }
   ],
   "company_overview": {
-   "summary": "UnitedHealth Group is the nation's preeminent health-services enterprise, serving ~145 million individuals globally through two complementary platforms. UnitedHealthcare provides medical benefits\u2014commercial employer, Medicare Advantage, Medicaid, and individual plans\u2014to roughly 50 million people domestically; it collects premiums and bears insurance risk. Optum operates the health-services infrastructure: OptumHealth delivers value-based primary and specialty care to 30+ million consumers; OptumInsight provides\u2026",
+   "summary": "UnitedHealth Group is the nation's preeminent health-services enterprise, serving ~145 million individuals globally through two complementary platforms. UnitedHealthcare provides medical benefits\u2014commercial employer, Medicare Advantage, Medicaid, and individual plans\u2014to roughly 50 million people domestically; it collects premiums and bears insurance risk. Optum operates the health-services infrastructure: OptumHealth delivers value-based primary and specialty care to 30+ million consumers; OptumInsight provides technology, data analytics, and revenue-cycle solutions to payers and providers; OptumRx manages\u2026",
    "segments": [
     {
      "mix": "64%",
      "name": "UnitedHealthcare",
      "short_name": "Insurance",
-     "description": "Offers health insurance (employer group, Medicare, Medicaid, individual\u2026",
+     "description": "Offers health insurance (employer group, Medicare, Medicaid, individual exchange) to ~50 million U.S\u2026",
      "mix_numeric": 64
     },
     {
      "mix": "14%",
      "name": "Optum Health",
      "short_name": "Care Delivery",
-     "description": "Risk-based and fee-for-service primary care, specialty care, and\u2026",
+     "description": "Risk-based and fee-for-service primary care, specialty care, and surgical services through employed and\u2026",
      "mix_numeric": 14
     },
     {
      "mix": "3%",
      "name": "Optum Insight",
      "short_name": "Tech & Analytics",
-     "description": "Revenue-cycle management, clinical decision support, and data-analytics software\u2026",
+     "description": "Revenue-cycle management, clinical decision support, and data-analytics software for health systems and payers\u2026",
      "mix_numeric": 3
     },
     {
      "mix": "19%",
      "name": "Optum Rx",
      "short_name": "Pharmacy",
-     "description": "PBM services including mail-order, specialty pharmacy, and formulary\u2026",
+     "description": "PBM services including mail-order, specialty pharmacy, and formulary management for 70+ million covered\u2026",
      "mix_numeric": 19
     }
    ],
@@ -554,12 +554,12 @@
      "annotation": "Consensus; assumes 13\u201314% growth resumes"
     }
    ],
-   "cycle_note": "UNH delivered consistent double-digit EPS growth 2020\u20132024, compounding at ~14% annually. The 2025 reset reflects one-time cyberattack costs\u2026"
+   "cycle_note": "UNH delivered consistent double-digit EPS growth 2020\u20132024, compounding at ~14% annually. The 2025 reset reflects one-time cyberattack costs, Medicare funding cuts, and elevated medical trends; management contends these are transitory. The 2026\u20132027 recovery path is the crux of the debate: bulls expect margins to normalize\u2026"
   },
   "investment_thesis": {
-   "summary": "UnitedHealth Group operates the nation's largest health insurance platform (UnitedHealthcare) alongside an integrated health-services arm (Optum) that spans care delivery, pharmacy benefits, and IT infrastructure. The stock debate centers on whether management can restore operating margins compressed by adverse Medicare funding cuts, elevated commercial medical-cost trends, and the 2024 Change Healthcare cyberattack\u2014all while defending a dominant 55% Medicare Advantage share amid enrollment headwinds. Bulls see normalized 2026 EPS approaching $19.50\u201320.00 as a springboard to resume the company's historical 13\u201316% annual earnings algorithm; pricing actions, benefit reductions, and Optum scale should gradually rebuild mid-single-digit consolidated margins. Bears counter that persistent Medicare pressure (1.1 million member decline expected in 2026), regulatory uncertainty, and stickier commercial trends may leave margins structurally\u2026",
+   "summary": "UnitedHealth Group operates the nation's largest health insurance platform (UnitedHealthcare) alongside an integrated health-services arm (Optum) that spans care delivery, pharmacy benefits, and IT infrastructure. The stock debate centers on whether management can restore operating margins compressed by adverse Medicare funding cuts, elevated commercial medical-cost trends, and the 2024 Change Healthcare cyberattack\u2014all while defending a dominant 55% Medicare Advantage share amid enrollment headwinds. Bulls see normalized 2026 EPS approaching $19.50\u201320.00 as a springboard to resume the company's historical 13\u201316% annual earnings algorithm; pricing actions, benefit reductions, and Optum scale should gradually rebuild mid-single-digit consolidated margins. Bears counter that persistent Medicare pressure (1.1 million member decline expected in 2026), regulatory uncertainty, and stickier commercial trends may leave margins structurally lower, questioning whether the current 20\u201325\u00d7 forward multiple appropriately discounts execution and\u2026",
    "variant_view": "The Street may be under-appreciating UnitedHealth's self-help levers: benefit redesigns and selective Medicare exits are deliberate moves to shed unprofitable lives, positioning the company for higher-quality growth. Optum's\u2026",
-   "core_question": "Can UnitedHealth restore operating margins to historical mid-single-digit levels and resume 13\u201316% EPS growth despite structural Medicare headwinds, or will persistent cost\u2026",
+   "core_question": "Can UnitedHealth restore operating margins to historical mid-single-digit levels and resume 13\u201316% EPS growth despite structural Medicare headwinds, or will persistent cost trends and regulatory uncertainty leave profitability permanently reset?",
    "falsification": [
     "UnitedHealthcare consolidated MCR remains above 87% for more than two consecutive quarters\u2026",
     "Medicare Advantage net member losses exceed 1.5 million in 2026 or membership\u2026",
@@ -577,49 +577,49 @@
    ]
   },
   "financial_snapshot": {
-   "eps": "$16.00 (adj. 2025E); $19.50\u201320.00 (2026\u2026",
+   "eps": "$16.00 (adj. 2025E); $19.50\u201320.00 (2026 guidance)",
    "returns": "ROE ~16.5% (Q2 2026)",
    "revenue": "$445\u2013448 billion (2025 guidance)",
    "leverage": "Debt-to-capital ~43%; targeting 40% by year-end 2026",
    "ev_ebitda": "N/A",
    "fcf_yield": "~8\u20139%",
    "forward_pe": "~20\u00d7",
-   "eps_context": "2025 reflects elevated medical costs and cyberattack tail; 2026 guide\u2026",
-   "fcf_context": "Strong conversion despite earnings pressure; capex ~$3\u20134 billion leaves ~$29\u2026",
-   "historical_pe": "10-year avg ~22\u00d7; traded 13\u00d7 in June 2025 trough\u2026",
+   "eps_context": "2025 reflects elevated medical costs and cyberattack tail; 2026 guide implies ~22% growth as pricing and benefit changes take hold",
+   "fcf_context": "Strong conversion despite earnings pressure; capex ~$3\u20134 billion leaves ~$29 billion FCF supporting dividends ($9 billion) and buybacks ($5+ billion in 2026)",
+   "historical_pe": "10-year avg ~22\u00d7; traded 13\u00d7 in June 2025 trough, 37\u00d7 at Sept 2024 peak",
    "free_cash_flow": "$32\u201333 billion (2025E operating cash)",
-   "margin_context": "Depressed from historical 5\u20136% range; UnitedHealthcare MCR elevated, Optum Health\u2026",
-   "revenue_context": "Up ~11% from $400 billion in 2024; Optum growing mid-teens\u2026",
+   "margin_context": "Depressed from historical 5\u20136% range; UnitedHealthcare MCR elevated, Optum Health margin under pressure. Management targeting gradual recovery toward 5% by 2027.",
+   "revenue_context": "Up ~11% from $400 billion in 2024; Optum growing mid-teens, UnitedHealthcare low-double-digits",
    "operating_margin": "~3.2% (2025E)",
    "financial_bullets": [
-    "2024 EPS collapsed to $15.64 (GAAP) from $24.12 in 2023\u2026",
-    "Q2 2026 beat: adjusted EPS $6.38 vs. est. $4.85; full-year\u2026",
-    "Medical-loss ratio improved to 86.7% in Q2 2026 from 89.4%\u2026",
-    "Operating cash ~$32 billion annually supports 12% dividend CAGR (15\u2026",
-    "Optum revenue scale reached $253 billion (2024), nearly two-thirds of\u2026",
-    "Cyberattack remediation largely complete; Q2 2024 absorbed $776 million direct\u2026"
+    "2024 EPS collapsed to $15.64 (GAAP) from $24.12 in 2023, driven by $1.4 billion\u2026",
+    "Q2 2026 beat: adjusted EPS $6.38 vs. est. $4.85; full-year 2026 outlook raised to\u2026",
+    "Medical-loss ratio improved to 86.7% in Q2 2026 from 89.4% prior year, though still\u2026",
+    "Operating cash ~$32 billion annually supports 12% dividend CAGR (15 consecutive years of double-digit\u2026",
+    "Optum revenue scale reached $253 billion (2024), nearly two-thirds of consolidated sales; cross-segment eliminations\u2026",
+    "Cyberattack remediation largely complete; Q2 2024 absorbed $776 million direct costs, with business-disruption impact\u2026"
    ],
-   "valuation_comment": "Current valuation near $400 per share at ~20\u00d7 forward 2026 EPS of $19.75 sits modestly below the ten-year historical P/E\u2026",
+   "valuation_comment": "Current valuation near $400 per share at ~20\u00d7 forward 2026 EPS of $19.75 sits modestly below the ten-year historical P/E of 22\u00d7. The discount reflects lingering uncertainty around margin trajectory and Medicare enrollment; if management delivers on 2026 guide and\u2026",
    "management_targets": [
     {
      "label": "Long-term EPS growth",
      "value": "13\u201316% annually",
-     "context": "Reaffirmed at Dec 2024 Investor Day\u2026"
+     "context": "Reaffirmed at Dec 2024 Investor Day; 2026 guidance midpoint of $19.75 would represent ~23% growth off 2025 base"
     },
     {
      "label": "2026 adjusted EPS",
      "value": "$19.50\u201320.00",
-     "context": "Raised from $18.25+ after Q2 2026\u2026"
+     "context": "Raised from $18.25+ after Q2 2026 beat; implies operating leverage returning as medical costs moderate"
     },
     {
      "label": "2025 revenue",
      "value": "$445.5\u2013448.0 billion",
-     "context": "Midpoint $446.75B represents ~12% growth; UnitedHealthcare\u2026"
+     "context": "Midpoint $446.75B represents ~12% growth; UnitedHealthcare +16%, Optum +8% expected for full year"
     },
     {
      "label": "Operating cash flow",
      "value": "$32\u201333 billion",
-     "context": "Roughly 1.3\u20131.5\u00d7 net income; sustains capital\u2026"
+     "context": "Roughly 1.3\u20131.5\u00d7 net income; sustains capital returns and positions balance sheet to reach 40% debt-to-capital by end-2026"
     }
    ]
   },
