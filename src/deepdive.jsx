@@ -216,24 +216,27 @@ export const printArtifact = (view) => {
     const art = document.querySelector('.dd-artifact');
     if (!art) { window.print(); return; }
 
-    // Move the artifact to be a direct child of <body> for the duration of the
-    // print, and put it back afterwards.
+    // Tag the artifact's ancestor chain instead of moving it.
     //
-    // Hiding Charlie's chrome with visibility:hidden PRESERVES its layout, so
-    // every hidden toolbar and nav still occupied space above the artifact and
-    // the printed page opened with a huge white gap. Absolute positioning did
-    // not rescue it either, because `top:0` resolves against the nearest
-    // positioned ancestor -- of which the app has several -- not against the
-    // page. Reparenting to <body> removes both problems: there is nothing above
-    // it and nothing between it and the page box.
-    const home = art.parentNode;
-    const marker = document.createComment('dd-artifact-home');
-    home.insertBefore(marker, art);
-    body.appendChild(art);
+    // The first attempt reparented the artifact to <body> so nothing could sit
+    // above it. That printed a BLANK page: the artifact is React-managed, and
+    // moving it with appendChild lets the reconciler remove or re-render it out
+    // from under the print. Never relocate a node another library owns.
+    //
+    // The gap it was trying to solve is real though: hiding Charlie's chrome
+    // with visibility:hidden preserves layout, so every hidden toolbar still
+    // occupied space above the artifact. Marking the chain lets CSS remove the
+    // chain's *siblings* from flow -- same effect, no DOM surgery, and adding a
+    // class is something React tolerates.
+    const chain = [];
+    for (let n = art.parentElement; n && n !== body; n = n.parentElement) {
+        n.classList.add('dd-print-chain');
+        chain.push(n);
+    }
     body.classList.add('dd-printing', viewCls);
 
-    // Print styles change the available height, so rows and fit are recomputed
-    // with the print class active, exactly as the prototype did.
+    // Print changes the available height, so rows and fit are recomputed with
+    // the print class active, exactly as the prototype did.
     try { rebalanceLongform(); } catch (e) { console.warn('rebalance before print:', e); }
     try { autoFitSections(art); } catch (e) { console.warn('autofit before print:', e); }
 
@@ -242,11 +245,7 @@ export const printArtifact = (view) => {
         if (restored) return;
         restored = true;
         body.classList.remove('dd-printing', 'print-onepager', 'print-twopager', 'print-report');
-        if (marker.parentNode) {
-            marker.parentNode.insertBefore(art, marker);
-            marker.remove();
-        }
-        // Re-fit for the screen, whose available height differs again.
+        chain.forEach(n => n.classList.remove('dd-print-chain'));
         try { rebalanceLongform(); autoFitSections(art); } catch (e) { /* screen only */ }
     };
 
@@ -254,7 +253,7 @@ export const printArtifact = (view) => {
     try {
         window.print();
     } finally {
-        // afterprint is not reliable everywhere; never leave the DOM rearranged.
+        // afterprint is not reliable everywhere; never leave the page tagged.
         setTimeout(restore, 1500);
     }
 };

@@ -50,7 +50,25 @@
        point: hidden elements still OCCUPY their space, which is what opened
        every printed page with a large white gap where the app chrome used to
        be. */
-    body.dd-printing > *:not(.dd-artifact) { display: none !important; }
+    /* Remove everything that is not on the path to the artifact.
+       printArtifact() tags that path with .dd-print-chain, so hiding each
+       tagged element's other children strips the app down to the artifact
+       alone. display:none, not visibility:hidden -- hidden elements still
+       OCCUPY their space, which is what opened every printed page with a large
+       white gap where the chrome used to be. */
+    body.dd-printing > *:not(.dd-print-chain):not(.dd-artifact) { display: none !important; }
+    body.dd-printing .dd-print-chain > *:not(.dd-print-chain):not(.dd-artifact) { display: none !important; }
+    body.dd-printing .dd-print-chain {
+        display: block !important;
+        position: static !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        width: auto !important;
+        height: auto !important;
+        max-height: none !important;
+        overflow: visible !important;
+        background: none !important;
+    }
     body.dd-printing .dd-artifact {
         display: block !important;
         position: static !important;
