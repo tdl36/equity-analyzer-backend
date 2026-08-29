@@ -84,11 +84,19 @@ _EXACT_COUNTS = [
     ("bear_case", 5),
 ]
 
+# Tightened after a live UNH run: at 14/12/6 the fifth thesis bullet ran past
+# its box, the sixth financial bullet collided with the earnings-chart title,
+# and the bull/bear tails clipped. The boxes hold slightly less than those caps
+# implied, so these sit closer to the DE reference.
+# Word count is only a proxy for what actually matters, which is rendered LINES.
+# UNH's bullets carry figures like "(85.2% Q3'24 vs 84.1% prior)" that wrap to
+# two lines at the same word count Deere's fit on one, so the fifth thesis
+# bullet and the sixth financial bullet still overran. Pinned to the DE actuals.
 _LIST_ITEM_WORDS = [
-    ("thesis_bullets", 14),      # DE max item 11
-    ("financial_bullets", 12),   # DE max item 9
-    ("bull_case", 6),            # DE max item 4
-    ("bear_case", 6),            # DE max item 4
+    ("thesis_bullets", 11),      # DE max item 11
+    ("financial_bullets", 9),    # DE max item 9
+    ("bull_case", 5),            # DE max item 4
+    ("bear_case", 5),            # DE max item 4
 ]
 
 # Per-item limits inside object lists, same derivation.
@@ -98,6 +106,38 @@ _NESTED_ITEM_WORDS = [
     ("segments", "description", 11),      # DE max 8
     ("threats", "watch_for", 22),         # DE max 17
 ]
+
+
+# Character caps, because words do not predict line wrapping and lines are what
+# actually overflow a fixed box. The DE reference bullets run 60-76 characters
+# and fit; UNH produced 84-character bullets at the SAME word count -- figures
+# like "(85.2% Q3'24 vs 84.1% prior)" are long strings, not extra words -- and
+# the fifth bullet wrapped to a second line and fell out of its box.
+_LIST_ITEM_CHARS = [
+    # Exactly the DE maximum. 72 was tried and it trimmed the DE reference itself,
+    # which would mean degrading the calibration standard to make another company
+    # fit -- the wrong trade. 76 leaves DE untouched and still pulls UNH in.
+    ("thesis_bullets", 76),
+    ("financial_bullets", 72),    # DE max 69
+]
+
+_NESTED_ITEM_CHARS = [
+    ("opportunities", "detail", 74),
+    ("business_model", "description", 56),
+]
+
+
+def _chars(text):
+    return len(str(text or "").strip())
+
+
+def _trim_chars(text, limit):
+    """Cut to `limit` characters on a word boundary."""
+    raw = str(text or "").strip()
+    if len(raw) <= limit:
+        return text
+    cut = raw[:limit].rsplit(" ", 1)[0].rstrip(",;:.")
+    return (cut or raw[:limit]) + "\u2026"
 
 
 def _words(text):
@@ -140,6 +180,17 @@ def onepager_violations(d):
             n = _words(item)
             if n > limit:
                 out.append(f"{field}[{i}]: {n} words (max {limit})")
+
+    for field, limit in _LIST_ITEM_CHARS:
+        for i, item in enumerate(d.get(field) or []):
+            n = _chars(item)
+            if n > limit:
+                out.append(f"{field}[{i}]: {n} chars (max {limit}, wraps otherwise)")
+
+    for field, sub, limit in _NESTED_ITEM_CHARS:
+        for i, item in enumerate(d.get(field) or []):
+            if isinstance(item, dict) and _chars(item.get(sub)) > limit:
+                out.append(f"{field}[{i}].{sub}: {_chars(item.get(sub))} chars (max {limit})")
 
     # Signpost cells are table cells on a fixed-width canvas; long ones wrap
     # the row taller and push the last signpost off the page.
@@ -220,6 +271,28 @@ def enforce_budgets(d):
             if changed:
                 out[field] = new_items
                 trimmed.append(f"{field}.{sub}")
+
+    for field, limit in _LIST_ITEM_CHARS:
+        items = out.get(field)
+        if isinstance(items, list):
+            new_items = [_trim_chars(x, limit) for x in items]
+            if new_items != items:
+                out[field] = new_items
+                trimmed.append(f"{field}(width)")
+
+    for field, sub, limit in _NESTED_ITEM_CHARS:
+        items = out.get(field)
+        if isinstance(items, list):
+            new_items, changed = [], False
+            for x in items:
+                if isinstance(x, dict) and _chars(x.get(sub)) > limit:
+                    x = dict(x)
+                    x[sub] = _trim_chars(x.get(sub), limit)
+                    changed = True
+                new_items.append(x)
+            if changed:
+                out[field] = new_items
+                trimmed.append(f"{field}.{sub}(width)")
 
     signposts = out.get("signposts")
     if isinstance(signposts, list):

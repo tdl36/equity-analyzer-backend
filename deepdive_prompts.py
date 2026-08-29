@@ -186,19 +186,19 @@ Compress ruthlessly. Preserve numbers and facts before explanatory prose:
 - subheadline <= 16 words
 - thesis_summary <= 60 words (the reference uses 42 — aim near that, not at the cap)
 - core_question <= 24 words
-- thesis_bullets exactly 5; each <= 14 words
+- thesis_bullets exactly 5; each <= 11 words, and each must fit ONE line: prefer "MLR 85.2% vs 84.1%" over a clause with parentheses
 - overview_summary <= 34 words
 - segments max 4; description <= 11 words each
 - other_profit_pool <= 20 words
 - business_model exactly 4; description <= 9 words each
 - opportunities exactly 5; detail <= 12 words each; prioritize company-specific monetization, share-gain, installed-base, product-cycle, or capital-allocation drivers. Avoid generic macro themes such as population growth or infrastructure spending unless unusually company-specific, quantified, and central to the stock thesis
-- financial_bullets exactly 6; each <= 12 words
+- financial_bullets exactly 6; each <= 9 words, single line each
 - targets 2-4; context <= 10 words each
 - valuation_metrics exactly 3; context <= 8 words each
 - valuation_callout <= 22 words
 - signposts exactly 6; each cell <= 9 words; prefer abbreviations such as rev, users/mo, GM, OROS when unambiguous
 - threats exactly 4; watch_for <= 22 words; prioritize explicit kill criteria, timing, and thresholds
-- bull_case and bear_case exactly 5 each; each <= 6 words; these are telegraphic
+- bull_case and bear_case exactly 5 each; each <= 5 words; these are telegraphic
   bullets, not sentences — the reference averages 4 words per line
 - final_takeaway <= 50 words
 - bottom_line <= 12 words
