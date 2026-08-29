@@ -19047,6 +19047,16 @@ def deepdive_analyze():
         if not any(keys.values()):
             return jsonify({'error': 'No model API key configured.'}), 400
 
+        # Reuse an in-flight run for the same ticker instead of starting a
+        # second one. A Deep Dive pass costs real model spend, and the client
+        # retries this dispatch on transient network errors (Render restarts
+        # drop the socket), so without this a retry buys a duplicate run.
+        if not data.get('force'):
+            for jid, j in list(_deepdive_jobs.items()):
+                if j.get('ticker') == ticker and j.get('status') in ('queued', 'running'):
+                    return jsonify({'ok': True, 'jobId': jid, 'status': j['status'],
+                                    'reused': True})
+
         job_id = str(uuid.uuid4())[:8]
         _deepdive_jobs[job_id] = {'status': 'queued', 'step': 'Queued...',
                                   'ticker': ticker,

@@ -580,3 +580,37 @@ def test_buildinfo_reports_deployed_features_without_auth(client):
     assert body['routeCount'] > 50
     # nothing sensitive
     assert 'password' not in json.dumps(body).lower()
+
+
+def test_analyze_reuses_an_inflight_run_for_the_same_ticker(client, monkeypatch):
+    """A retried dispatch must not buy a second paid research run.
+
+    The client retries this POST on transient network errors (Render restarts
+    drop the socket mid-request), so a non-idempotent dispatch would spend real
+    model budget twice for one user click.
+    """
+    import app_v3
+    app_v3._deepdive_jobs.clear()
+    app_v3._deepdive_jobs['abc123'] = {
+        'status': 'running', 'step': 'Researching...', 'ticker': 'DE',
+        'createdAt': '2026-08-29T00:00:00',
+    }
+    r = client.post('/api/deepdive/analyze',
+                    json={'ticker': 'DE', 'apiKey': 'sk-test'})
+    body = r.get_json()
+    assert body['jobId'] == 'abc123'
+    assert body['reused'] is True
+    assert len(app_v3._deepdive_jobs) == 1, 'no second job may be spawned'
+
+
+def test_force_still_starts_a_fresh_run_despite_an_inflight_one(client):
+    """Dedup must not defeat the explicit "Force fresh" control."""
+    import app_v3
+    app_v3._deepdive_jobs.clear()
+    app_v3._deepdive_jobs['abc123'] = {
+        'status': 'running', 'step': '...', 'ticker': 'DE',
+        'createdAt': '2026-08-29T00:00:00',
+    }
+    r = client.post('/api/deepdive/analyze',
+                    json={'ticker': 'DE', 'force': True, 'apiKey': 'sk-test'})
+    assert r.get_json().get('reused') is not True

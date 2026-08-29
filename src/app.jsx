@@ -81,7 +81,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-08-29T03';
+        const BUILD_VERSION = '2026-08-29T04';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -104,6 +104,45 @@ if (typeof window !== 'undefined') {
         const DIRECT_API_URL = _useLocalBackend
             ? 'http://127.0.0.1:5000'
             : 'https://equity-analyzer-backend.onrender.com';
+
+        // Render restarts the backend on every deploy (~3 minutes of downtime).
+        // A click during that window rejects the fetch with a bare TypeError,
+        // which surfaced to users as the useless string "Failed to fetch". These
+        // are transient by definition, so retry with backoff and, if it really
+        // is unreachable, say something a human can act on.
+        const _isNetworkError = (e) => (
+            e instanceof TypeError ||
+            /failed to fetch|networkerror|load failed/i.test(e?.message || '')
+        );
+        const BACKEND_DOWN_MSG =
+            "Can't reach the research backend. It's usually restarting after a deploy — "
+            + 'wait about a minute and try again.';
+
+        async function fetchResilient(url, opts, { retries = 4, onRetry } = {}) {
+            let lastErr;
+            for (let attempt = 0; attempt <= retries; attempt++) {
+                try {
+                    const r = await fetch(url, opts);
+                    // A restarting Render instance answers 502/503/504 through the
+                    // proxy rather than dropping the socket. Same transient, so
+                    // treat it the same way.
+                    if ([502, 503, 504].includes(r.status) && attempt < retries) {
+                        lastErr = new Error(`HTTP ${r.status}`);
+                    } else {
+                        return r;
+                    }
+                } catch (e) {
+                    if (!_isNetworkError(e) || attempt >= retries) throw e;
+                    lastErr = e;
+                }
+                const waitMs = Math.min(1000 * Math.pow(2, attempt), 8000);
+                if (onRetry) onRetry(attempt + 1, retries, waitMs);
+                await new Promise(res => setTimeout(res, waitMs));
+            }
+            const err = new Error(BACKEND_DOWN_MSG);
+            err.cause = lastErr;
+            throw err;
+        }
 
         // ==== Theme system — Ink · Dusk · Oak · Bloc ==========================
         // The look lives entirely in CSS custom properties (src/theme.css) that
@@ -2724,14 +2763,14 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     // Long research runs go through DIRECT_API_URL for the same
                     // reason the Explain tab does: Cloudflare kills an idle
                     // connection at 100s and a full pass takes minutes.
-                    const start = await fetch(`${DIRECT_API_URL}/api/deepdive/analyze`, {
+                    const start = await fetchResilient(`${DIRECT_API_URL}/api/deepdive/analyze`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             ticker: t, force: ddForce,
                             apiKey: loadApiKeyFromStorage() || '',
                             geminiApiKey: loadGeminiKeyFromStorage() || '',
                         }),
-                    });
+                    }, { onRetry: (n, of) => setDdStep(`Backend waking up — retry ${n}/${of}...`) });
                     const started = await start.json();
                     if (!start.ok || !started.jobId) {
                         throw new Error(started.error || `Dispatch failed: HTTP ${start.status}`);
@@ -2740,9 +2779,29 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     // Poll with a hard cap. An unbounded loop against a job that
                     // died server-side spins until the tab is closed.
                     const deadlineMs = Date.now() + 15 * 60 * 1000;
+                    // A transient network blip must not abandon a job that is
+                    // still running server-side. Tolerate a run of failures and
+                    // only give up once the backend is persistently gone.
+                    let consecutiveNetFails = 0;
                     while (Date.now() < deadlineMs) {
                         await new Promise(res => setTimeout(res, 4000));
-                        const pr = await fetch(`${DIRECT_API_URL}/api/deepdive/job/${started.jobId}`);
+                        let pr;
+                        try {
+                            pr = await fetch(`${DIRECT_API_URL}/api/deepdive/job/${started.jobId}`);
+                            consecutiveNetFails = 0;
+                        } catch (e) {
+                            if (!_isNetworkError(e)) throw e;
+                            if (++consecutiveNetFails >= 10) throw new Error(BACKEND_DOWN_MSG);
+                            setDdStep(`Lost contact with the backend — retrying (${consecutiveNetFails}/10)...`);
+                            continue;
+                        }
+                        // The job registry lives in process memory, so a backend
+                        // restart erases it. Polling on through a 404 burned the
+                        // full 15-minute deadline before reporting anything.
+                        if (pr.status === 404) {
+                            throw new Error('The backend restarted and lost this run. '
+                                + 'Start it again — recent results are cached, so it may be quick.');
+                        }
                         if (!pr.ok) continue;
                         const job = await pr.json();
                         setDdStep(job.step || '');
@@ -2763,7 +2822,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const loadDeepDiveDemo = useCallback(async () => {
                 setDdBusy(true); setDdError(null); setDdStep('Loading Deere calibration fixture...');
                 try {
-                    const r = await fetch(`${API_URL}/api/deepdive/demo`, { method: 'POST' });
+                    const r = await fetchResilient(`${API_URL}/api/deepdive/demo`, { method: 'POST' },
+                        { onRetry: (n, of) => setDdStep(`Backend waking up — retry ${n}/${of}...`) });
                     const j = await r.json();
                     if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
                     setDdRun(j.run); setDdTicker(j.run.ticker);
