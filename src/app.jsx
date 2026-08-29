@@ -2801,11 +2801,18 @@ Regulatory, execution, or macro risks that could derail the thesis:
             // whole point is measuring what the browser actually painted.
             useEffect(() => {
                 if (!ddRun || activeTab !== 'deepdive') { setDdQA([]); return; }
-                const id = setTimeout(() => {
+                // Wait for the rebalancer's final pass; measuring earlier reads a
+                // half-laid-out page and reports phantom clipping.
+                const measure = () => {
                     try { setDdQA(preflightPages(ddPagesRef.current)); }
                     catch (e) { console.warn('deep dive preflight:', e); }
-                }, 350);
-                return () => clearTimeout(id);
+                };
+                window.addEventListener('deepdive:layout-settled', measure);
+                const id = setTimeout(measure, 1600);
+                return () => {
+                    window.removeEventListener('deepdive:layout-settled', measure);
+                    clearTimeout(id);
+                };
             }, [ddRun, ddView, ddTemplate, activeTab]);
 
             useEffect(() => {

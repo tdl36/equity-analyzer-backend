@@ -18,4 +18,9 @@ ReactDOM.render(
     <DeepDiveArtifact run={run} view={q.get('view') || 'onepager'}
                       template={q.get('template') || 'notebook'} />,
     root,
-    () => setTimeout(() => { window.__ddQA = preflightPages(root); window.__ddReady = true; }, 700));
+    () => {
+        // Measure only after the rebalancer's last pass (1200ms) has landed.
+        const measure = () => { window.__ddQA = preflightPages(root); window.__ddReady = true; };
+        window.addEventListener('deepdive:layout-settled', measure);
+        setTimeout(measure, 1800);
+    });

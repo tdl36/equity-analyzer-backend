@@ -737,7 +737,18 @@ function rebalanceGridRows(grid, children, weights, safety=10){
   const available=grid.clientHeight-pt-pb-gap*(children.length-1);
   const desired=children.map(el=>Math.ceil(measuredContentNeed(el)+safety));
   const sum=desired.reduce((a,b)=>a+b,0);
-  if(sum>available+2) return false;
+  if(sum>available+2){
+    // Content wants more room than the page has. The original bailed out here,
+    // which left the fixed DE-calibrated rows in place -- so the rebalancer
+    // helped only when things already fit, and did nothing in exactly the case
+    // that produced clipping. Share the shortfall proportionally instead: every
+    // section gets squeezed a little rather than the last ones losing their
+    // content entirely. Content budgets are what stop it reaching this point;
+    // this is about degrading gracefully when it does.
+    const scale=available/sum;
+    grid.style.gridTemplateRows=desired.map(d=>`${(d*scale).toFixed(1)}px`).join(' ');
+    return true;
+  }
   const extra=Math.max(0,available-sum);
   const ww=(weights&&weights.length===children.length)?weights:children.map(()=>1);
   const wsum=ww.reduce((a,b)=>a+b,0)||1;

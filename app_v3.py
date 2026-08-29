@@ -18951,9 +18951,20 @@ def _run_deepdive_job(job_id, ticker, keys, force=False):
         market = _dd.market_snapshot(ticker)
         company = market.get('company') or ''
 
-        master, sources = _dd.research_company(
-            ticker, company, market, call_llm, _extract_json, _tavily_search,
-            api_keys=keys, on_step=step)
+        # Prefer the model provider's own web search: it needs no extra vendor
+        # or key, the model searches while it researches rather than being fed a
+        # pre-baked context blob, and in practice it reaches primary sources
+        # (SEC EDGAR, earnings releases) which is the source priority the
+        # research standards ask for. Falls back to the search-then-stuff path
+        # only if there is no Anthropic key.
+        if keys.get('anthropic'):
+            master, sources = _dd.research_with_web_search(
+                ticker, company, market, keys['anthropic'], _extract_json,
+                on_step=step)
+        else:
+            master, sources = _dd.research_company(
+                ticker, company, market, call_llm, _extract_json, _tavily_search,
+                api_keys=keys, on_step=step)
         master = _dd.merge_live_market(master, market)
 
         problems = _dd.master_violations(master)

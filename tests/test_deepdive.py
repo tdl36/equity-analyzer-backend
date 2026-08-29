@@ -362,3 +362,127 @@ def test_reported_violations_describe_what_was_stored(golden):
     assert len(violations) == 1
     assert violations[0].startswith('auto-trimmed to fit:')
     assert 'headline' in violations[0]
+
+
+# ---------------------------------------------------------------------------
+# web research
+# ---------------------------------------------------------------------------
+
+def test_web_research_collects_sources_from_citations_and_results(golden, monkeypatch):
+    """The source trail is the only record that the research was grounded.
+
+    Sources arrive two ways -- as citations attached to text blocks, and inside
+    web_search_tool_result blocks -- and both must be captured and de-duped.
+    """
+    master, _op, _s = golden
+
+    class _Cit:
+        url = 'https://sec.gov/a'
+        title = 'SEC filing'
+
+    class _TextBlock:
+        type = 'text'
+        text = json.dumps(master)
+        citations = [_Cit()]
+
+    class _Result:
+        url = 'https://ir.example.com/q3'
+        title = 'Q3 release'
+        page_age = '2026-01-02'
+
+    class _SearchBlock:
+        type = 'web_search_tool_result'
+        content = [_Result(), _Cit()]      # _Cit repeats the citation URL
+
+    class _Resp:
+        content = [_SearchBlock(), _TextBlock()]
+
+    class _Msgs:
+        def create(self, **kwargs):
+            _Msgs.kwargs = kwargs
+            return _Resp()
+
+    class _Client:
+        def __init__(self, **kw): self.messages = _Msgs()
+
+    import types, sys
+    fake = types.ModuleType('anthropic')
+    fake.Anthropic = _Client
+    monkeypatch.setitem(sys.modules, 'anthropic', fake)
+
+    out, sources = dd.research_with_web_search(
+        'DE', 'Deere', {'ok': False}, 'key', json.loads)
+
+    urls = [s['url'] for s in sources]
+    assert 'https://sec.gov/a' in urls
+    assert 'https://ir.example.com/q3' in urls
+    assert len(urls) == len(set(urls)), 'sources must be de-duplicated'
+    assert out['ticker'] == 'DE'
+    # the search tool must actually be requested
+    assert any(t.get('name') == 'web_search' for t in _Msgs.kwargs['tools'])
+
+
+def test_web_research_fails_loudly_without_usable_json(monkeypatch):
+    class _TextBlock:
+        type = 'text'; text = 'I could not find anything.'; citations = []
+    class _Resp: content = [_TextBlock()]
+    class _Msgs:
+        def create(self, **kw): return _Resp()
+    class _Client:
+        def __init__(self, **kw): self.messages = _Msgs()
+    import types, sys
+    fake = types.ModuleType('anthropic'); fake.Anthropic = _Client
+    monkeypatch.setitem(sys.modules, 'anthropic', fake)
+
+    with pytest.raises(RuntimeError, match='no usable JSON'):
+        dd.research_with_web_search('DE', 'Deere', {}, 'key', lambda t: None)
+
+
+# ---------------------------------------------------------------------------
+# segment shares must close, deterministically
+# ---------------------------------------------------------------------------
+
+def test_overlapping_segment_shares_are_rescaled_to_100():
+    """Two live runs came back at 119% and 118%, so the prompt is not enough.
+
+    Companies report overlapping segments (Optum Rx sits inside Optum), and a
+    pie cannot be drawn from shares that do not close. Rescaling preserves the
+    relative sizes, which is the decision-useful part.
+    """
+    segs = [{'short_name': 'A', 'mix': '75%', 'mix_numeric': 75},
+            {'short_name': 'B', 'mix': '16%', 'mix_numeric': 16},
+            {'short_name': 'C', 'mix': '23%', 'mix_numeric': 23},
+            {'short_name': 'D', 'mix': '4%', 'mix_numeric': 4}]
+    out, changed = dd.normalize_segments(segs)
+    assert changed is True
+    assert sum(s['mix_numeric'] for s in out) == 100
+    # order preserved, relative sizes preserved
+    assert out[0]['mix_numeric'] > out[2]['mix_numeric'] > out[1]['mix_numeric']
+
+
+def test_the_label_is_rewritten_so_it_agrees_with_the_wedge():
+    """A legend saying 75% beside a wedge occupying 64% is the actual defect."""
+    segs = [{'mix': '75%', 'mix_numeric': 75}, {'mix': '43%', 'mix_numeric': 43}]
+    out, _ = dd.normalize_segments(segs)
+    assert out[0]['mix'] == f"{out[0]['mix_numeric']}%"
+
+
+def test_a_label_carrying_extra_meaning_is_left_alone():
+    """Only bare percentages are rewritten; prose is not silently replaced."""
+    segs = [{'mix': '75% rev, 55% op earnings', 'mix_numeric': 75},
+            {'mix': '43%', 'mix_numeric': 43}]
+    out, _ = dd.normalize_segments(segs)
+    assert out[0]['mix'] == '75% rev, 55% op earnings'
+
+
+def test_shares_that_already_close_are_untouched():
+    segs = [{'mix': '60%', 'mix_numeric': 60}, {'mix': '40%', 'mix_numeric': 40}]
+    out, changed = dd.normalize_segments(segs)
+    assert changed is False and out is segs
+
+
+def test_all_zero_segments_are_left_alone():
+    """All-zero is the documented way to say 'shares unsupported'."""
+    segs = [{'mix': 'N/A', 'mix_numeric': 0}, {'mix': 'N/A', 'mix_numeric': 0}]
+    out, changed = dd.normalize_segments(segs)
+    assert changed is False

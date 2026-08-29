@@ -294,6 +294,11 @@ def enforce_budgets(d):
                 out[field] = new_items
                 trimmed.append(f"{field}.{sub}(width)")
 
+    fixed_segs, seg_changed = normalize_segments(out.get("segments"))
+    if seg_changed:
+        out["segments"] = fixed_segs
+        trimmed.append("segments(rescaled to 100%)")
+
     signposts = out.get("signposts")
     if isinstance(signposts, list):
         new_sps, changed = [], False
@@ -317,6 +322,176 @@ def enforce_budgets(d):
         if isinstance(items, list) and len(items) > count:
             out[field] = items[:count]
             trimmed.append(f"{field}(count)")
+
+    return out, sorted(set(trimmed))
+
+
+# MEMO BUDGETS.
+#
+# The two-pager and the 3-page memo render from the MASTER object, which had no
+# budgets at all -- only the one-pager was ever compressed. So a verbose company
+# walked straight into fixed-height memo sections: UNH returned a 190-word final
+# takeaway against Deere's 39, a 111-word "bottom line" against Deere's 6, and
+# SEVEN thesis threats into a kill-criteria grid built for four.
+#
+# The memo has more room than the one-pager's fixed boxes, so these are looser
+# than the one-pager budgets -- roughly the DE master plus 40% -- but they are
+# bounded, which is the point. DE actuals in the comments.
+_MASTER_WORD_BUDGETS = [
+    # Measured against the DE master, which renders with zero overflow. Every
+    # cap sits ~30% above DE's own value; where a field had no cap at all the
+    # gap was enormous -- variant_view came back at 86 words against Deere's 20,
+    # and it feeds both the thesis and decision sections.
+    (("investment_thesis", "summary"), 130),        # DE 118
+    (("investment_thesis", "variant_view"), 28),    # DE 20
+    (("company_overview", "summary"), 70),          # DE 55
+    (("final_takeaway",), 60),                      # DE 39
+    (("bottom_line",), 14),                         # DE 6
+]
+
+# (path, exact_count) -- the memo renderers lay these out in fixed grids, so a
+# long list overruns the page and a short one leaves a hole.
+_MASTER_LIST_CAPS = [
+    (("investment_thesis", "what_market_prices_in"), 3, 12),   # DE max 9
+    (("investment_thesis", "what_must_be_true"), 3, 12),       # DE max 9
+    (("investment_thesis", "falsification"), 3, 12),           # DE max 10
+    (("opportunities",), 5, None),
+    (("business_model",), 4, None),
+    (("signposts",), 6, None),
+    (("thesis_threats",), 4, None),
+    (("catalysts",), 3, None),
+    (("bull_case",), 5, 14),   # DE has 5
+    (("bear_case",), 5, 14),   # DE has 5
+]
+
+# Per-item prose inside those lists.
+_MASTER_ITEM_WORDS = [
+    (("opportunities",), "detail", 18),             # DE max 14
+    (("business_model",), "description", 13),       # DE max 10
+    (("thesis_threats",), "watch_for", 22),         # DE max 17
+    (("signposts",), "why_it_matters", 10),         # DE max 7
+    (("catalysts",), "why_it_matters", 11),         # DE max 8
+    # Never capped before, and the worst offender: UNH returned 50-word scenario
+    # logic against Deere's 6, which is most of why the decision section on page
+    # 3 ran 127px past its box.
+    (("valuation_scenarios",), "logic", 10),        # DE max 6
+]
+
+
+def _dig(d, path):
+    cur = d
+    for k in path:
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(k)
+    return cur
+
+
+def _put(d, path, value):
+    cur = d
+    for k in path[:-1]:
+        nxt = cur.get(k)
+        cur[k] = dict(nxt) if isinstance(nxt, dict) else {}
+        cur = cur[k]
+    cur[path[-1]] = value
+
+
+def normalize_segments(segments):
+    """Make segment shares internally consistent. Returns (segments, changed).
+
+    Companies report overlapping segments -- UNH's Optum Rx revenue sits inside
+    Optum -- and asking the model for mutually exclusive shares works only some
+    of the time: two live runs came back at 119% and 118%. A pie cannot be drawn
+    from shares that do not close, and a legend printing "75%" beside a wedge
+    occupying 64% of the circle is simply wrong.
+
+    So this is deterministic. When the shares miss 100 by more than a few points
+    they are rescaled proportionally, and the `mix` LABEL is rewritten to match,
+    because the label and the geometry disagreeing is the actual defect. Relative
+    sizes -- the decision-useful part -- are preserved.
+    """
+    if not isinstance(segments, list) or not segments:
+        return segments, False
+    vals = [(s.get("mix_numeric") or 0) if isinstance(s, dict) else 0
+            for s in segments]
+    total = sum(v for v in vals if isinstance(v, (int, float)))
+    if not total or abs(total - 100) <= 5:
+        return segments, False
+
+    out = []
+    for seg, v in zip(segments, vals):
+        if not isinstance(seg, dict):
+            out.append(seg)
+            continue
+        seg = dict(seg)
+        share = round(v / total * 100) if total else 0
+        seg["mix_numeric"] = share
+        # Rewrite the label only when it was a bare percentage; a label carrying
+        # extra meaning is left alone rather than silently rewritten.
+        label = str(seg.get("mix") or "").strip()
+        if re.fullmatch(r"~?\d{1,3}(\.\d+)?%", label) or not label:
+            seg["mix"] = f"{share}%"
+        out.append(seg)
+    return out, True
+
+
+def enforce_master_budgets(m):
+    """Bound the canonical object so the two-pager and memo cannot overflow.
+
+    Returns (object, trimmed). Never raises. Same reasoning as the one-pager:
+    these pages have fixed-height sections, so unbounded prose does not reflow,
+    it clips -- and a clipped kill criterion is a research artifact that lies.
+    """
+    if not isinstance(m, dict):
+        return m, []
+    out = json.loads(json.dumps(m))   # deep copy; paths are nested
+    trimmed = []
+
+    for path, limit in _MASTER_WORD_BUDGETS:
+        cur = _dig(out, path)
+        new = _trim_words(cur, limit)
+        if new != cur:
+            _put(out, path, new)
+            trimmed.append(".".join(path))
+
+    for path, count, item_words in _MASTER_LIST_CAPS:
+        items = _dig(out, path)
+        if not isinstance(items, list):
+            continue
+        changed = False
+        if len(items) > count:
+            items = items[:count]
+            changed = True
+            trimmed.append(".".join(path) + "(count)")
+        if item_words:
+            new_items = [_trim_words(x, item_words) if isinstance(x, str) else x
+                         for x in items]
+            if new_items != items:
+                items, changed = new_items, True
+                trimmed.append(".".join(path))
+        if changed:
+            _put(out, path, items)
+
+    segs = _dig(out, ("company_overview", "segments"))
+    fixed_segs, seg_changed = normalize_segments(segs)
+    if seg_changed:
+        _put(out, ("company_overview", "segments"), fixed_segs)
+        trimmed.append("company_overview.segments(rescaled to 100%)")
+
+    for path, sub, limit in _MASTER_ITEM_WORDS:
+        items = _dig(out, path)
+        if not isinstance(items, list):
+            continue
+        new_items, changed = [], False
+        for x in items:
+            if isinstance(x, dict) and _words(x.get(sub)) > limit:
+                x = dict(x)
+                x[sub] = _trim_words(x.get(sub), limit)
+                changed = True
+            new_items.append(x)
+        if changed:
+            _put(out, path, new_items)
+            trimmed.append(".".join(path) + "." + sub)
 
     return out, sorted(set(trimmed))
 
@@ -487,6 +662,88 @@ def gather_web_context(ticker, company, search_fn, per_query=4):
     return "\n\n".join(blocks)[:120000], sources
 
 
+def research_with_web_search(ticker, company, market, api_key, extract_json,
+                             model="claude-sonnet-4-5-20250929", on_step=None,
+                             max_searches=8):
+    """Canonical research using the model provider's own web search.
+
+    The prototype ran OpenAI's Responses API with its web_search tool, so the
+    model searched WHILE it researched rather than being handed a pre-baked
+    context blob. This is the same shape on Anthropic, and it matters for two
+    reasons: the model can follow a thread it did not know to ask for up front,
+    and the citations come back attached to the claims rather than as a
+    separate list of things that were merely read.
+
+    Chosen over a third-party search API because it needs no additional vendor
+    or key, and because in practice it reaches primary sources -- SEC EDGAR
+    filings and earnings releases -- which is the source priority the research
+    standards ask for.
+
+    Returns (master, sources). Raises if no usable JSON comes back.
+    """
+    import anthropic
+
+    step = on_step or (lambda _m: None)
+    step(f"Researching {ticker} with live web search...")
+
+    client = anthropic.Anthropic(api_key=api_key)
+    parts = [f"Company to research: {company or ticker} (ticker {ticker})."]
+    if market and market.get("ok"):
+        parts.append(
+            "VERIFIED LIVE MARKET SNAPSHOT (authoritative for price/market cap; "
+            "do not contradict):\n" + json.dumps(
+                {k: v for k, v in market.items() if k != "ok"}, indent=2))
+    parts.append(
+        "Search the web for current filings, earnings releases and reputable "
+        "financial reporting, then produce the canonical research JSON described "
+        "in your system prompt. Ground every figure in what you actually read; "
+        "use \"N/A\" rather than inventing precision. Return the JSON as your "
+        "final message.")
+
+    resp = client.messages.create(
+        model=model,
+        max_tokens=16000,
+        system=deepdive_prompts.MASTER_RESEARCH_SYSTEM,
+        tools=[{"type": "web_search_20250305", "name": "web_search",
+                "max_uses": max_searches}],
+        messages=[{"role": "user", "content": "\n\n".join(parts)}],
+        timeout=900.0,
+    )
+
+    text_parts, sources, seen = [], [], set()
+    for block in resp.content or []:
+        btype = getattr(block, "type", "")
+        if btype == "text":
+            text_parts.append(getattr(block, "text", "") or "")
+            for cit in (getattr(block, "citations", None) or []):
+                url = getattr(cit, "url", None)
+                if url and url not in seen:
+                    seen.add(url)
+                    sources.append({"title": (getattr(cit, "title", "") or "")[:300],
+                                    "url": url, "date": ""})
+        elif btype == "web_search_tool_result":
+            for item in (getattr(block, "content", None) or []):
+                url = getattr(item, "url", None)
+                if url and url not in seen:
+                    seen.add(url)
+                    sources.append({"title": (getattr(item, "title", "") or "")[:300],
+                                    "url": url,
+                                    "date": (getattr(item, "page_age", "") or "")[:40]})
+
+    master = extract_json("\n".join(text_parts))
+    if not isinstance(master, dict) or not master:
+        raise RuntimeError("Web research returned no usable JSON object.")
+
+    master.setdefault("ticker", (ticker or "").upper())
+    if sources:
+        master["sources"] = sources
+    master, trimmed = enforce_master_budgets(master)
+    if trimmed:
+        print(f"[deepdive] master trimmed to memo budget: {', '.join(trimmed)}")
+    step(f"Research complete — {len(sources)} sources.")
+    return master, sources
+
+
 def build_research_prompt(ticker, company, market, web_context):
     parts = [f"Company to research: {company or ticker} (ticker {ticker})."]
     if market and market.get("ok"):
@@ -555,6 +812,12 @@ def research_company(ticker, company, market, call_llm, extract_json, search_fn,
     # because they carry the URLs actually read.
     if sources:
         master["sources"] = sources
+
+    # Bound the canonical object before anything renders from it. The two-pager
+    # and memo lay it out in fixed-height sections, so unbounded prose clips.
+    master, trimmed = enforce_master_budgets(master)
+    if trimmed:
+        print(f"[deepdive] master trimmed to memo budget: {', '.join(trimmed)}")
     return master, sources
 
 

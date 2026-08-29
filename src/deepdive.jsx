@@ -124,7 +124,14 @@ export const DeepDiveArtifact = ({ run, view, template }) => {
         const a = requestAnimationFrame(run);
         const b = setTimeout(run, 450);
         const c = setTimeout(run, 1200);
-        return () => { cancelAnimationFrame(a); clearTimeout(b); clearTimeout(c); };
+        // Anything that MEASURES the layout has to run after the last pass, or
+        // it reads a half-rebalanced page. That race made the same fixture
+        // report zero issues on one run and eleven on the next.
+        const d = setTimeout(() => {
+            try { window.dispatchEvent(new CustomEvent('deepdive:layout-settled')); }
+            catch (e) { /* no consumer is fine */ }
+        }, 1400);
+        return () => { cancelAnimationFrame(a); clearTimeout(b); clearTimeout(c); clearTimeout(d); };
     }, [html]);
 
     // The v24 print rules key off `.onepager-view` / `.twopager-view` /

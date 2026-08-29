@@ -90,3 +90,22 @@
 .dd-artifact .nbv-seg-legend-4 .nbv-segcopy b { font-size: 11.5px; }
 .dd-artifact .nbv-seg-legend-4 .nbv-segcopy strong { font-size: 11px; }
 .dd-artifact .nbv-seg-legend-4 .nbv-segcopy small { font-size: 9.5px; line-height: 1.24; }
+
+/* Memo sections that are chronically tight even for the reference.
+ *
+ * Measured on the DE golden fixture: v21-financial needs 881px in an 850px box
+ * (header 41 + metrics 231 + fin-core 390 + sensitivity 196, plus gaps) and
+ * v21-signposts 541px in 534px. Those are two of the clipping flags the reviewed
+ * DE run reports, so this is a pre-existing v24 defect rather than a
+ * company-specific one.
+ *
+ * Reclaimed from padding and gaps only. The handoff is explicit that fit must
+ * never be bought by shrinking type, so no font sizes are touched here. */
+.dd-artifact .v21-financial { row-gap: 6px; }
+.dd-artifact .v21-financial .report-metrics { gap: 6px; }
+.dd-artifact .v21-financial .report-metric { padding-top: 6px; padding-bottom: 6px; }
+.dd-artifact .v21-financial .v21-sensitivity td,
+.dd-artifact .v21-financial .v21-sensitivity th { padding-top: 3px; padding-bottom: 3px; }
+.dd-artifact .v21-signposts { row-gap: 5px; }
+.dd-artifact .v21-signposts td,
+.dd-artifact .v21-signposts th { padding-top: 3px; padding-bottom: 3px; }
