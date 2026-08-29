@@ -7,7 +7,7 @@
 // app's chrome does to the printed page.
 import * as React from 'react';
 import * as ReactDOM from 'react-dom';
-import { DeepDiveArtifact, PageFit, preflightPages, printArtifact } from '../src/deepdive';
+import { DeepDiveArtifact, PageFit, preflightPages, printArtifact, applyPrintLayout } from '../src/deepdive';
 import de from '../fixtures/deepdive_de_golden.json';
 import unh from '../fixtures/deepdive_unh_sample.json';
 
@@ -39,4 +39,57 @@ ReactDOM.render(tree, root, () => {
     setTimeout(measure, 1800);
     // Exposed so a headless run can exercise the real print path.
     window.__ddPrint = () => printArtifact(view);
+    // ?print=1 leaves the document in print layout permanently so
+    // `chrome --print-to-pdf` renders what the print dialog would.
+    if (q.get('print') === '1') {
+        const go = () => {
+            applyPrintLayout(view);
+            // ?nozoom=1 strips the auto-fit zoom so it can be ruled in or out
+            // as the cause of the rasterised, textless print output.
+            if (q.get('measure') === '1') {
+                const rows = [];
+                const add = (label, el) => {
+                    if (!el) { rows.push(`${label}: MISSING`); return; }
+                    const r = el.getBoundingClientRect();
+                    const cs = getComputedStyle(el);
+                    rows.push(`${label}: top=${r.top.toFixed(1)} left=${r.left.toFixed(1)} `
+                        + `w=${r.width.toFixed(1)} h=${r.height.toFixed(1)} `
+                        + `pos=${cs.position} disp=${cs.display} transform=${cs.transform} `
+                        + `mt=${cs.marginTop} pt=${cs.paddingTop} zoom=${cs.zoom}`);
+                };
+                const svg = document.querySelector('.nbv-root');
+                if (svg) {
+                    rows.push(`svg viewBox=${svg.getAttribute('viewBox')} `
+                        + `width=${svg.getAttribute('width')} height=${svg.getAttribute('height')}`);
+                    try {
+                        const bb = svg.getBBox();
+                        rows.push(`svg getBBox: x=${bb.x.toFixed(1)} y=${bb.y.toFixed(1)} `
+                            + `w=${bb.width.toFixed(1)} h=${bb.height.toFixed(1)}`);
+                    } catch (e) { rows.push('svg getBBox failed: ' + e.message); }
+                    Array.from(svg.children).forEach((c, i) => {
+                        let bb = null;
+                        try { bb = c.getBBox(); } catch (e) { /* defs */ }
+                        const r = c.getBoundingClientRect();
+                        rows.push(`  svg>${c.tagName}[${i}] cls=${c.getAttribute('class') || '-'} `
+                            + (bb ? `bbox(y=${bb.y.toFixed(1)},h=${bb.height.toFixed(1)}) ` : 'bbox(n/a) ')
+                            + `rect(top=${r.top.toFixed(1)},h=${r.height.toFixed(1)})`);
+                    });
+                }
+                Array.from(document.body.children).forEach((c, i) =>
+                    add(`body>child[${i}] .${c.className || '(none)'}`, c));
+                ['.dd-stage', '.dd-fit', '.dd-fit-inner', '.dd-artifact',
+                 '.op-canvas', '.nbv-root'].forEach(sel => add(sel, document.querySelector(sel)));
+                const pre = document.createElement('pre');
+                pre.id = '__measure';
+                pre.textContent = rows.join('\n');
+                document.documentElement.appendChild(pre);
+            }
+            if (q.get('nozoom') === '1') {
+                document.querySelectorAll('[style*="zoom"]').forEach(
+                    el => el.style.removeProperty('zoom'));
+            }
+        };
+        window.addEventListener('deepdive:layout-settled', go);
+        setTimeout(go, 2000);
+    }
 });

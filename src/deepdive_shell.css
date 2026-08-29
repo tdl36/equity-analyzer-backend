@@ -77,6 +77,14 @@
     }
     body.dd-printing { background: #fff !important; }
 
+    /* Re-assert paint for the artifact.
+       Defence in depth against any blanket `visibility: hidden` a stylesheet
+       elsewhere in the app applies to print. visibility is inherited but a
+       descendant can override an ancestor, so naming the artifact is enough to
+       bring it back regardless of what hid it. */
+    body.dd-printing .dd-artifact,
+    body.dd-printing .dd-artifact * { visibility: visible !important; }
+
     @page { size: 1024px 1536px; margin: 0; }
 }
 

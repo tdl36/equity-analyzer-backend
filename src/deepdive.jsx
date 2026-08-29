@@ -208,13 +208,21 @@ export const autoFitSections = (root) => {
  * surrounded by navigation.
  */
 
-export const printArtifact = (view) => {
-    if (typeof document === 'undefined') return;
+/**
+ * Put the document into print layout and hand back the undo.
+ *
+ * Split out of printArtifact so a headless run can render exactly what the
+ * print dialog renders. Testing a copy of this logic would have tested the
+ * copy; the blank-PDF bug lived in the interaction between these classes and
+ * when they get removed.
+ */
+export const applyPrintLayout = (view) => {
+    if (typeof document === 'undefined') return null;
     const viewCls = view === 'twopager' ? 'print-twopager'
                   : view === 'memo' ? 'print-report' : 'print-onepager';
     const body = document.body;
     const art = document.querySelector('.dd-artifact');
-    if (!art) { window.print(); return; }
+    if (!art) return null;
 
     // Tag the artifact's ancestor chain instead of moving it.
     //
@@ -248,14 +256,32 @@ export const printArtifact = (view) => {
         chain.forEach(n => n.classList.remove('dd-print-chain'));
         try { rebalanceLongform(); autoFitSections(art); } catch (e) { /* screen only */ }
     };
+    return restore;
+};
 
+export const printArtifact = (view) => {
+    if (typeof document === 'undefined') return;
+    const restore = applyPrintLayout(view);
+    if (!restore) { window.print(); return; }
+
+    // Restore only once the print job is actually done.
+    //
+    // This used to also fire on a 1500ms timer. Chrome's print preview is
+    // asynchronous and regenerates the PDF when the DOM changes, so on any run
+    // where the user took longer than 1.5s to click Save -- which is every real
+    // run -- the timer stripped .dd-printing mid-preview and the gated rules
+    // above vanished. @page survived because it is not gated, which is why the
+    // result was a correctly-sized BLANK page rather than an unstyled one.
+    //
+    // afterprint is not universal, so back it with a visibility check rather
+    // than a wall-clock guess: the tab regains focus when the dialog closes.
     window.addEventListener('afterprint', restore, { once: true });
-    try {
-        window.print();
-    } finally {
-        // afterprint is not reliable everywhere; never leave the page tagged.
-        setTimeout(restore, 1500);
-    }
+    const onFocus = () => {
+        window.removeEventListener('focus', onFocus);
+        setTimeout(restore, 300);
+    };
+    window.addEventListener('focus', onFocus);
+    window.print();
 };
 
 /**

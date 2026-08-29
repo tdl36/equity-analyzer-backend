@@ -614,3 +614,29 @@ def test_force_still_starts_a_fresh_run_despite_an_inflight_one(client):
     r = client.post('/api/deepdive/analyze',
                     json={'ticker': 'DE', 'force': True, 'apiKey': 'sk-test'})
     assert r.get_json().get('reused') is not True
+
+
+def test_no_unscoped_blanket_visibility_hide_in_print_css():
+    """A print stylesheet may not blank the whole page unconditionally.
+
+    src/onepager.css did `body * { visibility: hidden }` and re-showed only
+    .op-sheet. Deep Dive prints a different element, so it laid out perfectly --
+    right page size, every element measurable via getBBox -- and painted
+    nothing. The PDF was a correctly-sized blank page, which no geometry check
+    or preflight could detect. Any blanket hide must name its context.
+    """
+    import glob, re
+    offenders = []
+    for path in glob.glob('src/*.css'):
+        css = open(path, encoding='utf-8').read()
+        for block in re.findall(r'@media\s+print\s*\{(.*?)\n\}', css, re.S):
+            for rule in re.findall(r'([^{}]+)\{[^{}]*visibility\s*:\s*hidden', block):
+                sel = rule.strip().split('\n')[-1].strip()
+                # `body *` / `*` with no qualifier hides every future feature.
+                if re.fullmatch(r'(html\s+)?(body\s+)?\*', sel):
+                    offenders.append(f'{path}: {sel}')
+    assert not offenders, (
+        'Unscoped blanket visibility:hidden in a print block: '
+        + '; '.join(offenders)
+        + ' -- qualify it (e.g. body:not(.dd-printing) *) so it cannot silently '
+          'blank an unrelated print feature.')

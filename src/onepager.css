@@ -331,7 +331,14 @@
 /* The sheet is authored at a fixed 1024px so an html2canvas capture and a print
    both produce the same page. Print drops the app chrome around it. */
 @media print {
-  body * { visibility: hidden; }
+  /* Scoped to exclude Deep Dive.
+     This was `body *`, which blanks EVERY element on the page and then re-shows
+     only .op-sheet. Any print feature added later that is not .op-sheet renders
+     with perfect geometry and zero paint -- a correctly-sized blank page. That
+     is exactly what happened to the Deep Dive artifact: it laid out at the right
+     size, getBBox() reported every element in place, and the PDF came out empty.
+     A blanket hide must name the context it belongs to. */
+  body:not(.dd-printing) * { visibility: hidden; }
   .op-sheet, .op-sheet * { visibility: visible; }
   .op-sheet {
     position: absolute; left: 0; top: 0;
