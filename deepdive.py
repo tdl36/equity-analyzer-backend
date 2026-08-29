@@ -213,12 +213,59 @@ def onepager_violations(d):
     return out
 
 
+# Words that end in a period without ending a sentence.
+_ABBREVIATIONS = {
+    "u.s.", "u.k.", "e.g.", "i.e.", "vs.", "etc.", "inc.", "corp.", "co.",
+    "ltd.", "llc.", "no.", "approx.", "est.", "avg.", "yr.", "mgmt.", "fig.",
+    "mr.", "mrs.", "ms.", "dr.", "st.", "jan.", "feb.", "mar.", "apr.", "jun.",
+    "jul.", "aug.", "sep.", "sept.", "oct.", "nov.", "dec.",
+}
+
+
+def _ends_sentence(word):
+    """True if `word` genuinely closes a sentence."""
+    if not word.endswith((".", "!", "?")):
+        return False
+    low = word.lower().strip("\u201c\u201d\"'()[]")
+    if low in _ABBREVIATIONS:
+        return False
+    # A single initial such as "J." or a lone letter in "U.S." style runs.
+    if re.fullmatch(r"[A-Za-z]\.", word):
+        return False
+    return True
+
+
 def _trim_words(text, limit):
-    """Cut to `limit` words on a word boundary, with an ellipsis when cut."""
+    """Cut to `limit` words, preferring a clean sentence end.
+
+    This used to cut at exactly `limit` words and append an ellipsis wherever
+    that landed, which is mid-phrase almost every time: shipped reports read
+    "retail pharmacies dispense scripts and engage consumers..." and "Bear: MBR
+    reverts 90%+, Caremark loses major clients...". A research document that
+    stops mid-clause reads as broken rather than edited.
+
+    So: end on the last complete sentence inside the budget when one exists far
+    enough in to be worth keeping, then on a clause boundary for the
+    telegraphic lines that carry no full stops, and only fall back to a hard
+    word cut with an ellipsis when neither is available. The untrimmed text is
+    always preserved in the JSON export.
+    """
     words = [w for w in re.split(r"\s+", str(text or "").strip()) if w]
     if len(words) <= limit:
         return text
-    return " ".join(words[:limit]).rstrip(",;:.") + "\u2026"
+    kept = words[:limit]
+
+    floor = max(1, int(limit * 0.55))
+    for i in range(len(kept) - 1, floor - 2, -1):
+        if _ends_sentence(kept[i]):
+            return " ".join(kept[:i + 1])
+
+    clause_floor = max(1, int(limit * 0.65))
+    for i in range(len(kept) - 1, clause_floor - 2, -1):
+        if kept[i].endswith((";", ":")):
+            return " ".join(kept[:i + 1]).rstrip(";:")
+
+    return " ".join(kept).rstrip(",;:.") + "\u2026"
 
 
 def enforce_budgets(d):
@@ -368,7 +415,9 @@ _MASTER_WORD_BUDGETS = [
     # uncapped, and a live run returned a 101-word valuation_comment against
     # Deere's 14 -- the panel rendered 787px tall inside a 390px box, which was
     # the single largest source of clipping anywhere in the memo.
-    (("financial_snapshot", "valuation_comment"), 40),   # DE 14
+    # Shares the 245px column with the four target cards above it; 40 words
+    # overflowed the panel onto the sensitivity matrix. DE is 14.
+    (("financial_snapshot", "valuation_comment"), 24),
     (("financial_snapshot", "revenue_context"), 26),     # DE 5
     (("financial_snapshot", "margin_context"), 26),      # DE 5
     (("financial_snapshot", "eps_context"), 26),         # DE 7
@@ -397,6 +446,16 @@ _MASTER_WORD_BUDGETS = [
 
 # (path, exact_count) -- the memo renderers lay these out in fixed grids, so a
 # long list overruns the page and a short one leaves a hole.
+# Memo signpost cells. The memo is the roomiest format, so these are looser
+# than the one-pager's 9 words, but six rows must still fit page 2.
+_MASTER_SIGNPOST_CELL_WORDS = [
+    ("signpost", 8),
+    ("current", 10),
+    ("target", 12),
+    ("why", 26),
+    ("why_it_matters", 26),
+]
+
 _MASTER_LIST_CAPS = [
     (("investment_thesis", "what_market_prices_in"), 3, 30),   # DE max 9
     (("investment_thesis", "what_must_be_true"), 3, 30),       # DE max 9
@@ -430,7 +489,11 @@ _MASTER_ITEM_WORDS = [
     (("thesis_threats",), "watch_for", 45),         # DE max 17
     (("signposts",), "why_it_matters", 42),         # DE max 7
     (("catalysts",), "why_it_matters", 26),         # DE max 8
-    (("financial_snapshot", "management_targets"), "context", 20),  # DE max 2
+    # Memo page 2 renders these as four cards stacked above the valuation
+    # summary in a 245px column. At 20 words the contexts filled the column and
+    # the summary printed on top of them, and of the sensitivity matrix beside
+    # it. DE's own maximum is 2 words.
+    (("financial_snapshot", "management_targets"), "context", 11),
     # Never capped before, and the worst offender: UNH returned 50-word scenario
     # logic against Deere's 6, which is most of why the decision section on page
     # 3 ran 127px past its box.
@@ -591,6 +654,32 @@ def enforce_master_budgets(m):
                 trimmed.append(".".join(path))
         if changed:
             _put(out, path, items)
+
+    # Signpost table cells, memo page 2.
+    #
+    # The one-pager path caps these at 9 words, but it looks for the key "why".
+    # The master object -- which is what the memo renders from -- spells it
+    # "why_it_matters", so the cap silently never applied to the memo at all.
+    # A 45-word cell inflated each row until the last rows fell off the page:
+    # the shipped CVS three-pager showed four of six signposts, and the golden
+    # DE fixture never caught it because its cells are empty. Both spellings are
+    # capped here so the same divergence cannot reappear.
+    sps = out.get("signposts")
+    if isinstance(sps, list):
+        new_sps, sp_changed = [], False
+        for sp in sps:
+            if not isinstance(sp, dict):
+                new_sps.append(sp)
+                continue
+            sp2 = dict(sp)
+            for cell, limit in _MASTER_SIGNPOST_CELL_WORDS:
+                if _words(sp2.get(cell)) > limit:
+                    sp2[cell] = _trim_words(sp2.get(cell), limit)
+                    sp_changed = True
+            new_sps.append(sp2)
+        if sp_changed:
+            out["signposts"] = new_sps
+            trimmed.append("signposts(cells)")
 
     segs = _dig(out, ("company_overview", "segments"))
     fixed_segs, seg_changed = normalize_segments(segs)

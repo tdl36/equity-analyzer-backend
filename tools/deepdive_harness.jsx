@@ -10,9 +10,11 @@ import * as ReactDOM from 'react-dom';
 import { DeepDiveArtifact, PageFit, preflightPages, printArtifact, applyPrintLayout } from '../src/deepdive';
 import de from '../fixtures/deepdive_de_golden.json';
 import unh from '../fixtures/deepdive_unh_sample.json';
+import stress from '../fixtures/deepdive_stress.json';
 
 const q = new URLSearchParams(location.search);
-const src = q.get('fixture') === 'unh' ? unh : de;
+const src = q.get('fixture') === 'unh' ? unh
+    : q.get('fixture') === 'stress' ? stress : de;
 const root = document.getElementById('root');
 const run = { master: src.master, onepager: src.onepager };
 const view = q.get('view') || 'onepager';
@@ -34,7 +36,14 @@ const tree = q.get('chrome') === '1'
     : artifact;
 
 ReactDOM.render(tree, root, () => {
-    const measure = () => { window.__ddQA = preflightPages(root); window.__ddReady = true; };
+    const measure = () => {
+        window.__ddQA = preflightPages(root); window.__ddReady = true;
+        if (q.get('qa') === '1') {
+            let pre = document.getElementById('__qa');
+            if (!pre) { pre = document.createElement('pre'); pre.id = '__qa'; document.documentElement.appendChild(pre); }
+            pre.textContent = JSON.stringify(window.__ddQA, null, 1);
+        }
+    };
     window.addEventListener('deepdive:layout-settled', measure);
     setTimeout(measure, 1800);
     // Exposed so a headless run can exercise the real print path.
@@ -78,7 +87,11 @@ ReactDOM.render(tree, root, () => {
                 Array.from(document.body.children).forEach((c, i) =>
                     add(`body>child[${i}] .${c.className || '(none)'}`, c));
                 ['.dd-stage', '.dd-fit', '.dd-fit-inner', '.dd-artifact',
-                 '.op-canvas', '.nbv-root'].forEach(sel => add(sel, document.querySelector(sel)));
+                 '.op-canvas', '.nbv-root',
+                 '.v21-fin-core', '.report-chart-wrap', '.report-cycle-note',
+                 '.report-val-panel', '.report-valuation-summary',
+                 '.v21-sensitivity', '.report-sensitivity',
+                 '.report-sensitivity table'].forEach(sel => add(sel, document.querySelector(sel)));
                 const pre = document.createElement('pre');
                 pre.id = '__measure';
                 pre.textContent = rows.join('\n');

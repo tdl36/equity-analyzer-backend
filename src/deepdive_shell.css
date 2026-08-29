@@ -185,3 +185,64 @@
 .dd-artifact .tp-financial .tp-chart-row svg { max-height: 255px !important; }
 .dd-artifact .tp-financial .report-table th,
 .dd-artifact .tp-financial .report-table td { padding: 4px 8px !important; }
+
+/* Fixed-height grid rows must clip, not spill.
+ *
+ * .v21-fin-core is a fixed-height grid (372px). Grid children default to
+ * min-height:auto, so a long cycle note made the chart column taller than the
+ * row and it painted straight over the sensitivity matrix below -- the
+ * collision visible on memo page 2 of shipped reports. min-height:0 lets the
+ * declared height actually bind. Overlap destroys two blocks; clipping damages
+ * one, and the budgets are set so neither should trigger. */
+.dd-artifact .v21-fin-core > * { min-height: 0; }
+.dd-artifact .v21-fin-core .report-chart-wrap { overflow: hidden; }
+.dd-artifact .v21-sensitivity { overflow: hidden; }
+
+/* Wide numbers must not burst a fixed-layout table.
+ *
+ * The sensitivity matrix is table-layout:fixed. When the EPS parser fed it
+ * year-contaminated values it produced five-digit prices like $60,683, which
+ * overflowed their cells and printed across the valuation panel. The numbers
+ * are fixed at the source now; this keeps a bad cell contained rather than
+ * letting it wreck the page. */
+.dd-artifact .report-sensitivity td,
+.dd-artifact .report-sensitivity th { overflow: hidden; text-overflow: ellipsis; }
+
+/* Fixed-height row, flexible contents.
+ *
+ * .v21-fin-core is a fixed-height grid row whose two columns were laid out
+ * with fixed child heights. When the cycle note or the valuation summary ran
+ * longer than the space assumed for them, the note was clipped mid-sentence
+ * and the valuation summary escaped the row and painted over the sensitivity
+ * matrix below it. Making each column a flex column lets the chart absorb the
+ * variation instead: the prose keeps its full height and the chart -- which is
+ * a viewBox SVG and scales cleanly -- gives up the pixels. */
+.dd-artifact .v21-fin-core .report-chart-wrap {
+    display: flex; flex-direction: column; overflow: hidden;
+}
+.dd-artifact .v21-fin-core .report-chart-wrap .earnings-chart {
+    flex: 1 1 auto; height: auto !important; min-height: 0;
+}
+.dd-artifact .v21-fin-core .report-cycle-note { flex: 0 0 auto; }
+.dd-artifact .v21-fin-core .report-val-panel {
+    display: flex; flex-direction: column; overflow: hidden !important;
+}
+.dd-artifact .v21-fin-core .report-target-grid { flex: 0 1 auto; min-height: 0; }
+.dd-artifact .v21-fin-core .report-valuation-summary { flex: 0 0 auto; }
+
+/* Bind the fixed height to the grid row, not just the container.
+ *
+ * .v21-fin-core declares a height but leaves grid-template-rows at auto, so
+ * the row sized itself to its content and the items grew with it. The
+ * container's height became advisory: the chart column stretched to ~700px
+ * inside a 372px box and painted its axis labels straight through the
+ * sensitivity matrix below. minmax(0,1fr) makes the row exactly the declared
+ * height, which is what finally lets the columns' own flex layout shrink the
+ * chart instead of overflowing. */
+.dd-artifact .v21-fin-core {
+    grid-template-rows: minmax(0, 1fr);
+    overflow: hidden;
+}
+
+/* The target cards must not paint over the summary beneath them. */
+.dd-artifact .v21-fin-core .report-target-grid { overflow: hidden; }

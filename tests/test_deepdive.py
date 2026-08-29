@@ -640,3 +640,95 @@ def test_no_unscoped_blanket_visibility_hide_in_print_css():
         + '; '.join(offenders)
         + ' -- qualify it (e.g. body:not(.dd-printing) *) so it cannot silently '
           'blank an unrelated print feature.')
+
+
+def test_javascript_render_tests_pass():
+    """Run the JS-side render tests as part of the one suite.
+
+    The renderer's numeric logic had no test coverage at all, which is how a
+    matrix of $30,278 share prices for a $93 stock reached a finished PDF.
+    """
+    import subprocess, shutil
+    if not shutil.which('node'):
+        pytest.skip('node not installed')
+    for suite in ('tests/js/sensitivity.test.mjs', 'tests/js/chart.test.mjs'):
+        r = subprocess.run(['node', suite], capture_output=True, text=True, timeout=120)
+        assert r.returncode == 0, f'{suite} failed:\n{r.stdout}\n{r.stderr}'
+
+
+def test_master_signpost_cells_are_capped_under_both_key_names():
+    """The memo's signpost cells must be capped, whatever the key is called.
+
+    The one-pager caps these at 9 words but looks for "why". The master object
+    -- what the memo renders from -- spells it "why_it_matters", so the cap
+    never applied there and 45-word cells pushed rows off page 2: the shipped
+    CVS three-pager showed four of six signposts. The DE golden fixture has
+    empty cells, so it could never catch this.
+    """
+    m = {
+        'signposts': [
+            {'signpost': 'A very long signpost name that keeps going well past any sane width',
+             'current': ' '.join(['cur'] * 30),
+             'target': ' '.join(['tgt'] * 30),
+             'why_it_matters': ' '.join(['why'] * 45)},
+            {'signpost': 'Short', 'current': 'x', 'target': 'y',
+             'why': ' '.join(['legacy'] * 45)},
+        ]
+    }
+    from deepdive import enforce_master_budgets
+    out, trimmed = enforce_master_budgets(m)
+    a, b = out['signposts']
+    assert len(a['why_it_matters'].split()) <= 26, 'why_it_matters was not capped'
+    assert len(a['signpost'].split()) <= 8
+    assert len(a['current'].split()) <= 10
+    assert len(a['target'].split()) <= 12
+    assert len(b['why'].split()) <= 26, 'the legacy "why" spelling must stay capped too'
+
+
+def test_all_six_signposts_survive_the_master_budget():
+    """Capping cells must never cost us a row -- six in, six out."""
+    m = {'signposts': [
+        {'signpost': f'Signpost {i}', 'current': 'now',
+         'target': 'then', 'why_it_matters': ' '.join(['word'] * 50)}
+        for i in range(6)]}
+    from deepdive import enforce_master_budgets
+    out, _ = enforce_master_budgets(m)
+    assert len(out['signposts']) == 6
+
+
+def test_trim_prefers_a_clean_sentence_end():
+    """Trimming must not leave prose stopping mid-clause.
+
+    Shipped reports read "...dispense scripts and engage consumers..." and
+    "Bear: MBR reverts 90%+, Caremark loses major clients...". A research
+    document that stops mid-phrase reads as broken rather than edited.
+    """
+    text = ('CVS captures value at multiple points in the chain: Aetna '
+            'underwrites risk and collects premiums. Caremark negotiates '
+            'rebates and manages formularies. Retail pharmacies dispense '
+            'scripts and engage consumers across the whole cycle.')
+    out = dd._trim_words(text, 30)
+    assert out.endswith('formularies.'), out
+    assert '…' not in out, 'a clean sentence end needs no ellipsis'
+
+
+def test_trim_does_not_mistake_an_abbreviation_for_a_sentence_end():
+    out = dd._trim_words(
+        'Operations span the U.S. and select international markets. Growth continues.', 9)
+    assert out.endswith('markets.'), out
+
+
+def test_trim_uses_a_clause_boundary_for_telegraphic_lines():
+    """Bullet lines carry semicolons, not full stops."""
+    out = dd._trim_words('Q2 87.4%; star bonuses sustain; $6-7B segment OI 2028; more', 8)
+    assert out == 'Q2 87.4%; star bonuses sustain', out
+
+
+def test_trim_still_falls_back_to_an_ellipsis_when_there_is_no_boundary():
+    out = dd._trim_words('no punctuation here at all just a long run of words', 6)
+    assert out.endswith('…'), out
+
+
+def test_trim_never_lengthens_or_mangles_short_text():
+    for s in ('', 'Short line.', 'A B C'):
+        assert dd._trim_words(s, 20) == s

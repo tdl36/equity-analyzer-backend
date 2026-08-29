@@ -205,22 +205,74 @@ function numsIn(value){
 function parseMoneyNumber(value){
   const n=numsIn(value)[0]; return Number.isFinite(n)?n:null;
 }
+/* Numbers that are calendar years are not financial quantities.
+   `numsIn` harvests every number in a string, so an EPS written as
+   "$8.50 (2027E)" -- the normal way a model writes it -- yielded [8.5, 2027].
+   The matrix then treated 2027 as an earnings figure and produced rows of
+   $2018.5 and $4045.5 EPS with $30,278 implied share prices for a $93 stock.
+   The DE fixture writes "$40-45" with no year, which is why the golden master
+   never caught it. */
+function finNums(value){
+  return (String(value||'')
+    .replace(/\([^)]*\)/g, ' ')            // "(2027E)", "(±25bps)"
+    .replace(/\b(?:19|20)\d{2}\b/g, ' ')   // bare years
+    .match(/\d+(?:\.\d+)?/g) || []).map(Number).filter(Number.isFinite);
+}
+/* Pick n values spanning a sorted list, extending it when it is too short so
+   the matrix always has a full set of rows/columns. */
+function pickSpread(sorted, n){
+  const u=[]; sorted.forEach(v=>{ if(!u.some(x=>Math.abs(x-v)<1e-9)) u.push(v); });
+  if(u.length>=n){
+    const out=[]; for(let i=0;i<n;i++) out.push(u[Math.round(i*(u.length-1)/(n-1))]);
+    const ded=[]; out.forEach(v=>{ if(!ded.includes(v)) ded.push(v); });
+    while(ded.length<n){ const gap=(ded[ded.length-1]-ded[0])/Math.max(1,ded.length-1)||ded[0]*.1; ded.push(Math.round((ded[ded.length-1]+gap)*100)/100); }
+    return ded.slice(0,n);
+  }
+  if(!u.length) return [];
+  const gaps=[]; for(let i=1;i<u.length;i++) gaps.push(u[i]-u[i-1]);
+  const step=gaps.length ? gaps.reduce((a,b)=>a+b,0)/gaps.length : Math.max(u[0]*.12, .5);
+  const out=u.slice();
+  while(out.length<n) out.push(Math.round((out[out.length-1]+step)*100)/100);
+  return out.slice(0,n);
+}
 function reportSensitivityHTML(m,f){
   const scenarios=m.valuation_scenarios||[];
-  const base=scenarios.find(x=>String(x.case||'').toLowerCase()==='base')||{};
-  const bn=numsIn(base.earnings);
-  let lo=bn[0]||numsIn(f.eps)[0]||10, hi=bn[1]||lo*1.1;
-  if(hi<=lo) hi=lo*1.1;
-  const step=Math.max(1, Math.round((hi-lo)*10)/10 || Math.max(1,lo*.1));
-  const rows=[Math.max(step,lo-step),lo,hi,hi+step];
-  const hist=numsIn(f.historical_pe)[0]||15;
-  const bm=numsIn(base.multiple); const ml=bm[0]||Math.max(hist,18), mh=bm[1]||ml*1.15;
-  const cols=[hist,ml,(ml+mh)/2,Math.max(mh,Math.round(mh/5)*5)].map(x=>Math.round(x*10)/10);
-  const uniq=[]; cols.forEach(x=>{if(!uniq.some(y=>Math.abs(y-x)<.25)) uniq.push(x)}); while(uniq.length<4) uniq.push(Math.round((uniq[uniq.length-1]*1.1)*10)/10);
-  const mults=uniq.slice(0,4);
   const current=parseMoneyNumber(m.at_glance?.share_price);
-  const cell=(eps,mult)=>{const v=Math.round(eps*mult); let c='neutral'; if(current){const r=v/current;c=r<.9?'down':r>1.1?'up':'near'} return `<td class="${c}"><b>$${v.toLocaleString()}</b></td>`};
-  return `<div class="report-sensitivity"><div class="report-matrix-title">Mid-Cycle EPS × P/E Sensitivity</div><table><thead><tr><th>EPS \\ P/E</th>${mults.map(x=>`<th>${x}x</th>`).join('')}</tr></thead><tbody>${rows.map(e=>`<tr><th>$${Number.isInteger(e)?e:e.toFixed(1)}</th>${mults.map(mu=>cell(e,mu)).join('')}</tr>`).join('')}</tbody></table><small>Illustrative share price = EPS × P/E. ${current?`Current share price reference: ${esc(String(m.at_glance?.share_price||'').startsWith('~')?m.at_glance.share_price:'~'+String(m.at_glance?.share_price||''))}.`:''}</small></div>`;
+
+  /* Rows come from the scenario EPS figures the memo already states, so the
+     matrix agrees with the scenario table instead of being derived from an
+     arithmetic step that could drift away from it. */
+  let eps=[];
+  scenarios.forEach(x=>{ finNums(x.earnings).forEach(n=>{ if(n>0 && n<1000) eps.push(n); }); });
+  if(!eps.length) eps=finNums(f.eps).filter(n=>n>0 && n<1000);
+  if(!eps.length) eps=[current?current/15:10];
+  const rows=pickSpread(eps.slice().sort((a,b)=>a-b), 4)
+    .map(v=>Math.round(v*100)/100);
+
+  /* Columns: the scenario multiples plus the historical multiple, ascending.
+     Previously these were [hist, ml, midpoint, mh] unsorted, which produced
+     a "15x 12x 12.9x 14.2x" header -- out of order and effectively duplicated. */
+  let mults=[];
+  scenarios.forEach(x=>{ finNums(x.multiple).forEach(n=>{ if(n>0 && n<100) mults.push(n); }); });
+  finNums(f.historical_pe).forEach(n=>{ if(n>0 && n<100) mults.push(n); });
+  finNums(f.forward_pe).forEach(n=>{ if(n>0 && n<100) mults.push(n); });
+  if(!mults.length) mults=[10,12,15,18];
+  /* Reject multiples that are not part of the working range. Historical-P/E
+     prose carries asides like "18-year avg ~20x; peak 37x at Sept 2024", and
+     harvesting the 37 stretched the columns to 10x/17x/22x/37x -- a header
+     dominated by a one-off peak rather than the range the thesis argues over.
+     Anchor the band on the forward multiple when it is known, the median
+     otherwise. */
+  const anchorCands=finNums(f.forward_pe).filter(n=>n>0&&n<100);
+  const sortedM=mults.slice().sort((a,b)=>a-b);
+  const anchor=anchorCands.length ? anchorCands[0] : sortedM[Math.floor(sortedM.length/2)];
+  const banded=sortedM.filter(n=>n>=anchor*0.5 && n<=anchor*2.2);
+  const cols=pickSpread((banded.length>=2?banded:sortedM), 4)
+    .map(v=>Math.round(v*10)/10);
+
+  const fmtEps=e=>Number.isInteger(e)?String(e):e.toFixed(2).replace(/0$/,'');
+  const cell=(e,mult)=>{const v=Math.round(e*mult); let c='neutral'; if(current){const r=v/current;c=r<.9?'down':r>1.1?'up':'near'} return `<td class="${c}"><b>$${v.toLocaleString()}</b></td>`};
+  return `<div class="report-sensitivity"><div class="report-matrix-title">Mid-Cycle EPS \u00d7 P/E Sensitivity</div><table><thead><tr><th>EPS \\ P/E</th>${cols.map(x=>`<th>${x}x</th>`).join('')}</tr></thead><tbody>${rows.map(e=>`<tr><th>$${fmtEps(e)}</th>${cols.map(mu=>cell(e,mu)).join('')}</tr>`).join('')}</tbody></table><small>Illustrative share price = EPS \u00d7 P/E. ${current?`Current share price reference: ${esc(String(m.at_glance?.share_price||'').startsWith('~')?m.at_glance.share_price:'~'+String(m.at_glance?.share_price||''))}.`:''}</small></div>`;
 }
 function reportSensitivityWideHTML(m,f){
   return `<div class="report-sensitivity-wide">${reportSensitivityHTML(m,f)}</div>`;
@@ -320,7 +372,54 @@ function donutHTML(items, cls='') {
 }
 function flowHTML(items, cls='') { return `<div class="causal-flow ${cls}">${items.map((x,i)=>`${i?'<span class="flow-arrow">→</span>':''}<div class="flow-node"><b>${esc(x.label)}</b><small>${esc(x.detail)}</small></div>`).join('')}</div>`; }
 
-function earningsChartSVG(history, className='') {
+/* Place chart annotations so they stay inside the plot and off each other.
+ *
+ * Every label used to be text-anchor="middle" at its own data point with no
+ * bounds check and no collision handling. The first point sits on the y-axis,
+ * so its label lost the half that fell at negative x -- "Pre-Aetna headwinds"
+ * printed as "re-Aetna headwinds". Labels on the last points ran past the plot
+ * and over the valuation panel beside it, and neighbouring labels simply
+ * overprinted one another. */
+function annotationsSVG(pts, x, y, W) {
+  const CHAR_W = 4.6;      // ~px per character at the 9px annotation size
+  const LINE   = 10;
+  const BOTTOM = 132;      // keep clear of the x-axis labels
+  const MAX_CH = 34;       // a label wider than this cannot fit any placement
+  const placed = [];
+  return pts.map((d, i) => ({ d, i })).filter(o => o.d.annotation).map(o => {
+    const raw = String(o.d.annotation);
+    const text = raw.length > MAX_CH ? raw.slice(0, MAX_CH - 1).trimEnd() + '\u2026' : raw;
+    const w = text.length * CHAR_W;
+    let cx = x(o.i), anchor = 'middle';
+    if (cx - w / 2 < 2) { anchor = 'start'; cx = 2; }
+    else if (cx + w / 2 > W - 2) { anchor = 'end'; cx = W - 2; }
+    const x0 = anchor === 'start' ? cx : anchor === 'end' ? cx - w : cx - w / 2;
+    const x1 = x0 + w;
+    /* Try above the point first, then below. Stacking upward alone ran into
+       the top of the plot and then gave up while still overlapping, which put
+       two labels 2px apart -- unreadable. A label that cannot be placed
+       anywhere clear is dropped: omitting one is honest, overprinting two
+       destroys both. */
+    const base = y(Number(o.d.value));
+    const free = yy => yy >= 9 && yy <= BOTTOM
+      && !placed.some(pl => !(x1 < pl.x0 - 2 || x0 > pl.x1 + 2)
+                            && Math.abs(yy - pl.y) < LINE);
+    let chosen = null;
+    for (let k = 1; k <= 5 && chosen === null; k++) {
+      const up = base - 10 - (k - 1) * LINE;
+      if (free(up)) chosen = up;
+    }
+    for (let k = 1; k <= 4 && chosen === null; k++) {
+      const down = base + 12 + (k - 1) * LINE;
+      if (free(down)) chosen = down;
+    }
+    if (chosen === null) return '';
+    placed.push({ x0, x1, y: chosen });
+    return `<text x="${cx.toFixed(1)}" y="${chosen.toFixed(1)}" text-anchor="${anchor}" class="anno">${esc(text)}</text>`;
+  }).join('');
+}
+
+function earningsChartSVG(history, className = '') {
   const pts=(history?.points||[]).filter(x=>Number.isFinite(Number(x.value))).slice(-12);
   if (pts.length < 2) return `<div class="chart-empty">Historical series unavailable</div>`;
   const W=430,H=170,p={l:34,r:12,t:18,b:30};
@@ -336,7 +435,7 @@ function earningsChartSVG(history, className='') {
     ${estimate.length>1?`<path d="${path(estimate,estimateStart)}" class="series estimate"/>`:''}
     ${pts.map((d,i)=>`<circle cx="${x(i)}" cy="${y(Number(d.value))}" r="3" class="point ${d.kind==='estimate'?'est':''}"/>`).join('')}
     ${pts.map((d,i)=>`<text x="${x(i)}" y="${H-10}" text-anchor="middle" class="xlab">${esc(d.period)}</text>`).join('')}
-    ${pts.filter(d=>d.annotation).map(d=>{const i=pts.indexOf(d);return `<text x="${x(i)}" y="${Math.max(12,y(Number(d.value))-10)}" text-anchor="middle" class="anno">${esc(d.annotation)}</text>`}).join('')}
+    ${annotationsSVG(pts, x, y, W)}
   </svg>`;
 }
 

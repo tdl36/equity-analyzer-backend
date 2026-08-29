@@ -294,6 +294,73 @@ export const printArtifact = (view) => {
  * QA was written against this DOM and measures painted need instead, which is
  * precisely the false-positive class the handoff warns blocks valid PDFs.
  */
+/**
+ * Report text blocks that visually collide.
+ *
+ * The preflight only ever asked "does the page overflow?", and answered no
+ * while shipped PDFs had the sensitivity matrix printed across the valuation
+ * panel and threat cards overprinting each other. Overflow and collision are
+ * different failures: a fixed-height section whose content spills paints over
+ * its neighbours without changing any page height, so nothing upstream
+ * noticed. This measures the thing readers actually see.
+ */
+export const detectOverlaps = (page) => {
+    if (!page || typeof document === 'undefined') return [];
+    const SEL = [
+        '.report-card', '.report-callout', '.report-sensitivity', '.report-val-panel',
+        // The panel clips, but the blocks inside it were the ones painting over
+        // the matrix -- listing only the container hid the real collision.
+        '.report-valuation-summary', '.report-target-grid', '.report-matrix-title',
+        '.report-cycle-note', '.report-chart-wrap', '.report-metrics', '.report-table',
+        '.report-threat', '.report-catalyst', '.report-opp', '.report-pool',
+        '.v21-sensitivity', '.v21-bottom-line', '.v21-final-copy', '.report-matrix-title',
+        '.tp-targets', '.tp-fin-bullets', '.tp-chart-row aside', '.tp-cycle',
+        '.nbv-val', '.nbv-chart', '.nbv-target',
+    ].join(',');
+    /* An element clipped by an ancestor still reports its full layout box, so
+       comparing raw rects invents collisions between things the reader never
+       sees overlapping. Intersect with every clipping ancestor to get the box
+       that actually paints. */
+    const visibleRect = (el) => {
+        let r = el.getBoundingClientRect();
+        for (let n = el.parentElement; n && n !== page.parentElement; n = n.parentElement) {
+            const cs = getComputedStyle(n);
+            if (/hidden|clip|auto|scroll/.test(cs.overflow + cs.overflowX + cs.overflowY)) {
+                const pr = n.getBoundingClientRect();
+                const left = Math.max(r.left, pr.left), top = Math.max(r.top, pr.top);
+                const right = Math.min(r.right, pr.right), bottom = Math.min(r.bottom, pr.bottom);
+                r = { left, top, right, bottom,
+                      width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
+            }
+        }
+        return r;
+    };
+    const els = Array.from(page.querySelectorAll(SEL)).filter(el => {
+        const cs = getComputedStyle(el);
+        if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+        const r = visibleRect(el);
+        return r.width > 8 && r.height > 8;
+    });
+    const out = [];
+    for (let i = 0; i < els.length; i++) {
+        for (let j = i + 1; j < els.length; j++) {
+            const a = els[i], b = els[j];
+            // Nesting is not a collision.
+            if (a.contains(b) || b.contains(a)) continue;
+            const ra = visibleRect(a), rb = visibleRect(b);
+            const ox = Math.min(ra.right, rb.right) - Math.max(ra.left, rb.left);
+            const oy = Math.min(ra.bottom, rb.bottom) - Math.max(ra.top, rb.top);
+            // A few px of shared edge is normal for adjacent borders.
+            if (ox > 4 && oy > 4) {
+                const name = el => el.className.toString().trim().split(/\s+/)[0] || el.tagName;
+                out.push(`overlap: .${name(a)} and .${name(b)} share `
+                    + `${Math.round(ox)}x${Math.round(oy)}px`);
+            }
+        }
+    }
+    return out;
+};
+
 export const preflightPages = (root) => {
     if (!root || typeof document === 'undefined') return [];
     const pages = Array.from(root.querySelectorAll('.op-canvas, .tp-page, .report-page'));
@@ -301,10 +368,13 @@ export const preflightPages = (root) => {
 
     let hard = [];
     let qa = { failures: [] };
+    let collisions = [];
     try { hard = strictClipFailures() || []; } catch (e) { console.warn('strictClipFailures:', e); }
     try { qa = collectLayoutQA() || { failures: [] }; } catch (e) { console.warn('collectLayoutQA:', e); }
+    try { pages.forEach(pg => { collisions = collisions.concat(detectOverlaps(pg)); }); }
+    catch (e) { console.warn('detectOverlaps:', e); }
 
-    const issues = [...new Set([...(hard || []), ...((qa && qa.failures) || [])])];
+    const issues = [...new Set([...(hard || []), ...((qa && qa.failures) || []), ...collisions])];
     // The prototype reports per-document, not per-page, so the findings are
     // attached to the first page rather than invented against a page each.
     return pages.map((_page, idx) => ({
