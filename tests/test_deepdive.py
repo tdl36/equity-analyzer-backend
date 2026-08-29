@@ -486,3 +486,80 @@ def test_all_zero_segments_are_left_alone():
     segs = [{'mix': 'N/A', 'mix_numeric': 0}, {'mix': 'N/A', 'mix_numeric': 0}]
     out, changed = dd.normalize_segments(segs)
     assert changed is False
+
+
+# ---------------------------------------------------------------------------
+# structural repair — a schema in a prompt is a request, not a contract
+# ---------------------------------------------------------------------------
+
+def test_a_self_wrapped_list_is_unwrapped():
+    """A live run returned signposts as {"signposts": [...]}.
+
+    The memo renderer calls .slice() on it, threw, and produced an entirely
+    blank page -- so this is repaired rather than trusted.
+    """
+    m = {'signposts': {'signposts': [{'signpost': 'a'}, {'signpost': 'b'}]}}
+    out, fixed = dd.coerce_master_shape(m)
+    assert isinstance(out['signposts'], list) and len(out['signposts']) == 2
+    assert 'signposts' in fixed
+
+
+def test_a_keyed_object_standing_in_for_a_list_is_converted():
+    m = {'opportunities': {'one': {'title': 'A'}, 'two': {'title': 'B'}}}
+    out, fixed = dd.coerce_master_shape(m)
+    assert [o['title'] for o in out['opportunities']] == ['A', 'B']
+
+
+def test_a_scalar_where_a_list_belongs_is_wrapped():
+    m = {'bull_case': 'Single point'}
+    out, _ = dd.coerce_master_shape(m)
+    assert out['bull_case'] == ['Single point']
+
+
+def test_nested_paths_are_repaired_too():
+    m = {'investment_thesis': {'falsification': {'falsification': ['x', 'y']}}}
+    out, fixed = dd.coerce_master_shape(m)
+    assert out['investment_thesis']['falsification'] == ['x', 'y']
+    assert 'investment_thesis.falsification' in fixed
+
+
+def test_well_formed_objects_are_untouched(golden):
+    master, _op, _s = golden
+    out, fixed = dd.coerce_master_shape(master)
+    assert fixed == []
+
+
+def test_shape_repair_runs_before_budgets(golden):
+    """Budget enforcement skips non-lists, so repair has to come first."""
+    master, _op, _s = golden
+    broken = dict(master, signposts={'signposts': master['signposts']})
+    out, _ = dd.enforce_master_budgets(broken)
+    assert isinstance(out['signposts'], list)
+
+
+def test_kpi_values_are_figures_not_sentences(golden):
+    """A live run returned "$445-448 billion (2025 guidance)" as a KPI value.
+
+    These render as the headline number on a card; Deere's are one word. Long
+    values wrapped each card from ~110px to 165px, which was the whole of the
+    remaining memo page-2 overflow.
+    """
+    master, _op, _s = golden
+    verbose = json.loads(json.dumps(master))
+    verbose['financial_snapshot']['revenue'] = (
+        '$445-448 billion for 2025 under current management guidance, adjusted')
+    out, trimmed = dd.enforce_master_budgets(verbose)
+    assert dd._words(out['financial_snapshot']['revenue']) <= 5
+    assert any('revenue' in t for t in trimmed)
+
+
+def test_the_reference_master_survives_every_cap(golden):
+    """The guardrail: caps must never trim the artifact they were derived from.
+
+    Tightening repeatedly threatened this -- twice a cap chosen to fix another
+    company started cutting Deere, which would mean degrading the calibration
+    standard to accommodate the thing being calibrated against it.
+    """
+    master, _op, _s = golden
+    _out, trimmed = dd.enforce_master_budgets(master)
+    assert trimmed == [], f'DE reference was trimmed: {trimmed}'

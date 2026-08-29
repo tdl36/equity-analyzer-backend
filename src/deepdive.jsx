@@ -120,7 +120,12 @@ export const DeepDiveArtifact = ({ run, view, template }) => {
     // them. Runs after paint, and again once webfonts settle and change metrics.
     useEffect(() => {
         if (!html) return;
-        const run = () => { try { rebalanceLongform(); } catch (e) { console.warn('rebalance:', e); } };
+        const run = () => {
+            try { rebalanceLongform(); } catch (e) { console.warn('rebalance:', e); }
+            // Rows first, then fit the content into whatever rows it got.
+            try { autoFitSections(document.querySelector('.dd-artifact')); }
+            catch (e) { console.warn('autofit:', e); }
+        };
         const a = requestAnimationFrame(run);
         const b = setTimeout(run, 450);
         const c = setTimeout(run, 1200);
@@ -145,6 +150,52 @@ export const DeepDiveArtifact = ({ run, view, template }) => {
         <div className={`dd-artifact ${viewClass}`}
              dangerouslySetInnerHTML={{ __html: html }} />
     );
+};
+
+/**
+ * Bounded per-section auto-fit for the multi-page artifacts.
+ *
+ * The memo and two-pager lay content into fixed-height sections whose heights
+ * were calibrated against Deere. Any company whose prose runs longer overflows
+ * them, and the alternative -- trimming every field down to Deere's exact word
+ * counts -- means deleting real research (a 101-word valuation discussion cut
+ * to 20) to fit a box, and still fails for the next company whose writing is
+ * different again.
+ *
+ * So: sections that overflow get their type scaled down slightly, and only as
+ * far as they need. The floor is deliberate. The handoff's rule is that fit
+ * must never be solved by shrinking EVERYTHING; a bounded, per-section nudge
+ * applied only where content overruns is a different thing, and it is what a
+ * typesetter does. At 0.88 the smallest body text is still above the readability
+ * floor, and a section that cannot fit even there is reported rather than
+ * silently clipped -- which is the outcome that actually loses information.
+ */
+const SECTION_FIT_FLOOR = 0.86;
+
+export const autoFitSections = (root) => {
+    if (!root) return [];
+    const unfit = [];
+    root.querySelectorAll('.report-section, .tp-section').forEach((sec) => {
+        sec.style.removeProperty('zoom');
+        const box = sec.clientHeight;
+        if (!box || sec.scrollHeight <= box + 2) return;
+
+        // `zoom`, not font-size. The v24 sections are built from fixed pixel
+        // heights -- tables pinned with height:548px!important, KPI cards with
+        // min-height, charts with a fixed viewBox -- so scaling type changes
+        // nothing about how tall they are. zoom scales the whole composed block
+        // including those pixel values, which is the only lever that actually
+        // shrinks this layout without rebuilding it.
+        const needed = box / sec.scrollHeight;
+        const scale = Math.max(SECTION_FIT_FLOOR, needed * 0.995);
+        sec.style.zoom = String(scale.toFixed(3));
+
+        if (sec.scrollHeight > sec.clientHeight + 2) {
+            unfit.push((sec.className || '').split(' ')
+                .find(c => c.startsWith('v21-') || c.startsWith('tp-')) || 'section');
+        }
+    });
+    return unfit;
 };
 
 /**

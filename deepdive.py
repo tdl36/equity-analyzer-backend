@@ -342,11 +342,40 @@ _MASTER_WORD_BUDGETS = [
     # cap sits ~30% above DE's own value; where a field had no cap at all the
     # gap was enormous -- variant_view came back at 86 words against Deere's 20,
     # and it feeds both the thesis and decision sections.
-    (("investment_thesis", "summary"), 130),        # DE 118
+    (("investment_thesis", "summary"), 118),        # DE 118 exactly
     (("investment_thesis", "variant_view"), 28),    # DE 20
-    (("company_overview", "summary"), 70),          # DE 55
-    (("final_takeaway",), 60),                      # DE 39
+    (("company_overview", "summary"), 58),          # DE 55
+    (("final_takeaway",), 44),                      # DE 39
     (("bottom_line",), 14),                         # DE 6
+    # The valuation panel and metric captions on memo page 2. All were
+    # uncapped, and a live run returned a 101-word valuation_comment against
+    # Deere's 14 -- the panel rendered 787px tall inside a 390px box, which was
+    # the single largest source of clipping anywhere in the memo.
+    (("financial_snapshot", "valuation_comment"), 20),   # DE 14
+    (("financial_snapshot", "revenue_context"), 10),     # DE 5
+    (("financial_snapshot", "margin_context"), 10),      # DE 5
+    (("financial_snapshot", "eps_context"), 10),         # DE 7
+    (("financial_snapshot", "fcf_context"), 10),         # DE 2
+    (("financial_snapshot", "returns"), 9),              # DE 5
+    (("financial_snapshot", "leverage"), 9),             # DE 5
+    (("financial_snapshot", "historical_pe"), 9),        # DE 6
+    # The note under the earnings chart on every artifact. Uncapped, and the
+    # largest remaining gap: 61 words against Deere's 13.
+    (("earnings_history", "cycle_note"), 18),            # DE 13
+    (("investment_thesis", "core_question"), 22),        # DE 16
+    (("tagline",), 10),                                  # DE 7
+    # The headline numbers on the six KPI cards. Uncapped, and a live run
+    # returned values like "$445-448 billion (2025 guidance)" where Deere has
+    # "$51.7B" -- each card grew to 165px against Deere's ~110, which is the
+    # whole of the remaining page-2 overflow. These are figures, not sentences;
+    # the qualifier belongs in the card's context line.
+    (("financial_snapshot", "revenue"), 5),
+    (("financial_snapshot", "operating_margin"), 5),
+    (("financial_snapshot", "eps"), 5),
+    (("financial_snapshot", "free_cash_flow"), 5),
+    (("financial_snapshot", "forward_pe"), 5),
+    (("financial_snapshot", "ev_ebitda"), 5),
+    (("financial_snapshot", "fcf_yield"), 5),
 ]
 
 # (path, exact_count) -- the memo renderers lay these out in fixed grids, so a
@@ -355,22 +384,36 @@ _MASTER_LIST_CAPS = [
     (("investment_thesis", "what_market_prices_in"), 3, 12),   # DE max 9
     (("investment_thesis", "what_must_be_true"), 3, 12),       # DE max 9
     (("investment_thesis", "falsification"), 3, 12),           # DE max 10
+    # The two-pager renders these into a fixed box and they were never capped:
+    # they drove tp-financial 41px past its bounds on the live UNH run.
+    # These become the six KPI cards on memo page 2 and the bullet column on the
+    # two-pager. At 14 words they wrapped to extra lines and pushed the metrics
+    # block from Deere's 231px to 336px, which is most of the overflow on that
+    # page. DE's own maximum is 10.
+    (("financial_snapshot", "financial_bullets"), 6, 10),
     (("opportunities",), 5, None),
     (("business_model",), 4, None),
     (("signposts",), 6, None),
     (("thesis_threats",), 4, None),
     (("catalysts",), 3, None),
-    (("bull_case",), 5, 14),   # DE has 5
-    (("bear_case",), 5, 14),   # DE has 5
+    # These render as telegraphic lines, not sentences: Deere averages 4 words.
+    (("bull_case",), 5, 8),    # DE has 5, max 4 words
+    (("bear_case",), 5, 8),    # DE has 5, max 4 words
 ]
 
 # Per-item prose inside those lists.
 _MASTER_ITEM_WORDS = [
+    # Uncapped until a live run returned 40-word segment descriptions against
+    # Deere's 8, which is most of why the memo's overview section ran 170px past
+    # its box. These sit in a three-across grid; they are labels, not prose.
+    (("company_overview", "segments"), "description", 8),    # DE max 8 exactly:
+    # a four-segment company has to fit the space Deere's three occupy
     (("opportunities",), "detail", 18),             # DE max 14
     (("business_model",), "description", 13),       # DE max 10
     (("thesis_threats",), "watch_for", 22),         # DE max 17
     (("signposts",), "why_it_matters", 10),         # DE max 7
     (("catalysts",), "why_it_matters", 11),         # DE max 8
+    (("financial_snapshot", "management_targets"), "context", 6),   # DE max 2
     # Never capped before, and the worst offender: UNH returned 50-word scenario
     # logic against Deere's 6, which is most of why the decision section on page
     # 3 ran 127px past its box.
@@ -394,6 +437,63 @@ def _put(d, path, value):
         cur[k] = dict(nxt) if isinstance(nxt, dict) else {}
         cur = cur[k]
     cur[path[-1]] = value
+
+
+# Fields the renderers call .slice()/.map() on. A model that wraps one of these
+# in an object does not produce a slightly-off artifact, it throws and the whole
+# page renders blank.
+_MUST_BE_LIST = [
+    ("signposts",), ("thesis_threats",), ("opportunities",), ("business_model",),
+    ("catalysts",), ("bull_case",), ("bear_case",), ("valuation_scenarios",),
+    ("sources",), ("company_overview", "segments"),
+    ("company_overview", "other_profit_pools"),
+    ("financial_snapshot", "financial_bullets"),
+    ("financial_snapshot", "management_targets"),
+    ("investment_thesis", "what_market_prices_in"),
+    ("investment_thesis", "what_must_be_true"),
+    ("investment_thesis", "falsification"),
+]
+
+
+def coerce_master_shape(m):
+    """Repair structural slips before anything renders. Returns (obj, fixed).
+
+    A live run came back with signposts as {"signposts": [...]} rather than a
+    bare array, and the memo renderer -- which calls .slice() on it -- threw and
+    produced an entirely blank page. The research prompt specifies the schema,
+    but a schema in a prompt is a request; three renderers depending on it is a
+    contract. So the common malformations are repaired here rather than trusted:
+
+      {"signposts": [...]}  -> [...]      (self-wrapped)
+      {"a": {...}, "b": {...}} -> [...]   (keyed object instead of a list)
+      "single string"       -> ["..."]    (scalar where a list belongs)
+    """
+    if not isinstance(m, dict):
+        return m, []
+    out = json.loads(json.dumps(m))
+    fixed = []
+
+    for path in _MUST_BE_LIST:
+        val = _dig(out, path)
+        if val is None or isinstance(val, list):
+            continue
+        name = path[-1]
+        new = None
+        if isinstance(val, dict):
+            inner = val.get(name)
+            if isinstance(inner, list):
+                new = inner                      # self-wrapped under its own key
+            else:
+                listy = [v for v in val.values() if isinstance(v, (dict, str))]
+                if listy and len(listy) == len(val):
+                    new = listy                  # keyed object standing in for a list
+        elif isinstance(val, str) and val.strip():
+            new = [val]                          # scalar where a list belongs
+        if new is not None:
+            _put(out, path, new)
+            fixed.append(".".join(path))
+
+    return out, fixed
 
 
 def normalize_segments(segments):
@@ -444,6 +544,9 @@ def enforce_master_budgets(m):
     """
     if not isinstance(m, dict):
         return m, []
+    m, shape_fixed = coerce_master_shape(m)
+    if shape_fixed:
+        print(f"[deepdive] repaired malformed fields: {', '.join(shape_fixed)}")
     out = json.loads(json.dumps(m))   # deep copy; paths are nested
     trimmed = []
 

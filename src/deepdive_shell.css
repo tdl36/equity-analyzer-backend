@@ -91,21 +91,70 @@
 .dd-artifact .nbv-seg-legend-4 .nbv-segcopy strong { font-size: 11px; }
 .dd-artifact .nbv-seg-legend-4 .nbv-segcopy small { font-size: 9.5px; line-height: 1.24; }
 
-/* Memo sections that are chronically tight even for the reference.
+/* Memo page 2 overflow, fixed against the DE reference.
  *
- * Measured on the DE golden fixture: v21-financial needs 881px in an 850px box
- * (header 41 + metrics 231 + fin-core 390 + sensitivity 196, plus gaps) and
- * v21-signposts 541px in 534px. Those are two of the clipping flags the reviewed
- * DE run reports, so this is a pre-existing v24 defect rather than a
- * company-specific one.
+ * Measured, section by section, on the golden fixture these pages were
+ * calibrated against:
+ *   v21-financial  881px of content in an 850px box  (header 41+8 + metrics 231
+ *                  + fin-core 390 + sensitivity 196)
+ *   v21-signposts  541px in a 534px box              (header 41 + table 492)
+ * Both are flagged by the reviewed DE run, so this is a pre-existing v24 defect
+ * rather than anything company-specific.
  *
- * Reclaimed from padding and gaps only. The handoff is explicit that fit must
- * never be bought by shrinking type, so no font sizes are touched here. */
-.dd-artifact .v21-financial { row-gap: 6px; }
-.dd-artifact .v21-financial .report-metrics { gap: 6px; }
-.dd-artifact .v21-financial .report-metric { padding-top: 6px; padding-bottom: 6px; }
-.dd-artifact .v21-financial .v21-sensitivity td,
-.dd-artifact .v21-financial .v21-sensitivity th { padding-top: 3px; padding-bottom: 3px; }
-.dd-artifact .v21-signposts { row-gap: 5px; }
-.dd-artifact .v21-signposts td,
-.dd-artifact .v21-signposts th { padding-top: 3px; padding-bottom: 3px; }
+ * The v24 sheet pins these with !important, so the overrides need it too.
+ * Everything here comes out of spacing -- header margins, grid gaps, table cell
+ * padding, row heights. No font-size is touched: the handoff is explicit that
+ * fit must never be bought by shrinking type.
+ */
+.dd-artifact .v21-financial > :first-child { margin-bottom: 2px !important; }
+.dd-artifact .v21-financial .report-metrics { gap: 6px !important; }
+.dd-artifact .v21-financial .report-metric {
+    min-height: 70px !important;
+    padding: 6px 10px !important;
+}
+.dd-artifact .v21-financial .v21-sensitivity th,
+.dd-artifact .v21-financial .v21-sensitivity td { padding: 3px 8px !important; }
+.dd-artifact .v21-financial .v21-fin-core .report-table th,
+.dd-artifact .v21-financial .v21-fin-core .report-table td { padding: 4px 8px !important; }
+/* The section's own children carry 8px top margins; two of them is 16px of the
+   remaining overrun, and nothing visually depends on that much separation. */
+.dd-artifact .v21-financial > .v21-fin-core,
+.dd-artifact .v21-financial > .v21-sensitivity { margin-top: 4px !important; }
+
+.dd-artifact .v21-signposts > :first-child { margin-bottom: 3px !important; }
+.dd-artifact .v21-signposts .report-table { height: auto !important; }
+.dd-artifact .v21-signposts .report-table tbody tr { height: 71px !important; }
+
+/* Footer clearance.
+ *
+ * The last section on memo pages 2 and 3 ended 5-6px below the footer's top
+ * edge. Not obvious on screen, but "no content overlaps the footer" is a hard
+ * acceptance invariant and it prints as text sitting on a rule.
+ *
+ * Fixed by moving the footer DOWN rather than squeezing the content. The footer
+ * sat at bottom:15px on a 1536px page with that space unused, while page 2's
+ * sections had just been made to fit exactly -- taking pixels back from them
+ * would have re-introduced the overflow this pass closed.
+ */
+.dd-artifact .report-page .report-footer { bottom: 3px !important; }
+
+/* Two-pager page 2, financial section.
+ *
+ * Measured on the live UNH run: 661px of content in a 620px box (header 39 +
+ * KPI grid 229 + chart row 364). Deere fits because its financial bullets are
+ * shorter; this is the same fixed-box-versus-variable-content problem the memo
+ * had, one section further on.
+ *
+ * Reclaimed from spacing and the chart's own height, not from type size.
+ */
+.dd-artifact .tp-financial .tp-fin-grid { gap: 14px !important; }
+.dd-artifact .tp-financial .tp-kpi,
+.dd-artifact .tp-financial .report-metric { padding: 6px 10px !important; min-height: 0 !important; }
+.dd-artifact .tp-financial > .tp-chart-row { margin-top: 2px !important; }
+/* The earnings chart is the flexible element here: the KPI columns beside it
+   are both 229px, so the taller of the two sets the grid height and trimming
+   bullet text cannot help. 255px still reads clearly at two-pager scale and is
+   what brings the section inside its box. */
+.dd-artifact .tp-financial .tp-chart-row svg { max-height: 255px !important; }
+.dd-artifact .tp-financial .report-table th,
+.dd-artifact .tp-financial .report-table td { padding: 4px 8px !important; }
