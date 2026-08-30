@@ -199,11 +199,42 @@ function reportFooter(m,p){return `<div class="report-footer"><span>${esc(m.tick
  * drew no wedges, and stacked every label at the same point. Cigna printed
  * "~17M%inimal": three labels on top of each other. Parse the label when the
  * numeric field is missing, and treat a non-numeric label ("Minimal") as zero. */
-function segmentShare(x){
-  const direct = Number(x?.mix_numeric ?? x?.value);
-  if (Number.isFinite(direct) && direct > 0) return direct;
-  const m = String(x?.mix ?? '').match(/\d+(?:\.\d+)?/);
+/* Segment mix by OPERATING PROFIT where the company discloses it.
+ *
+ * A revenue split tells you where the sales are; an equity investor needs to
+ * know where the earnings are, and the two often disagree sharply. Eaton's
+ * Mobility segment is 10% of revenue at roughly half the company margin, so a
+ * revenue pie overstates what it contributes to the value of the business.
+ * Profit share is used when it is available and the shares are coherent, and
+ * the caption always says which basis is on screen -- an unlabelled pie that
+ * silently changes meaning between companies would be worse than either.
+ */
+function hasProfitMix(segments){
+  const segs = (segments || []).filter(Boolean);
+  if (segs.length < 2) return false;
+  const vals = segs.map(x => rawShare(x, 'profit'));
+  if (vals.some(v => !(v > 0))) return false;
+  const total = vals.reduce((a, b) => a + b, 0);
+  return Math.abs(total - 100) <= 12;      // must actually add up
+}
+function rawShare(x, basis){
+  const numeric = basis === 'profit'
+    ? Number(x?.profit_mix_numeric)
+    : Number(x?.mix_numeric ?? x?.value);
+  if (Number.isFinite(numeric) && numeric > 0) return numeric;
+  const label = basis === 'profit' ? x?.profit_mix : x?.mix;
+  const m = String(label ?? '').match(/\d+(?:\.\d+)?/);
   return m ? Math.max(0, Number(m[0])) : 0;
+}
+/* Set once per render so the pie, the legend and the caption cannot disagree
+   about which basis they are showing. */
+let SEGMENT_BASIS = 'revenue';
+function setSegmentBasis(segments){
+  SEGMENT_BASIS = hasProfitMix(segments) ? 'profit' : 'revenue';
+  return SEGMENT_BASIS;
+}
+function segmentShare(x){
+  return rawShare(x, SEGMENT_BASIS);
 }
 function reportPieSVG(items, cls='report-pie-svg'){
   const vals=(items||[]).map(segmentShare), total=vals.reduce((a,b)=>a+b,0)||1;
@@ -336,12 +367,16 @@ function posterList(items, maxChars) {
   return (items || []).map((raw) => {
     const t = String(raw || '').trim();
     if (t.length <= maxChars) return t;
+    /* Stop at a clause, never mid-phrase. Cutting on a plain space produced
+       "Data center backlog expands" from "...expands >228 GW" -- a bullet that
+       reads as though the analyst trailed off. If there is no clause boundary
+       to stop at, the item is left whole and the fitter scales the block. */
     const cut = t.slice(0, maxChars);
-    for (const mark of ['; ', ', ', ' ']) {
+    for (const mark of ['; ', ', ', ' — ', ' – ']) {
       const i = cut.lastIndexOf(mark);
-      if (i > maxChars * 0.6) return cut.slice(0, i).replace(/[,;:]$/, '');
+      if (i > maxChars * 0.55) return cut.slice(0, i).replace(/[,;:]$/, '');
     }
-    return cut.trim();
+    return t;
   });
 }
 
@@ -437,6 +472,7 @@ function renderReport() {
   const threats=(m.thesis_threats||[]).slice(0,4).map(x=>`<div class="report-threat"><b>${esc(x.threat)}</b><p>${esc(x.watch_for)}</p></div>`).join('');
   const decisionMatrix=reportDecisionMatrixHTML(m.valuation_scenarios||[]);
   const reportChart=earningsChartSVG(m.earnings_history||CURRENT.onepager?.earnings_history||{},'report-earnings-chart');
+  setSegmentBasis(o.segments);
   const companyPie=reportPieSVG((o.segments||[]).slice(0,4));
   const other=(o.other_profit_pools||[]).join(' · ');
   $('reportView').innerHTML = `
@@ -507,7 +543,7 @@ function flowHTML(items, cls='') { return `<div class="causal-flow ${cls}">${ite
  * placed below the line where the free-text annotations sit above it, so the
  * two never compete for the same space.
  */
-function valueLabelsSVG(pts, x, y, W) {
+function valueLabelsSVG(pts, x, y, W, out) {
   const fmt = (v) => {
     const n = Number(v);
     if (!Number.isFinite(n)) return '';
@@ -524,19 +560,20 @@ function valueLabelsSVG(pts, x, y, W) {
     const x0 = anchor === 'start' ? cx : anchor === 'end' ? cx - w : cx - w / 2;
     // Skip a label that would sit on the previous one rather than overprint.
     if (placed.some(p => x0 < p.x1 + 3 && x0 + w > p.x0 - 3)) return '';
-    placed.push({ x0, x1: x0 + w });
     const yy = Math.min(y(Number(d.value)) + 15, 126);
+    placed.push({ x0, x1: x0 + w, y: yy });
+    if (out) out.push({ x0, x1: x0 + w, y: yy });
     return `<text x="${cx.toFixed(1)}" y="${yy.toFixed(1)}" text-anchor="${anchor}" `
          + `class="vlab${d.kind === 'estimate' ? ' est' : ''}">${esc(text)}</text>`;
   }).join('');
 }
 
-function annotationsSVG(pts, x, y, W) {
+function annotationsSVG(pts, x, y, W, occupied) {
   const CHAR_W = 4.6;      // ~px per character at the 9px annotation size
   const LINE   = 10;
   const BOTTOM = 132;      // keep clear of the x-axis labels
   const MAX_CH = 34;       // a label wider than this cannot fit any placement
-  const placed = [];
+  const placed = Array.isArray(occupied) ? occupied.slice() : [];
   return pts.map((d, i) => ({ d, i })).filter(o => o.d.annotation).map(o => {
     /* Truncating these produced "Pandemic trough; portfolio restru..." across a
        shipped chart. An annotation is a caption: it is either readable or it is
@@ -569,6 +606,7 @@ function annotationsSVG(pts, x, y, W) {
     }
     if (chosen === null) return '';
     placed.push({ x0, x1, y: chosen });
+    if (Array.isArray(occupied)) occupied.push({ x0, x1, y: chosen });
     return `<text x="${cx.toFixed(1)}" y="${chosen.toFixed(1)}" text-anchor="${anchor}" class="anno">${esc(text)}</text>`;
   }).join('');
 }
@@ -583,14 +621,19 @@ function earningsChartSVG(history, className = '') {
   const path=(arr,offset=0)=>arr.map((d,i)=>`${i?'L':'M'}${x(i+offset).toFixed(1)},${y(Number(d.value)).toFixed(1)}`).join(' ');
   const actual=pts.slice(0,Math.max(2,actualIdx)); const estimateStart=Math.max(0,actualIdx-1); const estimate=pts.slice(estimateStart);
   const ticks=[min,(min+max)/2,max];
+  /* One occupancy list shared by both label passes. Placing values and
+     annotations independently is what put "Consensus est." on top of the
+     $15.20 label on a shipped chart: each pass believed its own space was
+     free. */
+  const _occupied=[];
   return `<svg class="earnings-chart ${className}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(history.metric||'Earnings')} history">
     ${ticks.map(v=>`<line x1="${p.l}" y1="${y(v)}" x2="${W-p.r}" y2="${y(v)}" class="gridline"/><text x="${p.l-6}" y="${y(v)+4}" text-anchor="end">${Math.round(v)}</text>`).join('')}
     <path d="${path(actual)}" class="series actual"/>
     ${estimate.length>1?`<path d="${path(estimate,estimateStart)}" class="series estimate"/>`:''}
     ${pts.map((d,i)=>`<circle cx="${x(i)}" cy="${y(Number(d.value))}" r="3" class="point ${d.kind==='estimate'?'est':''}"/>`).join('')}
-    ${valueLabelsSVG(pts, x, y, W)}
+    ${valueLabelsSVG(pts, x, y, W, _occupied)}
     ${pts.map((d,i)=>`<text x="${x(i)}" y="${H-10}" text-anchor="middle" class="xlab">${esc(d.period)}</text>`).join('')}
-    ${annotationsSVG(pts, x, y, W)}
+    ${annotationsSVG(pts, x, y, W, _occupied)}
   </svg>`;
 }
 
@@ -723,16 +766,21 @@ function pieArc(cx,cy,r,a0,a1){
 // false of every other company. Say what the shares are actually of, and say
 // nothing when the numbers do not add up rather than implying precision.
 function segmentBasis(d){
+  setSegmentBasis(d.segments);
   const segs = (d.segments||[]).filter(x=>segmentShare(x)>0);
   const total = segs.reduce((a,x)=>a+segmentShare(x),0);
   if (!segs.length) return '';
-  if (Math.abs(total-100) > 6) return '(share of revenue, indicative)';
-  return '(share of revenue)';
+  const what = SEGMENT_BASIS === 'profit' ? 'segment operating profit' : 'revenue';
+  return Math.abs(total-100) > 6
+    ? `(share of ${what}, indicative)`
+    : `(share of ${what})`;
 }
 
 function pieLabel(item, value, total){
   const share = total ? Math.round(value / total * 100) : 0;
-  const m = String((item && item.mix) || '').match(/(\d{1,3}(?:\.\d)?)\s*%/);
+  const stated_label = SEGMENT_BASIS === 'profit'
+    ? ((item && item.profit_mix) || '') : ((item && item.mix) || '');
+  const m = String(stated_label).match(/(\d{1,3}(?:\.\d)?)\s*%/);
   if (m) {
     const stated = Number(m[1]);
     // If the stated shares do not close to 100 the wedge cannot match the
@@ -786,6 +834,7 @@ function notebookHTML(d,m){
   const Y2=574,H2=218;
   const Y3=800,H3=438;
   const Y4=1246,H4=228;
+  setSegmentBasis(d.segments);
   const segs=(d.segments||[]).slice(0,4);
   // The legend box is calibrated for three segments, which is what the DE
   // reference has. A four-segment company (UNH: UHC / Health / Rx / Insight)
@@ -839,6 +888,7 @@ function tpPieSVG(items){
   return `<svg class="tp-pie-svg" viewBox="0 0 300 300" preserveAspectRatio="xMidYMid meet">${vals.map((v,i)=>{const a1=a+v/total*360,mid=(a+a1)/2,pp=piePoint(150,150,68,mid);const out=`<path d="${pieArc(150,150,104,a,a1)}" fill="${cols[i%cols.length]}" stroke="#4a463f" stroke-width="1.15"/><text x="${pp[0]}" y="${pp[1]}" text-anchor="middle" dominant-baseline="middle">${esc(items[i].mix||'')}</text>`;a=a1;return out}).join('')}</svg>`;
 }
 function twopagerNotebookHTML(d,m){
+  setSegmentBasis(d.segments);
   const segs=(d.segments||[]).slice(0,4);
   const p1=`<article class="tp-page tp-notebook-page tp-p1">${tpHeader(d,1,'Franchise, investment case and upside drivers')}<main class="t16-p1-grid">
     <section class="tp-thesis strict-fit"><h2>1 · Investment Thesis</h2><p class="tp-lead">${esc(d.thesis_summary)}</p><div class="tp-question">${esc(d.core_question)}</div><div class="tp-thesis-grid"><ul>${(d.thesis_bullets||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul><div class="tp-art">${nbThesisArtwork(d)}</div></div></section>

@@ -129,6 +129,7 @@ _NESTED_ITEM_WORDS = [
     ("segments", "name", 6),
     ("segments", "short_name", 3),
     ("segments", "mix", 4),
+    ("segments", "profit_mix", 4),
     ("opportunities", "title", 9),
     ("business_model", "name", 7),
     ("targets", "label", 6),
@@ -562,8 +563,11 @@ _MASTER_SIGNPOST_CELL_WORDS = [
     ("signpost", 8),
     ("current", 10),
     ("target", 12),
-    ("why", 56),
-    ("why_it_matters", 56),
+    # These must match _MASTER_ITEM_WORDS for the same field. They did not --
+    # 56 here against 22 there -- so the model was told one number and measured
+    # against another, and the report showed the difference as an ellipsis.
+    ("why", 22),
+    ("why_it_matters", 22),
 ]
 
 _MASTER_LIST_CAPS = [
@@ -623,6 +627,7 @@ _MASTER_ITEM_WORDS = [
     (("company_overview", "segments"), "name", 6),
     (("company_overview", "segments"), "short_name", 3),
     (("company_overview", "segments"), "mix", 4),
+    (("company_overview", "segments"), "profit_mix", 4),
     (("opportunities",), "title", 9),
     (("business_model",), "name", 7),
     (("thesis_threats",), "threat", 12),
@@ -957,15 +962,83 @@ def enforce_master_budgets(m):
     return out, sorted(set(trimmed))
 
 
-def master_violations(d):
-    """Structural problems in the canonical object that would break a renderer.
 
-    Deliberately thin. The master object feeds the two-pager and memo, which
-    reflow across pages rather than living on a fixed canvas, so prose length
-    matters far less here than the presence of the fields the renderers read.
+def master_length_contract():
+    """The budget the memo can actually hold, as prompt text.
+
+    The master prompt used to ask for a 160-240 word thesis summary and a
+    100-160 word overview while the layout could hold 118 and 44. The model
+    wrote to the prompt, the enforcer cut the excess, and the reader got a
+    three-pager full of sentences ending in an ellipsis. The contract the model
+    is given has to be the same number the layout enforces, so it is generated
+    from the cap tables rather than written out by hand and left to drift.
+    """
+    lines = []
+    for path, limit in _MASTER_WORD_BUDGETS:
+        lines.append(f"- {'.'.join(path)} <= {limit} words")
+    for path, count, item_words in _MASTER_LIST_CAPS:
+        name = '.'.join(path)
+        if item_words:
+            lines.append(f"- {name}: exactly {count} items, each <= {item_words} words")
+        else:
+            lines.append(f"- {name}: exactly {count} items")
+    for path, sub, limit in _MASTER_ITEM_WORDS:
+        lines.append(f"- {'.'.join(path)}[].{sub} <= {limit} words")
+    for cell, limit in _MASTER_SIGNPOST_CELL_WORDS:
+        if cell == "why":            # legacy spelling of the same field
+            continue
+        lines.append(f"- signposts[].{cell} <= {limit} words")
+    return (
+        "LENGTH BUDGET (hard limits -- the report is a fixed-size canvas and "
+        "anything longer is cut, so write to these, not past them; aim slightly "
+        "under and finish your sentences):\n" + "\n".join(sorted(set(lines))))
+
+
+def master_violations(d):
+    """Problems in the canonical object: missing fields AND over-long prose.
+
+    This used to check only that fields existed, on the reasoning that the
+    two-pager and memo "reflow across pages rather than living on a fixed
+    canvas". That is exactly backwards -- the memo is the most rigidly fixed of
+    the three formats. Because nothing measured length here, the master object
+    got no feedback and no repair pass, and every overrun was resolved by
+    silently truncating the text. Measuring it lets the model fix its own prose
+    instead.
     """
     d = d or {}
     out = []
+
+    for path, limit in _MASTER_WORD_BUDGETS:
+        n = _words(_dig(d, path))
+        if n > limit:
+            out.append(f"{'.'.join(path)}: {n} words (max {limit})")
+    for path, sub, limit in _MASTER_ITEM_WORDS:
+        items = _dig(d, path)
+        if isinstance(items, list):
+            for i, item in enumerate(items):
+                if isinstance(item, dict) and _words(item.get(sub)) > limit:
+                    out.append(f"{'.'.join(path)}[{i}].{sub}: "
+                               f"{_words(item.get(sub))} words (max {limit})")
+    for path, count, item_words in _MASTER_LIST_CAPS:
+        items = _dig(d, path)
+        if isinstance(items, list) and item_words:
+            for i, item in enumerate(items):
+                if isinstance(item, str) and _words(item) > item_words:
+                    out.append(f"{'.'.join(path)}[{i}]: "
+                               f"{_words(item)} words (max {item_words})")
+    out = list(dict.fromkeys(out))
+
+    for sp_i, sp in enumerate(d.get("signposts") or []):
+        if not isinstance(sp, dict):
+            continue
+        for cell, limit in _MASTER_SIGNPOST_CELL_WORDS:
+            if cell == "why":
+                continue
+            if _words(sp.get(cell)) > limit:
+                msg = (f"signposts[{sp_i}].{cell}: "
+                       f"{_words(sp.get(cell))} words (max {limit})")
+                if msg not in out:
+                    out.append(msg)
     if not (d.get("company") or "").strip():
         out.append("company is empty")
     if not (d.get("ticker") or "").strip():
@@ -1159,7 +1232,7 @@ def research_with_web_search(ticker, company, market, api_key, extract_json,
         "financial reporting, then produce the canonical research JSON described "
         "in your system prompt. Ground every figure in what you actually read; "
         "use \"N/A\" rather than inventing precision. Return the JSON as your "
-        "final message.")
+        "final message.\n\n" + master_length_contract())
 
     resp = client.messages.create(
         model=model,
@@ -1276,6 +1349,37 @@ def research_company(ticker, company, market, call_llm, extract_json, search_fn,
 
     # Bound the canonical object before anything renders from it. The two-pager
     # and memo lay it out in fixed-height sections, so unbounded prose clips.
+    # Give the model a chance to fix its own prose before we cut it.
+    #
+    # Trimming is a backstop that always succeeds and always costs the reader
+    # something: a sentence ending in an ellipsis. Asking for a shorter version
+    # of an over-long field returns prose that ends where the author meant it
+    # to. This is the same repair loop the one-pager has always had; the master
+    # never got one because nothing here measured length.
+    violations = master_violations(master)
+    if violations and call_llm:
+        step("Tightening over-long sections...")
+        try:
+            repaired_raw = call_llm(
+                messages=[{"role": "user",
+                           "content": build_repair_prompt(master, violations)}],
+                system=deepdive_prompts.MASTER_RESEARCH_SYSTEM,
+                tier=tier, max_tokens=16000, timeout=420,
+                anthropic_api_key=keys.get("anthropic", ""),
+                gemini_api_key=keys.get("gemini", ""),
+                openai_api_key=keys.get("openai", ""),
+            )
+            repaired = extract_json(repaired_raw.get("text") or "")
+            if isinstance(repaired, dict) and repaired:
+                # A repair that made things worse should not win by being last.
+                if len(master_violations(repaired)) < len(violations):
+                    master = repaired
+                    print(f"[deepdive] master repair fixed "
+                          f"{len(violations) - len(master_violations(master))} "
+                          f"of {len(violations)} over-long fields")
+        except Exception as e:
+            print(f"[deepdive] master repair pass failed, keeping original: {e}")
+
     master, trimmed = enforce_master_budgets(master)
     if trimmed:
         print(f"[deepdive] master trimmed to memo budget: {', '.join(trimmed)}")

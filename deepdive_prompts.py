@@ -41,9 +41,9 @@ Return VALID JSON ONLY with this exact schema:
   "company_overview": {
     "summary": "",
     "segments": [
-      {"name":"","short_name":"","mix":"","mix_numeric":0,"description":""},
-      {"name":"","short_name":"","mix":"","mix_numeric":0,"description":""},
-      {"name":"","short_name":"","mix":"","mix_numeric":0,"description":""}
+      {"name":"","short_name":"","mix":"","mix_numeric":0,"profit_mix":"","profit_mix_numeric":0,"description":""},
+      {"name":"","short_name":"","mix":"","mix_numeric":0,"profit_mix":"","profit_mix_numeric":0,"description":""},
+      {"name":"","short_name":"","mix":"","mix_numeric":0,"profit_mix":"","profit_mix_numeric":0,"description":""}
     ],
     "other_profit_pools": [""]
   },
@@ -117,8 +117,16 @@ Research standards:
 - Prioritize company filings, investor relations, earnings releases/calls, and reputable financial reporting.
 - Use 8-15 strong sources where possible.
 - Do not invent precise figures. If a number cannot be verified, use "N/A" or leave an optional chart series empty.
-- Investment thesis summary: ~160-240 words and strong enough to support a multi-page report.
-- Company overview summary: ~100-160 words.
+- segments: `mix`/`mix_numeric` are share of REVENUE; `profit_mix`/`profit_mix_numeric`
+  are share of SEGMENT OPERATING PROFIT for the same period. The report charts the
+  profit split when it is available, because where a company earns its money is
+  more decision-useful than where it books sales, and the two often diverge (a
+  low-margin segment can be 10% of revenue and 5% of profit). Give profit shares
+  only if the company discloses segment profit or it is directly derivable; leave
+  profit_mix empty otherwise rather than estimating. Both sets should each total
+  ~100% across the segments listed.
+- Investment thesis summary: the anchor of the report; write to the hard limit below, not past it.
+- Company overview summary: as above -- the LENGTH BUDGET is binding.
 - Opportunities must be company-specific and causal; avoid generic TAM language.
 - Signposts must be measurable, forward-looking, and directly linked to the thesis.
 - Threats must be explicit observable conditions, not vague risk categories.
@@ -149,7 +157,7 @@ Return VALID JSON ONLY with this exact schema:
   "core_question":"",
   "thesis_bullets":["","","","",""],
   "overview_summary":"",
-  "segments":[{"name":"","short_name":"","mix":"","mix_numeric":0,"description":""}],
+  "segments":[{"name":"","short_name":"","mix":"","mix_numeric":0,"profit_mix":"","profit_mix_numeric":0,"description":""}],
   "other_profit_pool":"",
   "business_model":[{"name":"","description":""},{"name":"","description":""},{"name":"","description":""},{"name":"","description":""}],
   "opportunities":[
