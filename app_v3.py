@@ -21,6 +21,8 @@ import anthropic
 import openai
 from google import genai
 from google.genai import types as genai_types
+import notegen              # document ranking and batch planning for notes
+import segment_charts       # revenue / operating-profit donuts
 
 # Everything this app schedules -- earnings fetches, before/after-market
 # briefings, meeting dates -- is anchored to the US trading day. UTC rolls over
@@ -2018,7 +2020,12 @@ def _is_retryable(provider, error):
         if isinstance(error, (anthropic.RateLimitError, anthropic.APIConnectionError)):
             return True
         if isinstance(error, anthropic.APIStatusError):
-            return error.status_code in (429, 500, 502, 503, 529)
+            # 404 means THIS provider cannot serve THIS model -- a retired or
+            # mistyped model id. That is provider-specific, so the next provider
+            # in the chain should still get a turn; treating it as fatal meant a
+            # single stale model id took down a call the fallbacks could have
+            # answered. Auth errors stay fatal: they will fail everywhere.
+            return error.status_code in (404, 429, 500, 502, 503, 529)
         if isinstance(error, requests.Timeout):
             return True
         return True  # Network errors etc.

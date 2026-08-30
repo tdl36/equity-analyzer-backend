@@ -118,3 +118,39 @@ def test_charts_are_available_on_the_server():
     png = segment_charts.render_donut('T', 'Revenue',
                                       [{'segment': 'A', 'revenue': 1}], 'revenue')
     assert png and png[:4] == b'\x89PNG'
+
+
+# --- the module actually has what it calls at runtime -----------------------
+
+def test_app_can_reach_the_modules_it_calls():
+    """Catch a missing import before a user does.
+
+    notegen and segment_charts were referenced by the note generator but never
+    imported into app_v3: an edit meant for that file matched a string that
+    only exists in deepdive.py, so the import silently went nowhere. Every test
+    passed because none of them touched the note path, and the first thing that
+    did was a live run, which failed with "name 'notegen' is not defined".
+    """
+    import app_v3
+    for name in ('notegen', 'segment_charts'):
+        assert hasattr(app_v3, name), f'app_v3 never imported {name}'
+
+    # and the specific callables the generator uses
+    assert callable(app_v3.notegen.plan_batches)
+    assert callable(app_v3.notegen.plan_summary)
+    assert callable(app_v3.segment_charts.render_pair)
+
+
+def test_every_global_the_note_generator_uses_resolves():
+    """Walk the generator's own bytecode for names it expects to be module-level.
+
+    A NameError inside a background thread only shows up when someone runs it,
+    which for note generation means burning an API call to find out.
+    """
+    import app_v3
+    for fn in (app_v3._generate_research_note, app_v3.research_note_plan):
+        for name in fn.__code__.co_names:
+            if name.islower() and '_' in name or name in ('notegen', 'segment_charts'):
+                # only assert on the modules we added; builtins and attrs vary
+                if name in ('notegen', 'segment_charts'):
+                    assert hasattr(app_v3, name), f'{fn.__name__} uses undefined {name}'

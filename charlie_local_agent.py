@@ -50,6 +50,14 @@ STOCKS_DIR = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/STOCKS"
 # handled by sending extracted text rather than pages (see notegen.py), so size
 # no longer decides whether a document is usable.
 MAX_SYNC_BYTES = 400 * 1024 * 1024
+
+# Model used for note generation.
+#
+# Was pinned to claude-sonnet-4-20250514, which has since been retired: the API
+# answers 404 NotFoundError, so every note generated through the agent failed
+# with an error that reads like a missing endpoint rather than a missing model.
+# Overridable so a model change does not need a code edit next time.
+NOTE_MODEL = os.environ.get("CHARLIE_NOTE_MODEL", "claude-sonnet-5")
 CHARLIE_API = "https://equity-analyzer-backend.onrender.com"
 POLL_INTERVAL = 5  # seconds
 CONFIG_FILE = Path.home() / ".charlie_agent_config.json"
@@ -1504,7 +1512,7 @@ Return your response in this exact format:
     # non-streaming threshold; the SDK refuses those calls with
     # "Streaming is required for operations that may take longer than 10 minutes."
     with client.messages.stream(
-        model="claude-sonnet-4-20250514",
+        model=NOTE_MODEL,
         max_tokens=16384,
         system="You are a senior equity research analyst. Write thorough, data-driven research notes. Be precise with numbers. No sellside attribution in the main note.",
         messages=[{"role": "user", "content": content}],
