@@ -26,6 +26,14 @@ def head_words(text, n=7):
     return ' '.join(ws[:n]) if len(ws) >= 3 else None
 
 
+# The one-pager is a poster and deliberately abbreviates its bull/bear points
+# so all five stay visible in a fixed box. Checking those against the full
+# source text would report a designed abbreviation as missing content, so they
+# are matched on their opening words only -- enough to prove the point is on the
+# page, without asserting it is printed verbatim.
+SHORT_MATCH = {'bull_case', 'bear_case'}
+
+
 def expected_fields(fx, view):
     """(label, text) pairs the given view is supposed to render."""
     m, o = fx.get('master', {}), fx.get('onepager', {})
@@ -71,7 +79,8 @@ if __name__ == '__main__':
     body = norm(pdf_text(pdf))
     missing = []
     for label, text in expected_fields(fx, view):
-        h = head_words(text)
+        short = view == 'onepager' and any(k in label for k in SHORT_MATCH)
+        h = head_words(text, 4 if short else 7)
         if h and norm(h) not in body:
             missing.append((label, str(text)[:64]))
     for label, snippet in missing:

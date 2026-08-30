@@ -783,3 +783,55 @@ def test_segment_shares_are_derived_from_labels_when_numeric_is_absent():
     assert changed, 'shares summing to 140% must be rescaled'
     total = sum(s.get('mix_numeric', 0) for s in out)
     assert abs(total - 100) <= 1, f'shares still do not close: {total}'
+
+
+def test_valuation_premium_is_derived_from_the_multiples():
+    """A stated premium must agree with the numbers printed beside it.
+
+    A shipped ETN report said "68% above 10-yr avg 25x" next to a forward P/E
+    of 25.1x. Those two figures differ by 0.4%. The model asserted a
+    relationship between numbers printed inches apart and nothing checked it.
+    """
+    fs = {'forward_pe': '25.1x', 'historical_pe': '10-yr avg 25x'}
+    assert abs(dd.valuation_premium(fs) - 0.4) < 0.1
+
+    fs2 = {'forward_pe': '8.3x', 'historical_pe': '10Y avg ~16x'}
+    assert dd.valuation_premium(fs2) < -45
+
+
+def test_a_contradicted_premium_is_corrected_not_printed():
+    fs = {'forward_pe': '25.1x', 'historical_pe': '10-yr avg 25x',
+          'valuation_comment': 'ETN trades 25x 27E EPS, 68% above historical 25x average.'}
+    from deepdive import enforce_master_budgets
+    out, trimmed = enforce_master_budgets({'financial_snapshot': dict(fs)})
+    comment = out['financial_snapshot']['valuation_comment']
+    assert '68%' not in comment, comment
+    assert 'in line with' in comment, comment
+    assert any('valuation_comment' in t for t in trimmed)
+
+
+def test_a_wrong_direction_is_corrected(): 
+    """Claiming a premium when the stock trades at a discount is the worst case."""
+    fs = {'forward_pe': '8.3x', 'historical_pe': '10Y avg ~16x',
+          'valuation_comment': 'Trades 70% above the ten-year average.'}
+    from deepdive import enforce_master_budgets
+    out, _ = enforce_master_budgets({'financial_snapshot': dict(fs)})
+    assert 'below' in out['financial_snapshot']['valuation_comment']
+
+
+def test_an_accurate_premium_is_left_alone():
+    fs = {'forward_pe': '8.3x', 'historical_pe': '10Y avg ~16x',
+          'valuation_comment': 'Trades 48% below the ten-year average on PBM fear.'}
+    from deepdive import enforce_master_budgets
+    out, _ = enforce_master_budgets({'financial_snapshot': dict(fs)})
+    assert out['financial_snapshot']['valuation_comment'] == fs['valuation_comment']
+
+
+def test_missing_multiples_do_not_trigger_a_rewrite():
+    """With nothing to check against, the prose is left as written."""
+    from deepdive import enforce_master_budgets
+    for fs in ({'valuation_comment': 'Trades 40% above peers.'},
+               {'forward_pe': 'N/A', 'historical_pe': 'N/A',
+                'valuation_comment': 'Trades 40% above peers.'}):
+        out, _ = enforce_master_budgets({'financial_snapshot': dict(fs)})
+        assert out['financial_snapshot']['valuation_comment'] == fs['valuation_comment']

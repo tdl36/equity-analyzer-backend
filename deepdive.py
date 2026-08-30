@@ -107,7 +107,9 @@ _LIST_ITEM_WORDS = [
 
 # Per-item limits inside object lists, same derivation.
 _NESTED_ITEM_WORDS = [
-    ("opportunities", "detail", 44),      # DE max 9
+    # Drives the one-pager AND two-pager, whose opportunity boxes are the
+    # tightest of the three. The memo carries 85 words from the master object.
+    ("opportunities", "detail", 30),      # DE max 9
     # The one-pager's business-model cards sit at fixed SVG coordinates with a
     # caption strip immediately below, calibrated to Deere's 6-word
     # descriptions. Longer text cannot be scaled out of that collision because
@@ -149,7 +151,7 @@ _LIST_ITEM_CHARS = [
 ]
 
 _NESTED_ITEM_CHARS = [
-    ("opportunities", "detail", 290),
+    ("opportunities", "detail", 195),
     ("business_model", "description", 132),
     # Same fixed box on two-pager page 2: at 137-178 characters the fourth
     # threat's body was not printed at all. DE max is 111.
@@ -689,6 +691,59 @@ def normalize_segments(segments):
     return out, True
 
 
+
+_MULTIPLE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*[x\u00d7]", re.I)
+_PREMIUM_RE = re.compile(
+    r"(\d+(?:\.\d+)?)\s*%\s*(above|below|premium|discount)", re.I)
+
+
+def _first_multiple(text):
+    m = _MULTIPLE_RE.search(str(text or ""))
+    return float(m.group(1)) if m else None
+
+
+def valuation_premium(fs):
+    """Forward multiple against the historical one, as a signed percentage.
+
+    Derived rather than read from prose. A shipped ETN report stated "68% above
+    10-yr avg 25x" beside a forward P/E of 25.1x -- the two numbers it was
+    describing differ by 0.4%. The model asserted a relationship between two
+    figures printed inches apart, and nothing checked it.
+    """
+    if not isinstance(fs, dict):
+        return None
+    fwd = _first_multiple(fs.get("forward_pe"))
+    hist = _first_multiple(fs.get("historical_pe"))
+    if not fwd or not hist or hist <= 0:
+        return None
+    return (fwd / hist - 1.0) * 100.0
+
+
+def valuation_comment_contradicts(fs, tolerance=15.0):
+    """Does the prose claim a premium the numbers do not support?
+
+    Returns a human-readable description, or None. Only fires when a specific
+    percentage is claimed AND the computed figure disagrees by more than
+    `tolerance` points, so ordinary rounding and hedged language pass.
+    """
+    actual = valuation_premium(fs)
+    if actual is None:
+        return None
+    comment = str((fs or {}).get("valuation_comment") or "")
+    m = _PREMIUM_RE.search(comment)
+    if not m:
+        return None
+    claimed = float(m.group(1))
+    if m.group(2).lower() in ("below", "discount"):
+        claimed = -claimed
+    if abs(claimed - actual) <= tolerance:
+        return None
+    return (f"valuation_comment claims {claimed:+.0f}% vs history, but "
+            f"forward {_first_multiple(fs.get('forward_pe'))}x against "
+            f"historical {_first_multiple(fs.get('historical_pe'))}x is "
+            f"{actual:+.1f}%")
+
+
 def enforce_master_budgets(m):
     """Bound the canonical object so the two-pager and memo cannot overflow.
 
@@ -768,6 +823,26 @@ def enforce_master_budgets(m):
         if sp_changed:
             out["signposts"] = new_sps
             trimmed.append("signposts(cells)")
+
+    # A stated premium that the printed multiples contradict is a factual
+    # error in the artifact, not a layout problem. Drop the claim rather than
+    # print two numbers that disagree with each other on the same page.
+    fs_out = out.get("financial_snapshot")
+    contradiction = valuation_comment_contradicts(fs_out)
+    if contradiction:
+        text = str(fs_out.get("valuation_comment") or "")
+        actual = valuation_premium(fs_out)
+        # Correct the figure rather than delete the clause: the reader is owed
+        # the comparison, just an accurate one.
+        if abs(actual) < 5:
+            replacement = "in line with"
+        else:
+            replacement = f"{abs(actual):.0f}% {'above' if actual > 0 else 'below'}"
+        cleaned = _PREMIUM_RE.sub(replacement, text, count=1)
+        cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
+        fs_out["valuation_comment"] = cleaned
+        trimmed.append("financial_snapshot.valuation_comment(unsupported premium removed)")
+        print(f"[deepdive] {contradiction}")
 
     segs = _dig(out, ("company_overview", "segments"))
     fixed_segs, seg_changed = normalize_segments(segs)

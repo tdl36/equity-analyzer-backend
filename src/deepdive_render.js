@@ -322,6 +322,29 @@ function earningsLabels(history) {
   };
 }
 
+/* Shorten a list for the one-pager only.
+ *
+ * The one-pager is a poster: its boxes are foreignObjects at fixed coordinates
+ * and it is the densest of the three formats. The same bull/bear text that
+ * reads well across two lines on the two-pager cannot fit five items there, and
+ * with type size now a hard floor the box cannot absorb it by shrinking -- so
+ * the last items were dropped instead. Shortening for this view keeps all five
+ * points visible; the two-pager and memo still carry the full sentences from
+ * the same source object.
+ */
+function posterList(items, maxChars) {
+  return (items || []).map((raw) => {
+    const t = String(raw || '').trim();
+    if (t.length <= maxChars) return t;
+    const cut = t.slice(0, maxChars);
+    for (const mark of ['; ', ', ', ' ']) {
+      const i = cut.lastIndexOf(mark);
+      if (i > maxChars * 0.6) return cut.slice(0, i).replace(/[,;:]$/, '');
+    }
+    return cut.trim();
+  });
+}
+
 function reportSensitivityHTML(m,f){
   const scenarios=m.valuation_scenarios||[];
   const current=parseMoneyNumber(m.at_glance?.share_price);
@@ -741,7 +764,7 @@ function notebookHTML(d,m){
   const financial=`${nbSectionTitle('5','FINANCIAL SNAPSHOT','(FY / Latest)')}<div class="nbv-fin-top"><ul>${(d.financial_bullets||[]).slice(0,6).map(x=>`<li>${nbRich(x)}</li>`).join('')}</ul><div class="nbv-target"><h3>${earningsLabels(d.earnings_history).targetsTitleCaps}</h3>${(d.targets||[]).slice(0,4).map(x=>`<div><span>${esc(x.label)}</span><b>${esc(x.value)}</b></div>`).join('')}</div></div><div class="nbv-chart-title">${earningsLabels(d.earnings_history).chartTitle} <span>${esc(d.earnings_history?.metric||'')}</span></div><div class="nbv-fin-lower"><div class="nbv-chart">${earningsChartSVG(d.earnings_history,'nbv-chart-svg')}<div class="nbv-cycle-note">${esc(d.earnings_history?.cycle_note||'')}</div></div><div class="nbv-val"><h3>VALUATION <span>(Today)</span></h3>${(d.valuation_metrics||[]).slice(0,4).map(x=>`<div class="nbv-val-row"><span>${esc(x.label)}</span><b>${esc(x.value)}</b></div>`).join('')}<strong>${esc(d.valuation_callout)}</strong></div></div>`;
   const signs=`${nbSectionTitle('6','KEY SIGNPOSTS','(WHAT TO WATCH)')}<table class="nbv-table sign"><thead><tr><th>SIGNPOST</th><th>CURRENT</th><th>TARGET / TRIGGER</th><th>WHY IT MATTERS</th></tr></thead><tbody>${(d.signposts||[]).slice(0,6).map(x=>`<tr><td><b>${esc(x.signpost)}</b></td><td>${nbRich(x.current)}</td><td>${nbRich(x.target)}</td><td>${esc(x.why)}</td></tr>`).join('')}</tbody></table>`;
   const threats=`${nbSectionTitle('7','THESIS THREATS','(WHAT COULD BREAK IT)')}<table class="nbv-table threat"><tbody>${(d.threats||[]).slice(0,4).map(x=>`<tr><td class="ico">${nbIcon(x.icon,25)}</td><td><b>${esc(x.threat)}</b></td><td>${esc(x.watch_for)}</td></tr>`).join('')}</tbody></table>`;
-  const final=`${nbSectionTitle('★','FINAL TAKEAWAY')}<p class="nbv-finalcopy">${esc(d.final_takeaway)}</p><div class="nbv-cases"><div class="case bull"><h3>↗ BULL CASE</h3><ul>${listHTML((d.bull_case||[]).slice(0,5))}</ul></div><div class="vs">VS.</div><div class="case bear"><h3>↓ BEAR CASE</h3><ul>${listHTML((d.bear_case||[]).slice(0,5))}</ul></div></div>`;
+  const final=`${nbSectionTitle('★','FINAL TAKEAWAY')}<p class="nbv-finalcopy">${esc(d.final_takeaway)}</p><div class="nbv-cases"><div class="case bull"><h3>↗ BULL CASE</h3><ul>${listHTML(posterList((d.bull_case||[]).slice(0,5), 34))}</ul></div><div class="vs">VS.</div><div class="case bear"><h3>↓ BEAR CASE</h3><ul>${listHTML(posterList((d.bear_case||[]).slice(0,5), 34))}</ul></div></div>`;
   return `<article class="op-canvas notebook-svg-canvas"><svg class="nbv-root" viewBox="0 0 1024 1536" xmlns="http://www.w3.org/2000/svg">
     <defs>
       <filter id="paperNoise"><feTurbulence type="fractalNoise" baseFrequency=".82" numOctaves="2" seed="7" result="n"/><feColorMatrix in="n" type="matrix" values="0 0 0 0 0.25 0 0 0 0 0.23 0 0 0 0 0.18 0 0 0 .045 0"/></filter>

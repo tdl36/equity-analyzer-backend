@@ -259,12 +259,56 @@
 .dd-artifact .nbv-chart-svg .xlab,
 .dd-artifact .nbv-chart-svg .anno,
 .dd-artifact .tp-chart .xlab,
-.dd-artifact .tp-chart .anno { font-size: 10px !important; }
+.dd-artifact .tp-chart .anno { font-size: 11px !important; }
 
 /* Remaining sub-minimum type in the ported sheet. Same reasoning: the fitter
    treats the smallest text in a block as its legibility budget, so anything
    authored below the floor both reads badly and freezes the block. */
-.dd-artifact .report-sensitivity small { font-size: 10px !important; }
-.dd-artifact .tp-targets small { font-size: 10px !important; }
+/* 11px, not 10px, deliberately.
+ *
+ * The fitter treats a block's smallest text as its legibility budget, so type
+ * authored AT the 10px minimum leaves zero headroom: the memo's financial
+ * section computed a floor of exactly 1.00, could not be scaled by even one
+ * percent, and clipped its sensitivity matrix by 9px. Sub-minimum type is
+ * raised a step above the floor so every block keeps room to breathe. */
+.dd-artifact .report-sensitivity small { font-size: 11px !important; }
+.dd-artifact .tp-targets small { font-size: 11px !important; }
 .dd-artifact .report-target small,
-.dd-artifact .report-val-panel small { font-size: 10px !important; }
+.dd-artifact .report-val-panel small { font-size: 11px !important; }
+
+/* ============================================================================
+ * Print rules, mirrored onto the .dd-printing class.
+ *
+ * The fitting passes run BEFORE the browser switches to print media, so they
+ * measured a screen layout and then the print stylesheet changed it underneath
+ * them. That is why the CI two-pager could be clean on screen and still drop
+ * its last opportunity body in the PDF: the fit was computed against different
+ * metrics than the ones that printed.
+ *
+ * printArtifact already adds .dd-printing to <body> before fitting, so the same
+ * declarations keyed on that class apply at fit time and the measurement is of
+ * the layout that will actually print. The @media print originals stay in place
+ * for the browser's own print path and for anyone printing without our button.
+ *
+ * Generated from the @media print blocks in deepdive_v24.css. @page is
+ * deliberately not mirrored -- page size only means anything to the printer.
+ * ========================================================================= */
+body.dd-printing .notebook-svg-canvas, body.dd-printing .notebook-svg-canvas * { -webkit-print-color-adjust:exact!important;print-color-adjust:exact!important }
+body.dd-printing { background:#fff }
+body.dd-printing .no-print { display:none!important }
+body.dd-printing .app-shell { display:block }
+body.dd-printing .workspace { padding:0 }
+body.dd-printing .view { max-width:none;margin:0;overflow:visible }
+body.dd-printing .report-view, body.dd-printing .onepager-view { display:none!important }
+body.dd-printing.print-report .report-view { display:block!important }
+body.dd-printing .report-page { box-shadow:none;margin:0;page-break-after:always;width:1024px;min-height:1536px }
+body.dd-printing.print-onepager .onepager-view { display:block!important }
+body.dd-printing .op-canvas { box-shadow:none;margin:0;width:1024px;height:1536px }
+body.dd-printing.print-twopager .twopager-view { display:block!important }
+body.dd-printing .twopager-view { display:none }
+body.dd-printing.print-twopager .tp-page { box-shadow:none;margin:0;page-break-after:always }
+body.dd-printing.print-twopager .tp-page:last-child { page-break-after:auto }
+body.dd-printing.print-twopager .twopager-view { padding:0!important;margin:0!important }
+body.dd-printing.print-twopager .tp-page { margin:0!important;box-shadow:none!important;break-after:page;page-break-after:always }
+body.dd-printing.print-twopager .tp-page:last-child { break-after:auto!important;page-break-after:auto!important }
+body.dd-printing.print-report .report-view { padding:0!important;margin:0!important }

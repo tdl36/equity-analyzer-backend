@@ -94,8 +94,26 @@ ReactDOM.render(tree, root, () => {
                 document.querySelectorAll('.strict-fit').forEach(sec => {
                     const par = sec.parentElement; if (!par) return;
                     const z = parseFloat(sec.style.zoom) || 1;
+                    let minf = 99;
+                    sec.querySelectorAll('*').forEach(n => {
+                        if (n.children.length || !n.textContent || !n.textContent.trim()) return;
+                        const fs = parseFloat(getComputedStyle(n).fontSize) || 0;
+                        if (fs > 0 && fs < minf) minf = fs;
+                    });
+                    const floor = Math.min(1, 10 / (minf === 99 ? 10 : minf));
+                    // which direct child sticks out, and by how much
+                    const er = sec.getBoundingClientRect();
+                    let worst = '', by = 0;
+                    Array.from(sec.children).forEach(n => {
+                        const r = n.getBoundingClientRect();
+                        if (r.height > 0 && r.bottom - er.bottom > by) {
+                            by = r.bottom - er.bottom;
+                            worst = (n.className || n.tagName).toString().split(' ')[0];
+                        }
+                    });
                     rows.push(`${(sec.className||'').split(' ')[0]}: natural=${sec.offsetHeight} `
-                        + `avail=${par.clientHeight} zoom=${z}`);
+                        + `avail=${par.clientHeight} zoom=${z.toFixed(2)} minFont=${minf.toFixed(1)}px `
+                        + `floor=${floor.toFixed(2)}` + (by > 1 ? `  OVER by ${by.toFixed(0)}px via .${worst}` : ''));
                 });
                 const pre = document.createElement('pre'); pre.id='__fitreport';
                 pre.textContent = rows.join('\n');

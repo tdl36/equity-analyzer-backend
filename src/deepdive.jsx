@@ -334,7 +334,14 @@ export const autoFitPages = (root) => {
  * gives through the budgets, where a trim ends on a sentence, rather than
  * through a scale factor that quietly makes everything unreadable.
  */
-const MIN_TEXT_PX = 10;        // 7.5pt on the 1024px canvas (1px = 0.75pt)
+// 9.5px = 7.1pt on the 1024px canvas (1px = 0.75pt).
+//
+// Deliberately just BELOW the smallest size anything is authored at (10px), so
+// every block keeps a few percent of headroom by construction. Setting the
+// floor equal to the authored minimum froze whole sections at zoom 1.00 -- the
+// memo's financial and decision sections could not be scaled by even one
+// percent and clipped by a handful of pixels.
+const MIN_TEXT_PX = 9.5;
 
 const legibilityFloor = (el) => {
     let min = Infinity;
@@ -461,6 +468,86 @@ export const fitUntilClean = (root) => {
     return unfit;
 };
 
+/* The page grids whose rows rebalanceLongform sizes. */
+const ROW_GRID_SEL = [
+    '.v21-report-p1', '.v21-report-p2', '.v21-report-p3',
+    '.t16-p1-grid', '.t16-p2-grid',
+].join(',');
+
+/**
+ * Allocate page rows by how far each section can legibly compress.
+ *
+ * rebalanceGridRows divides the page in proportion to how much content each
+ * section HAS. That is the wrong currency once type size is a hard floor,
+ * because sections are not equally compressible: a block of 14pt prose can give
+ * up a third of its height and stay readable, while the financial section --
+ * chart, valuation panel and sensitivity matrix, much of it already near the
+ * minimum size -- can give up almost nothing. Splitting proportionally hands
+ * the incompressible section a row it cannot fit in, and it clips. That is why
+ * trimming prose never moved the memo's financial and decision sections.
+ *
+ * So allocate in the currency that matters: every section first gets the height
+ * it needs AT its own legibility floor, and only the slack left over is shared
+ * out in proportion to what each would still like. A section can then always
+ * reach its row by scaling within the floor.
+ *
+ * If the floors alone exceed the page, the page genuinely cannot hold this much
+ * content at a readable size. That is a content problem, not a layout one, and
+ * it is returned to the caller rather than papered over.
+ */
+export const allocateRowsByFeasibility = (root) => {
+    if (!root || typeof document === 'undefined') return [];
+    const over = [];
+    root.querySelectorAll(ROW_GRID_SEL).forEach((grid) => {
+        const kids = Array.from(grid.children).filter(n => n.nodeType === 1);
+        if (kids.length < 2) return;
+
+        const cs = getComputedStyle(grid);
+        const gap = parseFloat(cs.rowGap) || 0;
+        const pad = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+        const available = grid.clientHeight - pad - gap * (kids.length - 1);
+        if (available <= 0) return;
+
+        // Natural height means unscaled and unconstrained by the current rows.
+        const savedZoom = kids.map(k => k.style.zoom || '');
+        const savedRows = grid.style.gridTemplateRows;
+        kids.forEach(k => k.style.removeProperty('zoom'));
+        grid.style.gridTemplateRows = kids.map(() => 'max-content').join(' ');
+
+        const natural = kids.map(k => Math.max(k.scrollHeight, k.offsetHeight));
+        const floors  = kids.map(k => Math.max(legibilityFloor(k), SECTION_FIT_FLOOR));
+        const needed  = natural.map((n, i) => Math.ceil(n * floors[i]) + 2);
+
+        const needSum = needed.reduce((a, b) => a + b, 0);
+        let rows;
+        if (needSum > available) {
+            // Cannot be done legibly. Share the shortfall so the damage is
+            // spread rather than dumped on the last section, and report it.
+            const k = available / needSum;
+            rows = needed.map(d => d * k);
+            over.push((grid.className || '').toString().split(' ')[0] || 'grid');
+        } else {
+            const slack = available - needSum;
+            const wantSum = natural.reduce((a, b) => a + b, 0) || 1;
+            rows = needed.map((d, i) =>
+                Math.min(natural[i] + 2, d + slack * (natural[i] / wantSum)));
+            // Anything still unspent goes to the section that wants it most.
+            const spent = rows.reduce((a, b) => a + b, 0);
+            const left = available - spent;
+            if (left > 1) {
+                let biggest = 0;
+                natural.forEach((n, i) => { if (n > natural[biggest]) biggest = i; });
+                rows[biggest] += left;
+            }
+        }
+
+        grid.style.gridTemplateRows = rows.map(x => `${x.toFixed(1)}px`).join(' ');
+        kids.forEach((k, i) => { if (savedZoom[i]) k.style.zoom = savedZoom[i]; });
+        if (!rows.length) grid.style.gridTemplateRows = savedRows;
+    });
+    return over;
+};
+
 /**
  * The single fitting pipeline.
  *
@@ -484,6 +571,8 @@ export const fitArtifact = (root) => {
         catch (e) { console.warn(`fit ${label}:`, e); }
     };
     try { rebalanceLongform(); } catch (e) { console.warn('rebalance:', e); }
+    // Re-cut the rows in the currency that matters before anything is scaled.
+    step(allocateRowsByFeasibility, 'rowAllocation');
     step(autoFitBlocks, 'blocks');
     step(autoFitForeignObjects, 'foreignObjects');
     step(autoFitSections, 'sections');
