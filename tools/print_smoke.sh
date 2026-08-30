@@ -43,6 +43,17 @@ for SPEC in "onepager:1" "twopager:2" "memo:3"; do
     *"0 colliding"*) : ;;
     *) echo "FAIL $V: $OV"; (./.venv/bin/python tools/pdf_overlap.py "$OUT" 2>&1 | head -5) || true; FAIL=1 ;;
   esac
+  # Content that overflows a fixed box is simply not printed: the page count
+  # stays right and nothing overlaps, so only comparing the data against the
+  # page catches it.
+  FXJSON="fixtures/deepdive_${FIXTURE}_sample.json"
+  [ "$FIXTURE" = "de" ] && FXJSON="fixtures/deepdive_de_golden.json"
+  [ "$FIXTURE" = "stress" ] && FXJSON="fixtures/deepdive_stress.json"
+  CV=$(./.venv/bin/python tools/pdf_coverage.py "$OUT" "$FXJSON" "$V" 2>&1 | tail -1) || true
+  case "$CV" in
+    *"0 field(s)"*) : ;;
+    *) echo "FAIL $V: $CV"; (./.venv/bin/python tools/pdf_coverage.py "$OUT" "$FXJSON" "$V" 2>&1 | head -5) || true; FAIL=1 ;;
+  esac
   if [ "$V" = "memo" ]; then
     ROWS=$(pdftotext -f 2 -l 2 "$OUT" - 2>/dev/null \
       | tr -d " \t" | grep -ci "sustainedthrough\|>84M\|breakeven\|signpost" || true)

@@ -192,10 +192,34 @@ function reportRunningHeader(m,page,descriptor=''){
   return `<header class="report-running-header"><div><b>${esc(m.company)} <span>(${esc(m.ticker)})</span></b><small>${esc(descriptor)}</small></div><div>INVESTMENT RESEARCH · PAGE ${page}/3</div></header>`;
 }
 function reportFooter(m,p){return `<div class="report-footer"><span>${esc(m.ticker)} · Equity Research</span><span>Page ${p} / 3</span></div>`}
+/* Share for a segment.
+ *
+ * mix_numeric is optional in practice -- models often return only the `mix`
+ * label -- and when every segment lacked it the pie computed a zero total,
+ * drew no wedges, and stacked every label at the same point. Cigna printed
+ * "~17M%inimal": three labels on top of each other. Parse the label when the
+ * numeric field is missing, and treat a non-numeric label ("Minimal") as zero. */
+function segmentShare(x){
+  const direct = Number(x?.mix_numeric ?? x?.value);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const m = String(x?.mix ?? '').match(/\d+(?:\.\d+)?/);
+  return m ? Math.max(0, Number(m[0])) : 0;
+}
 function reportPieSVG(items, cls='report-pie-svg'){
-  const vals=(items||[]).map(x=>Math.max(0,Number(x.mix_numeric??x.value)||0)), total=vals.reduce((a,b)=>a+b,0)||1;
+  const vals=(items||[]).map(segmentShare), total=vals.reduce((a,b)=>a+b,0)||1;
   const cols=['#87ad58','#91b9dc','#e3bf55','#ad94c9']; let a=0;
-  const paths=vals.map((v,i)=>{const a1=a+v/total*360,mid=(a+a1)/2,p=`<path d="${pieArc(150,150,104,a,a1)}" fill="${cols[i%cols.length]}" stroke="#555" stroke-width="1.05"/>`; const pp=piePoint(150,150,67,mid); const label=`<text x="${pp[0]}" y="${pp[1]}" text-anchor="middle" dominant-baseline="middle">${esc(items[i].mix||'')}</text>`; a=a1; return p+label;}).join('');
+  const paths=vals.map((v,i)=>{
+    const a1=a+v/total*360,mid=(a+a1)/2;
+    const p=`<path d="${pieArc(150,150,104,a,a1)}" fill="${cols[i%cols.length]}" stroke="#555" stroke-width="1.05"/>`;
+    // A wedge too thin to hold its label gets none: the label cannot fit inside
+    // the slice and lands on its neighbour's instead.
+    let label='';
+    if (v/total >= 0.06) {
+      const pp=piePoint(150,150,67,mid);
+      label=`<text x="${pp[0]}" y="${pp[1]}" text-anchor="middle" dominant-baseline="middle">${esc(items[i].mix||'')}</text>`;
+    }
+    a=a1; return p+label;
+  }).join('');
   return `<svg class="${cls}" viewBox="0 0 300 300" preserveAspectRatio="xMidYMid meet">${paths}</svg>`;
 }
 
@@ -220,8 +244,26 @@ function finNums(value){
 }
 /* Pick n values spanning a sorted list, extending it when it is too short so
    the matrix always has a full set of rows/columns. */
+/* Multiples, not every number in the sentence.
+ *
+ * historical_pe is prose: "10Y avg ~16x; current 27% below". Harvesting all of
+ * it yielded 10 (from "10Y") and 27 (from "27%") as P/E multiples, which put a
+ * 10x column half a turn from the 10.5x base case. Only a number actually
+ * marked with an x counts; fall back to plain numbers when nothing is marked. */
+function multipleNums(value){
+  const s = String(value || '');
+  const marked = [...s.matchAll(/(\d+(?:\.\d+)?)\s*[x\u00d7]/gi)].map(m => Number(m[1]));
+  return marked.length ? marked : finNums(s);
+}
+
 function pickSpread(sorted, n){
-  const u=[]; sorted.forEach(v=>{ if(!u.some(x=>Math.abs(x-v)<1e-9)) u.push(v); });
+  /* Collapse near-duplicates before choosing. Exact-match dedupe left Cigna
+     with a "7.5x 10x 10.5x 16x" header: two columns half a turn apart carrying
+     the same information while the span they were meant to cover went
+     unrepresented. Values within a few percent of the range are one column. */
+  const span=(sorted[sorted.length-1]-sorted[0])||sorted[0]||1;
+  const tol=Math.max(span*0.06, 0.4);
+  const u=[]; sorted.forEach(v=>{ if(!u.some(x=>Math.abs(x-v)<tol)) u.push(v); });
   if(u.length>=n){
     const out=[]; for(let i=0;i<n;i++) out.push(u[Math.round(i*(u.length-1)/(n-1))]);
     const ded=[]; out.forEach(v=>{ if(!ded.includes(v)) ded.push(v); });
@@ -252,10 +294,19 @@ function reportSensitivityHTML(m,f){
   /* Columns: the scenario multiples plus the historical multiple, ascending.
      Previously these were [hist, ml, midpoint, mh] unsorted, which produced
      a "15x 12x 12.9x 14.2x" header -- out of order and effectively duplicated. */
-  let mults=[];
-  scenarios.forEach(x=>{ finNums(x.multiple).forEach(n=>{ if(n>0 && n<100) mults.push(n); }); });
-  finNums(f.historical_pe).forEach(n=>{ if(n>0 && n<100) mults.push(n); });
-  finNums(f.forward_pe).forEach(n=>{ if(n>0 && n<100) mults.push(n); });
+  /* The bear/base/bull multiples are the ones the thesis actually argues over,
+     so they take the columns first; the historical and forward multiples fill
+     whatever is left. Treating all candidates equally let an even spread drop
+     the base-case multiple entirely -- a sensitivity table whose own base case
+     is missing. */
+  const scenarioMults=[];
+  scenarios.forEach(x=>{ multipleNums(x.multiple).forEach(n=>{ if(n>0 && n<100) scenarioMults.push(n); }); });
+  const contextMults=[];
+  multipleNums(f.historical_pe).forEach(n=>{ if(n>0 && n<100) contextMults.push(n); });
+  multipleNums(f.forward_pe).forEach(n=>{ if(n>0 && n<100) contextMults.push(n); });
+  let mults=scenarioMults.slice();
+  contextMults.forEach(n=>{ if(mults.length<4 && !mults.some(x=>Math.abs(x-n)<Math.max(0.75, n*0.08))) mults.push(n); });
+  if(mults.length<4) mults=mults.concat(contextMults);
   if(!mults.length) mults=[10,12,15,18];
   /* Reject multiples that are not part of the working range. Historical-P/E
      prose carries asides like "18-year avg ~20x; peak 37x at Sept 2024", and
@@ -324,7 +375,7 @@ function renderReport() {
   <article class="report-page report-p1">${reportHeader(m,1,'Franchise, stock debate and business economics')}
     <main class="v21-report-p1">
       <section class="report-section v21-thesis strict-fit"><h2>1 · Investment Thesis</h2><p class="report-lead">${esc(t.summary)}</p><div class="report-question">${esc(t.core_question)}</div><div class="report-grid3 report-debate-grid"><div class="report-card"><div class="report-mini-title">What the market prices in</div><ul>${listHTML(t.what_market_prices_in)}</ul></div><div class="report-card"><div class="report-mini-title">What must be true</div><ul>${listHTML(t.what_must_be_true)}</ul></div><div class="report-card"><div class="report-mini-title">What would falsify it</div><ul>${listHTML(t.falsification)}</ul></div></div><div class="report-callout"><b>Variant view:</b> ${esc(t.variant_view)}</div></section>
-      <section class="report-section v21-overview strict-fit"><h2>2 · Company Overview</h2><p>${esc(o.summary)}</p><div class="v21-overview-grid"><div class="report-pie-wrap">${companyPie}</div><div class="report-segments">${segments}${other?`<div class="v21-other"><b>Financial Services / Other:</b> ${esc(other)}</div>`:''}</div></div></section>
+      <section class="report-section v21-overview strict-fit"><h2>2 · Company Overview</h2><p>${esc(o.summary)}</p><div class="v21-overview-grid"><div class="report-pie-wrap">${companyPie}</div><div class="report-segments">${segments}${other?`<div class="v21-other"><b>Other profit pools:</b> ${esc(other)}</div>`:''}</div></div></section>
       <div class="v21-p1-bottom"><section class="report-section"><h2>3 · Business Model</h2><div class="report-pools">${pools}</div></section><section class="report-section"><h2>4 · Key Opportunities</h2><div class="report-opps">${opps}</div></section></div>
     </main>${reportFooter(m,1)}
   </article>
@@ -365,7 +416,7 @@ const ICONS = {
 };
 function iconHTML(name){ return `<span class="line-icon">${ICONS[name]||ICONS.product}</span>`; }
 function donutHTML(items, cls='') {
-  const vals=items.map(x=>Math.max(0,Number(x.mix_numeric ?? x.value)||0)); const total=vals.reduce((a,b)=>a+b,0)||1;
+  const vals=items.map(x=>segmentShare(x)); const total=vals.reduce((a,b)=>a+b,0)||1;
   let cur=0; const colors=['var(--c1)','#83aee0','#e9c75c','#b89bd0']; const stops=[];
   vals.forEach((v,i)=>{let s=cur/total*100;cur+=v;let e=cur/total*100;stops.push(`${colors[i%colors.length]} ${s}% ${e}%`)});
   return `<div class="donut-wrap ${cls}"><div class="donut-chart" style="background:conic-gradient(${stops.join(',')})"><div></div></div><div class="donut-legend">${items.map((x,i)=>`<div><span style="background:${colors[i%colors.length]}"></span><b>${esc(x.short_name||x.label||x.name)}</b> ${esc(x.mix||x.value)}<small>${esc(x.description||x.detail||'')}</small></div>`).join('')}</div></div>`;
@@ -568,8 +619,8 @@ function pieArc(cx,cy,r,a0,a1){
 // false of every other company. Say what the shares are actually of, and say
 // nothing when the numbers do not add up rather than implying precision.
 function segmentBasis(d){
-  const segs = (d.segments||[]).filter(x=>Number(x.mix_numeric)>0);
-  const total = segs.reduce((a,x)=>a+Number(x.mix_numeric||0),0);
+  const segs = (d.segments||[]).filter(x=>segmentShare(x)>0);
+  const total = segs.reduce((a,x)=>a+segmentShare(x),0);
   if (!segs.length) return '';
   if (Math.abs(total-100) > 6) return '(share of revenue, indicative)';
   return '(share of revenue)';
@@ -589,7 +640,7 @@ function pieLabel(item, value, total){
 }
 
 function nbPieSVG(items,cx,cy,r){
-  const vals=(items||[]).map(x=>Math.max(0,Number(x.mix_numeric??x.value)||0)), total=vals.reduce((a,b)=>a+b,0)||1;
+  const vals=(items||[]).map(x=>segmentShare(x)), total=vals.reduce((a,b)=>a+b,0)||1;
   const cols=['#98bf65','#9fc3e7','#ebc85d','#baa2d2']; let a=0; const out=[];
   vals.forEach((v,i)=>{const a1=a+v/total*360;out.push(`<path class="nbv-pie-slice" d="${pieArc(cx,cy,r,a,a1)}" fill="${cols[i%cols.length]}" stroke="#3f3b34" stroke-width="1.05" filter="url(#nbRough)"/>`); const mid=(a+a1)/2, pt=piePoint(cx,cy,r*.58,mid); out.push(`<text x="${pt[0].toFixed(1)}" y="${pt[1].toFixed(1)}" class="nbv-pie-label" text-anchor="middle">${esc(pieLabel(items[i],v,total))}</text>`); a=a1;});
   return out.join('');
@@ -679,7 +730,7 @@ function tpRunningHeader(d,page,subtitle=''){
   return `<header class="tp-running-header"><div><b>${esc(displayCompany(d))} <span>(${esc(d.ticker)})</span></b><small>${esc(subtitle)}</small></div><em>PAGE ${page}/2</em></header>`;
 }
 function tpPieSVG(items){
-  const vals=(items||[]).map(x=>Math.max(0,Number(x.mix_numeric??x.value)||0)), total=vals.reduce((a,b)=>a+b,0)||1;
+  const vals=(items||[]).map(x=>segmentShare(x)), total=vals.reduce((a,b)=>a+b,0)||1;
   const cols=['#89b45b','#92bce0','#e6c255','#b69bd0']; let a=0;
   return `<svg class="tp-pie-svg" viewBox="0 0 300 300" preserveAspectRatio="xMidYMid meet">${vals.map((v,i)=>{const a1=a+v/total*360,mid=(a+a1)/2,pp=piePoint(150,150,68,mid);const out=`<path d="${pieArc(150,150,104,a,a1)}" fill="${cols[i%cols.length]}" stroke="#4a463f" stroke-width="1.15"/><text x="${pp[0]}" y="${pp[1]}" text-anchor="middle" dominant-baseline="middle">${esc(items[i].mix||'')}</text>`;a=a1;return out}).join('')}</svg>`;
 }
@@ -687,7 +738,7 @@ function twopagerNotebookHTML(d,m){
   const segs=(d.segments||[]).slice(0,4);
   const p1=`<article class="tp-page tp-notebook-page tp-p1">${tpHeader(d,1,'Franchise, investment case and upside drivers')}<main class="t16-p1-grid">
     <section class="tp-thesis strict-fit"><h2>1 · Investment Thesis</h2><p class="tp-lead">${esc(d.thesis_summary)}</p><div class="tp-question">${esc(d.core_question)}</div><div class="tp-thesis-grid"><ul>${(d.thesis_bullets||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul><div class="tp-art">${nbThesisArtwork(d)}</div></div></section>
-    <section class="tp-overview strict-fit"><h2>2 · Company Overview</h2><p>${esc(d.overview_summary)}</p><div class="t16-overview-grid"><div class="tp-pie-wrap">${tpPieSVG(segs)}</div><div class="tp-segments">${segs.map(x=>`<div><b>${esc(x.short_name||x.name)} <span>${esc(x.mix)}</span></b><p>${esc(x.description)}</p></div>`).join('')}<div class="t16-note"><b>Financial Services:</b> ${esc(d.other_profit_pool)}</div></div></div></section>
+    <section class="tp-overview strict-fit"><h2>2 · Company Overview</h2><p>${esc(d.overview_summary)}</p><div class="t16-overview-grid"><div class="tp-pie-wrap">${tpPieSVG(segs)}</div><div class="tp-segments">${segs.map(x=>`<div><b>${esc(x.short_name||x.name)} <span>${esc(x.mix)}</span></b><p>${esc(x.description)}</p></div>`).join('')}<div class="t16-note"><b>Other profit pools:</b> ${esc(d.other_profit_pool)}</div></div></div></section>
     <div class="t16-lower"><section class="tp-business"><h2>3 · Business Model</h2><div class="t16-pools">${(d.business_model||[]).slice(0,4).map(x=>`<div>${nbIcon(poolIconName(x.name),34)}<b>${esc(x.name)}</b><span>${esc(x.description)}</span></div>`).join('')}</div><div class="tp-life">Captures value across the customer life cycle →</div></section><section class="tp-opportunities"><h2>4 · Key Opportunities</h2><div class="tp-opps">${(d.opportunities||[]).slice(0,5).map(x=>`<article>${nbIcon(x.icon,40)}<div><b>${esc(x.title)}</b><p>${esc(x.detail)}</p></div></article>`).join('')}</div></section></div>
   </main><footer>Page 1 · Franchise, investment case and upside drivers</footer></article>`;
   const p2=`<article class="tp-page tp-notebook-page tp-p2">${tpRunningHeader(d,2,'Earnings power, signposts and thesis-break conditions')}<main class="t16-p2-grid">

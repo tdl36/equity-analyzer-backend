@@ -103,5 +103,37 @@ test('a one-off peak multiple does not stretch the columns', () => {
     `outlier multiple survived: ${cols.join(', ')}`);
 });
 
+test('only numbers marked as multiples are treated as multiples', () => {
+  // "10Y avg ~16x; current 27% below" yielded 10 and 27 as P/E multiples,
+  // putting a 10x column half a turn from the 10.5x base case.
+  const html = mod.reportSensitivityHTML(
+    { at_glance: { share_price: '$278.88' },
+      valuation_scenarios: [
+        { case: 'Bear', earnings: '$28.00 (2027E)', multiple: '7.5x' },
+        { case: 'Base', earnings: '$32.00 (2027E)', multiple: '10.5x' },
+        { case: 'Bull', earnings: '$34.00 (2027E)', multiple: '13.0x' }] },
+    { historical_pe: '10Y avg ~16x; current 27% below', forward_pe: '8.3x', eps: '' });
+  const cols = [...html.matchAll(/<th>([\d.]+)x<\/th>/g)].map(m => Number(m[1]));
+  assert.ok(!cols.includes(27), `27% was read as a multiple: ${cols.join(', ')}`);
+  for (let i = 1; i < cols.length; i++) {
+    assert.ok(cols[i] - cols[i - 1] >= 0.75, `near-duplicate columns: ${cols.join(', ')}`);
+  }
+});
+
+test('the matrix contains the multiples the scenarios actually use', () => {
+  const html = mod.reportSensitivityHTML(
+    { at_glance: { share_price: '$278.88' },
+      valuation_scenarios: [
+        { case: 'Bear', earnings: '$28.00 (2027E)', multiple: '7.5x' },
+        { case: 'Base', earnings: '$32.00 (2027E)', multiple: '10.5x' },
+        { case: 'Bull', earnings: '$34.00 (2027E)', multiple: '13.0x' }] },
+    { historical_pe: '10Y avg ~16x', forward_pe: '8.3x', eps: '' });
+  const cols = [...html.matchAll(/<th>([\d.]+)x<\/th>/g)].map(m => Number(m[1]));
+  for (const need of [7.5, 10.5, 13]) {
+    assert.ok(cols.some(c => Math.abs(c - need) < 0.01),
+      `scenario multiple ${need}x missing from ${cols.join(', ')}`);
+  }
+});
+
 console.log(failures ? `\n${failures} failing` : '\nall sensitivity tests passed');
 process.exit(failures ? 1 : 0);

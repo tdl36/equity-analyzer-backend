@@ -9,7 +9,8 @@ import json, re, subprocess, sys
 pdf, fixture = sys.argv[1], sys.argv[2]
 path = {'de': 'fixtures/deepdive_de_golden.json',
         'unh': 'fixtures/deepdive_unh_sample.json',
-        'stress': 'fixtures/deepdive_stress.json'}[fixture]
+        'stress': 'fixtures/deepdive_stress.json',
+        'ci': 'fixtures/deepdive_ci_sample.json'}[fixture]
 names = [sp.get('signpost', '') for sp in
          (json.load(open(path))['master'].get('signposts') or [])]
 txt = subprocess.run(['pdftotext', '-f', '2', '-l', '2', pdf, '-'],

@@ -119,11 +119,25 @@ _LIST_ITEM_CHARS = [
     # fit -- the wrong trade. 76 leaves DE untouched and still pulls UNH in.
     ("thesis_bullets", 76),
     ("financial_bullets", 72),    # DE max 69
+    # Bull/bear render as a fixed-height list on two-pager page 2 that holds
+    # five single lines. Word counts do not decide that: DE's items reach 26
+    # characters and sit on one line, while UNH and Cigna hit 43-44 at the same
+    # word count because they carry figures, wrap to two, and pushed the last
+    # one or two items off the box entirely. DE max is 26, so 32 leaves the
+    # calibration untouched.
+    # 32 still wrapped: the box holds five lines and the column is ~27
+    # characters wide, so anything past that costs a second line and pushes the
+    # fifth item out. DE's maximum is 26.
+    ("bull_case", 27),
+    ("bear_case", 27),
 ]
 
 _NESTED_ITEM_CHARS = [
     ("opportunities", "detail", 74),
     ("business_model", "description", 56),
+    # Same fixed box on two-pager page 2: at 137-178 characters the fourth
+    # threat's body was not printed at all. DE max is 111.
+    ("threats", "watch_for", 112),   # DE max 111; 118 still lost the fourth
 ]
 
 
@@ -478,6 +492,15 @@ _MASTER_LIST_CAPS = [
 ]
 
 # Per-item prose inside those lists.
+# Width caps for the master object. Word counts do not decide fit: Deere's
+# business-model descriptions run 74-82 characters and sit inside their card,
+# while Cigna's reach 161 at a similar word count, overflow the card, and print
+# across the next card's title on memo page 1 ("...rebate retention." landing on
+# "Commercial Health Insurance"). DE max is 82.
+_MASTER_NESTED_ITEM_CHARS = [
+    (("business_model",), "description", 92),
+]
+
 _MASTER_ITEM_WORDS = [
     # Uncapped until a live run returned 40-word segment descriptions against
     # Deere's 8, which is most of why the memo's overview section ran 170px past
@@ -592,8 +615,20 @@ def normalize_segments(segments):
     """
     if not isinstance(segments, list) or not segments:
         return segments, False
-    vals = [(s.get("mix_numeric") or 0) if isinstance(s, dict) else 0
-            for s in segments]
+    # mix_numeric is optional in practice: models frequently return only the
+    # `mix` label. When it is absent this read produced all zeros, the total was
+    # zero, and the function returned "nothing to do" -- so Cigna's 86 + 17 =
+    # 103% went to the pie unnormalised. Fall back to the label.
+    def _share(seg):
+        if not isinstance(seg, dict):
+            return 0
+        direct = seg.get("mix_numeric")
+        if isinstance(direct, (int, float)) and direct > 0:
+            return direct
+        m = re.search(r"\d+(?:\.\d+)?", str(seg.get("mix") or ""))
+        return float(m.group()) if m else 0
+
+    vals = [_share(s) for s in segments]
     total = sum(v for v in vals if isinstance(v, (int, float)))
     if not total or abs(total - 100) <= 5:
         return segments, False
@@ -664,6 +699,20 @@ def enforce_master_budgets(m):
     # the shipped CVS three-pager showed four of six signposts, and the golden
     # DE fixture never caught it because its cells are empty. Both spellings are
     # capped here so the same divergence cannot reappear.
+    for path, sub, limit in _MASTER_NESTED_ITEM_CHARS:
+        items = _dig(out, path)
+        if isinstance(items, list):
+            new_items, changed = [], False
+            for x in items:
+                if isinstance(x, dict) and len(str(x.get(sub) or "")) > limit:
+                    x = dict(x)
+                    x[sub] = _trim_chars(x.get(sub), limit)
+                    changed = True
+                new_items.append(x)
+            if changed:
+                _put(out, path, new_items)
+                trimmed.append(".".join(path) + f".{sub}(width)")
+
     sps = out.get("signposts")
     if isinstance(sps, list):
         new_sps, sp_changed = [], False

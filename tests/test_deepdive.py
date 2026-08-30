@@ -651,7 +651,8 @@ def test_javascript_render_tests_pass():
     import subprocess, shutil
     if not shutil.which('node'):
         pytest.skip('node not installed')
-    for suite in ('tests/js/sensitivity.test.mjs', 'tests/js/chart.test.mjs'):
+    for suite in ('tests/js/sensitivity.test.mjs', 'tests/js/chart.test.mjs',
+                  'tests/js/segments.test.mjs'):
         r = subprocess.run(['node', suite], capture_output=True, text=True, timeout=120)
         assert r.returncode == 0, f'{suite} failed:\n{r.stdout}\n{r.stderr}'
 
@@ -732,3 +733,41 @@ def test_trim_still_falls_back_to_an_ellipsis_when_there_is_no_boundary():
 def test_trim_never_lengthens_or_mangles_short_text():
     for s in ('', 'Short line.', 'A B C'):
         assert dd._trim_words(s, 20) == s
+
+
+def test_bull_bear_items_are_capped_by_width_not_just_words():
+    """Fit is decided by rendered lines, not word count.
+
+    DE's bull items reach 26 characters and sit on one line. UNH and Cigna hit
+    43-44 at the same word count because they carry figures, wrapped to two
+    lines, and the fifth item was pushed out of the fixed box entirely -- the
+    reader lost whole points with nothing indicating it.
+    """
+    d = {'bull_case': ['Signature pre-empts future PBM intervention',
+                       'Buyback compounds EPS at 10%+'],
+         'bear_case': ['Healthcare MCR deteriorates to 87%+ on utilization']}
+    out, _ = dd.enforce_budgets(d)
+    for item in out['bull_case'] + out['bear_case']:
+        assert len(item) <= 28, f'{item!r} is {len(item)} chars'
+
+
+def test_de_bull_bear_survive_the_width_cap():
+    """The calibration reference must never be trimmed to fit another company."""
+    de = json.load(open('fixtures/deepdive_de_golden.json'))['onepager']
+    before = list(de.get('bull_case') or [])
+    out, _ = dd.enforce_budgets(json.loads(json.dumps(de)))
+    assert out['bull_case'] == before, 'DE bull_case was trimmed'
+
+
+def test_segment_shares_are_derived_from_labels_when_numeric_is_absent():
+    """Models frequently return only the `mix` label.
+
+    normalize_segments read mix_numeric only, so an absent field made every
+    share zero, the total zero, and the function reported nothing to do.
+    """
+    segs = [{'short_name': 'A', 'mix': '~60%'}, {'short_name': 'B', 'mix': '~80%'},
+            {'short_name': 'C', 'mix': 'Minimal'}]
+    out, changed = dd.normalize_segments(segs)
+    assert changed, 'shares summing to 140% must be rescaled'
+    total = sum(s.get('mix_numeric', 0) for s in out)
+    assert abs(total - 100) <= 1, f'shares still do not close: {total}'

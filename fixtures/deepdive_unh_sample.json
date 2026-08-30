@@ -426,7 +426,7 @@
   "business_model": [
    {
     "name": "Premium Collection & Risk Pooling",
-    "description": "UnitedHealthcare collects monthly premiums from employers, government programs (Medicare, Medicaid), and individuals. The\u2026"
+    "description": "UnitedHealthcare collects monthly premiums from employers, government programs (Medicare\u2026"
    },
    {
     "name": "Value-Based Care Capitation",
@@ -434,11 +434,11 @@
    },
    {
     "name": "Pharmacy Spread & Rebates",
-    "description": "OptumRx negotiates manufacturer rebates, dispenses prescriptions through retail networks and mail-order facilities, and\u2026"
+    "description": "OptumRx negotiates manufacturer rebates, dispenses prescriptions through retail networks\u2026"
    },
    {
     "name": "Technology & Data Licensing",
-    "description": "Optum Insight sells software subscriptions, consulting, and outsourced administrative services to hospitals, physician\u2026"
+    "description": "Optum Insight sells software subscriptions, consulting, and outsourced administrative\u2026"
    }
   ],
   "final_takeaway": "UnitedHealth Group's investment case hinges on execution of a margin-recovery playbook after the most challenging period in company history. Management contends 2025 represented a perfect storm\u2014cyberattack costs, Medicare funding cuts, elevated medical trends\u2014and that deliberate actions (pricing, benefit design, MA membership pruning) will restore profitability to historical norms by 2027. The 2026 guidance raise to $19.50\u201320.00 EPS and reaffirmed 13\u201316%\u2026",
@@ -671,22 +671,22 @@
    {
     "icon": "regulation",
     "threat": "MA Rate & Regulatory Squeeze",
-    "watch_for": "CMS Feb'27 rate notice below expectations; Star penalties; MA margin <3% or enrollment decline >1.5M 2027. Kills 13\u201316% algorithm if structural."
+    "watch_for": "CMS Feb'27 rate notice below expectations; Star penalties; MA margin <3% or enrollment decline >1.5M 2027\u2026"
    },
    {
     "icon": "margin",
     "threat": "Commercial MCR Inflation",
-    "watch_for": "Employer MCR >85% three consecutive qtrs; mgmt cites No Surprises Act or provider coding intensity persisting. Erodes pricing power; miss EPS by\u2026"
+    "watch_for": "Employer MCR >85% three consecutive qtrs; mgmt cites No Surprises Act or provider coding intensity persisting\u2026"
    },
    {
     "icon": "execution",
     "threat": "Optum VBC Fails to Scale",
-    "watch_for": "Optum Health margin <4% thru 2026; patient acquisition costs don't decline; risk-adjustment worsens. Undermines vertical integration thesis; reset consolidated margin target."
+    "watch_for": "Optum Health margin <4% thru 2026; patient acquisition costs don't decline; risk-adjustment worsens. Undermines\u2026"
    },
    {
     "icon": "regulation",
     "threat": "Cyberattack Litigation Overhang",
-    "watch_for": "Class-action settlements >$2B; HHS enforcement; major clients shift business citing security. Reputational damage limits MA/commercial growth; regulatory caps on Optum expansion."
+    "watch_for": "Class-action settlements >$2B; HHS enforcement; major clients shift business citing security. Reputational\u2026"
    }
   ],
   "visuals": [
@@ -788,18 +788,18 @@
    }
   ],
   "bear_case": [
-   "Structural margin reset: inflation sticky",
-   "MA enrollment secular decline persists",
-   "Regulatory: DOJ antitrust, PBM clawbacks",
-   "Valuation not cheap on trough",
-   "Execution: Optum ramp costs persist"
+   "Structural margin reset\u2026",
+   "MA enrollment secular\u2026",
+   "Regulatory: DOJ antitrust\u2026",
+   "Valuation not cheap on\u2026",
+   "Execution: Optum ramp\u2026"
   ],
   "bull_case": [
-   "Self-help: benefit cuts, MA exits",
-   "Optum integration undervalued: $20B+ capture",
-   "Demographics: 10k/day turn 65",
-   "Discount: 20\u00d7 vs 22\u00d7 historical",
-   "Fortress balance: $32B cash, 8%\u2026"
+   "Self-help: benefit cuts\u2026",
+   "Optum integration\u2026",
+   "Demographics: 10k/day turn\u2026",
+   "Discount: 20\u00d7 vs 22\u00d7\u2026",
+   "Fortress balance: $32B\u2026"
   ],
   "signposts": [
    {

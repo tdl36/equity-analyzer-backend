@@ -1,0 +1,943 @@
+{
+ "master": {
+  "ticker": "CI",
+  "company": "The Cigna Group",
+  "sources": [
+   {
+    "url": "https://www.sec.gov/Archives/edgar/data/731766/000073176624000338/investorconferenceguidance.htm",
+    "date": "",
+    "title": "UNITEDHEALTH GROUP INC - Form 8-K - FY2024"
+   },
+   {
+    "url": "https://www.unitedhealthgroup.com/newsroom/2024/2024-12-3-uhg-business-outlook-investor-conference.html",
+    "date": "December 3, 2024",
+    "title": "UnitedHealth Group Updates Business Outlook Ahead of Investor Conference - UnitedHealth Group"
+   },
+   {
+    "url": "https://www.sec.gov/Archives/edgar/data/731766/000073176623000080/a2023investorconferencegui.htm",
+    "date": "",
+    "title": "UNITEDHEALTH GROUP INC - Form 8-K - FY2023"
+   },
+   {
+    "url": "https://quartr.com/companies/unitedhealth-group-incorporated_4258",
+    "date": "",
+    "title": "UnitedHealth Group (UNH) Investor Relations, Earnings Summary & Outlook"
+   },
+   {
+    "url": "https://www.unitedhealthgroup.com/newsroom/2025/2025-16-01-uhg-reports-fourth-quarter-results.html",
+    "date": "January 16, 2025",
+    "title": "UnitedHealth Group Reports 2024 Results - UnitedHealth Group"
+   },
+   {
+    "url": "https://www.sec.gov/Archives/edgar/data/731766/000073176621000057/a2021investorconferencegui.htm",
+    "date": "",
+    "title": "UNITEDHEALTH GROUP INC - Form 8-K - FY2021"
+   },
+   {
+    "url": "https://www.alphaspread.com/security/nyse/unh/investor-relations",
+    "date": "",
+    "title": "UNH Investor Relations - UnitedHealth Group Inc - Alpha Spread"
+   },
+   {
+    "url": "https://www.investing.com/equities/united-health-group-earnings",
+    "date": "July 15, 2026",
+    "title": "UnitedHealth (UNH) Earnings Date & Report - Investing.com"
+   },
+   {
+    "url": "https://www.gurufocus.com/news/2474197/unitedhealth-group-unh-q2-2024-earnings-revenue-beats-estimates-adjusted-eps-surpasses-expectations",
+    "date": "July 16, 2024",
+    "title": "UnitedHealth Group (UNH) Q2 2024 Earnings: Revenue Beats Estimates, Adjusted EPS Surpasses Expectations"
+   },
+   {
+    "url": "https://www.alphaspread.com/security/nyse/unh/earnings-calls/q2-2024",
+    "date": "",
+    "title": "UNH Investor Relations - UnitedHealth Group Inc - Alpha Spread"
+   },
+   {
+    "url": "https://news.alphastreet.com/infographic-how-unitedhealth-group-unh-performed-in-q2-2024/",
+    "date": "July 16, 2024",
+    "title": "Infographic: How UnitedHealth Group (UNH) performed in Q2 2024 | AlphaStreet"
+   },
+   {
+    "url": "https://www.unitedhealthgroup.com/content/dam/UHG/PDF/investors/2024/UNH-Q2-2024-Release.pdf",
+    "date": "",
+    "title": "Page 1 of 7 UnitedHealth Group Reports Second Quarter 2024 Results \u2022"
+   },
+   {
+    "url": "https://www.unitedhealthgroup.com/investors/financial-reports.html",
+    "date": "",
+    "title": "Financial & Earnings Reports - UnitedHealth Group"
+   },
+   {
+    "url": "https://www.sec.gov/Archives/edgar/data/731766/000073176625000228/a2025q2exhibit991.htm",
+    "date": "",
+    "title": "Document"
+   },
+   {
+    "url": "https://www.sec.gov/Archives/edgar/data/731766/000073176624000242/a2024q2exhibit991.htm",
+    "date": "",
+    "title": "UnitedHealth Group Reports Second Quarter 2024 Results"
+   },
+   {
+    "url": "https://stockanalysis.com/stocks/unh/market-cap/",
+    "date": "",
+    "title": "UnitedHealth Group (UNH) Market Cap & Net Worth"
+   },
+   {
+    "url": "https://tradingeconomics.com/unh:us:market-capitalization",
+    "date": "",
+    "title": "UnitedHealth | UNH - Market Capitalization"
+   },
+   {
+    "url": "https://robinhood.com/us/en/stocks/UNH/",
+    "date": "4 weeks ago",
+    "title": "UnitedHealth: UNH Stock Price Quote & News | Robinhood"
+   },
+   {
+    "url": "https://www.macrotrends.net/stocks/charts/UNH/unitedhealth-group/market-cap",
+    "date": "",
+    "title": "UnitedHealth Group Market Cap 2012-2026 | UNH | MacroTrends"
+   },
+   {
+    "url": "https://www.cnbc.com/quotes/UNH",
+    "date": "July 8, 2026",
+    "title": "UNH: UnitedHealth Group Inc - Stock Price, Quote and News - CNBC"
+   },
+   {
+    "url": "https://finance.yahoo.com/quote/UNH/",
+    "date": "4 days ago",
+    "title": "UnitedHealth Group Incorporated (UNH) Stock Price, News, Quote & History - Yahoo Finance"
+   },
+   {
+    "url": "https://finance.yahoo.com/quote/UNH/history/",
+    "date": "",
+    "title": "UnitedHealth Group Incorporated (UNH) Stock Historical Prices & Data - Yahoo Finance"
+   },
+   {
+    "url": "https://www.macrotrends.net/stocks/charts/UNH/unitedhealth-group/stock-price-history",
+    "date": "",
+    "title": "UnitedHealth Group - 15 Year Stock Price History | UNH | MacroTrends"
+   },
+   {
+    "url": "https://companiesmarketcap.com/united-health/marketcap/",
+    "date": "",
+    "title": "UnitedHealth (UNH) - Market capitalization"
+   },
+   {
+    "url": "https://www.tipranks.com/stocks/de:unh/market-cap",
+    "date": "",
+    "title": "market cap"
+   },
+   {
+    "url": "https://www.unitedhealthgroup.com/content/dam/UHG/PDF/investors/2025/unh-reports-third-quarter-2025-results-and-raises-full-year-2025-earnings-outlook.pdf",
+    "date": "October 28, 2025",
+    "title": "unh-reports-third-quarter-2025-results-and-raises-full-year- ..."
+   },
+   {
+    "url": "https://www.sec.gov/Archives/edgar/data/731766/000073176621000013/Financial_Report.xlsx",
+    "date": "",
+    "title": "UNITEDHEALTH GROUP INC - Form 10-K - FY2020 (Annual Financial Statement Tables - full year 2020)"
+   },
+   {
+    "url": "https://www.sec.gov/Archives/edgar/data/0000731766/000073176616000058/Financial_Report.xlsx",
+    "date": "",
+    "title": "UNITEDHEALTH GROUP INC - Form 10-K - FY2015 (Annual Financial Statement Tables - full year 2015)"
+   },
+   {
+    "url": "https://www.unitedhealthgroup.com/content/dam/UHG/PDF/investors/2025/unh-reports-2025-results-and-issues-2026-outlook.pdf",
+    "date": "",
+    "title": "unh-reports-2025-results-and-issues-2026-outlook. ..."
+   },
+   {
+    "url": "https://bullfincher.io/companies/unitedhealth-group-incorporated/revenue-by-segment",
+    "date": "",
+    "title": "UnitedHealth Group Incorporated Revenue Breakdown By Segment | Bullfincher"
+   },
+   {
+    "url": "https://www.stock-analysis-on.net/NYSE/Company/UnitedHealth-Group-Inc/Ratios/Reportable-Segments",
+    "date": "February 28, 2025",
+    "title": "UnitedHealth Group Inc. (NYSE:UNH) | Analysis of Reportable Segments"
+   },
+   {
+    "url": "https://www.sec.gov/Archives/edgar/data/731766/000073176622000004/a2021q4exhibit991.htm",
+    "date": "",
+    "title": "Cash Flows from Operations were $22.3 Billion or 1.3x Net ..."
+   },
+   {
+    "url": "https://stockanalysis.com/stocks/unh/metrics/revenue-by-segment/",
+    "date": "",
+    "title": "UnitedHealth Group (UNH) Revenue by Segment"
+   },
+   {
+    "url": "https://stockanalysis.com/stocks/unh/metrics/",
+    "date": "",
+    "title": "UnitedHealth Group (UNH) Business Metrics & Revenue ..."
+   },
+   {
+    "url": "https://finance.yahoo.com/healthcare/articles/unitedhealth-jumps-10-3-raising-202436425.html",
+    "date": "July 16, 2026",
+    "title": "UnitedHealth Jumps 10.3% After Raising 2026 EPS Outlook Above Estimates"
+   },
+   {
+    "url": "https://www.tikr.com/blog/is-unitedhealth-stock-undervalued-in-2026-tikrs-680-target-and-the-margin-test",
+    "date": "June 13, 2026",
+    "title": "Is UnitedHealth Stock Undervalued in 2026? TIKR\u2019s $680 Target and the Margin Test"
+   },
+   {
+    "url": "https://simplywall.st/stocks/us/healthcare/nyse-unh/unitedhealth-group/future",
+    "date": "2 weeks ago",
+    "title": "UnitedHealth Group (NYSE:UNH) Stock Forecast & Analyst Predictions - Simply Wall St"
+   },
+   {
+    "url": "https://www.unitedhealthgroup.com/content/dam/UHG/PDF/investors/2025/UNH-Reports-Q1-2025-Results-Revises-Full-Year-Guidance.pdf",
+    "date": "",
+    "title": "Page 1 of 6 UnitedHealth Group Reports First Quarter 2025 Results"
+   },
+   {
+    "url": "https://www.ad-hoc-news.de/boerse/news/corporate-news/unitedhealth-group-stock-holds-near-399-as-q2-2026-earnings-beat-supports/69996937",
+    "date": "4 days ago",
+    "title": "UnitedHealth Group stock holds near $399 as Q2 2026 earnings beat supports higher EPS guidance"
+   },
+   {
+    "url": "https://fullratio.com/stocks/nyse-unh/pe-ratio",
+    "date": "",
+    "title": "UNH - Unitedhealth Group PE ratio, current and historical analysis"
+   },
+   {
+    "url": "https://www.wisesheets.io/pe-ratio/UNH.DE",
+    "date": "",
+    "title": "UnitedHealth Group Incorporated - PE Ratio"
+   },
+   {
+    "url": "https://www.investing.com/pro/NYSE:UNH/explorer/pe_ltm",
+    "date": "",
+    "title": "Unitedhealth Group (NYSE:UNH) P/E Ratio - Investing.com"
+   },
+   {
+    "url": "https://www.stock-analysis-on.net/NYSE/Company/UnitedHealth-Group-Inc/Valuation/Ratios",
+    "date": "February 28, 2025",
+    "title": "UnitedHealth Group Inc. (NYSE:UNH) | Valuation Ratios"
+   },
+   {
+    "url": "https://www.financecharts.com/stocks/UNH/value/pe-ratio",
+    "date": "",
+    "title": "UnitedHealth Group (UNH) PE Ratio - Current & Historical Data (May 2026)"
+   },
+   {
+    "url": "https://www.macrotrends.net/stocks/charts/UNH/unitedhealth-group/pe-ratio",
+    "date": "",
+    "title": "UnitedHealth Group PE Ratio 2012-2026 | UNH | MacroTrends"
+   },
+   {
+    "url": "https://finbox.com/NYSE:UNH/explorer/pe_ltm/",
+    "date": "",
+    "title": "P/E Ratio For Unitedhealth Group (UNH)"
+   },
+   {
+    "url": "https://pro.macrotrends.net/stocks/charts/UNH/unitedhealth-group/pe-ratio",
+    "date": "",
+    "title": "UnitedHealth Group PE Ratio 1986-2025 | UNH"
+   },
+   {
+    "url": "https://public.com/stocks/unh/pe-ratio",
+    "date": "",
+    "title": "pe ratio"
+   },
+   {
+    "url": "https://www.milliman.com/en/insight/medicare-advantage-general-enrollment-2026-update",
+    "date": "",
+    "title": "State of the 2026 Medicare Advantage industry: General enrollment plan valuation and selected benefit offerings"
+   },
+   {
+    "url": "https://www.kff.org/medicare/medicare-advantage-in-2026-enrollment-update-and-key-trends/",
+    "date": "July 1, 2026",
+    "title": "Medicare Advantage in 2026: Enrollment Update and Key Trends | KFF"
+   },
+   {
+    "url": "https://www.healthscape.com/insights/medicare-advantage-enrollment-depicts-industry-crossroads",
+    "date": "February 26, 2026",
+    "title": "Medicare Advantage 2026: Enrollment depicts industry at a crossroads | HealthScape Advisors"
+   },
+   {
+    "url": "https://www.risehealth.org/insights-articles/article/medicare-advantage-enrollment-rises-driven-largely-by-special-needs-plans/",
+    "date": "February 24, 2026",
+    "title": "Medicare Advantage enrollment rises, driven largely by special needs plans"
+   },
+   {
+    "url": "https://cepr.net/publications/medicare-advantage-companies-focus-on-profits-over-care/",
+    "date": "December 2, 2025",
+    "title": "Medicare Advantage Turmoil Leaves Seniors at Risk for 2026 \u2013 CEPR"
+   },
+   {
+    "url": "https://www.medicaremarketinsights.com/p/unitedhealth-group-q1-2026-results",
+    "date": "April 23, 2026",
+    "title": "UnitedHealth Group Q1 2026 Results \ud83d\udcca"
+   },
+   {
+    "url": "https://www.sec.gov/Archives/edgar/data/731766/000073176624000085/unh-20240221.htm",
+    "date": "",
+    "title": "UNITEDHEALTH GROUP INC - Form 8-K/A - FY2024"
+   },
+   {
+    "url": "https://www.sec.gov/Archives/edgar/data/731766/000073176624000262/unh-20240630.htm",
+    "date": "",
+    "title": "UNITEDHEALTH GROUP INC - Form 10-Q - FY2024"
+   },
+   {
+    "url": "https://www.sec.gov/Archives/edgar/data/731766/000073176624000320/a2024q3exhibit991.htm",
+    "date": "",
+    "title": "UNITEDHEALTH GROUP INC - Form 8-K - FY2024"
+   },
+   {
+    "url": "https://www.sec.gov/Archives/edgar/data/731766/000073176624000155/unh-20240331.htm",
+    "date": "",
+    "title": "UNITEDHEALTH GROUP INC - Form 10-Q - FY2024"
+   },
+   {
+    "url": "https://www.nixonpeabody.com/insights/alerts/2025/11/12/change-healthcare-cybersecurity-breach-impact-on-healthcare-providers",
+    "date": "November 12, 2025",
+    "title": "Change Healthcare cyber breach | Nixon Peabody LLP"
+   },
+   {
+    "url": "https://www.acronis.com/en/blog/posts/lessons-learned-from-the-unitedhealthcare-cyberattack/",
+    "date": "August 16, 2024",
+    "title": "Lessons learned from the UnitedHealthcare cyberattack"
+   },
+   {
+    "url": "https://www.aha.org/change-healthcare-cyberattack-underscores-urgent-need-strengthen-cyber-preparedness-individual-health-care-organizations-and",
+    "date": "",
+    "title": "Change Healthcare Cyberattack Underscores Urgent Need to Strengthen Cyber Preparedness for Individual Health Care Organizations and as a Field | AHA"
+   },
+   {
+    "url": "https://www.congress.gov/crs_external_products/IN/HTML/IN12330.web.html",
+    "date": "",
+    "title": "The Change Healthcare Cyberattack"
+   }
+  ],
+  "tagline": "Franchise, stock debate and business economics",
+  "at_glance": {
+   "share_price": "$278.88",
+   "market_cap": "~$73.7B",
+   "exchange": "NYQ",
+   "sector": "Healthcare",
+   "industry": "Healthcare Plans",
+   "as_of": "2026-08-29"
+  },
+  "bear_case": [
+   "2027 PBM legislation destroys Evernorth",
+   "2027 renewals net client losses",
+   "Healthcare MCR deteriorates 87%+",
+   "Wage and utilization inflation persists",
+   "Recession cuts covered lives"
+  ],
+  "bull_case": [
+   "Signature pre-empts future PBM intervention",
+   "Specialty $5B+ pre-tax 2028",
+   "Exit improves quality; $1B+ buyback",
+   "MCR stabilizes mid-80s",
+   "Buyback compounds EPS at 10%+"
+  ],
+  "catalysts": [
+   {
+    "timing": "September 2026",
+    "event": "Investor Day",
+    "why_it_matters": "Management to detail Signature model economics, the 2027 selling-season pipeline, and the longer-term Evernorth growth algorithm."
+   },
+   {
+    "timing": "January 2027",
+    "event": "Individual & Family Plan Exit Complete; 2027 Guidance",
+    "why_it_matters": "Removal of the volatile Individual book should lower MCR and improve earnings quality. The new 2027 guide will reveal whether EPS growth can re-accelerate."
+   },
+   {
+    "timing": "Q1-Q2 2027",
+    "event": "2027 PBM Renewals and New Client Announcements",
+    "why_it_matters": "First major test of Signature model competitiveness. Large wins or losses will determine whether Evernorth can defend share in a transparent-pricing environment."
+   }
+  ],
+  "signposts": [
+   {
+    "signpost": "2027 PBM Selling Season Wins",
+    "current": "Early positive Signature feedback",
+    "target": "Net new lives >=5M; retain >=95% existing",
+    "why_it_matters": "Validates transparent pricing model and stabilizes Evernorth revenue base. Client losses would confirm competitive disadvantage and trigger a margin spiral."
+   },
+   {
+    "signpost": "Specialty Pharmacy Revenue Growth",
+    "current": "Specialty & Care earnings +22% Q2 2026",
+    "target": "Sustain low-teens earnings growth through 2027",
+    "why_it_matters": "Specialty is the highest-margin, fastest-growing segment within Evernorth. Deceleration signals market share loss or pricing pressure from CVS and Optum."
+   },
+   {
+    "signpost": "Cigna Healthcare Medical Care Ratio",
+    "current": "84.5% Q2 2026 (elevated by Individual plans)",
+    "target": "Trend toward 83-84% as Individual exits",
+    "why_it_matters": "MCR above 86% for two quarters would indicate pricing inadequacy or adverse selection, forcing reserve builds and guidance cuts."
+   },
+   {
+    "signpost": "Free Cash Flow Conversion",
+    "current": "$710M H1 2026 (seasonal trough)",
+    "target": "FY 2026 FCF >=$8.5B (return to growth)",
+    "why_it_matters": "Cash generation funds buyback and dividend. Persistent shortfall versus earnings signals working capital issues, undermining the capital return thesis."
+   },
+   {
+    "signpost": "PBM Regulatory Developments",
+    "current": "FTC settled Feb 2026; no new federal bills",
+    "target": "No new material legislation through 2027",
+    "why_it_matters": "Passage of a federal PBM profit-cap or mandatory pass-through law would destroy 30-50% of Evernorth's earnings. Continued stasis supports the thesis."
+   },
+   {
+    "signpost": "Debt-to-Capitalization Ratio",
+    "current": "42.3% (Q1 2026)",
+    "target": "<=40% by year-end 2026",
+    "why_it_matters": "Demonstrates disciplined capital allocation and balance-sheet repair post-HCSC sale. Failure to deleverage suggests FCF is weaker than guided."
+   }
+  ],
+  "bottom_line": "Cigna has deliberately transformed into a PBM- and specialty-pharmacy-centric company at precisely the moment when those businesses face maximum regulatory scrutiny.",
+  "opportunities": [
+   {
+    "title": "Biosimilar Wave and Specialty Drug Growth",
+    "icon": "growth",
+    "detail": "Approximately $100 billion in U.S. specialty drug spend will face biosimilar or generic competition over the next five years. Cigna's scale in specialty pharmacy (Accredo) and early biosimilar adoption captures margin."
+   },
+   {
+    "title": "Signature Rebate-Free Model Differentiation",
+    "icon": "technology",
+    "detail": "The new transparent, rebate-free PBM model launches for Cigna fully insured clients in 2027 and broader Evernorth membership in 2028. Early market feedback is positive."
+   },
+   {
+    "title": "Portfolio Simplification and Capital Efficiency",
+    "icon": "growth",
+    "detail": "Exiting Medicare Advantage (March 2025) and Individual ACA plans (Jan 2027) removes earnings volatility and frees ~$3.7B in capital."
+   },
+   {
+    "title": "Behavioral Health and Care Services Expansion",
+    "icon": "growth",
+    "detail": "Growing demand for mental health services creates upsell opportunities within existing employer clients. Evernorth's care services saw 22% earnings growth in Q2 2026."
+   },
+   {
+    "title": "FTC Settlement Removes Regulatory Overhang",
+    "icon": "technology",
+    "detail": "The February 2026 insulin settlement imposed no fines and no material margin impact, lifting a multi-year overhang on the shares."
+   }
+  ],
+  "business_model": [
+   {
+    "name": "Pharmacy Benefit Management (Express Scripts)",
+    "description": "Negotiates rebates with drug manufacturers, manages formularies, adjudicates claims\u2026"
+   },
+   {
+    "name": "Specialty Pharmacy & Distribution (Accredo)",
+    "description": "Dispenses high-cost specialty drugs, provides patient adherence services, and distributes\u2026"
+   },
+   {
+    "name": "Commercial Health Insurance",
+    "description": "Underwrites employer-sponsored medical plans (fully insured and ASO), stop-loss, dental\u2026"
+   },
+   {
+    "name": "International Health",
+    "description": "Provides expatriate and local health coverage in 30+ countries. High-margin, stable book\u2026"
+   }
+  ],
+  "final_takeaway": "Cigna is a show-me story trading at a distressed valuation that assumes PBM economics are permanently impaired. The company has proactively reshaped its portfolio to concentrate on employer-sponsored insurance and pharmacy benefits, positioning Evernorth to capture specialty drug and biosimilar tailwinds. At 8.3x forward P/E and a 10%+ free cash flow yield, the stock embeds minimal growth and maximal regulatory pessimism.",
+  "thesis_threats": [
+   {
+    "threat": "Federal PBM Legislation Mandates Profit Caps or Pass-Through Pricing",
+    "icon": "shield",
+    "watch_for": "New bipartisan bills advancing in Congress; FTC or CMS rulemaking proposals targeting spread pricing or rebate retention"
+   },
+   {
+    "threat": "Major Client Defections in 2027 Selling Season",
+    "icon": "trophy",
+    "watch_for": "Announcements by Fortune 500 employers switching to competitors (Optum, Prime, Mark Cuban Cost Plus); Evernorth lives declining >10% YoY"
+   },
+   {
+    "threat": "Cigna Healthcare Medical Cost Trend Acceleration",
+    "icon": "percent",
+    "watch_for": "MCR exceeding 87% for two consecutive quarters; management commentary citing utilization spikes or adverse selection in the employer book"
+   },
+   {
+    "threat": "Biosimilar/Generic Adoption Stalls or Margins Compress",
+    "icon": "growth",
+    "watch_for": "Specialty pharmacy earnings growth decelerating to mid-single digits; manufacturer pushback reducing substitution rates"
+   }
+  ],
+  "company_overview": {
+   "summary": "The Cigna Group is a global health services organization that has fundamentally reoriented its business mix toward pharmacy benefits and away from government-sponsored insurance. Following the March 2025 sale of Medicare Advantage to HCSC for $3.7 billion, Cigna now operates two core segments.",
+   "segments": [
+    {
+     "name": "Evernorth Health Services",
+     "short_name": "Evernorth",
+     "mix": "~86%",
+     "description": "Includes Pharmacy Benefit Services (Express Scripts PBM, home delivery) and Specialty and Care\u2026"
+    },
+    {
+     "name": "Cigna Healthcare",
+     "short_name": "Healthcare",
+     "mix": "~17%",
+     "description": "Employer-sponsored medical plans (insured and self-insured), international health, stop-loss."
+    },
+    {
+     "name": "Other Operations & Corporate",
+     "short_name": "Other",
+     "mix": "Minimal",
+     "description": "Corporate-owned life insurance (COLI), run-off businesses, and corporate expense/eliminations."
+    }
+   ],
+   "other_profit_pools": [
+    "Evernorth Specialty and Care Services delivered $1.1B pre-tax earnings in Q2 2026, up 22% YoY, driven by specialty drug volumes and biosimilar adoption; this sub-segment is the fastest-growing earnings driver within the company."
+   ]
+  },
+  "earnings_history": {
+   "metric": "Adjusted EPS",
+   "cycle_note": "Cigna has compounded adjusted EPS at ~12% annually from 2020-2025, driven by Evernorth volume growth, share buybacks, and commercial insurance margin expansion. 2026 growth slows to ~2% as large PBM client renewals and Signature model investments offset specialty strength.",
+   "points": [
+    {
+     "period": "2020",
+     "value": 18.45
+    },
+    {
+     "period": "2021",
+     "value": 20.47
+    },
+    {
+     "period": "2022",
+     "value": 23.28
+    },
+    {
+     "period": "2023",
+     "value": 25.09,
+     "annotation": "Initial guide >=$28.25"
+    },
+    {
+     "period": "2024",
+     "value": 28.03
+    },
+    {
+     "period": "2025",
+     "value": 29.84,
+     "annotation": "+9% YoY"
+    },
+    {
+     "period": "2026E",
+     "value": 30.45,
+     "kind": "estimate",
+     "annotation": "Guidance >=$30.45"
+    },
+    {
+     "period": "2027E",
+     "value": 31.5,
+     "kind": "estimate",
+     "annotation": "Consensus; implies modest growth"
+    }
+   ]
+  },
+  "investment_thesis": {
+   "summary": "Cigna represents a contrarian bet on pharmacy benefit management at a time when PBM economics face intense regulatory scrutiny. The company has deliberately reshaped its portfolio, exiting volatile Medicare Advantage in March 2025 and abandoning individual ACA exchanges, to concentrate capital on two pillars: Evernorth Health Services and employer-focused commercial insurance. Evernorth now drives approximately 60% of company profits. The February 2026 FTC settlement on insulin pricing removed a major regulatory overhang without imposing fines, and management reaffirmed its $30.45 adjusted EPS guidance for 2026. At 8.3x forward P/E, well below the ten-year average of 16x, the stock prices in persistent PBM margin pressure.",
+   "core_question": "Can Cigna defend Evernorth's PBM economics and convert specialty/biosimilar tailwinds into durable earnings growth fast enough to overcome regulatory and competitive margin pressure?",
+   "variant_view": "Consensus sees Cigna as a mature, low-growth cash cow vulnerable to PBM disruption. The variant is that the February 2026 FTC settlement marks the regulatory peak, the Signature model will prove more attractive to large employers than incumbent rebate structures, and Evernorth's unmatched specialty pharmacy scale becomes a durable moat as $100B+ in branded drugs face biosimilar competition over the next five years.",
+   "what_market_prices_in": [
+    "Flat to low-single-digit EPS growth beyond 2026, reflecting limited confidence in PBM pricing power",
+    "Modest share gains offset by margin compression as large clients negotiate rebate-free models",
+    "Stabilization, not expansion, of medical care ratios in the mid-80% range for Cigna Healthcare"
+   ],
+   "what_must_be_true": [
+    "Signature rebate-free PBM model wins new clients in 2027-2028 and stabilizes pharmacy margins at acceptable levels",
+    "Specialty pharmacy volume (biosimilars, GLP-1s, oncology) grows mid-teens, offsetting generic and rebate headwinds",
+    "Cigna Healthcare medical cost trends remain in the high single digits without spiking, allowing disciplined pricing"
+   ],
+   "falsification": [
+    "New federal PBM legislation mandates pass-through pricing or margin caps, destroying Express Scripts' core profit pool",
+    "Major client losses in 2027 renewals as employers defect to transparent or vertically integrated competitors",
+    "Medical care ratio for Cigna Healthcare exceeds 87% for two consecutive quarters, signaling pricing inadequacy"
+   ]
+  },
+  "financial_snapshot": {
+   "eps": "$30.45+ (2026E adj.)",
+   "returns": "ROE mid-teens (inferred); ROIC strong",
+   "revenue": "~$143B (H1 2026)",
+   "leverage": "Debt/equity ~0.73; debt/cap 42.3%",
+   "ev_ebitda": "N/A",
+   "fcf_yield": "~8\u20139%",
+   "forward_pe": "8.3x",
+   "eps_context": "2025 reflects elevated medical costs and cyberattack tail; 2026 guide implies ~22% growth as pricing and benefit changes take hold",
+   "fcf_context": "Strong conversion despite earnings pressure; capex ~$3\u20134 billion leaves ~$29 billion FCF supporting dividends ($9 billion) and buybacks ($5+ billion in 2026)",
+   "historical_pe": "10Y avg ~16x; current 27% below",
+   "free_cash_flow": "~$7.7B (TTM Mar 2026)",
+   "margin_context": "Depressed from historical 5\u20136% range; UnitedHealthcare MCR elevated, Optum Health margin under pressure. Management targeting gradual recovery toward 5% by 2027.",
+   "revenue_context": "Up ~11% from $400 billion in 2024; Optum growing mid-teens, UnitedHealthcare low-double-digits",
+   "operating_margin": "~2.9% (Q2 2026 adj.)",
+   "financial_bullets": [
+    "Q2 2026 EPS $7.78 beat $7.60; revenue $71.7B beat",
+    "Evernorth Specialty pre-tax +22% YoY to $1.1B in Q2",
+    "Healthcare MCR 84.5% Q2 vs 83.2% prior year",
+    "Medical customers 16.7M, down from 18.3M post-Individual exit",
+    "Debt-to-cap 42.3%, improved 70 bps in Q1; target 40%",
+    "Operating cash $710M H1 vs $34M H1 2025"
+   ],
+   "valuation_comment": "Stock trades at multi-year low valuation due to PBM regulatory fear and muted growth expectations.",
+   "management_targets": [
+    {
+     "label": "FY 2026 Adj. EPS",
+     "value": ">=$30.45",
+     "context": "Raised twice; implies ~2% growth vs FY2025 $29.84"
+    },
+    {
+     "label": "FY 2026 Revenue",
+     "value": "~$280B",
+     "context": "Up ~11% from 2025 $275B, driven by Evernorth"
+    },
+    {
+     "label": "Long-term EPS growth",
+     "value": "10-13%",
+     "context": "Reaffirmed; actual five-year ~12%"
+    },
+    {
+     "label": "Debt-to-cap target",
+     "value": "~40% by YE",
+     "context": "From 42.3% at Q1 2026"
+    }
+   ]
+  },
+  "valuation_scenarios": [
+   {
+    "case": "Bear",
+    "earnings": "$28.00 (2027E)",
+    "multiple": "7.5x",
+    "implied_value": "$210",
+    "logic": "Regulatory intervention forces pass-through PBM pricing, compressing Evernorth margins by 200+ bps. Major client losses in 2027 renewals."
+   },
+   {
+    "case": "Base",
+    "earnings": "$32.00 (2027E)",
+    "multiple": "10.5x",
+    "implied_value": "$336",
+    "logic": "Signature model gains traction; specialty pharmacy growth offsets generic and rebate pressure; Evernorth earnings stable."
+   },
+   {
+    "case": "Bull",
+    "earnings": "$34.00 (2027E)",
+    "multiple": "13.0x",
+    "implied_value": "$442",
+    "logic": "Biosimilar wave accelerates Evernorth specialty earnings +15-20%; Signature wins large accounts. Aggressive buyback compounds EPS."
+   }
+  ]
+ },
+ "onepager": {
+  "ticker": "CI",
+  "company": "The Cigna Group",
+  "targets": [
+   {
+    "label": "FY 2026 Adj. EPS",
+    "value": ">=$30.45",
+    "context": "Raised twice; implies ~2% growth vs FY2025 $29.84"
+   },
+   {
+    "label": "FY 2026 Revenue",
+    "value": "~$280B",
+    "context": "Up ~11% from 2025 $275B, driven by Evernorth"
+   },
+   {
+    "label": "Long-term EPS growth",
+    "value": "10-13%",
+    "context": "Reaffirmed; actual five-year ~12%"
+   },
+   {
+    "label": "Debt-to-cap target",
+    "value": "~40% by YE",
+    "context": "From 42.3% at Q1 2026"
+   }
+  ],
+  "threats": [
+   {
+    "threat": "Federal PBM Legislation Mandates Profit Caps or Pass-Through Pricing",
+    "icon": "shield",
+    "watch_for": "New bipartisan bills advancing in Congress; FTC or CMS rulemaking proposals targeting spread pricing or rebate\u2026"
+   },
+   {
+    "threat": "Major Client Defections in 2027 Selling Season",
+    "icon": "trophy",
+    "watch_for": "Announcements by Fortune 500 employers switching to competitors (Optum, Prime, Mark Cuban Cost Plus); Evernorth\u2026"
+   },
+   {
+    "threat": "Cigna Healthcare Medical Cost Trend Acceleration",
+    "icon": "percent",
+    "watch_for": "MCR exceeding 87% for two consecutive quarters; management commentary citing utilization spikes or adverse\u2026"
+   },
+   {
+    "threat": "Biosimilar/Generic Adoption Stalls or Margins Compress",
+    "icon": "growth",
+    "watch_for": "Specialty pharmacy earnings growth decelerating to mid-single digits; manufacturer pushback reducing\u2026"
+   }
+  ],
+  "visuals": [
+   {
+    "type": "segment_mix",
+    "items": [
+     {
+      "label": "UnitedHealthcare",
+      "value": 75,
+      "detail": "Insurance risk"
+     },
+     {
+      "label": "Optum Rx",
+      "value": 23,
+      "detail": "PBM"
+     },
+     {
+      "label": "Optum Health",
+      "value": 16,
+      "detail": "Care delivery"
+     },
+     {
+      "label": "Optum Insight",
+      "value": 4,
+      "detail": "Tech/analytics"
+     }
+    ],
+    "title": "Revenue Mix by Segment"
+   },
+   {
+    "type": "flow",
+    "items": [
+     {
+      "label": "2025 Reset",
+      "value": 3.2,
+      "detail": "Cyberattack + MA cuts"
+     },
+     {
+      "label": "Pricing Actions",
+      "value": 0,
+      "detail": "Benefit redesign"
+     },
+     {
+      "label": "MA Pruning",
+      "value": 0,
+      "detail": "Shed unprofitable lives"
+     },
+     {
+      "label": "Optum Scale",
+      "value": 0,
+      "detail": "VBC + vertical capture"
+     },
+     {
+      "label": "2027 Target",
+      "value": 5.0,
+      "detail": "Historical norm"
+     }
+    ],
+    "title": "Margin Recovery Path"
+   }
+  ],
+  "headline": "America's Largest Insurer Rebuilding Margins After Historic Compression",
+  "identity": {
+   "hq": "Minnetonka, MN",
+   "fy_end": "Dec 31",
+   "founded": "1977",
+   "website": "unitedhealthgroup.com",
+   "exchange": "NYSE",
+   "employees": "~440,000"
+  },
+  "segments": [
+   {
+    "name": "Evernorth Health Services",
+    "short_name": "Evernorth",
+    "mix": "~86%",
+    "description": "Includes Pharmacy Benefit Services (Express Scripts PBM, home delivery) and Specialty\u2026"
+   },
+   {
+    "name": "Cigna Healthcare",
+    "short_name": "Healthcare",
+    "mix": "~17%",
+    "description": "Employer-sponsored medical plans (insured and self-insured), international health, stop-loss."
+   },
+   {
+    "name": "Other Operations & Corporate",
+    "short_name": "Other",
+    "mix": "Minimal",
+    "description": "Corporate-owned life insurance (COLI), run-off businesses, and corporate expense/eliminations."
+   }
+  ],
+  "bear_case": [
+   "2027 PBM legislation\u2026",
+   "2027 renewals net client\u2026",
+   "Healthcare MCR\u2026",
+   "Wage and utilization\u2026",
+   "Recession cuts covered\u2026"
+  ],
+  "bull_case": [
+   "Signature pre-empts future\u2026",
+   "Specialty $5B+ pre-tax 2028",
+   "Exit improves quality\u2026",
+   "MCR stabilizes mid-80s",
+   "Buyback compounds EPS at\u2026"
+  ],
+  "signposts": [
+   {
+    "signpost": "2027 PBM Selling Season Wins",
+    "current": "Early positive Signature feedback",
+    "target": "Net new lives >=5M; retain >=95% existing",
+    "why": "Validates transparent pricing model and stabilizes Evernorth revenue base."
+   },
+   {
+    "signpost": "Specialty Pharmacy Revenue Growth",
+    "current": "Specialty & Care earnings +22% Q2 2026",
+    "target": "Sustain low-teens earnings growth through 2027",
+    "why": "Specialty is the highest-margin, fastest-growing segment within Evernorth."
+   },
+   {
+    "signpost": "Cigna Healthcare Medical Care Ratio",
+    "current": "84.5% Q2 2026 (elevated by Individual plans)",
+    "target": "Trend toward 83-84% as Individual exits",
+    "why": "MCR above 86% for two quarters would indicate pricing\u2026"
+   },
+   {
+    "signpost": "Free Cash Flow Conversion",
+    "current": "$710M H1 2026 (seasonal trough)",
+    "target": "FY 2026 FCF >=$8.5B (return to growth)",
+    "why": "Cash generation funds buyback and dividend."
+   },
+   {
+    "signpost": "PBM Regulatory Developments",
+    "current": "FTC settled Feb 2026; no new federal bills",
+    "target": "No new material legislation through 2027",
+    "why": "Passage of a federal PBM profit-cap or mandatory pass-through\u2026"
+   },
+   {
+    "signpost": "Debt-to-Capitalization Ratio",
+    "current": "42.3% (Q1 2026)",
+    "target": "<=40% by year-end 2026",
+    "why": "Demonstrates disciplined capital allocation and balance-sheet repair post-HCSC sale."
+   }
+  ],
+  "bottom_line": "Cigna has deliberately transformed into a PBM- and specialty-pharmacy-centric company at precisely\u2026",
+  "subheadline": "Targeting 13\u201316% EPS growth resumption as pricing, benefit cuts, and Optum scale offset Medicare headwinds",
+  "core_question": "Can Cigna defend Evernorth's PBM economics and convert specialty/biosimilar tailwinds into durable earnings growth fast enough to overcome regulatory and competitive margin pressure?",
+  "opportunities": [
+   {
+    "title": "Biosimilar Wave and Specialty Drug Growth",
+    "icon": "growth",
+    "detail": "Approximately $100 billion in U.S. specialty drug spend will face\u2026"
+   },
+   {
+    "title": "Signature Rebate-Free Model Differentiation",
+    "icon": "technology",
+    "detail": "The new transparent, rebate-free PBM model launches for Cigna fully\u2026"
+   },
+   {
+    "title": "Portfolio Simplification and Capital Efficiency",
+    "icon": "growth",
+    "detail": "Exiting Medicare Advantage (March 2025) and Individual ACA plans (Jan\u2026"
+   },
+   {
+    "title": "Behavioral Health and Care Services Expansion",
+    "icon": "growth",
+    "detail": "Growing demand for mental health services creates upsell opportunities\u2026"
+   },
+   {
+    "title": "FTC Settlement Removes Regulatory Overhang",
+    "icon": "technology",
+    "detail": "The February 2026 insulin settlement imposed no fines and no material\u2026"
+   }
+  ],
+  "business_model": [
+   {
+    "name": "Pharmacy Benefit Management (Express Scripts)",
+    "description": "Negotiates rebates with drug manufacturers, manages\u2026"
+   },
+   {
+    "name": "Specialty Pharmacy & Distribution (Accredo)",
+    "description": "Dispenses high-cost specialty drugs, provides patient\u2026"
+   },
+   {
+    "name": "Commercial Health Insurance",
+    "description": "Underwrites employer-sponsored medical plans (fully\u2026"
+   },
+   {
+    "name": "International Health",
+    "description": "Provides expatriate and local health coverage in 30+\u2026"
+   }
+  ],
+  "final_takeaway": "Cigna is a show-me story trading at a distressed valuation that assumes PBM economics are permanently impaired. The company has proactively reshaped its portfolio to concentrate on employer-sponsored insurance and pharmacy benefits, positioning Evernorth to capture specialty drug and biosimilar tailwinds.",
+  "thesis_bullets": [
+   "UnitedHealthcare MCR spiked to 89.9% Q3'25; must trend <85% Q4'26",
+   "Medicare Advantage losing 1.1M members 2026; deliberate pruning or\u2026",
+   "Optum Health margin collapsed to 1% Q3'25 from historic 6\u20138%",
+   "2026 guide raised to $19.50\u201320.00 EPS (+23% Y/Y) signals turnaround",
+   "Trading ~20\u00d7 forward vs 22\u00d7 10-yr avg; re-rate to 24\u00d7 =\u2026"
+  ],
+  "thesis_summary": "Cigna represents a contrarian bet on pharmacy benefit management at a time when PBM economics face intense regulatory scrutiny. The company has deliberately reshaped its portfolio, exiting volatile Medicare Advantage in March 2025 and abandoning individual ACA exchanges, to concentrate capital on two pillars: Evernorth Health Services and employer-focused commercial insurance. Evernorth now drives approximately 60% of company profits.",
+  "earnings_history": {
+   "metric": "Adjusted EPS",
+   "cycle_note": "Cigna has compounded adjusted EPS at ~12% annually from 2020-2025, driven by Evernorth volume growth, share buybacks, and commercial insurance margin expansion. 2026 growth slows to ~2% as large PBM client renewals and Signature model investments offset specialty strength.",
+   "points": [
+    {
+     "period": "2020",
+     "value": 18.45
+    },
+    {
+     "period": "2021",
+     "value": 20.47
+    },
+    {
+     "period": "2022",
+     "value": 23.28
+    },
+    {
+     "period": "2023",
+     "value": 25.09,
+     "annotation": "Initial guide >=$28.25"
+    },
+    {
+     "period": "2024",
+     "value": 28.03
+    },
+    {
+     "period": "2025",
+     "value": 29.84,
+     "annotation": "+9% YoY"
+    },
+    {
+     "period": "2026E",
+     "value": 30.45,
+     "kind": "estimate",
+     "annotation": "Guidance >=$30.45"
+    },
+    {
+     "period": "2027E",
+     "value": 31.5,
+     "kind": "estimate",
+     "annotation": "Consensus; implies modest growth"
+    }
+   ]
+  },
+  "overview_summary": "The Cigna Group is a global health services organization that has fundamentally reoriented its business mix toward pharmacy benefits and away from government-sponsored insurance.",
+  "financial_bullets": [
+   "Q2 2026 EPS $7.78 beat $7.60; revenue $71.7B beat",
+   "Evernorth Specialty pre-tax +22% YoY to $1.1B in Q2",
+   "Healthcare MCR 84.5% Q2 vs 83.2% prior year",
+   "Medical customers 16.7M, down from 18.3M post-Individual exit",
+   "Debt-to-cap 42.3%, improved 70 bps in Q1; target 40%",
+   "Operating cash $710M H1 vs $34M H1 2025"
+  ],
+  "other_profit_pool": "Evernorth Specialty and Care Services delivered $1.1B pre-tax earnings in Q2 2026, up 22% YoY, driven by specialty drug volumes\u2026",
+  "valuation_callout": "Trading ~20\u00d7 2026E vs 22\u00d7 historical; discount reflects margin uncertainty. Multiple re-rate to 24\u00d7 on execution = $500 PT.",
+  "valuation_metrics": [
+   {
+    "label": "Forward P/E",
+    "value": "~20\u00d7",
+    "context": "vs 22\u00d7 10-yr avg"
+   },
+   {
+    "label": "FCF yield",
+    "value": "8\u20139%",
+    "context": "$29B FCF; $14B+ returns"
+   },
+   {
+    "label": "ROE",
+    "value": "16.5%",
+    "context": "Q2'26; stable despite margin pressure"
+   }
+  ],
+  "secondary_bottom_line": "Prove-it 2026\u201327; exit if MCR >87%"
+ }
+}

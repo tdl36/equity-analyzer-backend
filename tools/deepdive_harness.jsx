@@ -11,10 +11,12 @@ import { DeepDiveArtifact, PageFit, preflightPages, printArtifact, applyPrintLay
 import de from '../fixtures/deepdive_de_golden.json';
 import unh from '../fixtures/deepdive_unh_sample.json';
 import stress from '../fixtures/deepdive_stress.json';
+import ci from '../fixtures/deepdive_ci_sample.json';
 
 const q = new URLSearchParams(location.search);
 const src = q.get('fixture') === 'unh' ? unh
-    : q.get('fixture') === 'stress' ? stress : de;
+    : q.get('fixture') === 'stress' ? stress
+    : q.get('fixture') === 'ci' ? ci : de;
 const root = document.getElementById('root');
 const run = { master: src.master, onepager: src.onepager };
 const view = q.get('view') || 'onepager';
