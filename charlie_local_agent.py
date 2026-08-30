@@ -41,6 +41,15 @@ import anthropic
 # ---------------------------------------------------------------------------
 
 STOCKS_DIR = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/STOCKS"
+# Largest file synced to Charlie.
+#
+# Was 50MB, chosen arbitrarily and inconsistent with the server it uploads to:
+# Flask accepts 500MB. The cap mattered because an unsynced file can only be
+# used by the agent, so it silently decided which documents Charlie could ever
+# generate a note from. Raised to match the server; genuinely huge PDFs are
+# handled by sending extracted text rather than pages (see notegen.py), so size
+# no longer decides whether a document is usable.
+MAX_SYNC_BYTES = 400 * 1024 * 1024
 CHARLIE_API = "https://equity-analyzer-backend.onrender.com"
 POLL_INTERVAL = 5  # seconds
 CONFIG_FILE = Path.home() / ".charlie_agent_config.json"
@@ -173,7 +182,6 @@ Line 5: Conclusion: Own / Avoid / Revisit at $X | Next Catalyst: [specific event
 - Cross-check every narrative claim against data tables
 - When FY EPS includes >$0.50/share in non-recurring items, flag explicitly
 - Distinguish reported vs underlying/organic growth rates
-- Nudge displayed numbers +/- $200-300M from model to avoid exact replication
 - Use markdown tables for ALL tabular data (segments, financials, catalysts, scenarios)
 
 ### SECTOR-SPECIFIC ADDITIONS:
@@ -686,7 +694,7 @@ def import_existing_documents() -> None:
                 if f.name in existing_filenames:
                     skipped += 1
                     continue
-                if f.stat().st_size > 50 * 1024 * 1024:  # Skip >50MB
+                if f.stat().st_size > MAX_SYNC_BYTES:
                     continue
                 docs_to_upload.append(f)
 
@@ -797,8 +805,8 @@ def check_and_fulfill_doc_requests() -> None:
                         continue
                     if p.suffix.lower() not in UPLOAD_EXTS:
                         continue
-                    if p.stat().st_size > 50 * 1024 * 1024:
-                        log.warning(f"  Skipping {p.name} — exceeds 50MB upload cap")
+                    if p.stat().st_size > MAX_SYNC_BYTES:
+                        log.warning(f"  Skipping {p.name} — exceeds {MAX_SYNC_BYTES // (1024*1024)}MB upload cap")
                         continue
                     docs_to_upload.append(p)
                 log.info(f"  Resolved {len(docs_to_upload)} of {len(wanted)} wanted files")
@@ -816,7 +824,7 @@ def check_and_fulfill_doc_requests() -> None:
                         continue
                     if f.name in existing_filenames:
                         continue
-                    if f.stat().st_size > 50 * 1024 * 1024:
+                    if f.stat().st_size > MAX_SYNC_BYTES:
                         continue
                     docs_to_upload.append(f)
 
@@ -1259,6 +1267,7 @@ MAX_TOKENS_PER_BATCH = 170_000  # Leave room for prompt + response under 200K li
 APPROX_TOKENS_PER_BYTE = 0.4  # rough estimate for PDF base64 -> tokens
 
 
+
 def _estimate_tokens(files: list[dict]) -> int:
     """Rough estimate of token count for a set of files."""
     total = 0
@@ -1467,7 +1476,6 @@ IMPORTANT:
 - In the main note, NEVER mention broker names, analyst names, or firm-specific targets
 - Do NOT use Street opinion as thesis support (e.g. "the Street is constructive", "consensus targets suggest upside")
 - OK in Valuation section: factual framing like "applying 11-12x to normalized EPS implies $X" (your own math)
-- Nudge displayed numbers +/- $200-300M from model data to avoid exact replication
 
 Return your response in this exact format:
 

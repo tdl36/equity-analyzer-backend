@@ -1689,6 +1689,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [pipelineDocModalDocs, setPipelineDocModalDocs] = useState([]);
             const [pipelineDocModalLoading, setPipelineDocModalLoading] = useState(false);
             const [pipelineDocModalExistingWeight, setPipelineDocModalExistingWeight] = useState(70);
+            // What the run will actually do. The agent computed this and wrote
+            // it to a log on a laptop; the person choosing the documents is the
+            // one who needs it.
+            const [pipelineRunPlan, setPipelineRunPlan] = useState(null);
+            const [pipelineRunPlanLoading, setPipelineRunPlanLoading] = useState(false);
             const [pipelineLocalFiles, setPipelineLocalFiles] = useState([]);
             const [pipelineReprocess, setPipelineReprocess] = useState(false);
             const [pipelineSort, setPipelineSort] = useState('sector');
@@ -7824,6 +7829,30 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     alert(`Upload error: ${e.message}`);
                 }
             };
+
+            const fetchRunPlan = useCallback(async (ticker, selectedFilenames) => {
+                if (!ticker) return;
+                setPipelineRunPlanLoading(true);
+                try {
+                    const q = (selectedFilenames || []).length
+                        ? `?files=${encodeURIComponent(selectedFilenames.join('|'))}` : '';
+                    const r = await fetch(`${API_URL}/api/notes/plan/${ticker}${q}`);
+                    setPipelineRunPlan(r.ok ? await r.json() : null);
+                } catch (e) {
+                    setPipelineRunPlan(null);
+                } finally {
+                    setPipelineRunPlanLoading(false);
+                }
+            }, []);
+
+            // Re-plan as the selection changes: the estimate is only useful if
+            // it describes the documents currently ticked.
+            useEffect(() => {
+                if (!pipelineDocModalTicker) { setPipelineRunPlan(null); return; }
+                const names = pipelineDocModalDocs.filter(d => d.selected).map(d => d.filename);
+                const t = setTimeout(() => fetchRunPlan(pipelineDocModalTicker, names), 300);
+                return () => clearTimeout(t);
+            }, [pipelineDocModalTicker, pipelineDocModalDocs, fetchRunPlan]);
 
             const generateResearchNote = async (ticker, mode = 'new') => {
                 try {
@@ -21920,6 +21949,55 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 })()}
                                             </div>
 
+                                            {/* Run plan — what pressing Generate will actually do. */}
+                                            <div className="px-4 pb-3">
+                                                {pipelineRunPlanLoading && (
+                                                    <div className="text-[10px] text-slate-500">Estimating run…</div>
+                                                )}
+                                                {!pipelineRunPlanLoading && pipelineRunPlan && pipelineRunPlan.documentCount > 0 && (
+                                                    <div className="bg-white/[0.04] border border-white/10 rounded-lg p-3 space-y-2">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-xs font-medium text-slate-200">Run plan</span>
+                                                            <span className="text-[10px] text-slate-400 tabular-nums">
+                                                                {pipelineRunPlan.batchCount} batch{pipelineRunPlan.batchCount === 1 ? '' : 'es'}
+                                                                {' · '}~{(pipelineRunPlan.estimatedTokens / 1000).toFixed(0)}K tokens
+                                                                {' · '}~${pipelineRunPlan.estimatedCostUsd}
+                                                                {' · '}~{pipelineRunPlan.estimatedMinutes} min
+                                                            </span>
+                                                        </div>
+                                                        {(pipelineRunPlan.batches || []).map(b => (
+                                                            <div key={b.index} className="text-[10px]">
+                                                                <div className={b.shapesTheNote ? 'text-amber-300 font-medium' : 'text-slate-500'}>
+                                                                    Batch {b.index}{b.shapesTheNote ? ' — writes the note' : ' — merged in'}
+                                                                </div>
+                                                                <div className="pl-2 text-slate-400">
+                                                                    {(b.documents || []).map(d => (
+                                                                        <div key={d.filename} className="flex justify-between gap-2">
+                                                                            <span className="truncate">{d.filename}</span>
+                                                                            <span className="shrink-0 text-slate-600">{d.kind}{d.sentAs === 'text' ? ' · as text' : ''}</span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                        {(pipelineRunPlan.sentAsText || []).length > 0 && (
+                                                            <div className="text-[10px] text-slate-500 border-t border-white/5 pt-1.5">
+                                                                Too large to attach as pages, sent as extracted text: {pipelineRunPlan.sentAsText.join(', ')}
+                                                            </div>
+                                                        )}
+                                                        {(pipelineRunPlan.skipped || []).length > 0 && (
+                                                            <div className="text-[10px] text-red-300 border-t border-white/5 pt-1.5">
+                                                                Skipped: {pipelineRunPlan.skipped.map(x => `${x.filename} (${x.reason})`).join('; ')}
+                                                            </div>
+                                                        )}
+                                                        {pipelineRunPlan.runsOn === 'agent' && (
+                                                            <div className="text-[10px] text-amber-300 border-t border-white/5 pt-1.5">
+                                                                No documents synced to Charlie yet — this run needs the local agent.
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
                                             <div className="p-4 border-t border-white/10 flex items-center justify-between">
                                                 <div className="text-xs text-slate-400">
                                                     {mpICloudSelected.size} selected

@@ -15890,17 +15890,77 @@ def generate_research_note():
     if not api_key:
         return jsonify({'error': 'API key required'}), 400
 
-    # Create a pipeline job for the local agent to pick up
-    # NOTE: Do NOT spawn a backend thread — note generation runs on the local agent
-    # which has access to iCloud files and can call Claude directly
+    # Run here, not on the local agent.
+    #
+    # The agent syncs the iCloud STOCKS folder into document_files, so by the
+    # time you press this the documents are already in Charlie and the only
+    # thing local execution bought was file access -- at the cost of requiring
+    # one particular Mac to be awake, signed into iCloud and running launchd
+    # before a note could be produced at all. Generating here means it works
+    # from a phone, survives that Mac being closed, and puts the logs where
+    # they can be read. The agent still ingests files and syncs the finished
+    # note back down to iCloud.
+    #
+    # `runOn` forces the old path when a document only exists locally -- files
+    # over the sync cap never reach Charlie.
+    run_on = (data.get('runOn') or 'server').lower()
+
+    docs_here = 0
+    with get_db() as (_, cur):
+        cur.execute('SELECT COUNT(*) AS n FROM document_files WHERE ticker = %s', (ticker,))
+        row = cur.fetchone()
+        docs_here = (row or {}).get('n', 0) or 0
+
     job_id = str(uuid.uuid4())
+    detail = {'mode': mode, 'fileSelection': file_selection, 'reprocess': reprocess}
+
+    if run_on == 'server' and docs_here:
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('''
+                INSERT INTO research_pipeline_jobs (id, batch_id, ticker, job_type, status, progress, current_step, total_steps, steps_detail)
+                VALUES (%s, %s, %s, 'note', 'queued', 0, 'Starting', 6, %s)
+            ''', (job_id, str(uuid.uuid4()), ticker, json.dumps(detail)))
+        threading.Thread(
+            target=_generate_research_note,
+            args=(job_id, ticker, api_key, mode, file_selection),
+            daemon=True, name=f'note-{ticker}-{job_id[:8]}').start()
+        return jsonify({'jobId': job_id, 'ticker': ticker, 'runsOn': 'server'})
+
+    # No documents synced yet (or explicitly asked for): the agent has the files.
     with get_db(commit=True) as (conn, cur):
         cur.execute('''
             INSERT INTO research_pipeline_jobs (id, batch_id, ticker, job_type, status, progress, current_step, total_steps, steps_detail)
             VALUES (%s, %s, %s, 'note', 'queued', 0, 'Waiting for local agent', 6, %s)
-        ''', (job_id, str(uuid.uuid4()), ticker, json.dumps({'mode': mode, 'fileSelection': file_selection, 'reprocess': reprocess})))
+        ''', (job_id, str(uuid.uuid4()), ticker, json.dumps(detail)))
+    return jsonify({'jobId': job_id, 'ticker': ticker, 'runsOn': 'agent',
+                    'reason': 'no documents synced to Charlie for this ticker'})
 
-    return jsonify({'jobId': job_id, 'ticker': ticker})
+
+@app.route('/api/notes/plan/<ticker>', methods=['GET'])
+def research_note_plan(ticker):
+    """What a run would do, before committing to it.
+
+    The agent computed this and wrote it to a log on someone's laptop. The
+    person choosing the documents is the one who needs to see it: how many
+    batches, which documents shape the note, what it will cost and roughly how
+    long it will take.
+    """
+    ticker = ticker.upper()
+    selected = request.args.get('files', '')
+    wanted = {f for f in selected.split('|') if f}
+    try:
+        with get_db() as (_, cur):
+            cur.execute('''SELECT filename, file_data, file_type, file_size, created_at
+                           FROM document_files WHERE ticker = %s''', (ticker,))
+            docs = [dict(r) for r in cur.fetchall()]
+        if wanted:
+            docs = [d for d in docs if d.get('filename') in wanted]
+        plan = notegen.plan_summary(docs)
+        plan['ticker'] = ticker
+        plan['runsOn'] = 'server' if docs else 'agent'
+        return jsonify(plan)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/notes/<ticker>', methods=['GET'])
@@ -16067,8 +16127,15 @@ def get_research_note_history(ticker):
     })
 
 
-def _generate_research_note(job_id, ticker, api_key, mode='new'):
-    """Generate a full equity research note in a background thread."""
+def _generate_research_note(job_id, ticker, api_key, mode='new', file_selection=None):
+    """Generate a full equity research note in a background thread.
+
+    Runs on Charlie rather than the local agent. The documents are already here
+    -- the agent syncs the iCloud STOCKS folder into document_files -- so the
+    only thing local execution bought was file access, at the cost of requiring
+    a particular Mac to be awake with iCloud materialised before a note could
+    be produced at all.
+    """
     try:
         _update_pipeline_job(job_id, status='running', current_step='Loading data', progress=0)
 
@@ -16086,21 +16153,62 @@ def _generate_research_note(job_id, ticker, api_key, mode='new'):
         # Step 2: Load source documents
         _update_pipeline_job(job_id, current_step='Reading source documents', progress=10)
         with get_db() as (_, cur):
-            cur.execute('SELECT filename, file_data, file_type FROM document_files WHERE ticker = %s', (ticker,))
-            docs = cur.fetchall()
+            cur.execute('''SELECT filename, file_data, file_type, file_size, created_at
+                           FROM document_files WHERE ticker = %s''', (ticker,))
+            docs = [dict(r) for r in cur.fetchall()]
+
+        # Honour the selection made in Update Config; an empty selection means
+        # everything, which is what the button did before it had a config.
+        if file_selection:
+            wanted = {f.get('filename') for f in file_selection if f.get('filename')}
+            if wanted:
+                docs = [d for d in docs if d.get('filename') in wanted]
 
         if not docs and not analysis:
             raise Exception(f'No documents or analysis found for {ticker}')
 
-        # Build document content for LLM
-        doc_contents = []
-        for doc in docs:
-            if doc.get('file_type') == 'pdf' and doc.get('file_data'):
-                doc_contents.append({
-                    'type': 'document',
-                    'source': {'type': 'base64', 'media_type': 'application/pdf', 'data': doc['file_data']},
-                })
-                doc_contents.append({'type': 'text', 'text': f'[Document: {doc["filename"]}]'})
+        # Rank and batch before sending anything.
+        #
+        # The note is written from the FIRST batch and later batches are merged
+        # into it, so whichever documents land in batch one decide what the note
+        # is about. Filling batches in database order meant a broker PDF could
+        # shape the thesis while the 10-K arrived as an afterthought.
+        batches = notegen.plan_batches(docs)
+        plan = notegen.plan_summary(docs)
+        _update_pipeline_job(
+            job_id,
+            current_step=(f"Planned {plan['batchCount']} batch(es), "
+                          f"~{plan['estimatedTokens']:,} tokens"),
+            progress=14)
+        print(f"[note-gen {job_id}] plan: {plan['batchCount']} batch(es), "
+              f"~{plan['estimatedTokens']:,} tokens, ~${plan['estimatedCostUsd']}")
+
+        def _content_for(batch):
+            """Attach a batch: pages for normal PDFs, text for oversized ones."""
+            out = []
+            for doc in batch:
+                mode_ = doc.get('send_as')
+                if mode_ == 'pages' and doc.get('file_data'):
+                    out.append({
+                        'type': 'document',
+                        'source': {'type': 'base64', 'media_type': 'application/pdf',
+                                   'data': doc['file_data']},
+                    })
+                    out.append({'type': 'text', 'text': f'[Document: {doc["filename"]}]'})
+                elif mode_ == 'text' and doc.get('extracted_text'):
+                    out.append({'type': 'text',
+                                'text': f'[Document: {doc["filename"]} — extracted text]\n'
+                                        + doc['extracted_text']})
+                elif doc.get('file_data') and doc.get('file_type') == 'pdf':
+                    out.append({
+                        'type': 'document',
+                        'source': {'type': 'base64', 'media_type': 'application/pdf',
+                                   'data': doc['file_data']},
+                    })
+                    out.append({'type': 'text', 'text': f'[Document: {doc["filename"]}]'})
+            return out
+
+        doc_contents = _content_for(batches[0]) if batches else []
 
         # Step 3: Load existing note if updating
         existing_note = None
@@ -16188,13 +16296,42 @@ Return your response in this exact format:
         # Build messages with documents
         messages = [{"role": "user", "content": doc_contents + [{"type": "text", "text": prompt}]}] if doc_contents else [{"role": "user", "content": prompt}]
 
+        _NOTE_SYSTEM = ("You are a senior equity research analyst. Write thorough, "
+                        "data-driven research notes. Be precise with numbers. "
+                        "No sellside attribution.")
+
         result = call_llm(
             messages=messages,
-            system="You are a senior equity research analyst. Write thorough, data-driven research notes. Be precise with numbers. No sellside attribution.",
+            system=_NOTE_SYSTEM,
             tier="advanced",
             max_tokens=16384,
             anthropic_api_key=api_key,
         )
+
+        # Remaining batches fold their documents into the note just written,
+        # rather than each producing a note of its own.
+        for bi, batch in enumerate(batches[1:], start=2):
+            pct = 25 + int(30 * (bi - 1) / max(1, len(batches) - 1))
+            _update_pipeline_job(
+                job_id, current_step=f'Merging batch {bi} of {len(batches)}', progress=pct)
+            prev = result.get('text') or ''
+            m = re.search(r'===NOTE_START===\s*(.*?)\s*===NOTE_END===', prev, re.DOTALL)
+            prev_note = m.group(1).strip() if m else prev[:8000]
+            merge_prompt = prompt + f"""
+
+EXISTING NOTE (extend it with the attached documents; keep what is still true):
+{prev_note[:12000]}
+"""
+            batch_content = _content_for(batch)
+            result = call_llm(
+                messages=[{"role": "user",
+                           "content": batch_content + [{"type": "text", "text": merge_prompt}]}]
+                          if batch_content else [{"role": "user", "content": merge_prompt}],
+                system=_NOTE_SYSTEM,
+                tier="advanced",
+                max_tokens=16384,
+                anthropic_api_key=api_key,
+            )
 
         _update_pipeline_job(job_id, current_step='Parsing note', progress=60)
 
