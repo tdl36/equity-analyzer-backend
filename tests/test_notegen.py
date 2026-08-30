@@ -88,3 +88,33 @@ def test_planning_is_stable_and_survives_empty_input():
     docs = [_doc("a.pdf"), _doc("b.pdf")]
     assert [d["filename"] for d in notegen.rank_documents(docs)] == \
            [d["filename"] for d in notegen.rank_documents(docs)]
+
+
+# --- segment charts ---------------------------------------------------------
+
+def test_a_profit_split_that_repeats_revenue_is_not_drawn_twice():
+    """Two identical charts assert every segment earns at the company margin."""
+    import segment_charts
+    rev = [{'segment': 'A', 'revenue': 60}, {'segment': 'B', 'revenue': 40}]
+    same = [{'segment': 'A', 'profit': 6}, {'segment': 'B', 'profit': 4}]   # same shares
+    different = [{'segment': 'A', 'profit': 80}, {'segment': 'B', 'profit': 20}]
+
+    assert segment_charts.is_duplicate_series(rev, same) is True
+    assert segment_charts.is_duplicate_series(rev, different) is False
+    assert len(segment_charts.render_pair('T', rev, same)) == 1
+    assert len(segment_charts.render_pair('T', rev, different)) == 2
+
+
+def test_a_loss_making_segment_is_excluded_rather_than_breaking_the_pie():
+    import segment_charts
+    charts = segment_charts.render_pair(
+        'T', [{'segment': 'A', 'revenue': 100}, {'segment': 'B', 'revenue': -20}], None)
+    assert len(charts) == 1 and charts[0]['png'][:4] == b'\x89PNG'
+
+
+def test_charts_are_available_on_the_server():
+    """matplotlib was missing from requirements, so server notes came out bare."""
+    import segment_charts
+    png = segment_charts.render_donut('T', 'Revenue',
+                                      [{'segment': 'A', 'revenue': 1}], 'revenue')
+    assert png and png[:4] == b'\x89PNG'

@@ -7,6 +7,8 @@ Endpoints:
 
 Also verifies /api/media/feed returns noteCount per point.
 """
+import json
+
 import app_v3
 
 
@@ -101,3 +103,78 @@ def test_feed_note_count_zero_when_no_notes(client):
     resp = client.get('/api/media/feed')
     p = resp.get_json()['episodes'][0]['points'][0]
     assert p['noteCount'] == 0
+
+
+# --- draft review flow -------------------------------------------------------
+#
+# Generation used to overwrite the live note directly, and on the agent it also
+# moved the source documents into Processed/ before anyone had read the result,
+# so rejecting a bad run meant restoring by hand from Prior Versions/.
+
+def _insert_note(client, ticker, version, status, body):
+    """Insert a note row directly; the generator is exercised elsewhere."""
+    import uuid as _uuid
+    from app_v3 import get_db
+    note_id = str(_uuid.uuid4())
+    with get_db(commit=True) as (_conn, cur):
+        cur.execute(
+            """INSERT INTO research_notes (id, ticker, version, note_markdown, status)
+               VALUES (%s, %s, %s, %s, %s)""",
+            (note_id, ticker, version, body, status))
+    return note_id
+
+
+def test_a_draft_never_reads_as_the_live_note(client):
+    """The whole point of a draft: nothing downstream may pick it up."""
+    _insert_note(client, 'AAA', '1.0', 'published', 'the live note')
+    _insert_note(client, 'AAA', '1.1', 'draft', 'the draft')
+
+    body = client.get('/api/notes/AAA').get_json()
+    assert 'the live note' in json.dumps(body), body
+    assert 'the draft' not in json.dumps(body)
+
+
+def test_accepting_a_draft_publishes_it_and_supersedes_the_old_one(client):
+    _insert_note(client, 'BBB', '1.0', 'published', 'old')
+    draft = _insert_note(client, 'BBB', '1.1', 'draft', 'new')
+
+    r = client.post(f'/api/notes/{draft}/accept')
+    assert r.status_code == 200, r.get_json()
+
+    body = json.dumps(client.get('/api/notes/BBB').get_json())
+    assert 'new' in body and 'old' not in body
+
+    from app_v3 import get_db
+    with get_db() as (_c, cur):
+        cur.execute("SELECT COUNT(*) AS n FROM research_notes "
+                    "WHERE ticker = 'BBB' AND status = 'published'")
+        assert cur.fetchone()['n'] == 1, 'exactly one live note per ticker'
+
+
+def test_discarding_a_draft_leaves_the_published_note_alone(client):
+    _insert_note(client, 'CCC', '1.0', 'published', 'keep me')
+    draft = _insert_note(client, 'CCC', '1.1', 'draft', 'throw me away')
+
+    assert client.post(f'/api/notes/{draft}/discard').status_code == 200
+    body = json.dumps(client.get('/api/notes/CCC').get_json())
+    assert 'keep me' in body and 'throw me away' not in body
+
+
+def test_a_published_note_cannot_be_discarded(client):
+    live = _insert_note(client, 'DDD', '1.0', 'published', 'live')
+    assert client.post(f'/api/notes/{live}/discard').status_code == 404
+    assert 'live' in json.dumps(client.get('/api/notes/DDD').get_json())
+
+
+def test_the_draft_endpoint_returns_what_to_compare_against(client):
+    _insert_note(client, 'EEE', '1.0', 'published', 'previous version')
+    _insert_note(client, 'EEE', '1.1', 'draft', 'proposed version')
+
+    body = client.get('/api/notes/EEE/draft').get_json()
+    assert body['draft']['note_markdown'] == 'proposed version'
+    assert body['published']['noteMarkdown'] == 'previous version'
+
+
+def test_no_draft_is_not_an_error(client):
+    _insert_note(client, 'FFF', '1.0', 'published', 'only a live note')
+    assert client.get('/api/notes/FFF/draft').get_json()['draft'] is None

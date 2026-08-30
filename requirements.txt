@@ -28,3 +28,10 @@ pytest-flask>=1.3,<2
 responses>=0.25,<1
 pywebpush>=1.14,<2
 youtube-transcript-api>=0.6.2,<2
+
+# Segment donut charts for research notes. Chart generation is wrapped in a
+# try/except that only logs, so without these a server-generated note comes out
+# silently chartless -- which is what happened when note generation moved off
+# the local agent, where matplotlib was already installed.
+matplotlib>=3.8,<4
+numpy>=1.26,<3

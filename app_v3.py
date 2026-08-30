@@ -3080,6 +3080,12 @@ def init_db():
                 )
             ''')
             cur.execute('CREATE INDEX IF NOT EXISTS idx_research_notes_ticker ON research_notes(ticker)')
+            # A generated note lands as a draft and becomes live only when
+            # accepted. Previously generation overwrote the current note and
+            # the agent moved the sources into Processed/ in the same breath,
+            # so a bad run had to be undone by hand from Prior Versions/.
+            cur.execute("""ALTER TABLE research_notes
+                           ADD COLUMN IF NOT EXISTS status VARCHAR(12) DEFAULT 'published'""")
 
             # TradingAgents runs
             cur.execute('''
@@ -15773,7 +15779,9 @@ def pipeline_documents(ticker):
         # Cross-reference with research_notes metadata to show which docs were used in notes
         used_in_note = set()
         with get_db() as (_, cur):
-            cur.execute('SELECT metadata FROM research_notes WHERE ticker = %s ORDER BY created_at DESC LIMIT 1', (ticker,))
+            cur.execute("""SELECT metadata FROM research_notes
+                           WHERE ticker = %s AND status = 'published'
+                           ORDER BY created_at DESC LIMIT 1""", (ticker,))
             note_row = cur.fetchone()
         if note_row and note_row['metadata']:
             meta = note_row['metadata'] if isinstance(note_row['metadata'], dict) else json.loads(note_row['metadata'] or '{}')
@@ -15936,6 +15944,78 @@ def generate_research_note():
                     'reason': 'no documents synced to Charlie for this ticker'})
 
 
+@app.route('/api/notes/<note_id>/accept', methods=['POST'])
+def accept_research_note(note_id):
+    """Publish a draft: it becomes the ticker's current note.
+
+    Generation used to overwrite the live note directly, and on the agent it
+    also moved the source documents into Processed/ before anyone had read the
+    result -- so rejecting a bad run meant restoring by hand. Accepting is now
+    a separate, deliberate step, and it is the point at which the note is
+    queued to sync back to iCloud.
+    """
+    try:
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('SELECT ticker, version FROM research_notes WHERE id = %s', (note_id,))
+            row = cur.fetchone()
+            if not row:
+                return jsonify({'error': 'No such note'}), 404
+            ticker = row['ticker']
+            # Only one live note per ticker.
+            cur.execute("""UPDATE research_notes SET status = 'superseded'
+                           WHERE ticker = %s AND status = 'published'""", (ticker,))
+            cur.execute("""UPDATE research_notes SET status = 'published', updated_at = NOW()
+                           WHERE id = %s""", (note_id,))
+        return jsonify({'ok': True, 'noteId': note_id, 'ticker': ticker,
+                        'version': row['version'], 'status': 'published'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/notes/<note_id>/discard', methods=['POST'])
+def discard_research_note(note_id):
+    """Throw a draft away. The previously published note is untouched."""
+    try:
+        with get_db(commit=True) as (conn, cur):
+            cur.execute("""DELETE FROM research_notes
+                           WHERE id = %s AND status = 'draft'""", (note_id,))
+            gone = cur.rowcount
+        if not gone:
+            return jsonify({'error': 'No draft with that id (already published?)'}), 404
+        return jsonify({'ok': True, 'discarded': note_id})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/notes/<ticker>/draft', methods=['GET'])
+def get_draft_note(ticker):
+    """The pending draft for a ticker, with the published note to compare to."""
+    ticker = ticker.upper()
+    try:
+        with get_db() as (_, cur):
+            cur.execute("""SELECT id, version, note_markdown, sources_markdown,
+                                  changelog_markdown, charts, metadata, created_at
+                           FROM research_notes
+                           WHERE ticker = %s AND status = 'draft'
+                           ORDER BY created_at DESC LIMIT 1""", (ticker,))
+            draft = cur.fetchone()
+            cur.execute("""SELECT id, version, note_markdown
+                           FROM research_notes
+                           WHERE ticker = %s AND status = 'published'
+                           ORDER BY created_at DESC LIMIT 1""", (ticker,))
+            live = cur.fetchone()
+        if not draft:
+            return jsonify({'draft': None})
+        return jsonify({
+            'draft': {k: (v.isoformat() if hasattr(v, 'isoformat') else v)
+                      for k, v in dict(draft).items()},
+            'published': ({'id': live['id'], 'version': live['version'],
+                           'noteMarkdown': live['note_markdown']} if live else None),
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/notes/plan/<ticker>', methods=['GET'])
 def research_note_plan(ticker):
     """What a run would do, before committing to it.
@@ -15968,7 +16048,9 @@ def get_research_note(ticker):
     """Get the latest research note for a ticker."""
     ticker = ticker.upper()
     with get_db() as (_, cur):
-        cur.execute('SELECT * FROM research_notes WHERE ticker = %s ORDER BY created_at DESC LIMIT 1', (ticker,))
+        cur.execute("""SELECT * FROM research_notes
+                           WHERE ticker = %s AND status = 'published'
+                           ORDER BY created_at DESC LIMIT 1""", (ticker,))
         note = cur.fetchone()
     if not note:
         return jsonify({'error': 'No note found'}), 404
@@ -15993,7 +16075,9 @@ def get_research_note_pdf(ticker):
     from xhtml2pdf import pisa
     ticker = ticker.upper()
     with get_db() as (_, cur):
-        cur.execute('SELECT * FROM research_notes WHERE ticker = %s ORDER BY created_at DESC LIMIT 1', (ticker,))
+        cur.execute("""SELECT * FROM research_notes
+                           WHERE ticker = %s AND status = 'published'
+                           ORDER BY created_at DESC LIMIT 1""", (ticker,))
         note = cur.fetchone()
     if not note:
         return jsonify({'error': 'No note found'}), 404
@@ -16115,7 +16199,8 @@ def get_research_note_history(ticker):
     with get_db() as (_, cur):
         cur.execute('''
             SELECT id, ticker, version, metadata, created_at
-            FROM research_notes WHERE ticker = %s ORDER BY created_at DESC
+            FROM research_notes WHERE ticker = %s AND status <> 'draft'
+            ORDER BY created_at DESC
         ''', (ticker,))
         notes = cur.fetchall()
     return jsonify({
@@ -16214,7 +16299,9 @@ def _generate_research_note(job_id, ticker, api_key, mode='new', file_selection=
         existing_note = None
         if mode == 'update':
             with get_db() as (_, cur):
-                cur.execute('SELECT * FROM research_notes WHERE ticker = %s ORDER BY created_at DESC LIMIT 1', (ticker,))
+                cur.execute("""SELECT * FROM research_notes
+                           WHERE ticker = %s AND status = 'published'
+                           ORDER BY created_at DESC LIMIT 1""", (ticker,))
                 existing_note = cur.fetchone()
 
         _update_pipeline_job(job_id, current_step='Generating research note', progress=20)
@@ -16372,18 +16459,24 @@ EXISTING NOTE (extend it with the attached documents; keep what is still true):
         _update_pipeline_job(job_id, current_step='Generating charts', progress=70)
         charts = []
 
+        chart_warning = ''
         try:
-            if revenue_data:
-                rev_chart = _generate_donut_chart(ticker, 'Revenue', revenue_data, 'revenue')
-                if rev_chart:
-                    charts.append({'type': 'revenue', 'data': rev_chart, 'filename': f'{ticker}_Revenue_Breakdown.png'})
-
-            if profit_data:
-                prof_chart = _generate_donut_chart(ticker, 'Profit', profit_data, 'profit')
-                if prof_chart:
-                    charts.append({'type': 'profit', 'data': prof_chart, 'filename': f'{ticker}_Profit_Breakdown.png'})
+            for c in segment_charts.render_pair(ticker, revenue_data, profit_data):
+                charts.append({'type': c['type'], 'filename': c['filename'],
+                               'data': base64.b64encode(c['png']).decode('ascii')})
+            if revenue_data and profit_data and len(charts) < 2:
+                chart_warning = ('profit chart skipped: the profit split repeats '
+                                 'the revenue split')
+            elif not revenue_data:
+                chart_warning = 'no segment revenue data in the sources'
         except Exception as chart_err:
-            print(f'[note-gen {job_id}] Chart generation error: {chart_err}')
+            # This used to be logged and forgotten, so a note could arrive with
+            # no charts and nothing saying why -- and after generation moved off
+            # the agent, matplotlib was not even installed here.
+            chart_warning = f'chart generation failed: {chart_err}'
+            print(f'[note-gen {job_id}] {chart_warning}')
+        if chart_warning:
+            _update_pipeline_job(job_id, current_step=f'Note ready — {chart_warning}')
 
         # Step 6: Generate DOCX
         _update_pipeline_job(job_id, current_step='Building Word document', progress=80)
@@ -16416,9 +16509,11 @@ EXISTING NOTE (extend it with the attached documents; keep what is still true):
         _update_pipeline_job(job_id, current_step='Saving note', progress=90)
         note_id = str(uuid.uuid4())
         with get_db(commit=True) as (conn, cur):
+            # Draft, not published: nothing downstream should treat this as the
+            # current note until it has been looked at.
             cur.execute('''
-                INSERT INTO research_notes (id, ticker, version, note_markdown, sources_markdown, changelog_markdown, note_docx, charts, metadata)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO research_notes (id, ticker, version, note_markdown, sources_markdown, changelog_markdown, note_docx, charts, metadata, status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'draft')
             ''', (note_id, ticker, version, note_md, sources_md, changelog_md, docx_b64,
                   json.dumps([{'type': c['type'], 'filename': c['filename']} for c in charts]),
                   json.dumps({
@@ -16428,10 +16523,12 @@ EXISTING NOTE (extend it with the attached documents; keep what is still true):
                       'provider': result.get('provider', ''),
                       'model': result.get('model', ''),
                       'charCount': len(note_md),
+                      'chartWarning': chart_warning,
                   })))
 
-        _update_pipeline_job(job_id, status='complete', current_step='Complete', progress=100,
-                            result=json.dumps({'noteId': note_id, 'version': version, 'ticker': ticker}))
+        _update_pipeline_job(job_id, status='complete', current_step='Ready for review', progress=100,
+                            result=json.dumps({'noteId': note_id, 'version': version,
+                                               'ticker': ticker, 'status': 'draft'}))
         print(f'[note-gen {job_id}] Complete: {ticker} v{version}')
         _notify_telegram(f"*Pipeline:* {ticker} note generated (v{version}, {len(note_md):,} chars)")
 
@@ -18249,7 +18346,9 @@ def sync_note_to_local(ticker):
     """Queue a note for syncing back to iCloud via the local agent."""
     ticker = ticker.upper()
     with get_db() as (_, cur):
-        cur.execute('SELECT * FROM research_notes WHERE ticker = %s ORDER BY created_at DESC LIMIT 1', (ticker,))
+        cur.execute("""SELECT * FROM research_notes
+                           WHERE ticker = %s AND status = 'published'
+                           ORDER BY created_at DESC LIMIT 1""", (ticker,))
         note = cur.fetchone()
     if not note:
         return jsonify({'error': 'No note found'}), 404

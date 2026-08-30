@@ -1580,113 +1580,23 @@ def parse_response(text: str) -> tuple[str, str, list[dict], list[dict]]:
 # ---------------------------------------------------------------------------
 
 
-def generate_donut_chart(
-    ticker: str,
-    chart_type: str,
-    data: list[dict],
-    value_key: str,
-    output_dir: Path,
-) -> Optional[Path]:
-    """Generate a donut chart PNG in the same style as the backend."""
-    import matplotlib
+def generate_donut_chart(ticker, chart_type, data, value_key, output_dir):
+    """Write a segment donut to the ticker folder.
 
-    matplotlib.use("Agg")
-    import matplotlib.patheffects as pe
-    import matplotlib.pyplot as plt
-    import numpy as np
+    The drawing lives in segment_charts so the agent and the backend cannot
+    drift apart: they were separate implementations of the same chart, and only
+    this one refused to draw a profit split that merely repeated revenue.
+    """
+    import segment_charts
 
-    # Filter out segments with negative or zero values (e.g., operating losses)
-    filtered = [(d.get("segment", ""), d.get(value_key, d.get("revenue", d.get("profit", 0)))) for d in data]
-    filtered = [(label, val) for label, val in filtered if val and val > 0]
-    if not filtered:
+    png = segment_charts.render_donut(ticker, chart_type, data, value_key)
+    if not png:
         return None
-    labels = [f[0] for f in filtered]
-    values = [f[1] for f in filtered]
-
-    total = sum(values)
-    colors = [
-        "#5DADE2",
-        "#F7DC6F",
-        "#F1948A",
-        "#7DCEA0",
-        "#BB8FCE",
-        "#85C1E9",
-        "#F8C471",
-        "#82E0AA",
-    ]
-
-    fig, ax = plt.subplots(figsize=(10, 8), facecolor="white")
-    wedges, _ = ax.pie(
-        values,
-        labels=None,
-        colors=colors[: len(values)],
-        startangle=90,
-        wedgeprops={"width": 0.58, "edgecolor": "none", "linewidth": 0},
-    )
-
-    # Center circle and text
-    centre_circle = plt.Circle((0, 0), 0.30, fc="white")
-    ax.add_artist(centre_circle)
-    total_str = f"\\${total/1000:.1f}B" if total >= 1000 else f"\\${total:.0f}M"
-    ax.text(
-        0, 0.05, "Total", ha="center", va="center", fontsize=12, color="#333333", fontweight="normal"
-    )
-    ax.text(
-        0, -0.08, total_str, ha="center", va="center", fontsize=16, color="#333333", fontweight="bold"
-    )
-
-    # Inside labels (value + percentage on each wedge)
-    for i, (wedge, value) in enumerate(zip(wedges, values)):
-        pct = value / total * 100
-        ang = (wedge.theta2 - wedge.theta1) / 2.0 + wedge.theta1
-        x = 0.70 * np.cos(np.deg2rad(ang))
-        y = 0.70 * np.sin(np.deg2rad(ang))
-        val_str = f"\\${value/1000:.1f}B" if value >= 1000 else f"\\${value:.0f}M"
-        fontsize = 11 if pct > 15 else 10 if pct > 8 else 9
-        if pct >= 3:
-            ax.text(
-                x,
-                y,
-                f"{val_str}\n({pct:.1f}%)",
-                ha="center",
-                va="center",
-                fontsize=fontsize,
-                fontweight="bold",
-                color="white",
-                path_effects=[pe.withStroke(linewidth=2, foreground="black")],
-            )
-
-    # Outside labels (segment names)
-    for i, (wedge, label) in enumerate(zip(wedges, labels)):
-        ang = (wedge.theta2 - wedge.theta1) / 2.0 + wedge.theta1
-        x = 1.15 * np.cos(np.deg2rad(ang))
-        y = 1.15 * np.sin(np.deg2rad(ang))
-        ax.text(
-            x, y, label, ha="center", va="center", fontsize=10, fontweight="bold", color="#333333"
-        )
-
-    ax.set_title(
-        f"{ticker} -- {chart_type} Breakdown",
-        fontsize=14,
-        fontweight="bold",
-        color="#333333",
-        pad=20,
-    )
-    ax.set_aspect("equal")
-    plt.tight_layout()
-
     filename = f"{ticker}_{chart_type.replace(' ', '_')}_Breakdown.png"
     output_path = output_dir / filename
-    plt.savefig(output_path, format="png", dpi=150, bbox_inches="tight", facecolor="white")
-    plt.close(fig)
+    output_path.write_bytes(png)
     log.info(f"  Chart saved: {filename}")
     return output_path
-
-
-# ---------------------------------------------------------------------------
-# DOCX generation
-# ---------------------------------------------------------------------------
-
 
 def _add_md_runs(paragraph, text: str) -> None:
     """Add text to a paragraph, converting **bold** and *italic* markdown to Word formatting."""
