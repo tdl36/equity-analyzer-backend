@@ -15966,8 +15966,32 @@ def accept_research_note(note_id):
                            WHERE ticker = %s AND status = 'published'""", (ticker,))
             cur.execute("""UPDATE research_notes SET status = 'published', updated_at = NOW()
                            WHERE id = %s""", (note_id,))
+            cur.execute("""SELECT note_markdown, sources_markdown, changelog_markdown, version
+                           FROM research_notes WHERE id = %s""", (note_id,))
+            published = cur.fetchone()
+
+        # Publishing is the moment the note becomes real, so it is also the
+        # moment it should reach iCloud. The agent picks this up on its next
+        # poll; if it is offline the note is still live in Charlie and syncs
+        # whenever the agent returns.
+        synced = False
+        try:
+            if published:
+                _pending_local_syncs.append({
+                    'ticker': ticker,
+                    'noteMarkdown': published['note_markdown'],
+                    'sourcesMarkdown': published['sources_markdown'],
+                    'changelogMarkdown': published['changelog_markdown'],
+                    'version': published.get('version', '1.0'),
+                    'timestamp': datetime.utcnow().isoformat(),
+                })
+                synced = True
+        except Exception as sync_err:
+            print(f'[notes] queued sync failed for {ticker}: {sync_err}')
+
         return jsonify({'ok': True, 'noteId': note_id, 'ticker': ticker,
-                        'version': row['version'], 'status': 'published'})
+                        'version': row['version'], 'status': 'published',
+                        'queuedForICloud': synced})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -16212,6 +16236,39 @@ def get_research_note_history(ticker):
     })
 
 
+def _checkpoint_note_job(job_id, batches_done, batches_total, text):
+    """Save partial output so a restart does not throw the work away."""
+    try:
+        with get_db(commit=True) as (conn, cur):
+            cur.execute("""UPDATE research_pipeline_jobs
+                           SET steps_detail = COALESCE(steps_detail, '{}'::jsonb)
+                               || %s::jsonb
+                           WHERE id = %s""",
+                        (json.dumps({'checkpoint': {
+                            'batchesDone': batches_done,
+                            'batchesTotal': batches_total,
+                            'text': (text or '')[:200_000],
+                        }}), job_id))
+    except Exception as e:
+        # A checkpoint that cannot be written must not fail the run.
+        print(f'[note-gen {job_id}] checkpoint failed: {e}')
+
+
+def _resume_note_checkpoint(job_id):
+    """The partial output of an interrupted run, if there is one."""
+    try:
+        with get_db() as (_, cur):
+            cur.execute('SELECT steps_detail FROM research_pipeline_jobs WHERE id = %s',
+                        (job_id,))
+            row = cur.fetchone()
+        detail = (row or {}).get('steps_detail') or {}
+        if isinstance(detail, str):
+            detail = json.loads(detail)
+        return detail.get('checkpoint')
+    except Exception:
+        return None
+
+
 def _generate_research_note(job_id, ticker, api_key, mode='new', file_selection=None):
     """Generate a full equity research note in a background thread.
 
@@ -16294,6 +16351,19 @@ def _generate_research_note(job_id, ticker, api_key, mode='new', file_selection=
             return out
 
         doc_contents = _content_for(batches[0]) if batches else []
+
+        # If this job was interrupted after some batches, pick up from there
+        # rather than paying for them again.
+        resume = _resume_note_checkpoint(job_id)
+        resume_from = 0
+        if resume and resume.get('batchesTotal') == len(batches) and resume.get('text'):
+            resume_from = int(resume.get('batchesDone') or 0)
+            if resume_from:
+                print(f'[note-gen {job_id}] resuming after batch {resume_from}'
+                      f' of {len(batches)}')
+                _update_pipeline_job(
+                    job_id,
+                    current_step=f'Resuming after batch {resume_from} of {len(batches)}')
 
         # Step 3: Load existing note if updating
         existing_note = None
@@ -16387,20 +16457,30 @@ Return your response in this exact format:
                         "data-driven research notes. Be precise with numbers. "
                         "No sellside attribution.")
 
-        result = call_llm(
-            messages=messages,
-            system=_NOTE_SYSTEM,
-            tier="advanced",
-            max_tokens=16384,
-            anthropic_api_key=api_key,
-        )
+        if resume_from:
+            result = {'text': resume['text'], 'provider': '', 'model': ''}
+        else:
+            result = call_llm(
+                messages=messages,
+                system=_NOTE_SYSTEM,
+                tier="advanced",
+                max_tokens=16384,
+                anthropic_api_key=api_key,
+            )
 
         # Remaining batches fold their documents into the note just written,
         # rather than each producing a note of its own.
         for bi, batch in enumerate(batches[1:], start=2):
+            if bi - 1 <= resume_from:
+                continue        # already merged before the interruption
             pct = 25 + int(30 * (bi - 1) / max(1, len(batches) - 1))
             _update_pipeline_job(
                 job_id, current_step=f'Merging batch {bi} of {len(batches)}', progress=pct)
+            # Checkpoint the note so far. A Render restart kills the thread but
+            # not the job row, and a long multi-batch run is expensive to lose:
+            # without this, a failure in the last batch discarded every batch
+            # before it.
+            _checkpoint_note_job(job_id, bi - 1, len(batches), result.get('text') or '')
             prev = result.get('text') or ''
             m = re.search(r'===NOTE_START===\s*(.*?)\s*===NOTE_END===', prev, re.DOTALL)
             prev_note = m.group(1).strip() if m else prev[:8000]

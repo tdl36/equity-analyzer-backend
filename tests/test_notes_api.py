@@ -178,3 +178,52 @@ def test_the_draft_endpoint_returns_what_to_compare_against(client):
 def test_no_draft_is_not_an_error(client):
     _insert_note(client, 'FFF', '1.0', 'published', 'only a live note')
     assert client.get('/api/notes/FFF/draft').get_json()['draft'] is None
+
+
+def test_publishing_queues_the_note_for_icloud(client):
+    """Publishing is when the note becomes real, so it is when it should sync."""
+    import app_v3
+    app_v3._pending_local_syncs.clear()
+    draft = _insert_note(client, 'GGG', '2.0', 'draft', 'body')
+
+    body = client.post(f'/api/notes/{draft}/accept').get_json()
+    assert body['queuedForICloud'] is True
+    queued = [s for s in app_v3._pending_local_syncs if s['ticker'] == 'GGG']
+    assert len(queued) == 1 and queued[0]['version'] == '2.0'
+
+
+def test_discarding_queues_nothing(client):
+    import app_v3
+    app_v3._pending_local_syncs.clear()
+    draft = _insert_note(client, 'HHH', '2.0', 'draft', 'body')
+    client.post(f'/api/notes/{draft}/discard')
+    assert not [s for s in app_v3._pending_local_syncs if s['ticker'] == 'HHH']
+
+
+def test_a_checkpoint_survives_and_is_read_back(client):
+    """A restart kills the thread but not the job row.
+
+    Without checkpointing, a failure in the last batch discarded every batch
+    before it -- the expensive ones.
+    """
+    import uuid as _uuid
+    import app_v3
+    from app_v3 import get_db
+    job_id = str(_uuid.uuid4())
+    with get_db(commit=True) as (_c, cur):
+        cur.execute("""INSERT INTO research_pipeline_jobs
+                       (id, batch_id, ticker, job_type, status, progress, current_step, total_steps, steps_detail)
+                       VALUES (%s, %s, 'III', 'note', 'running', 20, 'x', 6, '{}')""",
+                    (job_id, str(_uuid.uuid4())))
+
+    assert app_v3._resume_note_checkpoint(job_id) is None
+    app_v3._checkpoint_note_job(job_id, 2, 4, 'partial note text')
+    cp = app_v3._resume_note_checkpoint(job_id)
+    assert cp['batchesDone'] == 2 and cp['batchesTotal'] == 4
+    assert cp['text'] == 'partial note text'
+
+
+def test_a_checkpoint_failure_never_breaks_the_run(client):
+    """Saving progress is a convenience; it must not be able to fail the job."""
+    import app_v3
+    app_v3._checkpoint_note_job('no-such-job-id', 1, 2, 'text')   # must not raise

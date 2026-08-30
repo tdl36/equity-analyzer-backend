@@ -1708,6 +1708,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [pipelineNoteGenerating, setPipelineNoteGenerating] = useState(null); // ticker currently generating
             const [pipelineNoteResult, setPipelineNoteResult] = useState(null); // { ticker, noteMarkdown, sourcesMarkdown, noteDocx, charts, version }
             const [pipelineNoteJobId, setPipelineNoteJobId] = useState(null);
+            // A freshly generated note is a draft until it is accepted. Without
+            // this the Pipeline tab would keep showing the previous published
+            // note and the new one would be invisible.
+            const [pipelineDraft, setPipelineDraft] = useState(null);   // { id, version, ... }
+            const [pipelineDraftBusy, setPipelineDraftBusy] = useState(false);
 
             // Agents tab state
             const [agentProviders, setAgentProviders] = useState({});
@@ -7491,7 +7496,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         notifyJobComplete(job.ticker, job.status);
                     // Auto-fetch note result when note generation completes
                     if (job.job_type === 'note' && job.status === 'complete' && job.id === pipelineNoteJobId) {
-                        fetchResearchNote(job.ticker);
+                        // The finished note is a draft; showing the published
+                        // one here would silently display the previous version.
+                        fetchDraftNote(job.ticker).then(d => {
+                            if (!d) fetchResearchNote(job.ticker);
+                        });
                         setPipelineNoteGenerating(null);
                         setPipelineNoteJobId(null);
                     }
@@ -7885,6 +7894,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
             };
 
             const fetchResearchNote = async (ticker) => {
+                // Always ask whether a draft is pending too. A draft left from
+                // an earlier session would otherwise be invisible -- the note
+                // panel shows the published version and nothing would say that
+                // a newer one is waiting to be read.
+                fetchDraftNote(ticker);
                 try {
                     const res = await fetch(`${API_URL}/api/notes/${ticker}`);
                     if (res.ok) {
@@ -7894,6 +7908,45 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         setPipelineNoteResult({ ticker, _empty: true });
                     }
                 } catch (e) { console.error('Failed to fetch note:', e); }
+            };
+
+            const fetchDraftNote = async (ticker) => {
+                try {
+                    const res = await fetch(`${API_URL}/api/notes/${ticker}/draft`);
+                    if (!res.ok) { setPipelineDraft(null); return null; }
+                    const data = await res.json();
+                    setPipelineDraft(data.draft ? { ...data.draft, ticker, _published: data.published } : null);
+                    return data.draft;
+                } catch (e) { setPipelineDraft(null); return null; }
+            };
+
+            const acceptDraftNote = async () => {
+                if (!pipelineDraft?.id) return;
+                setPipelineDraftBusy(true);
+                try {
+                    const r = await fetch(`${API_URL}/api/notes/${pipelineDraft.id}/accept`, { method: 'POST' });
+                    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
+                    const t = pipelineDraft.ticker;
+                    setPipelineDraft(null);
+                    await fetchResearchNote(t);
+                } catch (e) {
+                    alert('Could not publish: ' + (e.message || e));
+                } finally { setPipelineDraftBusy(false); }
+            };
+
+            const discardDraftNote = async () => {
+                if (!pipelineDraft?.id) return;
+                if (!confirm('Discard this draft? The published note is left as it is.')) return;
+                setPipelineDraftBusy(true);
+                try {
+                    const r = await fetch(`${API_URL}/api/notes/${pipelineDraft.id}/discard`, { method: 'POST' });
+                    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
+                    const t = pipelineDraft.ticker;
+                    setPipelineDraft(null);
+                    await fetchResearchNote(t);
+                } catch (e) {
+                    alert('Could not discard: ' + (e.message || e));
+                } finally { setPipelineDraftBusy(false); }
             };
 
             const downloadNoteDocx = () => {
@@ -25329,6 +25382,58 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 {/* Recent Completed/Failed Jobs section removed — visual filler with no
                                                     interaction. The History tab in the top-right serves the audit-trail role,
                                                     and in-flight progress is already shown in the active-jobs section above. */}
+
+                                                {/* Draft review — a generated note is not the live note until
+                                                    it has been read. Generation used to overwrite the published
+                                                    note outright, so a bad run had to be undone by hand. */}
+                                                {pipelineDraft && (
+                                                    <div className="bg-amber-500/[0.07] border border-amber-500/40 rounded-xl p-5 mb-4">
+                                                        <div className="flex items-start justify-between gap-4 mb-3">
+                                                            <div>
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="px-2 py-0.5 bg-amber-500/25 text-amber-200 text-[10px] font-bold rounded uppercase tracking-wide">Draft</span>
+                                                                    <h3 className="font-bold text-slate-100">{pipelineDraft.ticker} v{pipelineDraft.version}</h3>
+                                                                </div>
+                                                                <p className="text-xs text-slate-400 mt-1">
+                                                                    Not published yet.{' '}
+                                                                    {pipelineDraft._published
+                                                                        ? `The live note is still v${pipelineDraft._published.version}.`
+                                                                        : 'There is no published note for this ticker yet.'}
+                                                                </p>
+                                                            </div>
+                                                            <div className="flex gap-2 shrink-0">
+                                                                <button onClick={discardDraftNote} disabled={pipelineDraftBusy}
+                                                                    className="px-3 py-1.5 text-xs text-slate-300 hover:text-white border border-white/15 rounded-lg disabled:opacity-40">
+                                                                    Discard
+                                                                </button>
+                                                                <button onClick={acceptDraftNote} disabled={pipelineDraftBusy}
+                                                                    className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium rounded-lg disabled:opacity-40">
+                                                                    {pipelineDraftBusy ? 'Working…' : 'Publish'}
+                                                                </button>
+                                                            </div>
+                                                        </div>
+
+                                                        {pipelineDraft.metadata?.chartWarning && (
+                                                            <div className="text-[11px] text-amber-200/90 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 mb-3">
+                                                                {pipelineDraft.metadata.chartWarning}
+                                                            </div>
+                                                        )}
+
+                                                        {pipelineDraft.changelog_markdown && (
+                                                            <div className="mb-3">
+                                                                <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">What changed</div>
+                                                                <pre className="text-[11px] text-slate-300 whitespace-pre-wrap bg-black/20 rounded-lg p-3 max-h-40 overflow-y-auto">{pipelineDraft.changelog_markdown}</pre>
+                                                            </div>
+                                                        )}
+
+                                                        <div>
+                                                            <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">
+                                                                Draft note{pipelineDraft.metadata?.documentsProcessed ? ` — from ${pipelineDraft.metadata.documentsProcessed} document(s)` : ''}
+                                                            </div>
+                                                            <pre className="text-[11px] text-slate-300 whitespace-pre-wrap bg-black/20 rounded-lg p-3 max-h-72 overflow-y-auto">{pipelineDraft.note_markdown || 'Empty note.'}</pre>
+                                                        </div>
+                                                    </div>
+                                                )}
 
                                                 {/* Research Note Result */}
                                                 {pipelineNoteResult && (
