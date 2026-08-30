@@ -64,6 +64,12 @@ _WORD_BUDGETS = [
     ("core_question", 24),          # DE 16
     ("overview_summary", 34),       # DE 22
     ("other_profit_pool", 20),      # DE 15
+    # Identity strings. Short by nature, but nothing enforced it and a model
+    # that returns a sentence where a ticker belongs would break the header.
+    ("ticker", 3),
+    ("company", 9),
+    ("headline", 16),
+    ("subheadline", 22),
     ("valuation_callout", 22),      # DE 17
     ("final_takeaway", 50),         # DE 38
     ("bottom_line", 38),            # DE 9
@@ -96,11 +102,11 @@ _EXACT_COUNTS = [
 # memo's decision lens are the two blocks that, with legibility enforced, could
 # not shrink far enough to hold their content. When type size is a hard floor,
 # the only remaining variable is how much text a block is given.
-_ONEPAGER_SIGNPOST_CELL_WORDS = 16
+_ONEPAGER_SIGNPOST_CELL_WORDS = 13
 
 _LIST_ITEM_WORDS = [
     ("thesis_bullets", 22),      # DE max item 11
-    ("financial_bullets", 18),   # DE max item 9
+    ("financial_bullets", 14),   # DE max item 9
     ("bull_case", 16),           # DE max item 4
     ("bear_case", 16),           # DE max item 4
 ]
@@ -116,8 +122,20 @@ _NESTED_ITEM_WORDS = [
     # the box itself is what runs into the caption, so this stays short. The
     # memo carries the full description (46 words).
     ("business_model", "description", 20),# DE max 6
-    ("segments", "description", 42),      # DE max 8
+    ("segments", "description", 11),      # DE max 8
     ("threats", "watch_for", 42),         # DE max 17
+    # Headings/labels, all previously unbounded -- see the master table above.
+    ("threats", "threat", 11),
+    ("segments", "name", 6),
+    ("segments", "short_name", 3),
+    ("segments", "mix", 4),
+    ("opportunities", "title", 9),
+    ("business_model", "name", 7),
+    ("targets", "label", 6),
+    ("targets", "context", 11),
+    ("valuation_metrics", "label", 5),
+    ("valuation_metrics", "context", 10),
+    ("visuals", "title", 8),
 ]
 
 
@@ -134,7 +152,7 @@ _LIST_ITEM_CHARS = [
     # which would mean degrading the calibration standard to make another company
     # fit -- the wrong trade. 76 leaves DE untouched and still pulls UNH in.
     ("thesis_bullets", 145),
-    ("financial_bullets", 128),   # DE max 69
+    ("financial_bullets", 96),    # DE max 69
     # Bull/bear render as a fixed-height list on two-pager page 2 that holds
     # five single lines. Word counts do not decide that: DE's items reach 26
     # characters and sit on one line, while UNH and Cigna hit 43-44 at the same
@@ -393,6 +411,39 @@ def enforce_budgets(d):
                 out[field] = new_items
                 trimmed.append(f"{field}.{sub}(width)")
 
+    # identity is a flat dict of header values; each one prints in the
+    # one-pager masthead and none were bounded.
+    ident = out.get("identity")
+    if isinstance(ident, dict):
+        for key, cap in (("hq", 8), ("website", 6), ("exchange", 4),
+                         ("founded", 4), ("employees", 6), ("fy_end", 5)):
+            if _words(ident.get(key)) > cap:
+                ident[key] = _trim_words(ident.get(key), cap)
+                trimmed.append(f"identity.{key}")
+
+    # visuals[].items[] sits two levels down, past the reach of the flat
+    # (field, sub, limit) tables, and was therefore never bounded.
+    vis = out.get("visuals")
+    if isinstance(vis, list):
+        for v in vis:
+            if not isinstance(v, dict):
+                continue
+            if _words(v.get("type")) > 4:
+                v["type"] = _trim_words(v.get("type"), 4)
+                trimmed.append("visuals.type")
+            items = v.get("items")
+            if not isinstance(items, list):
+                continue
+            for it in items:
+                if not isinstance(it, dict):
+                    continue
+                if _words(it.get("label")) > 7:
+                    it["label"] = _trim_words(it.get("label"), 7)
+                    trimmed.append("visuals.items.label")
+                if _words(it.get("detail")) > 16:
+                    it["detail"] = _trim_words(it.get("detail"), 16)
+                    trimmed.append("visuals.items.detail")
+
     fixed_segs, seg_changed = normalize_segments(out.get("segments"))
     if seg_changed:
         out["segments"] = fixed_segs
@@ -457,15 +508,19 @@ def enforce_budgets(d):
 # than the one-pager budgets -- roughly the DE master plus 40% -- but they are
 # bounded, which is the point. DE actuals in the comments.
 _MASTER_WORD_BUDGETS = [
-    # Measured against the DE master, which renders with zero overflow. Every
-    # cap sits ~30% above DE's own value; where a field had no cap at all the
-    # gap was enormous -- variant_view came back at 86 words against Deere's 20,
-    # and it feeds both the thesis and decision sections.
-    (("investment_thesis", "summary"), 260),        # DE 118; research prompt asks 160-240
-    (("investment_thesis", "variant_view"), 44),    # DE 20
-    (("company_overview", "summary"), 100),         # DE 55
-    (("final_takeaway",), 110),                     # DE 39
+    # Calibrated against tools/make_max_fixture.py, which fills every field to
+    # its cap and renders the largest artifact these budgets can produce. Caps
+    # used to be set by guessing a multiple of Deere's own values, which is not
+    # a measurement of anything: at 3-8x DE the worst case clipped in fifteen
+    # places on the memo while every sampled company looked fine. A cap is only
+    # justified if the worst case it permits still renders clean.
+    (("investment_thesis", "summary"), 118),        # DE 118
+    (("investment_thesis", "variant_view"), 30),    # DE 20
+    (("company_overview", "summary"), 44),          # DE 55
+    (("final_takeaway",), 72),                      # DE 39
     (("bottom_line",), 44),                         # DE 6
+    (("ticker",), 3),
+    (("company",), 9),
     # The valuation panel and metric captions on memo page 2. All were
     # uncapped, and a live run returned a 101-word valuation_comment against
     # Deere's 14 -- the panel rendered 787px tall inside a 390px box, which was
@@ -512,21 +567,23 @@ _MASTER_SIGNPOST_CELL_WORDS = [
 ]
 
 _MASTER_LIST_CAPS = [
-    (("investment_thesis", "what_market_prices_in"), 3, 30),   # DE max 9
-    (("investment_thesis", "what_must_be_true"), 3, 22),       # DE max 9
-    (("investment_thesis", "falsification"), 3, 22),           # DE max 10
+    (("investment_thesis", "what_market_prices_in"), 3, 17),   # DE max 9
+    (("investment_thesis", "what_must_be_true"), 3, 17),       # DE max 9
+    (("investment_thesis", "falsification"), 3, 17),           # DE max 10
     # The two-pager renders these into a fixed box and they were never capped:
     # they drove tp-financial 41px past its bounds on the live UNH run.
     # These become the six KPI cards on memo page 2 and the bullet column on the
     # two-pager. At 14 words they wrapped to extra lines and pushed the metrics
     # block from Deere's 231px to 336px, which is most of the overflow on that
     # page. DE's own maximum is 10.
-    (("financial_snapshot", "financial_bullets"), 6, 11),
+    (("financial_snapshot", "financial_bullets"), 6, 9),
     (("opportunities",), 5, None),
     (("business_model",), 4, None),
     (("signposts",), 6, None),
     (("thesis_threats",), 4, None),
     (("catalysts",), 3, None),
+    # Rendered as one joined note under the segment list; was uncapped.
+    (("company_overview", "other_profit_pools"), 3, 26),
     # These render as telegraphic lines, not sentences: Deere averages 4 words.
     (("bull_case",), 5, 18),   # DE has 5
     (("bear_case",), 5, 18),   # DE has 5
@@ -546,18 +603,31 @@ _MASTER_ITEM_WORDS = [
     # Uncapped until a live run returned 40-word segment descriptions against
     # Deere's 8, which is most of why the memo's overview section ran 170px past
     # its box. These sit in a three-across grid; they are labels, not prose.
-    (("company_overview", "segments"), "description", 40),   # DE max 8
+    (("company_overview", "segments"), "description", 8),    # DE max 8
     # a four-segment company has to fit the space Deere's three occupy
-    (("opportunities",), "detail", 85),             # DE max 14
-    (("business_model",), "description", 62),       # DE max 10
-    (("thesis_threats",), "watch_for", 45),         # DE max 17
-    (("signposts",), "why_it_matters", 42),         # DE max 7
-    (("catalysts",), "why_it_matters", 62),         # DE max 8
+    (("opportunities",), "detail", 30),             # DE max 14
+    (("business_model",), "description", 24),       # DE max 10
+    (("thesis_threats",), "watch_for", 28),         # DE max 17
+    (("signposts",), "why_it_matters", 22),         # DE max 7
+    (("catalysts",), "why_it_matters", 26),         # DE max 8
     # Memo page 2 renders these as four cards stacked above the valuation
     # summary in a 245px column. At 20 words the contexts filled the column and
     # the summary printed on top of them, and of the sensitivity matrix beside
     # it. DE's own maximum is 2 words.
-    (("financial_snapshot", "management_targets"), "context", 13),
+    (("financial_snapshot", "management_targets"), "context", 10),
+    # Headings and labels. Every one of these was unbounded, which
+    # tools/make_max_fixture.py exposed by rendering them at 4,960 words: a
+    # verbose segment name or opportunity title would burst its box and nothing
+    # anywhere would stop it. They are headings, so the caps are short.
+    (("financial_snapshot", "management_targets"), "label", 6),
+    (("company_overview", "segments"), "name", 6),
+    (("company_overview", "segments"), "short_name", 3),
+    (("company_overview", "segments"), "mix", 4),
+    (("opportunities",), "title", 9),
+    (("business_model",), "name", 7),
+    (("thesis_threats",), "threat", 12),
+    (("catalysts",), "event", 11),
+    (("catalysts",), "timing", 8),
     # Never capped before, and the worst offender: UNH returned 50-word scenario
     # logic against Deere's 6, which is most of why the decision section on page
     # 3 ran 127px past its box.
@@ -744,6 +814,33 @@ def valuation_comment_contradicts(fs, tolerance=15.0):
             f"{actual:+.1f}%")
 
 
+
+def _repair_premium_claim(text, actual):
+    """Drop the sentence carrying a false premium; state the true one instead.
+
+    Substituting inside the sentence was a mistake. The pattern matched "70%
+    premium" inside "a 60-70% premium to its 10-year average" and spliced the
+    replacement into the middle of the phrase, so a shipped report read "a 60-in
+    line with to its 10-year historical average". Prose is not safely editable
+    by regular expression; a sentence is the smallest unit that can be removed
+    without leaving wreckage.
+    """
+    if abs(actual) < 5:
+        truth = "In line with its historical average multiple."
+    else:
+        truth = (f"Trades {abs(actual):.0f}% "
+                 f"{'above' if actual > 0 else 'below'} its historical average multiple.")
+
+    sentences = re.split(r"(?<=[.!?])\s+", str(text or "").strip())
+    kept = [x for x in sentences if x and not _PREMIUM_RE.search(x)]
+    if not kept:
+        return truth
+    out = " ".join(kept).strip()
+    if not out.endswith((".", "!", "?")):
+        out += "."
+    return f"{out} {truth}"
+
+
 def enforce_master_budgets(m):
     """Bound the canonical object so the two-pager and memo cannot overflow.
 
@@ -832,15 +929,7 @@ def enforce_master_budgets(m):
     if contradiction:
         text = str(fs_out.get("valuation_comment") or "")
         actual = valuation_premium(fs_out)
-        # Correct the figure rather than delete the clause: the reader is owed
-        # the comparison, just an accurate one.
-        if abs(actual) < 5:
-            replacement = "in line with"
-        else:
-            replacement = f"{abs(actual):.0f}% {'above' if actual > 0 else 'below'}"
-        cleaned = _PREMIUM_RE.sub(replacement, text, count=1)
-        cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
-        fs_out["valuation_comment"] = cleaned
+        fs_out["valuation_comment"] = _repair_premium_claim(text, actual)
         trimmed.append("financial_snapshot.valuation_comment(unsupported premium removed)")
         print(f"[deepdive] {contradiction}")
 

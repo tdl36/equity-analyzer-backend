@@ -806,7 +806,11 @@ def test_a_contradicted_premium_is_corrected_not_printed():
     out, trimmed = enforce_master_budgets({'financial_snapshot': dict(fs)})
     comment = out['financial_snapshot']['valuation_comment']
     assert '68%' not in comment, comment
-    assert 'in line with' in comment, comment
+    assert 'in line with' in comment.lower(), comment
+    # The false sentence is removed whole rather than patched in place: editing
+    # inside it produced "a 60-in line with to its 10-year average" in a
+    # shipped report.
+    assert 'above historical' not in comment, comment
     assert any('valuation_comment' in t for t in trimmed)
 
 
@@ -816,7 +820,9 @@ def test_a_wrong_direction_is_corrected():
           'valuation_comment': 'Trades 70% above the ten-year average.'}
     from deepdive import enforce_master_budgets
     out, _ = enforce_master_budgets({'financial_snapshot': dict(fs)})
-    assert 'below' in out['financial_snapshot']['valuation_comment']
+    comment = out['financial_snapshot']['valuation_comment']
+    assert 'below' in comment, comment
+    assert '70%' not in comment, comment
 
 
 def test_an_accurate_premium_is_left_alone():
@@ -835,3 +841,38 @@ def test_missing_multiples_do_not_trigger_a_rewrite():
                 'valuation_comment': 'Trades 40% above peers.'}):
         out, _ = enforce_master_budgets({'financial_snapshot': dict(fs)})
         assert out['financial_snapshot']['valuation_comment'] == fs['valuation_comment']
+
+
+def test_no_prose_field_is_left_unbounded():
+    """Every field the renderers print must have a budget.
+
+    tools/make_max_fixture.py fills each field far past its cap and lets the
+    enforcer trim it, producing the largest artifact the budgets allow. Fields
+    with no cap came through that process at 4,960 words -- segment names,
+    opportunity titles, threat headings, target labels, the whole class of
+    headings. A verbose heading bursts its box and nothing anywhere stopped it.
+    """
+    import subprocess, json as _json
+    subprocess.run(['./.venv/bin/python', 'tools/make_max_fixture.py'],
+                   capture_output=True, timeout=120, check=True)
+    mx = _json.load(open('fixtures/deepdive_max.json'))
+
+    offenders = []
+
+    def walk(node, path):
+        if isinstance(node, str):
+            # sources are a digital-only trail, never laid out on a page
+            if '.sources[' in path:
+                return
+            if len(node.split()) > 150:
+                offenders.append(f'{path}: {len(node.split())} words')
+        elif isinstance(node, dict):
+            for k, v in node.items():
+                walk(v, f'{path}.{k}')
+        elif isinstance(node, list):
+            for i, v in enumerate(node):
+                walk(v, f'{path}[{i}]')
+
+    walk(mx['master'], 'master')
+    walk(mx['onepager'], 'onepager')
+    assert not offenders, 'unbounded field(s):\n  ' + '\n  '.join(offenders[:12])

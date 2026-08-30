@@ -40,12 +40,23 @@ export const TWOPAGER_TEMPLATES = [
 ];
 
 /** Scales a fixed 1024-wide artifact down to fit its container. */
-export const PageFit = ({ children, className = '' }) => {
+/**
+ * Fit the artifact to the viewport, with a zoom the reader controls.
+ *
+ * The pages are 1024px wide, so on a phone they land at roughly a third size
+ * and the body text becomes unreadable no matter how well it is laid out.
+ * Fitting is the right default, but it cannot be the only option: a reader
+ * needs to get close to a signpost table or a chart. `zoom` multiplies the fit
+ * scale, and above 1 the wrapper scrolls in both axes so the page can be
+ * panned rather than squeezed.
+ */
+export const PageFit = ({ children, className = '', zoom = 1, onZoom = null }) => {
     const wrapRef = useRef(null);
     const innerRef = useRef(null);
     const [scale, setScale] = useState(1);
     const [height, setHeight] = useState(1536);
     const lastWidth = useRef(0);
+    const pinch = useRef(null);
 
     useEffect(() => {
         const el = wrapRef.current;
@@ -80,15 +91,53 @@ export const PageFit = ({ children, className = '' }) => {
         return () => { ro.disconnect(); clearTimeout(settle); if (frame) cancelAnimationFrame(frame); };
     }, [children]);
 
+    // Pinch to zoom. Native pinch does not work on a transformed element, and
+    // on a phone this is the gesture people reach for first, so track the two
+    // touch points directly.
+    useEffect(() => {
+        const el = wrapRef.current;
+        if (!el || !onZoom) return;
+        const dist = (t) => Math.hypot(
+            t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+
+        const start = (e) => {
+            if (e.touches.length === 2) pinch.current = { d: dist(e.touches), z: zoom };
+        };
+        const move = (e) => {
+            if (e.touches.length !== 2 || !pinch.current) return;
+            e.preventDefault();
+            const ratio = dist(e.touches) / (pinch.current.d || 1);
+            onZoom(clampZoom(pinch.current.z * ratio));
+        };
+        const end = () => { pinch.current = null; };
+
+        el.addEventListener('touchstart', start, { passive: true });
+        el.addEventListener('touchmove', move, { passive: false });
+        el.addEventListener('touchend', end, { passive: true });
+        return () => {
+            el.removeEventListener('touchstart', start);
+            el.removeEventListener('touchmove', move);
+            el.removeEventListener('touchend', end);
+        };
+    }, [zoom, onZoom]);
+
+    const effective = scale * zoom;
     return (
-        <div ref={wrapRef} className={`dd-fit ${className}`} style={{ height: height * scale }}>
+        <div ref={wrapRef}
+             className={`dd-fit ${zoom > 1 ? 'dd-fit-zoomed' : ''} ${className}`}
+             style={{ height: height * effective }}>
             <div ref={innerRef} className="dd-fit-inner"
-                 style={{ width: PAGE_W, transform: `scale(${scale})` }}>
+                 style={{ width: PAGE_W, transform: `scale(${effective})` }}>
                 {children}
             </div>
         </div>
     );
 };
+
+export const ZOOM_MIN = 0.5;
+export const ZOOM_MAX = 4;
+export const clampZoom = (z) =>
+    Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 100) / 100));
 
 /** Renders one artifact from a stored run: {master, onepager}. */
 export const DeepDiveArtifact = ({ run, view, template }) => {
@@ -716,6 +765,60 @@ export const applyPrintLayout = (view) => {
         try { fitArtifact(art); } catch (e) { /* screen only */ }
     };
     return restore;
+};
+
+
+/**
+ * Save the artifact as a standalone file.
+ *
+ * "Exactly as it looks on screen" rules out re-rendering it somewhere else.
+ * This takes the live DOM of the artifact and every stylesheet the page has
+ * loaded, and writes one self-contained HTML file: no network, no fonts to
+ * fetch, no server. It opens identically in any browser on any device, and can
+ * be printed from there. A PNG was the other option and is a worse one -- the
+ * one-pager is an SVG with foreignObject content, which browsers refuse to
+ * rasterise to canvas for security reasons.
+ */
+export const saveArtifact = (view, ticker = 'artifact') => {
+    if (typeof document === 'undefined') return false;
+    const art = document.querySelector('.dd-artifact');
+    if (!art) return false;
+
+    let css = '';
+    for (const sheet of Array.from(document.styleSheets)) {
+        try {
+            css += Array.from(sheet.cssRules).map(r => r.cssText).join('\n') + '\n';
+        } catch (e) {
+            // A cross-origin sheet cannot be read; ours are same-origin.
+        }
+    }
+
+    const name = `${ticker}-${view}`.replace(/[^A-Za-z0-9._-]+/g, '-');
+    const doc = `<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${name}</title>
+<style>
+${css}
+/* Standalone: no app chrome to hide, and the page is its own background. */
+html,body{margin:0;padding:0;background:#fff;}
+.dd-artifact{margin:0 auto;}
+@page{size:1024px 1536px;margin:0;}
+</style>
+</head><body class="dd-printing print-${view === 'memo' ? 'report' : view === 'twopager' ? 'twopager' : 'onepager'}">
+${art.outerHTML}
+</body></html>`;
+
+    const blob = new Blob([doc], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${name}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    return true;
 };
 
 export const printArtifact = (view) => {

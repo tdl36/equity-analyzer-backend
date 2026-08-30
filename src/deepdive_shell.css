@@ -312,3 +312,19 @@ body.dd-printing.print-twopager .twopager-view { padding:0!important;margin:0!im
 body.dd-printing.print-twopager .tp-page { margin:0!important;box-shadow:none!important;break-after:page;page-break-after:always }
 body.dd-printing.print-twopager .tp-page:last-child { break-after:auto!important;page-break-after:auto!important }
 body.dd-printing.print-report .report-view { padding:0!important;margin:0!important }
+
+/* The EPS value at each point: the chart's actual subject. */
+.dd-artifact .earnings-chart .vlab,
+.dd-artifact .nbv-chart-svg .vlab,
+.dd-artifact .tp-chart .vlab {
+    font-size: 10.5px !important;
+    font-weight: 700;
+    fill: #3a3a36;
+}
+.dd-artifact .earnings-chart .vlab.est,
+.dd-artifact .nbv-chart-svg .vlab.est,
+.dd-artifact .tp-chart .vlab.est { fill: #6b7a55; font-style: italic; }
+
+/* Zoomed past fit: let the reader pan instead of squeezing the page. */
+.dd-fit.dd-fit-zoomed { overflow: auto; -webkit-overflow-scrolling: touch; }
+.dd-fit.dd-fit-zoomed .dd-fit-inner { position: relative; }

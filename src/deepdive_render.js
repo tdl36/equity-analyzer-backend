@@ -499,6 +499,38 @@ function flowHTML(items, cls='') { return `<div class="causal-flow ${cls}">${ite
  * printed as "re-Aetna headwinds". Labels on the last points ran past the plot
  * and over the valuation panel beside it, and neighbouring labels simply
  * overprinted one another. */
+/* The value at each point.
+ *
+ * The chart plotted a shape and labelled it with prose, so a reader could see
+ * that earnings rose without being told what they were. The series is adjusted
+ * EPS; printing the figure is the whole reason the chart exists. Values are
+ * placed below the line where the free-text annotations sit above it, so the
+ * two never compete for the same space.
+ */
+function valueLabelsSVG(pts, x, y, W) {
+  const fmt = (v) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return '';
+    return n >= 100 ? `$${Math.round(n)}` : `$${n.toFixed(2).replace(/\.00$/, '')}`;
+  };
+  const placed = [];
+  return pts.map((d, i) => {
+    const text = fmt(d.value);
+    if (!text) return '';
+    const w = text.length * 4.9;
+    let cx = x(i), anchor = 'middle';
+    if (cx - w / 2 < 2) { anchor = 'start'; cx = 2; }
+    else if (cx + w / 2 > W - 2) { anchor = 'end'; cx = W - 2; }
+    const x0 = anchor === 'start' ? cx : anchor === 'end' ? cx - w : cx - w / 2;
+    // Skip a label that would sit on the previous one rather than overprint.
+    if (placed.some(p => x0 < p.x1 + 3 && x0 + w > p.x0 - 3)) return '';
+    placed.push({ x0, x1: x0 + w });
+    const yy = Math.min(y(Number(d.value)) + 15, 126);
+    return `<text x="${cx.toFixed(1)}" y="${yy.toFixed(1)}" text-anchor="${anchor}" `
+         + `class="vlab${d.kind === 'estimate' ? ' est' : ''}">${esc(text)}</text>`;
+  }).join('');
+}
+
 function annotationsSVG(pts, x, y, W) {
   const CHAR_W = 4.6;      // ~px per character at the 9px annotation size
   const LINE   = 10;
@@ -506,8 +538,11 @@ function annotationsSVG(pts, x, y, W) {
   const MAX_CH = 34;       // a label wider than this cannot fit any placement
   const placed = [];
   return pts.map((d, i) => ({ d, i })).filter(o => o.d.annotation).map(o => {
-    const raw = String(o.d.annotation);
-    const text = raw.length > MAX_CH ? raw.slice(0, MAX_CH - 1).trimEnd() + '\u2026' : raw;
+    /* Truncating these produced "Pandemic trough; portfolio restru..." across a
+       shipped chart. An annotation is a caption: it is either readable or it is
+       not there. The value label carries the number regardless. */
+    const text = String(o.d.annotation);
+    if (text.length > MAX_CH) return '';
     const w = text.length * CHAR_W;
     let cx = x(o.i), anchor = 'middle';
     if (cx - w / 2 < 2) { anchor = 'start'; cx = 2; }
@@ -553,6 +588,7 @@ function earningsChartSVG(history, className = '') {
     <path d="${path(actual)}" class="series actual"/>
     ${estimate.length>1?`<path d="${path(estimate,estimateStart)}" class="series estimate"/>`:''}
     ${pts.map((d,i)=>`<circle cx="${x(i)}" cy="${y(Number(d.value))}" r="3" class="point ${d.kind==='estimate'?'est':''}"/>`).join('')}
+    ${valueLabelsSVG(pts, x, y, W)}
     ${pts.map((d,i)=>`<text x="${x(i)}" y="${H-10}" text-anchor="middle" class="xlab">${esc(d.period)}</text>`).join('')}
     ${annotationsSVG(pts, x, y, W)}
   </svg>`;

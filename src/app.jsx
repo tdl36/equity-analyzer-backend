@@ -8,7 +8,7 @@ import * as ReactDOM from 'react-dom';
 // Extensionless on purpose: Babel leaves the specifier alone, so esbuild resolves
 // it to src/onepager.jsx in dev and build/onepager.js in the prod bundle.
 import { OnePagerFit, ONEPAGER_STYLES } from './onepager';
-import { DeepDiveArtifact, PageFit, preflightPages, printArtifact, ONEPAGER_TEMPLATES, TWOPAGER_TEMPLATES } from './deepdive';
+import { DeepDiveArtifact, PageFit, preflightPages, printArtifact, saveArtifact, clampZoom, ZOOM_MIN, ZOOM_MAX, ONEPAGER_TEMPLATES, TWOPAGER_TEMPLATES } from './deepdive';
 import * as htmlToImage from 'html-to-image';
 
 // Expose on window for any inline consumers (pdf.js, etc.)
@@ -81,7 +81,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-08-30T02';
+        const BUILD_VERSION = '2026-08-30T03';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -2299,6 +2299,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [ddTicker, setDdTicker] = useState('');
             const [ddRun, setDdRun] = useState(null);          // {master, onepager, sources, ...}
             const [ddView, setDdView] = useState('onepager');  // onepager | twopager | memo
+            // Reading zoom. Fit-to-width is the default; the reader can get
+            // closer to a table or chart, which on a phone is the difference
+            // between a readable report and a picture of one.
+            const [ddZoom, setDdZoom] = useState(1);
             const [ddBusy, setDdBusy] = useState(false);
             const [ddStep, setDdStep] = useState('');
             const [ddError, setDdError] = useState(null);
@@ -2874,6 +2878,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     clearTimeout(id);
                 };
             }, [ddRun, ddView, ddTemplate, activeTab]);
+
+            // A zoom level is about a place in one artifact; it should not
+            // carry over to a different one.
+            useEffect(() => { setDdZoom(1); }, [ddRun, ddView, ddTemplate]);
 
             useEffect(() => {
                 if (activeTab === 'deepdive') loadDeepDiveList();
@@ -25888,6 +25896,31 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         className="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-xs">
                                                         Export JSON
                                                     </button>
+                                                    <div className="flex items-center gap-0.5 bg-white/10 rounded-lg px-1"
+                                                         title="Zoom (pinch on touch screens)">
+                                                        <button onClick={() => setDdZoom(z => clampZoom(z - 0.25))}
+                                                            disabled={ddZoom <= ZOOM_MIN}
+                                                            className="px-2 py-2 text-xs disabled:opacity-30"
+                                                            aria-label="Zoom out">&minus;</button>
+                                                        <button onClick={() => setDdZoom(1)}
+                                                            className="px-1.5 py-2 text-xs tabular-nums min-w-[3rem]"
+                                                            aria-label="Reset zoom to fit">
+                                                            {Math.round(ddZoom * 100)}%
+                                                        </button>
+                                                        <button onClick={() => setDdZoom(z => clampZoom(z + 0.25))}
+                                                            disabled={ddZoom >= ZOOM_MAX}
+                                                            className="px-2 py-2 text-xs disabled:opacity-30"
+                                                            aria-label="Zoom in">+</button>
+                                                    </div>
+                                                    <button onClick={() => {
+                                                            if (!saveArtifact(ddView, ddRun.ticker)) {
+                                                                alert('Nothing to save yet.');
+                                                            }
+                                                        }}
+                                                        title="Download a standalone file that looks exactly like this"
+                                                        className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-xs font-medium">
+                                                        <Download className="w-3.5 h-3.5" /> Save
+                                                    </button>
                                                     <button onClick={() => printArtifact(ddView)}
                                                         className="flex items-center gap-1.5 px-3 py-2 bg-amber-600 hover:bg-amber-500 rounded-lg text-xs font-medium">
                                                         <Download className="w-3.5 h-3.5" /> Print / PDF
@@ -26004,7 +26037,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                         {/* the artifacts */}
                                         {ddRun ? (
                                             <div ref={ddPagesRef} className="dd-stage">
-                                                <PageFit>
+                                                <PageFit zoom={ddZoom} onZoom={setDdZoom}>
                                                     <DeepDiveArtifact run={ddRun} view={ddView}
                                                                       template={ddTemplate} />
                                                 </PageFit>

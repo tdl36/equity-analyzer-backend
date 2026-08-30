@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import assert from 'node:assert';
 
 const src = readFileSync(new URL('../../src/deepdive_render.js', import.meta.url), 'utf8');
-const pick = src.slice(src.indexOf('function annotationsSVG'), src.indexOf('function identityRows'));
+const pick = src.slice(src.indexOf('function valueLabelsSVG'), src.indexOf('function identityRows'));
 const mod = new Function('esc', pick + '\nreturn {earningsChartSVG};')(s => String(s));
 
 const W = 430, CHAR_W = 4.6;
@@ -76,12 +76,24 @@ test('a crowded chart still places every label or drops it cleanly', () => {
   }
 });
 
-test('long annotations are shortened, not left to span the chart', () => {
+test('an annotation too long to fit is dropped, never half-printed', () => {
+  // Truncating these put "Pandemic trough; portfolio restru..." across a
+  // shipped chart. A caption is either readable or absent.
   const long = [{ period: '2021', value: 5,
     annotation: 'An extremely long annotation that could never fit inside the plot area' },
     { period: '2022', value: 6 }];
-  const b = boxesOf(mod.earningsChartSVG({ points: long }));
-  assert.ok(b.length === 1 && b[0].x1 - b[0].x0 <= W, 'label must be trimmed to fit');
+  const svg = mod.earningsChartSVG({ points: long });
+  assert.ok(!svg.includes('\u2026'), 'no ellipsis may appear in a chart annotation');
+  for (const b of boxesOf(svg)) assert.ok(b.x1 - b[0] === undefined || b.x1 <= W + 0.5);
+});
+
+test('every point is labelled with its value', () => {
+  // The series is adjusted EPS; the chart existed without ever printing it.
+  const pts = [5.5, 7.3, 7.6, 8.5].map((v, i) => ({ period: `20${20 + i}`, value: v }));
+  const svg = mod.earningsChartSVG({ points: pts });
+  for (const v of ['$5.50', '$7.30', '$7.60', '$8.50']) {
+    assert.ok(svg.includes(v), `missing value label ${v}`);
+  }
 });
 
 console.log(failures ? `\n${failures} failing` : '\nall chart tests passed');
