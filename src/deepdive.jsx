@@ -121,12 +121,7 @@ export const DeepDiveArtifact = ({ run, view, template }) => {
     // them. Runs after paint, and again once webfonts settle and change metrics.
     useEffect(() => {
         if (!html) return;
-        const run = () => {
-            try { rebalanceLongform(); } catch (e) { console.warn('rebalance:', e); }
-            // Rows first, then fit the content into whatever rows it got.
-            try { autoFitSections(document.querySelector('.dd-artifact')); }
-            catch (e) { console.warn('autofit:', e); }
-        };
+        const run = () => { fitArtifact(document.querySelector('.dd-artifact')); };
         const a = requestAnimationFrame(run);
         const b = setTimeout(run, 450);
         const c = setTimeout(run, 1200);
@@ -177,7 +172,7 @@ export const DeepDiveArtifact = ({ run, view, template }) => {
 // not printed. Type at 0.74 of nominal is still comfortably legible on a
 // 1024px canvas, and losing a research point is not a trade worth making to
 // keep a font one point larger.
-const SECTION_FIT_FLOOR = 0.74;
+const SECTION_FIT_FLOOR = 0.55;
 
 /* Blocks whose height is fixed by the canvas and whose content is prose.
    These are the boxes that were clipping: a card, a table cell, a callout. */
@@ -189,10 +184,10 @@ const FIT_BLOCK_SEL = [
     '.tp-segments > div', '.tp-signposts td', '.nbv-opp', '.nbv-seg',
 ].join(',');
 
-const BLOCK_FIT_FLOOR = 0.74;
+const BLOCK_FIT_FLOOR = 0.55;
 // The one-pager is the densest canvas, so it is allowed to scale further
 // before anything is cut.
-const FOREIGN_FIT_FLOOR = 0.60;
+const FOREIGN_FIT_FLOOR = 0.50;
 
 /**
  * Shrink a block's type until its text fits, instead of deleting the text.
@@ -286,7 +281,7 @@ export const autoFitForeignObjects = (root) => {
     return unfit;
 };
 
-const PAGE_FIT_FLOOR = 0.80;
+const PAGE_FIT_FLOOR = 0.62;
 const PAGE_HEIGHT_PX = 1536;
 
 /**
@@ -320,6 +315,147 @@ export const autoFitPages = (root) => {
             unfit.push((pg.className || '').toString().split(' ')[0] || 'page');
         }
     });
+    return unfit;
+};
+
+const CLIP_FIT_FLOOR = 0.50;
+
+/**
+ * Does painted content cross this element's boundary?
+ *
+ * Deliberately the same test the preflight uses to declare a failure. Every
+ * other fitting pass asks a proxy question -- scrollHeight vs clientHeight,
+ * height vs the parent row -- and each of those is false in some layout where
+ * content is nevertheless printed outside its box. Sections with height:auto
+ * grow instead of overflowing; grid children stretch; foreignObjects do not
+ * clip. That is how the app could report "Clipped content: v21-thesis" while
+ * every fitter believed the page was fine.
+ */
+// The preflight also names specific descendants that must not cross the
+// boundary -- the tail of a table, the decision lens, the bottom line -- because
+// those are the parts a reader most obviously loses. Same list, so the fitter
+// and the failure report cannot disagree.
+const CLIP_CANDIDATES = [
+    'tbody tr:last-child', '.report-sensitivity small',
+    '.report-sensitivity tbody tr:last-child', 'article:last-child',
+    '.report-decision-lens', '.v21-bottom-line',
+].join(',');
+
+const childContentOverflows = (el, tol = 4) => {
+    const er = el.getBoundingClientRect();
+    const deep = Array.from(el.querySelectorAll(CLIP_CANDIDATES)).some((n) => {
+        const r = n.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 && r.bottom > er.bottom + tol;
+    });
+    if (deep) return true;
+    return Array.from(el.children).some((n) => {
+        const cs = getComputedStyle(n);
+        if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+        const r = n.getBoundingClientRect();
+        if (r.width <= 0 || r.height <= 0) return false;
+        return r.bottom > er.bottom + tol || r.right > er.right + tol
+            || r.left < er.left - tol;
+    });
+};
+
+/**
+ * Shrink until nothing crosses a boundary.
+ *
+ * The final pass, and the only one whose success condition is the same thing
+ * the reader sees. Runs after the others so it only has to close whatever gap
+ * their proxies missed.
+ */
+/* The preflight's third failure: a section reaching into the page footer, or
+   past the page edge. Same bounds it uses. */
+const crossesPageBounds = (sec) => {
+    const page = sec.closest('.report-page, .tp-page, .op-canvas');
+    if (!page) return false;
+    const pr = page.getBoundingClientRect();
+    const r = sec.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) return false;
+    if (r.bottom > pr.bottom + 5 || r.right > pr.right + 5) return true;
+    const footer = page.querySelector('.report-footer, .tp-footer, footer');
+    if (footer && !footer.contains(sec)) {
+        const fr = footer.getBoundingClientRect();
+        if (fr.height > 0 && r.bottom > fr.top + 3 && r.top < fr.top) return true;
+    }
+    return false;
+};
+
+/* The preflight checks these nodes for page/footer violations, not just
+   sections, so the fitter has to start from the same set: a table or a chart
+   wrap can be the thing reaching into the footer while its section looks fine. */
+const PROTECTED_SEL = 'section, table, .report-pie-wrap, .tp-pie-wrap, '
+    + '.report-earnings-chart, .tp-chart-row';
+
+export const fitUntilClean = (root) => {
+    if (!root || typeof document === 'undefined') return [];
+    const unfit = [];
+
+    // Anything crossing the page edge or the footer gets its owning section
+    // scaled, whatever kind of node it is.
+    const owners = new Set();
+    root.querySelectorAll(PROTECTED_SEL).forEach((n) => {
+        if (!crossesPageBounds(n)) return;
+        const owner = n.closest('.strict-fit') || n.closest('section');
+        if (owner) owners.add(owner);
+    });
+    owners.forEach((sec) => {
+        let z = parseFloat(sec.style.zoom) || 1;
+        let guard = 0;
+        while ((crossesPageBounds(sec) || Array.from(sec.querySelectorAll(PROTECTED_SEL))
+                    .some(crossesPageBounds))
+               && z > CLIP_FIT_FLOOR && guard++ < 16) {
+            z = Math.max(CLIP_FIT_FLOOR, z - 0.035);
+            sec.style.zoom = String(z.toFixed(3));
+        }
+    });
+
+    root.querySelectorAll('.strict-fit').forEach((sec) => {
+        let z = parseFloat(sec.style.zoom) || 1;
+        let guard = 0;
+        const bad = () => childContentOverflows(sec) || crossesPageBounds(sec);
+        while (bad() && z > CLIP_FIT_FLOOR && guard++ < 16) {
+            z = Math.max(CLIP_FIT_FLOOR, z - 0.035);
+            sec.style.zoom = String(z.toFixed(3));
+        }
+        if (bad()) {
+            unfit.push((sec.className || '').toString().split(' ')[0] || 'section');
+        }
+    });
+    return unfit;
+};
+
+/**
+ * The single fitting pipeline.
+ *
+ * There used to be two. The screen ran rebalanceLongform + autoFitSections,
+ * and everything else -- the parent fit, the block fit, the foreignObject fit,
+ * the page fit -- was wired only into the print path. autoFitSections is
+ * precisely the pass that never fires (it asks whether a section overflows
+ * ITSELF, and an over-full section in a squeezed row does not), so in practice
+ * the on-screen artifact got no fitting at all. That is why the app's own
+ * preflight reported clipped content on every section while a harness driving
+ * the print path reported clean: they were exercising different code.
+ *
+ * Order matters: inner boxes first, so an outer pass measures content that has
+ * already settled.
+ */
+export const fitArtifact = (root) => {
+    if (!root || typeof document === 'undefined') return [];
+    const unfit = [];
+    const step = (fn, label) => {
+        try { unfit.push(...(fn(root) || [])); }
+        catch (e) { console.warn(`fit ${label}:`, e); }
+    };
+    try { rebalanceLongform(); } catch (e) { console.warn('rebalance:', e); }
+    step(autoFitBlocks, 'blocks');
+    step(autoFitForeignObjects, 'foreignObjects');
+    step(autoFitSections, 'sections');
+    step(autoFitAgainstParent, 'againstParent');
+    step(autoFitPages, 'pages');
+    // Last: close whatever the proxy tests above did not catch.
+    step(fitUntilClean, 'untilClean');
     return unfit;
 };
 
@@ -445,15 +581,7 @@ export const applyPrintLayout = (view) => {
 
     // Print changes the available height, so rows and fit are recomputed with
     // the print class active, exactly as the prototype did.
-    try { rebalanceLongform(); } catch (e) { console.warn('rebalance before print:', e); }
-    try {
-        // Inner content first, then sections, then the page: an outer pass must
-        // never run before an inner one that could change its measurements.
-        autoFitBlocks(art); autoFitForeignObjects(art);
-        autoFitSections(art); autoFitAgainstParent(art);
-        autoFitPages(art);
-    }
-    catch (e) { console.warn('autofit before print:', e); }
+    fitArtifact(art);
 
     let restored = false;
     const restore = () => {
@@ -461,12 +589,7 @@ export const applyPrintLayout = (view) => {
         restored = true;
         body.classList.remove('dd-printing', 'print-onepager', 'print-twopager', 'print-report');
         chain.forEach(n => n.classList.remove('dd-print-chain'));
-        try {
-            rebalanceLongform();
-            autoFitBlocks(art); autoFitForeignObjects(art);
-            autoFitSections(art); autoFitAgainstParent(art);
-            autoFitPages(art);
-        } catch (e) { /* screen only */ }
+        try { fitArtifact(art); } catch (e) { /* screen only */ }
     };
     return restore;
 };

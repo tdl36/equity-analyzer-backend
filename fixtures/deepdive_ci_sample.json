@@ -341,17 +341,17 @@
    {
     "timing": "September 2026",
     "event": "Investor Day",
-    "why_it_matters": "First full-year outlook incorporating the Signature rollout to fully insured plans. If management guides 2027 adjusted EPS at or above $33 (10%+ growth), it validates the margin-preservation thesis and could re-rate the multiple."
+    "why_it_matters": "Management will detail long-term strategy, the multi-year EPS growth algorithm, and rebate-free model economics. Positive guidance for 2027-2028 could re-rate the stock; an underwhelming outlook would confirm bear fears."
    },
    {
     "timing": "January 2027",
     "event": "Individual & Family Plan Exit Complete; 2027 Guidance",
-    "why_it_matters": "Six months post-launch, Cigna will have tangible data on employer uptake, member cost-sharing impact, and the margin profile of transitioned accounts."
+    "why_it_matters": "First formal EPS guide for the rebate-free transition year. Guidance at or above $31 would signal confidence; flat or down year-over-year would validate margin-compression concerns and likely pressure the stock."
    },
    {
     "timing": "Q1-Q2 2027",
     "event": "2027 PBM Renewals and New Client Announcements",
-    "why_it_matters": "The February 2026 FTC settlement with Express Scripts and the July CVS Caremark settlement set a new transparency baseline, but Congress may impose additional mandates (profit caps, mandatory pass-through pricing)."
+    "why_it_matters": "Industry sources indicate elevated RFP activity as employers reassess PBM relationships amid transparency pressure. Strong net wins would demonstrate competitive resilience; losses would accelerate the downside scenario."
    }
   ],
   "signposts": [
@@ -359,83 +359,83 @@
     "signpost": "2027 PBM Selling Season Wins",
     "current": "Early positive Signature feedback",
     "target": "Net new lives >=5M; retain >=95% existing",
-    "why_it_matters": "Validates transparent pricing model and stabilizes Evernorth revenue base. Client losses would confirm competitive disadvantage and trigger a margin spiral."
+    "why_it_matters": "Any quarter below $1.65B signals PBM margin pressure or client losses are accelerating faster than management guidance suggests, threatening the bull thesis."
    },
    {
     "signpost": "Specialty Pharmacy Revenue Growth",
     "current": "Specialty & Care earnings +22% Q2 2026",
     "target": "Sustain low-teens earnings growth through 2027",
-    "why_it_matters": "Specialty is the highest-margin, fastest-growing segment within Evernorth. Deceleration signals market share loss or pricing pressure from CVS and Optum."
+    "why_it_matters": "MCR above 85% for two quarters indicates loss of pricing discipline or adverse selection, eroding the $4.55B pre-tax earnings target and overall portfolio quality."
    },
    {
     "signpost": "Cigna Healthcare Medical Care Ratio",
     "current": "84.5% Q2 2026 (elevated by Individual plans)",
     "target": "Trend toward 83-84% as Individual exits",
-    "why_it_matters": "MCR above 86% for two quarters would indicate pricing inadequacy or adverse selection, forcing reserve builds and guidance cuts."
+    "why_it_matters": "Net client losses in the 2027 selling season would validate fears that transparency demands or rebate-free complexity drive employers to smaller PBMs, undermining scale advantages."
    },
    {
     "signpost": "Free Cash Flow Conversion",
     "current": "$710M H1 2026 (seasonal trough)",
     "target": "FY 2026 FCF >=$8.5B (return to growth)",
-    "why_it_matters": "Cash generation funds buyback and dividend. Persistent shortfall versus earnings signals working capital issues, undermining the capital return thesis."
+    "why_it_matters": "Buyback pace signals management confidence in earnings durability and balance-sheet strength. A cut below $3B would suggest liquidity concerns or reduced conviction in intrinsic value."
    },
    {
     "signpost": "PBM Regulatory Developments",
     "current": "FTC settled Feb 2026; no new federal bills",
     "target": "No new material legislation through 2027",
-    "why_it_matters": "Passage of a federal PBM profit-cap or mandatory pass-through law would destroy 30-50% of Evernorth's earnings. Continued stasis supports the thesis."
+    "why_it_matters": "Low adoption would indicate the model is unattractive to employers who lose rebate revenue to fund it, and a failure to differentiate against CVS Caremark and OptumRx."
    },
    {
     "signpost": "Debt-to-Capitalization Ratio",
     "current": "42.3% (Q1 2026)",
     "target": "<=40% by year-end 2026",
-    "why_it_matters": "Demonstrates disciplined capital allocation and balance-sheet repair post-HCSC sale. Failure to deleverage suggests FCF is weaker than guided."
+    "why_it_matters": "Slowing GLP-1 script growth removes a high-margin specialty revenue stream that has underpinned Evernorth's recent earnings beats and 2026 guidance raises."
    }
   ],
-  "bottom_line": "Cigna has deliberately transformed into a PBM- and specialty-pharmacy-centric company at precisely the moment when those businesses face maximum regulatory scrutiny.",
+  "bottom_line": "At 8x forward earnings and a 10% free-cash-flow yield, Cigna offers material upside if management executes the rebate-free pivot without material client defections.",
   "opportunities": [
    {
     "title": "Biosimilar Wave and Specialty Drug Growth",
     "icon": "growth",
-    "detail": "Specialty & Care Services earnings rose 22% YoY in Q2 2026 as Cigna aggressively steers utilization toward biosimilars (Humira, Remicade interchangeables) via preferred formulary placement and $500 patient incentives."
+    "detail": "By end-2024, nearly 50% of eligible Humira scripts converted to biosimilars at $0 copay. Extending zero-cost biosimilars to Stelara and other high-cost biologics drives member savings and improves Evernorth's reputation, potentially winning net-new PBM clients in the 2027 selling season."
    },
    {
     "title": "Signature Rebate-Free Model Differentiation",
     "icon": "technology",
-    "detail": "Rather than viewing the rebate-free mandate as a margin threat, Cigna is positioning Signature as proactive regulatory alignment and client demand response. Employers increasingly demand pass-through economics and transparency."
+    "detail": "Rolling out point-of-sale discounts for fully insured lives in 2027 and all clients in 2028 could differentiate Express Scripts from CVS Caremark and OptumRx, neutralize political risk, and lock in multi-year contracts with transparency-minded employers despite near-term margin pressure."
    },
    {
     "title": "Portfolio Simplification and Capital Efficiency",
     "icon": "growth",
-    "detail": "Divesting Medicare Advantage (sold for $3.7B in March 2025) and exiting ACA exchanges (end-2026) removes low-margin, high-regulation, government-reimbursed businesses where Cigna lacked scale."
+    "detail": "Rising GLP-1 utilization for diabetes and weight management generates higher revenue per member and rebate dollars. Evernorth launched a 15% annual cost-cap program for GLP-1s, positioning to capture employers seeking predictable obesity-drug spend."
    },
    {
     "title": "Behavioral Health and Care Services Expansion",
     "icon": "growth",
-    "detail": "Management repeatedly emphasizes AI adoption to enhance personalized care, predict high-cost episodes, optimize formulary design, and automate prior authorization. Evernorth's data from 118 million pharmacy relationships creates network effects."
+    "detail": "Divesting low-margin Medicare Advantage frees capital and management bandwidth to focus on large and mid-market employer groups, where Cigna's integrated medical-pharmacy offering and stop-loss expertise provide a bundled value proposition competitors struggle to match."
    },
    {
     "title": "FTC Settlement Removes Regulatory Overhang",
     "icon": "technology",
-    "detail": "GLP-1 utilization (Ozempic, Wegovy) is the #1 pharmacy trend driver for 2026, with forecasts near 10% U.S. population penetration within the decade, expanding Evernorth volumes."
+    "detail": "Deploying AI tools (Pharmacy Forward $100M initiative launched July 2026, Accredo AI care coordination) to personalize treatment pathways, reduce avoidable spend, and improve clinical outcomes can lower medical trend for Healthcare and attract higher-margin self-funded employer clients."
    }
   ],
   "business_model": [
    {
-    "name": "Pharmacy Benefit Management",
-    "description": "Express Scripts negotiates drug pricing with manufacturers (rebates, discounts), designs formularies, and adjudicates pharmacy claims for employer and health-plan clients."
+    "name": "PBM Spread & Formulary Management",
+    "description": "Express Scripts adjudicates pharmacy claims, negotiates manufacturer rebates, manages formulary placement, and earns spread between what it charges plan sponsors and what it pays pharmacies."
    },
    {
-    "name": "Specialty Pharmacy & Distribution",
-    "description": "Accredo dispenses high-cost specialty drugs (biologics, oncology, rare disease treatments) and provides adherence and clinical support services directly to patients."
+    "name": "Specialty Pharmacy Dispensing",
+    "description": "Accredo and affiliated specialty pharmacies dispense high-cost biologics and specialty medications for chronic and complex conditions, earning dispensing margin and clinical service fees."
    },
    {
-    "name": "Medical Insurance Underwriting",
-    "description": "Cigna Healthcare collects premiums from employer clients and individual members, pays medical claims, and earns the spread between premiums and medical costs."
+    "name": "Medical Insurance Premiums & Risk",
+    "description": "Cigna Healthcare collects monthly premiums from employer groups and individuals, assumes medical cost risk, and earns underwriting margin (premium less medical costs less administrative expense)."
    },
    {
-    "name": "Integrated Services & Data Monetization",
-    "description": "Cross-sell pharmacy and medical data analytics, care coordination (behavioral health, eviCore utilization management), and AI personalization across the book."
+    "name": "Integrated Health Services",
+    "description": "Care management programs (behavioral health, chronic condition coaching, virtual care) and value-based arrangements that generate per-member-per-month fees and shared savings."
    }
   ],
   "final_takeaway": "Cigna is a show-me story trading at a distressed valuation that assumes PBM economics are permanently impaired. The company has proactively reshaped its portfolio to concentrate on employer-sponsored insurance and pharmacy benefits, positioning Evernorth to capture specialty drug and biosimilar tailwinds. At 8.3x forward P/E and a 10%+ free cash flow yield, the stock embeds minimal growth and maximal regulatory pessimism.",
@@ -468,23 +468,23 @@
      "name": "Evernorth Health Services",
      "short_name": "Evernorth",
      "mix": "~86%",
-     "description": "Integrated pharmacy and health services including Pharmacy Benefit Services (Express Scripts PBM, formulary management) and Specialty and Care Services."
+     "description": "Pharmacy Benefit Services (Express Scripts PBM managing drug claims, formulary, retail networks, and home delivery) plus Specialty and Care Services (Accredo specialty pharmacy for complex and rare diseases)."
     },
     {
      "name": "Cigna Healthcare",
      "short_name": "Healthcare",
      "mix": "~17%",
-     "description": "U.S. commercial and international medical insurance, serving 18.4 million medical members across employer-sponsored plans."
+     "description": "U.S. Healthcare (employer group medical, stop-loss, and individual ACA plans) and International Health (expat and locally regulated plans in select markets)."
     },
     {
      "name": "Other Operations & Corporate",
      "short_name": "Other",
      "mix": "Minimal",
-     "description": "Corporate expenses, investment income, and intersegment eliminations."
+     "description": "Corporate-Owned Life Insurance (COLI) and run-off settlement annuity blocks contributing modest investment income."
     }
    ],
    "other_profit_pools": [
-    "Evernorth Specialty and Care Services delivered $1.1B pre-tax earnings in Q2 2026, up 22% YoY, driven by specialty drug volumes and biosimilar adoption; this sub-segment is the fastest-growing earnings driver within the company."
+    "Corporate-Owned Life Insurance (COLI) and run-off settlement annuity blocks contribute modest investment income; joint-venture equity-method investments in care delivery and digital health partnerships."
    ]
   },
   "earnings_history": {
@@ -532,23 +532,23 @@
    ]
   },
   "investment_thesis": {
-   "summary": "Cigna represents a contrarian bet on pharmacy benefit management at a time when PBM economics face intense regulatory scrutiny. The company has deliberately reshaped its portfolio, exiting volatile Medicare Advantage in March 2025 and abandoning individual ACA exchanges, to concentrate capital on two pillars: Evernorth Health Services and employer-focused commercial insurance. Evernorth now drives approximately 60% of company profits. The February 2026 FTC settlement on insulin pricing removed a major regulatory overhang without imposing fines, and management reaffirmed its $30.45 adjusted EPS guidance for 2026. At 8.3x forward P/E, well below the ten-year average of 16x, the stock prices in persistent PBM margin pressure.",
+   "summary": "The Cigna Group trades at 8.3x forward earnings despite raising 2026 adjusted EPS guidance to at least $30.45, implying a 60-70% discount to healthcare peers and its own ten-year average P/E of 16. The market appears to price in four persistent concerns: PBM margin compression from regulatory scrutiny and the company's own 2027/2028 rebate-free model rollout, moderating GLP-1 utilization growth after robust tailwinds in 2024-2025, loss of Medicare Advantage membership following the March 2025 divestiture to HCSC, and the risk that Evernorth's ~80% of segment earnings proves structurally less durable than historical results suggest. Bulls counter that Evernorth's scale in specialty pharmacy, biosimilar adoption, and care services provides resilient earnings even under transparency pressure, and that consistent mid-single-digit revenue growth, 16-17% ROE, and aggressive buybacks will drive per-share value. The thesis breaks if FY 2027 EPS falls materially below $30.",
    "core_question": "Can Cigna defend Evernorth's PBM economics and convert specialty/biosimilar tailwinds into durable earnings growth fast enough to overcome regulatory and competitive margin pressure?",
    "variant_view": "Consensus sees Cigna as a mature, low-growth cash cow vulnerable to PBM disruption. The variant is that the February 2026 FTC settlement marks the regulatory peak, the Signature model will prove more attractive to large employers than incumbent rebate structures, and Evernorth's unmatched specialty pharmacy scale becomes a durable moat as $100B+ in branded drugs face biosimilar competition over the next five years.",
    "what_market_prices_in": [
-    "Flat to low-single-digit EPS growth beyond 2026, reflecting limited confidence in PBM pricing power",
-    "Modest share gains offset by margin compression as large clients negotiate rebate-free models",
-    "Stabilization, not expansion, of medical care ratios in the mid-80% range for Cigna Healthcare"
+    "PBM margin compression of 100-200 bps through 2027-2028 as the rebate-free model shifts economics from employers to members, reducing retained revenue per script",
+    "Moderating GLP-1 utilization growth after the robust tailwinds of 2024 and 2025, with script growth decelerating into 2027",
+    "Permanent loss of Medicare Advantage scale following the March 2025 divestiture, leaving a narrower employer-only franchise"
    ],
    "what_must_be_true": [
-    "Signature rebate-free PBM model wins new clients in 2027-2028 and stabilizes pharmacy margins at acceptable levels",
-    "Specialty pharmacy volume (biosimilars, GLP-1s, oncology) grows mid-teens, offsetting generic and rebate headwinds",
-    "Cigna Healthcare medical cost trends remain in the high single digits without spiking, allowing disciplined pricing"
+    "Evernorth must deliver at least $6.9 billion in pre-tax earnings in 2026 and maintain that level through 2027-2028 despite rebate model changes, implying stable or growing specialty pharmacy volume",
+    "Cigna Healthcare must sustain a medical care ratio between 83.7-84.7% and achieve at least $4.55 billion in pre-tax earnings, requiring disciplined underwriting in the employer group market",
+    "The company must execute $3-5 billion in annual share buybacks to offset flat earnings growth and compound per-share value, requiring sustained free cash flow of $7-8 billion per year"
    ],
    "falsification": [
-    "New federal PBM legislation mandates pass-through pricing or margin caps, destroying Express Scripts' core profit pool",
-    "Major client losses in 2027 renewals as employers defect to transparent or vertically integrated competitors",
-    "Medical care ratio for Cigna Healthcare exceeds 87% for two consecutive quarters, signaling pricing inadequacy"
+    "Full-year 2026 adjusted EPS comes in below $30.00, signaling execution risk in either Evernorth or Healthcare segments",
+    "Evernorth pre-tax earnings fall below $6.5 billion in any quarter's run-rate, indicating PBM client losses or margin pressure accelerating faster than anticipated",
+    "Healthcare segment MCR rises above 85.5% for two consecutive quarters, suggesting loss of pricing discipline or adverse selection in the employer book"
    ]
   },
   "financial_snapshot": {
@@ -742,19 +742,19 @@
     "name": "Evernorth Health Services",
     "short_name": "Evernorth",
     "mix": "~86%",
-    "description": "Integrated pharmacy and health services including Pharmacy Benefit Services (Express Scripts PBM, formulary management) and Specialty and Care Services."
+    "description": "Pharmacy Benefit Services (Express Scripts PBM managing drug claims, formulary, retail networks, and home delivery) plus Specialty and Care Services (Accredo specialty pharmacy for complex and rare diseases)."
    },
    {
     "name": "Cigna Healthcare",
     "short_name": "Healthcare",
     "mix": "~17%",
-    "description": "U.S. commercial and international medical insurance, serving 18.4 million medical members across employer-sponsored plans."
+    "description": "U.S. Healthcare (employer group medical, stop-loss, and individual ACA plans) and International Health (expat and locally regulated plans in select markets)."
    },
    {
     "name": "Other Operations & Corporate",
     "short_name": "Other",
     "mix": "Minimal",
-    "description": "Corporate expenses, investment income, and intersegment eliminations."
+    "description": "Corporate-Owned Life Insurance (COLI) and run-off settlement annuity blocks contributing modest investment income."
    }
   ],
   "bear_case": [
@@ -776,85 +776,85 @@
     "signpost": "2027 PBM Selling Season Wins",
     "current": "Early positive Signature feedback",
     "target": "Net new lives >=5M; retain >=95% existing",
-    "why": "Validates transparent pricing model and stabilizes Evernorth revenue base."
+    "why": "Any quarter below $1.65B signals PBM margin pressure or client losses are accelerating faster than management guidance suggests, threatening the bull thesis."
    },
    {
     "signpost": "Specialty Pharmacy Revenue Growth",
     "current": "Specialty & Care earnings +22% Q2 2026",
     "target": "Sustain low-teens earnings growth through 2027",
-    "why": "Specialty is the highest-margin, fastest-growing segment within Evernorth."
+    "why": "MCR above 85% for two quarters indicates loss of pricing discipline or adverse selection, eroding the $4.55B pre-tax earnings target and overall\u2026"
    },
    {
     "signpost": "Cigna Healthcare Medical Care Ratio",
     "current": "84.5% Q2 2026 (elevated by Individual plans)",
     "target": "Trend toward 83-84% as Individual exits",
-    "why": "MCR above 86% for two quarters would indicate pricing inadequacy or adverse selection, forcing\u2026"
+    "why": "Net client losses in the 2027 selling season would validate fears that transparency demands or rebate-free complexity drive employers to smaller PBMs\u2026"
    },
    {
     "signpost": "Free Cash Flow Conversion",
     "current": "$710M H1 2026 (seasonal trough)",
     "target": "FY 2026 FCF >=$8.5B (return to growth)",
-    "why": "Cash generation funds buyback and dividend. Persistent shortfall versus earnings signals working capital issues\u2026"
+    "why": "Buyback pace signals management confidence in earnings durability and balance-sheet strength. A cut below $3B would suggest liquidity concerns or reduced conviction\u2026"
    },
    {
     "signpost": "PBM Regulatory Developments",
     "current": "FTC settled Feb 2026; no new federal bills",
     "target": "No new material legislation through 2027",
-    "why": "Passage of a federal PBM profit-cap or mandatory pass-through law would destroy 30-50% of\u2026"
+    "why": "Low adoption would indicate the model is unattractive to employers who lose rebate revenue to fund it, and a failure to differentiate\u2026"
    },
    {
     "signpost": "Debt-to-Capitalization Ratio",
     "current": "42.3% (Q1 2026)",
     "target": "<=40% by year-end 2026",
-    "why": "Demonstrates disciplined capital allocation and balance-sheet repair post-HCSC sale."
+    "why": "Slowing GLP-1 script growth removes a high-margin specialty revenue stream that has underpinned Evernorth's recent earnings beats and 2026 guidance raises."
    }
   ],
-  "bottom_line": "Cigna has deliberately transformed into a PBM- and specialty-pharmacy-centric company at precisely the moment when those businesses face maximum regulatory scrutiny.",
+  "bottom_line": "At 8x forward earnings and a 10% free-cash-flow yield, Cigna offers material upside if management executes the rebate-free pivot without material client defections.",
   "subheadline": "Targeting 13\u201316% EPS growth resumption as pricing, benefit cuts, and Optum scale offset Medicare headwinds",
   "core_question": "Can Cigna defend Evernorth's PBM economics and convert specialty/biosimilar tailwinds into durable earnings growth fast enough to overcome regulatory and competitive margin pressure?",
   "opportunities": [
    {
     "title": "Biosimilar Wave and Specialty Drug Growth",
     "icon": "growth",
-    "detail": "Specialty & Care Services earnings rose 22% YoY in Q2 2026 as Cigna aggressively steers utilization toward biosimilars (Humira, Remicade interchangeables) via preferred formulary placement and $500 patient incentives."
+    "detail": "By end-2024, nearly 50% of eligible Humira scripts converted to biosimilars at $0 copay. Extending zero-cost biosimilars to Stelara and other high-cost biologics drives member savings and improves Evernorth's reputation, potentially winning net-new PBM clients in the 2027 selling season."
    },
    {
     "title": "Signature Rebate-Free Model Differentiation",
     "icon": "technology",
-    "detail": "Rather than viewing the rebate-free mandate as a margin threat, Cigna is positioning Signature as proactive regulatory alignment and client demand response."
+    "detail": "Rolling out point-of-sale discounts for fully insured lives in 2027 and all clients in 2028 could differentiate Express Scripts from CVS Caremark and OptumRx, neutralize political risk, and lock in multi-year contracts with transparency-minded employers despite near-term margin pressure."
    },
    {
     "title": "Portfolio Simplification and Capital Efficiency",
     "icon": "growth",
-    "detail": "Divesting Medicare Advantage (sold for $3.7B in March 2025) and exiting ACA exchanges (end-2026) removes low-margin, high-regulation, government-reimbursed businesses where Cigna lacked scale."
+    "detail": "Rising GLP-1 utilization for diabetes and weight management generates higher revenue per member and rebate dollars. Evernorth launched a 15% annual cost-cap program for GLP-1s, positioning to capture employers seeking predictable obesity-drug spend."
    },
    {
     "title": "Behavioral Health and Care Services Expansion",
     "icon": "growth",
-    "detail": "Management repeatedly emphasizes AI adoption to enhance personalized care, predict high-cost episodes, optimize formulary design, and automate prior authorization."
+    "detail": "Divesting low-margin Medicare Advantage frees capital and management bandwidth to focus on large and mid-market employer groups, where Cigna's integrated medical-pharmacy offering and stop-loss expertise provide a bundled value proposition competitors struggle to match."
    },
    {
     "title": "FTC Settlement Removes Regulatory Overhang",
     "icon": "technology",
-    "detail": "GLP-1 utilization (Ozempic, Wegovy) is the #1 pharmacy trend driver for 2026, with forecasts near 10% U.S. population penetration within the decade, expanding Evernorth volumes."
+    "detail": "Deploying AI tools (Pharmacy Forward $100M initiative launched July 2026, Accredo AI care coordination) to personalize treatment pathways, reduce avoidable spend, and improve clinical outcomes can lower medical trend for Healthcare and attract higher-margin self-funded employer clients."
    }
   ],
   "business_model": [
    {
-    "name": "Pharmacy Benefit Management",
-    "description": "Express Scripts negotiates drug pricing with manufacturers (rebates\u2026"
+    "name": "PBM Spread & Formulary Management",
+    "description": "Express Scripts adjudicates pharmacy claims, negotiates manufacturer rebates, manages formulary placement, and earns spread between\u2026"
    },
    {
-    "name": "Specialty Pharmacy & Distribution",
-    "description": "Accredo dispenses high-cost specialty drugs (biologics, oncology, rare\u2026"
+    "name": "Specialty Pharmacy Dispensing",
+    "description": "Accredo and affiliated specialty pharmacies dispense high-cost biologics and specialty medications for chronic and complex\u2026"
    },
    {
-    "name": "Medical Insurance Underwriting",
-    "description": "Cigna Healthcare collects premiums from employer clients and individual\u2026"
+    "name": "Medical Insurance Premiums & Risk",
+    "description": "Cigna Healthcare collects monthly premiums from employer groups and individuals, assumes medical cost risk, and earns underwriting\u2026"
    },
    {
-    "name": "Integrated Services & Data Monetization",
-    "description": "Cross-sell pharmacy and medical data analytics, care coordination\u2026"
+    "name": "Integrated Health Services",
+    "description": "Care management programs (behavioral health, chronic condition coaching, virtual care) and value-based arrangements that generate\u2026"
    }
   ],
   "final_takeaway": "Cigna is a show-me story trading at a distressed valuation that assumes PBM economics are permanently impaired. The company has proactively reshaped its portfolio to concentrate on employer-sponsored insurance and pharmacy benefits, positioning Evernorth to capture specialty drug and biosimilar tailwinds.",
@@ -865,7 +865,7 @@
    "Healthcare MCR 84.5% in Q2, inside the 83.7-84.7% target; members +2% YoY",
    "Trades 8.3x forward vs 16.2x ten-year average; 10.4% free cash flow yield"
   ],
-  "thesis_summary": "Cigna represents a contrarian bet on pharmacy benefit management at a time when PBM economics face intense regulatory scrutiny. The company has deliberately reshaped its portfolio, exiting volatile Medicare Advantage in March 2025 and abandoning individual ACA exchanges, to concentrate capital on two pillars: Evernorth Health Services and employer-focused commercial insurance. Evernorth now drives approximately 60% of company profits.",
+  "thesis_summary": "The Cigna Group trades at 8.3x forward earnings despite raising 2026 adjusted EPS guidance to at least $30.45, implying a 60-70% discount to healthcare peers and its own ten-year average P/E of 16.",
   "earnings_history": {
    "metric": "Adjusted EPS",
    "cycle_note": "Cigna has compounded adjusted EPS at ~12% annually from 2020-2025, driven by Evernorth volume growth, share buybacks, and commercial insurance margin expansion. 2026 growth slows to ~2% as large PBM client renewals and Signature model investments offset specialty strength.",
@@ -919,7 +919,7 @@
    "Debt-to-cap 42.3%, improved 70 bps in Q1; target 40%",
    "Operating cash $710M H1 vs $34M H1 2025"
   ],
-  "other_profit_pool": "Evernorth Specialty and Care Services delivered $1.1B pre-tax earnings in Q2 2026, up 22% YoY, driven by specialty drug volumes\u2026",
+  "other_profit_pool": "Corporate-Owned Life Insurance (COLI) and run-off settlement annuity blocks contribute modest investment income",
   "valuation_callout": "Trading ~20\u00d7 2026E vs 22\u00d7 historical; discount reflects margin uncertainty. Multiple re-rate to 24\u00d7 on execution = $500 PT.",
   "valuation_metrics": [
    {

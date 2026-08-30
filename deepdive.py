@@ -66,7 +66,7 @@ _WORD_BUDGETS = [
     ("other_profit_pool", 20),      # DE 15
     ("valuation_callout", 22),      # DE 17
     ("final_takeaway", 50),         # DE 38
-    ("bottom_line", 26),            # DE 9
+    ("bottom_line", 38),            # DE 9
     ("secondary_bottom_line", 7),   # DE 5
 ]
 
@@ -92,26 +92,26 @@ _EXACT_COUNTS = [
 # UNH's bullets carry figures like "(85.2% Q3'24 vs 84.1% prior)" that wrap to
 # two lines at the same word count Deere's fit on one, so the fifth thesis
 # bullet and the sixth financial bullet still overran. Pinned to the DE actuals.
-_ONEPAGER_SIGNPOST_CELL_WORDS = 14
+_ONEPAGER_SIGNPOST_CELL_WORDS = 22
 
 _LIST_ITEM_WORDS = [
-    ("thesis_bullets", 17),      # DE max item 11
-    ("financial_bullets", 14),   # DE max item 9
+    ("thesis_bullets", 22),      # DE max item 11
+    ("financial_bullets", 18),   # DE max item 9
     ("bull_case", 16),           # DE max item 4
     ("bear_case", 16),           # DE max item 4
 ]
 
 # Per-item limits inside object lists, same derivation.
 _NESTED_ITEM_WORDS = [
-    ("opportunities", "detail", 34),      # DE max 9
+    ("opportunities", "detail", 44),      # DE max 9
     # The one-pager's business-model cards sit at fixed SVG coordinates with a
     # caption strip immediately below, calibrated to Deere's 6-word
     # descriptions. Longer text cannot be scaled out of that collision because
     # the box itself is what runs into the caption, so this stays short. The
     # memo carries the full description (46 words).
-    ("business_model", "description", 11),# DE max 6
-    ("segments", "description", 30),      # DE max 8
-    ("threats", "watch_for", 30),         # DE max 17
+    ("business_model", "description", 20),# DE max 6
+    ("segments", "description", 42),      # DE max 8
+    ("threats", "watch_for", 42),         # DE max 17
 ]
 
 
@@ -127,8 +127,8 @@ _LIST_ITEM_CHARS = [
     # Exactly the DE maximum. 72 was tried and it trimmed the DE reference itself,
     # which would mean degrading the calibration standard to make another company
     # fit -- the wrong trade. 76 leaves DE untouched and still pulls UNH in.
-    ("thesis_bullets", 112),
-    ("financial_bullets", 100),   # DE max 69
+    ("thesis_bullets", 145),
+    ("financial_bullets", 128),   # DE max 69
     # Bull/bear render as a fixed-height list on two-pager page 2 that holds
     # five single lines. Word counts do not decide that: DE's items reach 26
     # characters and sit on one line, while UNH and Cigna hit 43-44 at the same
@@ -145,11 +145,11 @@ _LIST_ITEM_CHARS = [
 ]
 
 _NESTED_ITEM_CHARS = [
-    ("opportunities", "detail", 220),
-    ("business_model", "description", 76),
+    ("opportunities", "detail", 290),
+    ("business_model", "description", 132),
     # Same fixed box on two-pager page 2: at 137-178 characters the fourth
     # threat's body was not printed at all. DE max is 111.
-    ("threats", "watch_for", 175),   # DE max 111
+    ("threats", "watch_for", 250),   # DE max 111
 ]
 
 
@@ -459,14 +459,14 @@ _MASTER_WORD_BUDGETS = [
     (("investment_thesis", "variant_view"), 70),    # DE 20
     (("company_overview", "summary"), 100),         # DE 55
     (("final_takeaway",), 110),                     # DE 39
-    (("bottom_line",), 30),                         # DE 6
+    (("bottom_line",), 44),                         # DE 6
     # The valuation panel and metric captions on memo page 2. All were
     # uncapped, and a live run returned a 101-word valuation_comment against
     # Deere's 14 -- the panel rendered 787px tall inside a 390px box, which was
     # the single largest source of clipping anywhere in the memo.
     # Shares the 245px column with the four target cards above it; 40 words
     # overflowed the panel onto the sensitivity matrix. DE is 14.
-    (("financial_snapshot", "valuation_comment"), 24),
+    (("financial_snapshot", "valuation_comment"), 40),
     (("financial_snapshot", "revenue_context"), 26),     # DE 5
     (("financial_snapshot", "margin_context"), 26),      # DE 5
     (("financial_snapshot", "eps_context"), 26),         # DE 7
@@ -501,8 +501,8 @@ _MASTER_SIGNPOST_CELL_WORDS = [
     ("signpost", 8),
     ("current", 10),
     ("target", 12),
-    ("why", 42),
-    ("why_it_matters", 42),
+    ("why", 56),
+    ("why_it_matters", 56),
 ]
 
 _MASTER_LIST_CAPS = [
@@ -533,25 +533,25 @@ _MASTER_LIST_CAPS = [
 # across the next card's title on memo page 1 ("...rebate retention." landing on
 # "Commercial Health Insurance"). DE max is 82.
 _MASTER_NESTED_ITEM_CHARS = [
-    (("business_model",), "description", 175),
+    (("business_model",), "description", 300),
 ]
 
 _MASTER_ITEM_WORDS = [
     # Uncapped until a live run returned 40-word segment descriptions against
     # Deere's 8, which is most of why the memo's overview section ran 170px past
     # its box. These sit in a three-across grid; they are labels, not prose.
-    (("company_overview", "segments"), "description", 26),   # DE max 8
+    (("company_overview", "segments"), "description", 40),   # DE max 8
     # a four-segment company has to fit the space Deere's three occupy
-    (("opportunities",), "detail", 62),             # DE max 14
-    (("business_model",), "description", 46),       # DE max 10
+    (("opportunities",), "detail", 85),             # DE max 14
+    (("business_model",), "description", 62),       # DE max 10
     (("thesis_threats",), "watch_for", 45),         # DE max 17
     (("signposts",), "why_it_matters", 42),         # DE max 7
-    (("catalysts",), "why_it_matters", 46),         # DE max 8
+    (("catalysts",), "why_it_matters", 62),         # DE max 8
     # Memo page 2 renders these as four cards stacked above the valuation
     # summary in a 245px column. At 20 words the contexts filled the column and
     # the summary printed on top of them, and of the sensitivity matrix beside
     # it. DE's own maximum is 2 words.
-    (("financial_snapshot", "management_targets"), "context", 11),
+    (("financial_snapshot", "management_targets"), "context", 20),
     # Never capped before, and the worst offender: UNH returned 50-word scenario
     # logic against Deere's 6, which is most of why the decision section on page
     # 3 ran 127px past its box.

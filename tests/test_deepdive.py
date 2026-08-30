@@ -69,7 +69,9 @@ def test_golden_segments_sum_to_a_drawable_pie(golden):
 
 def test_overlong_prose_is_caught(golden):
     _m, op, _s = golden
-    bad = dict(op, bottom_line=' '.join(['word'] * 30))
+    # Above the current cap (38 words); the caps were loosened once the
+    # fitting passes could scale an over-full box.
+    bad = dict(op, bottom_line=' '.join(['word'] * 60))
     assert any('bottom_line' in v for v in dd.onepager_violations(bad))
 
 
@@ -674,19 +676,19 @@ def test_master_signpost_cells_are_capped_under_both_key_names():
             {'signpost': 'A very long signpost name that keeps going well past any sane width',
              'current': ' '.join(['cur'] * 30),
              'target': ' '.join(['tgt'] * 30),
-             'why_it_matters': ' '.join(['why'] * 45)},
+             'why_it_matters': ' '.join(['why'] * 80)},
             {'signpost': 'Short', 'current': 'x', 'target': 'y',
-             'why': ' '.join(['legacy'] * 45)},
+             'why': ' '.join(['legacy'] * 80)},
         ]
     }
     from deepdive import enforce_master_budgets
     out, trimmed = enforce_master_budgets(m)
     a, b = out['signposts']
-    assert len(a['why_it_matters'].split()) <= 42, 'why_it_matters was not capped'
+    assert len(a['why_it_matters'].split()) <= 56, 'why_it_matters was not capped'
     assert len(a['signpost'].split()) <= 8
     assert len(a['current'].split()) <= 10
     assert len(a['target'].split()) <= 12
-    assert len(b['why'].split()) <= 42, 'the legacy "why" spelling must stay capped too'
+    assert len(b['why'].split()) <= 56, 'the legacy "why" spelling must stay capped too'
 
 
 def test_all_six_signposts_survive_the_master_budget():
