@@ -92,7 +92,11 @@ _EXACT_COUNTS = [
 # UNH's bullets carry figures like "(85.2% Q3'24 vs 84.1% prior)" that wrap to
 # two lines at the same word count Deere's fit on one, so the fifth thesis
 # bullet and the sixth financial bullet still overran. Pinned to the DE actuals.
-_ONEPAGER_SIGNPOST_CELL_WORDS = 22
+# Tighter than the memo's 56 because the two-pager's signpost table and the
+# memo's decision lens are the two blocks that, with legibility enforced, could
+# not shrink far enough to hold their content. When type size is a hard floor,
+# the only remaining variable is how much text a block is given.
+_ONEPAGER_SIGNPOST_CELL_WORDS = 16
 
 _LIST_ITEM_WORDS = [
     ("thesis_bullets", 22),      # DE max item 11
@@ -456,7 +460,7 @@ _MASTER_WORD_BUDGETS = [
     # gap was enormous -- variant_view came back at 86 words against Deere's 20,
     # and it feeds both the thesis and decision sections.
     (("investment_thesis", "summary"), 260),        # DE 118; research prompt asks 160-240
-    (("investment_thesis", "variant_view"), 70),    # DE 20
+    (("investment_thesis", "variant_view"), 44),    # DE 20
     (("company_overview", "summary"), 100),         # DE 55
     (("final_takeaway",), 110),                     # DE 39
     (("bottom_line",), 44),                         # DE 6
@@ -466,7 +470,7 @@ _MASTER_WORD_BUDGETS = [
     # the single largest source of clipping anywhere in the memo.
     # Shares the 245px column with the four target cards above it; 40 words
     # overflowed the panel onto the sensitivity matrix. DE is 14.
-    (("financial_snapshot", "valuation_comment"), 40),
+    (("financial_snapshot", "valuation_comment"), 28),
     (("financial_snapshot", "revenue_context"), 26),     # DE 5
     (("financial_snapshot", "margin_context"), 26),      # DE 5
     (("financial_snapshot", "eps_context"), 26),         # DE 7
@@ -507,15 +511,15 @@ _MASTER_SIGNPOST_CELL_WORDS = [
 
 _MASTER_LIST_CAPS = [
     (("investment_thesis", "what_market_prices_in"), 3, 30),   # DE max 9
-    (("investment_thesis", "what_must_be_true"), 3, 30),       # DE max 9
-    (("investment_thesis", "falsification"), 3, 30),           # DE max 10
+    (("investment_thesis", "what_must_be_true"), 3, 22),       # DE max 9
+    (("investment_thesis", "falsification"), 3, 22),           # DE max 10
     # The two-pager renders these into a fixed box and they were never capped:
     # they drove tp-financial 41px past its bounds on the live UNH run.
     # These become the six KPI cards on memo page 2 and the bullet column on the
     # two-pager. At 14 words they wrapped to extra lines and pushed the metrics
     # block from Deere's 231px to 336px, which is most of the overflow on that
     # page. DE's own maximum is 10.
-    (("financial_snapshot", "financial_bullets"), 6, 14),
+    (("financial_snapshot", "financial_bullets"), 6, 11),
     (("opportunities",), 5, None),
     (("business_model",), 4, None),
     (("signposts",), 6, None),
@@ -551,7 +555,7 @@ _MASTER_ITEM_WORDS = [
     # summary in a 245px column. At 20 words the contexts filled the column and
     # the summary printed on top of them, and of the sensitivity matrix beside
     # it. DE's own maximum is 2 words.
-    (("financial_snapshot", "management_targets"), "context", 20),
+    (("financial_snapshot", "management_targets"), "context", 13),
     # Never capped before, and the worst offender: UNH returned 50-word scenario
     # logic against Deere's 6, which is most of why the decision section on page
     # 3 ran 127px past its box.

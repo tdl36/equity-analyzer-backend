@@ -534,16 +534,16 @@
   "investment_thesis": {
    "summary": "The Cigna Group trades at 8.3x forward earnings despite raising 2026 adjusted EPS guidance to at least $30.45, implying a 60-70% discount to healthcare peers and its own ten-year average P/E of 16. The market appears to price in four persistent concerns: PBM margin compression from regulatory scrutiny and the company's own 2027/2028 rebate-free model rollout, moderating GLP-1 utilization growth after robust tailwinds in 2024-2025, loss of Medicare Advantage membership following the March 2025 divestiture to HCSC, and the risk that Evernorth's ~80% of segment earnings proves structurally less durable than historical results suggest. Bulls counter that Evernorth's scale in specialty pharmacy, biosimilar adoption, and care services provides resilient earnings even under transparency pressure, and that consistent mid-single-digit revenue growth, 16-17% ROE, and aggressive buybacks will drive per-share value. The thesis breaks if FY 2027 EPS falls materially below $30.",
    "core_question": "Can Cigna defend Evernorth's PBM economics and convert specialty/biosimilar tailwinds into durable earnings growth fast enough to overcome regulatory and competitive margin pressure?",
-   "variant_view": "Consensus sees Cigna as a mature, low-growth cash cow vulnerable to PBM disruption. The variant is that the February 2026 FTC settlement marks the regulatory peak, the Signature model will prove more attractive to large employers than incumbent rebate structures, and Evernorth's unmatched specialty pharmacy scale becomes a durable moat as $100B+ in branded drugs face biosimilar competition over the next five years.",
+   "variant_view": "Consensus sees Cigna as a mature, low-growth cash cow vulnerable to PBM disruption. The variant is that the February 2026 FTC settlement marks the regulatory peak, the Signature model will prove more attractive to large employers than incumbent rebate structures, and Evernorth's unmatched specialty\u2026",
    "what_market_prices_in": [
     "PBM margin compression of 100-200 bps through 2027-2028 as the rebate-free model shifts economics from employers to members, reducing retained revenue per script",
     "Moderating GLP-1 utilization growth after the robust tailwinds of 2024 and 2025, with script growth decelerating into 2027",
     "Permanent loss of Medicare Advantage scale following the March 2025 divestiture, leaving a narrower employer-only franchise"
    ],
    "what_must_be_true": [
-    "Evernorth must deliver at least $6.9 billion in pre-tax earnings in 2026 and maintain that level through 2027-2028 despite rebate model changes, implying stable or growing specialty pharmacy volume",
-    "Cigna Healthcare must sustain a medical care ratio between 83.7-84.7% and achieve at least $4.55 billion in pre-tax earnings, requiring disciplined underwriting in the employer group market",
-    "The company must execute $3-5 billion in annual share buybacks to offset flat earnings growth and compound per-share value, requiring sustained free cash flow of $7-8 billion per year"
+    "Evernorth must deliver at least $6.9 billion in pre-tax earnings in 2026 and maintain that level through 2027-2028 despite rebate model changes\u2026",
+    "Cigna Healthcare must sustain a medical care ratio between 83.7-84.7% and achieve at least $4.55 billion in pre-tax earnings, requiring disciplined underwriting\u2026",
+    "The company must execute $3-5 billion in annual share buybacks to offset flat earnings growth and compound per-share value, requiring sustained free\u2026"
    ],
    "falsification": [
     "Full-year 2026 adjusted EPS comes in below $30.00, signaling execution risk in either Evernorth or Healthcare segments",
@@ -776,37 +776,37 @@
     "signpost": "2027 PBM Selling Season Wins",
     "current": "Early positive Signature feedback",
     "target": "Net new lives >=5M; retain >=95% existing",
-    "why": "Any quarter below $1.65B signals PBM margin pressure or client losses are accelerating faster than management guidance suggests, threatening the bull thesis."
+    "why": "Any quarter below $1.65B signals PBM margin pressure or client losses are accelerating faster than management\u2026"
    },
    {
     "signpost": "Specialty Pharmacy Revenue Growth",
     "current": "Specialty & Care earnings +22% Q2 2026",
     "target": "Sustain low-teens earnings growth through 2027",
-    "why": "MCR above 85% for two quarters indicates loss of pricing discipline or adverse selection, eroding the $4.55B pre-tax earnings target and overall\u2026"
+    "why": "MCR above 85% for two quarters indicates loss of pricing discipline or adverse selection, eroding the\u2026"
    },
    {
     "signpost": "Cigna Healthcare Medical Care Ratio",
     "current": "84.5% Q2 2026 (elevated by Individual plans)",
     "target": "Trend toward 83-84% as Individual exits",
-    "why": "Net client losses in the 2027 selling season would validate fears that transparency demands or rebate-free complexity drive employers to smaller PBMs\u2026"
+    "why": "Net client losses in the 2027 selling season would validate fears that transparency demands or rebate-free\u2026"
    },
    {
     "signpost": "Free Cash Flow Conversion",
     "current": "$710M H1 2026 (seasonal trough)",
     "target": "FY 2026 FCF >=$8.5B (return to growth)",
-    "why": "Buyback pace signals management confidence in earnings durability and balance-sheet strength. A cut below $3B would suggest liquidity concerns or reduced conviction\u2026"
+    "why": "Buyback pace signals management confidence in earnings durability and balance-sheet strength."
    },
    {
     "signpost": "PBM Regulatory Developments",
     "current": "FTC settled Feb 2026; no new federal bills",
     "target": "No new material legislation through 2027",
-    "why": "Low adoption would indicate the model is unattractive to employers who lose rebate revenue to fund it, and a failure to differentiate\u2026"
+    "why": "Low adoption would indicate the model is unattractive to employers who lose rebate revenue to fund\u2026"
    },
    {
     "signpost": "Debt-to-Capitalization Ratio",
     "current": "42.3% (Q1 2026)",
     "target": "<=40% by year-end 2026",
-    "why": "Slowing GLP-1 script growth removes a high-margin specialty revenue stream that has underpinned Evernorth's recent earnings beats and 2026 guidance raises."
+    "why": "Slowing GLP-1 script growth removes a high-margin specialty revenue stream that has underpinned Evernorth's recent earnings\u2026"
    }
   ],
   "bottom_line": "At 8x forward earnings and a 10% free-cash-flow yield, Cigna offers material upside if management executes the rebate-free pivot without material client defections.",

@@ -57,6 +57,29 @@ ReactDOM.render(tree, root, () => {
             applyPrintLayout(view);
             // ?nozoom=1 strips the auto-fit zoom so it can be ruled in or out
             // as the cause of the rasterised, textless print output.
+            if (q.get('fonts') === '1') {
+                // legibility report: smallest painted text per section, in
+                // printed points (canvas px * 0.75, since 1024px -> 768pt)
+                const rows = [];
+                const cum = (el) => { let z = 1, n = el;
+                    while (n && n !== document.body) { z *= parseFloat(getComputedStyle(n).zoom) || 1; n = n.parentElement; }
+                    return z; };
+                document.querySelectorAll('.strict-fit, .nbv-root').forEach(sec => {
+                    let min = 99, who = '';
+                    sec.querySelectorAll('*').forEach(n => {
+                        if (!n.textContent || !n.textContent.trim()) return;
+                        if (n.children.length) return;
+                        const fs = parseFloat(getComputedStyle(n).fontSize) || 0;
+                        const eff = fs * cum(n);
+                        if (eff > 0 && eff < min) { min = eff; who = n.textContent.trim().slice(0, 22); window.__baseAt = fs; }
+                    });
+                    if (min < 99) rows.push(`${(sec.className||'').split(' ')[0]}: eff=${(min*0.75).toFixed(1)}pt `
+                        + `base=${((window.__baseAt||0)*0.75).toFixed(1)}pt zoom=${(min/(window.__baseAt||1)).toFixed(2)}  "${who}"`);
+                });
+                const pre = document.createElement('pre'); pre.id='__fonts';
+                pre.textContent = rows.join('\n');
+                document.documentElement.appendChild(pre);
+            }
             if (q.get('fitreport') === '1') {
                 const rows = [];
                 // foreignObject fit report

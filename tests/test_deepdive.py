@@ -657,7 +657,7 @@ def test_javascript_render_tests_pass():
     if not shutil.which('node'):
         pytest.skip('node not installed')
     for suite in ('tests/js/sensitivity.test.mjs', 'tests/js/chart.test.mjs',
-                  'tests/js/segments.test.mjs'):
+                  'tests/js/segments.test.mjs', 'tests/js/framing.test.mjs'):
         r = subprocess.run(['node', suite], capture_output=True, text=True, timeout=120)
         assert r.returncode == 0, f'{suite} failed:\n{r.stdout}\n{r.stderr}'
 

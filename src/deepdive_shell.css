@@ -246,3 +246,25 @@
 
 /* The target cards must not paint over the summary beneath them. */
 .dd-artifact .v21-fin-core .report-target-grid { overflow: hidden; }
+
+/* Nothing starts below the readable minimum.
+ *
+ * The chart's axis labels are 8px (6pt printed), which is below the floor the
+ * fitter now enforces, so a section containing the chart could never be scaled
+ * at all. Raising them to the minimum makes the constraint coherent and is
+ * what the reader wanted anyway. */
+.dd-artifact .earnings-chart text,
+.dd-artifact .earnings-chart .xlab,
+.dd-artifact .earnings-chart .anno,
+.dd-artifact .nbv-chart-svg .xlab,
+.dd-artifact .nbv-chart-svg .anno,
+.dd-artifact .tp-chart .xlab,
+.dd-artifact .tp-chart .anno { font-size: 10px !important; }
+
+/* Remaining sub-minimum type in the ported sheet. Same reasoning: the fitter
+   treats the smallest text in a block as its legibility budget, so anything
+   authored below the floor both reads badly and freezes the block. */
+.dd-artifact .report-sensitivity small { font-size: 10px !important; }
+.dd-artifact .tp-targets small { font-size: 10px !important; }
+.dd-artifact .report-target small,
+.dd-artifact .report-val-panel small { font-size: 10px !important; }

@@ -218,7 +218,8 @@ export const autoFitBlocks = (root) => {
         // A block only needs fitting if its content is taller than its box.
         if (el.scrollHeight <= box + 1) return;
 
-        let lo = BLOCK_FIT_FLOOR, hi = 1, best = BLOCK_FIT_FLOOR;
+        const bfloor = floorFor(el, BLOCK_FIT_FLOOR);
+        let lo = bfloor, hi = 1, best = bfloor;
         for (let i = 0; i < 7; i++) {
             const k = (lo + hi) / 2;
             el.style.zoom = String(k.toFixed(3));
@@ -261,7 +262,8 @@ export const autoFitForeignObjects = (root) => {
 
         // zoom multiplies painted size, so content fits when scrollHeight * k
         // is inside the box. scrollHeight itself stays in unzoomed units.
-        let lo = FOREIGN_FIT_FLOOR, hi = 1, best = FOREIGN_FIT_FLOOR;
+        const ffloor = floorFor(child, FOREIGN_FIT_FLOOR);
+        let lo = ffloor, hi = 1, best = ffloor;
         for (let i = 0; i < 7; i++) {
             const k = (lo + hi) / 2;
             child.style.zoom = String(k.toFixed(3));
@@ -309,7 +311,7 @@ export const autoFitPages = (root) => {
         const needed = main.scrollHeight;
         if (!needed || needed <= available + 1) return;
 
-        const k = Math.max(PAGE_FIT_FLOOR, (available - 2) / needed);
+        const k = Math.max(floorFor(main, PAGE_FIT_FLOOR), (available - 2) / needed);
         main.style.zoom = String(k.toFixed(3));
         if (main.scrollHeight * k > available + 2) {
             unfit.push((pg.className || '').toString().split(' ')[0] || 'page');
@@ -317,6 +319,37 @@ export const autoFitPages = (root) => {
     });
     return unfit;
 };
+
+/* Legibility is a hard constraint, not a preference.
+ *
+ * The floors used to be flat ratios (0.55, 0.50), which meant a section with
+ * 10pt type could be scaled to 6.1pt to make its content fit. That is not a
+ * fit; it is content the reader cannot use. The floor now comes from the type
+ * itself: a block may shrink only until its SMALLEST text reaches the minimum
+ * readable size, and no further.
+ *
+ * The consequence is deliberate. With a fixed canvas you can have at most two
+ * of {all the content, readable type, a fixed page count}. Type and page count
+ * are design invariants here, so content volume is what has to give -- and it
+ * gives through the budgets, where a trim ends on a sentence, rather than
+ * through a scale factor that quietly makes everything unreadable.
+ */
+const MIN_TEXT_PX = 10;        // 7.5pt on the 1024px canvas (1px = 0.75pt)
+
+const legibilityFloor = (el) => {
+    let min = Infinity;
+    el.querySelectorAll('*').forEach((n) => {
+        if (n.children.length) return;
+        if (!n.textContent || !n.textContent.trim()) return;
+        const fs = parseFloat(getComputedStyle(n).fontSize) || 0;
+        if (fs > 0 && fs < min) min = fs;
+    });
+    if (!isFinite(min) || min <= 0) return 0;
+    return Math.min(1, MIN_TEXT_PX / min);
+};
+
+/* The floor actually applied to an element: never below what its type allows. */
+const floorFor = (el, base) => Math.max(base, legibilityFloor(el));
 
 const CLIP_FIT_FLOOR = 0.50;
 
@@ -403,10 +436,11 @@ export const fitUntilClean = (root) => {
     owners.forEach((sec) => {
         let z = parseFloat(sec.style.zoom) || 1;
         let guard = 0;
+        const ofloor = floorFor(sec, CLIP_FIT_FLOOR);
         while ((crossesPageBounds(sec) || Array.from(sec.querySelectorAll(PROTECTED_SEL))
                     .some(crossesPageBounds))
-               && z > CLIP_FIT_FLOOR && guard++ < 16) {
-            z = Math.max(CLIP_FIT_FLOOR, z - 0.035);
+               && z > ofloor && guard++ < 16) {
+            z = Math.max(ofloor, z - 0.035);
             sec.style.zoom = String(z.toFixed(3));
         }
     });
@@ -415,8 +449,9 @@ export const fitUntilClean = (root) => {
         let z = parseFloat(sec.style.zoom) || 1;
         let guard = 0;
         const bad = () => childContentOverflows(sec) || crossesPageBounds(sec);
-        while (bad() && z > CLIP_FIT_FLOOR && guard++ < 16) {
-            z = Math.max(CLIP_FIT_FLOOR, z - 0.035);
+        const cfloor = floorFor(sec, CLIP_FIT_FLOOR);
+        while (bad() && z > cfloor && guard++ < 16) {
+            z = Math.max(cfloor, z - 0.035);
             sec.style.zoom = String(z.toFixed(3));
         }
         if (bad()) {
@@ -493,7 +528,7 @@ export const autoFitAgainstParent = (root) => {
         const natural = sec.offsetHeight;
         if (!natural || natural <= available + 1) return;
 
-        const k = Math.max(SECTION_FIT_FLOOR, (available - 1) / natural);
+        const k = Math.max(floorFor(sec, SECTION_FIT_FLOOR), (available - 1) / natural);
         sec.style.zoom = String(k.toFixed(3));
         if (sec.offsetHeight * k > available + 2) {
             unfit.push((sec.className || '').toString().split(' ')[0] || 'section');
@@ -524,7 +559,7 @@ export const autoFitSections = (root) => {
         // including those pixel values, which is the only lever that actually
         // shrinks this layout without rebuilding it.
         const needed = box / sec.scrollHeight;
-        const scale = Math.max(SECTION_FIT_FLOOR, needed * 0.995);
+        const scale = Math.max(floorFor(sec, SECTION_FIT_FLOOR), needed * 0.995);
         sec.style.zoom = String(scale.toFixed(3));
 
         if (sec.scrollHeight > sec.clientHeight + 2) {

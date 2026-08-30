@@ -277,6 +277,51 @@ function pickSpread(sorted, n){
   while(out.length<n) out.push(Math.round((out[out.length-1]+step)*100)/100);
   return out.slice(0,n);
 }
+/* Is this company's earnings history actually cyclical?
+ *
+ * The v24 template was calibrated on Deere, whose adjusted EPS swings from 45
+ * to 16 and back, so it hard-codes "Earnings Are Cyclical" and "Mid-Cycle"
+ * framing everywhere. On a secular compounder like Eaton -- earnings rising in
+ * every year of the series -- those labels assert a business characteristic
+ * that is not there, and "mid-cycle" EPS is a meaningless anchor when there is
+ * no cycle to be mid of. Classify from the series instead of assuming.
+ *
+ * Cyclical means a real peak-to-trough drawdown AND more than one change of
+ * direction; a single dip in an otherwise rising series is not a cycle.
+ */
+function earningsPattern(history) {
+  const vals = (history?.points || [])
+    .map(p => Number(p.value)).filter(Number.isFinite);
+  if (vals.length < 4) return 'unknown';
+
+  let peak = vals[0], maxDrawdown = 0;
+  for (const v of vals) {
+    if (v > peak) peak = v;
+    if (peak > 0) maxDrawdown = Math.max(maxDrawdown, (peak - v) / peak);
+  }
+  let reversals = 0;
+  for (let i = 2; i < vals.length; i++) {
+    const a = Math.sign(vals[i - 1] - vals[i - 2]);
+    const b = Math.sign(vals[i] - vals[i - 1]);
+    if (a && b && a !== b) reversals++;
+  }
+  return (maxDrawdown >= 0.20 && reversals >= 2) ? 'cyclical' : 'secular';
+}
+/* Labels that follow from that, so a growth company is not described with a
+   cycle vocabulary it does not have. */
+function earningsLabels(history) {
+  const cyclical = earningsPattern(history) === 'cyclical';
+  return {
+    cyclical,
+    chartTitle:  cyclical ? 'Earnings Are Cyclical' : 'Earnings Trajectory',
+    chartHead:   cyclical ? 'Earnings Cycle'        : 'Earnings Trajectory',
+    matrixTitle: cyclical ? 'Mid-Cycle EPS \u00d7 P/E Sensitivity'
+                          : 'Forward EPS \u00d7 P/E Sensitivity',
+    targetsTitle: cyclical ? 'Mid-Cycle Targets'    : 'Management Targets',
+    targetsTitleCaps: cyclical ? 'MID-CYCLE<br/>TARGETS' : 'MANAGEMENT<br/>TARGETS',
+  };
+}
+
 function reportSensitivityHTML(m,f){
   const scenarios=m.valuation_scenarios||[];
   const current=parseMoneyNumber(m.at_glance?.share_price);
@@ -323,7 +368,7 @@ function reportSensitivityHTML(m,f){
 
   const fmtEps=e=>Number.isInteger(e)?String(e):e.toFixed(2).replace(/0$/,'');
   const cell=(e,mult)=>{const v=Math.round(e*mult); let c='neutral'; if(current){const r=v/current;c=r<.9?'down':r>1.1?'up':'near'} return `<td class="${c}"><b>$${v.toLocaleString()}</b></td>`};
-  return `<div class="report-sensitivity"><div class="report-matrix-title">Mid-Cycle EPS \u00d7 P/E Sensitivity</div><table><thead><tr><th>EPS \\ P/E</th>${cols.map(x=>`<th>${x}x</th>`).join('')}</tr></thead><tbody>${rows.map(e=>`<tr><th>$${fmtEps(e)}</th>${cols.map(mu=>cell(e,mu)).join('')}</tr>`).join('')}</tbody></table><small>Illustrative share price = EPS \u00d7 P/E. ${current?`Current share price reference: ${esc(String(m.at_glance?.share_price||'').startsWith('~')?m.at_glance.share_price:'~'+String(m.at_glance?.share_price||''))}.`:''}</small></div>`;
+  return `<div class="report-sensitivity"><div class="report-matrix-title">${earningsLabels(m.earnings_history).matrixTitle}</div><table><thead><tr><th>EPS \\ P/E</th>${cols.map(x=>`<th>${x}x</th>`).join('')}</tr></thead><tbody>${rows.map(e=>`<tr><th>$${fmtEps(e)}</th>${cols.map(mu=>cell(e,mu)).join('')}</tr>`).join('')}</tbody></table><small>Illustrative share price = EPS \u00d7 P/E. ${current?`Current share price reference: ${esc(String(m.at_glance?.share_price||'').startsWith('~')?m.at_glance.share_price:'~'+String(m.at_glance?.share_price||''))}.`:''}</small></div>`;
 }
 function reportSensitivityWideHTML(m,f){
   return `<div class="report-sensitivity-wide">${reportSensitivityHTML(m,f)}</div>`;
@@ -381,7 +426,7 @@ function renderReport() {
   </article>
   <article class="report-page report-p2">${reportRunningHeader(m,2,'Earnings power, valuation and monitoring dashboard')}
     <main class="v21-report-p2">
-      <section class="report-section v21-financial strict-fit"><h2>5 · Earnings Power & Valuation</h2><div class="report-metrics report-metrics-primary">${metrics}</div><div class="v21-fin-core"><div class="report-chart-wrap"><div class="report-chart-head"><h3>Earnings Cycle</h3><span>${esc(m.earnings_history?.metric||'')}</span></div>${reportChart}<div class="report-cycle-note">${esc(m.earnings_history?.cycle_note||'')}</div></div><aside class="report-val-panel"><h3>Mid-Cycle Targets</h3><div class="report-target-grid">${targets}</div><div class="report-valuation-summary"><h3>Valuation Today</h3><div><span>Forward P/E</span><b>${esc(f.forward_pe)}</b></div><div><span>Historical P/E</span><b>${esc(f.historical_pe)}</b></div><p>${esc(f.valuation_comment)}</p></div></aside></div><div class="v21-sensitivity">${reportSensitivityWideHTML(m,f)}</div></section>
+      <section class="report-section v21-financial strict-fit"><h2>5 · Earnings Power & Valuation</h2><div class="report-metrics report-metrics-primary">${metrics}</div><div class="v21-fin-core"><div class="report-chart-wrap"><div class="report-chart-head"><h3>${earningsLabels(m.earnings_history).chartHead}</h3><span>${esc(m.earnings_history?.metric||'')}</span></div>${reportChart}<div class="report-cycle-note">${esc(m.earnings_history?.cycle_note||'')}</div></div><aside class="report-val-panel"><h3>${earningsLabels(m.earnings_history).targetsTitle}</h3><div class="report-target-grid">${targets}</div><div class="report-valuation-summary"><h3>Valuation Today</h3><div><span>Forward P/E</span><b>${esc(f.forward_pe)}</b></div><div><span>Historical P/E</span><b>${esc(f.historical_pe)}</b></div><p>${esc(f.valuation_comment)}</p></div></aside></div><div class="v21-sensitivity">${reportSensitivityWideHTML(m,f)}</div></section>
       <section class="report-section report-signposts v21-signposts strict-fit"><h2>6 · Key Signposts — What to Watch</h2><table class="report-table"><thead><tr><th>Signpost</th><th>Current</th><th>Target / Trigger</th><th>Why it matters</th></tr></thead><tbody>${signs}</tbody></table></section>
     </main>${reportFooter(m,2)}
   </article>
@@ -693,7 +738,7 @@ function notebookHTML(d,m){
   const overview=`${nbSectionTitle('2','COMPANY OVERVIEW')}<p class="lead">${esc(d.overview_summary)}</p><div class="nbv-minihead">KEY SEGMENTS <span>${esc(segmentBasis(d))}</span></div><div class="nbv-seg-legend${segCountCls}">${segLegend}</div><div class="nbv-profit-note">${esc(d.other_profit_pool)}</div>`;
   const business=`${nbSectionTitle('3','BUSINESS MODEL','— MULTIPLE PROFIT POOLS')}<div class="nbv-pools">${(d.business_model||[]).slice(0,4).map((x,i)=>`${i?'<i class="nbv-plus">+</i>':''}<div class="nbv-pool">${nbIcon(poolIconName(x.name),28)}<b>${esc(x.name)}</b><span>${esc(x.description)}</span></div>`).join('')}</div><div class="nbv-life">Captures value across the customer life cycle. <b>→</b></div>`;
   const opps=`${nbSectionTitle('4','KEY OPPORTUNITIES')}<div class="nbv-opps">${(d.opportunities||[]).slice(0,5).map(x=>`<div class="nbv-opp">${nbIcon(x.icon,31)}<div><b>${esc(x.title)}</b><span>${esc(x.detail)}</span></div></div>`).join('')}</div>`;
-  const financial=`${nbSectionTitle('5','FINANCIAL SNAPSHOT','(FY / Latest)')}<div class="nbv-fin-top"><ul>${(d.financial_bullets||[]).slice(0,6).map(x=>`<li>${nbRich(x)}</li>`).join('')}</ul><div class="nbv-target"><h3>MID-CYCLE<br/>TARGETS</h3>${(d.targets||[]).slice(0,4).map(x=>`<div><span>${esc(x.label)}</span><b>${esc(x.value)}</b></div>`).join('')}</div></div><div class="nbv-chart-title">Earnings Are Cyclical <span>${esc(d.earnings_history?.metric||'')}</span></div><div class="nbv-fin-lower"><div class="nbv-chart">${earningsChartSVG(d.earnings_history,'nbv-chart-svg')}<div class="nbv-cycle-note">${esc(d.earnings_history?.cycle_note||'')}</div></div><div class="nbv-val"><h3>VALUATION <span>(Today)</span></h3>${(d.valuation_metrics||[]).slice(0,4).map(x=>`<div class="nbv-val-row"><span>${esc(x.label)}</span><b>${esc(x.value)}</b></div>`).join('')}<strong>${esc(d.valuation_callout)}</strong></div></div>`;
+  const financial=`${nbSectionTitle('5','FINANCIAL SNAPSHOT','(FY / Latest)')}<div class="nbv-fin-top"><ul>${(d.financial_bullets||[]).slice(0,6).map(x=>`<li>${nbRich(x)}</li>`).join('')}</ul><div class="nbv-target"><h3>${earningsLabels(d.earnings_history).targetsTitleCaps}</h3>${(d.targets||[]).slice(0,4).map(x=>`<div><span>${esc(x.label)}</span><b>${esc(x.value)}</b></div>`).join('')}</div></div><div class="nbv-chart-title">${earningsLabels(d.earnings_history).chartTitle} <span>${esc(d.earnings_history?.metric||'')}</span></div><div class="nbv-fin-lower"><div class="nbv-chart">${earningsChartSVG(d.earnings_history,'nbv-chart-svg')}<div class="nbv-cycle-note">${esc(d.earnings_history?.cycle_note||'')}</div></div><div class="nbv-val"><h3>VALUATION <span>(Today)</span></h3>${(d.valuation_metrics||[]).slice(0,4).map(x=>`<div class="nbv-val-row"><span>${esc(x.label)}</span><b>${esc(x.value)}</b></div>`).join('')}<strong>${esc(d.valuation_callout)}</strong></div></div>`;
   const signs=`${nbSectionTitle('6','KEY SIGNPOSTS','(WHAT TO WATCH)')}<table class="nbv-table sign"><thead><tr><th>SIGNPOST</th><th>CURRENT</th><th>TARGET / TRIGGER</th><th>WHY IT MATTERS</th></tr></thead><tbody>${(d.signposts||[]).slice(0,6).map(x=>`<tr><td><b>${esc(x.signpost)}</b></td><td>${nbRich(x.current)}</td><td>${nbRich(x.target)}</td><td>${esc(x.why)}</td></tr>`).join('')}</tbody></table>`;
   const threats=`${nbSectionTitle('7','THESIS THREATS','(WHAT COULD BREAK IT)')}<table class="nbv-table threat"><tbody>${(d.threats||[]).slice(0,4).map(x=>`<tr><td class="ico">${nbIcon(x.icon,25)}</td><td><b>${esc(x.threat)}</b></td><td>${esc(x.watch_for)}</td></tr>`).join('')}</tbody></table>`;
   const final=`${nbSectionTitle('★','FINAL TAKEAWAY')}<p class="nbv-finalcopy">${esc(d.final_takeaway)}</p><div class="nbv-cases"><div class="case bull"><h3>↗ BULL CASE</h3><ul>${listHTML((d.bull_case||[]).slice(0,5))}</ul></div><div class="vs">VS.</div><div class="case bear"><h3>↓ BEAR CASE</h3><ul>${listHTML((d.bear_case||[]).slice(0,5))}</ul></div></div>`;
@@ -742,7 +787,7 @@ function twopagerNotebookHTML(d,m){
     <div class="t16-lower"><section class="tp-business"><h2>3 · Business Model</h2><div class="t16-pools">${(d.business_model||[]).slice(0,4).map(x=>`<div>${nbIcon(poolIconName(x.name),34)}<b>${esc(x.name)}</b><span>${esc(x.description)}</span></div>`).join('')}</div><div class="tp-life">Captures value across the customer life cycle →</div></section><section class="tp-opportunities"><h2>4 · Key Opportunities</h2><div class="tp-opps">${(d.opportunities||[]).slice(0,5).map(x=>`<article>${nbIcon(x.icon,40)}<div><b>${esc(x.title)}</b><p>${esc(x.detail)}</p></div></article>`).join('')}</div></section></div>
   </main><footer>Page 1 · Franchise, investment case and upside drivers</footer></article>`;
   const p2=`<article class="tp-page tp-notebook-page tp-p2">${tpRunningHeader(d,2,'Earnings power, signposts and thesis-break conditions')}<main class="t16-p2-grid">
-    <section class="tp-financial strict-fit"><h2>5 · Financial Snapshot</h2><div class="tp-fin-grid"><div class="tp-fin-bullets"><ul>${(d.financial_bullets||[]).slice(0,6).map(x=>`<li>${nbRich(x)}</li>`).join('')}</ul></div><div class="tp-targets">${(d.targets||[]).slice(0,4).map(x=>`<div><span>${esc(x.label)}</span><b>${esc(x.value)}</b><small>${esc(x.context||'')}</small></div>`).join('')}</div></div><div class="tp-chart-row"><div><h3>Earnings Are Cyclical</h3>${earningsChartSVG(d.earnings_history,'tp-chart')}<p class="tp-cycle">${esc(d.earnings_history?.cycle_note||'')}</p></div><aside><h3>Valuation Today</h3>${(d.valuation_metrics||[]).slice(0,4).map(x=>`<div><span>${esc(x.label)}</span><b>${esc(x.value)}</b><small>${esc(x.context||'')}</small></div>`).join('')}<strong>${esc(d.valuation_callout)}</strong></aside></div></section>
+    <section class="tp-financial strict-fit"><h2>5 · Financial Snapshot</h2><div class="tp-fin-grid"><div class="tp-fin-bullets"><ul>${(d.financial_bullets||[]).slice(0,6).map(x=>`<li>${nbRich(x)}</li>`).join('')}</ul></div><div class="tp-targets">${(d.targets||[]).slice(0,4).map(x=>`<div><span>${esc(x.label)}</span><b>${esc(x.value)}</b><small>${esc(x.context||'')}</small></div>`).join('')}</div></div><div class="tp-chart-row"><div><h3>${earningsLabels(d.earnings_history).chartTitle}</h3>${earningsChartSVG(d.earnings_history,'tp-chart')}<p class="tp-cycle">${esc(d.earnings_history?.cycle_note||'')}</p></div><aside><h3>Valuation Today</h3>${(d.valuation_metrics||[]).slice(0,4).map(x=>`<div><span>${esc(x.label)}</span><b>${esc(x.value)}</b><small>${esc(x.context||'')}</small></div>`).join('')}<strong>${esc(d.valuation_callout)}</strong></aside></div></section>
     <section class="tp-signposts strict-fit"><h2>6 · Key Signposts</h2>${tpSignpostTableHTML(d.signposts||[])}</section>
     <section class="t16-bottom"><div class="tp-threats strict-fit"><h2>7 · Thesis Threats</h2>${(d.threats||[]).slice(0,4).map(x=>`<article>${nbIcon(x.icon,28)}<div><b>${esc(x.threat)}</b><p>${esc(x.watch_for)}</p></div></article>`).join('')}</div><div class="tp-final strict-fit"><h2>★ Final Takeaway</h2><p>${esc(d.final_takeaway)}</p><div class="tp-cases"><div><b>↗ BULL CASE</b><ul>${listHTML((d.bull_case||[]).slice(0,5))}</ul></div><i>VS.</i><div><b>↓ BEAR CASE</b><ul>${listHTML((d.bear_case||[]).slice(0,5))}</ul></div></div></div></section>
   </main><footer><b>Bottom line:</b> ${esc(d.bottom_line)} <span>${esc(d.secondary_bottom_line)}</span></footer></article>`;
