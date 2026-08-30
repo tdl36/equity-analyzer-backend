@@ -322,7 +322,7 @@ def test_budgets_are_tight_enough_to_catch_a_two_times_overrun(golden):
     verbose['thesis_summary'] = ' '.join(['word'] * 93)
     verbose['overview_summary'] = ' '.join(['word'] * 58)
     verbose['final_takeaway'] = ' '.join(['word'] * 62)
-    verbose['bull_case'] = [' '.join(['word'] * 11)] * 5
+    verbose['bull_case'] = [' '.join(['word'] * 30)] * 5
 
     problems = dd.onepager_violations(verbose)
     for field in ('thesis_summary', 'overview_summary', 'final_takeaway', 'bull_case'):
@@ -339,7 +339,10 @@ def test_nested_item_budgets_are_enforced(golden):
     """Opportunity/threat/segment prose sits in fixed boxes too."""
     _m, de_op, _s = golden
     op = dict(de_op)
-    op['opportunities'] = [dict(o, detail=' '.join(['word'] * 30))
+    # Above the current cap (34 words). The caps were deliberately loosened
+    # once the fitting passes could scale an over-full box, so this exercises
+    # the backstop rather than the old summariser.
+    op['opportunities'] = [dict(o, detail=' '.join(['word'] * 60))
                            for o in de_op['opportunities']]
     assert any('opportunities[0].detail' in p for p in dd.onepager_violations(op))
 

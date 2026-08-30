@@ -66,7 +66,7 @@ _WORD_BUDGETS = [
     ("other_profit_pool", 20),      # DE 15
     ("valuation_callout", 22),      # DE 17
     ("final_takeaway", 50),         # DE 38
-    ("bottom_line", 12),            # DE 9
+    ("bottom_line", 26),            # DE 9
     ("secondary_bottom_line", 7),   # DE 5
 ]
 
@@ -92,18 +92,25 @@ _EXACT_COUNTS = [
 # UNH's bullets carry figures like "(85.2% Q3'24 vs 84.1% prior)" that wrap to
 # two lines at the same word count Deere's fit on one, so the fifth thesis
 # bullet and the sixth financial bullet still overran. Pinned to the DE actuals.
+_ONEPAGER_SIGNPOST_CELL_WORDS = 14
+
 _LIST_ITEM_WORDS = [
     ("thesis_bullets", 17),      # DE max item 11
     ("financial_bullets", 14),   # DE max item 9
-    ("bull_case", 9),            # DE max item 4
-    ("bear_case", 9),            # DE max item 4
+    ("bull_case", 16),           # DE max item 4
+    ("bear_case", 16),           # DE max item 4
 ]
 
 # Per-item limits inside object lists, same derivation.
 _NESTED_ITEM_WORDS = [
-    ("opportunities", "detail", 26),      # DE max 9
-    ("business_model", "description", 14),# DE max 6
-    ("segments", "description", 22),      # DE max 8
+    ("opportunities", "detail", 34),      # DE max 9
+    # The one-pager's business-model cards sit at fixed SVG coordinates with a
+    # caption strip immediately below, calibrated to Deere's 6-word
+    # descriptions. Longer text cannot be scaled out of that collision because
+    # the box itself is what runs into the caption, so this stays short. The
+    # memo carries the full description (46 words).
+    ("business_model", "description", 11),# DE max 6
+    ("segments", "description", 30),      # DE max 8
     ("threats", "watch_for", 30),         # DE max 17
 ]
 
@@ -133,13 +140,13 @@ _LIST_ITEM_CHARS = [
     # truncated ones. autoFitBlocks() scales the type of an overfull block
     # instead, so these sit well clear of real content and only catch the
     # pathological case.
-    ("bull_case", 44),
-    ("bear_case", 44),
+    ("bull_case", 95),
+    ("bear_case", 95),
 ]
 
 _NESTED_ITEM_CHARS = [
-    ("opportunities", "detail", 168),
-    ("business_model", "description", 96),
+    ("opportunities", "detail", 220),
+    ("business_model", "description", 76),
     # Same fixed box on two-pager page 2: at 137-178 characters the fourth
     # threat's body was not printed at all. DE max is 111.
     ("threats", "watch_for", 175),   # DE max 111
@@ -391,9 +398,12 @@ def enforce_budgets(d):
         for sp in signposts:
             if isinstance(sp, dict):
                 sp2 = dict(sp)
+                # 9 words made these read as fragments ("would indicate
+                # pricing..."). The fitting passes scale an over-full row now,
+                # so the cap is a backstop rather than the summariser.
                 for cell in ("signpost", "current", "target", "why"):
-                    if _words(sp2.get(cell)) > 9:
-                        sp2[cell] = _trim_words(sp2.get(cell), 9)
+                    if _words(sp2.get(cell)) > _ONEPAGER_SIGNPOST_CELL_WORDS:
+                        sp2[cell] = _trim_words(sp2.get(cell), _ONEPAGER_SIGNPOST_CELL_WORDS)
                         changed = True
                 sp = sp2
             new_sps.append(sp)

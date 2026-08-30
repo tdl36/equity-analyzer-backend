@@ -192,7 +192,7 @@ const FIT_BLOCK_SEL = [
 const BLOCK_FIT_FLOOR = 0.74;
 // The one-pager is the densest canvas, so it is allowed to scale further
 // before anything is cut.
-const FOREIGN_FIT_FLOOR = 0.68;
+const FOREIGN_FIT_FLOOR = 0.60;
 
 /**
  * Shrink a block's type until its text fits, instead of deleting the text.
@@ -211,6 +211,12 @@ export const autoFitBlocks = (root) => {
     if (!root || typeof document === 'undefined') return [];
     const unfit = [];
     root.querySelectorAll(FIT_BLOCK_SEL).forEach((el) => {
+        // Sections belong to autoFitSections/autoFitAgainstParent. This pass
+        // used to clear their zoom and then return early -- a height:100%
+        // section reports scrollHeight === clientHeight -- which wiped the fit
+        // the section pass had just applied and put the content back over the
+        // page edge.
+        if (el.classList.contains('strict-fit')) return;
         el.style.removeProperty('zoom');
         const box = el.clientHeight;
         if (!box) return;
@@ -268,6 +274,11 @@ export const autoFitForeignObjects = (root) => {
             else { hi = k; }
         }
         child.style.zoom = String(best.toFixed(3));
+        // max-height is resolved in the child's OWN coordinate space, which
+        // zoom has just scaled. Leaving it at h clipped the box at h * zoom of
+        // real height -- the one-pager's bull case lost its last point and cut
+        // the fourth mid-word while the fit check reported success.
+        child.style.maxHeight = `${(h / best).toFixed(1)}px`;
         if (child.scrollHeight * best > h + 1) {
             unfit.push(child.className || 'foreignObject');
         }
@@ -337,13 +348,18 @@ export const autoFitAgainstParent = (root) => {
             - (parseFloat(pcs.paddingTop) || 0) - (parseFloat(pcs.paddingBottom) || 0);
         if (!available) return;
 
-        const prior = parseFloat(sec.style.zoom) || 1;
-        const natural = sec.getBoundingClientRect().height / prior;
+        // Measure in layout pixels, not painted ones. getBoundingClientRect is
+        // scaled by the PageFit transform on the wrapper while clientHeight is
+        // not, so comparing the two made every section look ~14x smaller than
+        // its container and this pass never once fired. Reset the zoom, take
+        // the natural height, then scale.
+        sec.style.removeProperty('zoom');
+        const natural = sec.offsetHeight;
         if (!natural || natural <= available + 1) return;
 
         const k = Math.max(SECTION_FIT_FLOOR, (available - 1) / natural);
-        sec.style.zoom = String((prior * k <= 1 ? k : 1).toFixed(3));
-        if (sec.getBoundingClientRect().height > available + 2) {
+        sec.style.zoom = String(k.toFixed(3));
+        if (sec.offsetHeight * k > available + 2) {
             unfit.push((sec.className || '').toString().split(' ')[0] || 'section');
         }
     });
@@ -430,7 +446,13 @@ export const applyPrintLayout = (view) => {
     // Print changes the available height, so rows and fit are recomputed with
     // the print class active, exactly as the prototype did.
     try { rebalanceLongform(); } catch (e) { console.warn('rebalance before print:', e); }
-    try { autoFitSections(art); autoFitAgainstParent(art); autoFitBlocks(art); autoFitForeignObjects(art); autoFitPages(art); }
+    try {
+        // Inner content first, then sections, then the page: an outer pass must
+        // never run before an inner one that could change its measurements.
+        autoFitBlocks(art); autoFitForeignObjects(art);
+        autoFitSections(art); autoFitAgainstParent(art);
+        autoFitPages(art);
+    }
     catch (e) { console.warn('autofit before print:', e); }
 
     let restored = false;
@@ -439,7 +461,12 @@ export const applyPrintLayout = (view) => {
         restored = true;
         body.classList.remove('dd-printing', 'print-onepager', 'print-twopager', 'print-report');
         chain.forEach(n => n.classList.remove('dd-print-chain'));
-        try { rebalanceLongform(); autoFitSections(art); autoFitAgainstParent(art); autoFitBlocks(art); autoFitForeignObjects(art); autoFitPages(art); } catch (e) { /* screen only */ }
+        try {
+            rebalanceLongform();
+            autoFitBlocks(art); autoFitForeignObjects(art);
+            autoFitSections(art); autoFitAgainstParent(art);
+            autoFitPages(art);
+        } catch (e) { /* screen only */ }
     };
     return restore;
 };

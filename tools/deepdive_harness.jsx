@@ -57,6 +57,27 @@ ReactDOM.render(tree, root, () => {
             applyPrintLayout(view);
             // ?nozoom=1 strips the auto-fit zoom so it can be ruled in or out
             // as the cause of the rasterised, textless print output.
+            if (q.get('fitreport') === '1') {
+                const rows = [];
+                // foreignObject fit report
+                document.querySelectorAll('foreignObject').forEach((fo, i) => {
+                    const h = parseFloat(fo.getAttribute('height'));
+                    const c = fo.firstElementChild; if (!c || !h) return;
+                    const z = parseFloat(c.style.zoom) || 1;
+                    if (z < 1 || c.scrollHeight > h + 1)
+                        rows.push(`fo[${i}] need=${c.scrollHeight} box=${h} zoom=${z} `
+                            + `shortfall=${(c.scrollHeight * z - h).toFixed(0)}`);
+                });
+                document.querySelectorAll('.strict-fit').forEach(sec => {
+                    const par = sec.parentElement; if (!par) return;
+                    const z = parseFloat(sec.style.zoom) || 1;
+                    rows.push(`${(sec.className||'').split(' ')[0]}: natural=${sec.offsetHeight} `
+                        + `avail=${par.clientHeight} zoom=${z}`);
+                });
+                const pre = document.createElement('pre'); pre.id='__fitreport';
+                pre.textContent = rows.join('\n');
+                document.documentElement.appendChild(pre);
+            }
             if (q.get('measure') === '1') {
                 const rows = [];
                 const add = (label, el) => {
