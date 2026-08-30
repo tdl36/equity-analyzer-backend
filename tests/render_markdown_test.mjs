@@ -81,5 +81,19 @@ out = sanitizeHtml('<p>ok</p><script>alert(1)</script>');
 check('sanitizeHtml escapes rather than injecting raw HTML when DOMPurify is missing',
       !out.includes('<script>'), out);
 
+// --- sub-headings ----------------------------------------------------------
+// A note is full of "**Bull case:**" and "**Bear case:**". The colon may sit
+// inside the bold or outside it; only the second form was handled, so the
+// first rendered as "Bull case::" in every note, and in the chat and thesis
+// views that share this renderer.
+for (const [input, want] of [['**Bull case:**', 'Bull case:'],
+                             ['**Bear case**:', 'Bear case:'],
+                             ['**Valuation**', 'Valuation:']]) {
+  const rendered = renderMarkdown(input);
+  const label = (rendered.match(/>([^<]*)<\/div>/) || [])[1];
+  check(`sub-heading ${JSON.stringify(input)} renders as ${JSON.stringify(want)}`,
+        label === want, rendered);
+}
+
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);

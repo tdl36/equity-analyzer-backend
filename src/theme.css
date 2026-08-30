@@ -405,3 +405,22 @@ body {
   .theme-arrive { animation: none; }
   body { transition: none; }
 }
+
+/* Research-note prose.
+ *
+ * renderMarkdown emits Tailwind-classed markup for headings, tables and lists,
+ * but a note also contains plain paragraphs, nested bullets and table borders
+ * that need to read as a document rather than as output. Scoped so it cannot
+ * affect the chat and thesis views that share the same renderer. */
+.dd-note-prose > div + div { margin-top: 0.15rem; }
+.dd-note-prose table { margin: 0.5rem 0; }
+.dd-note-prose th,
+.dd-note-prose td {
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    padding: 0.35rem 0.55rem;
+    text-align: left;
+    vertical-align: top;
+}
+.dd-note-prose th { background: rgba(255, 255, 255, 0.05); font-weight: 600; }
+.dd-note-prose strong { color: #e8e8e6; }
+.dd-note-prose em { color: #b9b9b4; }

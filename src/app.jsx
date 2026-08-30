@@ -81,7 +81,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-08-30T06';
+        const BUILD_VERSION = '2026-08-30T07';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -991,7 +991,12 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 const subHeaderMatch = trimmedLine.match(/^\*\*([^*]+)\*\*:?\s*$/);
                 if (subHeaderMatch) {
                     underHeaderBullet = false;
-                    result.push(`<div class="font-semibold text-slate-200 mt-4 mb-2 pt-3 border-t border-white/10">${subHeaderMatch[1]}:</div>`);
+                    // The colon may sit inside the bold ("**Bull case:**") or
+                    // outside it ("**Bull case**:"). Only the second form was
+                    // considered, so the first rendered as "Bull case::" in
+                    // every note that used it.
+                    const label = subHeaderMatch[1].replace(/\s*:\s*$/, '');
+                    result.push(`<div class="font-semibold text-slate-200 mt-4 mb-2 pt-3 border-t border-white/10">${label}:</div>`);
                     continue;
                 }
                 
@@ -25422,7 +25427,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         {pipelineDraft.changelog_markdown && (
                                                             <div className="mb-3">
                                                                 <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">What changed</div>
-                                                                <pre className="text-[11px] text-slate-300 whitespace-pre-wrap bg-black/20 rounded-lg p-3 max-h-40 overflow-y-auto">{pipelineDraft.changelog_markdown}</pre>
+                                                                <div className="text-[12px] text-slate-300 bg-black/20 rounded-lg p-3 max-h-40 overflow-y-auto dd-note-prose"
+                                                                    dangerouslySetInnerHTML={{ __html: renderMarkdown(pipelineDraft.changelog_markdown) }} />
                                                             </div>
                                                         )}
 
@@ -25430,7 +25436,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">
                                                                 Draft note{pipelineDraft.metadata?.documentsProcessed ? ` — from ${pipelineDraft.metadata.documentsProcessed} document(s)` : ''}
                                                             </div>
-                                                            <pre className="text-[11px] text-slate-300 whitespace-pre-wrap bg-black/20 rounded-lg p-3 max-h-72 overflow-y-auto">{pipelineDraft.note_markdown || 'Empty note.'}</pre>
+                                                            <div className="text-[13px] text-slate-300 leading-relaxed bg-black/20 rounded-lg p-4 max-h-[28rem] overflow-y-auto dd-note-prose"
+                                                                dangerouslySetInnerHTML={{ __html: renderMarkdown(pipelineDraft.note_markdown || '_Empty note._') }} />
                                                         </div>
                                                     </div>
                                                 )}
@@ -25565,11 +25572,18 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                     spellCheck={false}
                                                                 />
                                                             ) : (
-                                                                <pre className="text-xs text-slate-300 whitespace-pre-wrap font-mono leading-relaxed p-4">
-                                                                    {(!pipelineNoteResult._view || pipelineNoteResult._view === 'note') && (pipelineNoteResult.noteMarkdown || 'No note content')}
-                                                                    {pipelineNoteResult._view === 'sources' && (pipelineNoteResult.sourcesMarkdown || 'No sources')}
-                                                                    {pipelineNoteResult._view === 'changelog' && (pipelineNoteResult.changelogMarkdown || 'No changelog')}
-                                                                </pre>
+                                                                /* Rendered, not dumped. The note is a document -- headings,
+                                                                   tables and emphasis carry meaning, and a monospace wall of
+                                                                   asterisks and pipes is not readable. renderMarkdown escapes
+                                                                   before formatting, so model output cannot inject markup. */
+                                                                <div className="p-4 text-sm text-slate-300 leading-relaxed dd-note-prose"
+                                                                    dangerouslySetInnerHTML={{ __html: renderMarkdown(
+                                                                        (!pipelineNoteResult._view || pipelineNoteResult._view === 'note')
+                                                                            ? (pipelineNoteResult.noteMarkdown || '_No note content_')
+                                                                            : pipelineNoteResult._view === 'sources'
+                                                                                ? (pipelineNoteResult.sourcesMarkdown || '_No sources_')
+                                                                                : (pipelineNoteResult.changelogMarkdown || '_No changelog_')
+                                                                    ) }} />
                                                             )}
                                                         </div>
                                                     </div>
