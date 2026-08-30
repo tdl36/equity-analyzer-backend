@@ -679,11 +679,11 @@ def test_master_signpost_cells_are_capped_under_both_key_names():
     from deepdive import enforce_master_budgets
     out, trimmed = enforce_master_budgets(m)
     a, b = out['signposts']
-    assert len(a['why_it_matters'].split()) <= 26, 'why_it_matters was not capped'
+    assert len(a['why_it_matters'].split()) <= 42, 'why_it_matters was not capped'
     assert len(a['signpost'].split()) <= 8
     assert len(a['current'].split()) <= 10
     assert len(a['target'].split()) <= 12
-    assert len(b['why'].split()) <= 26, 'the legacy "why" spelling must stay capped too'
+    assert len(b['why'].split()) <= 42, 'the legacy "why" spelling must stay capped too'
 
 
 def test_all_six_signposts_survive_the_master_budget():
@@ -735,20 +735,27 @@ def test_trim_never_lengthens_or_mangles_short_text():
         assert dd._trim_words(s, 20) == s
 
 
-def test_bull_bear_items_are_capped_by_width_not_just_words():
-    """Fit is decided by rendered lines, not word count.
+def test_bull_bear_width_cap_is_a_backstop_not_a_summariser():
+    """The width cap must not be the thing that makes content fit.
 
-    DE's bull items reach 26 characters and sit on one line. UNH and Cigna hit
-    43-44 at the same word count because they carry figures, wrapped to two
-    lines, and the fifth item was pushed out of the fixed box entirely -- the
-    reader lost whole points with nothing indicating it.
+    It was briefly pinned to 27 characters -- just above DE's actuals -- which
+    made every other company's report read in fragments: "Specialty
+    biosimilar...", "MCR improves 82-83%...". Cutting research prose to protect
+    a rectangle is the wrong trade; autoFitBlocks scales an overfull block's
+    type instead. So the cap sits clear of real bullet lengths and only catches
+    a pathological response.
     """
-    d = {'bull_case': ['Signature pre-empts future PBM intervention',
-                       'Buyback compounds EPS at 10%+'],
-         'bear_case': ['Healthcare MCR deteriorates to 87%+ on utilization']}
-    out, _ = dd.enforce_budgets(d)
-    for item in out['bull_case'] + out['bear_case']:
-        assert len(item) <= 28, f'{item!r} is {len(item)} chars'
+    realistic = ['Signature pre-empts future PBM intervention',
+                 'Buyback compounds EPS at 10%+',
+                 'Valuation re-rates to 12-15x']
+    out, _ = dd.enforce_budgets({'bull_case': list(realistic)})
+    assert out['bull_case'] == realistic, (
+        'realistic bullet lengths must pass through untouched, got '
+        f'{out["bull_case"]}')
+
+    pathological = ['x' * 400]
+    out2, _ = dd.enforce_budgets({'bull_case': pathological})
+    assert len(out2['bull_case'][0]) < 120, 'the backstop must still bound a runaway'
 
 
 def test_de_bull_bear_survive_the_width_cap():

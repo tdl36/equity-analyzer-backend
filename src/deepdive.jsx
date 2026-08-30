@@ -171,12 +171,196 @@ export const DeepDiveArtifact = ({ run, view, template }) => {
  * floor, and a section that cannot fit even there is reported rather than
  * silently clipped -- which is the outcome that actually loses information.
  */
-const SECTION_FIT_FLOOR = 0.86;
+// Lowered from 0.86. The floor is the point past which the layout stops
+// shrinking and starts losing content: at 0.86 the two-pager's Final Takeaway
+// could not fit five bull and five bear points, so the last of each was simply
+// not printed. Type at 0.74 of nominal is still comfortably legible on a
+// 1024px canvas, and losing a research point is not a trade worth making to
+// keep a font one point larger.
+const SECTION_FIT_FLOOR = 0.74;
+
+/* Blocks whose height is fixed by the canvas and whose content is prose.
+   These are the boxes that were clipping: a card, a table cell, a callout. */
+const FIT_BLOCK_SEL = [
+    '.report-pool', '.report-opp', '.report-catalyst', '.report-threat',
+    '.report-callout', '.v21-other', '.v21-final-copy', '.v21-bottom-line',
+    '.report-segments > div', '.report-signposts td', '.report-decision-lens li',
+    '.tp-pool', '.tp-opp', '.tp-threat', '.tp-final', '.t16-note',
+    '.tp-segments > div', '.tp-signposts td', '.nbv-opp', '.nbv-seg',
+].join(',');
+
+const BLOCK_FIT_FLOOR = 0.74;
+// The one-pager is the densest canvas, so it is allowed to scale further
+// before anything is cut.
+const FOREIGN_FIT_FLOOR = 0.68;
+
+/**
+ * Shrink a block's type until its text fits, instead of deleting the text.
+ *
+ * The canvas is fixed, so a box that is too small for its prose has only three
+ * possible outcomes: clip the words, cut the words upstream, or make the words
+ * smaller. The first two are what shipped -- reports reading "...(rebates,
+ * discounts), designs..." and "Specialty biosimilar..." -- and both destroy
+ * research content to protect a rectangle. Scaling the type keeps every word
+ * and costs a point or two of size on the handful of blocks that need it.
+ *
+ * `zoom` rather than font-size because the v24 blocks are built from fixed
+ * pixel values that type scaling does not move.
+ */
+export const autoFitBlocks = (root) => {
+    if (!root || typeof document === 'undefined') return [];
+    const unfit = [];
+    root.querySelectorAll(FIT_BLOCK_SEL).forEach((el) => {
+        el.style.removeProperty('zoom');
+        const box = el.clientHeight;
+        if (!box) return;
+        // A block only needs fitting if its content is taller than its box.
+        if (el.scrollHeight <= box + 1) return;
+
+        let lo = BLOCK_FIT_FLOOR, hi = 1, best = BLOCK_FIT_FLOOR;
+        for (let i = 0; i < 7; i++) {
+            const k = (lo + hi) / 2;
+            el.style.zoom = String(k.toFixed(3));
+            if (el.scrollHeight <= el.clientHeight + 1) { best = k; lo = k; }
+            else { hi = k; }
+        }
+        el.style.zoom = String(best.toFixed(3));
+        if (el.scrollHeight > el.clientHeight + 1) {
+            unfit.push((el.className || '').toString().split(' ')[0] || el.tagName);
+        }
+    });
+    return unfit;
+};
+
+/**
+ * Fit the one-pager's boxes, which are SVG foreignObjects.
+ *
+ * The notebook one-pager places HTML inside foreignObject elements at absolute
+ * coordinates with a fixed width and height. A foreignObject does not clip its
+ * content and its child div is unconstrained, so an overfull box reports
+ * scrollHeight === clientHeight -- it looks like it fits while its text paints
+ * straight over the box below. That is why the only ways to keep this page
+ * readable were to cut the prose upstream or let it collide.
+ *
+ * Constraining the child to the declared height makes the overflow measurable,
+ * and then the type can be scaled to hold the words instead of deleting them.
+ */
+export const autoFitForeignObjects = (root) => {
+    if (!root || typeof document === 'undefined') return [];
+    const unfit = [];
+    root.querySelectorAll('foreignObject').forEach((fo) => {
+        const h = parseFloat(fo.getAttribute('height'));
+        const child = fo.firstElementChild;
+        if (!h || !child) return;
+
+        child.style.removeProperty('zoom');
+        child.style.maxHeight = `${h}px`;
+        child.style.overflow = 'hidden';
+        if (child.scrollHeight <= h + 1) return;
+
+        // zoom multiplies painted size, so content fits when scrollHeight * k
+        // is inside the box. scrollHeight itself stays in unzoomed units.
+        let lo = FOREIGN_FIT_FLOOR, hi = 1, best = FOREIGN_FIT_FLOOR;
+        for (let i = 0; i < 7; i++) {
+            const k = (lo + hi) / 2;
+            child.style.zoom = String(k.toFixed(3));
+            if (child.scrollHeight * k <= h + 1) { best = k; lo = k; }
+            else { hi = k; }
+        }
+        child.style.zoom = String(best.toFixed(3));
+        if (child.scrollHeight * best > h + 1) {
+            unfit.push(child.className || 'foreignObject');
+        }
+    });
+    return unfit;
+};
+
+const PAGE_FIT_FLOOR = 0.80;
+const PAGE_HEIGHT_PX = 1536;
+
+/**
+ * Keep a page's content on its page.
+ *
+ * The pages are declared with min-height, not height, so an over-full page
+ * simply grows: scrollHeight equals clientHeight and every overflow check says
+ * it fits, while everything past 1536px falls outside the printed sheet and is
+ * silently dropped. That is how the two-pager lost the last bull and bear point
+ * and the fourth threat's body while reporting a clean layout.
+ *
+ * Measuring the content against the real page height and scaling the page's
+ * main block is the only check that sees this, and scaling beats dropping:
+ * a point or two of type costs the reader far less than a missing kill
+ * criterion. The header and footer are left alone so pages stay aligned.
+ */
+export const autoFitPages = (root) => {
+    if (!root || typeof document === 'undefined') return [];
+    const unfit = [];
+    root.querySelectorAll('.tp-page, .report-page').forEach((pg) => {
+        const main = pg.querySelector('main') || pg;
+        main.style.removeProperty('zoom');
+        const chrome = pg.scrollHeight - main.scrollHeight;   // header + footer
+        const available = PAGE_HEIGHT_PX - Math.max(0, chrome);
+        const needed = main.scrollHeight;
+        if (!needed || needed <= available + 1) return;
+
+        const k = Math.max(PAGE_FIT_FLOOR, (available - 2) / needed);
+        main.style.zoom = String(k.toFixed(3));
+        if (main.scrollHeight * k > available + 2) {
+            unfit.push((pg.className || '').toString().split(' ')[0] || 'page');
+        }
+    });
+    return unfit;
+};
+
+/**
+ * Fit a section to the space it was actually given.
+ *
+ * autoFitSections asks whether a section's content overflows the section. That
+ * misses the case that was losing content: rebalanceGridRows squeezes the grid
+ * ROW, and the section then grows taller than the row it sits in. The section
+ * itself reports scrollHeight === clientHeight -- perfectly happy -- while the
+ * bottom of it is outside the row and off the page. On the CI two-pager the
+ * Final Takeaway measured 28.5px inside a 23.0px row, and the last bull point,
+ * last bear point and fourth threat body were the part hanging out.
+ *
+ * So compare each section against its parent's usable height and scale it to
+ * fit, rather than trusting the section's own opinion of itself.
+ */
+export const autoFitAgainstParent = (root) => {
+    if (!root || typeof document === 'undefined') return [];
+    const unfit = [];
+    root.querySelectorAll('.strict-fit').forEach((sec) => {
+        const parent = sec.parentElement;
+        if (!parent) return;
+        const pcs = getComputedStyle(parent);
+        const available = parent.clientHeight
+            - (parseFloat(pcs.paddingTop) || 0) - (parseFloat(pcs.paddingBottom) || 0);
+        if (!available) return;
+
+        const prior = parseFloat(sec.style.zoom) || 1;
+        const natural = sec.getBoundingClientRect().height / prior;
+        if (!natural || natural <= available + 1) return;
+
+        const k = Math.max(SECTION_FIT_FLOOR, (available - 1) / natural);
+        sec.style.zoom = String((prior * k <= 1 ? k : 1).toFixed(3));
+        if (sec.getBoundingClientRect().height > available + 2) {
+            unfit.push((sec.className || '').toString().split(' ')[0] || 'section');
+        }
+    });
+    return unfit;
+};
 
 export const autoFitSections = (root) => {
     if (!root) return [];
     const unfit = [];
-    root.querySelectorAll('.report-section, .tp-section').forEach((sec) => {
+    // .strict-fit is what every fixed-height section actually carries. The
+    // selector used to name only .report-section and .tp-section, so the
+    // two-pager's sections -- .tp-final, .tp-thesis, .tp-financial -- were
+    // never fitted. rebalanceGridRows squeezes their rows when the page is
+    // over-full, and with nothing scaling the content inside, the squeezed
+    // section simply clipped: that is where the last bull and bear points and
+    // the fourth threat's body were going.
+    root.querySelectorAll('.report-section, .tp-section, .strict-fit').forEach((sec) => {
         sec.style.removeProperty('zoom');
         const box = sec.clientHeight;
         if (!box || sec.scrollHeight <= box + 2) return;
@@ -246,7 +430,8 @@ export const applyPrintLayout = (view) => {
     // Print changes the available height, so rows and fit are recomputed with
     // the print class active, exactly as the prototype did.
     try { rebalanceLongform(); } catch (e) { console.warn('rebalance before print:', e); }
-    try { autoFitSections(art); } catch (e) { console.warn('autofit before print:', e); }
+    try { autoFitSections(art); autoFitAgainstParent(art); autoFitBlocks(art); autoFitForeignObjects(art); autoFitPages(art); }
+    catch (e) { console.warn('autofit before print:', e); }
 
     let restored = false;
     const restore = () => {
@@ -254,7 +439,7 @@ export const applyPrintLayout = (view) => {
         restored = true;
         body.classList.remove('dd-printing', 'print-onepager', 'print-twopager', 'print-report');
         chain.forEach(n => n.classList.remove('dd-print-chain'));
-        try { rebalanceLongform(); autoFitSections(art); } catch (e) { /* screen only */ }
+        try { rebalanceLongform(); autoFitSections(art); autoFitAgainstParent(art); autoFitBlocks(art); autoFitForeignObjects(art); autoFitPages(art); } catch (e) { /* screen only */ }
     };
     return restore;
 };

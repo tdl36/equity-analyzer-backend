@@ -93,51 +93,56 @@ _EXACT_COUNTS = [
 # two lines at the same word count Deere's fit on one, so the fifth thesis
 # bullet and the sixth financial bullet still overran. Pinned to the DE actuals.
 _LIST_ITEM_WORDS = [
-    ("thesis_bullets", 11),      # DE max item 11
-    ("financial_bullets", 9),    # DE max item 9
-    ("bull_case", 5),            # DE max item 4
-    ("bear_case", 5),            # DE max item 4
+    ("thesis_bullets", 17),      # DE max item 11
+    ("financial_bullets", 14),   # DE max item 9
+    ("bull_case", 9),            # DE max item 4
+    ("bear_case", 9),            # DE max item 4
 ]
 
 # Per-item limits inside object lists, same derivation.
 _NESTED_ITEM_WORDS = [
-    ("opportunities", "detail", 12),      # DE max 9
-    ("business_model", "description", 9), # DE max 6
-    ("segments", "description", 11),      # DE max 8
-    ("threats", "watch_for", 22),         # DE max 17
+    ("opportunities", "detail", 26),      # DE max 9
+    ("business_model", "description", 14),# DE max 6
+    ("segments", "description", 22),      # DE max 8
+    ("threats", "watch_for", 30),         # DE max 17
 ]
 
 
-# Character caps, because words do not predict line wrapping and lines are what
-# actually overflow a fixed box. The DE reference bullets run 60-76 characters
-# and fit; UNH produced 84-character bullets at the SAME word count -- figures
-# like "(85.2% Q3'24 vs 84.1% prior)" are long strings, not extra words -- and
-# the fifth bullet wrapped to a second line and fell out of its box.
+# Character caps. These are BACKSTOPS, not the fitting mechanism.
+#
+# They were previously pinned to the DE actuals, which made every other company
+# read in fragments: "Specialty biosimilar...", "(rebates, discounts),
+# designs...". Cutting research prose to protect a rectangle is the wrong
+# trade. autoFitBlocks() now scales the type of an overfull block so the words
+# survive, and these caps sit well clear of real content to catch only a
+# pathological response.
 _LIST_ITEM_CHARS = [
     # Exactly the DE maximum. 72 was tried and it trimmed the DE reference itself,
     # which would mean degrading the calibration standard to make another company
     # fit -- the wrong trade. 76 leaves DE untouched and still pulls UNH in.
-    ("thesis_bullets", 76),
-    ("financial_bullets", 72),    # DE max 69
+    ("thesis_bullets", 112),
+    ("financial_bullets", 100),   # DE max 69
     # Bull/bear render as a fixed-height list on two-pager page 2 that holds
     # five single lines. Word counts do not decide that: DE's items reach 26
     # characters and sit on one line, while UNH and Cigna hit 43-44 at the same
     # word count because they carry figures, wrap to two, and pushed the last
     # one or two items off the box entirely. DE max is 26, so 32 leaves the
     # calibration untouched.
-    # 32 still wrapped: the box holds five lines and the column is ~27
-    # characters wide, so anything past that costs a second line and pushes the
-    # fifth item out. DE's maximum is 26.
-    ("bull_case", 27),
-    ("bear_case", 27),
+    # A backstop, not a fitting mechanism. Cutting these to 27 characters made
+    # every item read "Specialty biosimilar..." -- trading dropped items for
+    # truncated ones. autoFitBlocks() scales the type of an overfull block
+    # instead, so these sit well clear of real content and only catch the
+    # pathological case.
+    ("bull_case", 44),
+    ("bear_case", 44),
 ]
 
 _NESTED_ITEM_CHARS = [
-    ("opportunities", "detail", 74),
-    ("business_model", "description", 56),
+    ("opportunities", "detail", 168),
+    ("business_model", "description", 96),
     # Same fixed box on two-pager page 2: at 137-178 characters the fourth
     # threat's body was not printed at all. DE max is 111.
-    ("threats", "watch_for", 112),   # DE max 111; 118 still lost the fourth
+    ("threats", "watch_for", 175),   # DE max 111
 ]
 
 
@@ -146,12 +151,32 @@ def _chars(text):
 
 
 def _trim_chars(text, limit):
-    """Cut to `limit` characters on a word boundary."""
+    """Cut to `limit` characters, preferring a clean sentence or clause end.
+
+    These caps are backstops, not the fitting mechanism -- autoFitBlocks scales
+    an overfull block's type so the words survive. When one does fire it should
+    still read as a finished thought: the previous version cut at an arbitrary
+    word and appended an ellipsis, which is how reports came to say "Express
+    Scripts negotiates drug pricing with...".
+    """
     raw = str(text or "").strip()
     if len(raw) <= limit:
         return text
-    cut = raw[:limit].rsplit(" ", 1)[0].rstrip(",;:.")
-    return (cut or raw[:limit]) + "\u2026"
+    cut = raw[:limit]
+
+    for end in (". ", "! ", "? "):
+        i = cut.rfind(end)
+        if i > limit * 0.5:
+            return cut[:i + 1].strip()
+    if cut.rstrip().endswith((".", "!", "?")):
+        return cut.strip()
+    for end in ("; ", ": "):
+        i = cut.rfind(end)
+        if i > limit * 0.6:
+            return cut[:i].rstrip(" ,;:")
+
+    tail = cut.rsplit(" ", 1)[0].rstrip(",;:.")
+    return (tail or raw[:limit]) + "\u2026"
 
 
 def _words(text):
@@ -466,8 +491,8 @@ _MASTER_SIGNPOST_CELL_WORDS = [
     ("signpost", 8),
     ("current", 10),
     ("target", 12),
-    ("why", 26),
-    ("why_it_matters", 26),
+    ("why", 42),
+    ("why_it_matters", 42),
 ]
 
 _MASTER_LIST_CAPS = [
@@ -498,20 +523,20 @@ _MASTER_LIST_CAPS = [
 # across the next card's title on memo page 1 ("...rebate retention." landing on
 # "Commercial Health Insurance"). DE max is 82.
 _MASTER_NESTED_ITEM_CHARS = [
-    (("business_model",), "description", 92),
+    (("business_model",), "description", 175),
 ]
 
 _MASTER_ITEM_WORDS = [
     # Uncapped until a live run returned 40-word segment descriptions against
     # Deere's 8, which is most of why the memo's overview section ran 170px past
     # its box. These sit in a three-across grid; they are labels, not prose.
-    (("company_overview", "segments"), "description", 13),   # DE max 8
+    (("company_overview", "segments"), "description", 26),   # DE max 8
     # a four-segment company has to fit the space Deere's three occupy
-    (("opportunities",), "detail", 40),             # DE max 14
-    (("business_model",), "description", 30),       # DE max 10
+    (("opportunities",), "detail", 62),             # DE max 14
+    (("business_model",), "description", 46),       # DE max 10
     (("thesis_threats",), "watch_for", 45),         # DE max 17
     (("signposts",), "why_it_matters", 42),         # DE max 7
-    (("catalysts",), "why_it_matters", 26),         # DE max 8
+    (("catalysts",), "why_it_matters", 46),         # DE max 8
     # Memo page 2 renders these as four cards stacked above the valuation
     # summary in a 245px column. At 20 words the contexts filled the column and
     # the summary printed on top of them, and of the sensitivity matrix beside

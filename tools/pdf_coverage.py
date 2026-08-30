@@ -76,5 +76,13 @@ if __name__ == '__main__':
             missing.append((label, str(text)[:64]))
     for label, snippet in missing:
         print(f'  MISSING {label}: "{snippet}..."')
-    print(f'{pdf}: {len(missing)} field(s) not printed')
-    sys.exit(1 if missing else 0)
+    # A visible ellipsis is content that was cut to fit a box. The layout is
+    # supposed to scale type to hold the words, so any of these is a defect.
+    raw = pdf_text(pdf)
+    ell = raw.count('\u2026')
+    if ell:
+        for line in raw.splitlines():
+            if '\u2026' in line:
+                print(f'  TRUNCATED: {line.strip()[:78]}')
+    print(f'{pdf}: {len(missing)} field(s) not printed, {ell} truncation(s)')
+    sys.exit(1 if (missing or ell) else 0)

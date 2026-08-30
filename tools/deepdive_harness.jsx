@@ -93,7 +93,9 @@ ReactDOM.render(tree, root, () => {
                  '.v21-fin-core', '.report-chart-wrap', '.report-cycle-note',
                  '.report-val-panel', '.report-valuation-summary',
                  '.v21-sensitivity', '.report-sensitivity',
-                 '.report-sensitivity table'].forEach(sel => add(sel, document.querySelector(sel)));
+                 '.report-sensitivity table',
+                 '.t16-bottom', '.tp-final', '.tp-cases', '.tp-threats',
+                 '.tp-cases > div'].forEach(sel => add(sel, document.querySelector(sel)));
                 const pre = document.createElement('pre');
                 pre.id = '__measure';
                 pre.textContent = rows.join('\n');
