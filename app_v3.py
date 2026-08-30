@@ -19235,6 +19235,15 @@ def _run_deepdive_job(job_id, ticker, keys, force=False):
                                        'error': str(e)[:600]})
 
 
+def _charts_available():
+    try:
+        import matplotlib  # noqa: F401
+        import numpy       # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
 @app.route('/api/buildinfo', methods=['GET'])
 def buildinfo():
     """What is actually deployed. Deliberately exempt from the auth gate.
@@ -19253,6 +19262,12 @@ def buildinfo():
             'startedAt': _PROCESS_STARTED_AT,
             'features': {
                 'deepdive': '/api/deepdive/analyze' in rules,
+                'noteGenServerSide': '/api/notes/plan/<ticker>' in rules,
+                'noteReview': '/api/notes/<note_id>/accept' in rules,
+                # Charts are drawn in a try/except that only logs, so a missing
+                # matplotlib produced notes with no charts and no error. Report
+                # it rather than let it be discovered in a finished note.
+                'segmentCharts': _charts_available(),
                 'explain': '/api/explain/depths' in rules,
                 'signposts': '/api/signposts/<ticker>/check' in rules,
                 'thesisRevisions': '/api/thesis/<ticker>/revisions' in rules,
