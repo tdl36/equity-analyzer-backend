@@ -238,3 +238,28 @@ def test_requirements_resolve_together():
     assert proc.returncode == 0, (
         'requirements.txt does not resolve:\n'
         + (proc.stderr or proc.stdout)[-1500:])
+
+
+def test_server_note_prompt_keeps_the_profit_vs_revenue_guidance():
+    """The two note prompts must not drift apart on the profit chart.
+
+    The agent's prompt spelled out that profit means operating income and that
+    an empty array beats reusing revenue. When generation moved server-side that
+    paragraph did not come with it, leaving the server asking only for "a JSON
+    array of profit segments" -- which a model answers most easily by repeating
+    the revenue split. segment_charts.is_duplicate_series then suppresses the
+    chart, so the visible symptom is a missing profit donut, several steps away
+    from the prompt that caused it.
+    """
+    server = (ROOT / 'app_v3.py').read_text(encoding='utf-8')
+    agent = (ROOT / 'charlie_local_agent.py').read_text(encoding='utf-8')
+    required = [
+        'Revenue and profit MUST be different numbers',
+        'NOT revenue',
+        'return an empty array',
+    ]
+    for phrase in required:
+        assert phrase in agent, f'agent prompt lost its guidance: {phrase!r}'
+        assert phrase in server, (
+            f'app_v3.py note prompt is missing {phrase!r} -- the server is the '
+            'default note path, so it needs the same guidance as the agent')

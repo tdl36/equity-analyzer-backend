@@ -81,7 +81,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-08-30T07';
+        const BUILD_VERSION = '2026-08-30T08';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -25825,17 +25825,26 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             <div className="p-4 border-b border-white/10 flex items-center justify-between">
                                                 <div>
                                                     <h3 className="font-bold text-lg">{pipelineDocModalTicker} — Update Config</h3>
-                                                    <p className="text-xs text-slate-400 mt-0.5">Configure how new documents blend with existing analysis</p>
+                                                    <p className="text-xs text-slate-400 mt-0.5">Pick the documents. Ticked documents feed both the thesis and the note; the weighting above applies to the thesis only.</p>
                                                 </div>
                                                 <button onClick={() => setPipelineDocModalTicker(null)} className="text-slate-400 hover:text-white text-xl">&times;</button>
                                             </div>
                                             <div className="p-4 overflow-y-auto max-h-[60vh] space-y-4">
-                                                {/* Weight Slider */}
+                                                {/* Weight slider — Thesis only.
+                                                    This is read by _run_single_pipeline_job, the THESIS pipeline. Neither
+                                                    note path looks at it: not the server generator, not the agent's
+                                                    process_note_job. Sitting unlabelled in a modal whose main button says
+                                                    "Generate Note", it implied an influence over notes that it has never
+                                                    had. Scope is stated rather than the control removed, because it does
+                                                    real work for thesis updates. */}
                                                 <div className="bg-white/[0.04] rounded-lg p-4 border border-white/10">
                                                     <div className="flex items-center justify-between mb-3">
                                                         <div>
-                                                            <div className="font-medium text-slate-200 text-sm">Keep Existing Analysis</div>
-                                                            <div className="text-[10px] text-slate-500">Higher = less change from new documents</div>
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="font-medium text-slate-200 text-sm">Keep Existing Analysis</div>
+                                                                <span className="px-1.5 py-0.5 bg-white/10 text-slate-400 text-[9px] font-semibold rounded uppercase tracking-wide">Thesis only</span>
+                                                            </div>
+                                                            <div className="text-[10px] text-slate-500">Higher = less change from new documents. Does not affect Generate Note.</div>
                                                         </div>
                                                         <span className="text-2xl font-mono font-bold text-amber-400">{pipelineDocModalExistingWeight}%</span>
                                                     </div>
@@ -25854,7 +25863,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 {/* Visual split */}
                                                 <div className="bg-amber-950/30 rounded-lg p-3 border border-amber-800/50">
                                                     <div className="text-amber-300 text-xs">
-                                                        New documents will share <strong>{100 - pipelineDocModalExistingWeight}%</strong> influence on the updated thesis
+                                                        New documents will share <strong>{100 - pipelineDocModalExistingWeight}%</strong> influence on the updated <strong>thesis</strong>. A generated note always reads every document you tick below.
                                                     </div>
                                                 </div>
 

@@ -16450,8 +16450,12 @@ The note should be 8-12 pages when printed, with these sections:
 8. Bottom Line
 
 Also provide:
-- Revenue segment data for pie chart (JSON array: [{{"segment": "name", "revenue": number_in_millions}}])
-- Profit segment data for pie chart (JSON array: [{{"segment": "name", "profit": number_in_millions}}])
+- Revenue segment data for donut chart (JSON array: [{{"segment": "name", "revenue": number_in_millions}}])
+- Profit/Operating Income segment data for donut chart (JSON array: [{{"segment": "name", "profit": number_in_millions}}])
+  IMPORTANT: Revenue and profit MUST be different numbers. Profit means operating income, EBIT, NOI, or segment profit — NOT revenue.
+  If segment-level profit data is not available in the source documents, return an empty array [] instead of reusing revenue numbers.
+  For REITs, use NOI by segment. For industrials, use segment operating profit. For pharma, use segment operating income.
+  Use only segments the company actually reports. Do not invent a segment, and do not carry over a segment name from a peer.
 
 Return your response in this exact format:
 
