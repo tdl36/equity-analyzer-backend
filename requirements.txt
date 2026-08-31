@@ -35,3 +35,19 @@ youtube-transcript-api>=0.6.2,<2
 # the local agent, where matplotlib was already installed.
 matplotlib>=3.8,<4
 numpy>=1.26,<3
+
+# Excel extraction for research-note sources. Imported inside a try/except, so
+# without it a selected .xlsx -- a model, which is a document type the Update
+# Config picker offers -- contributes nothing to the note and says nothing.
+openpyxl>=3.1,<4
+
+# Live prices and earnings dates. Also imported inside a try/except: absent, the
+# price and earnings endpoints quietly return nothing, and deepdive's market
+# snapshot degrades to whatever the research pass inferred.
+yfinance>=0.2.40,<1
+
+# Used directly for anthropic.Anthropic(timeout=httpx.Timeout(...)). It arrives
+# transitively via the Anthropic SDK today, which is not a guarantee: an SDK
+# release that swapped its HTTP client would break these call sites with an
+# ImportError inside a request handler. Declared because it is used directly.
+httpx>=0.27,<1

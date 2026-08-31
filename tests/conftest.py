@@ -38,6 +38,14 @@ def clean_db():
                          earnings_calendar, ticker_earnings_config,
                          research_pipeline_jobs,
                          research_documents,
+                         -- Notes and their source documents were not truncated,
+                         -- so rows accumulated across runs: a test that passed
+                         -- alone failed on the second run because the previous
+                         -- run's documents were still attached to the ticker.
+                         -- Order-dependent failures like that make the whole
+                         -- suite untrustworthy, which is worse than one bug.
+                         research_notes,
+                         document_files,
                          transcription_jobs
                 RESTART IDENTITY CASCADE
             """)

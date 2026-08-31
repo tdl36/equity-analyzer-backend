@@ -1920,6 +1920,18 @@ class LLMError(Exception):
         messages = [f"{p}/{m}: {e}" for p, m, e in errors]
         super().__init__(f"All LLM providers failed: {'; '.join(messages)}")
 
+# Model identifiers, in one place.
+#
+# These were scattered across sixteen string literals in three files. When
+# claude-sonnet-4-20250514 was retired the API began answering 404 and three
+# separate features broke -- note generation on the agent, transcript cleanup
+# and outline generation -- each of which had to be found by someone hitting it.
+# A retirement is now a one-line change, and CHARLIE_MODEL_* lets it be done
+# without a deploy.
+MODEL_WORKHORSE = os.environ.get('CHARLIE_MODEL_WORKHORSE', 'claude-sonnet-5')
+MODEL_LONG_FORM = os.environ.get('CHARLIE_MODEL_LONG_FORM', 'claude-sonnet-5')
+MODEL_FAST = os.environ.get('CHARLIE_MODEL_FAST', 'claude-haiku-4-5-20251001')
+
 MODEL_TIERS = {
     "fast": [
         ("anthropic", "claude-haiku-4-5-20251001"),
@@ -3771,7 +3783,10 @@ def _run_trading_agent(run_id, ticker, date_str, provider, model):
             'gemini-2.0-flash': 0.0001, 'gemini-2.5-pro': 0.005,
         }
         # Rough estimate from log count (each log ~500 tokens avg)
-        est_tokens = len(logs) * 500 if 'logs' in dir() else 5000
+        # `logs` never existed in this scope, so this always took the else
+        # branch -- the dir() guard hid a dead reference rather than counting
+        # anything. Kept as the flat estimate it always was.
+        est_tokens = 5000
         rate = cost_per_1k.get(model, 0.001)
         est_cost = (est_tokens / 1000) * rate
 
@@ -6989,7 +7004,7 @@ def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key
                 # Stream — 64K output cap is far past Anthropic SDK's 10-minute
                 # non-streaming threshold; the SDK refuses those calls outright.
                 with _client.messages.stream(
-                    model='claude-sonnet-4-20250514',
+                    model=MODEL_LONG_FORM,
                     max_tokens=64000,
                     system=cleanup_prompt,
                     messages=[{'role': 'user', 'content': f"Please correct the specialized terms in this transcript:\n\n{transcript_text}"}],
@@ -24477,7 +24492,7 @@ Return ONLY valid JSON array, no markdown fencing."""
         import httpx as _httpx
         client_ai = anthropic.Anthropic(api_key=api_key, timeout=_httpx.Timeout(120.0, connect=15.0))
         response = client_ai.messages.create(
-            model="claude-sonnet-4-20250514",
+            model=MODEL_WORKHORSE,
             max_tokens=8192,
             messages=[{"role": "user", "content": llm_prompt}],
         )
