@@ -86,6 +86,11 @@ def _third_party_imports(paths):
 # Imports that are genuinely optional at runtime and may be absent by design.
 OPTIONAL_IMPORTS = {
     'tradingagents',   # heavy optional integration, guarded at every call site
+    # Supplied transitively by tradingagents, which requires yfinance>=1.4.1.
+    # Pinning it here made requirements.txt unresolvable and the Render build
+    # failed -- silently, because a failed build leaves the previous process
+    # serving, so the deploy simply never lands and nothing says so.
+    'yfinance',
 }
 
 
@@ -215,3 +220,21 @@ def test_no_invalid_escape_sequences():
             if issubclass(w.category, SyntaxWarning):
                 offenders.append(f'{rel}: {w.message}')
     assert not offenders, 'invalid escape sequence(s):\n  ' + '\n  '.join(offenders)
+
+
+def test_requirements_resolve_together():
+    """The file must install as a set, not one package at a time.
+
+    Adding a yfinance pin looked fine because `pip install yfinance` succeeded
+    into an already-populated virtualenv. As a set it was unresolvable --
+    tradingagents requires yfinance>=1.4.1 -- and the Render build failed. A
+    failed build keeps the old process running, so the symptom was a deploy that
+    never arrived rather than an error.
+    """
+    proc = subprocess.run(
+        [sys.executable, '-m', 'pip', 'install', '--dry-run', '-q',
+         '-r', str(ROOT / 'requirements.txt')],
+        capture_output=True, text=True, cwd=ROOT, timeout=900)
+    assert proc.returncode == 0, (
+        'requirements.txt does not resolve:\n'
+        + (proc.stderr or proc.stdout)[-1500:])

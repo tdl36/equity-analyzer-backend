@@ -41,10 +41,12 @@ numpy>=1.26,<3
 # Config picker offers -- contributes nothing to the note and says nothing.
 openpyxl>=3.1,<4
 
-# Live prices and earnings dates. Also imported inside a try/except: absent, the
-# price and earnings endpoints quietly return nothing, and deepdive's market
-# snapshot degrades to whatever the research pass inferred.
-yfinance>=0.2.40,<1
+# yfinance is deliberately NOT pinned here.
+#
+# tradingagents (line above) requires yfinance>=1.4.1, so adding a pin of our
+# own makes requirements.txt unresolvable and the Render build fails silently:
+# the old process keeps serving and the deploy simply never lands. It is
+# available transitively, which is why the import has always worked.
 
 # Used directly for anthropic.Anthropic(timeout=httpx.Timeout(...)). It arrives
 # transitively via the Anthropic SDK today, which is not a guarantee: an SDK
