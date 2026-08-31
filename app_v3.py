@@ -2110,6 +2110,10 @@ def _call_anthropic_stream(*, messages, system, model, max_tokens, timeout, api_
             "input_tokens": getattr(usage, "input_tokens", 0) if usage else 0,
             "output_tokens": getattr(usage, "output_tokens", 0) if usage else 0,
         },
+        # Whether the model ran out of room. Without this a truncated response is
+        # indistinguishable from a complete one, and everything the output
+        # contract puts last disappears with no error anywhere.
+        "stop_reason": getattr(final, "stop_reason", None),
         "provider": "anthropic",
         "model": model,
     }
@@ -15307,6 +15311,18 @@ for _sec, _tks in PIPELINE_SECTOR_MAP.items():
 RESEARCH_NOTE_PLAYBOOK = """
 ## NOTE FORMAT RULES
 
+### Title block:
+- Line 1 is the company name and ticker, nothing else: `Company Name (TICKER)`.
+  Do NOT append "Equity Research Note", "Research Note", "Initiation" or any
+  other document-type label. The reader knows what they opened.
+- Line 2 is a one-line thesis statement describing what is HAPPENING at the
+  company. It must not contain a recommendation or any call to action: no "Own
+  the Name", "Buy", "Hold", "Avoid", "Accumulate", "Top Pick", "Overweight",
+  "Attractive Entry Point", or similar. Describe the situation, not the verdict.
+  Good: "Aetna margin recovery tracking ahead of plan".
+  Bad:  "Multi-Year Earnings Recovery Accelerating; Own the Name".
+- The recommendation belongs in section 8 and nowhere else.
+
 ### Structure (adapt emphasis per stock, but include all sections):
 1. Executive Summary / Investment Thesis (bull + bear in 3-4 bullets each)
 2. Business Overview & Segment Breakdown
@@ -15315,7 +15331,8 @@ RESEARCH_NOTE_PLAYBOOK = """
 5. Catalyst Calendar (earnings, FDA dates, contract renewals, etc.)
 6. Valuation Context (vs. history, vs. peers)
 7. Risks
-8. Bottom Line: Own / Avoid / Revisit at $X
+8. Bottom Line — the recommendation lives HERE (Own / Avoid / Revisit at $X),
+   never in the title block
 
 ### Sector-specific additions:
 - Pharma/Biotech: Patent cliffs, pipeline table, LOE timeline
@@ -15334,6 +15351,26 @@ RESEARCH_NOTE_PLAYBOOK = """
 - Cross-check every narrative claim against data tables
 - When FY EPS includes >$0.50/share in non-recurring items, flag explicitly
 - Distinguish reported vs underlying/organic growth rates
+- Growth adjectives must match your own table. If the EPS bridge shows 7-13%,
+  do not describe it as "mid-teens" anywhere in the note. Compute the number
+  from the table, then choose the word.
+- Never put a quarterly figure in a column headed with a fiscal year. A metrics
+  table column labelled FY25A must contain full-year FY25 data. If only a
+  quarter is available, label the column for that quarter.
+- A "% improvement from the trough" claim must reconcile against the same table:
+  state which period is the trough and check the arithmetic before writing it.
+- Segment revenues that do not sum to consolidated revenue require a stated
+  eliminations/intersegment line. Never present segment revenues that imply a
+  company total larger than the company reports.
+- Every valuation figure (price, multiples, targets, 52-week range) must carry
+  the SAME as-of date, and that date must be stated. Do not mix a price from one
+  month with results from a later quarter.
+- Upside/downside percentages must be computed from the stated current price and
+  cover the full target range, low end included.
+- Every CAGR must state its start and end year, and the growth multiple implied
+  must match the wording ("nearly double" is ~2x, not 2.9x).
+- A figure repeated in two sections must match in both (e.g. per-share impact of
+  a driver quoted in the summary and again in the drivers section).
 
 ### TONE:
 - Write as if the analyst is authoring the note to their PM
@@ -16323,7 +16360,10 @@ def get_research_note_pdf(ticker):
         return html
     html_body = re.sub(r'(\|.+\|[\n\r]*)+', _md_table_to_html, html_body)
     # Horizontal rules (only standalone --- lines, not inside other content)
-    html_body = re.sub(r'^---+$', '<hr style="border:none;border-top:1px solid #cbd5e1;margin:12px 0;">', html_body, flags=re.MULTILINE)
+    # Tolerate trailing spaces and CRLF. The strict ^---+$ matched only a bare
+    # line, so a rule the model emitted as "--- " or with \r\n endings printed
+    # into the PDF as a literal "---" between sections.
+    html_body = re.sub(r'^[ \t]*-{3,}[ \t]*\r?$', '<hr style="border:none;border-top:1px solid #cbd5e1;margin:12px 0;">', html_body, flags=re.MULTILINE)
     # Paragraphs (lines that aren't already HTML)
     lines = html_body.split('\n')
     processed = []
@@ -16592,15 +16632,9 @@ Also provide:
   For REITs, use NOI by segment. For industrials, use segment operating profit. For pharma, use segment operating income.
   Use only segments the company actually reports. Do not invent a segment, and do not carry over a segment name from a peer.
 
-Return your response in this exact format:
-
-===NOTE_START===
-[full markdown note here]
-===NOTE_END===
-
-===SOURCES_START===
-[sources document: section-by-section, which reports informed each claim, broker name + date + page ref]
-===SOURCES_END===
+Return your response in this exact format. The chart data comes FIRST, before
+the note: it is two short JSON arrays, and putting them after an 8-12 page note
+plus a sources document is what caused them to be dropped from long responses.
 
 ===REVENUE_CHART_DATA===
 [JSON array of revenue segments]
@@ -16609,6 +16643,14 @@ Return your response in this exact format:
 ===PROFIT_CHART_DATA===
 [JSON array of profit segments]
 ===PROFIT_CHART_END===
+
+===NOTE_START===
+[full markdown note here]
+===NOTE_END===
+
+===SOURCES_START===
+[sources document: section-by-section, which reports informed each claim, broker name + date + page ref]
+===SOURCES_END===
 """
 
         # Build messages with documents
@@ -16625,7 +16667,7 @@ Return your response in this exact format:
                 messages=messages,
                 system=_NOTE_SYSTEM,
                 model_key=model_key,
-                max_tokens=16384,
+                max_tokens=32000,
                 api_key=api_key,
                 label=f'note-gen {ticker} batch 1',
             )
@@ -16658,7 +16700,7 @@ EXISTING NOTE (extend it with the attached documents; keep what is still true):
                           if batch_content else [{"role": "user", "content": merge_prompt}],
                 system=_NOTE_SYSTEM,
                 model_key=model_key,
-                max_tokens=16384,
+                max_tokens=32000,
                 api_key=api_key,
                 label=f'note-gen {ticker} batch {bi}',
             )
@@ -16698,11 +16740,67 @@ EXISTING NOTE (extend it with the attached documents; keep what is still true):
             except Exception:
                 pass
 
+        # If the blocks did not arrive, ask for just them.
+        #
+        # Reordering the contract makes this rare rather than impossible: the
+        # model can still finish the note and stop, and a note that arrives
+        # without its charts is the failure the user actually sees. This is a
+        # small, focused call against the finished note -- which already contains
+        # segment revenue and segment operating income in prose -- so it does not
+        # re-read the source PDFs and costs little.
+        if not revenue_data:
+            _update_pipeline_job(job_id, current_step='Extracting segment data', progress=68)
+            try:
+                extract = _call_pinned_long(
+                    messages=[{"role": "user", "content": f"""From this research note on {ticker}, extract the segment breakdown.
+
+{note_md[:60000]}
+
+Return ONLY the two blocks below, no prose.
+
+Revenue: the most recent full-year revenue by reportable segment, in millions.
+Profit: operating income / adjusted operating income by the SAME segments, in
+millions. Profit is not revenue. If the note gives no segment profit, return [].
+Use only segments the note actually names.
+
+===REVENUE_CHART_DATA===
+[{{"segment": "name", "revenue": number_in_millions}}]
+===REVENUE_CHART_END===
+
+===PROFIT_CHART_DATA===
+[{{"segment": "name", "profit": number_in_millions}}]
+===PROFIT_CHART_END===
+"""}],
+                    system='You extract structured financial data. Return only the requested blocks.',
+                    model_key=model_key,
+                    max_tokens=2000,
+                    api_key=api_key,
+                    label=f'note-gen {ticker} segment extract',
+                )
+                et = extract.get('text') or ''
+                m = re.search(r'===REVENUE_CHART_DATA===\s*(.*?)\s*===REVENUE_CHART_END===', et, re.DOTALL)
+                if m:
+                    try: revenue_data = json.loads(m.group(1).strip())
+                    except Exception: pass
+                m = re.search(r'===PROFIT_CHART_DATA===\s*(.*?)\s*===PROFIT_CHART_END===', et, re.DOTALL)
+                if m:
+                    try: profit_data = json.loads(m.group(1).strip())
+                    except Exception: pass
+                print(f'[note-gen {job_id}] segment re-extract: '
+                      f'{len(revenue_data)} revenue, {len(profit_data)} profit')
+            except Exception as e:
+                print(f'[note-gen {job_id}] segment re-extract failed: {e}')
+
         # Step 5: Generate charts
         _update_pipeline_job(job_id, current_step='Generating charts', progress=70)
         charts = []
 
         chart_warning = ''
+        # A truncated response is why chart data went missing before: the note
+        # itself reads complete, so nothing looks wrong.
+        if (result.get('stop_reason') or '') == 'max_tokens':
+            print(f'[note-gen {job_id}] response hit the output cap; '
+                  f'trailing sections may be incomplete')
         try:
             for c in segment_charts.render_pair(ticker, revenue_data, profit_data):
                 charts.append({'type': c['type'], 'filename': c['filename'],

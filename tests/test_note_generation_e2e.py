@@ -231,3 +231,83 @@ def test_an_unknown_model_key_falls_back_instead_of_failing(clean_db, stub_llm):
                                    model_key='model-that-was-retired')
     assert stub_llm[0]['model'] == app_v3.resolve_picker_model(
         app_v3.PICKER_DEFAULT_MODEL)
+
+
+def test_horizontal_rules_do_not_print_as_literal_dashes():
+    """A "---" between sections must become a rule, not text.
+
+    The strict ^---+$ matched only a bare line, so a rule written with a trailing
+    space or CRLF endings survived into the PDF as a literal "---" -- which is
+    what appeared between sections 3/4 and 5/6 of a real note.
+    """
+    import re
+    rx = re.compile(r'^[ \t]*-{3,}[ \t]*\r?$', re.MULTILINE)
+    for label, src in (('plain', 'a\n---\nb'), ('trailing space', 'a\n--- \nb'),
+                       ('CRLF', 'a\r\n---\r\nb'), ('indented', 'a\n  ---\nb')):
+        assert rx.search(src), f'{label}: rule not recognised'
+    # a table separator must NOT be swallowed as a rule
+    assert not rx.search('|---|---|')
+
+
+NOTE_WITHOUT_CHARTS = """===NOTE_START===
+# Acme Corporation (ACME)
+
+Segment margins recovering ahead of plan.
+
+## 2. Business Overview
+Health Services FY25 revenue ~$190B, adjusted operating income $7.25bn.
+Benefits FY25 revenue ~$143B, adjusted operating income $5.03bn.
+Pharmacy FY25 revenue ~$139B, adjusted operating income $6.40bn.
+===NOTE_END===
+
+===SOURCES_START===
+Section 2 informed by the 10-K.
+===SOURCES_END===
+"""
+
+CHART_ONLY_REPLY = """===REVENUE_CHART_DATA===
+[{"segment": "Health Services", "revenue": 190000},
+ {"segment": "Benefits", "revenue": 143000},
+ {"segment": "Pharmacy", "revenue": 139000}]
+===REVENUE_CHART_END===
+
+===PROFIT_CHART_DATA===
+[{"segment": "Health Services", "profit": 7250},
+ {"segment": "Benefits", "profit": 5030},
+ {"segment": "Pharmacy", "profit": 6400}]
+===PROFIT_CHART_END===
+"""
+
+
+def test_a_note_without_chart_blocks_still_gets_charts(clean_db, monkeypatch):
+    """The CVS failure: a complete note that arrives with no chart data.
+
+    The blocks sat last in the output contract, after an 8-12 page note and a
+    sources document, so a long response simply ended before reaching them. The
+    note looked finished and the charts were gone with no error. A second,
+    focused call reads the segment figures back out of the finished note.
+    """
+    calls = []
+
+    def staged(*, messages, system, model, max_tokens, timeout, api_key):
+        calls.append(max_tokens)
+        # first call writes the note and omits the charts; the re-extract returns them
+        return {'text': NOTE_WITHOUT_CHARTS if len(calls) == 1 else CHART_ONLY_REPLY,
+                'provider': 'anthropic', 'model': model,
+                'usage': {'input_tokens': 0, 'output_tokens': 0}}
+
+    monkeypatch.setattr(app_v3, '_call_anthropic_stream', staged)
+    _seed_documents('ACME', [('annual-report-2025.pdf', 10)])
+    job_id = _job('ACME')
+    app_v3._generate_research_note(job_id, 'ACME', 'test-key', 'new', None)
+
+    assert len(calls) >= 2, 'no re-extract was attempted'
+    with app_v3.get_db() as (_c, cur):
+        cur.execute('SELECT status, charts FROM research_notes WHERE ticker = %s', ('ACME',))
+        row = cur.fetchone()
+    charts = row['charts']
+    if isinstance(charts, str):
+        charts = json.loads(charts)
+    kinds = {c['type'] for c in (charts or [])}
+    assert 'revenue' in kinds, f'no revenue chart recovered (got {kinds})'
+    assert 'profit' in kinds, f'no profit chart recovered (got {kinds})'
