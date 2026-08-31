@@ -81,7 +81,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-08-30T09';
+        const BUILD_VERSION = '2026-08-30T10';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -206,6 +206,25 @@ if (typeof window !== 'undefined') {
         // the active theme's name. `alwaysLabel` keeps that name visible at every
         // width (the sidebar has room); without it the label only appears at xl,
         // where the 16 nav buttons beside it stop competing for space.
+        // Defined here, not inside the app component. A component declared during
+        // render is a new type on every render, so React unmounts and remounts the
+        // <select> -- which closes the dropdown under your cursor the moment
+        // anything else in the app re-renders.
+        const ModelPicker = ({ models, value, onChange, title, className = '' }) => (
+            <select
+                value={value}
+                onChange={e => onChange(e.target.value)}
+                title={title || 'Model used for this step'}
+                className={`px-2 py-1.5 bg-white/10 border border-white/15 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-purple-500 ${className}`}>
+                {((models && models.length) ? models
+                    : [{ key: 'opus-4-6', label: 'Opus 4.6', note: '' }]).map(m => (
+                    <option key={m.key} value={m.key} className="bg-neutral-900">
+                        {m.label}{m.note ? ` — ${m.note}` : ''}
+                    </option>
+                ))}
+            </select>
+        );
+
         const ThemeSwitch = ({ alwaysLabel = false }) => {
             const [theme, setThemeState] = useState(_currentTheme);
 
@@ -2333,18 +2352,29 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [opHistoryOpen, setOpHistoryOpen] = useState(false);
             const [opModels, setOpModels] = useState([]);
             const [opModel, setOpModel] = useState('opus-4-6');
-            // Model for Generate Note and Update Thesis. Persisted: picking a
-            // model per run and losing it on every reload is the kind of setting
-            // people give up on.
+            // One model list, fetched once, shared by every picker. Each feature
+            // keeps its own selection: the model you want for a 40-page note is
+            // not necessarily the one you want for a quick Explain.
+            //
+            // Defaults match what each feature already ran on, so adding these
+            // pickers changed what you *can* pick, not what you get.
             const [pipelineModels, setPipelineModels] = useState([]);
-            const [pipelineModel, setPipelineModel] = useState(() => {
-                try { return localStorage.getItem('charlie.pipelineModel') || 'opus-4-6'; }
-                catch (e) { return 'opus-4-6'; }
-            });
-            useEffect(() => {
-                try { localStorage.setItem('charlie.pipelineModel', pipelineModel); }
-                catch (e) { /* private mode: the choice just does not persist */ }
-            }, [pipelineModel]);
+            const usePersistedModel = (storageKey, fallback) => {
+                const [v, setV] = useState(() => {
+                    try { return localStorage.getItem(storageKey) || fallback; }
+                    catch (e) { return fallback; }
+                });
+                useEffect(() => {
+                    try { localStorage.setItem(storageKey, v); }
+                    catch (e) { /* private mode: the choice just does not persist */ }
+                }, [storageKey, v]);
+                return [v, setV];
+            };
+            const [pipelineModel, setPipelineModel] = usePersistedModel('charlie.pipelineModel', 'opus-4-6');
+            const [thesisModel, setThesisModel] = usePersistedModel('charlie.thesisModel', 'opus-4-6');
+            const [decipherModel, setDecipherModel] = usePersistedModel('charlie.decipherModel', 'opus-4-7');
+            const [mpModel, setMpModel] = usePersistedModel('charlie.mpModel', 'sonnet-5');
+
             const [opEmailing, setOpEmailing] = useState(false);
             // Poster (AI) state — the image path, kept separate from the HTML styles.
             const [opPoster, setOpPoster] = useState(null);       // base64 png
@@ -2946,9 +2976,18 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         const r = await fetch(`${API_URL}/api/models`);
                         if (!r.ok) return;
                         const j = await r.json();
-                        setPipelineModels(j.models || []);
-                        setPipelineModel(m => (j.models || []).some(x => x.key === m) ? m : (j.default || m));
-                    } catch (e) { /* picker stays on its default */ }
+                        const list = j.models || [];
+                        setPipelineModels(list);
+                        // A saved choice for a model that has since been retired
+                        // must not be sent to the backend -- drop back to the
+                        // default rather than failing the run.
+                        const keep = (m, fallback) =>
+                            list.some(x => x.key === m) ? m : (fallback || j.default || m);
+                        setPipelineModel(m => keep(m));
+                        setThesisModel(m => keep(m));
+                        setDecipherModel(m => keep(m, 'opus-4-7'));
+                        setMpModel(m => keep(m, 'sonnet-5'));
+                    } catch (e) { /* pickers stay on their defaults */ }
                 })();
             }, []);
 
@@ -7416,7 +7455,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
-                                    apiKey: apiKeySaved, ticker: intent.ticker,
+                                    apiKey: apiKeySaved, ticker: intent.ticker, model: thesisModel,
                                     documentFilenames: intent.allDocFilenames,
                                     documentDetails: intent.docDetails,
                                     existingAnalysis: analysis?.documentHistory?.length > 0 ? analysis : null,
@@ -10973,6 +11012,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             sector: meeting.sector || '',
                             docs: docsWithText,
                             pastQuestions: mpPastQuestions || [],
+                            model: mpModel,
                             timeframe,
                             unresolvedQuestions: unresolved,
                         })
@@ -13366,7 +13406,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            apiKey: apiKeySaved, ticker,
+                            apiKey: apiKeySaved, ticker, model: thesisModel,
                             documentFilenames: allDocFilenames,
                             documentDetails: docDetails,
                             existingAnalysis: analysis?.documentHistory?.length > 0 ? analysis : null,
@@ -13612,6 +13652,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             documentDetails: docDetails,
                             existingAnalysis: existingAnalysis?.documentHistory?.length > 0 ? existingAnalysis : null,
                             historicalWeights,
+                            model: thesisModel,
                             weightingConfig: { mode: 'simple', existingAnalysisWeight: 60, newDocsWeight: 40 }
                         });
                     }
@@ -16560,6 +16601,17 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     </>
                                                 )}
                                             </button>
+                                            {/* The Thesis tab ran on whatever the backend had pinned, with no
+                                                way to see or change it. Same list as everywhere else. */}
+                                            <div className="mt-2 flex items-center justify-center gap-2">
+                                                <span className="text-[10px] text-slate-500 uppercase tracking-wider">Model</span>
+                                                <ModelPicker
+                                                    models={pipelineModels}
+                                                    value={thesisModel}
+                                                    onChange={setThesisModel}
+                                                    title="Model used to analyze documents and write the thesis"
+                                                />
+                                            </div>
                                             {loading && analysisProgress ? (
                                                 <div className="mt-4 bg-white/[0.04] border border-white/10 rounded-xl p-4 space-y-3">
                                                     <div className="flex justify-between items-center text-sm">
@@ -21523,11 +21575,17 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 <FileText className="w-4 h-4 text-white" />
                                                             </button>
                                                         </>)}
-                                                        {mpDocuments.length > 0 && !mpPipelineRunning && (
+                                                        {mpDocuments.length > 0 && !mpPipelineRunning && (<>
+                                                            <ModelPicker
+                                                    models={pipelineModels}
+                                                                value={mpModel}
+                                                                onChange={setMpModel}
+                                                                title="Model used for the meeting-prep pipeline"
+                                                            />
                                                             <button onClick={runMpPipeline} className="px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded-lg text-sm font-medium transition-all">
                                                                 {mpQuestionSet && mpQuestionSet.status === 'ready' ? 'Regenerate Questions' : 'Generate Questions'}
                                                             </button>
-                                                        )}
+                                                        </>)}
                                                     </div>
                                                 </div>
 
@@ -25165,17 +25223,12 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 Generate Note and Update Thesis run on whichever model is
                                                 chosen here. */}
                                             <div className="flex flex-wrap items-center gap-2 mt-3">
-                                                <select
+                                                <ModelPicker
+                                                    models={pipelineModels}
                                                     value={pipelineModel}
-                                                    onChange={e => setPipelineModel(e.target.value)}
+                                                    onChange={setPipelineModel}
                                                     title="Model used for Generate Note and Update Thesis"
-                                                    className="px-2 py-1.5 bg-white/10 border border-white/15 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-purple-500">
-                                                    {(pipelineModels.length ? pipelineModels : [{ key: 'opus-4-6', label: 'Opus 4.6', note: '' }]).map(m => (
-                                                        <option key={m.key} value={m.key} className="bg-neutral-900">
-                                                            {m.label}{m.note ? ` — ${m.note}` : ''}
-                                                        </option>
-                                                    ))}
-                                                </select>
+                                                />
                                                 <button
                                                     onClick={() => {
                                                         if (pipelineSelectedTickers.length === 1) generateResearchNote(pipelineSelectedTickers[0], 'new');
@@ -26343,6 +26396,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         ticker: (decipherTicker || '').trim(),
                                                         mode: decipherMode,
                                                         depth: explainDepth,
+                                                        model: decipherModel,
                                                         generateKorean: decipherKorean,
                                                         attachments: decipherFiles.map(f => ({
                                                             fileData: f.fileData,
@@ -26518,6 +26572,17 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                     {(explainDepths.find(d => d.key === explainDepth) || {}).note || ''}
                                                                 </span>
                                                             )}
+                                                            {/* Explain runs on Opus 4.7 unless told otherwise; that
+                                                                stays the default so this picker adds a choice rather
+                                                                than changing the answers. */}
+                                                            <span className="text-[10px] uppercase tracking-wider text-slate-500 ml-2">Model</span>
+                                                            <ModelPicker
+                                                    models={pipelineModels}
+                                                                value={decipherModel}
+                                                                onChange={setDecipherModel}
+                                                                title="Model used for Explain and its follow-ups"
+                                                                className="!py-1 !bg-black/30 !border-white/10"
+                                                            />
                                                             <label className="flex items-center gap-1.5 ml-auto cursor-pointer select-none">
                                                                 <input
                                                                     type="checkbox"

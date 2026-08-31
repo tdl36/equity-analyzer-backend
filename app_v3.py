@@ -6329,7 +6329,7 @@ Organize into 3-6 logical sections (e.g., Business Update, Strategic Priorities,
                 try:
                     client = anthropic.Anthropic(api_key=keys['anthropic'], timeout=120)
                     response = client.messages.create(
-                        model='claude-haiku-4-5-20251001',
+                        model=MODEL_FAST,
                         max_tokens=8192,
                         system=system,
                         messages=[{'role': 'user', 'content': user_text}],
@@ -6435,7 +6435,7 @@ Be conversational and direct — write as if you're giving your honest debrief t
                 try:
                     client = anthropic.Anthropic(api_key=keys['anthropic'], timeout=120)
                     response = client.messages.create(
-                        model='claude-haiku-4-5-20251001',
+                        model=MODEL_FAST,
                         max_tokens=8192,
                         system=system,
                         messages=[{'role': 'user', 'content': user_text}],
@@ -12658,6 +12658,7 @@ def _onepager_research(ticker, anthropic_key='', gemini_key=''):
 # claude-sonnet-4-20250514 was retired.
 PICKER_MODELS = [
     {'key': 'opus-4-6',  'label': 'Opus 4.6',  'model': 'claude-opus-4-6',              'note': 'Current default'},
+    {'key': 'opus-4-7',  'label': 'Opus 4.7',  'model': 'claude-opus-4-7',              'note': 'Deeper reasoning'},
     {'key': 'opus-5',    'label': 'Opus 5',    'model': 'claude-opus-5',                'note': 'Latest Opus'},
     {'key': 'sonnet-5',  'label': 'Sonnet 5',  'model': 'claude-sonnet-5',              'note': 'Faster, cheaper'},
     {'key': 'fable-5',   'label': 'Fable 5',   'model': 'claude-fable-5',               'note': 'Most expressive'},
@@ -12665,6 +12666,13 @@ PICKER_MODELS = [
 ]
 PICKER_MODEL_BY_KEY = {m['key']: m for m in PICKER_MODELS}
 PICKER_DEFAULT_MODEL = 'opus-4-6'
+
+# Per-feature defaults. Each is the model that feature already used, so putting a
+# picker in front of it changes what you *can* choose, never what you get by
+# default -- a picker that silently re-pointed Decipher from 4.7 to 4.6 would be
+# a regression wearing a feature's clothes.
+DECIPHER_DEFAULT_MODEL = 'opus-4-7'
+MEETING_PREP_DEFAULT_MODEL = 'sonnet-5'
 
 # The one-pager names kept as aliases so its call sites read unchanged.
 ONEPAGER_MODELS = PICKER_MODELS
@@ -13227,7 +13235,7 @@ def _run_orchestrate_fanout(job_id, ticker, depth, model_key, keys):
                     meeting_id = cur.fetchone()['id']
 
             _mp_save_results_inline(meeting_id, topics, None, tokens,
-                                    'claude-sonnet-4-5-20250929')
+                                    MODEL_WORKHORSE)
 
             topic_count = len(topics) if isinstance(topics, list) else len(topics or {})
             results['questions'] = {'ok': True, 'meetingId': meeting_id,
@@ -14914,7 +14922,7 @@ Return ONLY valid JSON, no markdown, no explanation."""
                 client = anthropic.Anthropic(api_key=api_key, timeout=_httpx.Timeout(300.0, connect=30.0))
                 result_text = ""
                 kwargs = {
-                    "model": "claude-sonnet-4-5-20250929",
+                    "model": MODEL_WORKHORSE,
                     "max_tokens": 64000,
                     "messages": [{'role': 'user', 'content': content}],
                     "system": "You are an expert equity research analyst. Provide institutional-quality investment analysis that is CONCISE: 2-3 printed pages max. Limit to 3-5 pillars, 4-6 signposts, 3-5 threats, each described in 1-2 sentences. Prioritize the most important insights and consolidate related points. Always respond with valid JSON only.",
@@ -18957,7 +18965,7 @@ def start_agent_run():
     ticker = data.get('ticker', '').upper().strip()
     date_str = data.get('date', '')
     provider = data.get('provider', 'anthropic')
-    model = data.get('model', 'claude-haiku-4-5-20251001')
+    model = data.get('model') or MODEL_FAST
 
     if not ticker or not date_str:
         return jsonify({'error': 'ticker and date required'}), 400
@@ -19164,7 +19172,8 @@ EXPLAIN_DEPTH_TEXT = {key: text for key, _label, text in EXPLAIN_DEPTHS}
 
 def _run_decipher_job(job_id: str, text: str, attachments: list,
                       ticker: str, mode: str, api_key: str,
-                      generate_korean: bool = False, depth: str = 'standard'):
+                      generate_korean: bool = False, depth: str = 'standard',
+                      model_key: str = None):
     """Background worker. Updates _decipher_jobs[job_id] with status + result.
 
     `attachments` is a list of {fileData, fileName, fileType, mimeType} dicts.
@@ -19229,7 +19238,7 @@ def _run_decipher_job(job_id: str, text: str, attachments: list,
         content.append({"type": "text", "text": ask})
 
         with client.messages.stream(
-            model='claude-opus-4-7',
+            model=resolve_picker_model(model_key, DECIPHER_DEFAULT_MODEL),
             max_tokens=max_out,
             system=system_prompt,
             messages=[{"role": "user", "content": content}],
@@ -19281,7 +19290,7 @@ OUTPUT
             korean_max = 12288 if mode == 'walkthrough' else 6144
             try:
                 with client.messages.stream(
-                    model='claude-opus-4-7',
+                    model=resolve_picker_model(model_key, DECIPHER_DEFAULT_MODEL),
                     max_tokens=korean_max,
                     system=korean_system,
                     messages=[{"role": "user", "content": korean_content}],
@@ -19308,7 +19317,9 @@ OUTPUT
             'status': 'complete',
             'explanation': explanation_final,
             'koreanIncluded': bool(korean_text),
-            'model': 'claude-opus-4-7',
+            # what actually ran, not a constant -- the UI shows this, and a fixed
+            # string here would report Opus for a run the user sent to Sonnet
+            'model': resolve_picker_model(model_key, DECIPHER_DEFAULT_MODEL),
             'mode': mode,
             'truncated': stop == 'max_tokens',
             'inputTokens': getattr(usage, 'input_tokens', None) if usage else None,
@@ -19598,6 +19609,7 @@ def decipher():
             mode = 'synthesize'
         generate_korean = bool(data.get('generateKorean'))
         depth = (data.get('depth') or 'standard').strip().lower()
+        decipher_model = data.get('model') or DECIPHER_DEFAULT_MODEL
         if depth not in EXPLAIN_DEPTH_TEXT:
             depth = 'standard'
 
@@ -19652,7 +19664,8 @@ def decipher():
         threading.Thread(
             target=_run_decipher_job,
             args=(job_id, text, attachments, ticker, mode, api_key),
-            kwargs={'generate_korean': generate_korean, 'depth': depth},
+            kwargs={'generate_korean': generate_korean, 'depth': depth,
+                    'model_key': decipher_model},
             daemon=True,
             name=f'decipher-{job_id}',
         ).start()
@@ -19692,7 +19705,8 @@ def decipher_status(job_id):
 _decipher_followup_jobs: dict[str, dict] = {}  # fid -> {status, answer?, error?, parentJobId, ...}
 
 
-def _run_decipher_followup_job(fid: str, parent_job_id: str, question: str, api_key: str):
+def _run_decipher_followup_job(fid: str, parent_job_id: str, question: str, api_key: str,
+                               model_key: str = None):
     """Background worker for a single follow-up turn."""
     try:
         _decipher_followup_jobs[fid]['status'] = 'running'
@@ -19718,7 +19732,7 @@ def _run_decipher_followup_job(fid: str, parent_job_id: str, question: str, api_
         messages.append({"role": "user", "content": question})
 
         with client.messages.stream(
-            model='claude-opus-4-7',
+            model=resolve_picker_model(model_key, DECIPHER_DEFAULT_MODEL),
             max_tokens=8192,
             system=chat['system_prompt'],
             messages=messages,
@@ -19792,7 +19806,8 @@ def decipher_followup(job_id):
         }
         threading.Thread(
             target=_run_decipher_followup_job,
-            args=(fid, job_id, question, api_key),
+            args=(fid, job_id, question, api_key,
+                  (data.get('model') or DECIPHER_DEFAULT_MODEL)),
             daemon=True,
             name=f'decipher-followup-{fid}',
         ).start()
@@ -19901,7 +19916,7 @@ def start_agent_batch_run():
     tickers = data.get('tickers', [])
     date_str = data.get('date', '')
     provider = data.get('provider', 'anthropic')
-    model = data.get('model', 'claude-haiku-4-5-20251001')
+    model = data.get('model') or MODEL_FAST
 
     if not tickers or not date_str:
         return jsonify({'error': 'tickers and date required'}), 400
@@ -20807,7 +20822,7 @@ Return ONLY valid JSON (no markdown fences):
 {"score": 0-100, "issues": [{"category": "...", "severity": "...", "location": "...", "issue": "...", "fix": "..."}], "summary": "one line overall assessment"}"""
 
 VALIDATION_MODELS = [
-    {'provider': 'anthropic', 'model': 'claude-sonnet-4-6', 'name': 'Claude'},
+    {'provider': 'anthropic', 'model': MODEL_WORKHORSE, 'name': 'Claude'},
     {'provider': 'openai', 'model': 'gpt-4.1-mini', 'name': 'GPT'},
     {'provider': 'gemini', 'model': 'gemini-2.0-flash', 'name': 'Gemini'},
 ]
@@ -22225,7 +22240,7 @@ def mp_run_pipeline():
         past_questions = data.get('pastQuestions') or []
         timeframe = data.get('timeframe', 'recent')
         unresolved = data.get('unresolvedQuestions') or []
-        model = data.get('model', 'claude-sonnet-4-5-20250929')
+        model = resolve_picker_model(data.get('model'), MEETING_PREP_DEFAULT_MODEL)
 
         # Persist full input (excluding API key) so retries have everything needed
         persisted_input = {
@@ -22289,7 +22304,7 @@ def mp_job_retry(job_id):
                   inp['docs'], inp.get('pastQuestions') or [],
                   inp.get('timeframe', 'recent'),
                   inp.get('unresolvedQuestions') or [],
-                  inp.get('model', 'claude-sonnet-4-5-20250929')),
+                  resolve_picker_model(inp.get('model'), MEETING_PREP_DEFAULT_MODEL)),
             kwargs={'resume_from': checkpoint},
             daemon=True,
         ).start()
@@ -22358,7 +22373,7 @@ def mp_save_results():
         topics = data.get('topics', [])
         synthesis_json = data.get('synthesisJson')
         total_tokens = data.get('totalTokens', 0)
-        model = data.get('model', 'claude-sonnet-4-5-20250929')
+        model = resolve_picker_model(data.get('model'), MEETING_PREP_DEFAULT_MODEL)
 
         if not meeting_id:
             return jsonify({'error': 'meetingId is required'}), 400

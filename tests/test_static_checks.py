@@ -277,7 +277,9 @@ def test_note_and_thesis_models_are_not_hardcoded():
     src = (ROOT / 'app_v3.py').read_text(encoding='utf-8').splitlines()
     offenders = []
     for fn_start, fn_name in _function_spans(src, (
-            '_run_analysis_job', '_reconcile_stale_facts', '_generate_research_note')):
+            '_run_analysis_job', '_reconcile_stale_facts', '_generate_research_note',
+            '_run_decipher_job', '_run_decipher_followup_job',
+            'mp_run_pipeline', 'mp_job_retry', 'mp_save_results')):
         for lineno, line in fn_start:
             if re.search(r"model\s*=\s*['\"]claude-", line):
                 offenders.append(f'{fn_name} (app_v3.py:{lineno}): {line.strip()}')
@@ -315,3 +317,62 @@ def test_models_endpoint_lists_the_picker_models():
     # a stale key must degrade, never fail the job
     assert app_v3.resolve_picker_model('no-such-model') == \
         app_v3.resolve_picker_model(app_v3.PICKER_DEFAULT_MODEL)
+
+
+def test_every_feature_default_is_a_real_picker_option():
+    """A per-feature default that is not in the list would be unselectable.
+
+    Decipher runs on Opus 4.7 and meeting prep on Sonnet 5. If either default
+    named a key the picker does not offer, resolve_picker_model would silently
+    substitute the global default and the feature would change model without
+    anyone choosing that.
+    """
+    import app_v3
+    keys = {m['key'] for m in app_v3.PICKER_MODELS}
+    for name in ('PICKER_DEFAULT_MODEL', 'DECIPHER_DEFAULT_MODEL',
+                 'MEETING_PREP_DEFAULT_MODEL'):
+        key = getattr(app_v3, name)
+        assert key in keys, f'{name}={key!r} is not one of {sorted(keys)}'
+
+
+def test_feature_defaults_preserve_the_model_each_feature_already_used():
+    """Adding a picker must not move a feature to a different model.
+
+    Decipher was pinned to claude-opus-4-7 in four places. If its default
+    resolved to anything else, every Explain answer would quietly change on
+    deploy -- a regression that looks like a feature.
+    """
+    import app_v3
+    assert app_v3.resolve_picker_model(None, app_v3.DECIPHER_DEFAULT_MODEL) \
+        == 'claude-opus-4-7'
+
+
+def test_no_dated_model_ids_outside_the_registry():
+    """Dated ids are the ones that get retired.
+
+    claude-sonnet-4-20250514 was withdrawn and took out three features at once,
+    each found by someone hitting it. The registry may name a dated id; nothing
+    else should, so a retirement is one edit in one place.
+    """
+    src = (ROOT / 'app_v3.py').read_text(encoding='utf-8').splitlines()
+    registry = False
+    offenders = []
+    for i, line in enumerate(src, 1):
+        if 'PICKER_MODELS = [' in line or 'MODEL_TIERS = {' in line:
+            registry = True
+        elif registry and line.startswith((']', '}')):
+            registry = False
+        elif registry:
+            continue
+        if 'os.environ.get' in line or line.lstrip().startswith('#'):
+            continue
+        # Two tables legitimately name ids as data rather than calling them: the
+        # per-model cost lookup, and the fallback list used when the provider's
+        # list-models endpoint is unreachable. A retirement makes an entry
+        # useless, not fatal.
+        if '_PRICE' in line or ': 0.0' in line or line.strip().startswith('"claude-'):
+            continue
+        if re.search(r"['\"]claude-[a-z0-9.-]*-\d{8}['\"]", line):
+            offenders.append(f'app_v3.py:{i}: {line.strip()[:90]}')
+    assert not offenders, (
+        'dated model id outside the registry:\n  ' + '\n  '.join(offenders))
