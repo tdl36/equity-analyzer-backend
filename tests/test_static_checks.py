@@ -193,3 +193,25 @@ def test_a_404_falls_through_to_the_next_provider():
     assert app_v3._is_retryable(
         'anthropic', _err(_anthropic.AuthenticationError, 401)) is False, (
         'an auth failure fails on every provider; it must stay fatal')
+
+
+def test_no_invalid_escape_sequences():
+    """These are a SyntaxWarning today and a SyntaxError in a later Python.
+
+    Two were hiding in a dead copy of the donut renderer -- code that no longer
+    ran, so nothing surfaced them, and that would have broken the build on a
+    Python upgrade for a function nobody used.
+    """
+    import warnings
+    offenders = []
+    for rel in PRODUCTION_MODULES:
+        path = ROOT / rel
+        if not path.exists():
+            continue
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter('always', SyntaxWarning)
+            compile(path.read_text(encoding='utf-8'), rel, 'exec')
+        for w in caught:
+            if issubclass(w.category, SyntaxWarning):
+                offenders.append(f'{rel}: {w.message}')
+    assert not offenders, 'invalid escape sequence(s):\n  ' + '\n  '.join(offenders)

@@ -16642,68 +16642,13 @@ EXISTING NOTE (extend it with the attached documents; keep what is still true):
         _notify_telegram(f"*Pipeline:* {ticker} note generation FAILED\n{str(e)[:200]}")
 
 
-def _generate_donut_chart(ticker, chart_type, data, value_key):
-    """Generate a donut chart as base64 PNG."""
-    try:
-        import numpy as np
-        import matplotlib
-        matplotlib.use('Agg')
-        import matplotlib.pyplot as plt
-        import matplotlib.patheffects as pe
-
-        labels = [d.get('segment', '') for d in data]
-        values = [d.get(value_key, d.get('revenue', d.get('profit', 0))) for d in data]
-
-        if not values or sum(values) == 0:
-            return None
-
-        total = sum(values)
-        colors = ['#5DADE2', '#F7DC6F', '#F1948A', '#7DCEA0', '#BB8FCE', '#85C1E9', '#F8C471', '#82E0AA']
-
-        fig, ax = plt.subplots(figsize=(10, 8), facecolor='white')
-        wedges, _ = ax.pie(values, labels=None, colors=colors[:len(values)],
-                           startangle=90, wedgeprops={'width': 0.58, 'edgecolor': 'none', 'linewidth': 0})
-
-        # Center text
-        centre_circle = plt.Circle((0, 0), 0.30, fc='white')
-        ax.add_artist(centre_circle)
-        total_str = f'\${total/1000:.1f}B' if total >= 1000 else f'\${total:.0f}M'
-        ax.text(0, 0.05, 'Total', ha='center', va='center', fontsize=12, color='#333333', fontweight='normal')
-        ax.text(0, -0.08, total_str, ha='center', va='center', fontsize=16, color='#333333', fontweight='bold')
-
-        # Inside labels
-        for i, (wedge, value) in enumerate(zip(wedges, values)):
-            pct = value / total * 100
-            ang = (wedge.theta2 - wedge.theta1) / 2. + wedge.theta1
-            x = 0.70 * np.cos(np.deg2rad(ang))
-            y = 0.70 * np.sin(np.deg2rad(ang))
-            val_str = f'\${value/1000:.1f}B' if value >= 1000 else f'\${value:.0f}M'
-            fontsize = 11 if pct > 15 else 10 if pct > 8 else 9
-            if pct >= 3:
-                ax.text(x, y, f'{val_str}\n({pct:.1f}%)', ha='center', va='center',
-                        fontsize=fontsize, fontweight='bold', color='white',
-                        path_effects=[pe.withStroke(linewidth=2, foreground='black')])
-
-        # Outside labels
-        for i, (wedge, label) in enumerate(zip(wedges, labels)):
-            ang = (wedge.theta2 - wedge.theta1) / 2. + wedge.theta1
-            x = 1.15 * np.cos(np.deg2rad(ang))
-            y = 1.15 * np.sin(np.deg2rad(ang))
-            ax.text(x, y, label, ha='center', va='center', fontsize=10, fontweight='bold', color='#333333')
-
-        ax.set_title(f'{ticker} — {chart_type} Breakdown', fontsize=14, fontweight='bold', color='#333333', pad=20)
-        ax.set_aspect('equal')
-        plt.tight_layout()
-
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='white')
-        plt.close(fig)
-        buf.seek(0)
-        return base64.b64encode(buf.read()).decode('ascii')
-    except Exception as e:
-        print(f'Chart generation error for {ticker} {chart_type}: {e}')
-        return None
-
+# _generate_donut_chart lived here.
+#
+# It was the backend's copy of the agent's donut renderer: the same chart
+# drawn by two implementations that had already diverged -- only the agent's
+# refused to draw a profit split that merely repeated revenue. Both callers now
+# use segment_charts.render_pair, so this was dead code carrying two invalid
+# escape sequences ('\$') that Python warns about today and rejects later.
 
 def _generate_note_docx(ticker, company, markdown_text, charts):
     """Generate a Word document from markdown note text with embedded charts."""
