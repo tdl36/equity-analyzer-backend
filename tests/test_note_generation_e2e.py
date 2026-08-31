@@ -55,13 +55,29 @@ Section 1 informed by the 10-K.
 
 @pytest.fixture
 def stub_llm(monkeypatch):
+    """Fake the network, not the calling logic.
+
+    This used to replace call_llm, which sat above everything that decides how a
+    model is reached -- streaming, timeout, retry, the pinned-model fallback. A
+    stub that high tests the prompt and the parsing and nothing else, so when
+    note generation was failing in production on a 120-second non-streaming
+    timeout, every test here passed. Stubbing the adapter instead means
+    _call_pinned_long runs for real and only the HTTP call is faked.
+    """
     calls = []
+
+    def fake_stream(*, messages, system, model, max_tokens, timeout, api_key):
+        calls.append({'messages': messages, 'system': system, 'model': model,
+                      'max_tokens': max_tokens, 'timeout': timeout})
+        return {'text': MODEL_REPLY, 'provider': 'anthropic', 'model': model,
+                'usage': {'input_tokens': 0, 'output_tokens': 0}}
 
     def fake_call_llm(**kwargs):
         calls.append(kwargs)
         return {'text': MODEL_REPLY, 'provider': 'stub', 'model': 'stub-1',
                 'usage': {}}
 
+    monkeypatch.setattr(app_v3, '_call_anthropic_stream', fake_stream)
     monkeypatch.setattr(app_v3, 'call_llm', fake_call_llm)
     return calls
 
@@ -148,3 +164,70 @@ def test_a_ticker_with_no_documents_fails_loudly(client, stub_llm):
     with app_v3.get_db() as (_c, cur):
         cur.execute("SELECT status FROM research_pipeline_jobs WHERE id = %s", (job_id,))
         assert cur.fetchone()['status'] == 'failed'
+
+
+def test_note_generation_streams_and_does_not_use_the_120s_default(clean_db, stub_llm):
+    """The bug that killed CVS: a long note on a two-minute non-streaming call.
+
+    _call_anthropic uses messages.create, which the SDK refuses when a request's
+    estimated duration passes ten minutes -- reported as "Request timed out or
+    interrupted", which reads like a network fault. call_llm's default timeout
+    was 120s on top of that, with no retry, so one slow response discarded a job
+    that had already spent minutes reading PDFs. Asserting on the adapter and
+    the timeout keeps note generation off that path.
+    """
+    _seed_documents('STRM', [('annual-report-2025.pdf', 20)])
+    job_id = _job('STRM')
+    app_v3._generate_research_note(job_id, 'STRM', 'test-key', 'new', None)
+
+    assert stub_llm, 'no model call was made'
+    for call in stub_llm:
+        assert 'timeout' in call, (
+            'note generation reached a non-streaming adapter; it must go '
+            'through _call_anthropic_stream')
+        assert call['timeout'] >= 900, (
+            f"timeout {call['timeout']}s is too short for a multi-PDF note; "
+            'the 120s default is what failed in production')
+
+
+def test_note_generation_retries_a_transient_failure(clean_db, monkeypatch):
+    """A dropped connection mid-note must not throw the job away."""
+    attempts = []
+
+    def flaky(*, messages, system, model, max_tokens, timeout, api_key):
+        attempts.append(model)
+        if len(attempts) == 1:
+            raise app_v3.anthropic.APITimeoutError(request=None)
+        return {'text': MODEL_REPLY, 'provider': 'anthropic', 'model': model,
+                'usage': {'input_tokens': 0, 'output_tokens': 0}}
+
+    monkeypatch.setattr(app_v3, '_call_anthropic_stream', flaky)
+    monkeypatch.setattr(app_v3.time, 'sleep', lambda *_a, **_k: None)
+
+    _seed_documents('RTRY', [('annual-report-2025.pdf', 10)])
+    job_id = _job('RTRY')
+    app_v3._generate_research_note(job_id, 'RTRY', 'test-key', 'new', None)
+
+    assert len(attempts) >= 2, 'the timeout was not retried'
+    with app_v3.get_db() as (_c, cur):
+        cur.execute('SELECT status FROM research_pipeline_jobs WHERE id = %s', (job_id,))
+        assert cur.fetchone()['status'] == 'complete'
+
+
+def test_the_picked_model_is_the_one_called(clean_db, stub_llm):
+    """Choosing Sonnet must actually call Sonnet, not the default."""
+    _seed_documents('PICK', [('annual-report-2025.pdf', 10)])
+    job_id = _job('PICK')
+    app_v3._generate_research_note(job_id, 'PICK', 'test-key', 'new', None,
+                                   model_key='sonnet-5')
+    assert stub_llm[0]['model'] == 'claude-sonnet-5', stub_llm[0]['model']
+
+
+def test_an_unknown_model_key_falls_back_instead_of_failing(clean_db, stub_llm):
+    """A stale saved preference must not be able to fail a job."""
+    _seed_documents('STAL', [('annual-report-2025.pdf', 10)])
+    job_id = _job('STAL')
+    app_v3._generate_research_note(job_id, 'STAL', 'test-key', 'new', None,
+                                   model_key='model-that-was-retired')
+    assert stub_llm[0]['model'] == app_v3.resolve_picker_model(
+        app_v3.PICKER_DEFAULT_MODEL)

@@ -81,7 +81,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-08-30T08';
+        const BUILD_VERSION = '2026-08-30T09';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -2333,6 +2333,18 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [opHistoryOpen, setOpHistoryOpen] = useState(false);
             const [opModels, setOpModels] = useState([]);
             const [opModel, setOpModel] = useState('opus-4-6');
+            // Model for Generate Note and Update Thesis. Persisted: picking a
+            // model per run and losing it on every reload is the kind of setting
+            // people give up on.
+            const [pipelineModels, setPipelineModels] = useState([]);
+            const [pipelineModel, setPipelineModel] = useState(() => {
+                try { return localStorage.getItem('charlie.pipelineModel') || 'opus-4-6'; }
+                catch (e) { return 'opus-4-6'; }
+            });
+            useEffect(() => {
+                try { localStorage.setItem('charlie.pipelineModel', pipelineModel); }
+                catch (e) { /* private mode: the choice just does not persist */ }
+            }, [pipelineModel]);
             const [opEmailing, setOpEmailing] = useState(false);
             // Poster (AI) state — the image path, kept separate from the HTML styles.
             const [opPoster, setOpPoster] = useState(null);       // base64 png
@@ -2925,6 +2937,20 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     await openOnePager(ticker, depth);
                 } catch (e) { alert('Restore failed: ' + (e.message || e)); }
             }, [openOnePager]);
+
+            // Same list the one-pager uses, served by the backend so a retired
+            // model disappears from the picker without a frontend deploy.
+            useEffect(() => {
+                (async () => {
+                    try {
+                        const r = await fetch(`${API_URL}/api/models`);
+                        if (!r.ok) return;
+                        const j = await r.json();
+                        setPipelineModels(j.models || []);
+                        setPipelineModel(m => (j.models || []).some(x => x.key === m) ? m : (j.default || m));
+                    } catch (e) { /* picker stays on its default */ }
+                })();
+            }, []);
 
             // Model list is served by the backend so the two never drift.
             useEffect(() => {
@@ -7735,7 +7761,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     const res = await fetch(`${API_URL}/api/pipeline/start`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ tickers, jobType, apiKey: apiKeySaved, documentConfig: pipelineDocConfig, generateTiers: pipelineTierMode }),
+                        body: JSON.stringify({ tickers, jobType, apiKey: apiKeySaved, documentConfig: pipelineDocConfig, generateTiers: pipelineTierMode, model: pipelineModel }),
                     });
                     if (res.ok) {
                         const data = await res.json();
@@ -7876,6 +7902,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             ticker, apiKey: apiKeySaved, mode,
+                            model: pipelineModel,
                             reprocess: true,
                             fileSelection: (pipelineDocConfig[ticker]?.documents || [])
                                 .filter(d => d.included !== false)
@@ -25133,8 +25160,22 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 </div>
                                             </div>
 
-                                            {/* Action buttons — single row, compact */}
-                                            <div className="flex gap-2 mt-3">
+                                            {/* Action buttons — single row, compact.
+                                                The model picker sits with them because it governs both:
+                                                Generate Note and Update Thesis run on whichever model is
+                                                chosen here. */}
+                                            <div className="flex flex-wrap items-center gap-2 mt-3">
+                                                <select
+                                                    value={pipelineModel}
+                                                    onChange={e => setPipelineModel(e.target.value)}
+                                                    title="Model used for Generate Note and Update Thesis"
+                                                    className="px-2 py-1.5 bg-white/10 border border-white/15 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-purple-500">
+                                                    {(pipelineModels.length ? pipelineModels : [{ key: 'opus-4-6', label: 'Opus 4.6', note: '' }]).map(m => (
+                                                        <option key={m.key} value={m.key} className="bg-neutral-900">
+                                                            {m.label}{m.note ? ` — ${m.note}` : ''}
+                                                        </option>
+                                                    ))}
+                                                </select>
                                                 <button
                                                     onClick={() => {
                                                         if (pipelineSelectedTickers.length === 1) generateResearchNote(pipelineSelectedTickers[0], 'new');

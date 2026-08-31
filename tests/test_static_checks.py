@@ -263,3 +263,55 @@ def test_server_note_prompt_keeps_the_profit_vs_revenue_guidance():
         assert phrase in server, (
             f'app_v3.py note prompt is missing {phrase!r} -- the server is the '
             'default note path, so it needs the same guidance as the agent')
+
+
+def test_note_and_thesis_models_are_not_hardcoded():
+    """Both must resolve the model the user picked, not a baked-in id.
+
+    The thesis analysis was pinned to claude-sonnet-4-5-20250929 and the
+    reconciler to claude-sonnet-4-6, so the picker could offer Opus or Fable and
+    the run would quietly use neither. A literal here is also how a retirement
+    becomes an outage: the same shape took out note generation when
+    claude-sonnet-4-20250514 was withdrawn.
+    """
+    src = (ROOT / 'app_v3.py').read_text(encoding='utf-8').splitlines()
+    offenders = []
+    for fn_start, fn_name in _function_spans(src, (
+            '_run_analysis_job', '_reconcile_stale_facts', '_generate_research_note')):
+        for lineno, line in fn_start:
+            if re.search(r"model\s*=\s*['\"]claude-", line):
+                offenders.append(f'{fn_name} (app_v3.py:{lineno}): {line.strip()}')
+    assert not offenders, (
+        'model id hardcoded where the user picks one:\n  ' + '\n  '.join(offenders))
+
+
+def _function_spans(lines, names):
+    """Yield (numbered lines, name) for each named top-level function."""
+    starts = {}
+    for i, line in enumerate(lines):
+        m = re.match(r'def (\w+)\(', line)
+        if m and m.group(1) in names:
+            starts[i] = m.group(1)
+    out = []
+    for start, name in starts.items():
+        body = []
+        for i in range(start + 1, len(lines)):
+            if re.match(r'def \w+\(', lines[i]):
+                break
+            body.append((i + 1, lines[i]))
+        out.append((body, name))
+    return out
+
+
+def test_models_endpoint_lists_the_picker_models():
+    """The picker is served, not baked into the bundle."""
+    import app_v3
+    assert app_v3.PICKER_MODELS, 'no models offered'
+    keys = {m['key'] for m in app_v3.PICKER_MODELS}
+    assert app_v3.PICKER_DEFAULT_MODEL in keys, 'default is not one of the options'
+    for m in app_v3.PICKER_MODELS:
+        assert m.get('model', '').startswith('claude-'), m
+        assert m.get('label'), m
+    # a stale key must degrade, never fail the job
+    assert app_v3.resolve_picker_model('no-such-model') == \
+        app_v3.resolve_picker_model(app_v3.PICKER_DEFAULT_MODEL)

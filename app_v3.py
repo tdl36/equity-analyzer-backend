@@ -2079,6 +2079,42 @@ def _call_anthropic(*, messages, system, model, max_tokens, timeout, api_key):
         "model": model,
     }
 
+def _call_anthropic_stream(*, messages, system, model, max_tokens, timeout, api_key):
+    """Streaming twin of _call_anthropic, returning the same shape.
+
+    The SDK refuses a non-streaming call whose ESTIMATED duration exceeds ten
+    minutes, and reports it as "Request timed out or interrupted" -- which reads
+    like a network fault rather than a refusal, so it was misdiagnosed for a
+    while. A note built from several PDFs against a 16K output cap is past that
+    threshold, which is why note generation failed while the reconciler (already
+    streaming, for this same reason) did not. Streaming also keeps the socket
+    busy, so a slow first token is not mistaken for a dead connection.
+    """
+    client = anthropic.Anthropic(api_key=api_key, timeout=timeout)
+    kwargs = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "messages": messages,
+    }
+    if system:
+        kwargs["system"] = system
+    parts = []
+    with client.messages.stream(**kwargs) as stream:
+        for chunk in stream.text_stream:
+            parts.append(chunk)
+        final = stream.get_final_message()
+    usage = getattr(final, "usage", None)
+    return {
+        "text": "".join(parts),
+        "usage": {
+            "input_tokens": getattr(usage, "input_tokens", 0) if usage else 0,
+            "output_tokens": getattr(usage, "output_tokens", 0) if usage else 0,
+        },
+        "provider": "anthropic",
+        "model": model,
+    }
+
+
 def _call_gemini(*, messages, system, model, max_tokens, timeout, api_key):
     """Call Google Gemini API. Returns normalized response dict."""
     client = genai.Client(api_key=api_key)
@@ -3914,6 +3950,7 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
         # update (Python sees the later assignment, treats doc_config as
         # function-local, can't read it before assignment).
         doc_config = {}
+        pipeline_model_key = PICKER_DEFAULT_MODEL
         with get_db() as (_, cur):
             cur.execute('SELECT steps_detail FROM research_pipeline_jobs WHERE id = %s', (job_id,))
             job_row = cur.fetchone()
@@ -3923,6 +3960,7 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
                     try: sd = json.loads(sd)
                     except: sd = {}
                 doc_config = sd.get('documentConfig', {})
+                pipeline_model_key = sd.get('model') or PICKER_DEFAULT_MODEL
 
         # If the user's selection includes docs NOT in our DB (e.g. "iCloud Only"
         # files in the modal — typically catalyst-folder PDFs the user just dropped
@@ -4126,6 +4164,7 @@ def _run_single_pipeline_job(job_id, ticker, job_type, api_key):
                         'documentDetails': doc_details_list,
                         'existingAnalysis': {k: (v.isoformat() if hasattr(v, 'isoformat') else v) for k, v in dict(effective_existing).items()} if effective_existing else None,
                         'weightingConfig': weighting_config,
+                        'model': pipeline_model_key,
                     })))
 
             # Run the analysis synchronously within this thread
@@ -4351,7 +4390,8 @@ def _count_pdf_pages(base64_data):
         return 30
 
 
-def _reconcile_stale_facts(analysis_data: dict, source_docs: list, api_key: str, ticker: str) -> dict:
+def _reconcile_stale_facts(analysis_data: dict, source_docs: list, api_key: str, ticker: str,
+                           model_key: str = None) -> dict:
     """Two-pass stale-fact reconciliation.
 
     PASS 1: Extract a canonical fact table (metric, value, unit, period, source)
@@ -4473,7 +4513,7 @@ OUTPUT — valid JSON only, no prose, no markdown fencing:
         # duration exceeds 10 minutes. The reconciler attaches PDFs + a 12K
         # output cap, which crosses the threshold under load.
         with client.messages.stream(
-            model='claude-sonnet-4-6',
+            model=resolve_picker_model(model_key),
             max_tokens=12288,
             system="You are a meticulous equity research fact-checker. Your job is to surface and correct stale numbers, never to rewrite arguments.",
             messages=[{"role": "user", "content": content}],
@@ -4686,6 +4726,7 @@ def _run_analysis_job(job_id):
         existing_analysis = payload.get('existingAnalysis')
         historical_weights = payload.get('historicalWeights', [])
         weighting_config = payload.get('weightingConfig', {})
+        model_key = payload.get('model') or PICKER_DEFAULT_MODEL
         doc_details = {d['filename']: d for d in payload.get('documentDetails', [])}
 
         _update_job(job_id, status='processing', progress='Loading documents...')
@@ -4795,7 +4836,7 @@ def _run_analysis_job(job_id):
                         print(f"[analysis-job {job_id}] Retry batch {batch_idx + 1}, attempt {attempt}")
 
                     with client.messages.stream(
-                        model="claude-sonnet-4-5-20250929",
+                        model=resolve_picker_model(model_key),
                         max_tokens=64000,
                         messages=[{'role': 'user', 'content': content}],
                         system="You are an expert equity research analyst. Analyze documents thoroughly and provide institutional-quality investment analysis. Be concise: the final thesis should fit 2-3 printed pages (3-5 pillars, 4-6 signposts, 3-5 threats, each described in 1-2 sentences). Prioritize the most important insights. Always respond with valid JSON only."
@@ -4963,7 +5004,8 @@ def create_analysis_job():
             'documentDetails': data.get('documentDetails', []),
             'existingAnalysis': data.get('existingAnalysis'),
             'historicalWeights': data.get('historicalWeights', []),
-            'weightingConfig': data.get('weightingConfig', {})
+            'weightingConfig': data.get('weightingConfig', {}),
+            'model': data.get('model') or PICKER_DEFAULT_MODEL,
         }
 
         with get_db(commit=True) as (conn, cur):
@@ -5061,7 +5103,8 @@ def create_analysis_jobs_batch():
                 'documentDetails': job_data.get('documentDetails', []),
                 'existingAnalysis': job_data.get('existingAnalysis'),
                 'historicalWeights': job_data.get('historicalWeights', []),
-                'weightingConfig': job_data.get('weightingConfig', {})
+                'weightingConfig': job_data.get('weightingConfig', {}),
+                'model': job_data.get('model') or PICKER_DEFAULT_MODEL,
             }
 
             with get_db(commit=True) as (conn, cur):
@@ -12602,21 +12645,88 @@ def _onepager_research(ticker, anthropic_key='', gemini_key=''):
     return result['text']
 
 
-# Models offered in the one-pager picker. Anthropic-only: the assembly step is a
-# long-context compression job where model choice actually changes the output, so
-# it is worth pinning explicitly rather than hiding behind a tier.
+# Models offered in the pickers. Anthropic-only: these are long-context jobs
+# where model choice actually changes the output, so it is worth pinning
+# explicitly rather than hiding behind a tier.
 #
 # A pinned model that errors (retired ID, no account access) falls back to the
-# normal call_llm tier chain rather than failing the job — see _onepager_caller.
-ONEPAGER_MODELS = [
+# normal tier chain rather than failing the job -- see _pinned_caller.
+#
+# One list, three pickers. The one-pager had its own; adding separate lists for
+# notes and the thesis would mean a model retirement had to be fixed in three
+# places, which is the shape of the bug that took out note generation when
+# claude-sonnet-4-20250514 was retired.
+PICKER_MODELS = [
     {'key': 'opus-4-6',  'label': 'Opus 4.6',  'model': 'claude-opus-4-6',              'note': 'Current default'},
     {'key': 'opus-5',    'label': 'Opus 5',    'model': 'claude-opus-5',                'note': 'Latest Opus'},
     {'key': 'sonnet-5',  'label': 'Sonnet 5',  'model': 'claude-sonnet-5',              'note': 'Faster, cheaper'},
     {'key': 'fable-5',   'label': 'Fable 5',   'model': 'claude-fable-5',               'note': 'Most expressive'},
     {'key': 'haiku-4-5', 'label': 'Haiku 4.5', 'model': 'claude-haiku-4-5-20251001',    'note': 'Fastest'},
 ]
-ONEPAGER_MODEL_BY_KEY = {m['key']: m for m in ONEPAGER_MODELS}
-ONEPAGER_DEFAULT_MODEL = 'opus-4-6'
+PICKER_MODEL_BY_KEY = {m['key']: m for m in PICKER_MODELS}
+PICKER_DEFAULT_MODEL = 'opus-4-6'
+
+# The one-pager names kept as aliases so its call sites read unchanged.
+ONEPAGER_MODELS = PICKER_MODELS
+ONEPAGER_MODEL_BY_KEY = PICKER_MODEL_BY_KEY
+ONEPAGER_DEFAULT_MODEL = PICKER_DEFAULT_MODEL
+
+
+def resolve_picker_model(model_key, default_key=PICKER_DEFAULT_MODEL):
+    """Model key -> API model id. Unknown keys fall back to the default.
+
+    A stale key reaching this (an old browser tab, a saved preference for a
+    model since dropped) must not fail the job -- it picks the default instead.
+    """
+    spec = PICKER_MODEL_BY_KEY.get(model_key) or PICKER_MODEL_BY_KEY.get(default_key)
+    return spec['model'] if spec else 'claude-opus-4-6'
+
+
+def _call_pinned_long(*, messages, system, model_key, max_tokens, api_key,
+                      tier='advanced', label='LLM call', max_attempts=4,
+                      timeout=1800, base_backoff_s=2.0):
+    """One long job, on the model the user picked, streamed, with retry.
+
+    Note generation used plain call_llm: non-streaming, a 120s default timeout
+    and no retry at all, so a single slow response killed a job that had already
+    spent minutes reading PDFs. Three things were wrong and all three had to go:
+    it now streams (the SDK refuses long non-streaming calls), waits 30 minutes
+    rather than two, and retries transient failures with backoff.
+
+    Falls back to the tier chain if the pinned model itself is the problem, so a
+    retired or unavailable model id degrades to a working note instead of none.
+    """
+    import time as _time, random as _random
+    model = resolve_picker_model(model_key)
+    last_exc = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return _call_anthropic_stream(
+                messages=messages, system=system, model=model,
+                max_tokens=max_tokens, timeout=timeout, api_key=api_key,
+            )
+        except Exception as e:
+            last_exc = e
+            if not _is_transient_llm_error(e):
+                break            # a bad model id will not fix itself; fall through
+            if attempt >= max_attempts:
+                break
+            backoff = base_backoff_s * (2 ** (attempt - 1)) + _random.uniform(0, 2)
+            print(f"[{label}] {model} attempt {attempt}/{max_attempts} failed "
+                  f"({type(e).__name__}: {str(e)[:200]}); retry in {backoff:.1f}s")
+            _time.sleep(backoff)
+
+    print(f"[{label}] pinned model {model} failed "
+          f"({type(last_exc).__name__}: {str(last_exc)[:200]}); "
+          f"falling back to the {tier} tier chain")
+    result = None
+    for chunk in call_llm_stream(messages=messages, system=system, tier=tier,
+                                 max_tokens=max_tokens, anthropic_api_key=api_key):
+        if isinstance(chunk, dict):
+            result = chunk
+    if result is None or not (result.get('text') or '').strip():
+        raise last_exc if last_exc else Exception(f'{label}: no text from any model')
+    return result
 
 
 def _onepager_caller(model_key, anthropic_key):
@@ -12841,7 +12951,7 @@ def _orchestrate_set(job_id, **fields):
             (json.dumps(fields), job_id))
 
 
-def _run_orchestrate_thesis(job_id, ticker, api_key, doc_config=None):
+def _run_orchestrate_thesis(job_id, ticker, api_key, doc_config=None, model_key=None):
     """Stage 1: propose a thesis from the ticker's documents, then stop."""
     try:
         import onepager as _op
@@ -12854,6 +12964,7 @@ def _run_orchestrate_thesis(job_id, ticker, api_key, doc_config=None):
         # orchestrator takes the SAME documentConfig contract the Pipeline tab
         # uses, rather than a second, cruder set of controls.
         doc_config = doc_config or {}
+        model_key = model_key or PICKER_DEFAULT_MODEL
         rebuild_from_scratch = bool(doc_config.get('rebuildFromScratch', False))
         existing_weight = 0 if rebuild_from_scratch else int(doc_config.get('existingWeight', 70))
         excluded_historical = doc_config.get('excludedHistoricalDocs', []) or []
@@ -13000,7 +13111,7 @@ def _run_orchestrate_thesis(job_id, ticker, api_key, doc_config=None):
                     } for r in (cur.fetchall() or [])]
 
                 if source_docs:
-                    recon = _reconcile_stale_facts(candidate, source_docs, api_key, ticker)
+                    recon = _reconcile_stale_facts(candidate, source_docs, api_key, ticker, model_key)
                     candidate = recon.get('updatedAnalysis') or candidate
                     corrections = recon.get('factCorrections') or []
                     if corrections:
@@ -13170,7 +13281,8 @@ def start_orchestration():
                 })))
 
         threading.Thread(target=_run_orchestrate_thesis,
-                         args=(job_id, ticker, keys['anthropic'], data.get('documentConfig')),
+                         args=(job_id, ticker, keys['anthropic'], data.get('documentConfig'),
+                               data.get('model') or PICKER_DEFAULT_MODEL),
                          daemon=True).start()
         return jsonify({'jobId': job_id}), 202
     except Exception as e:
@@ -13373,6 +13485,17 @@ def list_onepager_depths_route():
 def list_onepager_models():
     """Models the one-pager picker offers, and which is default."""
     return jsonify({'models': ONEPAGER_MODELS, 'default': ONEPAGER_DEFAULT_MODEL})
+
+
+@app.route('/api/models', methods=['GET'])
+def list_picker_models():
+    """The models offered by the note and thesis pickers.
+
+    Served rather than hardcoded in the bundle so a retirement is a backend
+    change: the frontend would otherwise keep offering a dead model until the
+    next frontend deploy, and picking it would fail the job.
+    """
+    return jsonify({'models': PICKER_MODELS, 'default': PICKER_DEFAULT_MODEL})
 
 
 def _run_onepager_job(job_id, ticker, anthropic_key, gemini_key, openai_key, force_research, model_key=None, depth=None):
@@ -15250,7 +15373,8 @@ def pipeline_start():
                 cur.execute('''
                     INSERT INTO research_pipeline_jobs (id, batch_id, ticker, job_type, status, progress, current_step, total_steps, steps_detail)
                     VALUES (%s, %s, %s, %s, 'queued', 0, 'Queued', %s, %s)
-                ''', (job_id, batch_id, ticker.upper(), job_type, total_steps, json.dumps({'documentConfig': doc_config, 'generateTiers': generate_tiers})))
+                ''', (job_id, batch_id, ticker.upper(), job_type, total_steps, json.dumps({'documentConfig': doc_config, 'generateTiers': generate_tiers,
+                            'model': data.get('model') or PICKER_DEFAULT_MODEL})))
                 jobs.append({'id': job_id, 'ticker': ticker.upper(), 'status': 'queued'})
 
         # Spawn background thread for the batch
@@ -15914,6 +16038,7 @@ def generate_research_note():
     mode = data.get('mode', 'new')  # 'new' or 'update'
     file_selection = data.get('fileSelection', [])
     reprocess = data.get('reprocess', False)
+    model_key = data.get('model') or PICKER_DEFAULT_MODEL
 
     if not ticker:
         return jsonify({'error': 'No ticker provided'}), 400
@@ -15942,7 +16067,8 @@ def generate_research_note():
         docs_here = (row or {}).get('n', 0) or 0
 
     job_id = str(uuid.uuid4())
-    detail = {'mode': mode, 'fileSelection': file_selection, 'reprocess': reprocess}
+    detail = {'mode': mode, 'fileSelection': file_selection, 'reprocess': reprocess,
+              'model': model_key}
 
     if run_on == 'server' and docs_here:
         with get_db(commit=True) as (conn, cur):
@@ -15952,7 +16078,7 @@ def generate_research_note():
             ''', (job_id, str(uuid.uuid4()), ticker, json.dumps(detail)))
         threading.Thread(
             target=_generate_research_note,
-            args=(job_id, ticker, api_key, mode, file_selection),
+            args=(job_id, ticker, api_key, mode, file_selection, model_key),
             daemon=True, name=f'note-{ticker}-{job_id[:8]}').start()
         return jsonify({'jobId': job_id, 'ticker': ticker, 'runsOn': 'server'})
 
@@ -16291,7 +16417,8 @@ def _resume_note_checkpoint(job_id):
         return None
 
 
-def _generate_research_note(job_id, ticker, api_key, mode='new', file_selection=None):
+def _generate_research_note(job_id, ticker, api_key, mode='new', file_selection=None,
+                           model_key=None):
     """Generate a full equity research note in a background thread.
 
     Runs on Charlie rather than the local agent. The documents are already here
@@ -16486,12 +16613,13 @@ Return your response in this exact format:
         if resume_from:
             result = {'text': resume['text'], 'provider': '', 'model': ''}
         else:
-            result = call_llm(
+            result = _call_pinned_long(
                 messages=messages,
                 system=_NOTE_SYSTEM,
-                tier="advanced",
+                model_key=model_key,
                 max_tokens=16384,
-                anthropic_api_key=api_key,
+                api_key=api_key,
+                label=f'note-gen {ticker} batch 1',
             )
 
         # Remaining batches fold their documents into the note just written,
@@ -16516,14 +16644,15 @@ EXISTING NOTE (extend it with the attached documents; keep what is still true):
 {prev_note[:12000]}
 """
             batch_content = _content_for(batch)
-            result = call_llm(
+            result = _call_pinned_long(
                 messages=[{"role": "user",
                            "content": batch_content + [{"type": "text", "text": merge_prompt}]}]
                           if batch_content else [{"role": "user", "content": merge_prompt}],
                 system=_NOTE_SYSTEM,
-                tier="advanced",
+                model_key=model_key,
                 max_tokens=16384,
-                anthropic_api_key=api_key,
+                api_key=api_key,
+                label=f'note-gen {ticker} batch {bi}',
             )
 
         _update_pipeline_job(job_id, current_step='Parsing note', progress=60)
