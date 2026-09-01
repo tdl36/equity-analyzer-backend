@@ -16451,8 +16451,10 @@ def get_research_note_pdf(ticker):
         except: charts_data = []
     for chart in (charts_data or []):
         if chart.get('data'):
-            chart_type = chart.get('type', 'chart').title()
-            charts_html += f'<p style="margin:16px 0 4px 0;font-weight:bold;font-size:11pt;color:#1e293b;">{ticker} {chart_type} Breakdown</p>'
+            # Legacy notes carry only a type; new ones carry a period-bearing
+            # label ("FY2025A Revenue"), which type.title() cannot express.
+            heading = chart.get('label') or f"{chart.get('type', 'chart').title()} Breakdown"
+            charts_html += f'<p style="margin:16px 0 4px 0;font-weight:bold;font-size:11pt;color:#1e293b;">{ticker} {heading}</p>'
             charts_html += f'<img src="data:image/png;base64,{chart["data"]}" style="width:100%;max-width:500px;margin:0 0 16px 0;" />'
 
     html = f"""<html><head><style>
@@ -16529,6 +16531,67 @@ def _resume_note_checkpoint(job_id):
         return detail.get('checkpoint')
     except Exception:
         return None
+
+
+def _parse_chart_blocks(text):
+    """Segment series out of a model response, new format or old.
+
+    The current contract is one CHART_DATA object carrying a prior year and a
+    current year, each with revenue and profit -- four series. Notes written
+    before that, and anything still produced by the local agent, use two flat
+    REVENUE/PROFIT arrays with no period at all; those are read as a single
+    unlabelled pair so old notes keep rendering.
+
+    Returns [{'kind', 'period', 'data'}], skipping empty series.
+    """
+    def _rows(raw):
+        out = []
+        for d in (raw or []):
+            if not isinstance(d, dict):
+                continue
+            name = str(d.get('segment', '')).strip()
+            val = d.get('value', d.get('revenue', d.get('profit')))
+            try:
+                val = float(val)
+            except (TypeError, ValueError):
+                continue
+            if name and val:
+                out.append({'segment': name, 'value': val})
+        return out
+
+    specs = []
+    m = re.search(r'===CHART_DATA===\s*(.*?)\s*===CHART_DATA_END===', text, re.DOTALL)
+    if m:
+        try:
+            blob = json.loads(m.group(1).strip())
+        except Exception:
+            blob = None
+        if isinstance(blob, dict):
+            for key in ('priorYear', 'currentYear'):
+                part = blob.get(key) or {}
+                if not isinstance(part, dict):
+                    continue
+                label = str(part.get('label', '')).strip()
+                for kind in ('revenue', 'profit'):
+                    rows = _rows(part.get(kind))
+                    if rows:
+                        specs.append({'kind': kind, 'period': label, 'data': rows})
+            if specs:
+                return specs
+
+    # Legacy two-block format.
+    for kind, pattern in (('revenue', r'===REVENUE_CHART_DATA===\s*(.*?)\s*===REVENUE_CHART_END==='),
+                          ('profit',  r'===PROFIT_CHART_DATA===\s*(.*?)\s*===PROFIT_CHART_END===')):
+        mm = re.search(pattern, text, re.DOTALL)
+        if not mm:
+            continue
+        try:
+            rows = _rows(json.loads(mm.group(1).strip()))
+        except Exception:
+            continue
+        if rows:
+            specs.append({'kind': kind, 'period': '', 'data': rows})
+    return specs
 
 
 def _generate_research_note(job_id, ticker, api_key, mode='new', file_selection=None,
@@ -16698,24 +16761,38 @@ The note should be 8-12 pages when printed, with these sections:
 8. Bottom Line
 
 Also provide:
-- Revenue segment data for donut chart (JSON array: [{{"segment": "name", "revenue": number_in_millions}}])
-- Profit/Operating Income segment data for donut chart (JSON array: [{{"segment": "name", "profit": number_in_millions}}])
-  IMPORTANT: Revenue and profit MUST be different numbers. Profit means operating income, EBIT, NOI, or segment profit — NOT revenue.
-  If segment-level profit data is not available in the source documents, return an empty array [] instead of reusing revenue numbers.
-  For REITs, use NOI by segment. For industrials, use segment operating profit. For pharma, use segment operating income.
-  Use only segments the company actually reports. Do not invent a segment, and do not carry over a segment name from a peer.
+- Segment breakdowns for four donut charts: revenue and operating profit, each
+  for the last completed fiscal year and the current fiscal year.
+
+  PERIODS — these must be FULL FISCAL YEARS, never a quarter:
+    * Prior year  = the last completed fiscal year, actual. Label it like "FY2025A".
+    * Current year = the fiscal year now in progress, estimated (company guidance
+      where given, otherwise the best estimate in the sources). Label "FY2026E".
+  A quarter's segment mix is not what is being asked for. If the sources report
+  segments quarterly, sum or annualise to a full year and say so in the note. If
+  a full year genuinely cannot be established for a period, return [] for it
+  rather than substituting a quarter.
+
+  Revenue and profit MUST be different numbers. Profit means operating
+  income, adjusted operating income, EBIT, NOI, or segment profit — NOT revenue.
+  If segment-level profit is not in the sources, return an empty array []
+  instead of reusing revenue numbers. For REITs use NOI by segment; for industrials, segment operating
+  profit; for pharma, segment operating income.
+
+  SEGMENTS — use only segments the company actually reports, the same segment
+  names across all four charts, and never a segment name carried over from a
+  peer. Figures in millions.
 
 Return your response in this exact format. The chart data comes FIRST, before
 the note: it is two short JSON arrays, and putting them after an 8-12 page note
 plus a sources document is what caused them to be dropped from long responses.
 
-===REVENUE_CHART_DATA===
-[JSON array of revenue segments]
-===REVENUE_CHART_END===
-
-===PROFIT_CHART_DATA===
-[JSON array of profit segments]
-===PROFIT_CHART_END===
+===CHART_DATA===
+{{
+  "priorYear":   {{"label": "FY2025A", "revenue": [{{"segment": "name", "value": 0}}], "profit": [{{"segment": "name", "value": 0}}]}},
+  "currentYear": {{"label": "FY2026E", "revenue": [{{"segment": "name", "value": 0}}], "profit": [{{"segment": "name", "value": 0}}]}}
+}}
+===CHART_DATA_END===
 
 ===NOTE_START===
 [full markdown note here]
@@ -16799,19 +16876,11 @@ EXISTING NOTE (extend it with the attached documents; keep what is still true):
         if sources_match:
             sources_md = sources_match.group(1).strip()
 
-        rev_match = re.search(r'===REVENUE_CHART_DATA===\s*(.*?)\s*===REVENUE_CHART_END===', response_text, re.DOTALL)
-        if rev_match:
-            try:
-                revenue_data = json.loads(rev_match.group(1).strip())
-            except Exception:
-                pass
-
-        profit_match = re.search(r'===PROFIT_CHART_DATA===\s*(.*?)\s*===PROFIT_CHART_END===', response_text, re.DOTALL)
-        if profit_match:
-            try:
-                profit_data = json.loads(profit_match.group(1).strip())
-            except Exception:
-                pass
+        chart_specs = _parse_chart_blocks(response_text)
+        # Kept for the duplicate check and the re-extract below, both of which
+        # reason about one revenue series against one profit series.
+        revenue_data = next((c['data'] for c in chart_specs if c['kind'] == 'revenue'), [])
+        profit_data = next((c['data'] for c in chart_specs if c['kind'] == 'profit'), [])
 
         # If the blocks did not arrive, ask for just them.
         #
@@ -16838,9 +16907,10 @@ EXISTING NOTE (extend it with the attached documents; keep what is still true):
 
 Return ONLY the two blocks below, no prose.
 
-Revenue: the most recent full-year revenue by reportable segment, in millions.
-Profit: operating income / adjusted operating income by the SAME segments, in
-millions.
+Give FULL FISCAL YEARS, never a quarter: the last completed fiscal year (actual)
+and the fiscal year now in progress (estimated). Label them like "FY2025A" and
+"FY2026E". If the note reports segments only quarterly, annualise; if a year
+cannot be established, return [] for it rather than substituting a quarter.
 
 Profit is NOT revenue and must not be proportional to it. Segment operating
 income, adjusted operating income, EBIT, segment profit and NOI all qualify;
@@ -16849,15 +16919,15 @@ concluding there are none -- they are often stated in the segment write-ups
 rather than in a table. Only if the note genuinely reports no segment-level
 profit should you return [].
 
-Use only segments the note actually names.
+Use only segments the note actually names, and the same names in every series.
+Figures in millions.
 
-===REVENUE_CHART_DATA===
-[{{"segment": "name", "revenue": number_in_millions}}]
-===REVENUE_CHART_END===
-
-===PROFIT_CHART_DATA===
-[{{"segment": "name", "profit": number_in_millions}}]
-===PROFIT_CHART_END===
+===CHART_DATA===
+{{
+  "priorYear":   {{"label": "FY2025A", "revenue": [{{"segment": "name", "value": 0}}], "profit": [{{"segment": "name", "value": 0}}]}},
+  "currentYear": {{"label": "FY2026E", "revenue": [{{"segment": "name", "value": 0}}], "profit": [{{"segment": "name", "value": 0}}]}}
+}}
+===CHART_DATA_END===
 """}],
                     system='You extract structured financial data. Return only the requested blocks.',
                     model_key=model_key,
@@ -16865,17 +16935,19 @@ Use only segments the note actually names.
                     api_key=api_key,
                     label=f'note-gen {ticker} segment extract',
                 )
-                et = extract.get('text') or ''
-                m = re.search(r'===REVENUE_CHART_DATA===\s*(.*?)\s*===REVENUE_CHART_END===', et, re.DOTALL)
-                if m:
-                    try: revenue_data = json.loads(m.group(1).strip())
-                    except Exception: pass
-                m = re.search(r'===PROFIT_CHART_DATA===\s*(.*?)\s*===PROFIT_CHART_END===', et, re.DOTALL)
-                if m:
-                    try: profit_data = json.loads(m.group(1).strip())
-                    except Exception: pass
+                # Feed the same list the renderer reads. Updating only
+                # revenue_data/profit_data here would leave chart_specs holding
+                # the original (missing or mirrored) series, so the re-extract
+                # would run, succeed, and change nothing on the page.
+                recovered = _parse_chart_blocks(extract.get('text') or '')
+                if recovered:
+                    chart_specs = recovered
+                    revenue_data = next((c['data'] for c in chart_specs
+                                         if c['kind'] == 'revenue'), [])
+                    profit_data = next((c['data'] for c in chart_specs
+                                        if c['kind'] == 'profit'), [])
                 print(f'[note-gen {job_id}] segment re-extract: '
-                      f'{len(revenue_data)} revenue, {len(profit_data)} profit')
+                      f'{len(chart_specs)} series recovered')
             except Exception as e:
                 print(f'[note-gen {job_id}] segment re-extract failed: {e}')
 
@@ -16890,8 +16962,10 @@ Use only segments the note actually names.
             print(f'[note-gen {job_id}] response hit the output cap; '
                   f'trailing sections may be incomplete')
         try:
-            for c in segment_charts.render_pair(ticker, revenue_data, profit_data):
-                charts.append({'type': c['type'], 'filename': c['filename'],
+            for c in segment_charts.render_series(ticker, chart_specs):
+                charts.append({'type': c['type'], 'label': c['label'],
+                               'kind': c['kind'], 'period': c['period'],
+                               'filename': c['filename'],
                                'data': base64.b64encode(c['png']).decode('ascii')})
             if (revenue_data and profit_data
                     and segment_charts.is_duplicate_series(revenue_data, profit_data)):
@@ -16952,7 +17026,9 @@ Use only segments the note actually names.
                   # rendered correctly, saved as two empty rows, and skipped by
                   # every consumer -- all of which test `if chart.get('data')`.
                   # The note arrived complete and chartless with no error.
-                  json.dumps([{'type': c['type'], 'filename': c['filename'],
+                  json.dumps([{'type': c['type'], 'label': c.get('label', ''),
+                               'kind': c.get('kind', ''), 'period': c.get('period', ''),
+                               'filename': c['filename'],
                                'data': c['data']} for c in charts]),
                   json.dumps({
                       'mode': mode,
@@ -18280,8 +18356,8 @@ def email_research():
         if charts:
             for idx, chart in enumerate(charts):
                 if isinstance(chart, dict) and chart.get('data'):
-                    chart_type = chart.get('type', 'chart').title()
-                    label = f'{ticker} {chart_type} Breakdown' if ticker else f'{chart_type} Breakdown'
+                    heading = chart.get('label') or f"{chart.get('type', 'chart').title()} Breakdown"
+                    label = f'{ticker} {heading}' if ticker else heading
                     cid = f'chart_{idx}'
                     charts_html += f'<p style="margin:16px 0 4px 0;font-weight:bold;font-size:11pt;color:#1e293b;">{label}</p>'
                     charts_html += f'<img src="cid:{cid}" style="width:100%;max-width:500px;margin:0 0 16px 0;" />'

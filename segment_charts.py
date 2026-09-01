@@ -33,9 +33,20 @@ def is_duplicate_series(a, b, tolerance=0.02):
     earns at the company margin. The agent checked this; the backend did not.
     """
     def shares(series):
-        pairs = [(str(d.get("segment", "")).strip().lower(),
-                  float(d.get("revenue", d.get("profit", 0)) or 0))
-                 for d in (series or [])]
+        def _num(d):
+            for key in ("value", "revenue", "profit"):
+                if d.get(key) is not None:
+                    try:
+                        return float(d[key])
+                    except (TypeError, ValueError):
+                        continue
+            return 0.0
+
+        # "value" first: the parser normalises to it, and reading only
+        # revenue/profit scored every normalised row as zero, which made this
+        # return False for series that were in fact identical.
+        pairs = [(str(d.get("segment", "")).strip().lower(), _num(d))
+                 for d in (series or []) if isinstance(d, dict)]
         pairs = [(k, v) for k, v in pairs if v > 0]
         total = sum(v for _, v in pairs)
         return {k: v / total for k, v in pairs} if total else {}
@@ -46,8 +57,14 @@ def is_duplicate_series(a, b, tolerance=0.02):
     return all(abs(sa[k] - sb[k]) <= tolerance for k in sa)
 
 
-def render_donut(ticker, chart_type, data, value_key):
-    """A donut of one segment series. None if there is nothing to draw."""
+def render_donut(ticker, chart_type, data, value_key, period=None):
+    """A donut of one segment series. None if there is nothing to draw.
+
+    `period` names the fiscal year the figures cover ("FY2025A", "FY2026E").
+    It is part of the title because a segment mix is meaningless without it:
+    the first charts shipped from a quarter's numbers and said only "Revenue
+    Breakdown", so nothing on the page revealed which period was being shown.
+    """
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -56,9 +73,20 @@ def render_donut(ticker, chart_type, data, value_key):
 
     # A segment running an operating loss cannot be a slice of a pie; drawing
     # it would misstate every other share.
-    pairs = [(d.get("segment", ""),
-              float(d.get(value_key, d.get("revenue", d.get("profit", 0))) or 0))
-             for d in (data or [])]
+    # "value" is the normalised key the parser emits; "revenue"/"profit" are what
+    # the model writes directly and what legacy notes stored. Accept all three --
+    # reading only the latter silently scored every normalised row as zero, which
+    # renders as no chart at all rather than as an error.
+    def _num(d):
+        for key in (value_key, "value", "revenue", "profit"):
+            if key in d and d[key] is not None:
+                try:
+                    return float(d[key])
+                except (TypeError, ValueError):
+                    continue
+        return 0.0
+
+    pairs = [(d.get("segment", ""), _num(d)) for d in (data or []) if isinstance(d, dict)]
     pairs = [(label, val) for label, val in pairs if val > 0]
     if not pairs:
         return None
@@ -91,7 +119,9 @@ def render_donut(ticker, chart_type, data, value_key):
         ax.text(x, y, label, ha=("left" if x >= 0 else "right"), va="center",
                 fontsize=11, fontweight="bold", color="#333333")
 
-    ax.set_title(f"{ticker} — {chart_type} Breakdown", fontsize=14,
+    title = (f"{ticker} — {period} {chart_type} by Segment" if period
+             else f"{ticker} — {chart_type} Breakdown")
+    ax.set_title(title, fontsize=14,
                  fontweight="bold", color="#333333", pad=20)
     ax.set_aspect("equal")
     plt.tight_layout()
@@ -100,6 +130,40 @@ def render_donut(ticker, chart_type, data, value_key):
     plt.savefig(buf, format="png", dpi=150, bbox_inches="tight", facecolor="white")
     plt.close(fig)
     return buf.getvalue()
+
+
+def render_series(ticker, specs):
+    """Render one donut per requested series.
+
+    `specs` is a list of {'kind': 'revenue'|'profit', 'period': 'FY2025A',
+    'data': [...]}. Returns [{'type', 'label', 'filename', 'png'}], skipping any
+    series with nothing drawable rather than failing the set -- a note missing
+    next year's estimates should still get this year's charts.
+
+    `label` exists because consumers used to build a heading from the type
+    ("Revenue" -> "Revenue Breakdown"), which cannot express a period.
+    """
+    kind_titles = {'revenue': 'Revenue', 'profit': 'Operating Profit'}
+    out = []
+    for spec in (specs or []):
+        kind = (spec.get('kind') or 'revenue').lower()
+        period = (spec.get('period') or '').strip()
+        data = spec.get('data')
+        png = render_donut(ticker, kind_titles.get(kind, kind.title()),
+                           data, kind, period=period or None)
+        if not png:
+            continue
+        slug = ''.join(ch for ch in period if ch.isalnum()) or 'Latest'
+        out.append({
+            'type': f'{kind}_{slug.lower()}' if period else kind,
+            'kind': kind,
+            'period': period,
+            'label': (f'{period} {kind_titles.get(kind, kind.title())}'
+                      if period else kind_titles.get(kind, kind.title())),
+            'filename': f'{ticker}_{slug}_{kind_titles.get(kind, kind).replace(" ", "_")}_Breakdown.png',
+            'png': png,
+        })
+    return out
 
 
 def render_pair(ticker, revenue_data, profit_data):

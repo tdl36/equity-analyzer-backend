@@ -453,3 +453,80 @@ def test_both_charts_are_stored_even_when_profit_still_mirrors_revenue(clean_db,
         meta = json.loads(meta)
     assert 'mirrors revenue' in (meta.get('chartWarning') or ''), \
         f"the duplication was not reported: {meta.get('chartWarning')!r}"
+
+
+FOUR_SERIES_REPLY = """===CHART_DATA===
+{"priorYear": {"label": "FY2025A",
+  "revenue": [{"segment": "Health Services", "value": 190000},
+              {"segment": "Health Care Benefits", "value": 143000},
+              {"segment": "Pharmacy & Consumer Wellness", "value": 139000}],
+  "profit":  [{"segment": "Health Services", "value": 7100},
+              {"segment": "Health Care Benefits", "value": 2900},
+              {"segment": "Pharmacy & Consumer Wellness", "value": 6000}]},
+ "currentYear": {"label": "FY2026E",
+  "revenue": [{"segment": "Health Services", "value": 196600},
+              {"segment": "Health Care Benefits", "value": 148000},
+              {"segment": "Pharmacy & Consumer Wellness", "value": 141000}],
+  "profit":  [{"segment": "Health Services", "value": 7250},
+              {"segment": "Health Care Benefits", "value": 5200},
+              {"segment": "Pharmacy & Consumer Wellness", "value": 6400}]}}
+===CHART_DATA_END===
+
+===NOTE_START===
+# Acme Corporation (ACME)
+
+Segment detail.
+===NOTE_END===
+"""
+
+
+def test_a_note_gets_four_annual_charts_labelled_by_year(clean_db, monkeypatch):
+    """Revenue and operating profit, prior year actual and current year estimate.
+
+    The first working charts came out of a single quarter's segment mix and were
+    titled only "Revenue Breakdown", so the page never said which period it was
+    showing. Four series, each carrying its fiscal year, is the deliverable.
+    """
+    def reply(*, messages, system, model, max_tokens, timeout, api_key):
+        return {'text': FOUR_SERIES_REPLY, 'provider': 'anthropic', 'model': model,
+                'usage': {'input_tokens': 0, 'output_tokens': 0}}
+
+    monkeypatch.setattr(app_v3, '_call_anthropic_stream', reply)
+    _seed_documents('FOUR', [('annual-report-2025.pdf', 10)])
+    job_id = _job('FOUR')
+    app_v3._generate_research_note(job_id, 'FOUR', 'test-key', 'new', None)
+
+    with app_v3.get_db() as (_c, cur):
+        cur.execute('SELECT charts FROM research_notes WHERE ticker = %s', ('FOUR',))
+        charts = cur.fetchone()['charts']
+    if isinstance(charts, str):
+        charts = json.loads(charts)
+
+    assert len(charts) == 4, f'expected 4 charts, got {len(charts)}: {[c["type"] for c in charts]}'
+    assert {(c['kind'], c['period']) for c in charts} == {
+        ('revenue', 'FY2025A'), ('profit', 'FY2025A'),
+        ('revenue', 'FY2026E'), ('profit', 'FY2026E')}
+    for c in charts:
+        assert c['label'].startswith(('FY2025A', 'FY2026E')), c['label']
+        assert c.get('data'), f"{c['label']} stored with no image"
+        raw = base64.b64decode(c['data'])
+        assert raw[:8] == b'\x89PNG\r\n\x1a\n', f"{c['label']} is not a PNG"
+
+
+def test_a_legacy_two_block_response_still_renders(clean_db, stub_llm):
+    """Notes written before the four-series contract must keep working.
+
+    The local agent still emits the old REVENUE/PROFIT arrays with no period.
+    Those render as an unlabelled pair rather than failing.
+    """
+    _seed_documents('LEGA', [('annual-report-2025.pdf', 10)])
+    job_id = _job('LEGA')
+    app_v3._generate_research_note(job_id, 'LEGA', 'test-key', 'new', None)
+    with app_v3.get_db() as (_c, cur):
+        cur.execute('SELECT charts FROM research_notes WHERE ticker = %s', ('LEGA',))
+        charts = cur.fetchone()['charts']
+    if isinstance(charts, str):
+        charts = json.loads(charts)
+    assert {c['type'] for c in charts} == {'revenue', 'profit'}
+    for c in charts:
+        assert c.get('data'), 'legacy chart lost its image'
