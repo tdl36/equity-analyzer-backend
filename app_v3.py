@@ -15308,6 +15308,49 @@ for _sec, _tks in PIPELINE_SECTOR_MAP.items():
     for _tk in _tks:
         PIPELINE_TICKER_SECTOR[_tk] = _sec
 
+def _latest_close(ticker):
+    """Last actual closing price, or None.
+
+    A note built only from broker PDFs inherits their as-of date -- a CVS note
+    written on 31 August carried an August 12 price, because that was the most
+    recent number in the sources. The model cannot know the date is stale; it
+    has to be told the current one.
+
+    Returns None rather than raising: a missing quote should cost the note its
+    price line, not the whole run.
+    """
+    try:
+        import yfinance as yf
+        hist = yf.Ticker(ticker).history(period='5d')
+        if hist is None or hist.empty:
+            return None
+        last = hist.iloc[-1]
+        return {
+            'price': round(float(last['Close']), 2),
+            'asOf': str(hist.index[-1])[:10],
+        }
+    except Exception as e:
+        print(f'[price] {ticker}: {type(e).__name__}: {e}')
+        return None
+
+
+def _live_price_context(ticker):
+    """The prompt fragment naming today's price, or one admitting there is none."""
+    quote = _latest_close(ticker)
+    today = datetime.utcnow().strftime('%Y-%m-%d')
+    if not quote:
+        return (f"TODAY'S DATE: {today}\n"
+                "No live quote was available. Use the most recent price in the "
+                "sources, and state its date explicitly wherever you use it.")
+    return f"""TODAY'S DATE: {today}
+CURRENT SHARE PRICE: ${quote['price']:.2f} (close of {quote['asOf']})
+
+Use this price for every valuation calculation: multiples, implied upside,
+price-target gaps, yields. It supersedes any price in the source documents,
+which are older. State the price and its date in the valuation section. Do not
+present a source document's price as current."""
+
+
 RESEARCH_NOTE_PLAYBOOK = """
 ## NOTE FORMAT RULES
 
@@ -15362,6 +15405,10 @@ RESEARCH_NOTE_PLAYBOOK = """
 - Segment revenues that do not sum to consolidated revenue require a stated
   eliminations/intersegment line. Never present segment revenues that imply a
   company total larger than the company reports.
+- When a CURRENT SHARE PRICE is supplied above, it is the price. Use it for
+  every multiple, implied upside and yield, and state it with its date. A price
+  taken from a source document is stale by definition -- those documents were
+  written before today.
 - Every valuation figure (price, multiples, targets, 52-week range) must carry
   the SAME as-of date, and that date must be stated. Do not mix a price from one
   month with results from a later quarter.
@@ -16329,17 +16376,36 @@ def get_research_note_pdf(ticker):
         # Determine column count from the widest row so per-column width math is right.
         col_count = max((len([c for c in r.strip('|').split('|')]) for r in rows), default=1)
         col_count = max(col_count, 1)
-        # Heuristic: give the first column a touch more room when there are 4+
-        # columns (usually a label like "Bull/Base/Bear" or "Scenario") and the
-        # last column more room (usually a free-text "Key Assumptions" / "Notes"
-        # cell). Middle columns share the remainder equally. Total = 100%.
-        if col_count >= 4:
-            first_pct = 14
-            last_pct = 26
-            mid_pct = (100 - first_pct - last_pct) / (col_count - 2)
-            col_widths = [first_pct] + [mid_pct] * (col_count - 2) + [last_pct]
-        else:
-            col_widths = [100.0 / col_count] * col_count
+        # Size columns by what is actually in them.
+        #
+        # This used to be positional: first column 14%, last 26%, the rest split
+        # evenly. That assumed the first column was a short label, so a table
+        # whose first column read "Scenario-weighted (bull/base/bear)" got 14% of
+        # the page and spilled into its neighbour -- xhtml2pdf honours the fixed
+        # width and simply overprints, so the PDF showed "Consensus-based$93".
+        #
+        # Width now follows content: the mean cell length sets the demand, and
+        # the longest single word sets a floor, since an unbreakable token
+        # ("Scenario-weighted") cannot wrap below its own width.
+        def _demand(ci):
+            texts = []
+            for r in rows:
+                cs = [c.strip().replace('**', '') for c in r.strip('|').split('|')]
+                if ci < len(cs):
+                    texts.append(cs[ci])
+            if not texts:
+                return 1.0
+            avg = sum(len(t) for t in texts) / len(texts)
+            longest_word = max((len(w) for t in texts for w in t.split()), default=1)
+            return max(avg, longest_word * 0.9, 4.0)
+
+        demands = [_demand(i) for i in range(col_count)]
+        total = sum(demands) or 1.0
+        # Floor every column so a narrow one stays readable, then renormalise.
+        floor = min(9.0, 100.0 / col_count)
+        col_widths = [max(floor, 100.0 * d / total) for d in demands]
+        scale = 100.0 / sum(col_widths)
+        col_widths = [w * scale for w in col_widths]
         widths_attr = [f'{w:.2f}%' for w in col_widths]
         html = '<table style="border-collapse:collapse;width:100%;margin:8px 0;font-size:9pt;page-break-inside:avoid;table-layout:fixed;">'
         for ri, row in enumerate(rows):
@@ -16600,11 +16666,18 @@ EXISTING NOTE (update this, don't rewrite from scratch):
 Update the note with new information from the source documents. Add a "What's Changed" section at the top. Update any data points, estimates, or catalysts that have changed.
 """
 
+        # Sources are static PDFs and carry whatever price they were written
+        # with; without this the note dates its own valuation to the newest
+        # broker report rather than to today.
+        price_context = _live_price_context(ticker)
+
         prompt = f"""You are a senior equity research analyst writing a comprehensive investment research note.
 
 TICKER: {ticker}
 COMPANY: {company}
 SECTOR: {sector}
+
+{price_context}
 
 {RESEARCH_NOTE_PLAYBOOK}
 
@@ -16856,7 +16929,13 @@ Use only segments the note actually names.
                 INSERT INTO research_notes (id, ticker, version, note_markdown, sources_markdown, changelog_markdown, note_docx, charts, metadata, status)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'draft')
             ''', (note_id, ticker, version, note_md, sources_md, changelog_md, docx_b64,
-                  json.dumps([{'type': c['type'], 'filename': c['filename']} for c in charts]),
+                  # The base64 PNG has to be stored, not just the label. This
+                  # dropped 'data' and kept only type/filename, so charts were
+                  # rendered correctly, saved as two empty rows, and skipped by
+                  # every consumer -- all of which test `if chart.get('data')`.
+                  # The note arrived complete and chartless with no error.
+                  json.dumps([{'type': c['type'], 'filename': c['filename'],
+                               'data': c['data']} for c in charts]),
                   json.dumps({
                       'mode': mode,
                       'documentsProcessed': len(docs),

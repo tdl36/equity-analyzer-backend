@@ -311,3 +311,56 @@ def test_a_note_without_chart_blocks_still_gets_charts(clean_db, monkeypatch):
     kinds = {c['type'] for c in (charts or [])}
     assert 'revenue' in kinds, f'no revenue chart recovered (got {kinds})'
     assert 'profit' in kinds, f'no profit chart recovered (got {kinds})'
+    # The bytes, not just the label. Asserting on 'type' alone passed happily
+    # while the insert dropped 'data', so the note shipped with two empty chart
+    # rows and no images -- which is the bug this test was written to catch.
+    for c in charts:
+        assert c.get('data'), f"chart {c['type']} stored with no image data"
+        raw = base64.b64decode(c['data'])
+        assert raw[:8] == b'\x89PNG\r\n\x1a\n', f"chart {c['type']} is not a PNG"
+        assert len(raw) > 5000, f"chart {c['type']} suspiciously small ({len(raw)}b)" 
+
+
+def test_the_prompt_carries_todays_price_not_the_documents(clean_db, stub_llm, monkeypatch):
+    """A note dated today must not price the stock as of a source document.
+
+    The CVS note said "All valuation data as of August 12, 2026" on 31 August,
+    because August 12 was the newest price in the PDFs. Nothing told the model
+    what day it was or what the stock cost, so it used what it had.
+    """
+    monkeypatch.setattr(app_v3, '_latest_close',
+                        lambda t: {'price': 93.91, 'asOf': '2026-08-31'})
+    _seed_documents('PXOK', [('broker-note-august.pdf', 10)])
+    job_id = _job('PXOK')
+    app_v3._generate_research_note(job_id, 'PXOK', 'test-key', 'new', None)
+
+    sent = ''
+    for block in stub_llm[0]['messages'][0]['content']:
+        if block.get('type') == 'text':
+            sent += block['text']
+    assert '93.91' in sent, 'the live price never reached the prompt'
+    assert '2026-08-31' in sent, 'the price date never reached the prompt'
+    assert 'supersedes any price in the source documents' in sent
+
+
+def test_a_missing_quote_does_not_fail_the_note(clean_db, stub_llm, monkeypatch):
+    """No quote is a missing price line, not a failed job."""
+    monkeypatch.setattr(app_v3, '_latest_close', lambda t: None)
+    _seed_documents('NOPX', [('annual-report-2025.pdf', 10)])
+    job_id = _job('NOPX')
+    app_v3._generate_research_note(job_id, 'NOPX', 'test-key', 'new', None)
+    with app_v3.get_db() as (_c, cur):
+        cur.execute('SELECT status FROM research_pipeline_jobs WHERE id = %s', (job_id,))
+        assert cur.fetchone()['status'] == 'complete'
+
+
+def test_the_price_helper_never_raises(monkeypatch):
+    """yfinance failing must not take the note with it."""
+    def boom(*a, **k):
+        raise RuntimeError('network down')
+    monkeypatch.setattr(app_v3, '_latest_close', app_v3._latest_close)
+    import sys, types
+    fake = types.ModuleType('yfinance')
+    fake.Ticker = boom
+    monkeypatch.setitem(sys.modules, 'yfinance', fake)
+    assert app_v3._latest_close('ANY') is None
