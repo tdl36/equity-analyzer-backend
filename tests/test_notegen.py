@@ -179,3 +179,69 @@ def test_every_global_the_note_generator_uses_resolves():
                 # only assert on the modules we added; builtins and attrs vary
                 if name in ('notegen', 'segment_charts'):
                     assert hasattr(app_v3, name), f'{fn.__name__} uses undefined {name}'
+
+
+def _xlsx_doc(name='CVS Model WFC 081026.xlsx'):
+    import base64, io as _io, openpyxl
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Segment Model'
+    ws.append(['Segment', 'FY2025A Rev', 'FY2026E Rev', 'FY2025A OP', 'FY2026E OP'])
+    ws.append(['Health Services', 190000, 196600, 7100, 7250])
+    ws.append([None, None, None, None, None])          # blank row
+    ws.append(['Health Care Benefits', 143000, 148000, 2900, 5200])
+    buf = _io.BytesIO()
+    wb.save(buf)
+    return {'filename': name, 'file_type': 'xlsx',
+            'file_data': base64.b64encode(buf.getvalue()).decode()}
+
+
+def test_a_spreadsheet_is_read_rather_than_silently_dropped():
+    """Broker models carry the forward-year segment split.
+
+    prepare_documents marked these send_as="file" and the content builder had no
+    branch for that value, so every spreadsheet was ranked, charged against the
+    token budget, reported as included in the run plan, and then never sent. The
+    note could only see what the PDFs happened to state.
+    """
+    import notegen
+    text = notegen.extract_file_text(_xlsx_doc())
+    assert 'Segment Model' in text, 'sheet name missing'
+    assert 'Health Services' in text and '196600' in text, 'segment rows missing'
+    assert '\n\n' not in text.strip(), 'blank rows were not dropped'
+
+
+def test_a_prepared_spreadsheet_carries_its_text_and_a_real_estimate():
+    import notegen
+    prepared = notegen.prepare_documents([_xlsx_doc()])[0]
+    assert prepared['send_as'] == 'file'
+    assert prepared.get('extracted_text'), 'no text attached'
+    # The estimate must reflect the text, not the zipped file size.
+    assert prepared['est_tokens'] == len(prepared['extracted_text']) // 4
+
+
+def test_an_unreadable_file_is_skipped_not_sent_empty():
+    """A file we cannot read must not occupy a batch slot."""
+    import notegen
+    bad = {'filename': 'corrupt.xlsx', 'file_type': 'xlsx', 'file_data': 'bm90LWEteGxzeA=='}
+    prepared = notegen.prepare_documents([bad])[0]
+    assert prepared['send_as'] == 'skip'
+    assert prepared.get('skip_reason')
+
+
+def test_content_blocks_include_extracted_spreadsheets():
+    """The join: a prepared spreadsheet must become a block the model receives.
+
+    Tested here rather than only in prepare_documents because the defect lived
+    in the gap between them -- extraction was never the problem, the missing
+    'file' branch in the content builder was.
+    """
+    import re
+    from pathlib import Path
+    src = Path(__file__).resolve().parent.parent / 'app_v3.py'
+    body = src.read_text(encoding='utf-8')
+    start = body.index('        def _content_for(batch):')
+    end = body.index('        doc_contents = _content_for(')
+    fn = body[start:end]
+    assert "mode_ in ('text', 'file')" in fn, (
+        "_content_for has no branch for send_as='file'; spreadsheets are dropped")

@@ -196,6 +196,75 @@ def extract_pdf_text(doc, max_tokens=MAX_TOKENS_PER_BATCH // 2):
             + joined[-tail:])
 
 
+def extract_file_text(doc, max_chars=120_000):
+    """Readable text from a spreadsheet, Word file, or plain text document.
+
+    These were marked send_as="file" and then silently dropped: the content
+    builder only ever emitted blocks for PDFs, so a broker model spreadsheet was
+    ranked, charged against the token budget, reported as included in the plan,
+    and never actually sent. Forward-year segment estimates usually live in
+    exactly those files, so the note could only ever see what the PDFs happened
+    to state.
+
+    Spreadsheets are rendered per sheet as tab-separated rows with their values
+    (not formulas), which is what a model can read. Empty rows and columns are
+    dropped so a sparse sheet does not spend the budget on blanks. Returns ''
+    when nothing can be read -- the caller then skips the document rather than
+    sending an empty block.
+    """
+    import base64
+
+    name = str(doc.get("filename", "")).lower()
+    raw = doc.get("file_data") or doc.get("fileData") or ""
+    if not raw:
+        return ""
+    try:
+        blob = base64.b64decode(raw)
+    except Exception:
+        return ""
+
+    parts = []
+    try:
+        if name.endswith((".xlsx", ".xlsm", ".xls")):
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(blob), data_only=True, read_only=True)
+            for ws in wb.worksheets:
+                rows = []
+                for row in ws.iter_rows(values_only=True):
+                    cells = ["" if v is None else str(v).strip() for v in row]
+                    while cells and not cells[-1]:
+                        cells.pop()
+                    if any(cells):
+                        rows.append("\t".join(cells))
+                if rows:
+                    parts.append(f"--- sheet: {ws.title} ---")
+                    parts.extend(rows)
+                if sum(len(x) for x in parts) > max_chars:
+                    break
+            try:
+                wb.close()
+            except Exception:
+                pass
+        elif name.endswith((".docx", ".doc")):
+            import docx
+            d = docx.Document(io.BytesIO(blob))
+            parts.extend(p.text for p in d.paragraphs if p.text.strip())
+            for table in d.tables:
+                for row in table.rows:
+                    cells = [c.text.strip() for c in row.cells]
+                    if any(cells):
+                        parts.append("\t".join(cells))
+        elif name.endswith((".csv", ".txt", ".md", ".json")):
+            parts.append(blob.decode("utf-8", errors="replace"))
+    except Exception as e:
+        print(f"[notegen] could not read {doc.get('filename')}: "
+              f"{type(e).__name__}: {e}")
+        return ""
+
+    text = "\n".join(parts).strip()
+    return text[:max_chars]
+
+
 def prepare_documents(docs, max_tokens=MAX_TOKENS_PER_BATCH):
     """Decide how each document is sent, and mark it.
 
@@ -210,7 +279,16 @@ def prepare_documents(docs, max_tokens=MAX_TOKENS_PER_BATCH):
         is_pdf = ("pdf" in (d.get("file_type") or d.get("fileType") or "").lower()
                   or name.endswith(".pdf"))
         if not is_pdf:
-            d["send_as"] = "file"
+            # Extract now, so the estimate below counts the text that will
+            # actually be sent rather than the zipped file size.
+            text = extract_file_text(d)
+            if text:
+                d["send_as"] = "file"
+                d["extracted_text"] = text
+                d["est_tokens"] = len(text) // 4
+            else:
+                d["send_as"] = "skip"
+                d["skip_reason"] = "no readable text could be extracted"
         elif estimate_tokens([d]) > max_tokens:
             text = extract_pdf_text(d, max_tokens=max_tokens // 2)
             if text:

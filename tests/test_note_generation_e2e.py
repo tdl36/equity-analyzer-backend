@@ -530,3 +530,40 @@ def test_a_legacy_two_block_response_still_renders(clean_db, stub_llm):
     assert {c['type'] for c in charts} == {'revenue', 'profit'}
     for c in charts:
         assert c.get('data'), 'legacy chart lost its image'
+
+
+def test_a_spreadsheet_in_the_selection_reaches_the_model(clean_db, stub_llm):
+    """End to end: an .xlsx among the sources must appear in the prompt.
+
+    Everything upstream of the model looked correct while spreadsheets were
+    being discarded -- they were ranked, budgeted and listed in the run plan.
+    The only way to see the bug is to inspect what was actually sent.
+    """
+    import base64 as _b64, io as _io
+    import openpyxl
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Model'
+    ws.append(['Segment', 'FY2026E Operating Profit'])
+    ws.append(['Health Services', 7250])
+    ws.append(['Health Care Benefits', 5200])
+    buf = _io.BytesIO()
+    wb.save(buf)
+
+    with app_v3.get_db(commit=True) as (_c, cur):
+        cur.execute(
+            """INSERT INTO document_files (ticker, filename, file_data, file_type, file_size)
+               VALUES (%s, %s, %s, 'xlsx', %s)""",
+            ('XLSX', 'Broker Model 2026.xlsx',
+             _b64.b64encode(buf.getvalue()).decode(), buf.tell()))
+
+    job_id = _job('XLSX')
+    app_v3._generate_research_note(job_id, 'XLSX', 'test-key', 'new', None)
+
+    sent = ''
+    for block in stub_llm[0]['messages'][0]['content']:
+        if block.get('type') == 'text':
+            sent += block['text']
+    assert 'Broker Model 2026.xlsx' in sent, 'the spreadsheet was not attached'
+    assert '7250' in sent, 'the spreadsheet contents never reached the model'
+    assert 'Health Care Benefits' in sent

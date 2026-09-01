@@ -16663,7 +16663,12 @@ def _generate_research_note(job_id, ticker, api_key, mode='new', file_selection=
                                    'data': doc['file_data']},
                     })
                     out.append({'type': 'text', 'text': f'[Document: {doc["filename"]}]'})
-                elif mode_ == 'text' and doc.get('extracted_text'):
+                elif mode_ in ('text', 'file') and doc.get('extracted_text'):
+                    # 'file' -- spreadsheets, Word files, CSVs -- had no branch
+                    # here at all, so every one of them was ranked, budgeted,
+                    # listed in the plan and then dropped on the floor. A broker
+                    # model is often the only place forward-year segment
+                    # estimates exist.
                     out.append({'type': 'text',
                                 'text': f'[Document: {doc["filename"]} — extracted text]\n'
                                         + doc['extracted_text']})
@@ -16769,9 +16774,24 @@ Also provide:
     * Current year = the fiscal year now in progress, estimated (company guidance
       where given, otherwise the best estimate in the sources). Label "FY2026E".
   A quarter's segment mix is not what is being asked for. If the sources report
-  segments quarterly, sum or annualise to a full year and say so in the note. If
-  a full year genuinely cannot be established for a period, return [] for it
-  rather than substituting a quarter.
+  segments quarterly, sum or annualise to a full year and say so in the note.
+
+  WHERE TO FIND THE CURRENT-YEAR SPLIT. Company guidance is the first choice,
+  but many companies guide only at the consolidated level. That is not a dead
+  end -- work down this order:
+    1. Company guidance by segment, where given.
+    2. Broker model spreadsheets among the sources (.xlsx/.csv): these carry
+       explicit segment lines by year and are usually the best forward estimate
+       available. Their contents are attached as extracted text.
+    3. Segment estimate tables inside broker research PDFs.
+    4. Build it: apply the growth rates and margin assumptions the sources state
+       for each segment to the prior-year actual, and say in the note that the
+       current-year split is estimated on that basis.
+  Return [] only when none of these yields a segment split -- not merely because
+  the company itself did not guide by segment.
+
+  Never name the broker or firm in the note. The numbers may be used; the
+  attribution belongs in the sources document, as with everything else.
 
   Revenue and profit MUST be different numbers. Profit means operating
   income, adjusted operating income, EBIT, NOI, or segment profit — NOT revenue.
@@ -16909,8 +16929,12 @@ Return ONLY the two blocks below, no prose.
 
 Give FULL FISCAL YEARS, never a quarter: the last completed fiscal year (actual)
 and the fiscal year now in progress (estimated). Label them like "FY2025A" and
-"FY2026E". If the note reports segments only quarterly, annualise; if a year
-cannot be established, return [] for it rather than substituting a quarter.
+"FY2026E". If the note reports segments only quarterly, annualise.
+
+For the current year, use segment guidance if the note states it; otherwise use
+any segment estimates the note carries from broker models or research, or apply
+the growth and margin assumptions it states to the prior-year actual. Return []
+only if none of that is present.
 
 Profit is NOT revenue and must not be proportional to it. Segment operating
 income, adjusted operating income, EBIT, segment profit and NOI all qualify;
