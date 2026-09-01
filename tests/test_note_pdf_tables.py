@@ -85,3 +85,54 @@ def test_every_cell_survives_rendering(tmp_path):
     text = _text(_render(PRICE_TARGET_TABLE), tmp_path)
     for fragment in ('12.5x 2028E EPS', '+29.9%', '-1.8%', '13.0x 2027E EPS'):
         assert fragment.split()[0] in text, f'{fragment!r} did not render'
+
+
+def test_a_stored_note_renders_its_charts_into_the_pdf(tmp_path):
+    """The join between storage and rendering, which is where charts were lost.
+
+    Both halves passed their own tests while notes shipped chartless: the insert
+    dropped the base64 'data' key, and the renderer skips any chart without it.
+    Neither test looked across the seam. This walks the real route -- seed a note
+    with real PNG bytes, request the PDF, and require the images to be in it.
+    """
+    import base64
+    import json as _json
+    import os
+    import uuid
+    os.environ.setdefault('DATABASE_URL', 'postgresql://localhost/charlie_test')
+    import app_v3
+    import segment_charts
+
+    pytest.importorskip('xhtml2pdf.pisa')
+
+    # Shares must differ between the series, or is_duplicate_series correctly
+    # refuses to draw a profit chart that merely repeats revenue.
+    charts = segment_charts.render_pair(
+        'ZZZ',
+        [{'segment': 'Alpha', 'revenue': 190000}, {'segment': 'Beta', 'revenue': 143000}],
+        [{'segment': 'Alpha', 'profit': 2000}, {'segment': 'Beta', 'profit': 8000}])
+    assert len(charts) == 2, f'fixture produced {len(charts)} chart(s), need 2'
+
+    stored = [{'type': c['type'], 'filename': c['filename'],
+               'data': base64.b64encode(c['png']).decode('ascii')} for c in charts]
+
+    with app_v3.get_db(commit=True) as (_c, cur):
+        cur.execute("DELETE FROM research_notes WHERE ticker = 'ZZZ'")
+        cur.execute(
+            """INSERT INTO research_notes
+               (id, ticker, version, note_markdown, sources_markdown,
+                changelog_markdown, note_docx, charts, metadata, status)
+               VALUES (%s,'ZZZ',1,'# Zzz Inc (ZZZ)',' ',' ',' ',%s,%s,'published')""",
+            (str(uuid.uuid4()), _json.dumps(stored), _json.dumps({})))
+    try:
+        resp = app_v3.app.test_client().get('/api/notes/ZZZ/pdf')
+        assert resp.status_code == 200, resp.status_code
+        pdf = base64.b64decode(resp.get_json()['fileData'])
+        assert pdf[:5] == b'%PDF-', 'not a PDF'
+        # Two embedded donut PNGs make this far larger than a text-only render,
+        # which comes out under 2KB.
+        assert len(pdf) > 60_000, (
+            f'PDF is only {len(pdf)}b -- the charts did not make it onto the page')
+    finally:
+        with app_v3.get_db(commit=True) as (_c, cur):
+            cur.execute("DELETE FROM research_notes WHERE ticker = 'ZZZ'")
