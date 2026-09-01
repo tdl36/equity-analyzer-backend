@@ -364,3 +364,92 @@ def test_the_price_helper_never_raises(monkeypatch):
     fake.Ticker = boom
     monkeypatch.setitem(sys.modules, 'yfinance', fake)
     assert app_v3._latest_close('ANY') is None
+
+
+NOTE_WITH_DUPLICATE_PROFIT = """===REVENUE_CHART_DATA===
+[{"segment": "Alpha", "revenue": 100000}, {"segment": "Beta", "revenue": 50000}]
+===REVENUE_CHART_END===
+
+===PROFIT_CHART_DATA===
+[{"segment": "Alpha", "profit": 10000}, {"segment": "Beta", "profit": 5000}]
+===PROFIT_CHART_END===
+
+===NOTE_START===
+# Acme Corporation (ACME)
+
+Alpha operating income $9,000mn; Beta operating income $12,000mn.
+===NOTE_END===
+"""
+
+REAL_PROFIT_REPLY = """===REVENUE_CHART_DATA===
+[{"segment": "Alpha", "revenue": 100000}, {"segment": "Beta", "revenue": 50000}]
+===REVENUE_CHART_END===
+
+===PROFIT_CHART_DATA===
+[{"segment": "Alpha", "profit": 9000}, {"segment": "Beta", "profit": 12000}]
+===PROFIT_CHART_END===
+"""
+
+
+def test_a_profit_split_mirroring_revenue_triggers_a_re_extract(clean_db, monkeypatch):
+    """Duplicate profit means the model reused revenue, so go get the real thing.
+
+    Previously this silently dropped the profit chart. The chart is now always
+    drawn, so the duplicate signal has to drive a second look at the note
+    instead -- otherwise the note would ship two identical donuts.
+    """
+    replies = [NOTE_WITH_DUPLICATE_PROFIT, REAL_PROFIT_REPLY]
+    seen = []
+
+    def staged(*, messages, system, model, max_tokens, timeout, api_key):
+        seen.append(max_tokens)
+        return {'text': replies[min(len(seen) - 1, len(replies) - 1)],
+                'provider': 'anthropic', 'model': model,
+                'usage': {'input_tokens': 0, 'output_tokens': 0}}
+
+    monkeypatch.setattr(app_v3, '_call_anthropic_stream', staged)
+    _seed_documents('DUPE', [('annual-report-2025.pdf', 10)])
+    job_id = _job('DUPE')
+    app_v3._generate_research_note(job_id, 'DUPE', 'test-key', 'new', None)
+
+    assert len(seen) >= 2, 'a mirrored profit split did not trigger a re-extract'
+    with app_v3.get_db() as (_c, cur):
+        cur.execute('SELECT charts FROM research_notes WHERE ticker = %s', ('DUPE',))
+        charts = cur.fetchone()['charts']
+    if isinstance(charts, str):
+        charts = json.loads(charts)
+    assert {c['type'] for c in charts} == {'revenue', 'profit'}
+
+
+def test_both_charts_are_stored_even_when_profit_still_mirrors_revenue(clean_db, monkeypatch):
+    """Last resort: a redundant chart beats a missing one.
+
+    If the re-extract cannot find real segment profit either, the note still
+    gets both charts and the job says why the profit chart looks familiar. A
+    reader can see and question two similar donuts; they cannot question a chart
+    that was never drawn.
+    """
+    def always_dupe(*, messages, system, model, max_tokens, timeout, api_key):
+        return {'text': NOTE_WITH_DUPLICATE_PROFIT, 'provider': 'anthropic',
+                'model': model, 'usage': {'input_tokens': 0, 'output_tokens': 0}}
+
+    monkeypatch.setattr(app_v3, '_call_anthropic_stream', always_dupe)
+    _seed_documents('STUB', [('annual-report-2025.pdf', 10)])
+    job_id = _job('STUB')
+    app_v3._generate_research_note(job_id, 'STUB', 'test-key', 'new', None)
+
+    with app_v3.get_db() as (_c, cur):
+        cur.execute('SELECT charts, metadata FROM research_notes WHERE ticker = %s', ('STUB',))
+        row = cur.fetchone()
+    charts = row['charts']
+    if isinstance(charts, str):
+        charts = json.loads(charts)
+    assert {c['type'] for c in charts} == {'revenue', 'profit'}, \
+        'a note must carry both charts even when profit mirrors revenue'
+    for c in charts:
+        assert c.get('data'), f"{c['type']} chart stored with no image"
+    meta = row['metadata']
+    if isinstance(meta, str):
+        meta = json.loads(meta)
+    assert 'mirrors revenue' in (meta.get('chartWarning') or ''), \
+        f"the duplication was not reported: {meta.get('chartWarning')!r}"

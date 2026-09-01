@@ -103,19 +103,29 @@ def render_donut(ticker, chart_type, data, value_key):
 
 
 def render_pair(ticker, revenue_data, profit_data):
-    """Both charts, skipping a profit chart that only repeats revenue.
+    """Both charts. A note is expected to carry revenue AND profit.
 
-    Returns [{'type', 'filename', 'png'}] — the profit entry is absent when the
-    model could not distinguish the two, which is the honest outcome.
+    This used to drop the profit chart when its shares matched revenue, on the
+    reasoning that repeating revenue asserts every segment earns the company
+    margin. That reasoning is sound about the DATA and wrong about the REMEDY:
+    it turned a data problem into a missing chart, and a chart that is not there
+    cannot be judged at all. Two donuts that look alike are visible and
+    arguable; an absent one just looks like the feature is broken.
+
+    The duplicate check still runs -- it is how the caller knows to go back for
+    real segment profit before rendering -- but it no longer decides whether the
+    chart exists. Callers should treat is_duplicate_series() as a signal to
+    re-extract, and warn if it survives that.
+
+    Returns [{'type', 'filename', 'png'}].
     """
     out = []
     rev = render_donut(ticker, "Revenue", revenue_data, "revenue")
     if rev:
         out.append({"type": "revenue", "filename": f"{ticker}_Revenue_Breakdown.png",
                     "png": rev})
-    if profit_data and not is_duplicate_series(revenue_data, profit_data):
-        prof = render_donut(ticker, "Operating Profit", profit_data, "profit")
-        if prof:
-            out.append({"type": "profit", "filename": f"{ticker}_Profit_Breakdown.png",
-                        "png": prof})
+    prof = render_donut(ticker, "Operating Profit", profit_data, "profit")
+    if prof:
+        out.append({"type": "profit", "filename": f"{ticker}_Profit_Breakdown.png",
+                    "png": prof})
     return out

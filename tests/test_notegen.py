@@ -92,17 +92,42 @@ def test_planning_is_stable_and_survives_empty_input():
 
 # --- segment charts ---------------------------------------------------------
 
-def test_a_profit_split_that_repeats_revenue_is_not_drawn_twice():
-    """Two identical charts assert every segment earns at the company margin."""
+def test_a_duplicate_profit_split_is_flagged_but_still_drawn():
+    """The duplicate check reports; it does not decide whether a chart exists.
+
+    It used to suppress the profit chart, which converted a data problem into a
+    missing one. A note is expected to carry both breakdowns, and two donuts
+    that look alike can at least be seen and argued with -- an absent chart just
+    reads as a broken feature. The signal now drives re-extraction upstream.
+    """
     import segment_charts
     rev = [{'segment': 'A', 'revenue': 60}, {'segment': 'B', 'revenue': 40}]
     same = [{'segment': 'A', 'profit': 6}, {'segment': 'B', 'profit': 4}]   # same shares
     different = [{'segment': 'A', 'profit': 80}, {'segment': 'B', 'profit': 20}]
 
+    # still detected...
     assert segment_charts.is_duplicate_series(rev, same) is True
     assert segment_charts.is_duplicate_series(rev, different) is False
-    assert len(segment_charts.render_pair('T', rev, same)) == 1
+    # ...but both charts are produced either way
+    assert len(segment_charts.render_pair('T', rev, same)) == 2
     assert len(segment_charts.render_pair('T', rev, different)) == 2
+
+
+def test_both_charts_are_produced_whenever_both_series_have_data():
+    """The requirement: a note gets a revenue chart and a profit chart."""
+    import segment_charts
+    cases = {
+        'plain': ([{'segment': 'A', 'revenue': 100}, {'segment': 'B', 'revenue': 50}],
+                  [{'segment': 'A', 'profit': 9}, {'segment': 'B', 'profit': 12}]),
+        'near-identical shares': ([{'segment': 'A', 'revenue': 100}, {'segment': 'B', 'revenue': 50}],
+                                  [{'segment': 'A', 'profit': 10}, {'segment': 'B', 'profit': 5}]),
+        'many segments': ([{'segment': c, 'revenue': v} for c, v in zip('ABCDE', (50, 40, 30, 20, 10))],
+                          [{'segment': c, 'profit': v} for c, v in zip('ABCDE', (9, 3, 7, 1, 4))]),
+    }
+    for label, (rev, prof) in cases.items():
+        kinds = {c['type'] for c in segment_charts.render_pair('T', rev, prof)}
+        assert kinds == {'revenue', 'profit'}, f'{label}: got {kinds}'
+
 
 
 def test_a_loss_making_segment_is_excluded_rather_than_breaking_the_pie():

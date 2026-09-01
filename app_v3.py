@@ -16821,7 +16821,14 @@ EXISTING NOTE (extend it with the attached documents; keep what is still true):
         # small, focused call against the finished note -- which already contains
         # segment revenue and segment operating income in prose -- so it does not
         # re-read the source PDFs and costs little.
-        if not revenue_data:
+        # Re-extract when either series is missing OR when profit merely repeats
+        # revenue, which means the model did not find real segment profit and
+        # fell back to reusing the revenue split. Both charts are always drawn,
+        # so the way to avoid a misleading profit chart is to go and get the
+        # right numbers, not to delete the chart.
+        needs_profit = (not profit_data) or segment_charts.is_duplicate_series(
+            revenue_data, profit_data)
+        if (not revenue_data) or needs_profit:
             _update_pipeline_job(job_id, current_step='Extracting segment data', progress=68)
             try:
                 extract = _call_pinned_long(
@@ -16833,7 +16840,15 @@ Return ONLY the two blocks below, no prose.
 
 Revenue: the most recent full-year revenue by reportable segment, in millions.
 Profit: operating income / adjusted operating income by the SAME segments, in
-millions. Profit is not revenue. If the note gives no segment profit, return [].
+millions.
+
+Profit is NOT revenue and must not be proportional to it. Segment operating
+income, adjusted operating income, EBIT, segment profit and NOI all qualify;
+segment revenue does not. Search the note for per-segment profit figures before
+concluding there are none -- they are often stated in the segment write-ups
+rather than in a table. Only if the note genuinely reports no segment-level
+profit should you return [].
+
 Use only segments the note actually names.
 
 ===REVENUE_CHART_DATA===
@@ -16878,9 +16893,12 @@ Use only segments the note actually names.
             for c in segment_charts.render_pair(ticker, revenue_data, profit_data):
                 charts.append({'type': c['type'], 'filename': c['filename'],
                                'data': base64.b64encode(c['png']).decode('ascii')})
-            if revenue_data and profit_data and len(charts) < 2:
-                chart_warning = ('profit chart skipped: the profit split repeats '
-                                 'the revenue split')
+            if (revenue_data and profit_data
+                    and segment_charts.is_duplicate_series(revenue_data, profit_data)):
+                chart_warning = ('profit split mirrors revenue — segment profit '
+                                 'may not be in the sources; check the chart')
+            elif revenue_data and not profit_data:
+                chart_warning = 'no segment profit data in the sources'
             elif not revenue_data:
                 chart_warning = 'no segment revenue data in the sources'
         except Exception as chart_err:
