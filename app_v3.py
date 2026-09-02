@@ -16368,9 +16368,40 @@ def get_research_note_pdf(ticker):
     # columns starve the trailing columns (the symptom: last 3 of 6 columns get
     # crammed into the right edge with overlapping headers like "Implied/Probabu/Assumptions").
     def _md_table_to_html(match):
-        lines = match.group(0).strip().split('\n')
-        # Filter out separator rows (|---|---|---| or |:--|:--:|--:|)
-        rows = [l for l in lines if l.strip() and not re.match(r'^\|[\s\-:|]+\|$', l.strip())]
+        # Split into separate tables first.
+        #
+        # The match spans consecutive pipe rows, and blank lines between them do
+        # not break it -- so two tables written back to back arrived here as one.
+        # Column count was taken from the widest row, and the narrower table's
+        # rows were padded out with blanks: a two-column FY2025A reconciliation
+        # merged with a four-column profit table rendered as one table half full
+        # of empty cells. A separator row marks a new header, so it marks a new
+        # table; the line above it belongs to that table, not the previous one.
+        raw = [l for l in match.group(0).strip().split('\n') if l.strip()]
+        sep = re.compile(r'^\|[\s\-:|]+\|$')
+        groups, current = [], []
+        for line in raw:
+            if sep.match(line.strip()):
+                # `current` ends with this table's header row; everything before
+                # it closes the previous table.
+                if len(current) > 1:
+                    groups.append(current[:-1])
+                    current = [current[-1]]
+                continue
+            current.append(line)
+        if current:
+            groups.append(current)
+        groups = [g for g in groups if g]
+        # Trailing newline restored: the match consumes the blank line after the
+        # table, so without this the next line loses its line start. A "---"
+        # immediately after a table then failed the ^-anchored rule regex and
+        # printed literally, which is why one separator survived into the PDF
+        # while others rendered correctly.
+        if len(groups) > 1:
+            return ''.join(_rows_to_table(g) for g in groups) + '\n'
+        return (_rows_to_table(groups[0]) + '\n') if groups else '\n'
+
+    def _rows_to_table(rows):
         if not rows:
             return ''
         # Determine column count from the widest row so per-column width math is right.
@@ -16454,8 +16485,17 @@ def get_research_note_pdf(ticker):
             # Legacy notes carry only a type; new ones carry a period-bearing
             # label ("FY2025A Revenue"), which type.title() cannot express.
             heading = chart.get('label') or f"{chart.get('type', 'chart').title()} Breakdown"
-            charts_html += f'<p style="margin:16px 0 4px 0;font-weight:bold;font-size:11pt;color:#1e293b;">{ticker} {heading}</p>'
-            charts_html += f'<img src="data:image/png;base64,{chart["data"]}" style="width:100%;max-width:500px;margin:0 0 16px 0;" />'
+            # Heading and image in one keep-together block. As two sibling
+            # blocks the heading sat at the foot of one page and its chart at
+            # the top of the next, so every label described the picture
+            # overleaf -- and the last chart appeared with no label at all.
+            charts_html += (
+                '<div style="page-break-inside:avoid;-pdf-keep-in-frame-mode:shrink;margin:16px 0;">'
+                f'<p style="margin:0 0 4px 0;font-weight:bold;font-size:11pt;'
+                f'color:#1e293b;-pdf-keep-with-next:true;">{ticker} {heading}</p>'
+                f'<img src="data:image/png;base64,{chart["data"]}" '
+                'style="width:100%;max-width:480px;" />'
+                '</div>')
 
     html = f"""<html><head><style>
         @page {{ margin: 0.7in; size: letter; }}

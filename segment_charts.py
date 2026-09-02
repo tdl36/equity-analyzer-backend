@@ -101,7 +101,13 @@ def render_donut(ticker, chart_type, data, value_key, period=None):
         wedgeprops={"width": 0.58, "edgecolor": "none", "linewidth": 0},
     )
     ax.add_artist(plt.Circle((0, 0), 0.30, fc="white"))
-    ax.text(0, 0.05, "Total", ha="center", va="center", fontsize=12, color="#333333")
+    # "Segments", not "Total". The donut sums the reported segments only:
+    # Corporate/Other is excluded (a loss cannot be a slice), and segment
+    # revenue is gross of intersegment eliminations. Labelling that sum "Total"
+    # invited it to be read as the consolidated figure -- a CVS profit chart
+    # centred on $16.3B sat beside a note stating enterprise adjusted operating
+    # income of $14.4B, with nothing explaining the gap.
+    ax.text(0, 0.05, "Segments", ha="center", va="center", fontsize=12, color="#333333")
     ax.text(0, -0.08, _money(total), ha="center", va="center",
             fontsize=16, color="#333333", fontweight="bold")
 
