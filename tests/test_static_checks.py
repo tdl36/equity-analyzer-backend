@@ -376,3 +376,19 @@ def test_no_dated_model_ids_outside_the_registry():
             offenders.append(f'app_v3.py:{i}: {line.strip()[:90]}')
     assert not offenders, (
         'dated model id outside the registry:\n  ' + '\n  '.join(offenders))
+
+
+def test_the_agent_restarts_itself_when_its_source_changes():
+    """launchd keeps the agent alive forever, so an edit never lands by itself.
+
+    This one ran thirteen days past a model-id fix, failing every note job with
+    a 404 for a model that had been retired, while the corrected line sat on
+    disk unread. Nothing anywhere reported the mismatch.
+    """
+    src = (ROOT / 'charlie_local_agent.py').read_text(encoding='utf-8')
+    assert '_source_changed' in src, 'no source-change check'
+    assert 'getmtime' in src, 'the check does not look at the file'
+    # and it must actually be called from the poll loop, not merely defined
+    body = src[src.index('def _source_changed'):]
+    assert body.count('_source_changed()') >= 1, (
+        '_source_changed is defined but never called')

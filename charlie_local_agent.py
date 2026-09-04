@@ -58,6 +58,27 @@ MAX_SYNC_BYTES = 400 * 1024 * 1024
 # with an error that reads like a missing endpoint rather than a missing model.
 # Overridable so a model change does not need a code edit next time.
 NOTE_MODEL = os.environ.get("CHARLIE_NOTE_MODEL", "claude-sonnet-5")
+
+# Source mtime at import. launchd starts this once and keeps it alive forever,
+# so editing the file changes nothing until someone restarts it by hand -- and
+# nothing reports that they have not. This agent ran for thirteen days on code
+# predating a model-id fix, failing every note job with a 404 for a model that
+# had been retired, while the corrected line sat on disk unread.
+_SOURCE_MTIME = None
+try:
+    _SOURCE_MTIME = os.path.getmtime(os.path.abspath(__file__))
+except OSError:
+    pass
+
+
+def _source_changed() -> bool:
+    """True when this file has been edited since the process started."""
+    if _SOURCE_MTIME is None:
+        return False
+    try:
+        return os.path.getmtime(os.path.abspath(__file__)) != _SOURCE_MTIME
+    except OSError:
+        return False
 CHARLIE_API = "https://equity-analyzer-backend.onrender.com"
 POLL_INTERVAL = 5  # seconds
 CONFIG_FILE = Path.home() / ".charlie_agent_config.json"
@@ -4110,6 +4131,12 @@ def main() -> None:
             if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
                 log.error(f"Too many consecutive errors ({MAX_CONSECUTIVE_ERRORS}), exiting")
                 sys.exit(1)
+
+        # Between ticks -- no job is in flight here -- pick up a new version of
+        # this file by exiting; launchd's KeepAlive restarts us immediately.
+        if _source_changed():
+            log.info("Agent source changed on disk; restarting to pick it up")
+            return
 
         shutdown.wait(timeout=POLL_INTERVAL)
 
