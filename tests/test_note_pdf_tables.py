@@ -304,3 +304,62 @@ def test_the_donut_centre_does_not_claim_to_be_a_company_total():
     assert calls, 'the centre label call is gone'
     assert all('"Segments"' in c for c in calls), calls
     assert not any('"Total"' in c for c in calls), calls
+
+
+def test_every_chart_renders_at_the_same_size(tmp_path):
+    """A chart landing after a full page of text must not be shrunk to fit.
+
+    -pdf-keep-in-frame-mode:shrink squeezes a block into whatever space is left
+    on the page rather than moving it to the next. A CRM note put the FY2026A
+    donut at 474 ppi -- the same pixels in half the physical space -- directly
+    above an identical FY2027E donut at 239 ppi. The first was unreadable.
+    Measured in ppi because that is display scale; the source pixel dimensions
+    are identical either way and prove nothing.
+    """
+    import base64
+    import json as _json
+    import os
+    import re as _re
+    import subprocess as _sp
+    import uuid
+    os.environ.setdefault('DATABASE_URL', 'postgresql://localhost/charlie_test')
+    import app_v3
+    import segment_charts
+
+    pytest.importorskip('xhtml2pdf.pisa')
+    if not _sp.run(['which', 'pdfimages'], capture_output=True).stdout:
+        pytest.skip('pdfimages not available')
+
+    specs = [{'kind': 'revenue', 'period': p, 'data': [
+        {'segment': 'Agentforce Apps', 'value': 26697},
+        {'segment': 'Data 360 & Other', 'value': 12691},
+        {'segment': 'Professional Services', 'value': 2137}]}
+        for p in ('FY2026A', 'FY2027E')]
+    charts = [{'type': c['type'], 'label': c['label'], 'kind': c['kind'],
+               'period': c['period'], 'filename': c['filename'],
+               'data': base64.b64encode(c['png']).decode()}
+              for c in segment_charts.render_series('SZCK', specs)]
+
+    # Text sized to end mid-page, so the first chart meets a partial frame --
+    # the condition that triggered the shrink.
+    note = '# Szck Inc (SZCK)\n\n' + ('Body text. ' * 95 + '\n\n') * 7
+    with app_v3.get_db(commit=True) as (_c, cur):
+        cur.execute("DELETE FROM research_notes WHERE ticker='SZCK'")
+        cur.execute("""INSERT INTO research_notes (id,ticker,version,note_markdown,
+                       sources_markdown,changelog_markdown,note_docx,charts,metadata,status)
+                       VALUES (%s,'SZCK',1,%s,' ',' ',' ',%s,%s,'published')""",
+                    (str(uuid.uuid4()), note, _json.dumps(charts), _json.dumps({})))
+    try:
+        resp = app_v3.app.test_client().get('/api/notes/SZCK/pdf')
+        pdf = tmp_path / 'sz.pdf'
+        pdf.write_bytes(base64.b64decode(resp.get_json()['fileData']))
+        listing = _sp.run(['pdfimages', '-list', str(pdf)],
+                          capture_output=True, text=True).stdout.splitlines()[2:]
+        ppis = {int(f[12]) for f in (l.split() for l in listing) if len(f) > 13}
+        assert ppis, 'no images found in the PDF'
+        assert len(ppis) == 1, (
+            f'charts rendered at different scales: {sorted(ppis)} ppi -- one was '
+            'shrunk to fit the space left on its page')
+    finally:
+        with app_v3.get_db(commit=True) as (_c, cur):
+            cur.execute("DELETE FROM research_notes WHERE ticker='SZCK'")

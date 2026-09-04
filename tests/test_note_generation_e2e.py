@@ -567,3 +567,92 @@ def test_a_spreadsheet_in_the_selection_reaches_the_model(clean_db, stub_llm):
     assert 'Broker Model 2026.xlsx' in sent, 'the spreadsheet was not attached'
     assert '7250' in sent, 'the spreadsheet contents never reached the model'
     assert 'Health Care Benefits' in sent
+
+
+REVENUE_ONLY_REPLY = """===CHART_DATA===
+{"priorYear": {"label": "FY2026A",
+  "revenue": [{"segment": "Agentforce Apps", "value": 26697},
+              {"segment": "Data 360 & Other", "value": 12691}],
+  "profit": []},
+ "currentYear": {"label": "FY2027E",
+  "revenue": [{"segment": "Agentforce Apps", "value": 28801},
+              {"segment": "Data 360 & Other", "value": 15351}],
+  "profit": []}}
+===CHART_DATA_END===
+
+===NOTE_START===
+# Salesforce, Inc. (CRM)
+
+Reports as a single operating segment; no segment profit is disclosed.
+===NOTE_END===
+"""
+
+
+def test_an_undisclosed_series_gets_a_labelled_placeholder(clean_db, monkeypatch):
+    """Four slots on the page, even when a company discloses only two.
+
+    CRM reports one operating segment and no segment profit, so its note carried
+    two charts where four were expected and the explanation sat in a sentence
+    eight pages earlier. A placeholder answers the question where the reader
+    asks it, without inventing a split that does not exist.
+    """
+    def reply(*, messages, system, model, max_tokens, timeout, api_key, on_text=None):
+        return {'text': REVENUE_ONLY_REPLY, 'provider': 'anthropic', 'model': model,
+                'usage': {'input_tokens': 0, 'output_tokens': 0}}
+
+    monkeypatch.setattr(app_v3, '_call_anthropic_stream', reply)
+    _seed_documents('SNGL', [('annual-report.pdf', 10)])
+    job_id = _job('SNGL')
+    app_v3._generate_research_note(job_id, 'SNGL', 'test-key', 'new', None)
+
+    with app_v3.get_db() as (_c, cur):
+        cur.execute('SELECT charts FROM research_notes WHERE ticker = %s', ('SNGL',))
+        charts = cur.fetchone()['charts']
+    if isinstance(charts, str):
+        charts = json.loads(charts)
+
+    drawn = [c for c in charts if c.get('data')]
+    placeheld = [c for c in charts if c.get('placeholder')]
+    assert len(drawn) == 2, f'expected 2 real charts, got {len(drawn)}'
+    assert len(placeheld) == 2, f'expected 2 placeholders, got {len(placeheld)}'
+    assert {c['kind'] for c in placeheld} == {'profit'}
+    assert {c['period'] for c in placeheld} == {'FY2026A', 'FY2027E'}
+    for c in placeheld:
+        assert 'not disclosed' in c['placeholder']
+
+
+def test_the_chosen_stance_reaches_the_prompt(clean_db, stub_llm):
+    """Neutral must actually suppress the recommendation instruction."""
+    _seed_documents('TONE', [('annual-report.pdf', 10)])
+    job_id = _job('TONE')
+    app_v3._generate_research_note(job_id, 'TONE', 'test-key', 'new', None,
+                                   stance='neutral')
+    sent = ''
+    for block in stub_llm[0]['messages'][0]['content']:
+        if block.get('type') == 'text':
+            sent += block['text']
+    assert 'STANCE: NEUTRAL' in sent
+    assert 'do not advise' in sent
+    assert 'STANCE: CONSTRUCTIVE' not in sent
+
+
+def test_an_unknown_stance_falls_back_rather_than_failing(clean_db, stub_llm):
+    _seed_documents('TON2', [('annual-report.pdf', 10)])
+    job_id = _job('TON2')
+    app_v3._generate_research_note(job_id, 'TON2', 'test-key', 'new', None,
+                                   stance='wildly-bullish')
+    sent = ''.join(b['text'] for b in stub_llm[0]['messages'][0]['content']
+                   if b.get('type') == 'text')
+    assert 'STANCE: BALANCED' in sent
+
+
+def test_every_stance_still_demands_both_cases():
+    """A stance changes emphasis, never the evidentiary standard.
+
+    "Lean positive" must not become permission to strawman the bear case; the
+    whole value of the note is that both sides are argued at full strength.
+    """
+    for spec in app_v3.NOTE_STANCES:
+        body = spec['prompt'].lower()
+        assert 'bull' in body and 'bear' in body, (
+            f"stance {spec['key']} does not mention both cases")

@@ -13583,6 +13583,14 @@ def list_onepager_models():
                     'default': ONEPAGER_DEFAULT_MODEL})
 
 
+@app.route('/api/note-stances', methods=['GET'])
+def list_note_stances():
+    """How opinionated a generated note should be."""
+    return jsonify({'stances': [{k: v for k, v in x.items() if k != 'prompt'}
+                                for x in NOTE_STANCES],
+                    'default': NOTE_DEFAULT_STANCE})
+
+
 @app.route('/api/models', methods=['GET'])
 def list_picker_models():
     """The models offered by the note and thesis pickers.
@@ -15436,6 +15444,62 @@ which are older. State the price and its date in the valuation section. Do not
 present a source document's price as current."""
 
 
+# How opinionated the note is allowed to be.
+#
+# Two things were tangled together in one house voice: whether the note takes a
+# position at all, and which way it leans. Separating them means "describe this
+# without telling me what to do" is reachable without also making the analysis
+# timid, and "lean positive" does not become cheerleading.
+#
+# Every stance keeps the same evidentiary standard. None of them licenses
+# selecting evidence -- the bull and bear cases are always both argued in full,
+# and the arithmetic rules elsewhere in the playbook apply unchanged.
+NOTE_STANCES = [
+    {'key': 'neutral', 'label': 'Neutral', 'note': 'No investment view',
+     'prompt': """STANCE: NEUTRAL — describe, do not advise.
+- State what is happening and what is at stake. Do not tell the reader what to do.
+- Section 8 is titled "Summary" and contains no recommendation, no price target
+  framing as a call, no "own it", "add", "trim", "avoid", or entry/exit levels.
+- Where a judgement is unavoidable, attribute it to the evidence ("the bridge
+  implies", "the arithmetic requires"), never to your own conviction.
+- Present the bull and bear cases at equal length and equal force."""},
+
+    {'key': 'balanced', 'label': 'Balanced', 'note': 'House view, states a call',
+     'prompt': """STANCE: BALANCED — the house voice. Take a position and defend it.
+- Reach a clear conclusion and say so plainly in section 8, with levels.
+- Argue the bull and bear cases at equal length before concluding.
+- Name what would change your mind, and at what level."""},
+
+    {'key': 'constructive', 'label': 'Constructive', 'note': 'Positive-leaning',
+     'prompt': """STANCE: CONSTRUCTIVE — lean positive, without cheerleading.
+- Where evidence genuinely supports it, give the benefit of the doubt to the
+  company's execution and to the durability of improving trends.
+- The bull case must still rest on evidence, and the bear case must still be
+  argued in full and at its strongest. A constructive note that strawmans the
+  bears is a worse note, not a more positive one.
+- Do not upgrade the conclusion beyond what the numbers carry: if the bridge
+  says low-teens growth, it stays low-teens."""},
+
+    {'key': 'cautious', 'label': 'Cautious', 'note': 'Careful, not bearish',
+     'prompt': """STANCE: CAUTIOUS — weight the risks more heavily, without being bearish.
+- Give more room to what could go wrong, to quality-of-earnings questions, and
+  to claims that rest on management assertion rather than reported data.
+- The bear case gets the greater weight, but the bull case must still be argued
+  in full and at its strongest.
+- Being cautious is about the weight given to unresolved risk, not about
+  predicting decline. Do not manufacture a negative conclusion the evidence
+  does not support."""},
+]
+NOTE_STANCE_BY_KEY = {x['key']: x for x in NOTE_STANCES}
+NOTE_DEFAULT_STANCE = 'balanced'
+
+
+def resolve_note_stance(key):
+    """Stance key -> its prompt block. Unknown keys fall back to the default."""
+    spec = NOTE_STANCE_BY_KEY.get(key) or NOTE_STANCE_BY_KEY[NOTE_DEFAULT_STANCE]
+    return spec['prompt']
+
+
 RESEARCH_NOTE_PLAYBOOK = """
 ## NOTE FORMAT RULES
 
@@ -15459,8 +15523,9 @@ RESEARCH_NOTE_PLAYBOOK = """
 5. Catalyst Calendar (earnings, FDA dates, contract renewals, etc.)
 6. Valuation Context (vs. history, vs. peers)
 7. Risks
-8. Bottom Line — the recommendation lives HERE (Own / Avoid / Revisit at $X),
-   never in the title block
+8. Bottom Line — where any recommendation lives (Own / Avoid / Revisit at $X),
+   never in the title block. Under the NEUTRAL stance this section is titled
+   "Summary" and carries no recommendation at all.
 
 ### Sector-specific additions:
 - Pharma/Biotech: Patent cliffs, pipeline table, LOE timeline
@@ -15503,6 +15568,13 @@ RESEARCH_NOTE_PLAYBOOK = """
   must match the wording ("nearly double" is ~2x, not 2.9x).
 - A figure repeated in two sections must match in both (e.g. per-share impact of
   a driver quoted in the summary and again in the drivers section).
+
+### LISTS AND NUMBERED ITEMS:
+- Numbered items -- risks, debates, drivers, catalysts -- each start on their own
+  line, as a real markdown list item or a "### " sub-heading. Never run them
+  together inside one paragraph: "1. First risk. 2. Second risk." on a single
+  line is unreadable in print, however well written the sentences are.
+- Each numbered item leads with a short bold title, then the body.
 
 ### TONE:
 - Write as if the analyst is authoring the note to their PM
@@ -16216,6 +16288,7 @@ def generate_research_note():
     file_selection = data.get('fileSelection', [])
     reprocess = data.get('reprocess', False)
     model_key = data.get('model') or PICKER_DEFAULT_MODEL
+    stance = data.get('stance') or NOTE_DEFAULT_STANCE
 
     if not ticker:
         return jsonify({'error': 'No ticker provided'}), 400
@@ -16245,7 +16318,7 @@ def generate_research_note():
 
     job_id = str(uuid.uuid4())
     detail = {'mode': mode, 'fileSelection': file_selection, 'reprocess': reprocess,
-              'model': model_key}
+              'model': model_key, 'stance': stance}
 
     if run_on == 'server' and docs_here:
         with get_db(commit=True) as (conn, cur):
@@ -16255,7 +16328,7 @@ def generate_research_note():
             ''', (job_id, str(uuid.uuid4()), ticker, json.dumps(detail)))
         threading.Thread(
             target=_generate_research_note,
-            args=(job_id, ticker, api_key, mode, file_selection, model_key),
+            args=(job_id, ticker, api_key, mode, file_selection, model_key, stance),
             daemon=True, name=f'note-{ticker}-{job_id[:8]}').start()
         return jsonify({'jobId': job_id, 'ticker': ticker, 'runsOn': 'server'})
 
@@ -16437,6 +16510,13 @@ def get_research_note_pdf(ticker):
     # Convert markdown to simple HTML for PDF
     import re
     html_body = note_md
+
+    # Numbered items that the model ran together in one paragraph get their own
+    # line. The Risks section of a real note arrived as nine items inside a
+    # single block -- "1. ... 2. ... 3. ..." -- which reads as a wall of text.
+    # Only splits where a number is followed by a bolded title, so ordinary
+    # prose containing "1. " is left alone.
+    html_body = re.sub(r'(?<!^)(?<!\n)\s+(\d{1,2}\.\s+\*\*)', r'\n\n\1', html_body)
     # Headers — -pdf-keep-with-next prevents orphaned headings at page bottom
     html_body = re.sub(r'^### (.+)$', r'<h3 style="color:#1e293b;font-size:11pt;margin:12px 0 6px 0;-pdf-keep-with-next:true;">\1</h3>', html_body, flags=re.MULTILINE)
     html_body = re.sub(r'^## (\d+\.\s+)?(.+)$', r'<h2 style="color:#1e293b;font-size:13pt;font-weight:bold;border-bottom:2px solid #1e3a5f;padding-bottom:4px;margin:18px 0 8px 0;-pdf-keep-with-next:true;">\1\2</h2>', html_body, flags=re.MULTILINE)
@@ -16566,6 +16646,17 @@ def get_research_note_pdf(ticker):
         try: charts_data = json.loads(charts_data)
         except: charts_data = []
     for chart in (charts_data or []):
+        if not chart.get('data') and chart.get('placeholder'):
+            heading = chart.get('label') or 'Chart'
+            charts_html += (
+                '<div style="page-break-inside:avoid;margin:16px 0;border:1px solid #e2e8f0;'
+                'border-radius:4px;padding:14px;background:#f8fafc;">'
+                f'<p style="margin:0 0 4px 0;font-weight:bold;font-size:11pt;'
+                f'color:#1e293b;">{ticker} {heading}</p>'
+                f'<p style="margin:0;font-size:9.5pt;color:#64748b;">'
+                f'Not charted — {chart["placeholder"]} by the company.</p>'
+                '</div>')
+            continue
         if chart.get('data'):
             # Legacy notes carry only a type; new ones carry a period-bearing
             # label ("FY2025A Revenue"), which type.title() cannot express.
@@ -16575,7 +16666,12 @@ def get_research_note_pdf(ticker):
             # the top of the next, so every label described the picture
             # overleaf -- and the last chart appeared with no label at all.
             charts_html += (
-                '<div style="page-break-inside:avoid;-pdf-keep-in-frame-mode:shrink;margin:16px 0;">'
+                # No shrink-to-fit. That mode squeezes a chart into whatever
+                # space is left on the page rather than moving it to the next,
+                # so a chart landing after a full page of text rendered at a
+                # fraction of the size of its neighbours and was unreadable.
+                # page-break-inside alone moves the whole block, size intact.
+                '<div style="page-break-inside:avoid;margin:16px 0;">'
                 f'<p style="margin:0 0 4px 0;font-weight:bold;font-size:11pt;'
                 f'color:#1e293b;-pdf-keep-with-next:true;">{ticker} {heading}</p>'
                 f'<img src="data:image/png;base64,{chart["data"]}" '
@@ -16741,7 +16837,7 @@ def _parse_chart_blocks(text):
 
 
 def _generate_research_note(job_id, ticker, api_key, mode='new', file_selection=None,
-                           model_key=None):
+                           model_key=None, stance=None):
     """Generate a full equity research note in a background thread.
 
     Runs on Charlie rather than the local agent. The documents are already here
@@ -16884,6 +16980,7 @@ Update the note with new information from the source documents. Add a "What's Ch
         # with; without this the note dates its own valuation to the newest
         # broker report rather than to today.
         price_context = _live_price_context(ticker)
+        stance_prompt = resolve_note_stance(stance)
 
         prompt = f"""You are a senior equity research analyst writing a comprehensive investment research note.
 
@@ -16892,6 +16989,8 @@ COMPANY: {company}
 SECTOR: {sector}
 
 {price_context}
+
+{stance_prompt}
 
 {RESEARCH_NOTE_PLAYBOOK}
 
@@ -17137,6 +17236,28 @@ Figures in millions.
                                'kind': c['kind'], 'period': c['period'],
                                'filename': c['filename'],
                                'data': base64.b64encode(c['png']).decode('ascii')})
+            # A series that genuinely does not exist still gets a place on the
+            # page. CRM reports one operating segment and discloses no segment
+            # profit, so its note carried two charts where four were expected
+            # and the explanation sat in a sentence eight pages earlier. A
+            # labelled placeholder answers the question where it is asked.
+            have = {(c.get('kind'), c.get('period')) for c in charts}
+            periods = [sp.get('period') for sp in chart_specs if sp.get('period')]
+            for period in sorted(set(periods)) or ['']:
+                for kind, title in (('revenue', 'Revenue'),
+                                    ('profit', 'Operating Profit')):
+                    if (kind, period) in have:
+                        continue
+                    charts.append({
+                        'type': f'{kind}_{period.lower() or "latest"}_missing',
+                        'kind': kind, 'period': period,
+                        'label': f'{period} {title}'.strip(),
+                        'filename': '', 'data': '',
+                        'placeholder': ('segment operating profit is not disclosed'
+                                        if kind == 'profit'
+                                        else 'segment revenue is not disclosed'),
+                    })
+
             if (revenue_data and profit_data
                     and segment_charts.is_duplicate_series(revenue_data, profit_data)):
                 chart_warning = ('profit split mirrors revenue — segment profit '
@@ -17198,8 +17319,9 @@ Figures in millions.
                   # The note arrived complete and chartless with no error.
                   json.dumps([{'type': c['type'], 'label': c.get('label', ''),
                                'kind': c.get('kind', ''), 'period': c.get('period', ''),
-                               'filename': c['filename'],
-                               'data': c['data']} for c in charts]),
+                               'filename': c.get('filename', ''),
+                               'placeholder': c.get('placeholder', ''),
+                               'data': c.get('data', '')} for c in charts]),
                   json.dumps({
                       'mode': mode,
                       'documentsProcessed': len(docs),
@@ -17208,6 +17330,7 @@ Figures in millions.
                       'model': result.get('model', ''),
                       'charCount': len(note_md),
                       'chartWarning': chart_warning,
+                      'stance': stance or NOTE_DEFAULT_STANCE,
                   })))
 
         _update_pipeline_job(job_id, status='complete', current_step='Ready for review', progress=100,

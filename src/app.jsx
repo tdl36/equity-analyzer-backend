@@ -81,7 +81,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-09-04T01';
+        const BUILD_VERSION = '2026-09-04T02';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -2397,6 +2397,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [decipherModel, setDecipherModel] = usePersistedModel('charlie.decipherModel', 'opus-4-7');
             const [mpModel, setMpModel] = usePersistedModel('charlie.mpModel', 'sonnet-5');
             const [studioModel, setStudioModel] = usePersistedModel('charlie.studioModel', 'sonnet-5');
+            // How opinionated a generated note is. Separate from the model:
+            // the same model writes a neutral note or a constructive one.
+            const [noteStances, setNoteStances] = useState([]);
+            const [noteStance, setNoteStance] = usePersistedModel('charlie.noteStance', 'balanced');
 
             const [opEmailing, setOpEmailing] = useState(false);
             // Poster (AI) state — the image path, kept separate from the HTML styles.
@@ -3012,6 +3016,16 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         setMpModel(m => keep(m, 'sonnet-5'));
                         setStudioModel(m => keep(m, 'sonnet-5'));
                     } catch (e) { /* pickers stay on their defaults */ }
+                })();
+                (async () => {
+                    try {
+                        const r = await fetch(`${API_URL}/api/note-stances`);
+                        if (!r.ok) return;
+                        const j = await r.json();
+                        setNoteStances(j.stances || []);
+                        setNoteStance(v => (j.stances || []).some(x => x.key === v)
+                            ? v : (j.default || v));
+                    } catch (e) { /* stance stays on its default */ }
                 })();
             }, []);
 
@@ -7966,6 +7980,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         body: JSON.stringify({
                             ticker, apiKey: apiKeySaved, mode,
                             model: pipelineModel,
+                            stance: noteStance,
                             reprocess: true,
                             fileSelection: (pipelineDocConfig[ticker]?.documents || [])
                                 .filter(d => d.included !== false)
@@ -25262,6 +25277,19 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     onChange={setPipelineModel}
                                                     title="Model used for Generate Note and Update Thesis"
                                                 />
+                                                <select
+                                                    value={noteStance}
+                                                    onChange={e => setNoteStance(e.target.value)}
+                                                    title="How opinionated the generated note should be"
+                                                    className="px-2 py-1.5 bg-white/10 border border-white/15 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-purple-500">
+                                                    {(noteStances.length ? noteStances : [
+                                                        { key: 'balanced', label: 'Balanced', note: '' },
+                                                    ]).map(st => (
+                                                        <option key={st.key} value={st.key} className="bg-neutral-900">
+                                                            {st.label}{st.note ? ` — ${st.note}` : ''}
+                                                        </option>
+                                                    ))}
+                                                </select>
                                                 <button
                                                     onClick={() => {
                                                         if (pipelineSelectedTickers.length === 1) generateResearchNote(pipelineSelectedTickers[0], 'new');
