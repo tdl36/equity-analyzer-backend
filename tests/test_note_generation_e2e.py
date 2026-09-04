@@ -66,7 +66,7 @@ def stub_llm(monkeypatch):
     """
     calls = []
 
-    def fake_stream(*, messages, system, model, max_tokens, timeout, api_key):
+    def fake_stream(*, messages, system, model, max_tokens, timeout, api_key, on_text=None):
         calls.append({'messages': messages, 'system': system, 'model': model,
                       'max_tokens': max_tokens, 'timeout': timeout})
         return {'text': MODEL_REPLY, 'provider': 'anthropic', 'model': model,
@@ -194,7 +194,7 @@ def test_note_generation_retries_a_transient_failure(clean_db, monkeypatch):
     """A dropped connection mid-note must not throw the job away."""
     attempts = []
 
-    def flaky(*, messages, system, model, max_tokens, timeout, api_key):
+    def flaky(*, messages, system, model, max_tokens, timeout, api_key, on_text=None):
         attempts.append(model)
         if len(attempts) == 1:
             raise app_v3.anthropic.APITimeoutError(request=None)
@@ -289,7 +289,7 @@ def test_a_note_without_chart_blocks_still_gets_charts(clean_db, monkeypatch):
     """
     calls = []
 
-    def staged(*, messages, system, model, max_tokens, timeout, api_key):
+    def staged(*, messages, system, model, max_tokens, timeout, api_key, on_text=None):
         calls.append(max_tokens)
         # first call writes the note and omits the charts; the re-extract returns them
         return {'text': NOTE_WITHOUT_CHARTS if len(calls) == 1 else CHART_ONLY_REPLY,
@@ -401,7 +401,7 @@ def test_a_profit_split_mirroring_revenue_triggers_a_re_extract(clean_db, monkey
     replies = [NOTE_WITH_DUPLICATE_PROFIT, REAL_PROFIT_REPLY]
     seen = []
 
-    def staged(*, messages, system, model, max_tokens, timeout, api_key):
+    def staged(*, messages, system, model, max_tokens, timeout, api_key, on_text=None):
         seen.append(max_tokens)
         return {'text': replies[min(len(seen) - 1, len(replies) - 1)],
                 'provider': 'anthropic', 'model': model,
@@ -429,7 +429,7 @@ def test_both_charts_are_stored_even_when_profit_still_mirrors_revenue(clean_db,
     reader can see and question two similar donuts; they cannot question a chart
     that was never drawn.
     """
-    def always_dupe(*, messages, system, model, max_tokens, timeout, api_key):
+    def always_dupe(*, messages, system, model, max_tokens, timeout, api_key, on_text=None):
         return {'text': NOTE_WITH_DUPLICATE_PROFIT, 'provider': 'anthropic',
                 'model': model, 'usage': {'input_tokens': 0, 'output_tokens': 0}}
 
@@ -487,7 +487,7 @@ def test_a_note_gets_four_annual_charts_labelled_by_year(clean_db, monkeypatch):
     titled only "Revenue Breakdown", so the page never said which period it was
     showing. Four series, each carrying its fiscal year, is the deliverable.
     """
-    def reply(*, messages, system, model, max_tokens, timeout, api_key):
+    def reply(*, messages, system, model, max_tokens, timeout, api_key, on_text=None):
         return {'text': FOUR_SERIES_REPLY, 'provider': 'anthropic', 'model': model,
                 'usage': {'input_tokens': 0, 'output_tokens': 0}}
 

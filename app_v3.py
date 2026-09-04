@@ -2079,7 +2079,8 @@ def _call_anthropic(*, messages, system, model, max_tokens, timeout, api_key):
         "model": model,
     }
 
-def _call_anthropic_stream(*, messages, system, model, max_tokens, timeout, api_key):
+def _call_anthropic_stream(*, messages, system, model, max_tokens, timeout, api_key,
+                           on_text=None):
     """Streaming twin of _call_anthropic, returning the same shape.
 
     The SDK refuses a non-streaming call whose ESTIMATED duration exceeds ten
@@ -2102,6 +2103,13 @@ def _call_anthropic_stream(*, messages, system, model, max_tokens, timeout, api_
     with client.messages.stream(**kwargs) as stream:
         for chunk in stream.text_stream:
             parts.append(chunk)
+            if on_text:
+                # Progress for long jobs. Callers that show a character count
+                # need it as the text arrives, not after.
+                try:
+                    on_text(len(chunk))
+                except Exception:
+                    pass
         final = stream.get_final_message()
     usage = getattr(final, "usage", None)
     return {
@@ -4516,18 +4524,11 @@ OUTPUT — valid JSON only, no prose, no markdown fencing:
         # Stream — Anthropic SDK refuses non-streaming calls whose ESTIMATED
         # duration exceeds 10 minutes. The reconciler attaches PDFs + a 12K
         # output cap, which crosses the threshold under load.
-        with client.messages.stream(
-            model=resolve_picker_model(model_key),
-            max_tokens=12288,
-            system="You are a meticulous equity research fact-checker. Your job is to surface and correct stale numbers, never to rewrite arguments.",
+        raw, _stop, _usage = _pinned_message(
+            model_key=model_key,
             messages=[{"role": "user", "content": content}],
-        ) as stream:
-            final = stream.get_final_message()
-        raw_parts = []
-        for blk in (final.content or []):
-            t = getattr(blk, 'text', None)
-            if t: raw_parts.append(t)
-        raw = ''.join(raw_parts).strip()
+            system="You are a meticulous equity research fact-checker. Your job is to surface and correct stale numbers, never to rewrite arguments.",
+            max_tokens=12288, api_key=api_key, label=f'reconcile {ticker}')
 
         # Strip code fences if model added them despite instructions
         if raw.startswith('```'):
@@ -4839,21 +4840,22 @@ def _run_analysis_job(job_id):
                                     progress=f'Retrying batch {batch_idx + 1} of {len(batches)} (attempt {attempt})')
                         print(f"[analysis-job {job_id}] Retry batch {batch_idx + 1}, attempt {attempt}")
 
-                    with client.messages.stream(
-                        model=resolve_picker_model(model_key),
-                        max_tokens=64000,
+                    # on_text keeps the live character count the progress UI
+                    # shows; it is fed per chunk for Anthropic and simply not
+                    # called for providers without a streaming adapter.
+                    _seen = {'n': 0}
+
+                    def _tick(n, _s=_seen):
+                        _s['n'] += n
+                        if _s['n'] % 500 < n:
+                            _update_job(job_id, chars_received=_s['n'])
+
+                    result_text, _stop_a, usage_data = _pinned_message(
+                        model_key=model_key,
                         messages=[{'role': 'user', 'content': content}],
-                        system="You are an expert equity research analyst. Analyze documents thoroughly and provide institutional-quality investment analysis. Be concise: the final thesis should fit 2-3 printed pages (3-5 pillars, 4-6 signposts, 3-5 threats, each described in 1-2 sentences). Prioritize the most important insights. Always respond with valid JSON only."
-                    ) as stream:
-                        for text in stream.text_stream:
-                            result_text += text
-                            if len(result_text) % 500 < len(text):
-                                _update_job(job_id, chars_received=len(result_text))
-                        final_msg = stream.get_final_message()
-                        usage_data = {
-                            'input_tokens': final_msg.usage.input_tokens,
-                            'output_tokens': final_msg.usage.output_tokens
-                        }
+                        system="You are an expert equity research analyst. Analyze documents thoroughly and provide institutional-quality investment analysis. Be concise: the final thesis should fit 2-3 printed pages (3-5 pillars, 4-6 signposts, 3-5 threats, each described in 1-2 sentences). Prioritize the most important insights. Always respond with valid JSON only.",
+                        max_tokens=64000, api_key=api_key,
+                        label=f'analysis-job {job_id[:8]}', on_text=_tick)
 
                     # Parse JSON — with truncation repair
                     cleaned = result_text.strip()
@@ -12661,13 +12663,49 @@ def _onepager_research(ticker, anthropic_key='', gemini_key=''):
 # places, which is the shape of the bug that took out note generation when
 # claude-sonnet-4-20250514 was retired.
 PICKER_MODELS = [
-    {'key': 'opus-4-6',  'label': 'Opus 4.6',  'model': 'claude-opus-4-6',              'note': 'Current default'},
-    {'key': 'opus-4-7',  'label': 'Opus 4.7',  'model': 'claude-opus-4-7',              'note': 'Deeper reasoning'},
-    {'key': 'opus-5',    'label': 'Opus 5',    'model': 'claude-opus-5',                'note': 'Latest Opus'},
-    {'key': 'sonnet-5',  'label': 'Sonnet 5',  'model': 'claude-sonnet-5',              'note': 'Faster, cheaper'},
-    {'key': 'fable-5',   'label': 'Fable 5',   'model': 'claude-fable-5',               'note': 'Most expressive'},
-    {'key': 'haiku-4-5', 'label': 'Haiku 4.5', 'model': 'claude-haiku-4-5-20251001',    'note': 'Fastest'},
+    # Anthropic
+    {'key': 'opus-4-6',  'provider': 'anthropic', 'label': 'Opus 4.6',  'model': 'claude-opus-4-6',           'note': 'Current default'},
+    {'key': 'opus-4-7',  'provider': 'anthropic', 'label': 'Opus 4.7',  'model': 'claude-opus-4-7',           'note': 'Deeper reasoning'},
+    {'key': 'opus-5',    'provider': 'anthropic', 'label': 'Opus 5',    'model': 'claude-opus-5',             'note': 'Latest Opus'},
+    {'key': 'sonnet-5',  'provider': 'anthropic', 'label': 'Sonnet 5',  'model': 'claude-sonnet-5',           'note': 'Faster, cheaper'},
+    {'key': 'fable-5',   'provider': 'anthropic', 'label': 'Fable 5',   'model': 'claude-fable-5',            'note': 'Most expressive'},
+    {'key': 'haiku-4-5', 'provider': 'anthropic', 'label': 'Haiku 4.5', 'model': 'claude-haiku-4-5-20251001', 'note': 'Fastest'},
+    # Google. gemini-pro-latest is an alias the provider repoints, so it does
+    # not go stale the way a pinned dated id does.
+    {'key': 'gemini-pro',       'provider': 'gemini', 'label': 'Gemini Pro',       'model': 'gemini-pro-latest',      'note': 'Latest Gemini Pro'},
+    {'key': 'gemini-3-1-pro',   'provider': 'gemini', 'label': 'Gemini 3.1 Pro',   'model': 'gemini-3.1-pro-preview', 'note': 'Preview'},
+    {'key': 'gemini-3-8-flash', 'provider': 'gemini', 'label': 'Gemini 3.8 Flash', 'model': 'gemini-3.8-flash',       'note': 'Fast'},
+    {'key': 'gemini-2-5-pro',   'provider': 'gemini', 'label': 'Gemini 2.5 Pro',   'model': 'gemini-2.5-pro',         'note': 'Proven'},
+    # OpenAI
+    {'key': 'gpt-4-1',      'provider': 'openai', 'label': 'GPT-4.1',      'model': 'gpt-4.1',      'note': 'Long context'},
+    {'key': 'gpt-4-1-mini', 'provider': 'openai', 'label': 'GPT-4.1 mini', 'model': 'gpt-4.1-mini', 'note': 'Fast, cheap'},
+    {'key': 'gpt-4o',       'provider': 'openai', 'label': 'GPT-4o',       'model': 'gpt-4o',       'note': 'Proven'},
 ]
+
+# _fetch_provider_models calls Google's key 'google'; the adapters call it
+# 'gemini'. One mapping rather than two vocabularies leaking into callers.
+_PICKER_PROVIDER_TO_CATALOG = {'anthropic': 'anthropic', 'openai': 'openai',
+                               'gemini': 'google'}
+
+
+def available_picker_models(api_keys=None):
+    """The models this deployment has a key for.
+
+    Filtering is on the API key only. An earlier version also required the id to
+    appear in the provider's catalog, which read as more rigorous and was worse:
+    _fetch_provider_models falls back to a short hardcoded list whenever a
+    list-models call fails, so a network blip silently reduced the picker to
+    three entries and hid the default model. Offering a model that turns out to
+    be retired costs one 404 that already falls through to the tier chain;
+    hiding a working model costs the user the choice with no explanation.
+
+    No key, though, is not a recoverable condition -- that choice can only fail.
+    """
+    keys = api_keys or _get_api_keys()
+    out = [spec for spec in PICKER_MODELS
+           if keys.get(spec.get('provider', 'anthropic'))]
+    # Never return nothing: a picker with no options cannot be used at all.
+    return out or [m for m in PICKER_MODELS if m['provider'] == 'anthropic']
 PICKER_MODEL_BY_KEY = {m['key']: m for m in PICKER_MODELS}
 PICKER_DEFAULT_MODEL = 'opus-4-6'
 
@@ -12684,19 +12722,29 @@ ONEPAGER_MODEL_BY_KEY = PICKER_MODEL_BY_KEY
 ONEPAGER_DEFAULT_MODEL = PICKER_DEFAULT_MODEL
 
 
-def resolve_picker_model(model_key, default_key=PICKER_DEFAULT_MODEL):
-    """Model key -> API model id. Unknown keys fall back to the default.
+def resolve_picker_spec(model_key, default_key=PICKER_DEFAULT_MODEL):
+    """Model key -> {'provider', 'model', ...}. Unknown keys fall back.
 
     A stale key reaching this (an old browser tab, a saved preference for a
     model since dropped) must not fail the job -- it picks the default instead.
     """
-    spec = PICKER_MODEL_BY_KEY.get(model_key) or PICKER_MODEL_BY_KEY.get(default_key)
-    return spec['model'] if spec else 'claude-opus-4-6'
+    return (PICKER_MODEL_BY_KEY.get(model_key)
+            or PICKER_MODEL_BY_KEY.get(default_key)
+            or PICKER_MODEL_BY_KEY[PICKER_DEFAULT_MODEL])
+
+
+def resolve_picker_model(model_key, default_key=PICKER_DEFAULT_MODEL):
+    """Model key -> API model id.
+
+    Kept for the call sites that speak to one provider's SDK directly and only
+    need the id.
+    """
+    return resolve_picker_spec(model_key, default_key)['model']
 
 
 def _call_pinned_long(*, messages, system, model_key, max_tokens, api_key,
                       tier='advanced', label='LLM call', max_attempts=4,
-                      timeout=1800, base_backoff_s=2.0):
+                      timeout=1800, base_backoff_s=2.0, on_text=None):
     """One long job, on the model the user picked, streamed, with retry.
 
     Note generation used plain call_llm: non-streaming, a 120s default timeout
@@ -12709,13 +12757,31 @@ def _call_pinned_long(*, messages, system, model_key, max_tokens, api_key,
     retired or unavailable model id degrades to a working note instead of none.
     """
     import time as _time, random as _random
-    model = resolve_picker_model(model_key)
+    spec = resolve_picker_spec(model_key)
+    provider, model = spec.get('provider', 'anthropic'), spec['model']
+    keys = _get_api_keys(api_key)
+    provider_key = keys.get(provider) or ''
+    if not provider_key:
+        # Chosen a provider this deployment has no key for. Say so and let the
+        # tier chain answer rather than failing the job on a settings problem.
+        print(f"[{label}] no API key configured for {provider}; "
+              f"using the {tier} tier chain instead")
+        provider = None
+
     last_exc = None
-    for attempt in range(1, max_attempts + 1):
+    for attempt in range(1, max_attempts + 1 if provider else 0):
         try:
-            return _call_anthropic_stream(
+            if provider == 'anthropic':
+                return _call_anthropic_stream(
+                    messages=messages, system=system, model=model,
+                    max_tokens=max_tokens, timeout=timeout, api_key=provider_key,
+                    on_text=on_text,
+                )
+            # Gemini and OpenAI have no streaming adapter here; they run through
+            # the same normalised interface the tier chain uses.
+            return _LLM_ADAPTERS[provider](
                 messages=messages, system=system, model=model,
-                max_tokens=max_tokens, timeout=timeout, api_key=api_key,
+                max_tokens=max_tokens, timeout=timeout, api_key=provider_key,
             )
         except Exception as e:
             last_exc = e
@@ -12728,9 +12794,10 @@ def _call_pinned_long(*, messages, system, model_key, max_tokens, api_key,
                   f"({type(e).__name__}: {str(e)[:200]}); retry in {backoff:.1f}s")
             _time.sleep(backoff)
 
-    print(f"[{label}] pinned model {model} failed "
-          f"({type(last_exc).__name__}: {str(last_exc)[:200]}); "
-          f"falling back to the {tier} tier chain")
+    if last_exc is not None:
+        print(f"[{label}] pinned {provider}/{model} failed "
+              f"({type(last_exc).__name__}: {str(last_exc)[:200]}); "
+              f"falling back to the {tier} tier chain")
     result = None
     for chunk in call_llm_stream(messages=messages, system=system, tier=tier,
                                  max_tokens=max_tokens, anthropic_api_key=api_key):
@@ -12741,7 +12808,7 @@ def _call_pinned_long(*, messages, system, model_key, max_tokens, api_key,
     return result
 
 
-def _onepager_caller(model_key, anthropic_key):
+def _pinned_caller(model_key, anthropic_key):
     """Return a call_llm-compatible callable pinned to one model.
 
     onepager.build_onepager takes call_llm as an injected dependency, so pinning
@@ -12749,23 +12816,39 @@ def _onepager_caller(model_key, anthropic_key):
     chain if the pinned model fails, so a bad model id degrades instead of
     failing the whole job.
     """
-    spec = ONEPAGER_MODEL_BY_KEY.get(model_key)
-    if not spec or not anthropic_key:
+    spec = PICKER_MODEL_BY_KEY.get(model_key)
+    if not spec:
+        return call_llm
+    provider = spec.get('provider', 'anthropic')
+    # The key for the chosen provider, not always the Anthropic one: this used
+    # to take anthropic_key regardless, so a Gemini or OpenAI pick would have
+    # been sent to Anthropic with a Gemini model id.
+    # Callers pass either an Anthropic key (the one-pager's original shape) or
+    # a full {provider: key} dict (Studio). Both resolve to the key for the
+    # provider actually chosen.
+    if isinstance(anthropic_key, dict):
+        provider_key = anthropic_key.get(provider) or ''
+    else:
+        provider_key = _get_api_keys(anthropic_key).get(provider) or ''
+    if not provider_key:
         return call_llm
 
     def pinned(*, messages, system, tier, max_tokens, timeout, **keys):
         try:
-            return _call_anthropic(
+            return _LLM_ADAPTERS[provider](
                 messages=messages, system=system, model=spec['model'],
-                max_tokens=max_tokens, timeout=timeout, api_key=anthropic_key,
+                max_tokens=max_tokens, timeout=timeout, api_key=provider_key,
             )
         except Exception as e:
-            print(f"[one-pager] pinned model {spec['model']} failed ({type(e).__name__}: {e}); "
-                  f"falling back to the {tier} tier chain")
+            print(f"[one-pager] pinned {provider}/{spec['model']} failed "
+                  f"({type(e).__name__}: {e}); falling back to the {tier} tier chain")
             return call_llm(messages=messages, system=system, tier=tier,
                             max_tokens=max_tokens, timeout=timeout, **keys)
 
     return pinned
+
+
+_onepager_caller = _pinned_caller
 
 
 # Image models for the "Poster (AI)" style. Both are already configured in
@@ -13496,7 +13579,8 @@ def list_onepager_depths_route():
 @app.route('/api/onepager/models', methods=['GET'])
 def list_onepager_models():
     """Models the one-pager picker offers, and which is default."""
-    return jsonify({'models': ONEPAGER_MODELS, 'default': ONEPAGER_DEFAULT_MODEL})
+    return jsonify({'models': available_picker_models(),
+                    'default': ONEPAGER_DEFAULT_MODEL})
 
 
 @app.route('/api/models', methods=['GET'])
@@ -13507,7 +13591,8 @@ def list_picker_models():
     change: the frontend would otherwise keep offering a dead model until the
     next frontend deploy, and picking it would fail the job.
     """
-    return jsonify({'models': PICKER_MODELS, 'default': PICKER_DEFAULT_MODEL})
+    return jsonify({'models': available_picker_models(),
+                    'default': PICKER_DEFAULT_MODEL})
 
 
 def _run_onepager_job(job_id, ticker, anthropic_key, gemini_key, openai_key, force_research, model_key=None, depth=None):
@@ -16573,6 +16658,27 @@ def _resume_note_checkpoint(job_id):
         return None
 
 
+def _pinned_message(*, model_key, messages, system, max_tokens, api_key,
+                    default_key=PICKER_DEFAULT_MODEL, tier='advanced',
+                    label='LLM call', on_text=None):
+    """Provider-aware stand-in for client.messages.stream(...).
+
+    Several features called the Anthropic SDK directly. That was fine while
+    every picker offered only Claude; once the pickers list Gemini and OpenAI it
+    becomes a trap, because choosing one would hand a Gemini id to an Anthropic
+    client. Returns (text, stop_reason, usage) so the call sites keep reading
+    the same three things they read off the final message.
+    """
+    result = _call_pinned_long(
+        messages=messages, system=system, model_key=model_key or default_key,
+        max_tokens=max_tokens, api_key=api_key, tier=tier, label=label,
+        on_text=on_text,
+    )
+    return ((result.get('text') or '').strip(),
+            result.get('stop_reason'),
+            result.get('usage') or {})
+
+
 def _parse_chart_blocks(text):
     """Segment series out of a model response, new format or old.
 
@@ -19572,21 +19678,11 @@ def _run_decipher_job(job_id: str, text: str, attachments: list,
 
         content.append({"type": "text", "text": ask})
 
-        with client.messages.stream(
-            model=resolve_picker_model(model_key, DECIPHER_DEFAULT_MODEL),
-            max_tokens=max_out,
-            system=system_prompt,
+        explanation, stop, _usage_main = _pinned_message(
+            model_key=model_key, default_key=DECIPHER_DEFAULT_MODEL,
             messages=[{"role": "user", "content": content}],
-        ) as stream:
-            final = stream.get_final_message()
-
-        parts = []
-        for blk in (final.content or []):
-            t = getattr(blk, 'text', None)
-            if t: parts.append(t)
-        explanation = ''.join(parts).strip()
-
-        stop = getattr(final, 'stop_reason', None)
+            system=system_prompt, max_tokens=max_out, api_key=api_key,
+            label=f'decipher {job_id[:8]}')
         if stop == 'max_tokens':
             print(f'decipher {job_id}: hit max_tokens cap ({max_out}); output truncated for mode={mode}')
 
@@ -19624,19 +19720,11 @@ OUTPUT
             korean_content.append({"type": "text", "text": korean_ask})
             korean_max = 12288 if mode == 'walkthrough' else 6144
             try:
-                with client.messages.stream(
-                    model=resolve_picker_model(model_key, DECIPHER_DEFAULT_MODEL),
-                    max_tokens=korean_max,
-                    system=korean_system,
+                korean_text, _stop_k, _usage_k = _pinned_message(
+                    model_key=model_key, default_key=DECIPHER_DEFAULT_MODEL,
                     messages=[{"role": "user", "content": korean_content}],
-                ) as kstream:
-                    kfinal = kstream.get_final_message()
-                kparts = []
-                for blk in (kfinal.content or []):
-                    t = getattr(blk, 'text', None)
-                    if t:
-                        kparts.append(t)
-                korean_text = ''.join(kparts).strip()
+                    system=korean_system, max_tokens=korean_max, api_key=api_key,
+                    label=f'decipher-korean {job_id[:8]}')
                 print(f"decipher {job_id}: korean pass {len(korean_text)} chars")
             except Exception as ke:
                 print(f"decipher {job_id}: korean pass failed (non-fatal): {ke}")
@@ -19647,7 +19735,7 @@ OUTPUT
                 f"{explanation}\n\n---\n\n## 한국어 해설\n\n{korean_text}"
             )
 
-        usage = getattr(final, 'usage', None)
+        usage = _usage_main or {}
         _decipher_jobs[job_id].update({
             'status': 'complete',
             'explanation': explanation_final,
@@ -19657,8 +19745,8 @@ OUTPUT
             'model': resolve_picker_model(model_key, DECIPHER_DEFAULT_MODEL),
             'mode': mode,
             'truncated': stop == 'max_tokens',
-            'inputTokens': getattr(usage, 'input_tokens', None) if usage else None,
-            'outputTokens': getattr(usage, 'output_tokens', None) if usage else None,
+            'inputTokens': usage.get('input_tokens'),
+            'outputTokens': usage.get('output_tokens'),
             'completedAt': datetime.utcnow().isoformat(),
             # Chat state for /api/decipher/<job_id>/followup. We replay
             # initial_content + first_response + any prior turns + the new
@@ -20066,31 +20154,21 @@ def _run_decipher_followup_job(fid: str, parent_job_id: str, question: str, api_
             messages.append({"role": "assistant", "content": turn['a']})
         messages.append({"role": "user", "content": question})
 
-        with client.messages.stream(
-            model=resolve_picker_model(model_key, DECIPHER_DEFAULT_MODEL),
-            max_tokens=8192,
-            system=chat['system_prompt'],
-            messages=messages,
-        ) as stream:
-            final = stream.get_final_message()
-
-        parts = []
-        for blk in (final.content or []):
-            t = getattr(blk, 'text', None)
-            if t:
-                parts.append(t)
-        answer = ''.join(parts).strip()
+        answer, _stop_f, _usage_f = _pinned_message(
+            model_key=model_key, default_key=DECIPHER_DEFAULT_MODEL,
+            messages=messages, system=chat['system_prompt'],
+            max_tokens=8192, api_key=api_key, label=f'decipher-followup {fid[:8]}')
 
         # Append to parent's chat history so subsequent follow-ups see it.
         chat['turns'].append({'q': question, 'a': answer})
 
-        usage = getattr(final, 'usage', None)
+        usage = _usage_f or {}
         _decipher_followup_jobs[fid].update({
             'status': 'complete',
             'answer': answer,
-            'inputTokens': getattr(usage, 'input_tokens', None) if usage else None,
-            'outputTokens': getattr(usage, 'output_tokens', None) if usage else None,
-            'cacheReadTokens': getattr(usage, 'cache_read_input_tokens', None) if usage else None,
+            'inputTokens': usage.get('input_tokens'),
+            'outputTokens': usage.get('output_tokens'),
+            'cacheReadTokens': usage.get('cache_read_input_tokens'),
             'cacheCreationTokens': getattr(usage, 'cache_creation_input_tokens', None) if usage else None,
             'completedAt': datetime.utcnow().isoformat(),
         })
@@ -25515,7 +25593,9 @@ IMPORTANT: Fill in actual data and specific details from the source material. Do
 
 Return ONLY valid JSON array, no markdown fencing."""
 
-        result = call_llm(
+        # Model chosen in the Studio form; falls back to the tier chain.
+        _llm = _pinned_caller((settings or {}).get('model'), api_keys)
+        result = _llm(
             messages=[{"role": "user", "content": llm_prompt}],
             tier="standard", max_tokens=8192,
             anthropic_api_key=api_keys.get('anthropic', ''),
@@ -25632,7 +25712,9 @@ SOURCE CONTENT:
 
 {source_content[:12000]}"""
 
-        result = call_llm(
+        # Model chosen in the Studio form; falls back to the tier chain.
+        _llm = _pinned_caller((settings or {}).get('model'), api_keys)
+        result = _llm(
             messages=[{"role": "user", "content": prompt}],
             system="You are an expert HTML/CSS designer who creates beautiful infographic-style documents. Return ONLY valid HTML. Do NOT use border-radius, gradients, flexbox, or calc() — only simple CSS compatible with xhtml2pdf.",
             tier="standard",
@@ -25694,7 +25776,9 @@ def _generate_studio_infographic(output_id, source_content, settings, api_keys):
             cur.execute("UPDATE studio_outputs SET status='generating', updated_at=%s WHERE id=%s", (datetime.utcnow(), output_id))
 
         # Get summary points from LLM
-        result = call_llm(
+        # Model chosen in the Studio form; falls back to the tier chain.
+        _llm = _pinned_caller((settings or {}).get('model'), api_keys)
+        result = _llm(
             messages=[{"role": "user", "content": f"Summarize the following content into key data points, statistics, and insights suitable for an infographic. Format as a clear, visual-friendly summary:\n\n{source_content[:6000]}"}],
             tier="standard", max_tokens=2048,
             anthropic_api_key=api_keys.get('anthropic', ''),
@@ -25808,7 +25892,9 @@ def _generate_studio_mindmap(output_id, source_content, settings, api_keys):
         with get_db(commit=True) as (conn, cur):
             cur.execute("UPDATE studio_outputs SET status='generating', updated_at=%s WHERE id=%s", (datetime.utcnow(), output_id))
 
-        result = call_llm(
+        # Model chosen in the Studio form; falls back to the tier chain.
+        _llm = _pinned_caller((settings or {}).get('model'), api_keys)
+        result = _llm(
             messages=[{"role": "user", "content": f"""Analyze the following content and create a hierarchical mind map structure.
 
 Return a JSON object with this exact structure:
@@ -25871,7 +25957,9 @@ def _generate_studio_report(output_id, source_content, settings, api_keys):
         with get_db(commit=True) as (conn, cur):
             cur.execute("UPDATE studio_outputs SET status='generating', updated_at=%s WHERE id=%s", (datetime.utcnow(), output_id))
 
-        result = call_llm(
+        # Model chosen in the Studio form; falls back to the tier chain.
+        _llm = _pinned_caller((settings or {}).get('model'), api_keys)
+        result = _llm(
             messages=[{"role": "user", "content": f"""Write a professional report in Markdown format based on the following source material.
 
 {length_guidance.get(length, length_guidance['standard'])}
@@ -25914,7 +26002,9 @@ def _generate_studio_quiz(output_id, source_content, settings, api_keys):
         with get_db(commit=True) as (conn, cur):
             cur.execute("UPDATE studio_outputs SET status='generating', updated_at=%s WHERE id=%s", (datetime.utcnow(), output_id))
 
-        result = call_llm(
+        # Model chosen in the Studio form; falls back to the tier chain.
+        _llm = _pinned_caller((settings or {}).get('model'), api_keys)
+        result = _llm(
             messages=[{"role": "user", "content": f"""Create {question_count} multiple-choice quiz questions based on the following content.
 Difficulty level: {difficulty}
 
@@ -25971,7 +26061,9 @@ def _generate_studio_flashcard(output_id, source_content, settings, api_keys):
         with get_db(commit=True) as (conn, cur):
             cur.execute("UPDATE studio_outputs SET status='generating', updated_at=%s WHERE id=%s", (datetime.utcnow(), output_id))
 
-        result = call_llm(
+        # Model chosen in the Studio form; falls back to the tier chain.
+        _llm = _pinned_caller((settings or {}).get('model'), api_keys)
+        result = _llm(
             messages=[{"role": "user", "content": f"""Create {card_count} flashcards based on the following content.
 
 Return a JSON object with this structure:

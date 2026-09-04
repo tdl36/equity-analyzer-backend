@@ -81,7 +81,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-08-31T02';
+        const BUILD_VERSION = '2026-09-04T01';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -210,20 +210,42 @@ if (typeof window !== 'undefined') {
         // render is a new type on every render, so React unmounts and remounts the
         // <select> -- which closes the dropdown under your cursor the moment
         // anything else in the app re-renders.
-        const ModelPicker = ({ models, value, onChange, title, className = '' }) => (
-            <select
-                value={value}
-                onChange={e => onChange(e.target.value)}
-                title={title || 'Model used for this step'}
-                className={`px-2 py-1.5 bg-white/10 border border-white/15 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-purple-500 ${className}`}>
-                {((models && models.length) ? models
-                    : [{ key: 'opus-4-6', label: 'Opus 4.6', note: '' }]).map(m => (
-                    <option key={m.key} value={m.key} className="bg-neutral-900">
-                        {m.label}{m.note ? ` — ${m.note}` : ''}
-                    </option>
-                ))}
-            </select>
-        );
+        const PROVIDER_LABELS = { anthropic: 'Claude', gemini: 'Gemini', openai: 'OpenAI' };
+
+        const ModelPicker = ({ models, value, onChange, title, className = '' }) => {
+            const list = (models && models.length) ? models
+                : [{ key: 'opus-4-6', label: 'Opus 4.6', note: '', provider: 'anthropic' }];
+            // Grouped by provider. A flat list of a dozen entries mixing Claude,
+            // Gemini and OpenAI is hard to scan, and the provider is usually the
+            // first thing you are choosing.
+            const order = ['anthropic', 'gemini', 'openai'];
+            const groups = order
+                .map(p => [p, list.filter(m => (m.provider || 'anthropic') === p)])
+                .filter(([, ms]) => ms.length);
+            const ungrouped = list.filter(m => !order.includes(m.provider || 'anthropic'));
+            return (
+                <select
+                    value={value}
+                    onChange={e => onChange(e.target.value)}
+                    title={title || 'Model used for this step'}
+                    className={`px-2 py-1.5 bg-white/10 border border-white/15 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-purple-500 ${className}`}>
+                    {groups.map(([p, ms]) => (
+                        <optgroup key={p} label={PROVIDER_LABELS[p] || p} className="bg-neutral-900">
+                            {ms.map(m => (
+                                <option key={m.key} value={m.key} className="bg-neutral-900">
+                                    {m.label}{m.note ? ` — ${m.note}` : ''}
+                                </option>
+                            ))}
+                        </optgroup>
+                    ))}
+                    {ungrouped.map(m => (
+                        <option key={m.key} value={m.key} className="bg-neutral-900">
+                            {m.label}{m.note ? ` — ${m.note}` : ''}
+                        </option>
+                    ))}
+                </select>
+            );
+        };
 
         const ThemeSwitch = ({ alwaysLabel = false }) => {
             const [theme, setThemeState] = useState(_currentTheme);
@@ -2374,6 +2396,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [thesisModel, setThesisModel] = usePersistedModel('charlie.thesisModel', 'opus-4-6');
             const [decipherModel, setDecipherModel] = usePersistedModel('charlie.decipherModel', 'opus-4-7');
             const [mpModel, setMpModel] = usePersistedModel('charlie.mpModel', 'sonnet-5');
+            const [studioModel, setStudioModel] = usePersistedModel('charlie.studioModel', 'sonnet-5');
 
             const [opEmailing, setOpEmailing] = useState(false);
             // Poster (AI) state — the image path, kept separate from the HTML styles.
@@ -2987,6 +3010,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         setThesisModel(m => keep(m));
                         setDecipherModel(m => keep(m, 'opus-4-7'));
                         setMpModel(m => keep(m, 'sonnet-5'));
+                        setStudioModel(m => keep(m, 'sonnet-5'));
                     } catch (e) { /* pickers stay on their defaults */ }
                 })();
             }, []);
@@ -10401,6 +10425,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 if (studioCreateType === 'quiz') { settings.question_count = studioQuizCount; settings.difficulty = 'medium'; }
                 if (studioCreateType === 'flashcard') { settings.card_count = studioFlashcardCount; }
                 if (studioCreateType === 'report') { settings.length = studioReportLength; }
+                // settings is the only thing that reaches the generators
+                settings.model = studioModel;
 
                 setStudioGenerating(true);
                 try {
@@ -23277,6 +23303,15 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
                                             {/* Generate button */}
                                             <div className="p-4 border-t border-white/10">
+                                                <div className="flex items-center justify-between gap-2 mb-3">
+                                                    <span className="text-[10px] text-slate-500 uppercase tracking-wider">Model</span>
+                                                    <ModelPicker
+                                                        models={pipelineModels}
+                                                        value={studioModel}
+                                                        onChange={setStudioModel}
+                                                        title="Model used to generate this output"
+                                                    />
+                                                </div>
                                                 <button onClick={createAndGenerateStudioOutput} disabled={studioGenerating}
                                                     className="w-full bg-purple-600 hover:bg-purple-500 disabled:bg-neutral-700 py-3 rounded-xl font-medium flex items-center justify-center gap-2 transition-all">
                                                     {studioGenerating ? (
@@ -23412,15 +23447,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         </option>
                                                     ))}
                                                 </select>
-                                                <select value={opModel} onChange={e => setOpModel(e.target.value)}
+                                                <ModelPicker
+                                                    models={opModels}
+                                                    value={opModel}
+                                                    onChange={setOpModel}
                                                     title="Model used for research and assembly"
-                                                    className="px-2 py-2 bg-white/10 border border-white/15 rounded-lg text-xs focus:outline-none focus:border-amber-500">
-                                                    {(opModels.length ? opModels : [{ key: 'opus-4-6', label: 'Opus 4.6', note: '' }]).map(m => (
-                                                        <option key={m.key} value={m.key} className="bg-neutral-900">
-                                                            {m.label}{m.note ? ` — ${m.note}` : ''}
-                                                        </option>
-                                                    ))}
-                                                </select>
+                                                    className="!py-2 focus:!border-amber-500"
+                                                />
                                                 {(opData || opTicker) && (
                                                     <button
                                                         onClick={() => {

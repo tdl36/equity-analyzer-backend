@@ -311,9 +311,17 @@ def test_models_endpoint_lists_the_picker_models():
     assert app_v3.PICKER_MODELS, 'no models offered'
     keys = {m['key'] for m in app_v3.PICKER_MODELS}
     assert app_v3.PICKER_DEFAULT_MODEL in keys, 'default is not one of the options'
+    prefixes = {'anthropic': 'claude-', 'gemini': 'gemini-', 'openai': 'gpt-'}
     for m in app_v3.PICKER_MODELS:
-        assert m.get('model', '').startswith('claude-'), m
         assert m.get('label'), m
+        provider = m.get('provider')
+        assert provider in prefixes, f'unknown provider in {m}'
+        assert m.get('model', '').startswith(prefixes[provider]), (
+            f"{m['model']!r} does not look like a {provider} id")
+    # Every provider the picker offers must have an adapter behind it, or the
+    # choice fails only when someone selects it.
+    for provider in {m['provider'] for m in app_v3.PICKER_MODELS}:
+        assert provider in app_v3._LLM_ADAPTERS, f'no adapter for {provider}'
     # a stale key must degrade, never fail the job
     assert app_v3.resolve_picker_model('no-such-model') == \
         app_v3.resolve_picker_model(app_v3.PICKER_DEFAULT_MODEL)
@@ -392,3 +400,48 @@ def test_the_agent_restarts_itself_when_its_source_changes():
     body = src[src.index('def _source_changed'):]
     assert body.count('_source_changed()') >= 1, (
         '_source_changed is defined but never called')
+
+
+def test_no_picker_choice_is_handed_to_the_wrong_provider_sdk():
+    """A picker offering Gemini must not reach an Anthropic-only call.
+
+    Several features called client.messages.stream(model=resolve_picker_model(..))
+    directly. That was harmless while every picker listed only Claude; the
+    moment the list includes Gemini and OpenAI it becomes a trap, because
+    choosing one hands a Gemini id to an Anthropic client and 404s. Everything
+    a picker drives now goes through _pinned_message / _call_pinned_long, which
+    dispatch on the provider recorded against the model.
+    """
+    src = (ROOT / 'app_v3.py').read_text(encoding='utf-8').splitlines()
+    offenders = []
+    for i, line in enumerate(src):
+        if 'client.messages.stream(' in line or 'client.messages.create(' in line:
+            window = ' '.join(src[i:i + 4])
+            if 'resolve_picker_model' in window:
+                offenders.append(f'app_v3.py:{i + 1}: {line.strip()[:70]}')
+    assert not offenders, (
+        'a picker-selected model reaches an Anthropic-only SDK call:\n  '
+        + '\n  '.join(offenders))
+
+
+def test_every_offered_provider_can_actually_be_called():
+    """Each provider in the picker needs a key lookup and an adapter."""
+    import app_v3
+    providers = {m['provider'] for m in app_v3.PICKER_MODELS}
+    keys = app_v3._get_api_keys()
+    for p in providers:
+        assert p in app_v3._LLM_ADAPTERS, f'{p} has no adapter'
+        assert p in keys, f'{p} is not resolved by _get_api_keys'
+
+
+def test_a_provider_without_a_key_is_not_offered():
+    """Offering a choice that can only fail is worse than not offering it."""
+    import app_v3
+    only_anthropic = app_v3.available_picker_models(
+        {'anthropic': 'k', 'gemini': '', 'openai': ''})
+    assert {m['provider'] for m in only_anthropic} == {'anthropic'}
+    all_three = app_v3.available_picker_models(
+        {'anthropic': 'k', 'gemini': 'k', 'openai': 'k'})
+    assert {m['provider'] for m in all_three} == {'anthropic', 'gemini', 'openai'}
+    # and never an empty picker, even with nothing configured
+    assert app_v3.available_picker_models({'anthropic': '', 'gemini': '', 'openai': ''})
