@@ -558,3 +558,59 @@ def test_the_review_prefers_text_so_a_full_source_set_fits():
            ).read_text(encoding='utf-8')
     assert 'prepare_documents(docs, prefer_text=True)' in src
     assert 'plan_batches(prepared, prefer_text=True)' in src
+
+
+# --- spend visibility ------------------------------------------------------
+
+def test_a_call_is_priced_and_recorded():
+    """Nothing tracked spend, so a monthly bill had no attribution."""
+    with app_v3.get_db(commit=True) as (_c, cur):
+        cur.execute("DELETE FROM llm_usage WHERE feature LIKE 'test:%'")
+    app_v3.record_llm_usage('test:opus', {
+        'model': 'claude-opus-4-6', 'provider': 'anthropic',
+        'usage': {'input_tokens': 170_000, 'output_tokens': 14_000}}, ticker='TST')
+    with app_v3.get_db() as (_c, cur):
+        cur.execute("SELECT * FROM llm_usage WHERE feature='test:opus'")
+        row = cur.fetchone()
+    assert row is not None, 'the call was not recorded'
+    # 170k in at $15/M + 14k out at $75/M
+    assert abs(float(row['cost_usd']) - 3.60) < 0.01, row['cost_usd']
+    with app_v3.get_db(commit=True) as (_c, cur):
+        cur.execute("DELETE FROM llm_usage WHERE feature LIKE 'test:%'")
+
+
+def test_the_same_work_prices_five_times_higher_on_opus():
+    """The default model is the single largest lever on the bill."""
+    opus = app_v3.llm_cost_usd('claude-opus-4-6', 170_000, 14_000)
+    sonnet = app_v3.llm_cost_usd('claude-sonnet-5', 170_000, 14_000)
+    haiku = app_v3.llm_cost_usd('claude-haiku-4-5-20251001', 170_000, 14_000)
+    assert round(opus / sonnet, 1) == 5.0
+    assert opus > sonnet > haiku
+
+
+def test_an_unpriced_model_records_zero_rather_than_a_guess():
+    """A gap is visible; a wrong number is not."""
+    assert app_v3.llm_cost_usd('some-future-model', 1_000_000, 100_000) == 0.0
+
+
+def test_recording_never_breaks_the_work_it_measures(monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError('db down')
+    monkeypatch.setattr(app_v3, 'get_db', boom)
+    app_v3.record_llm_usage('test:safe', {
+        'model': 'claude-opus-4-6', 'usage': {'input_tokens': 10, 'output_tokens': 5}})
+
+
+def test_retries_are_attributable():
+    """A call retried four times is paid for four times."""
+    with app_v3.get_db(commit=True) as (_c, cur):
+        cur.execute("DELETE FROM llm_usage WHERE feature LIKE 'test:%'")
+    for attempt in (1, 2, 3):
+        app_v3.record_llm_usage('test:retry', {
+            'model': 'claude-opus-4-6', 'provider': 'anthropic',
+            'usage': {'input_tokens': 100_000, 'output_tokens': 5_000}},
+            attempt=attempt)
+    summary = app_v3.app.test_client().get('/api/usage?days=1').get_json()
+    assert summary['retryCost'] > 0, 'retry spend is not separable'
+    with app_v3.get_db(commit=True) as (_c, cur):
+        cur.execute("DELETE FROM llm_usage WHERE feature LIKE 'test:%'")

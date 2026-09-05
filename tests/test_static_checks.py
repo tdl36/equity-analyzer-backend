@@ -380,6 +380,10 @@ def test_no_dated_model_ids_outside_the_registry():
         # useless, not fatal.
         if '_PRICE' in line or ': 0.0' in line or line.strip().startswith('"claude-'):
             continue
+        # A price table entry is data too: a retirement leaves an unused row,
+        # not a failed call. Matches "'model-id': (in, out)," lines.
+        if re.match(r"^\s*'[a-z0-9.\-]+':\s*\([\d.]+,\s*[\d.]+\),?\s*$", line):
+            continue
         if re.search(r"['\"]claude-[a-z0-9.-]*-\d{8}['\"]", line):
             offenders.append(f'app_v3.py:{i}: {line.strip()[:90]}')
     assert not offenders, (

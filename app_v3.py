@@ -2246,6 +2246,7 @@ def call_llm(*, messages, system="", tier="standard", max_tokens=4096,
                 max_tokens=max_tokens, timeout=timeout, api_key=key,
             )
             print(f"[LLM Fallback] Success with {provider}/{model}")
+            record_llm_usage(f'tier:{tier}', result)
             return result
         except Exception as e:
             print(f"[LLM Fallback] {provider}/{model} failed: {type(e).__name__}: {e}")
@@ -2329,6 +2330,7 @@ def call_llm_stream(*, messages, system="", tier="standard", max_tokens=16384,
                 if "error" in final_holder:
                     raise final_holder["error"]
                 print(f"[LLM Stream Fallback] Success with {provider}/{model}")
+                record_llm_usage(f'tier:{tier}', final_holder["result"])
                 yield final_holder["result"]
                 return
             else:
@@ -2351,6 +2353,7 @@ def call_llm_stream(*, messages, system="", tier="standard", max_tokens=16384,
                 if "err" in future_error:
                     raise future_error["err"]
                 print(f"[LLM Stream Fallback] Success with {provider}/{model}")
+                record_llm_usage(f'tier:{tier}', future_result["data"])
                 yield future_result["data"]
                 return
         except Exception as e:
@@ -3168,6 +3171,31 @@ def init_db():
             ''')
             cur.execute('CREATE INDEX IF NOT EXISTS idx_investment_reviews_ticker '
                         'ON investment_reviews(ticker, created_at DESC)')
+            # Every model call, with what it cost.
+            #
+            # Nothing recorded spend before this, so a monthly API bill arrived
+            # with no way to attribute it to a feature, a ticker or a run. The
+            # usage numbers come back on every response already; they were being
+            # discarded.
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS llm_usage (
+                    id BIGSERIAL PRIMARY KEY,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    feature VARCHAR(60),
+                    ticker VARCHAR(20),
+                    provider VARCHAR(20),
+                    model VARCHAR(60),
+                    input_tokens INTEGER DEFAULT 0,
+                    output_tokens INTEGER DEFAULT 0,
+                    cost_usd NUMERIC(10,4) DEFAULT 0,
+                    attempt INTEGER DEFAULT 1,
+                    detail JSONB DEFAULT '{}'
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_llm_usage_created '
+                        'ON llm_usage(created_at DESC)')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_llm_usage_feature '
+                        'ON llm_usage(feature, created_at DESC)')
             # Added after the table shipped; existing rows keep working.
             cur.execute('ALTER TABLE investment_reviews '
                         'ADD COLUMN IF NOT EXISTS review_html TEXT')
@@ -4878,7 +4906,11 @@ def _run_analysis_job(job_id):
                         model_key=model_key,
                         messages=[{'role': 'user', 'content': content}],
                         system="You are an expert equity research analyst. Analyze documents thoroughly and provide institutional-quality investment analysis. Be concise: the final thesis should fit 2-3 printed pages (3-5 pillars, 4-6 signposts, 3-5 threats, each described in 1-2 sentences). Prioritize the most important insights. Always respond with valid JSON only.",
-                        max_tokens=64000, api_key=api_key,
+                        # 64,000 was ~10x what this produces. On Opus the
+                        # output cap is not a reservation but it is the ceiling
+                        # a runaway response can reach, and a thesis that fits
+                        # 2-3 printed pages has never needed more than ~20K.
+                        max_tokens=24000, api_key=api_key,
                         label=f'analysis-job {job_id[:8]}', on_text=_tick)
 
                     # Parse JSON — with truncation repair
@@ -12766,6 +12798,56 @@ def resolve_picker_model(model_key, default_key=PICKER_DEFAULT_MODEL):
     return resolve_picker_spec(model_key, default_key)['model']
 
 
+# Published per-million token prices. Kept next to the recorder so a price
+# change is one edit, and deliberately explicit: an unknown model prices at 0
+# rather than guessing, which shows up as a gap rather than a wrong number.
+LLM_PRICES = {
+    'claude-opus-4-6':            (15.0, 75.0),
+    'claude-opus-4-7':            (15.0, 75.0),
+    'claude-opus-5':              (15.0, 75.0),
+    'claude-sonnet-5':            (3.0, 15.0),
+    'claude-sonnet-4-6':          (3.0, 15.0),
+    'claude-sonnet-4-5-20250929': (3.0, 15.0),
+    'claude-fable-5':             (3.0, 15.0),
+    'claude-haiku-4-5-20251001':  (0.80, 4.0),
+    'gemini-pro-latest':          (1.25, 10.0),
+    'gemini-3.1-pro-preview':     (1.25, 10.0),
+    'gemini-2.5-pro':             (1.25, 10.0),
+    'gemini-3.8-flash':           (0.30, 2.50),
+    'gpt-4.1':                    (2.0, 8.0),
+    'gpt-4.1-mini':               (0.40, 1.60),
+    'gpt-4o':                     (2.50, 10.0),
+}
+
+
+def llm_cost_usd(model, input_tokens, output_tokens):
+    """Dollars for one call. 0 for a model we have no price for."""
+    pin, pout = LLM_PRICES.get(model or '', (0.0, 0.0))
+    return round((input_tokens or 0) / 1e6 * pin + (output_tokens or 0) / 1e6 * pout, 4)
+
+
+def record_llm_usage(feature, result, ticker='', attempt=1, detail=None):
+    """Write one call to the ledger. Never raises -- billing visibility must
+    not be able to fail the work it is measuring."""
+    try:
+        usage = (result or {}).get('usage') or {}
+        tin = int(usage.get('input_tokens') or 0)
+        tout = int(usage.get('output_tokens') or 0)
+        model = (result or {}).get('model') or ''
+        if not (tin or tout):
+            return
+        with get_db(commit=True) as (_c, cur):
+            cur.execute("""INSERT INTO llm_usage (feature, ticker, provider, model,
+                           input_tokens, output_tokens, cost_usd, attempt, detail)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                        (feature[:60], (ticker or '')[:20],
+                         (result or {}).get('provider', ''), model[:60],
+                         tin, tout, llm_cost_usd(model, tin, tout), attempt,
+                         json.dumps(detail or {})))
+    except Exception as e:
+        print(f'[usage] could not record {feature}: {type(e).__name__}: {e}')
+
+
 def _call_pinned_long(*, messages, system, model_key, max_tokens, api_key,
                       tier='advanced', label='LLM call', max_attempts=4,
                       timeout=1800, base_backoff_s=2.0, on_text=None):
@@ -12796,17 +12878,23 @@ def _call_pinned_long(*, messages, system, model_key, max_tokens, api_key,
     for attempt in range(1, max_attempts + 1 if provider else 0):
         try:
             if provider == 'anthropic':
-                return _call_anthropic_stream(
+                _r = _call_anthropic_stream(
                     messages=messages, system=system, model=model,
                     max_tokens=max_tokens, timeout=timeout, api_key=provider_key,
                     on_text=on_text,
                 )
+                record_llm_usage(label, _r, attempt=attempt,
+                                 detail={'max_tokens': max_tokens})
+                return _r
             # Gemini and OpenAI have no streaming adapter here; they run through
             # the same normalised interface the tier chain uses.
-            return _LLM_ADAPTERS[provider](
+            _r = _LLM_ADAPTERS[provider](
                 messages=messages, system=system, model=model,
                 max_tokens=max_tokens, timeout=timeout, api_key=provider_key,
             )
+            record_llm_usage(label, _r, attempt=attempt,
+                             detail={'max_tokens': max_tokens})
+            return _r
         except Exception as e:
             last_exc = e
             if not _is_transient_llm_error(e):
@@ -13918,6 +14006,64 @@ def _run_investment_review(job_id, ticker, api_key, mode='review', model_key=Non
     except Exception as e:
         import traceback; traceback.print_exc()
         _review_jobs[job_id] = {'status': 'failed', 'ticker': ticker, 'error': str(e)}
+
+
+@app.route('/api/usage', methods=['GET'])
+def llm_usage_summary():
+    """What has been spent, by feature and by day.
+
+    The bill arrives monthly with no breakdown; this is the same numbers split
+    the way the spending actually happened.
+    """
+    days = max(1, min(90, int(request.args.get('days', 30) or 30)))
+    out = {'days': days}
+    try:
+        with get_db() as (_c, cur):
+            cur.execute("""SELECT COALESCE(SUM(cost_usd),0) AS total,
+                                  COALESCE(SUM(input_tokens),0) AS tin,
+                                  COALESCE(SUM(output_tokens),0) AS tout,
+                                  COUNT(*) AS calls
+                           FROM llm_usage
+                           WHERE created_at > NOW() - INTERVAL '%s days'""" % days)
+            r = cur.fetchone() or {}
+            out['total'] = float(r.get('total') or 0)
+            out['inputTokens'] = int(r.get('tin') or 0)
+            out['outputTokens'] = int(r.get('tout') or 0)
+            out['calls'] = int(r.get('calls') or 0)
+
+            cur.execute("""SELECT feature, COUNT(*) AS calls,
+                                  COALESCE(SUM(cost_usd),0) AS cost
+                           FROM llm_usage
+                           WHERE created_at > NOW() - INTERVAL '%s days'
+                           GROUP BY feature ORDER BY cost DESC LIMIT 25""" % days)
+            out['byFeature'] = [{'feature': x['feature'], 'calls': int(x['calls']),
+                                 'cost': float(x['cost'])} for x in (cur.fetchall() or [])]
+
+            cur.execute("""SELECT model, COUNT(*) AS calls,
+                                  COALESCE(SUM(cost_usd),0) AS cost
+                           FROM llm_usage
+                           WHERE created_at > NOW() - INTERVAL '%s days'
+                           GROUP BY model ORDER BY cost DESC LIMIT 15""" % days)
+            out['byModel'] = [{'model': x['model'], 'calls': int(x['calls']),
+                               'cost': float(x['cost'])} for x in (cur.fetchall() or [])]
+
+            cur.execute("""SELECT DATE(created_at) AS d,
+                                  COALESCE(SUM(cost_usd),0) AS cost
+                           FROM llm_usage
+                           WHERE created_at > NOW() - INTERVAL '%s days'
+                           GROUP BY d ORDER BY d DESC LIMIT 60""" % days)
+            out['byDay'] = [{'date': str(x['d']), 'cost': float(x['cost'])}
+                            for x in (cur.fetchall() or [])]
+
+            # Retries are paid for in full. Worth seeing separately.
+            cur.execute("""SELECT COALESCE(SUM(cost_usd),0) AS c
+                           FROM llm_usage
+                           WHERE attempt > 1
+                             AND created_at > NOW() - INTERVAL '%s days'""" % days)
+            out['retryCost'] = float((cur.fetchone() or {}).get('c') or 0)
+    except Exception as e:
+        out['error'] = str(e)
+    return jsonify(out)
 
 
 @app.route('/api/review/modes', methods=['GET'])
