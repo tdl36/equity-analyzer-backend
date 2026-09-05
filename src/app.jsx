@@ -81,7 +81,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-09-05T02';
+        const BUILD_VERSION = '2026-09-05T03';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -2413,6 +2413,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [reviewDocs, setReviewDocs] = useState([]);
             const [reviewDocsPicked, setReviewDocsPicked] = useState(null); // null = all
             const [reviewDocsOpen, setReviewDocsOpen] = useState(false);
+            // API spend. Charlie's own usage only -- Claude Code sessions bill
+            // separately on the subscription and are not visible here.
+            const [usageData, setUsageData] = useState(null);
+            const [usageDays, setUsageDays] = useState(30);
+            const [usageLoading, setUsageLoading] = useState(false);
             const [noteStances, setNoteStances] = useState([]);
             const [noteStance, setNoteStance] = usePersistedModel('charlie.noteStance', 'balanced');
 
@@ -3536,7 +3541,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 } catch (e) { /* ignore */ }
             }, []);
             useEffect(() => {
-                if (activeTab === 'settings') loadFinnhubStatus();
+                if (activeTab === 'settings') { loadFinnhubStatus(); loadUsage(); }
             }, [activeTab, loadFinnhubStatus]);
             const [transcriptExpanded, setTranscriptExpanded] = useState(false);
             const [assessmentExpanded, setAssessmentExpanded] = useState(true);
@@ -7991,6 +7996,16 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 const t = setTimeout(() => fetchRunPlan(pipelineDocModalTicker, names), 300);
                 return () => clearTimeout(t);
             }, [pipelineDocModalTicker, pipelineDocModalDocs, fetchRunPlan]);
+
+            const loadUsage = async (days) => {
+                const d = days || usageDays;
+                setUsageLoading(true);
+                try {
+                    const r = await fetch(`${API_URL}/api/usage?days=${d}`);
+                    if (r.ok) setUsageData(await r.json());
+                } catch (e) { console.warn('usage load failed', e); }
+                finally { setUsageLoading(false); }
+            };
 
             const loadReviewList = async () => {
                 try {
@@ -31001,6 +31016,113 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     </div>
                                 
                                     <div className="space-y-6 max-w-lg">
+                                    {/* API spend */}
+                                    <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl p-4 border border-white/10">
+                                        <div className="flex items-center justify-between mb-1">
+                                            <h3 className="font-semibold flex items-center gap-2">
+                                                <TrendingUp className="w-4 h-4 text-emerald-400" />
+                                                API spend
+                                            </h3>
+                                            <div className="flex gap-1">
+                                                {[7, 30, 90].map(d => (
+                                                    <button key={d}
+                                                        onClick={() => { setUsageDays(d); loadUsage(d); }}
+                                                        className={`px-2 py-0.5 text-[10px] rounded transition-colors ${
+                                                            usageDays === d ? 'bg-emerald-600 text-white'
+                                                                            : 'bg-white/10 text-slate-400 hover:text-white'}`}>
+                                                        {d}d
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <p className="text-[10px] text-slate-500 mb-3">
+                                            Charlie's own API usage. Claude Code sessions bill separately
+                                            against the subscription and do not appear here.
+                                        </p>
+
+                                        {usageLoading && !usageData ? (
+                                            <p className="text-xs text-slate-500">Loading…</p>
+                                        ) : !usageData ? (
+                                            <p className="text-xs text-slate-500">No data yet.</p>
+                                        ) : usageData.error ? (
+                                            <p className="text-xs text-red-400">{usageData.error}</p>
+                                        ) : usageData.calls === 0 ? (
+                                            <p className="text-xs text-slate-500">
+                                                Nothing recorded yet. Tracking started when this was deployed —
+                                                earlier spend cannot be reconstructed.
+                                            </p>
+                                        ) : (<>
+                                            <div className="flex items-baseline gap-3 mb-3">
+                                                <span className="text-2xl font-mono font-bold text-emerald-400">
+                                                    ${usageData.total.toFixed(2)}
+                                                </span>
+                                                <span className="text-[10px] text-slate-500">
+                                                    {usageData.calls.toLocaleString()} calls ·{' '}
+                                                    {(usageData.inputTokens / 1e6).toFixed(1)}M in ·{' '}
+                                                    {(usageData.outputTokens / 1e6).toFixed(2)}M out
+                                                </span>
+                                            </div>
+
+                                            {usageData.retryCost > 0.005 && (
+                                                <div className="mb-3 px-2 py-1.5 rounded bg-amber-950/40 border border-amber-800/40">
+                                                    <span className="text-[11px] text-amber-300">
+                                                        ${usageData.retryCost.toFixed(2)} of that was retried calls
+                                                        — paid for in full.
+                                                    </span>
+                                                </div>
+                                            )}
+
+                                            {usageData.byDay && usageData.byDay.length > 1 && (() => {
+                                                const days = [...usageData.byDay].reverse();
+                                                const peak = Math.max(...days.map(d => d.cost), 0.01);
+                                                return (
+                                                    <div className="mb-3">
+                                                        <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">By day</div>
+                                                        <div className="flex items-end gap-[2px] h-12">
+                                                            {days.map(d => (
+                                                                <div key={d.date} title={`${d.date}: $${d.cost.toFixed(2)}`}
+                                                                    className="flex-1 bg-emerald-500/60 hover:bg-emerald-400 rounded-sm min-h-[2px] transition-colors"
+                                                                    style={{ height: `${Math.max(4, (d.cost / peak) * 100)}%` }} />
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
+
+                                            {usageData.byFeature && usageData.byFeature.length > 0 && (
+                                                <div className="mb-3">
+                                                    <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Where it went</div>
+                                                    {usageData.byFeature.slice(0, 8).map(f => (
+                                                        <div key={f.feature} className="flex items-center justify-between text-xs py-0.5">
+                                                            <span className="text-slate-300 truncate flex-1 mr-2">{f.feature}</span>
+                                                            <span className="text-slate-500 text-[10px] mr-2">{f.calls}</span>
+                                                            <span className="text-slate-200 font-mono w-14 text-right">${f.cost.toFixed(2)}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            {usageData.byModel && usageData.byModel.length > 0 && (
+                                                <div>
+                                                    <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">By model</div>
+                                                    {usageData.byModel.slice(0, 6).map(m => (
+                                                        <div key={m.model} className="flex items-center justify-between text-xs py-0.5">
+                                                            <span className={`truncate flex-1 mr-2 ${
+                                                                m.model.includes('opus') ? 'text-amber-300' : 'text-slate-300'}`}>
+                                                                {m.model}
+                                                            </span>
+                                                            <span className="text-slate-500 text-[10px] mr-2">{m.calls}</span>
+                                                            <span className="text-slate-200 font-mono w-14 text-right">${m.cost.toFixed(2)}</span>
+                                                        </div>
+                                                    ))}
+                                                    <p className="text-[10px] text-slate-600 mt-2">
+                                                        Opus costs roughly 5x Sonnet for the same work.
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </>)}
+                                    </div>
+
                                     {/* Account Section */}
                                     <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl p-4 border border-white/10">
                                         <h3 className="font-semibold mb-3 flex items-center gap-2">
