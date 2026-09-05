@@ -81,7 +81,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-09-04T02';
+        const BUILD_VERSION = '2026-09-04T03';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -2399,6 +2399,17 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [studioModel, setStudioModel] = usePersistedModel('charlie.studioModel', 'sonnet-5');
             // How opinionated a generated note is. Separate from the model:
             // the same model writes a neutral note or a constructive one.
+            // Investment Review. A separate pipeline from note generation: the
+            // stored unit is structured state and the memo is one rendering of
+            // it. The note generator is untouched and still lives in Pipeline.
+            const [reviewTicker, setReviewTicker] = useState('');
+            const [reviewMode, setReviewMode] = usePersistedModel('charlie.reviewMode', 'review');
+            const [reviewModel, setReviewModel] = usePersistedModel('charlie.reviewModel', 'opus-4-6');
+            const [reviewModes, setReviewModes] = useState([]);
+            const [reviewRunning, setReviewRunning] = useState(false);
+            const [reviewStatus, setReviewStatus] = useState('');
+            const [reviewData, setReviewData] = useState(null);
+            const [reviewList, setReviewList] = useState([]);
             const [noteStances, setNoteStances] = useState([]);
             const [noteStance, setNoteStance] = usePersistedModel('charlie.noteStance', 'balanced');
 
@@ -2969,6 +2980,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
             useEffect(() => {
                 if (activeTab === 'deepdive') loadDeepDiveList();
+                if (activeTab === 'review') loadReviewList();
             }, [activeTab, loadDeepDiveList]);
 
             const loadOnePagerHistory = useCallback(async (ticker, depth) => {
@@ -3026,6 +3038,12 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         setNoteStance(v => (j.stances || []).some(x => x.key === v)
                             ? v : (j.default || v));
                     } catch (e) { /* stance stays on its default */ }
+                })();
+                (async () => {
+                    try {
+                        const r = await fetch(`${API_URL}/api/review/modes`);
+                        if (r.ok) setReviewModes((await r.json()).modes || []);
+                    } catch (e) { /* mode selector falls back to its default */ }
                 })();
             }, []);
 
@@ -7970,6 +7988,79 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 const t = setTimeout(() => fetchRunPlan(pipelineDocModalTicker, names), 300);
                 return () => clearTimeout(t);
             }, [pipelineDocModalTicker, pipelineDocModalDocs, fetchRunPlan]);
+
+            const loadReviewList = async () => {
+                try {
+                    const r = await fetch(`${API_URL}/api/review/list`);
+                    if (r.ok) setReviewList((await r.json()).reviews || []);
+                } catch (e) { console.warn('review list failed', e); }
+            };
+
+            const openReview = async (ticker) => {
+                try {
+                    const r = await fetch(`${API_URL}/api/review/${ticker}`);
+                    if (r.ok) { setReviewData(await r.json()); setReviewTicker(ticker); }
+                    else setReviewStatus(`No review stored for ${ticker} yet.`);
+                } catch (e) { setReviewStatus('Could not load: ' + e.message); }
+            };
+
+            const runReview = async () => {
+                const t = (reviewTicker || '').toUpperCase().trim();
+                if (!t) { setReviewStatus('Enter a ticker first.'); return; }
+                setReviewRunning(true);
+                setReviewStatus('Starting…');
+                try {
+                    const res = await fetch(`${API_URL}/api/review/generate`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ticker: t, apiKey: apiKeySaved,
+                                               mode: reviewMode, model: reviewModel }),
+                    });
+                    if (!res.ok) {
+                        const e = await res.json().catch(() => ({}));
+                        throw new Error(e.error || 'Failed to start');
+                    }
+                    const { jobId } = await res.json();
+                    // Poll rather than block: extraction, the review pass and
+                    // rendering are three model round-trips.
+                    const poll = setInterval(async () => {
+                        try {
+                            const jr = await fetch(`${API_URL}/api/review/job/${jobId}`);
+                            const j = await jr.json();
+                            setReviewStatus(j.step || j.status || '');
+                            if (j.status === 'complete') {
+                                clearInterval(poll);
+                                setReviewRunning(false);
+                                setReviewStatus('Complete');
+                                await openReview(t);
+                                await loadReviewList();
+                            } else if (j.status === 'failed') {
+                                clearInterval(poll);
+                                setReviewRunning(false);
+                                setReviewStatus('Failed: ' + (j.error || 'unknown'));
+                            }
+                        } catch (e) { /* keep polling */ }
+                    }, 3000);
+                } catch (e) {
+                    setReviewRunning(false);
+                    setReviewStatus('Error: ' + e.message);
+                }
+            };
+
+            const downloadReviewPdf = async (ticker) => {
+                try {
+                    const r = await fetch(`${API_URL}/api/review/${ticker}/pdf`);
+                    if (!r.ok) { setReviewStatus('No PDF stored.'); return; }
+                    const j = await r.json();
+                    const bin = atob(j.fileData);
+                    const bytes = new Uint8Array(bin.length);
+                    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+                    const a = document.createElement('a');
+                    a.href = url; a.download = j.filename || `${ticker}_Review.pdf`;
+                    a.click(); URL.revokeObjectURL(url);
+                } catch (e) { setReviewStatus('Download failed: ' + e.message); }
+            };
 
             const generateResearchNote = async (ticker, mode = 'new') => {
                 try {
@@ -15195,6 +15286,19 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 <span className="flex items-center gap-2">
                                     <Workflow className="w-4 h-4" />
                                     Pipeline
+                                </span>
+                            </button>
+                            <button
+                                onClick={() => switchTab('review')}
+                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                                    activeTab === 'review'
+                                        ? 'bg-emerald-600 text-white shadow-lg'
+                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
+                                }`}
+                            >
+                                <span className="flex items-center gap-2">
+                                    <Target className="w-4 h-4" />
+                                    Review
                                 </span>
                             </button>
                             <button
@@ -25235,6 +25339,100 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         )}
 
                         {/* PIPELINE TAB */}
+                        {activeTab === 'review' && (
+                            <div className="space-y-4">
+                                <div className="bg-white/[0.04] backdrop-blur-lg rounded-xl p-4 border border-white/10">
+                                    <div className="flex items-center justify-between mb-1">
+                                        <h2 className="text-lg font-semibold text-slate-100">Investment Review</h2>
+                                        <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-900/40 text-emerald-300 uppercase tracking-wide">Beta</span>
+                                    </div>
+                                    <p className="text-xs text-slate-500 mb-4">
+                                        Decision-first. Every figure is computed in code, a second model reviews the
+                                        draft before it renders, and each run is compared against the previous one.
+                                        The note generator in Pipeline is unchanged.
+                                    </p>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <input
+                                            value={reviewTicker}
+                                            onChange={e => setReviewTicker(e.target.value.toUpperCase())}
+                                            onKeyDown={e => { if (e.key === 'Enter' && !reviewRunning) runReview(); }}
+                                            placeholder="Ticker"
+                                            className="px-3 py-1.5 w-28 bg-white/10 border border-white/15 rounded-lg text-sm uppercase focus:outline-none focus:border-emerald-500"
+                                        />
+                                        <select value={reviewMode} onChange={e => setReviewMode(e.target.value)}
+                                            title="How much of the state to render"
+                                            className="px-2 py-1.5 bg-white/10 border border-white/15 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-emerald-500">
+                                            {(reviewModes.length ? reviewModes : [{ key: 'review', label: 'Investment Review', pages: '5-7' }]).map(m => (
+                                                <option key={m.key} value={m.key} className="bg-neutral-900">
+                                                    {m.label}{m.pages ? ` — ${m.pages} pages` : ''}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <ModelPicker
+                                            models={pipelineModels}
+                                            value={reviewModel}
+                                            onChange={setReviewModel}
+                                            title="Model used for extraction and the review pass"
+                                        />
+                                        <button onClick={runReview} disabled={reviewRunning}
+                                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-medium rounded-lg transition-colors">
+                                            {reviewRunning ? 'Running…' : 'Run Review'}
+                                        </button>
+                                        {reviewData && (
+                                            <button onClick={() => downloadReviewPdf(reviewData.ticker)}
+                                                className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-slate-200 text-xs rounded-lg transition-colors">
+                                                PDF
+                                            </button>
+                                        )}
+                                        <button onClick={loadReviewList}
+                                            className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-slate-200 text-xs rounded-lg transition-colors">
+                                            Refresh list
+                                        </button>
+                                    </div>
+                                    {reviewStatus && (
+                                        <p className="text-[11px] text-slate-400 mt-2">{reviewStatus}</p>
+                                    )}
+                                </div>
+
+                                {reviewList.length > 0 && (
+                                    <div className="bg-white/[0.04] rounded-xl p-3 border border-white/10">
+                                        <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Stored reviews</div>
+                                        <div className="flex flex-wrap gap-2">
+                                            {reviewList.map(r => (
+                                                <button key={r.id} onClick={() => openReview(r.ticker)}
+                                                    className={`px-2.5 py-1 rounded-lg text-xs transition-colors ${
+                                                        reviewData && reviewData.ticker === r.ticker
+                                                            ? 'bg-emerald-600 text-white'
+                                                            : 'bg-white/10 text-slate-300 hover:bg-white/20'}`}>
+                                                    {r.ticker}
+                                                    {(r.changelog && r.changelog.length)
+                                                        ? <span className="ml-1 text-[9px] opacity-70">{r.changelog.length} changed</span>
+                                                        : null}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {reviewData && (
+                                    <div className="bg-white/[0.04] rounded-xl border border-white/10 overflow-hidden">
+                                        {(reviewData.changelog && reviewData.changelog.length > 0) && (
+                                            <div className="px-4 py-3 bg-emerald-950/30 border-b border-emerald-800/40">
+                                                <div className="text-[10px] text-emerald-300 uppercase tracking-wider mb-1">Since the last review</div>
+                                                {reviewData.changelog.map((c, i) => (
+                                                    <div key={i} className="text-xs text-emerald-100">{c}</div>
+                                                ))}
+                                            </div>
+                                        )}
+                                        <div className="p-4 overflow-x-auto">
+                                            <div className="prose prose-invert prose-sm max-w-none"
+                                                dangerouslySetInnerHTML={{ __html: renderMarkdown(reviewData.markdown || '') }} />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         {activeTab === 'pipeline' && (
                             <div className="flex-1 flex flex-col bg-white/[0.02] overflow-y-auto pb-24 md:pb-0" onScroll={(e) => { setShowScrollTop(e.target.scrollTop > 300); scrollContainerRef.current = e.target; }}>
                                 <div className="p-4 md:p-6">
@@ -31510,7 +31708,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 <button
                                     onClick={() => setShowMoreMenu(true)}
                                     className={`flex flex-col items-center justify-center gap-1 min-w-[56px] py-2 rounded-xl transition-all ${
-                                        activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' || activeTab === 'feed' || activeTab === 'analysts' || activeTab === 'onepager' || activeTab === 'explain' || activeTab === 'deepdive'
+                                        activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' || activeTab === 'feed' || activeTab === 'analysts' || activeTab === 'onepager' || activeTab === 'explain' || activeTab === 'deepdive' || activeTab === 'review'
                                             ? 'text-amber-400'
                                             : 'text-slate-400 active:text-slate-200'
                                     }`}

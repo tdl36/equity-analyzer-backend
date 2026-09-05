@@ -21,7 +21,8 @@ import anthropic
 import openai
 from google import genai
 from google.genai import types as genai_types
-import notegen              # document ranking and batch planning for notes
+import notegen
+import investment_review              # document ranking and batch planning for notes
 import segment_charts       # revenue / operating-profit donuts
 
 # Everything this app schedules -- earnings fetches, before/after-market
@@ -3147,6 +3148,25 @@ def init_db():
                 )
             ''')
             cur.execute('CREATE INDEX IF NOT EXISTS idx_research_notes_ticker ON research_notes(ticker)')
+            # Investment reviews. Separate from research_notes on purpose: the
+            # unit stored here is the structured state, and the memo is one
+            # rendering of it. Nothing downstream re-reads meaning out of prose.
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS investment_reviews (
+                    id TEXT PRIMARY KEY,
+                    ticker VARCHAR(20) NOT NULL,
+                    mode VARCHAR(20) DEFAULT 'review',
+                    state JSONB DEFAULT '{}',
+                    review_markdown TEXT,
+                    review_pdf TEXT,
+                    qc JSONB DEFAULT '{}',
+                    changelog JSONB DEFAULT '[]',
+                    metadata JSONB DEFAULT '{}',
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_investment_reviews_ticker '
+                        'ON investment_reviews(ticker, created_at DESC)')
             # A generated note lands as a draft and becomes live only when
             # accepted. Previously generation overwrote the current note and
             # the agent moved the sources into Processed/ in the same breath,
@@ -13581,6 +13601,325 @@ def list_onepager_models():
     """Models the one-pager picker offers, and which is default."""
     return jsonify({'models': available_picker_models(),
                     'default': ONEPAGER_DEFAULT_MODEL})
+
+
+# ============================================
+# INVESTMENT REVIEW
+#
+# A separate pipeline from note generation, deliberately. The note generator
+# asks a model for a document and parses prose back out of it. This asks for
+# structured investment state, computes every derived figure in code, sends the
+# state to an independent reviewer, and renders last. The existing generator is
+# untouched and keeps working exactly as before.
+# ============================================
+
+_review_jobs = {}
+
+
+def _review_prior_state(ticker):
+    """The most recent review for this ticker, as a ReviewState."""
+    try:
+        with get_db() as (_c, cur):
+            cur.execute("""SELECT state FROM investment_reviews
+                           WHERE ticker = %s ORDER BY created_at DESC LIMIT 1""",
+                        (ticker,))
+            row = cur.fetchone()
+    except Exception:
+        return None
+    if not row or not row.get('state'):
+        return None
+    raw = row['state']
+    if isinstance(raw, str):
+        try: raw = json.loads(raw)
+        except Exception: return None
+    return _review_state_from_dict(ticker, raw)
+
+
+def _review_state_from_dict(ticker, d):
+    """Dict -> ReviewState, dropping anything the schema does not know.
+
+    The model returns what it returns; unknown keys are ignored rather than
+    raising, and missing ones keep their defaults. A malformed field costs that
+    field, not the review.
+    """
+    ir = investment_review
+    def _f(v):
+        try: return float(v)
+        except (TypeError, ValueError): return None
+    st = ir.ReviewState(ticker=ticker)
+    for k in ('company', 'sector', 'as_of', 'mode', 'rating', 'horizon',
+              'price_date', 'key_question', 'upgrade_if', 'downgrade_if',
+              'priced_in', 'business_quality'):
+        if isinstance(d.get(k), str):
+            setattr(st, k, d[k])
+    for k in ('conviction', 'price', 'shares_out_m', 'net_debt_m',
+              'add_below', 'trim_above', 'implied_growth_pct'):
+        if d.get(k) is not None:
+            setattr(st, k, _f(d[k]))
+    st.thesis = [x for x in (d.get('thesis') or []) if isinstance(x, str)][:3]
+    for c in (d.get('changes') or []):
+        if isinstance(c, dict) and c.get('item'):
+            st.changes.append(ir.Change(
+                item=str(c.get('item')), prior=str(c.get('prior', '')),
+                current=str(c.get('current', '')),
+                direction=str(c.get('direction', 'neutral')),
+                implication=str(c.get('implication', ''))))
+    for k in (d.get('kpis') or []):
+        if isinstance(k, dict) and k.get('name'):
+            st.kpis.append(ir.KPI(
+                name=str(k['name']), current=_f(k.get('current')),
+                prior=_f(k.get('prior')), unit=str(k.get('unit', '%')),
+                bull_threshold=_f(k.get('bull_threshold')),
+                bear_threshold=_f(k.get('bear_threshold')),
+                higher_is_better=bool(k.get('higher_is_better', True)),
+                importance=str(k.get('importance', 'important')),
+                note=str(k.get('note', ''))))
+    for v in (d.get('variant_views') or []):
+        if isinstance(v, dict) and v.get('question'):
+            st.variant_views.append(ir.VariantView(
+                question=str(v['question']), consensus=str(v.get('consensus', '')),
+                our_view=str(v.get('our_view', '')),
+                why_different=str(v.get('why_different', '')),
+                supporting_evidence=str(v.get('supporting_evidence', '')),
+                disconfirming_evidence=str(v.get('disconfirming_evidence', '')),
+                resolves_when=str(v.get('resolves_when', '')),
+                resolution_date=str(v.get('resolution_date', ''))))
+    for sc in (d.get('scenarios') or []):
+        if isinstance(sc, dict) and sc.get('name'):
+            st.scenarios.append(ir.Scenario(
+                name=str(sc['name']), probability=_f(sc.get('probability')) or 0.0,
+                metric_value=_f(sc.get('metric_value')), multiple=_f(sc.get('multiple')),
+                target_price=_f(sc.get('target_price')),
+                assumptions=str(sc.get('assumptions', ''))))
+    for r in (d.get('risks') or []):
+        if isinstance(r, dict) and r.get('risk'):
+            st.risks.append(ir.Risk(
+                risk=str(r['risk']), probability=_f(r.get('probability')) or 0.25,
+                severity=str(r.get('severity', 'medium')),
+                horizon=str(r.get('horizon', '')),
+                evidence_today=str(r.get('evidence_today', '')),
+                trigger=str(r.get('trigger', '')),
+                action_if_triggered=str(r.get('action_if_triggered', ''))))
+    for c in (d.get('catalysts') or []):
+        if isinstance(c, dict) and c.get('event'):
+            st.catalysts.append(ir.Catalyst(
+                event=str(c['event']), window=str(c.get('window', '')),
+                probability=_f(c.get('probability')),
+                expectation=str(c.get('expectation', '')),
+                key_metric=str(c.get('key_metric', '')),
+                thesis_impact=str(c.get('thesis_impact', ''))))
+    st.estimates = [e for e in (d.get('estimates') or []) if isinstance(e, dict)]
+    for f in (d.get('facts') or []):
+        if isinstance(f, dict) and f.get('statement'):
+            st.facts.append(ir.Fact(
+                statement=str(f['statement']),
+                type=(str(f.get('type')) if f.get('type') in investment_review.FACT_TYPES
+                      else 'analyst_inference'),
+                period=str(f.get('period', '')), source=str(f.get('source', '')),
+                source_date=str(f.get('source_date', '')),
+                basis=str(f.get('basis', '')),
+                confidence=_f(f.get('confidence')) or 0.8))
+    return st
+
+
+def _run_investment_review(job_id, ticker, api_key, mode='review', model_key=None):
+    """Extract state, compute, review it independently, then render."""
+    ir = investment_review
+    try:
+        _review_jobs[job_id] = {'status': 'running', 'step': 'Loading documents',
+                                'ticker': ticker}
+        with get_db() as (_c, cur):
+            cur.execute("""SELECT filename, file_data, file_type, mime_type, file_size
+                           FROM document_files WHERE ticker = %s
+                           ORDER BY created_at DESC""", (ticker,))
+            docs = [dict(r) for r in (cur.fetchall() or [])]
+        if not docs:
+            raise Exception(f'No documents in Charlie for {ticker}')
+
+        company, sector = ticker, ''
+        with get_db() as (_c, cur):
+            # portfolio_analyses stores the name in `company` and keeps the
+            # sector inside the analysis JSON; there is no sector column.
+            cur.execute('SELECT company, analysis FROM portfolio_analyses '
+                        'WHERE ticker = %s', (ticker,))
+            row = cur.fetchone()
+            if row:
+                company = row.get('company') or ticker
+                an = row.get('analysis')
+                if isinstance(an, str):
+                    try: an = json.loads(an)
+                    except Exception: an = {}
+                if isinstance(an, dict):
+                    sector = an.get('sector') or an.get('industry') or ''
+
+        prepared = notegen.prepare_documents(docs)
+        batches = notegen.plan_batches(prepared)
+        batch = batches[0] if batches else []
+        content = []
+        for doc in batch:
+            m = doc.get('send_as')
+            if m == 'pages' and doc.get('file_data'):
+                content.append({'type': 'document',
+                                'source': {'type': 'base64',
+                                           'media_type': 'application/pdf',
+                                           'data': doc['file_data']}})
+                content.append({'type': 'text', 'text': f'[Document: {doc["filename"]}]'})
+            elif m in ('text', 'file') and doc.get('extracted_text'):
+                content.append({'type': 'text',
+                                'text': f'[Document: {doc["filename"]}]\n'
+                                        + doc['extracted_text']})
+
+        _review_jobs[job_id].update({'step': 'Extracting investment state'})
+        prior = _review_prior_state(ticker)
+        prompt = ir.extract_prompt(
+            ticker, company, sector, mode, _live_price_context(ticker),
+            prior.to_json() if prior else '')
+        result = _call_pinned_long(
+            messages=[{'role': 'user', 'content': content + [{'type': 'text', 'text': prompt}]}]
+                     if content else [{'role': 'user', 'content': prompt}],
+            system=ir.EXTRACT_SYSTEM, model_key=model_key, max_tokens=16000,
+            api_key=api_key, label=f'review {ticker}')
+        parsed = _extract_json(result.get('text') or '') or {}
+        state = _review_state_from_dict(ticker, parsed)
+        state.company = state.company or company
+        state.sector = state.sector or sector
+        state.mode = mode
+        state.as_of = datetime.utcnow().strftime('%Y-%m-%d')
+
+        # Price and every derived figure come from code, never from the model.
+        quote = _latest_close(ticker)
+        if quote:
+            state.price = quote['price']
+            state.price_date = quote['asOf']
+        computed = {
+            'market_cap_m': ir.market_cap(state),
+            'enterprise_value_m': ir.enterprise_value(state),
+            'expected_return': ir.expected_return(state),
+            'scenario_targets': {s.name: ir.scenario_target(s) for s in state.scenarios},
+            'consistency': ir.consistency_findings(state),
+        }
+
+        _review_jobs[job_id].update({'step': 'Independent review'})
+        qc = {}
+        try:
+            qc_res = _call_pinned_long(
+                messages=[{'role': 'user',
+                           'content': ir.qc_prompt(state.to_json(),
+                                                   json.dumps(computed, default=str))}],
+                system=ir.QC_SYSTEM, model_key=model_key, max_tokens=4000,
+                api_key=api_key, label=f'review-qc {ticker}')
+            qc = _extract_json(qc_res.get('text') or '') or {}
+        except Exception as e:
+            print(f'[review {job_id}] QC pass failed (non-fatal): {e}')
+
+        # Arithmetic findings are ours and always shown; the reviewer's
+        # high-severity findings are shown too. Both stay visible rather than
+        # being quietly fixed, because a reader deserves to see what the second
+        # pass objected to.
+        findings = list(computed['consistency'])
+        for f in (qc.get('findings') or []):
+            if isinstance(f, dict) and f.get('severity') in ('high', 'medium') and f.get('issue'):
+                findings.append(f['issue'])
+        state.qc_findings = findings[:8]
+
+        _review_jobs[job_id].update({'step': 'Rendering'})
+        md = ir.render_markdown(state, mode)
+        pdf = ir.render_pdf(state, mode)
+        changelog = ir.thesis_changelog(prior, state)
+
+        review_id = str(uuid.uuid4())
+        with get_db(commit=True) as (_c, cur):
+            cur.execute("""INSERT INTO investment_reviews
+                           (id, ticker, mode, state, review_markdown, review_pdf,
+                            qc, changelog, metadata)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                        (review_id, ticker, mode, state.to_json(), md,
+                         base64.b64encode(pdf).decode('ascii') if pdf else '',
+                         json.dumps(qc), json.dumps(changelog),
+                         json.dumps({'documents': len(docs),
+                                     'model': result.get('model', ''),
+                                     'provider': result.get('provider', ''),
+                                     'computed': computed}, default=str)))
+        _review_jobs[job_id] = {'status': 'complete', 'ticker': ticker,
+                                'reviewId': review_id, 'changelog': changelog,
+                                'findings': state.qc_findings, 'step': 'Complete'}
+        print(f'[review {job_id}] {ticker} complete ({mode})')
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        _review_jobs[job_id] = {'status': 'failed', 'ticker': ticker, 'error': str(e)}
+
+
+@app.route('/api/review/modes', methods=['GET'])
+def review_modes():
+    return jsonify({'modes': [{'key': k, **v}
+                              for k, v in investment_review.MODES.items()],
+                    'default': 'review'})
+
+
+@app.route('/api/review/generate', methods=['POST'])
+def review_generate():
+    data = request.get_json() or {}
+    ticker = (data.get('ticker') or '').upper().strip()
+    if not ticker:
+        return jsonify({'error': 'No ticker provided'}), 400
+    api_key = data.get('apiKey', '')
+    if not api_key:
+        return jsonify({'error': 'API key required'}), 400
+    mode = (data.get('mode') or 'review').lower()
+    if mode not in investment_review.MODES:
+        mode = 'review'
+    job_id = str(uuid.uuid4())
+    _review_jobs[job_id] = {'status': 'queued', 'ticker': ticker}
+    threading.Thread(target=_run_investment_review,
+                     args=(job_id, ticker, api_key, mode,
+                           data.get('model') or PICKER_DEFAULT_MODEL),
+                     daemon=True, name=f'review-{ticker}').start()
+    return jsonify({'jobId': job_id, 'ticker': ticker, 'mode': mode})
+
+
+@app.route('/api/review/job/<job_id>', methods=['GET'])
+def review_job(job_id):
+    return jsonify(_review_jobs.get(job_id) or {'status': 'unknown'})
+
+
+@app.route('/api/review/list', methods=['GET'])
+def review_list():
+    with get_db() as (_c, cur):
+        cur.execute("""SELECT DISTINCT ON (ticker) id, ticker, mode, created_at,
+                              changelog
+                       FROM investment_reviews
+                       ORDER BY ticker, created_at DESC""")
+        rows = cur.fetchall() or []
+    return jsonify({'reviews': [{'id': r['id'], 'ticker': r['ticker'],
+                                 'mode': r['mode'],
+                                 'createdAt': str(r['created_at']),
+                                 'changelog': r['changelog']} for r in rows]})
+
+
+@app.route('/api/review/<ticker>', methods=['GET'])
+def review_get(ticker):
+    with get_db() as (_c, cur):
+        cur.execute("""SELECT * FROM investment_reviews WHERE ticker = %s
+                       ORDER BY created_at DESC LIMIT 1""", (ticker.upper(),))
+        row = cur.fetchone()
+    if not row:
+        return jsonify({'error': 'No review found'}), 404
+    return jsonify({'id': row['id'], 'ticker': row['ticker'], 'mode': row['mode'],
+                    'state': row['state'], 'markdown': row['review_markdown'],
+                    'qc': row['qc'], 'changelog': row['changelog'],
+                    'metadata': row['metadata'], 'createdAt': str(row['created_at'])})
+
+
+@app.route('/api/review/<ticker>/pdf', methods=['GET'])
+def review_pdf(ticker):
+    with get_db() as (_c, cur):
+        cur.execute("""SELECT review_pdf FROM investment_reviews WHERE ticker = %s
+                       ORDER BY created_at DESC LIMIT 1""", (ticker.upper(),))
+        row = cur.fetchone()
+    if not row or not row.get('review_pdf'):
+        return jsonify({'error': 'No review PDF found'}), 404
+    return jsonify({'fileData': row['review_pdf'],
+                    'filename': f'{ticker.upper()}_Investment_Review.pdf'})
 
 
 @app.route('/api/note-stances', methods=['GET'])
