@@ -265,12 +265,20 @@ def extract_file_text(doc, max_chars=120_000):
     return text[:max_chars]
 
 
-def prepare_documents(docs, max_tokens=MAX_TOKENS_PER_BATCH):
+def prepare_documents(docs, max_tokens=MAX_TOKENS_PER_BATCH, prefer_text=False):
     """Decide how each document is sent, and mark it.
 
     `send_as` is "pages" for a normal PDF, "text" for one too large to attach,
     "file" for spreadsheets and plain text. Set before batching so the token
     estimate reflects what will actually be sent.
+
+    `prefer_text` extracts every PDF rather than attaching pages. Anthropic
+    renders an attached page as an image as well as text, which costs about
+    2,000 tokens a page against roughly 600 for the text alone -- so a twelve
+    document CRM set came to ~274K tokens as pages against ~86K as text, and
+    only half of it reached the model. Layout is lost, which matters for a
+    filing built around figures and not much for broker research. Callers that
+    need the page images leave this off.
     """
     out = []
     for d in docs or []:
@@ -289,12 +297,16 @@ def prepare_documents(docs, max_tokens=MAX_TOKENS_PER_BATCH):
             else:
                 d["send_as"] = "skip"
                 d["skip_reason"] = "no readable text could be extracted"
-        elif estimate_tokens([d]) > max_tokens:
+        elif prefer_text or estimate_tokens([d]) > max_tokens:
             text = extract_pdf_text(d, max_tokens=max_tokens // 2)
             if text:
                 d["send_as"] = "text"
                 d["extracted_text"] = text
                 d["est_tokens"] = len(text) // 4
+            elif prefer_text:
+                # Text was preferred but could not be produced; the pages are
+                # still readable, so fall back rather than dropping it.
+                d["send_as"] = "pages"
             else:
                 # Unreadable and oversized: attaching it would fail the request.
                 d["send_as"] = "skip"
@@ -305,13 +317,13 @@ def prepare_documents(docs, max_tokens=MAX_TOKENS_PER_BATCH):
     return out
 
 
-def plan_batches(docs, max_tokens=MAX_TOKENS_PER_BATCH):
+def plan_batches(docs, max_tokens=MAX_TOKENS_PER_BATCH, prefer_text=False):
     """Rank, then split into batches that fit the context window.
 
     Batch one carries the highest-priority documents because it is the batch
     that writes the note.
     """
-    ranked = rank_documents(prepare_documents(docs, max_tokens))
+    ranked = rank_documents(prepare_documents(docs, max_tokens, prefer_text=prefer_text))
     ranked = [d for d in ranked if d.get("send_as") != "skip"]
     batches, current, current_tokens = [], [], 0
     for d in ranked:

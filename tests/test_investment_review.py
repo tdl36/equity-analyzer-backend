@@ -84,12 +84,14 @@ def test_a_lower_is_better_kpi_is_not_read_backwards():
 
 # --- consistency -----------------------------------------------------------
 
-def test_a_rating_that_contradicts_its_own_expected_return_is_caught():
-    s = ir.ReviewState(ticker='X', price=100.0, rating='own', horizon='12m',
+def test_scenario_targets_without_a_horizon_are_flagged():
+    """A target means little without the period it applies to."""
+    s = ir.ReviewState(ticker='X', price=100.0,
                        scenarios=[ir.Scenario('bear', 0.5, target_price=70),
                                   ir.Scenario('base', 0.5, target_price=90)])
-    found = ' '.join(ir.consistency_findings(s))
-    assert 'expected return' in found
+    assert 'no time horizon' in ' '.join(ir.consistency_findings(s))
+    s.horizon = '12 months'
+    assert 'no time horizon' not in ' '.join(ir.consistency_findings(s))
 
 
 def test_unactionable_risks_and_thresholdless_kpis_are_flagged():
@@ -162,9 +164,12 @@ def test_the_model_is_told_not_to_do_arithmetic():
 def test_the_reviewer_is_a_separate_skeptical_context():
     assert 'skeptical' in ir.QC_SYSTEM.lower()
     assert 'did not write it' in ir.QC_SYSTEM
-    q = ir.qc_prompt('{}', '{}')
+    # Whitespace-normalised: the prompt is wrapped, so a phrase can span a line
+    # break. Asserting on the raw text made this fail against a correct prompt.
+    q = ' '.join(ir.qc_prompt('{}', '{}').split())
     assert 'strongest argument against' in q
-    assert 'consistent with the expected return' in q
+    assert 'must not tell the reader what to do' in q
+    assert 'no sell-side firm' in q
 
 
 def test_sector_kpis_are_offered_only_where_we_have_a_view():
@@ -259,7 +264,9 @@ def test_a_review_runs_end_to_end_and_stores_state(stub_review):
 
     # price comes from the quote, never from the model
     assert state['price'] == 260.11
-    assert state['rating'] == 'hold'
+    # the model offered a rating; it must be ignored, not rendered
+    assert state['rating'] == '', 'a model-issued rating was accepted'
+    assert state['conviction'] is None
     assert len(state['kpis']) == 2
     assert 'Thesis scorecard' in row['review_markdown']
     assert row['review_pdf'], 'no PDF rendered'
@@ -472,3 +479,82 @@ def test_the_review_is_served_as_html_for_the_tab(stub_review):
         html = cur.fetchone()['review_html']
     assert html and '<table' in html, 'no HTML stored for the tab to render'
     assert '<html>' in html
+
+
+# --- attribution and recommendation --------------------------------------
+
+def test_sell_side_firm_names_are_removed_from_every_field():
+    """A first CRM review named eight firms across its variant views.
+
+    Enforced in code, not by instruction: "never" is not a property a prompt
+    can guarantee, and a firm name reads as ordinary prose -- nothing
+    downstream would notice one.
+    """
+    s = ir.ReviewState(
+        ticker='CRM', price=100.0,
+        thesis=["Oppenheimer models 33% FY27 EPS growth."],
+        priced_in="Citizens' own model shows FY28 EPS of $16.15.",
+        variant_views=[ir.VariantView(
+            'Q', consensus='Truist models $17.53',
+            our_view='we differ', supporting_evidence='JPMorgan and Evercore ISI agree')],
+        estimates=[{'metric': 'EPS', 'why_different': 'Stephens sits at $15.35'}],
+        risks=[ir.Risk('R', evidence_today='per Piper Sandler',
+                       trigger='t', action_if_triggered='a')])
+    found = ir.scrub_state(s)
+    assert found >= 6, f'only {found} firm references were found'
+    blob = ' '.join([s.priced_in, s.thesis[0], s.variant_views[0].consensus,
+                     s.variant_views[0].supporting_evidence,
+                     s.estimates[0]['why_different'], s.risks[0].evidence_today])
+    for firm in ('Oppenheimer', 'Citizens', 'Truist', 'JPMorgan',
+                 'Evercore', 'Stephens', 'Piper'):
+        assert firm not in blob, f'{firm} survived the scrub'
+    # the claim survives, only the badge goes
+    assert '$16.15' in s.priced_in and '$17.53' in s.variant_views[0].consensus
+
+
+def test_possessives_survive_the_scrub_intact():
+    """"Citizens'" once became "one sell-side model'" with a stray apostrophe."""
+    assert ir.strip_broker_names("Citizens' model") == "one sell-side model's model"
+    assert ir.strip_broker_names("Truist's estimate") == "one sell-side model's estimate"
+
+
+def test_a_longer_firm_name_is_matched_before_a_shorter_one_inside_it():
+    """"Evercore ISI" must not become "one sell-side model ISI"."""
+    assert 'ISI' not in ir.strip_broker_names('Evercore ISI Research')
+
+
+def test_ordinary_words_are_not_mistaken_for_firms():
+    for safe in ('The company beat consensus', 'Citizens of the state',
+                 'capital allocation improved'):
+        out = ir.strip_broker_names(safe)
+        assert 'sell-side' not in out or 'Citizens of' in safe
+
+
+def test_the_document_issues_no_recommendation():
+    """The model presents evidence; the call belongs to the reader."""
+    p = ir.extract_prompt('CRM', 'Salesforce', 'software', 'review', 'PRICE: $260')
+    assert 'Do NOT issue an investment recommendation' in p
+    assert 'NEVER name a sell-side firm' in p
+    for field in ('"rating"', '"conviction"', '"add_below"', '"trim_above"'):
+        assert field not in p, f'{field} is still requested from the model'
+
+
+def test_no_verdict_or_positioning_language_is_rendered():
+    s = ir.ReviewState(ticker='X', price=100.0, horizon='12 months',
+                       scenarios=[ir.Scenario('bear', 0.3, target_price=80),
+                                  ir.Scenario('base', 0.4, target_price=110),
+                                  ir.Scenario('bull', 0.3, target_price=140)])
+    for doc in (ir.render_markdown(s), ir.render_html(s)):
+        assert 'Positioning' not in doc
+        assert 'Add below' not in doc and 'Trim above' not in doc
+        # the scenario range is arithmetic, and stays
+        assert 'Reference levels' in doc
+        assert '$80.00' in doc and '$140.00' in doc
+
+
+def test_the_review_prefers_text_so_a_full_source_set_fits():
+    """Pages cost ~3x text; a twelve-document set only half reached the model."""
+    src = (__import__('pathlib').Path(__file__).resolve().parent.parent / 'app_v3.py'
+           ).read_text(encoding='utf-8')
+    assert 'prepare_documents(docs, prefer_text=True)' in src
+    assert 'plan_batches(prepared, prefer_text=True)' in src

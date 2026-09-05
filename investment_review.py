@@ -187,8 +187,11 @@ class ReviewState:
     as_of: str = ''
     mode: str = 'review'            # flash | review | initiation
 
-    rating: str = ''                # own | hold | trim | avoid | none
-    conviction: Optional[float] = None      # 0..10
+    # The model does not set these. It presents the evidence, the scenarios and
+    # the arithmetic; the call is the reader's. Left on the dataclass so an
+    # analyst's own view can be recorded against a review later.
+    rating: str = ''                # set by a person, never by the model
+    conviction: Optional[float] = None      # 0..10, likewise
     horizon: str = ''
 
     price: Optional[float] = None
@@ -375,23 +378,6 @@ def consistency_findings(state: ReviewState) -> List[str]:
     if probs and abs(sum(probs) - 1.0) > 0.02:
         out.append(f'scenario probabilities sum to {sum(probs):.2f}, not 1.00')
 
-    er = expected_return(state)
-    if er and state.rating:
-        r = state.rating.lower()
-        if r in ('own', 'buy', 'add') and er['expected_return_pct'] < 0:
-            out.append(f"rating '{state.rating}' against an expected return of "
-                       f"{er['expected_return_pct']}%")
-        if r in ('avoid', 'sell', 'trim') and er['expected_return_pct'] > 15:
-            out.append(f"rating '{state.rating}' against an expected return of "
-                       f"+{er['expected_return_pct']}%")
-
-    if state.price:
-        if state.add_below and state.add_below > state.price:
-            out.append(f'add-below level ({state.add_below}) is above the current '
-                       f'price ({state.price})')
-        if state.trim_above and state.trim_above < state.price:
-            out.append(f'trim-above level ({state.trim_above}) is below the current '
-                       f'price ({state.price})')
 
     targets = {s.name.lower(): scenario_target(s) for s in state.scenarios}
     if all(k in targets and targets[k] is not None for k in ('bear', 'base', 'bull')):
@@ -416,8 +402,8 @@ def consistency_findings(state: ReviewState) -> List[str]:
         out.append('debates where our view matches consensus: '
                    + '; '.join(non_variant[:2]))
 
-    if state.rating and state.rating.lower() != 'none' and not state.horizon:
-        out.append('a target with no time horizon')
+    if state.scenarios and not state.horizon:
+        out.append('scenario targets with no time horizon')
 
     return out
 
@@ -556,6 +542,17 @@ prove us wrong, and what should be done.
 
 RULES
 - Return ONLY the JSON object below. No prose outside it.
+- NEVER name a sell-side firm, bank, broker or analyst anywhere in the output.
+  Not in evidence, not in estimates, not in a debate. Their numbers are usable;
+  their names are not. Write "one sell-side model", "consensus" or "several
+  brokers" instead. Firm names are stripped downstream regardless, and a
+  sentence built around one reads badly once it is removed.
+- Do NOT issue an investment recommendation. No rating, no buy/hold/sell/own/
+  trim/avoid, no conviction score, no add-below or trim-above level, and no
+  instruction to act in `action_if_triggered` -- describe the consequence
+  ("growth estimates come down", "the terminal multiple is too high"), not the
+  trade. Set out what the evidence supports and what would change it; the call
+  belongs to the reader.
 - Do NOT compute multiples, upside percentages, expected returns, CAGRs or
   implied growth. Supply the inputs; the arithmetic happens in code. Any
   number you do state must be one you read in a source, not one you derived.
@@ -576,8 +573,6 @@ RULES
 
 {{
   "company": "", "sector": "",
-  "rating": "own|hold|trim|avoid|none",
-  "conviction": 0.0,
   "horizon": "e.g. 12 months",
   "shares_out_m": 0, "net_debt_m": 0,
   "thesis": ["", "", ""],
@@ -596,10 +591,9 @@ RULES
                   "assumptions": ""}}],
   "risks": [{{"risk": "", "probability": 0.25, "severity": "low|medium|high",
               "horizon": "", "evidence_today": "", "trigger": "",
-              "action_if_triggered": ""}}],
+              "action_if_triggered": "the consequence, not the trade"}}],
   "catalysts": [{{"event": "", "window": "", "probability": 0.5,
                   "expectation": "", "key_metric": "", "thesis_impact": ""}}],
-  "add_below": 0, "trim_above": 0,
   "key_question": "",
   "upgrade_if": "", "downgrade_if": "",
   "priced_in": "",
@@ -648,7 +642,8 @@ Ask, and answer only where there is something to say:
 - Does the bull case require assumptions that contradict each other, or the
   bear case?
 - Is the bear case genuinely bearish, or a softer version of the base case?
-- Is the recommendation consistent with the expected return computed above?
+- Does anything read as a recommendation? This document must not tell the
+  reader what to do, and must name no sell-side firm.
 - What would a PM ask after reading this that it does not answer?
 
 Return:
@@ -711,8 +706,8 @@ def render_markdown(state: ReviewState, mode: str = 'review') -> str:
     w(f'# {state.company or state.ticker} ({state.ticker})')
     w('')
     head = []
-    if state.rating and state.rating.lower() != 'none':
-        head.append(f'**{state.rating.upper()}**')
+    if state.rating:
+        head.append(f'**{state.rating.upper()}**')      # only if a person set it
     if state.conviction is not None:
         head.append(f'Conviction {state.conviction:.1f}/10')
     if state.horizon:
@@ -776,16 +771,19 @@ def render_markdown(state: ReviewState, mode: str = 'review') -> str:
               f'| {k.trend()} | {_STATUS_MARK.get(k.status(), k.status())} |')
         w('')
 
-    pos = []
-    if state.add_below:
-        pos.append(f'Add below {_fmt(state.add_below, "$", 2)}')
-    if state.trim_above:
-        pos.append(f'Trim above {_fmt(state.trim_above, "$", 2)}')
-    if pos:
-        w('## Positioning')
-        w('')
-        w(' · '.join(pos))
-        w('')
+    if active['valuation'] and state.price:
+        # Levels the scenarios imply, not instructions. The document sets out
+        # what the evidence supports; whether that is a buy is the reader's call.
+        lo = min((scenario_target(x) for x in state.scenarios
+                  if scenario_target(x) is not None), default=None)
+        hi = max((scenario_target(x) for x in state.scenarios
+                  if scenario_target(x) is not None), default=None)
+        if lo is not None and hi is not None:
+            w('## Reference levels')
+            w('')
+            w(f'Scenario range {_fmt(lo, "$", 2)} to {_fmt(hi, "$", 2)} against '
+              f'{_fmt(state.price, "$", 2)} today.')
+            w('')
     if state.key_question:
         w(f'**The question that decides this:** {state.key_question}')
         w('')
@@ -1024,7 +1022,7 @@ def render_html(state: ReviewState, mode: str = 'review') -> str:
 
     w(f'<h1>{_esc(state.company or state.ticker)} ({_esc(state.ticker)})</h1>')
     bits = []
-    if state.rating and state.rating.lower() != 'none':
+    if state.rating:
         bits.append(_esc(state.rating.upper()))
     if state.conviction is not None:
         bits.append(f'Conviction {state.conviction:.1f}/10')
@@ -1085,14 +1083,15 @@ def render_html(state: ReviewState, mode: str = 'review') -> str:
         w(_table(['KPI', 'Prior', 'Current', 'Bull', 'Bear', 'Trend', 'Status'],
                  rows, [34, 11, 11, 11, 11, 8, 14]))
 
-    pos = []
-    if state.add_below:
-        pos.append(f'Add below {_fmt(state.add_below, "$", 2)}')
-    if state.trim_above:
-        pos.append(f'Trim above {_fmt(state.trim_above, "$", 2)}')
-    if pos:
-        w('<h2>Positioning</h2>')
-        w(f'<p>{" &middot; ".join(pos)}</p>')
+    if active['valuation'] and state.price:
+        lo = min((scenario_target(x) for x in state.scenarios
+                  if scenario_target(x) is not None), default=None)
+        hi = max((scenario_target(x) for x in state.scenarios
+                  if scenario_target(x) is not None), default=None)
+        if lo is not None and hi is not None:
+            w('<h2>Reference levels</h2>')
+            w(f'<p>Scenario range {_fmt(lo, "$", 2)} to {_fmt(hi, "$", 2)} '
+              f'against {_fmt(state.price, "$", 2)} today.</p>')
     if state.key_question:
         w(f'<p><b>The question that decides this:</b> {_esc(state.key_question)}</p>')
 
@@ -1188,3 +1187,112 @@ def render_pdf(state: ReviewState, mode: str = 'review') -> bytes:
     buf = _io.BytesIO()
     pisa.CreatePDF(_io.StringIO(render_html(state, mode)), dest=buf)
     return buf.getvalue()
+
+
+# --------------------------------------------------------------------------
+# Attribution
+# --------------------------------------------------------------------------
+
+# Sell-side firms whose names must not appear in a generated document. The
+# numbers are usable; the attribution is not. A first CRM review named eight
+# firms across its variant views and estimates table.
+#
+# Enforced in code rather than by instruction alone: "never" is not a property
+# a prompt can guarantee, and the failure is silent -- a firm name reads as
+# ordinary prose.
+BROKER_NAMES = [
+    'Goldman Sachs', 'Goldman', 'Morgan Stanley', 'JPMorgan', 'J.P. Morgan',
+    'JP Morgan', 'Bank of America', 'BofA', 'Merrill', 'Citigroup', 'Citi',
+    'Citizens', 'Wells Fargo', 'Barclays', 'UBS', 'Credit Suisse', 'Deutsche Bank',
+    'Jefferies', 'Evercore ISI', 'Evercore', 'Bernstein', 'Redburn',
+    'RBC Capital', 'RBC', 'BMO Capital', 'BMO', 'TD Cowen', 'Cowen',
+    'Raymond James', 'Piper Sandler', 'PiperSandler', 'Stifel Nicolaus', 'Stifel',
+    'Oppenheimer', 'Truist', 'Stephens', 'Baird', 'William Blair', 'Jefferies',
+    'Guggenheim', 'Wolfe Research', 'Wolfe', 'Melius', 'Mizuho', 'Nomura',
+    'Macquarie', 'Berenberg', 'HSBC', 'Societe Generale', 'BNP Paribas',
+    'Canaccord', 'Needham', 'Rosenblatt', 'KeyBanc', 'Wedbush', 'DA Davidson',
+    'Scotiabank', 'CLSA', 'Bernstein SocGen', 'Loop Capital', 'Susquehanna',
+]
+
+# Longest first, so "Evercore ISI" is replaced before "Evercore" can match
+# inside it and leave a stray "ISI" behind.
+_BROKER_PATTERN = None
+
+
+def _broker_pattern():
+    global _BROKER_PATTERN
+    if _BROKER_PATTERN is None:
+        import re
+        names = sorted(set(BROKER_NAMES), key=len, reverse=True)
+        # The trailing group catches both possessive forms: "Citizens'" (plural)
+        # and "Truist's" (singular). Without it the name was replaced and the
+        # apostrophe left stranded -- "one sell-side model' own model shows".
+        _BROKER_PATTERN = re.compile(
+            r"\b(" + "|".join(re.escape(n) for n in names) + r")(['\u2019]s|['\u2019])?",
+            re.IGNORECASE)
+    return _BROKER_PATTERN
+
+
+def strip_broker_names(text: str, replacement: str = 'one sell-side model') -> str:
+    """Replace firm names with a neutral descriptor.
+
+    The estimate stays, the badge goes. "Citizens' own model shows FY28 EPS of
+    $16.15" becomes "one sell-side model shows FY28 EPS of $16.15" -- the claim
+    is unchanged and still checkable against the sources document.
+    """
+    if not text:
+        return text
+
+    def _sub(m):
+        # Keep the grammar: a possessive stays possessive.
+        return replacement + ("'s" if m.group(2) else '')
+
+    return _broker_pattern().sub(_sub, text)
+
+
+def find_broker_names(text: str) -> List[str]:
+    """Which firms a piece of text names. For tests and for reporting."""
+    if not text:
+        return []
+    return sorted({m.group(1) for m in _broker_pattern().finditer(text)})
+
+
+def scrub_state(state: ReviewState) -> int:
+    """Strip firm names from every free-text field. Returns how many were found."""
+    found = 0
+
+    def _s(v):
+        nonlocal found
+        if not isinstance(v, str) or not v:
+            return v
+        hits = find_broker_names(v)
+        if hits:
+            found += len(hits)
+            return strip_broker_names(v)
+        return v
+
+    for attr in ('priced_in', 'business_quality', 'key_question',
+                 'upgrade_if', 'downgrade_if', 'coverage_note'):
+        setattr(state, attr, _s(getattr(state, attr, '')))
+    state.thesis = [_s(t) for t in state.thesis]
+    state.qc_findings = [_s(f) for f in state.qc_findings]
+    for c in state.changes:
+        c.item, c.prior, c.current, c.implication = (
+            _s(c.item), _s(c.prior), _s(c.current), _s(c.implication))
+    for k in state.kpis:
+        k.name, k.note = _s(k.name), _s(k.note)
+    for v in state.variant_views:
+        for f in ('question', 'consensus', 'our_view', 'why_different',
+                  'supporting_evidence', 'disconfirming_evidence', 'resolves_when'):
+            setattr(v, f, _s(getattr(v, f)))
+    for sc in state.scenarios:
+        sc.assumptions = _s(sc.assumptions)
+    for r in state.risks:
+        for f in ('risk', 'horizon', 'evidence_today', 'trigger', 'action_if_triggered'):
+            setattr(r, f, _s(getattr(r, f)))
+    for c in state.catalysts:
+        for f in ('event', 'window', 'expectation', 'key_metric', 'thesis_impact'):
+            setattr(c, f, _s(getattr(c, f)))
+    state.estimates = [{k: _s(v) if isinstance(v, str) else v for k, v in e.items()}
+                       for e in state.estimates]
+    return found

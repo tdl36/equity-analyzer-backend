@@ -13651,17 +13651,16 @@ def _review_state_from_dict(ticker, d):
         try: return float(v)
         except (TypeError, ValueError): return None
     st = ir.ReviewState(ticker=ticker)
-    for k in ('company', 'sector', 'as_of', 'mode', 'rating', 'horizon',
+    # 'rating' is absent by design: the model does not issue a call, so a
+    # rating it volunteered anyway would be ignored rather than rendered.
+    for k in ('company', 'sector', 'as_of', 'mode', 'horizon',
               'price_date', 'key_question', 'upgrade_if', 'downgrade_if',
               'priced_in', 'business_quality'):
         if isinstance(d.get(k), str):
             setattr(st, k, d[k])
-    for k in ('price', 'shares_out_m', 'net_debt_m',
-              'add_below', 'trim_above', 'implied_growth_pct'):
+    for k in ('price', 'shares_out_m', 'net_debt_m', 'implied_growth_pct'):
         if d.get(k) is not None:
             setattr(st, k, _f(d[k]))
-    # 0.6 arrived once meaning 60% and rendered as "Conviction 0.6/10".
-    st.conviction = ir.normalise_conviction(d.get('conviction'))
     st.thesis = [x for x in (d.get('thesis') or []) if isinstance(x, str)][:3]
     for c in (d.get('changes') or []):
         if isinstance(c, dict) and c.get('item'):
@@ -13770,8 +13769,10 @@ def _run_investment_review(job_id, ticker, api_key, mode='review', model_key=Non
                 if isinstance(an, dict):
                     sector = an.get('sector') or an.get('industry') or ''
 
-        prepared = notegen.prepare_documents(docs)
-        batches = notegen.plan_batches(prepared)
+        # Text, not page images. Pages cost ~3x more and a twelve-document CRM
+        # set only got half its sources into the first batch because of it.
+        prepared = notegen.prepare_documents(docs, prefer_text=True)
+        batches = notegen.plan_batches(prepared, prefer_text=True)
         batch = batches[0] if batches else []
         # Only the first batch is read. Merging structured state across batches
         # is a different problem from appending prose, and is not built yet --
@@ -13873,6 +13874,14 @@ def _run_investment_review(job_id, ticker, api_key, mode='review', model_key=Non
             if isinstance(f, dict) and f.get('severity') in ('high', 'medium') and f.get('issue'):
                 findings.append(f['issue'])
         state.qc_findings = findings[:8]
+
+        # Firm names come out here, after the reviewer has seen the state and
+        # before anything is stored. Instruction alone cannot guarantee "never",
+        # and a firm name reads as ordinary prose -- nothing downstream would
+        # notice one.
+        scrubbed = ir.scrub_state(state)
+        if scrubbed:
+            print(f'[review {job_id}] removed {scrubbed} sell-side firm reference(s)')
 
         _review_jobs[job_id].update({'step': 'Rendering'})
         md = ir.render_markdown(state, mode)
