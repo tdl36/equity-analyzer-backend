@@ -81,7 +81,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-09-04T03';
+        const BUILD_VERSION = '2026-09-04T04';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -2410,6 +2410,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [reviewStatus, setReviewStatus] = useState('');
             const [reviewData, setReviewData] = useState(null);
             const [reviewList, setReviewList] = useState([]);
+            const [reviewDocs, setReviewDocs] = useState([]);
+            const [reviewDocsPicked, setReviewDocsPicked] = useState(null); // null = all
+            const [reviewDocsOpen, setReviewDocsOpen] = useState(false);
             const [noteStances, setNoteStances] = useState([]);
             const [noteStance, setNoteStance] = usePersistedModel('charlie.noteStance', 'balanced');
 
@@ -8004,6 +8007,18 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 } catch (e) { setReviewStatus('Could not load: ' + e.message); }
             };
 
+            const loadReviewDocs = async (ticker) => {
+                const t = (ticker || '').toUpperCase().trim();
+                if (!t) return;
+                try {
+                    const r = await fetch(`${API_URL}/api/documents/${t}`);
+                    if (!r.ok) { setReviewDocs([]); return; }
+                    const j = await r.json();
+                    setReviewDocs(j.documents || []);
+                    setReviewDocsPicked(null);   // default to everything
+                } catch (e) { setReviewDocs([]); }
+            };
+
             const runReview = async () => {
                 const t = (reviewTicker || '').toUpperCase().trim();
                 if (!t) { setReviewStatus('Enter a ticker first.'); return; }
@@ -8014,7 +8029,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ ticker: t, apiKey: apiKeySaved,
-                                               mode: reviewMode, model: reviewModel }),
+                                               mode: reviewMode, model: reviewModel,
+                                               // null means everything, matching the backend
+                                               fileSelection: reviewDocsPicked
+                                                   ? reviewDocsPicked.map(f => ({ filename: f }))
+                                                   : [] }),
                     });
                     if (!res.ok) {
                         const e = await res.json().catch(() => ({}));
@@ -25355,7 +25374,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                         <input
                                             value={reviewTicker}
                                             onChange={e => setReviewTicker(e.target.value.toUpperCase())}
-                                            onKeyDown={e => { if (e.key === 'Enter' && !reviewRunning) runReview(); }}
+                                            onBlur={e => loadReviewDocs(e.target.value)}
+                                            onKeyDown={e => { if (e.key === 'Enter' && !reviewRunning) { loadReviewDocs(reviewTicker); runReview(); } }}
                                             placeholder="Ticker"
                                             className="px-3 py-1.5 w-28 bg-white/10 border border-white/15 rounded-lg text-sm uppercase focus:outline-none focus:border-emerald-500"
                                         />
@@ -25374,6 +25394,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             onChange={setReviewModel}
                                             title="Model used for extraction and the review pass"
                                         />
+                                        <button
+                                            onClick={() => { setReviewDocsOpen(o => !o); if (!reviewDocs.length) loadReviewDocs(reviewTicker); }}
+                                            className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-slate-200 text-xs rounded-lg transition-colors">
+                                            Sources{reviewDocs.length
+                                                ? ` (${reviewDocsPicked ? reviewDocsPicked.length : reviewDocs.length}/${reviewDocs.length})`
+                                                : ''}
+                                        </button>
                                         <button onClick={runReview} disabled={reviewRunning}
                                             className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-medium rounded-lg transition-colors">
                                             {reviewRunning ? 'Running…' : 'Run Review'}
@@ -25389,6 +25416,56 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             Refresh list
                                         </button>
                                     </div>
+                                    {reviewDocsOpen && (
+                                        <div className="mt-3 border border-white/10 rounded-lg p-3 bg-black/20">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <span className="text-[10px] text-slate-500 uppercase tracking-wider">
+                                                    Source documents{reviewTicker ? ` — ${reviewTicker}` : ''}
+                                                </span>
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => setReviewDocsPicked(null)}
+                                                        className="text-[10px] text-emerald-400 hover:text-emerald-300">All</button>
+                                                    <button onClick={() => setReviewDocsPicked([])}
+                                                        className="text-[10px] text-slate-400 hover:text-slate-300">None</button>
+                                                </div>
+                                            </div>
+                                            {reviewDocs.length === 0 ? (
+                                                <p className="text-[11px] text-slate-500">
+                                                    No documents stored for this ticker yet.
+                                                </p>
+                                            ) : (
+                                                <div className="max-h-52 overflow-y-auto space-y-1">
+                                                    {reviewDocs.map(d => {
+                                                        const on = reviewDocsPicked === null
+                                                            || reviewDocsPicked.includes(d.filename);
+                                                        return (
+                                                            <label key={d.filename}
+                                                                className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer hover:bg-white/5 rounded px-1 py-0.5">
+                                                                <input type="checkbox" checked={on}
+                                                                    onChange={() => setReviewDocsPicked(prev => {
+                                                                        // null means "all"; the first tick makes it explicit
+                                                                        const base = prev === null
+                                                                            ? reviewDocs.map(x => x.filename) : prev;
+                                                                        return base.includes(d.filename)
+                                                                            ? base.filter(x => x !== d.filename)
+                                                                            : [...base, d.filename];
+                                                                    })}
+                                                                    className="accent-emerald-500" />
+                                                                <span className="truncate flex-1">{d.filename}</span>
+                                                                <span className="text-[9px] text-slate-600 shrink-0">
+                                                                    {d.fileSize ? `${Math.round(d.fileSize / 1024)}kb` : ''}
+                                                                </span>
+                                                            </label>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                            <p className="text-[10px] text-slate-600 mt-2">
+                                                Highest-ranked documents are read first; anything beyond the first
+                                                batch is named in the memo rather than dropped silently.
+                                            </p>
+                                        </div>
+                                    )}
                                     {reviewStatus && (
                                         <p className="text-[11px] text-slate-400 mt-2">{reviewStatus}</p>
                                     )}

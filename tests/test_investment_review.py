@@ -303,3 +303,90 @@ def test_the_existing_note_generator_is_untouched():
     assert '/api/notes/generate' in rules
     assert '/api/review/generate' in rules
     assert '/api/notes/generate' != '/api/review/generate'
+
+
+def _seed_many(ticker, names):
+    import io as _io
+    try:
+        from PyPDF2 import PdfWriter
+        w = PdfWriter(); w.add_blank_page(width=612, height=792)
+        buf = _io.BytesIO(); w.write(buf)
+        data = base64.b64encode(buf.getvalue()).decode()
+    except Exception:
+        data = base64.b64encode(b'%PDF-1.4 stub').decode()
+    with app_v3.get_db(commit=True) as (_c, cur):
+        cur.execute("DELETE FROM document_files WHERE ticker = %s", (ticker,))
+        cur.execute("DELETE FROM investment_reviews WHERE ticker = %s", (ticker,))
+        for n in names:
+            cur.execute("""INSERT INTO document_files (ticker, filename, file_data,
+                           file_type, file_size) VALUES (%s,%s,%s,'pdf',5000)""",
+                        (ticker, n, data))
+
+
+def test_only_the_selected_documents_are_read(stub_review):
+    """The Review tab has a source picker; it has to actually filter.
+
+    The first version of this pipeline loaded every document for the ticker and
+    ignored any selection, which is not a defensible default when the note
+    generator beside it honours one.
+    """
+    _seed_many('SELN', ['10k.pdf', 'broker-a.pdf', 'broker-b.pdf', 'transcript.pdf'])
+    job = str(uuid.uuid4())
+    app_v3._run_investment_review(job, 'SELN', 'k', 'review',
+                                  file_selection=[{'filename': '10k.pdf'},
+                                                  {'filename': 'transcript.pdf'}])
+    assert app_v3._review_jobs[job]['status'] == 'complete', app_v3._review_jobs[job]
+    with app_v3.get_db() as (_c, cur):
+        cur.execute("SELECT metadata FROM investment_reviews WHERE ticker='SELN'")
+        meta = cur.fetchone()['metadata']
+    if isinstance(meta, str):
+        meta = json.loads(meta)
+    assert meta['documentsAvailable'] == 4
+    assert meta['documentsSelected'] == 2, meta
+    assert set(meta['documentsRead']) <= {'10k.pdf', 'transcript.pdf'}
+    assert 'broker-a.pdf' not in meta['documentsRead']
+
+
+def test_an_empty_selection_still_means_everything(stub_review):
+    """Matching the note generator, where no config means use it all."""
+    _seed_many('SELA', ['a.pdf', 'b.pdf'])
+    job = str(uuid.uuid4())
+    app_v3._run_investment_review(job, 'SELA', 'k', 'review', file_selection=[])
+    with app_v3.get_db() as (_c, cur):
+        cur.execute("SELECT metadata FROM investment_reviews WHERE ticker='SELA'")
+        meta = cur.fetchone()['metadata']
+    if isinstance(meta, str):
+        meta = json.loads(meta)
+    assert meta['documentsSelected'] == 2
+
+
+def test_selecting_nothing_that_exists_fails_loudly(stub_review):
+    """Better than silently reviewing on documents the user deselected."""
+    _seed_many('SELX', ['a.pdf'])
+    job = str(uuid.uuid4())
+    app_v3._run_investment_review(job, 'SELX', 'k', 'review',
+                                  file_selection=[{'filename': 'not-here.pdf'}])
+    j = app_v3._review_jobs[job]
+    assert j['status'] == 'failed'
+    assert 'No documents selected' in j['error']
+
+
+def test_documents_beyond_the_first_batch_are_named_not_dropped(stub_review, monkeypatch):
+    """Only batch one is read; the reader has to be told which that was."""
+    real = app_v3.notegen.plan_batches
+    monkeypatch.setattr(app_v3.notegen, 'plan_batches',
+                        lambda docs, **kw: [[docs[0]], docs[1:]] if len(docs) > 1
+                        else real(docs, **kw))
+    _seed_many('SELB', ['kept.pdf', 'left-out.pdf', 'also-out.pdf'])
+    job = str(uuid.uuid4())
+    app_v3._run_investment_review(job, 'SELB', 'k', 'review')
+    with app_v3.get_db() as (_c, cur):
+        cur.execute("""SELECT metadata, review_markdown FROM investment_reviews
+                       WHERE ticker='SELB'""")
+        row = cur.fetchone()
+    meta = row['metadata']
+    if isinstance(meta, str):
+        meta = json.loads(meta)
+    assert set(meta['documentsNotRead']) == {'left-out.pdf', 'also-out.pdf'}
+    assert 'left-out.pdf' in row['review_markdown'], (
+        'documents that were not read must be named in the memo')

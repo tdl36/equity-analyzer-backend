@@ -13722,7 +13722,8 @@ def _review_state_from_dict(ticker, d):
     return st
 
 
-def _run_investment_review(job_id, ticker, api_key, mode='review', model_key=None):
+def _run_investment_review(job_id, ticker, api_key, mode='review', model_key=None,
+                           file_selection=None):
     """Extract state, compute, review it independently, then render."""
     ir = investment_review
     try:
@@ -13733,8 +13734,19 @@ def _run_investment_review(job_id, ticker, api_key, mode='review', model_key=Non
                            FROM document_files WHERE ticker = %s
                            ORDER BY created_at DESC""", (ticker,))
             docs = [dict(r) for r in (cur.fetchall() or [])]
+        available = len(docs)
+
+        # Honour the picker. An empty selection means everything, matching what
+        # the note generator does with its Update Config list.
+        if file_selection:
+            wanted = {f.get('filename') if isinstance(f, dict) else f
+                      for f in file_selection}
+            wanted.discard(None)
+            if wanted:
+                docs = [d for d in docs if d.get('filename') in wanted]
         if not docs:
-            raise Exception(f'No documents in Charlie for {ticker}')
+            raise Exception(f'No documents selected for {ticker}'
+                            if available else f'No documents in Charlie for {ticker}')
 
         company, sector = ticker, ''
         with get_db() as (_c, cur):
@@ -13755,6 +13767,17 @@ def _run_investment_review(job_id, ticker, api_key, mode='review', model_key=Non
         prepared = notegen.prepare_documents(docs)
         batches = notegen.plan_batches(prepared)
         batch = batches[0] if batches else []
+        # Only the first batch is read. Merging structured state across batches
+        # is a different problem from appending prose, and is not built yet --
+        # so say which documents were used rather than letting the rest vanish.
+        # Ranking puts the highest-value documents in batch one, but that is a
+        # reason to trust the choice, not to hide it.
+        used = [d.get('filename') for d in batch]
+        dropped = [d.get('filename') for d in prepared
+                   if d.get('filename') not in set(used)]
+        if dropped:
+            print(f'[review {job_id}] {len(used)} of {len(prepared)} documents read; '
+                  f'beyond the first batch: {", ".join(dropped[:5])}')
         content = []
         for doc in batch:
             m = doc.get('send_as')
@@ -13817,6 +13840,11 @@ def _run_investment_review(job_id, ticker, api_key, mode='review', model_key=Non
         # being quietly fixed, because a reader deserves to see what the second
         # pass objected to.
         findings = list(computed['consistency'])
+        if dropped:
+            findings.insert(0, f'{len(used)} of {len(prepared)} selected documents '
+                               f'were read; the rest did not fit the first batch: '
+                               f'{", ".join(dropped[:4])}'
+                               + (' and others' if len(dropped) > 4 else ''))
         for f in (qc.get('findings') or []):
             if isinstance(f, dict) and f.get('severity') in ('high', 'medium') and f.get('issue'):
                 findings.append(f['issue'])
@@ -13836,13 +13864,19 @@ def _run_investment_review(job_id, ticker, api_key, mode='review', model_key=Non
                         (review_id, ticker, mode, state.to_json(), md,
                          base64.b64encode(pdf).decode('ascii') if pdf else '',
                          json.dumps(qc), json.dumps(changelog),
-                         json.dumps({'documents': len(docs),
+                         json.dumps({'documentsAvailable': available,
+                                     'documentsSelected': len(docs),
+                                     'documentsRead': used,
+                                     'documentsNotRead': dropped,
                                      'model': result.get('model', ''),
                                      'provider': result.get('provider', ''),
                                      'computed': computed}, default=str)))
         _review_jobs[job_id] = {'status': 'complete', 'ticker': ticker,
                                 'reviewId': review_id, 'changelog': changelog,
-                                'findings': state.qc_findings, 'step': 'Complete'}
+                                'findings': state.qc_findings, 'step': 'Complete',
+                                'documentsRead': len(used),
+                                'documentsSelected': len(docs),
+                                'documentsNotRead': dropped}
         print(f'[review {job_id}] {ticker} complete ({mode})')
     except Exception as e:
         import traceback; traceback.print_exc()
@@ -13872,7 +13906,8 @@ def review_generate():
     _review_jobs[job_id] = {'status': 'queued', 'ticker': ticker}
     threading.Thread(target=_run_investment_review,
                      args=(job_id, ticker, api_key, mode,
-                           data.get('model') or PICKER_DEFAULT_MODEL),
+                           data.get('model') or PICKER_DEFAULT_MODEL,
+                           data.get('fileSelection') or []),
                      daemon=True, name=f'review-{ticker}').start()
     return jsonify({'jobId': job_id, 'ticker': ticker, 'mode': mode})
 
