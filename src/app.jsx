@@ -81,7 +81,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-09-04T04';
+        const BUILD_VERSION = '2026-09-05T01';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -8064,6 +8064,47 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     setReviewRunning(false);
                     setReviewStatus('Error: ' + e.message);
                 }
+            };
+
+            const saveReviewHtml = (ticker) => {
+                // A self-contained file: the styling is inline in the HTML the
+                // server already produced, so this opens anywhere.
+                if (!reviewData || !reviewData.html) return;
+                const blob = new Blob([reviewData.html], { type: 'text/html' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${ticker}_Investment_Review.html`;
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            const emailReview = async (ticker) => {
+                // Same store the other email flows read.
+                let creds = null;
+                try { creds = JSON.parse(localStorage.getItem('emailCredentials') || 'null'); }
+                catch (e) { creds = null; }
+                const to = (creds && (creds.email || creds.gmailUser)) || '';
+                if (!to) { setReviewStatus('No email configured in Settings.'); return; }
+                setReviewStatus('Sending…');
+                try {
+                    const r = await fetch(`${API_URL}/api/review/${ticker}/email`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            to,
+                            smtpConfig: {
+                                use_gmail: creds.useGmail,
+                                gmail_user: creds.gmailUser,
+                                gmail_app_password: creds.gmailPassword,
+                                from_email: creds.gmailUser,
+                            },
+                        }),
+                    });
+                    const j = await r.json().catch(() => ({}));
+                    setReviewStatus(r.ok ? `Emailed to ${j.to || to}`
+                                         : `Email failed: ${j.error || r.status}`);
+                } catch (e) { setReviewStatus('Email failed: ' + e.message); }
             };
 
             const downloadReviewPdf = async (ticker) => {
@@ -25405,12 +25446,20 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-medium rounded-lg transition-colors">
                                             {reviewRunning ? 'Running…' : 'Run Review'}
                                         </button>
-                                        {reviewData && (
+                                        {reviewData && (<>
                                             <button onClick={() => downloadReviewPdf(reviewData.ticker)}
                                                 className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-slate-200 text-xs rounded-lg transition-colors">
                                                 PDF
                                             </button>
-                                        )}
+                                            <button onClick={() => saveReviewHtml(reviewData.ticker)}
+                                                className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-slate-200 text-xs rounded-lg transition-colors">
+                                                Save
+                                            </button>
+                                            <button onClick={() => emailReview(reviewData.ticker)}
+                                                className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-slate-200 text-xs rounded-lg transition-colors">
+                                                Email
+                                            </button>
+                                        </>)}
                                         <button onClick={loadReviewList}
                                             className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-slate-200 text-xs rounded-lg transition-colors">
                                             Refresh list
@@ -25501,9 +25550,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 ))}
                                             </div>
                                         )}
-                                        <div className="p-4 overflow-x-auto">
-                                            <div className="prose prose-invert prose-sm max-w-none"
-                                                dangerouslySetInnerHTML={{ __html: renderMarkdown(reviewData.markdown || '') }} />
+                                        {/* The server's own HTML, not renderMarkdown: this memo is
+                                            mostly tables and renderMarkdown does not do tables, so the
+                                            first real review displayed as rows of raw pipes. Shown on a
+                                            white sheet because the HTML is styled for print. */}
+                                        <div className="p-3 overflow-x-auto bg-white rounded-b-xl">
+                                            <div className="review-sheet"
+                                                dangerouslySetInnerHTML={{ __html: reviewData.html || '' }} />
                                         </div>
                                     </div>
                                 )}

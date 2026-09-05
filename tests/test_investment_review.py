@@ -390,3 +390,85 @@ def test_documents_beyond_the_first_batch_are_named_not_dropped(stub_review, mon
     assert set(meta['documentsNotRead']) == {'left-out.pdf', 'also-out.pdf'}
     assert 'left-out.pdf' in row['review_markdown'], (
         'documents that were not read must be named in the memo')
+
+
+# --- defects found in the first real review ------------------------------
+
+def test_units_are_placed_correctly():
+    """A real scorecard printed "3,400$M" and "1,624M"."""
+    assert ir._fmt(3400, '$M') == '$3,400M'
+    assert ir._fmt(1624, 'M') == '1,624M'
+    assert ir._fmt(14, '%') == '14%'
+    assert ir._fmt(259.23, '$') == '$259.23'
+    assert ir._fmt(None, '%') == '—'
+
+
+def test_conviction_is_normalised_to_the_scale_it_is_shown_on():
+    """0.6 arrived meaning 60% and rendered as "Conviction 0.6/10"."""
+    assert ir.normalise_conviction(0.6) == 6.0
+    assert ir.normalise_conviction(7.5) == 7.5
+    assert ir.normalise_conviction(75) == 7.5
+    assert ir.normalise_conviction(None) is None
+    assert ir.normalise_conviction('nonsense') is None
+
+
+def test_direction_is_taken_from_the_thresholds_not_a_flag():
+    """Rising attrition read as on-thesis with a favourable trend.
+
+    The model gave revenue attrition bull 8% and bear 9%, which already says
+    lower is better, but left higher_is_better at its default.
+    """
+    worse = ir.KPI('Revenue attrition', current=9.5, prior=8.0,
+                   bull_threshold=8.0, bear_threshold=9.0)
+    assert worse.higher_is_better is False
+    assert worse.trend() == '↓'
+    assert worse.status() == 'off-thesis'
+
+    better = ir.KPI('cRPO growth', current=14.0, prior=13.5,
+                    bull_threshold=14.0, bear_threshold=11.0)
+    assert better.higher_is_better is True
+    assert better.status() == 'on-thesis'
+
+
+def test_risks_are_ordered_by_expected_impact():
+    """Probability alone led with a 60%-likely, low-severity item."""
+    rs = [ir.Risk('likely but minor', 0.60, 'low'),
+          ir.Risk('less likely but thesis-breaking', 0.30, 'high')]
+    order = [r.risk for r in sorted(rs, key=ir._risk_weight, reverse=True)]
+    assert order[0] == 'less likely but thesis-breaking'
+
+
+def test_table_columns_widen_for_their_content():
+    """"September-October 2026" in a 14% column printed over its neighbour."""
+    import re as _re
+    html = ir._table(['Window', 'Event', 'Watch', 'Impact'],
+                     [['September-October 2026', 'Closing of Fin and Contentful',
+                       'operating margin held at ~34.3%', 'neutral']],
+                     [14, 28, 22, 36])
+    widths = [float(x) for x in _re.findall(r'width="([\d.]+)%"', html)[:4]]
+    assert abs(sum(widths) - 100) < 1.0
+    assert widths[0] > 14.0, 'the Window column did not grow for its content'
+
+
+def test_source_coverage_is_not_attributed_to_the_review_pass():
+    """Which documents were read is our note, not the reviewer's finding."""
+    s = ir.ReviewState(ticker='X', price=10.0,
+                       coverage_note='6 of 12 selected documents were read.',
+                       qc_findings=['The bear case is a softer base case.'])
+    md = ir.render_markdown(s)
+    html = ir.render_html(s)
+    for doc in (md, html):
+        assert 'Source coverage' in doc
+        assert 'Review notes' in doc
+        assert doc.index('Source coverage') < doc.index('Review notes')
+
+
+def test_the_review_is_served_as_html_for_the_tab(stub_review):
+    """renderMarkdown does not do tables and this memo is mostly tables."""
+    _seed('HTM')
+    app_v3._run_investment_review(str(uuid.uuid4()), 'HTM', 'k', 'review')
+    with app_v3.get_db() as (_c, cur):
+        cur.execute("SELECT review_html FROM investment_reviews WHERE ticker='HTM'")
+        html = cur.fetchone()['review_html']
+    assert html and '<table' in html, 'no HTML stored for the tab to render'
+    assert '<html>' in html

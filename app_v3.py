@@ -3158,6 +3158,7 @@ def init_db():
                     mode VARCHAR(20) DEFAULT 'review',
                     state JSONB DEFAULT '{}',
                     review_markdown TEXT,
+                    review_html TEXT,
                     review_pdf TEXT,
                     qc JSONB DEFAULT '{}',
                     changelog JSONB DEFAULT '[]',
@@ -3167,6 +3168,9 @@ def init_db():
             ''')
             cur.execute('CREATE INDEX IF NOT EXISTS idx_investment_reviews_ticker '
                         'ON investment_reviews(ticker, created_at DESC)')
+            # Added after the table shipped; existing rows keep working.
+            cur.execute('ALTER TABLE investment_reviews '
+                        'ADD COLUMN IF NOT EXISTS review_html TEXT')
             # A generated note lands as a draft and becomes live only when
             # accepted. Previously generation overwrote the current note and
             # the agent moved the sources into Processed/ in the same breath,
@@ -13652,10 +13656,12 @@ def _review_state_from_dict(ticker, d):
               'priced_in', 'business_quality'):
         if isinstance(d.get(k), str):
             setattr(st, k, d[k])
-    for k in ('conviction', 'price', 'shares_out_m', 'net_debt_m',
+    for k in ('price', 'shares_out_m', 'net_debt_m',
               'add_below', 'trim_above', 'implied_growth_pct'):
         if d.get(k) is not None:
             setattr(st, k, _f(d[k]))
+    # 0.6 arrived once meaning 60% and rendered as "Conviction 0.6/10".
+    st.conviction = ir.normalise_conviction(d.get('conviction'))
     st.thesis = [x for x in (d.get('thesis') or []) if isinstance(x, str)][:3]
     for c in (d.get('changes') or []):
         if isinstance(c, dict) and c.get('item'):
@@ -13814,6 +13820,17 @@ def _run_investment_review(job_id, ticker, api_key, mode='review', model_key=Non
         if quote:
             state.price = quote['price']
             state.price_date = quote['asOf']
+        # Reverse valuation in code. The model was asked for a narrative of
+        # what the price implies; the number itself is arithmetic and was
+        # previously only present if the model volunteered it.
+        base = next((sc for sc in state.scenarios if sc.name.lower() == 'base'), None)
+        if state.implied_growth_pct is None and base and base.multiple and base.metric_value:
+            per_share = (base.metric_value / state.shares_out_m
+                         if state.shares_out_m and base.metric_value > 1000
+                         else base.metric_value)
+            state.implied_growth_pct = ir.implied_growth(
+                state.price, per_share, base.multiple, years=4)
+
         computed = {
             'market_cap_m': ir.market_cap(state),
             'enterprise_value_m': ir.enterprise_value(state),
@@ -13839,12 +13856,19 @@ def _run_investment_review(job_id, ticker, api_key, mode='review', model_key=Non
         # high-severity findings are shown too. Both stay visible rather than
         # being quietly fixed, because a reader deserves to see what the second
         # pass objected to.
+        # Kept apart on purpose. The heading says these came from the review
+        # pass, and a note about which documents were read did not -- putting
+        # it in that list credited our own plumbing message to the reviewer.
         findings = list(computed['consistency'])
+        for f in (qc.get('findings') or []):
+            if isinstance(f, dict) and f.get('severity') in ('high', 'medium') and f.get('issue'):
+                findings.append(f['issue'])
         if dropped:
-            findings.insert(0, f'{len(used)} of {len(prepared)} selected documents '
-                               f'were read; the rest did not fit the first batch: '
-                               f'{", ".join(dropped[:4])}'
-                               + (' and others' if len(dropped) > 4 else ''))
+            state.coverage_note = (
+                f'{len(used)} of {len(prepared)} selected documents were read. '
+                f'The rest did not fit the first batch: '
+                + ', '.join(dropped[:4])
+                + (f' and {len(dropped) - 4} others' if len(dropped) > 4 else '') + '.')
         for f in (qc.get('findings') or []):
             if isinstance(f, dict) and f.get('severity') in ('high', 'medium') and f.get('issue'):
                 findings.append(f['issue'])
@@ -13852,16 +13876,20 @@ def _run_investment_review(job_id, ticker, api_key, mode='review', model_key=Non
 
         _review_jobs[job_id].update({'step': 'Rendering'})
         md = ir.render_markdown(state, mode)
+        # The tab renders this rather than the markdown. renderMarkdown in the
+        # frontend does not do tables, and this memo is mostly tables -- the
+        # first real review displayed as rows of raw pipes.
+        html = ir.render_html(state, mode)
         pdf = ir.render_pdf(state, mode)
         changelog = ir.thesis_changelog(prior, state)
 
         review_id = str(uuid.uuid4())
         with get_db(commit=True) as (_c, cur):
             cur.execute("""INSERT INTO investment_reviews
-                           (id, ticker, mode, state, review_markdown, review_pdf,
-                            qc, changelog, metadata)
-                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-                        (review_id, ticker, mode, state.to_json(), md,
+                           (id, ticker, mode, state, review_markdown, review_html,
+                            review_pdf, qc, changelog, metadata)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                        (review_id, ticker, mode, state.to_json(), md, html,
                          base64.b64encode(pdf).decode('ascii') if pdf else '',
                          json.dumps(qc), json.dumps(changelog),
                          json.dumps({'documentsAvailable': available,
@@ -13941,8 +13969,65 @@ def review_get(ticker):
         return jsonify({'error': 'No review found'}), 404
     return jsonify({'id': row['id'], 'ticker': row['ticker'], 'mode': row['mode'],
                     'state': row['state'], 'markdown': row['review_markdown'],
+                    'html': row.get('review_html') or '',
                     'qc': row['qc'], 'changelog': row['changelog'],
                     'metadata': row['metadata'], 'createdAt': str(row['created_at'])})
+
+
+@app.route('/api/review/<ticker>/email', methods=['POST'])
+def review_email(ticker):
+    """Email the review to yourself, PDF attached."""
+    data = request.get_json() or {}
+    ticker = ticker.upper()
+    with get_db() as (_c, cur):
+        cur.execute("""SELECT review_html, review_pdf FROM investment_reviews
+                       WHERE ticker = %s ORDER BY created_at DESC LIMIT 1""",
+                    (ticker,))
+        row = cur.fetchone()
+    if not row:
+        return jsonify({'error': 'No review found'}), 404
+    recipient = (data.get('to') or '').strip()
+    if not recipient:
+        return jsonify({'error': 'No recipient'}), 400
+    cfg = data.get('smtpConfig') or {}
+    gmail_user = cfg.get('gmail_user') or ''
+    gmail_password = cfg.get('gmail_app_password') or ''
+    if not (cfg.get('use_gmail') and gmail_user and gmail_password):
+        return jsonify({'error': 'Gmail is not configured in Settings'}), 400
+    try:
+        # Imported here, as the other email handlers do -- these are not
+        # module-level in this file.
+        import smtplib
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+        from email.mime.application import MIMEApplication
+
+        # Same SMTP path the other email endpoints use, with the PDF attached
+        # so the memo survives a mail client that mangles the tables.
+        msg = MIMEMultipart('mixed')
+        msg['From'] = cfg.get('from_email') or gmail_user
+        msg['To'] = recipient
+        msg['Subject'] = f'Investment Review: {ticker}'
+        body = MIMEMultipart('alternative')
+        body.attach(MIMEText(f'Investment review for {ticker}. '
+                             f'PDF attached.', 'plain'))
+        body.attach(MIMEText(row.get('review_html') or '<p>(no content)</p>', 'html'))
+        msg.attach(body)
+        if row.get('review_pdf'):
+            part = MIMEApplication(base64.b64decode(row['review_pdf']), _subtype='pdf')
+            part.add_header('Content-Disposition', 'attachment',
+                            filename=f'{ticker}_Investment_Review.pdf')
+            msg.attach(part)
+        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+            server.starttls()
+            server.login(gmail_user, gmail_password)
+            server.send_message(msg)
+        return jsonify({'sent': True, 'to': recipient})
+    except smtplib.SMTPAuthenticationError:
+        return jsonify({'error': 'Gmail authentication failed. Check the app password.'}), 401
+    except Exception as e:
+        print(f'[review-email {ticker}] {type(e).__name__}: {e}')
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/review/<ticker>/pdf', methods=['GET'])

@@ -83,6 +83,18 @@ class KPI:
     importance: str = 'important'      # critical | important | secondary
     note: str = ''
 
+    def __post_init__(self):
+        # Direction, taken from the thresholds rather than from a flag.
+        #
+        # A model that reports revenue attrition with bull 8% and bear 9% has
+        # already said which way is good; leaving higher_is_better at its
+        # default made rising attrition read as "on-thesis" with an upward
+        # trend. When the two thresholds disagree with the flag, the thresholds
+        # are the more specific statement and they win.
+        if (self.bull_threshold is not None and self.bear_threshold is not None
+                and self.bull_threshold != self.bear_threshold):
+            self.higher_is_better = self.bull_threshold > self.bear_threshold
+
     def trend(self) -> str:
         if self.current is None or self.prior is None:
             return '—'
@@ -202,6 +214,7 @@ class ReviewState:
     implied_growth_pct: Optional[float] = None   # computed, not asserted
 
     business_quality: str = ''
+    coverage_note: str = ''       # which documents were actually read
     estimates: List[Dict[str, Any]] = field(default_factory=list)
     facts: List[Fact] = field(default_factory=list)
     qc_findings: List[str] = field(default_factory=list)
@@ -213,6 +226,26 @@ class ReviewState:
 # --------------------------------------------------------------------------
 # Deterministic calculations
 # --------------------------------------------------------------------------
+
+def normalise_conviction(value: Optional[float]) -> Optional[float]:
+    """Conviction on a 0-10 scale, whatever scale it arrived on.
+
+    A real review came back with 0.6, meaning 60% confidence, and rendered as
+    "Conviction 0.6/10" -- which reads as no conviction at all next to a HOLD.
+    A value at or below 1 is a fraction; above 10 is a percentage.
+    """
+    if value is None:
+        return None
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    if v <= 1.0:
+        v *= 10.0
+    elif v > 10.0:
+        v = v / 10.0
+    return round(max(0.0, min(10.0, v)), 1)
+
 
 def market_cap(state: ReviewState) -> Optional[float]:
     if state.price is None or state.shares_out_m is None:
@@ -630,15 +663,35 @@ Return:
 # --------------------------------------------------------------------------
 
 def _fmt(v: Optional[float], unit: str = '', dp: int = 1) -> str:
+    """A number with its unit in the right place.
+
+    Appending the unit blindly produced "3,400$M" and "1,624M" in a real
+    review: a currency symbol belongs in front and a magnitude suffix belongs
+    behind, and the model supplies units like "$M", "M", "%" and "bps"
+    interchangeably.
+    """
     if v is None:
         return '—'
-    if unit == '$':
+    u = (unit or '').strip()
+    if u == '$':
         return f'${v:,.2f}'
-    s = f'{v:,.{dp}f}'.rstrip('0').rstrip('.') if dp else f'{v:,.0f}'
-    return f'{s}{unit}'
+    body = f'{v:,.{dp}f}'.rstrip('0').rstrip('.') if dp else f'{v:,.0f}'
+    if u.startswith('$'):
+        # "$M" / "$bn" -> $3,400M
+        return f'${body}{u[1:]}'
+    if u in ('%', 'bps', 'x'):
+        return f'{body}{u}'
+    return f'{body}{u}' if u else body
 
 
 _STATUS_MARK = {'on-thesis': 'ON', 'off-thesis': 'OFF', 'watch': 'WATCH', '—': '—'}
+_SEVERITY_WEIGHT = {'high': 3.0, 'medium': 2.0, 'low': 1.0}
+
+
+def _risk_weight(r: 'Risk') -> float:
+    """Probability alone put a 60%-likely, low-severity item above a
+    30%-likely, high-severity one that would break the thesis."""
+    return (r.probability or 0) * _SEVERITY_WEIGHT.get((r.severity or '').lower(), 2.0)
 
 
 def render_markdown(state: ReviewState, mode: str = 'review') -> str:
@@ -819,7 +872,7 @@ def render_markdown(state: ReviewState, mode: str = 'review') -> str:
         w('')
         w('| Risk | Prob | Severity | Evidence today | Trigger | Action if triggered |')
         w('|---|---|---|---|---|---|')
-        for r in sorted(state.risks, key=lambda x: -(x.probability or 0)):
+        for r in sorted(state.risks, key=_risk_weight, reverse=True):
             w(f'| {r.risk} | {(r.probability or 0)*100:.0f}% | {r.severity} '
               f'| {r.evidence_today} | {r.trigger} | {r.action_if_triggered} |')
         w('')
@@ -831,6 +884,14 @@ def render_markdown(state: ReviewState, mode: str = 'review') -> str:
             w(f'- **Upgrade if:** {state.upgrade_if}')
         if state.downgrade_if:
             w(f'- **Downgrade if:** {state.downgrade_if}')
+        w('')
+
+    if state.coverage_note:
+        w('---')
+        w('')
+        w('## Source coverage')
+        w('')
+        w(state.coverage_note)
         w('')
 
     if state.qc_findings:
@@ -916,13 +977,40 @@ def _esc(v) -> str:
 
 def _table(headers: List[str], rows: List[List[str]], widths: List[int]) -> str:
     """Explicit widths: xhtml2pdf ignores percentages without table-layout fixed
-    and an explicit width on every cell."""
-    h = ''.join(f'<th width="{w}%" style="width:{w}%">{_esc(x)}</th>'
+    and an explicit width on every cell.
+
+    The supplied widths are a starting point, adjusted for what the column
+    actually holds. Fixed widths put "September-October 2026" in a 14% column
+    in a real review and it printed over its neighbour -- the same failure the
+    note renderer had, for the same reason.
+    """
+    import re as _re
+
+    def _plain(x):
+        return _re.sub(r'<[^>]+>', '', str(x))
+
+    n = len(headers)
+    demand = []
+    for i in range(n):
+        cells = [_plain(headers[i])] + [_plain(r[i]) for r in rows if i < len(r)]
+        avg = sum(len(c) for c in cells) / max(1, len(cells))
+        longest_word = max((len(t) for c in cells for t in c.split()), default=1)
+        demand.append(max(avg, longest_word * 1.0, 4.0))
+    # Blend the caller's intent with the content, so a column meant to be wide
+    # stays wide but a cramped one can grow.
+    blended = [(widths[i] if i < len(widths) else 100 / n) * 0.5
+               + (100 * demand[i] / sum(demand)) * 0.5 for i in range(n)]
+    floor = min(7.0, 100.0 / n)
+    blended = [max(floor, b) for b in blended]
+    scale = 100.0 / sum(blended)
+    widths = [b * scale for b in blended]
+
+    h = ''.join(f'<th width="{w:.1f}%" style="width:{w:.1f}%">{_esc(x)}</th>'
                 for x, w in zip(headers, widths))
     body = ''
     for r in rows:
         body += '<tr>' + ''.join(
-            f'<td width="{w}%" style="width:{w}%">{c}</td>'
+            f'<td width="{w:.1f}%" style="width:{w:.1f}%">{c}</td>'
             for c, w in zip(r, widths)) + '</tr>'
     return f'<table><tr>{h}</tr>{body}</table>'
 
@@ -1064,7 +1152,7 @@ def render_html(state: ReviewState, mode: str = 'review') -> str:
             w(_table(['Risk', 'Prob', 'Sev', 'Evidence today', 'Trigger', 'Action if triggered'],
                      [[_esc(r.risk), f'{(r.probability or 0)*100:.0f}%', _esc(r.severity),
                        _esc(r.evidence_today), _esc(r.trigger), _esc(r.action_if_triggered)]
-                      for r in sorted(state.risks, key=lambda x: -(x.probability or 0))],
+                      for r in sorted(state.risks, key=_risk_weight, reverse=True)],
                      [20, 7, 8, 21, 23, 21]))
 
         if active['falsification']:
@@ -1073,6 +1161,10 @@ def render_html(state: ReviewState, mode: str = 'review') -> str:
                 w(f'<p>&bull; <b>Upgrade if:</b> {_esc(state.upgrade_if)}</p>')
             if state.downgrade_if:
                 w(f'<p>&bull; <b>Downgrade if:</b> {_esc(state.downgrade_if)}</p>')
+
+    if state.coverage_note:
+        w('<hr class="rule"><h2>Source coverage</h2>')
+        w(f'<p>{_esc(state.coverage_note)}</p>')
 
     if state.qc_findings:
         w('<hr class="rule"><h2>Review notes</h2>')
