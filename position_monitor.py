@@ -4,9 +4,16 @@ The scheduler already runs twelve jobs and none of them touch a thesis. This is
 the thirteenth, and it inverts the direction: everything else pulls information
 in, this one asks whether anything that arrived should change a position.
 
-Deliberately free. Every signal here is computed from stored state and a price
-quote -- no model is called, so the whole portfolio can be checked every night
-for nothing. That is a change from the original plan, which had a model
+Deliberately free. Every signal here is computed from stored state, a price
+quote and a document count -- no model is called, so the whole portfolio can be
+checked every night for nothing.
+
+What that buys and what it does not: price, scenario breaches, earnings dates
+and staleness are read fresh each run. KPI *values* are not -- they are frozen
+into the review that produced them, because updating one means a model reading a
+new filing. So the monitor watches the condition under which a KPI could have
+moved (new documents arriving) rather than pretending to re-read the number, and
+labels the off-thesis count as being as of the last review. That is a change from the original plan, which had a model
 re-deriving KPI values nightly. Re-deriving them costs a review per position per
 night and mostly reproduces yesterday's answer; the cheap signals below catch
 the things that actually move between reviews, and when one fires the right
@@ -103,6 +110,26 @@ def _next_earnings(ticker: str) -> Optional[Any]:
         return None
 
 
+def _documents_since(ticker: str, when) -> List[str]:
+    """Filenames that arrived for this ticker after the review was written.
+
+    The closest free proxy for "a KPI may have moved". A KPI value lives inside
+    a filing and only a model reading that filing can update it, which is a cost
+    per position per night. A document arriving is the moment that becomes
+    possible, and the arrival is already recorded.
+    """
+    if not when:
+        return []
+    try:
+        with app_v3.get_db() as (_c, cur):
+            cur.execute("""SELECT filename FROM document_files
+                           WHERE ticker = %s AND created_at > %s
+                           ORDER BY created_at DESC""", (ticker, when))
+            return [r['filename'] for r in (cur.fetchall() or [])]
+    except Exception:
+        return []
+
+
 def _scenario_bounds(state: Dict[str, Any]) -> Dict[str, Optional[float]]:
     out: Dict[str, Optional[float]] = {'bear': None, 'base': None, 'bull': None}
     for sc in (state.get('scenarios') or []):
@@ -189,14 +216,29 @@ def evaluate_position(ticker: str, review: Dict[str, Any],
                 'detail': {'price': price, 'bull': bounds['bull']},
             })
 
+    # New sources age the KPI values, which are frozen at review time. Said
+    # plainly, because the off-thesis count below is a restatement of what the
+    # last review concluded and not a fresh reading.
+    new_docs = _documents_since(ticker, reviewed_at)
+    if new_docs:
+        findings.append({
+            'key': f'newdocs:{len(new_docs)}',
+            'type': 'sources_since_review',
+            'title': f'{ticker} has {len(new_docs)} new document'
+                     f'{"s" if len(new_docs) != 1 else ""} since the last review',
+            'detail': {'count': len(new_docs), 'filenames': new_docs[:8],
+                       'note': 'KPI values in the review predate these'},
+        })
+
     counts = _kpi_status_counts(state)
     if counts['off-thesis']:
         findings.append({
             'key': f'off:{counts["off-thesis"]}',
             'type': 'kpi_off_thesis',
             'title': f'{ticker} has {counts["off-thesis"]} KPI'
-                     f'{"s" if counts["off-thesis"] != 1 else ""} off-thesis',
-            'detail': counts,
+                     f'{"s" if counts["off-thesis"] != 1 else ""} off-thesis '
+                     f'as of the last review',
+            'detail': dict(counts, asOf=str(reviewed_at)[:10] if reviewed_at else ''),
         })
 
     earnings = _next_earnings(ticker)
