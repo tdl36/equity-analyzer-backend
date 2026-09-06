@@ -104,7 +104,16 @@ class KPI:
         return '↑' if rising == self.higher_is_better else '↓'
 
     def status(self) -> str:
-        """Against its own thresholds, not against a general sense of good."""
+        """Against its own thresholds, and — between them — which way it is going.
+
+        A recovery story sets every threshold as a target it has not reached yet,
+        so `current` sits strictly between bull and bear on every line and a
+        three-state scorecard returns WATCH eight times, which says nothing. A
+        UNH review did exactly that. Direction of travel inside the band is the
+        information that was missing: a margin climbing toward its bull case is
+        not the same position as one sliding toward its bear case, even when
+        neither has arrived.
+        """
         if self.current is None:
             return '—'
         hib = self.higher_is_better
@@ -114,6 +123,9 @@ class KPI:
         if self.bear_threshold is not None:
             if (self.current <= self.bear_threshold) if hib else (self.current >= self.bear_threshold):
                 return 'off-thesis'
+        if self.prior is not None and self.current != self.prior:
+            improving = (self.current > self.prior) == hib
+            return 'improving' if improving else 'slipping'
         return 'watch'
 
 
@@ -560,6 +572,13 @@ RULES
   stock is mispriced, and what has to happen for it to work.
 - Every KPI needs a bull_threshold and a bear_threshold, or it cannot report a
   status. If you cannot name thresholds, the metric is not a thesis KPI.
+- Thresholds are DECISION BOUNDARIES, not targets. bull_threshold is the level
+  at which you would say this KPI is now confirming the thesis; bear_threshold
+  is the level at which it is breaking it. They are not the bull-case and
+  bear-case values from your scenarios. A recovery story whose thresholds are
+  set to the eventual targets puts every KPI strictly between them and the
+  scorecard reports the same thing on every line, which tells the reader
+  nothing. Set them where your opinion would actually change.
 - Every risk needs a measurable `trigger` and an `action_if_triggered`. A risk
   with neither is a description, not a risk.
 - A debate belongs in `variant_views` only where our view genuinely differs
@@ -676,10 +695,18 @@ def _fmt(v: Optional[float], unit: str = '', dp: int = 1) -> str:
         return f'${body}{u[1:]}'
     if u in ('%', 'bps', 'x'):
         return f'{body}{u}'
+    # A currency code belongs in front; a word belongs after a space. The model
+    # supplies "USD", "millions" and "days" as freely as "%", and appending them
+    # bare produced "19.8USD", "-1.4millions" and "44.5days".
+    if u.upper() in ('USD', 'US$', 'EUR', 'GBP'):
+        return f'${body}'
+    if u and (u[0].isalpha() and len(u) > 1):
+        return f'{body} {u}'
     return f'{body}{u}' if u else body
 
 
-_STATUS_MARK = {'on-thesis': 'ON', 'off-thesis': 'OFF', 'watch': 'WATCH', '—': '—'}
+_STATUS_MARK = {'on-thesis': 'ON', 'off-thesis': 'OFF', 'improving': 'IMPROVING',
+                'slipping': 'SLIPPING', 'watch': 'FLAT', '—': '—'}
 _SEVERITY_WEIGHT = {'high': 3.0, 'medium': 2.0, 'low': 1.0}
 
 
@@ -965,7 +992,8 @@ th, td { border: 1px solid #d1d5db; padding: 4px 5px; vertical-align: top;
 .qc   { background: #fffbeb; border: 1px solid #fde68a; padding: 8px; margin: 8px 0; }
 """
 
-_STATUS_CLASS = {'on-thesis': 'on', 'off-thesis': 'off', 'watch': 'watch'}
+_STATUS_CLASS = {'on-thesis': 'on', 'off-thesis': 'off', 'improving': 'on',
+                 'slipping': 'off', 'watch': 'watch'}
 
 
 def _esc(v) -> str:
@@ -998,8 +1026,21 @@ def _table(headers: List[str], rows: List[List[str]], widths: List[int]) -> str:
     # stays wide but a cramped one can grow.
     blended = [(widths[i] if i < len(widths) else 100 / n) * 0.5
                + (100 * demand[i] / sum(demand)) * 0.5 for i in range(n)]
-    floor = min(7.0, 100.0 / n)
-    blended = [max(floor, b) for b in blended]
+
+    # A column of long prose was taking 64% and starving the rest: "Weighted"
+    # landed in 10.1% and printed over the 100% beside it. Two corrections.
+    # No column takes more than 45% -- long text wraps, it does not need the
+    # page. And each column's floor is its own longest unbreakable word, since
+    # a word cannot wrap below its own width. ~1.15% of the content box per
+    # character at this type size, plus padding.
+    longest = []
+    for i in range(n):
+        cells = [_plain(headers[i])] + [_plain(r[i]) for r in rows if i < len(r)]
+        longest.append(max((len(t) for c in cells for t in c.split()), default=1))
+    floors = [min(28.0, max(6.0, w * 1.15 + 2.0)) for w in longest]
+
+    blended = [min(45.0, b) for b in blended]
+    blended = [max(floors[i], blended[i]) for i in range(n)]
     scale = 100.0 / sum(blended)
     widths = [b * scale for b in blended]
 
@@ -1257,6 +1298,28 @@ def find_broker_names(text: str) -> List[str]:
     return sorted({m.group(1) for m in _broker_pattern().finditer(text)})
 
 
+def describe_source(filename: str) -> str:
+    """A document named without naming its author.
+
+    Broker filenames carry the firm, so running the scrubber over them produced
+    "20260717 - one sell-side model Global Research - UNH - Fischbeck Focus -
+    11 pages.pdf" -- unreadable, and still useless for telling which document it
+    was. Date and length identify it well enough to look up, and name nobody.
+    """
+    import re
+    if not filename:
+        return 'a source document'
+    date = re.search(r'\b(20\d{6})\b', filename)
+    pages = re.search(r'(\d+)\s*pages?', filename, re.IGNORECASE)
+    bits = []
+    if date:
+        d = date.group(1)
+        bits.append(f'{d[:4]}-{d[4:6]}-{d[6:]}')
+    if pages:
+        bits.append(f'{pages.group(1)} pages')
+    return ' · '.join(bits) if bits else 'a source document'
+
+
 def scrub_state(state: ReviewState) -> int:
     """Strip firm names from every free-text field. Returns how many were found."""
     found = 0
@@ -1271,8 +1334,12 @@ def scrub_state(state: ReviewState) -> int:
             return strip_broker_names(v)
         return v
 
+    # coverage_note is excluded: it is built from filenames, which are
+    # sanitised by describe_source() when the note is written. Running the
+    # scrubber over a filename replaces the firm and leaves the rest of the
+    # path behind, which reads worse than either alternative.
     for attr in ('priced_in', 'business_quality', 'key_question',
-                 'upgrade_if', 'downgrade_if', 'coverage_note'):
+                 'upgrade_if', 'downgrade_if'):
         setattr(state, attr, _s(getattr(state, attr, '')))
     state.thesis = [_s(t) for t in state.thesis]
     state.qc_findings = [_s(f) for f in state.qc_findings]

@@ -14037,11 +14037,14 @@ def _run_investment_review(job_id, ticker, api_key, mode='review', model_key=Non
             if isinstance(f, dict) and f.get('severity') in ('high', 'medium') and f.get('issue'):
                 findings.append(f['issue'])
         if dropped:
+            # Named by date and length, not by firm: a broker filename carries
+            # the author, and this note is part of the document.
+            described = [ir.describe_source(d) for d in dropped[:4]]
             state.coverage_note = (
                 f'{len(used)} of {len(prepared)} selected documents were read. '
                 f'The rest did not fit the first batch: '
-                + ', '.join(dropped[:4])
-                + (f' and {len(dropped) - 4} others' if len(dropped) > 4 else '') + '.')
+                + '; '.join(described)
+                + (f'; and {len(dropped) - 4} others' if len(dropped) > 4 else '') + '.')
         for f in (qc.get('findings') or []):
             if isinstance(f, dict) and f.get('severity') in ('high', 'medium') and f.get('issue'):
                 findings.append(f['issue'])

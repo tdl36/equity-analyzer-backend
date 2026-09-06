@@ -395,8 +395,13 @@ def test_documents_beyond_the_first_batch_are_named_not_dropped(stub_review, mon
     if isinstance(meta, str):
         meta = json.loads(meta)
     assert set(meta['documentsNotRead']) == {'left-out.pdf', 'also-out.pdf'}
-    assert 'left-out.pdf' in row['review_markdown'], (
-        'documents that were not read must be named in the memo')
+    # The memo reports coverage without printing filenames: a broker filename
+    # carries the firm, and this note is part of the document. The metadata
+    # keeps the real names for debugging.
+    md = row['review_markdown']
+    assert 'Source coverage' in md
+    assert '1 of 3 selected documents were read' in md, md[-300:]
+    assert 'left-out.pdf' not in md, 'a raw filename reached the memo'
 
 
 # --- defects found in the first real review ------------------------------
@@ -711,3 +716,101 @@ def test_the_route_returns_402_so_the_ui_can_tell_this_apart(clean_budget):
     body = r.get_json()
     assert body.get('budgetExceeded') is True
     assert 'budget' in body['error'].lower()
+
+
+# --- defects the UNH review exposed ---------------------------------------
+
+def test_units_the_model_actually_supplies_are_placed_correctly():
+    """A real scorecard printed "-1.4millions", "44.5days" and "19.8USD"."""
+    assert ir._fmt(-1.4, 'millions') == '-1.4 millions'
+    assert ir._fmt(44.5, 'days') == '44.5 days'
+    assert ir._fmt(19.8, 'USD') == '$19.8'
+    # and the ones that were already right stay right
+    assert ir._fmt(3.0, '%') == '3%'
+    assert ir._fmt(3400, '$M') == '$3,400M'
+    assert ir._fmt(259.23, '$') == '$259.23'
+
+
+def test_a_recovery_story_does_not_report_watch_on_every_line():
+    """Eight KPIs, eight WATCHes, no information.
+
+    A recovery sets every threshold as a target it has not reached, so `current`
+    sits strictly between bull and bear on every line. The maths was right and
+    the scorecard was useless. Direction of travel inside the band is what was
+    missing.
+    """
+    rows = [  # name, current, prior, bull, bear  -- the real UNH numbers
+        ('Consolidated MCR', 88.1, 89.0, 87.5, 89.0),
+        ('MA pre-tax margin', 3.0, 2.0, 4.0, 2.5),
+        ('Optum Health margin', 2.4, 2.3, 4.0, 2.0),
+        ('Commercial margin', 4.7, 4.7, 6.0, 4.0),
+        ('Commercial cost trend', 11.5, 11.0, 10.5, 12.5),
+        ('Medicaid margin', -1.4, -1.4, 0.0, -1.7),
+    ]
+    got = {}
+    for name, cur, pri, bull, bear in rows:
+        got[name] = ir.KPI(name, current=cur, prior=pri,
+                           bull_threshold=bull, bear_threshold=bear).status()
+    assert len(set(got.values())) > 1, f'every KPI returned the same status: {got}'
+    assert got['MA pre-tax margin'] == 'improving'
+    assert got['Commercial cost trend'] == 'slipping', got
+    assert got['Commercial margin'] == 'watch'      # genuinely flat
+
+
+def test_direction_inside_the_band_respects_lower_is_better():
+    """Cost trend rising is deterioration even though the number went up."""
+    k = ir.KPI('Commercial cost trend', current=11.5, prior=11.0,
+               bull_threshold=10.5, bear_threshold=12.5)
+    assert k.higher_is_better is False
+    assert k.status() == 'slipping'
+
+
+def test_reaching_a_threshold_still_beats_direction():
+    """On- and off-thesis are decided at the boundary, not by momentum."""
+    arrived = ir.KPI('X', current=8.5, prior=7.0, bull_threshold=8.0, bear_threshold=6.0)
+    broken = ir.KPI('X', current=5.5, prior=7.0, bull_threshold=8.0, bear_threshold=6.0)
+    assert arrived.status() == 'on-thesis'
+    assert broken.status() == 'off-thesis'
+
+
+def test_a_source_is_named_without_naming_its_author():
+    """Scrubbing a broker filename left "one sell-side model Global Research"."""
+    out = ir.describe_source(
+        '20260717 - Bernstein Global Research - UNH - Fischbeck Focus - 11 pages.pdf')
+    assert out == '2026-07-17 · 11 pages', out
+    for firm in ('Bernstein', 'Research', 'UNH', 'sell-side'):
+        assert firm not in out
+    assert ir.describe_source('notes.pdf') == 'a source document'
+    assert ir.describe_source('') == 'a source document'
+
+
+def test_the_coverage_note_is_not_run_through_the_scrubber():
+    """It is built from filenames; scrubbing them produces mangled paths."""
+    s = ir.ReviewState(ticker='X',
+                       coverage_note='The rest did not fit: 2026-07-17 · 11 pages.')
+    ir.scrub_state(s)
+    assert s.coverage_note == 'The rest did not fit: 2026-07-17 · 11 pages.'
+
+
+def test_a_prose_column_cannot_starve_the_others():
+    """"Weighted" landed in 10.1% and printed over the 100% beside it."""
+    import re as _re
+    html = ir._table(
+        ['Scenario', 'Prob', 'Target', 'vs price', 'Assumptions'],
+        [['Bear', '25%', '$292.50', '-26.3%',
+          'Payment-year-2028 Star Ratings deteriorate, removing a chunk of the '
+          '2028 MA revenue base as commercial trend runs above twelve percent.'],
+         ['<b>Weighted</b>', '100%', '<b>$422.48</b>', '<b>6.4%</b>',
+          'probability-weighted']],
+        [12, 8, 13, 12, 55])
+    w = [float(x) for x in _re.findall(r'width="([\d.]+)%"', html)[:5]]
+    assert abs(sum(w) - 100) < 1.0
+    assert max(w) <= 55.0, f'one column took {max(w):.1f}%'
+    assert w[0] >= 12.0, f'the "Weighted" column got only {w[0]:.1f}%'
+
+
+def test_thresholds_are_specified_as_decision_boundaries():
+    p = ir.extract_prompt('UNH', 'UnitedHealth', 'managed care', 'review', 'PRICE: $397')
+    flat = ' '.join(p.split())
+    assert 'DECISION BOUNDARIES, not targets' in flat
+    assert 'not the bull-case and bear-case values from your scenarios' in flat
