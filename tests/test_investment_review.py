@@ -614,3 +614,100 @@ def test_retries_are_attributable():
     assert summary['retryCost'] > 0, 'retry spend is not separable'
     with app_v3.get_db(commit=True) as (_c, cur):
         cur.execute("DELETE FROM llm_usage WHERE feature LIKE 'test:%'")
+
+
+# --- budget caps -----------------------------------------------------------
+
+@pytest.fixture
+def clean_budget():
+    with app_v3.get_db(commit=True) as (_c, cur):
+        cur.execute("DELETE FROM llm_usage")
+        cur.execute("DELETE FROM app_settings WHERE key = %s", (app_v3.BUDGET_KEY,))
+    yield
+    with app_v3.get_db(commit=True) as (_c, cur):
+        cur.execute("DELETE FROM llm_usage")
+        cur.execute("DELETE FROM app_settings WHERE key = %s", (app_v3.BUDGET_KEY,))
+
+
+def _spend(dollars):
+    """Put a known amount of spend on the books."""
+    app_v3.record_llm_usage('test:spend', {
+        'model': 'claude-opus-4-6', 'provider': 'anthropic',
+        'usage': {'input_tokens': int(dollars / 15.0 * 1e6), 'output_tokens': 0}})
+
+
+def test_no_cap_by_default(clean_budget):
+    """Nothing changes for anyone who has not set one."""
+    st = app_v3.budget_status()
+    assert st['capped'] is False and st['remaining'] is None
+    assert app_v3.budget_blocks('note') is None
+
+
+def test_a_job_is_turned_away_before_it_starts(clean_budget):
+    """Admission, not mid-flight. Stopping halfway bins what was already spent."""
+    app_v3.set_monthly_budget(10.0)
+    _spend(9.50)
+    msg = app_v3.budget_blocks('note')          # a note is estimated at $8
+    assert msg is not None
+    assert '$8.00' in msg and '$10.00' in msg, msg
+    assert 'Settings' in msg, 'the message must say how to lift it'
+
+
+def test_a_job_that_fits_is_allowed(clean_budget):
+    app_v3.set_monthly_budget(100.0)
+    _spend(20.0)
+    assert app_v3.budget_blocks('note') is None
+    assert app_v3.budget_blocks('review') is None
+
+
+def test_the_message_says_what_happened_not_just_that_it_failed(clean_budget):
+    app_v3.set_monthly_budget(5.0)
+    _spend(6.0)
+    msg = app_v3.budget_blocks('review')
+    assert 'budget reached' in msg.lower()
+    assert '$6.00' in msg and '$5.00' in msg, msg
+
+
+def test_the_cap_never_downgrades_the_model(clean_budget):
+    """A quietly worse note is harder to catch than one that did not run.
+
+    The cap has exactly two outcomes: the job runs as asked, or it does not run.
+    Nothing in the budget path may touch model selection.
+    """
+    import inspect
+    src = inspect.getsource(app_v3.budget_blocks) + inspect.getsource(app_v3.budget_status)
+    for forbidden in ('model', 'haiku', 'sonnet', 'PICKER', 'resolve_picker'):
+        assert forbidden not in src, f'the budget path references {forbidden!r}'
+
+
+def test_spend_is_measured_from_the_first_of_the_month(clean_budget):
+    """Matching how the bill actually works, not a rolling 30 days."""
+    import inspect
+    assert "date_trunc('month'" in inspect.getsource(app_v3.month_to_date_spend)
+
+
+def test_the_endpoint_reads_and_sets_the_cap(clean_budget):
+    c = app_v3.app.test_client()
+    assert c.get('/api/usage/budget').get_json()['capped'] is False
+    r = c.post('/api/usage/budget', json={'cap': 150})
+    assert r.get_json()['cap'] == 150.0
+    assert app_v3.app.test_client().get('/api/usage').get_json()['budget']['cap'] == 150.0
+    # 0 clears it
+    assert c.post('/api/usage/budget', json={'cap': 0}).get_json()['capped'] is False
+
+
+def test_a_bad_cap_value_is_refused_not_coerced(clean_budget):
+    r = app_v3.app.test_client().post('/api/usage/budget', json={'cap': 'lots'})
+    assert r.status_code == 400
+
+
+def test_the_route_returns_402_so_the_ui_can_tell_this_apart(clean_budget):
+    """Payment Required, not a generic 500 -- the UI shows a different message."""
+    app_v3.set_monthly_budget(1.0)
+    _spend(2.0)
+    r = app_v3.app.test_client().post('/api/notes/generate',
+                                      json={'ticker': 'BUD', 'apiKey': 'k'})
+    assert r.status_code == 402
+    body = r.get_json()
+    assert body.get('budgetExceeded') is True
+    assert 'budget' in body['error'].lower()

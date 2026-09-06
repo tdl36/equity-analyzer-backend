@@ -12826,6 +12826,90 @@ def llm_cost_usd(model, input_tokens, output_tokens):
     return round((input_tokens or 0) / 1e6 * pin + (output_tokens or 0) / 1e6 * pout, 4)
 
 
+# A monthly ceiling on API spend.
+#
+# Two rules shape this. A cap pauses and says so -- it never silently swaps in a
+# cheaper model, because a note that is quietly worse is harder to catch than one
+# that did not run. And it is checked when a job is admitted, not on every call:
+# stopping halfway through a multi-batch note bins the money already spent and
+# leaves nothing to show for it.
+BUDGET_KEY = 'llm_monthly_budget_usd'
+BUDGET_DEFAULT = 0.0          # 0 = no cap, which is where this starts
+
+# What a run typically costs, for the admission check. Deliberately generous:
+# turning away a job that would have fitted is a worse failure than letting one
+# marginally overshoot.
+JOB_COST_ESTIMATE = {
+    'note': 8.00,
+    'review': 3.00,
+    'thesis': 5.00,
+}
+
+
+def get_monthly_budget():
+    """The cap in dollars, or 0 for uncapped."""
+    try:
+        with get_db() as (_c, cur):
+            cur.execute('SELECT value FROM app_settings WHERE key = %s', (BUDGET_KEY,))
+            row = cur.fetchone()
+        return float((row or {}).get('value') or BUDGET_DEFAULT)
+    except Exception:
+        return BUDGET_DEFAULT
+
+
+def set_monthly_budget(amount):
+    with get_db(commit=True) as (_c, cur):
+        cur.execute("""INSERT INTO app_settings (key, value, updated_at)
+                       VALUES (%s, %s, CURRENT_TIMESTAMP)
+                       ON CONFLICT (key) DO UPDATE
+                       SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP""",
+                    (BUDGET_KEY, str(float(amount))))
+
+
+def month_to_date_spend():
+    """Spend since the first of the calendar month, matching how billing works."""
+    try:
+        with get_db() as (_c, cur):
+            cur.execute("""SELECT COALESCE(SUM(cost_usd), 0) AS c FROM llm_usage
+                           WHERE created_at >= date_trunc('month', NOW())""")
+            return float((cur.fetchone() or {}).get('c') or 0.0)
+    except Exception:
+        return 0.0
+
+
+def budget_status():
+    cap = get_monthly_budget()
+    spent = month_to_date_spend()
+    return {
+        'cap': cap,
+        'spent': round(spent, 2),
+        'remaining': round(cap - spent, 2) if cap else None,
+        'capped': bool(cap),
+        'exceeded': bool(cap) and spent >= cap,
+        'pctUsed': round(spent / cap * 100, 1) if cap else None,
+    }
+
+
+def budget_blocks(job_kind):
+    """Should this job be turned away? Returns a message, or None to proceed.
+
+    The message is the whole point: a job that does not run must say why, what
+    the cap is, and how to lift it. Silence here reads as a bug.
+    """
+    st = budget_status()
+    if not st['capped']:
+        return None
+    estimate = JOB_COST_ESTIMATE.get(job_kind, 3.00)
+    if st['spent'] >= st['cap']:
+        return (f"Monthly API budget reached: ${st['spent']:.2f} of ${st['cap']:.2f} "
+                f"spent since the 1st. Raise or clear the cap in Settings to continue.")
+    if st['spent'] + estimate > st['cap']:
+        return (f"This run is estimated at ${estimate:.2f} and only "
+                f"${st['remaining']:.2f} of the ${st['cap']:.2f} monthly budget is left. "
+                f"Raise the cap in Settings, or wait for the month to roll over.")
+    return None
+
+
 def record_llm_usage(feature, result, ticker='', attempt=1, detail=None):
     """Write one call to the ledger. Never raises -- billing visibility must
     not be able to fail the work it is measuring."""
@@ -14008,6 +14092,19 @@ def _run_investment_review(job_id, ticker, api_key, mode='review', model_key=Non
         _review_jobs[job_id] = {'status': 'failed', 'ticker': ticker, 'error': str(e)}
 
 
+@app.route('/api/usage/budget', methods=['GET', 'POST'])
+def llm_budget():
+    """Read or set the monthly API ceiling. 0 clears it."""
+    if request.method == 'POST':
+        data = request.get_json() or {}
+        try:
+            amount = max(0.0, float(data.get('cap') or 0))
+        except (TypeError, ValueError):
+            return jsonify({'error': 'cap must be a number'}), 400
+        set_monthly_budget(amount)
+    return jsonify(budget_status())
+
+
 @app.route('/api/usage', methods=['GET'])
 def llm_usage_summary():
     """What has been spent, by feature and by day.
@@ -14016,7 +14113,7 @@ def llm_usage_summary():
     the way the spending actually happened.
     """
     days = max(1, min(90, int(request.args.get('days', 30) or 30)))
-    out = {'days': days}
+    out = {'days': days, 'budget': budget_status()}
     try:
         with get_db() as (_c, cur):
             cur.execute("""SELECT COALESCE(SUM(cost_usd),0) AS total,
@@ -14085,6 +14182,10 @@ def review_generate():
     mode = (data.get('mode') or 'review').lower()
     if mode not in investment_review.MODES:
         mode = 'review'
+    blocked = budget_blocks('review')
+    if blocked:
+        return jsonify({'error': blocked, 'budgetExceeded': True}), 402
+
     job_id = str(uuid.uuid4())
     _review_jobs[job_id] = {'status': 'queued', 'ticker': ticker}
     threading.Thread(target=_run_investment_review,
@@ -16929,6 +17030,10 @@ def generate_research_note():
         cur.execute('SELECT COUNT(*) AS n FROM document_files WHERE ticker = %s', (ticker,))
         row = cur.fetchone()
         docs_here = (row or {}).get('n', 0) or 0
+
+    blocked = budget_blocks('note')
+    if blocked:
+        return jsonify({'error': blocked, 'budgetExceeded': True}), 402
 
     job_id = str(uuid.uuid4())
     detail = {'mode': mode, 'fileSelection': file_selection, 'reprocess': reprocess,

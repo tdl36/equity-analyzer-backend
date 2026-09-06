@@ -81,7 +81,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-09-05T03';
+        const BUILD_VERSION = '2026-09-06T01';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -2417,6 +2417,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
             // separately on the subscription and are not visible here.
             const [usageData, setUsageData] = useState(null);
             const [usageDays, setUsageDays] = useState(30);
+            const [budgetInput, setBudgetInput] = useState('');
             const [usageLoading, setUsageLoading] = useState(false);
             const [noteStances, setNoteStances] = useState([]);
             const [noteStance, setNoteStance] = usePersistedModel('charlie.noteStance', 'balanced');
@@ -8007,6 +8008,20 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 finally { setUsageLoading(false); }
             };
 
+            const saveBudget = async () => {
+                const cap = parseFloat(budgetInput);
+                if (isNaN(cap) || cap < 0) return;
+                try {
+                    await fetch(`${API_URL}/api/usage/budget`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ cap }),
+                    });
+                    setBudgetInput('');
+                    loadUsage();
+                } catch (e) { console.warn('budget save failed', e); }
+            };
+
             const loadReviewList = async () => {
                 try {
                     const r = await fetch(`${API_URL}/api/review/list`);
@@ -8159,7 +8174,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         fetchPipelineJobs();
                     } else {
                         const err = await res.json().catch(() => ({}));
-                        alert(`Note generation failed: ${err.error || 'Unknown error'}`);
+                        // 402 is the budget cap, not a failure. Say so plainly.
+                        alert(err.budgetExceeded
+                            ? err.error
+                            : `Note generation failed: ${err.error || 'Unknown error'}`);
                         setPipelineNoteGenerating(null);
                     }
                 } catch (e) {
@@ -31062,6 +31080,58 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     {(usageData.outputTokens / 1e6).toFixed(2)}M out
                                                 </span>
                                             </div>
+
+                                            {usageData.budget && (
+                                                <div className="mb-3 pb-3 border-b border-white/10">
+                                                    {usageData.budget.capped ? (<>
+                                                        <div className="flex items-center justify-between text-[11px] mb-1">
+                                                            <span className="text-slate-400">
+                                                                Monthly cap ${usageData.budget.cap.toFixed(0)}
+                                                            </span>
+                                                            <span className={usageData.budget.pctUsed >= 100 ? 'text-red-400'
+                                                                : usageData.budget.pctUsed >= 80 ? 'text-amber-400' : 'text-slate-400'}>
+                                                                ${usageData.budget.spent.toFixed(2)} used
+                                                                {usageData.budget.remaining >= 0
+                                                                    ? ` · $${usageData.budget.remaining.toFixed(2)} left`
+                                                                    : ' · over'}
+                                                            </span>
+                                                        </div>
+                                                        <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                                                            <div className={`h-full rounded-full ${
+                                                                usageData.budget.pctUsed >= 100 ? 'bg-red-500'
+                                                                : usageData.budget.pctUsed >= 80 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                                                                style={{ width: `${Math.min(100, usageData.budget.pctUsed || 0)}%` }} />
+                                                        </div>
+                                                        {usageData.budget.exceeded && (
+                                                            <p className="text-[10px] text-red-400 mt-1.5">
+                                                                New notes and reviews are paused until the cap is raised
+                                                                or the month rolls over. Nothing runs on a cheaper model instead.
+                                                            </p>
+                                                        )}
+                                                    </>) : (
+                                                        <p className="text-[11px] text-slate-500">No monthly cap set.</p>
+                                                    )}
+                                                    <div className="flex items-center gap-2 mt-2">
+                                                        <input type="number" min="0" step="10"
+                                                            value={budgetInput}
+                                                            onChange={e => setBudgetInput(e.target.value)}
+                                                            onKeyDown={e => { if (e.key === 'Enter') saveBudget(); }}
+                                                            placeholder={usageData.budget.capped
+                                                                ? String(usageData.budget.cap) : 'e.g. 100'}
+                                                            className="w-24 px-2 py-1 bg-white/10 border border-white/15 rounded text-xs focus:outline-none focus:border-emerald-500" />
+                                                        <button onClick={saveBudget}
+                                                            className="px-2 py-1 bg-white/10 hover:bg-white/20 text-slate-200 text-[11px] rounded transition-colors">
+                                                            Set cap
+                                                        </button>
+                                                        {usageData.budget.capped && (
+                                                            <button onClick={() => { setBudgetInput('0'); setTimeout(saveBudget, 0); }}
+                                                                className="text-[10px] text-slate-500 hover:text-slate-300">
+                                                                remove
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
 
                                             {usageData.retryCost > 0.005 && (
                                                 <div className="mb-3 px-2 py-1.5 rounded bg-amber-950/40 border border-amber-800/40">
