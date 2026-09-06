@@ -15,6 +15,7 @@ import earnings
 import finnhub_sync
 import briefings
 import theme_tracker
+import position_monitor
 
 
 def _kill_switch_on() -> bool:
@@ -64,6 +65,25 @@ def run_cost_watch_daily():
     if not _kill_switch_on():
         return
     cost_watch.check_cost_warning()
+
+
+def run_positions_nightly():
+    """Every position, against what its last review said.
+
+    The other twelve jobs pull information in; this one asks whether any of it
+    should change a position. Costs nothing to run -- every signal is computed
+    from stored state and a price quote, with no model involved -- so it can
+    sweep the whole book nightly.
+    """
+    if not _kill_switch_on():
+        return
+    try:
+        summary = position_monitor.run_position_monitor()
+        if summary.get('alerts'):
+            print(f"run_positions_nightly: {summary['alerts']} alert(s) across "
+                  f"{summary['checked']} position(s)")
+    except Exception as e:
+        print(f'run_positions_nightly error: {e}')
 
 
 def run_theme_scan():
@@ -173,6 +193,10 @@ def build_scheduler(use_memory_jobstore: bool = False) -> BackgroundScheduler:
     # Cross-stock theme tracker — hourly during US weekdays (10 UTC = 6 AM ET
     # through 23 UTC = 7 PM ET). 14 scans/day catches fresh cross-coverage
     # themes as they emerge in podcasts.
+    # After the feed poller and extract worker have settled, so the night's
+    # documents are in before positions are judged against them.
+    sched.add_job(run_positions_nightly, 'cron', hour=6, minute=15,
+                  id='positions_nightly', replace_existing=True)
     sched.add_job(run_theme_scan, 'cron', hour='10-23', minute=5, day_of_week='mon-fri',
                   id='theme_scan', replace_existing=True)
     return sched

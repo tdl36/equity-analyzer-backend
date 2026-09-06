@@ -14163,6 +14163,21 @@ def llm_usage_summary():
     return jsonify(out)
 
 
+@app.route('/api/positions/check', methods=['POST'])
+def positions_check():
+    """Run the position monitor now, instead of waiting for the nightly job.
+
+    `dryRun` reports what it would say without writing alerts or remembering
+    that it said it -- useful for seeing the current picture without consuming
+    the transitions.
+    """
+    import position_monitor
+    data = request.get_json(silent=True) or {}
+    tickers = data.get('tickers') or None
+    return jsonify(position_monitor.run_position_monitor(
+        tickers=tickers, dry_run=bool(data.get('dryRun'))))
+
+
 @app.route('/api/review/modes', methods=['GET'])
 def review_modes():
     return jsonify({'modes': [{'key': k, **v}
