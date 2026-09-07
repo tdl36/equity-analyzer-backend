@@ -27,3 +27,7 @@ Never use pytest in this repository: its global fixtures truncate the local data
 - For a saved recap: `.venv/bin/python scripts/evaluate-research-quality.py --pack ANNOTATED_PACK.json --candidate RECAP_RESULT.json`
 
 The mechanical evaluation checks annotated text patterns and source quotations. Passing is not proof of correct investment judgment or complete claim entailment. No paid production regeneration is part of automated QA.
+
+## Live verification
+
+Backend T14 and the cloud/agent endpoints returned successfully after deployment. An unchanged MDT manual transcript policy was submitted through the browser, acknowledged by the local collector, and reported as applied through the cloud bridge. Its manual frequency, seven-day lookback and transcript-only scope remained unchanged. No new collection or paid research run was launched for this check. Analyst selection and conversation controls were inspected in the browser; automated reply tests use a stub provider.

@@ -15,6 +15,7 @@ export function CollectionCloud({
   var [data, setData] = React.useState(null),
     [cfg, setCfg] = React.useState(blank),
     [error, setError] = React.useState(''),
+    [loadError, setLoadError] = React.useState(''),
     [message, setMessage] = React.useState(''),
     [busy, setBusy] = React.useState(false),
     [uncertain, setUncertain] = React.useState(false);
@@ -45,6 +46,7 @@ export function CollectionCloud({
       var value = await json();
       if (alive.current) {
         setData(value);
+        setLoadError('');
         if (pending.current && value.commands.some(c => c.id === pending.current.requestId)) {
           pending.current = null;
           setUncertain(false);
@@ -52,7 +54,7 @@ export function CollectionCloud({
         }
       }
     } catch (e) {
-      if (alive.current) setError(e.message);
+      if (alive.current) setLoadError(e.message);
     }
   };
   React.useEffect(() => {
@@ -110,17 +112,17 @@ export function CollectionCloud({
   var updated = data?.updatedAt ? new Date(data.updatedAt.replace(' ', 'T') + 'Z') : null;
   var stale = !updated || !Number.isFinite(updated.getTime()) || Date.now() - updated.getTime() > 180000;
   return /*#__PURE__*/React.createElement("section", {
-    className: "workspace-panel"
+    className: "workspace-panel collection-controls"
   }, /*#__PURE__*/React.createElement("p", {
     className: "workspace-eyebrow"
   }, "CLOUD CONTROLS / MAC COLLECTION"), /*#__PURE__*/React.createElement("h2", null, "Refresh your coverage from anywhere."), /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
   }, "Commands are stored in Charlie and picked up by your Mac agent. AlphaSense downloads still require this Mac awake, Codex running and Chrome signed in. The browser worker checks managed requests every 15 minutes."), /*#__PURE__*/React.createElement("p", {
     role: "status"
-  }, updated ? `Mac last reported ${updated.toLocaleString()}.` : 'No Mac collection report yet.', " ", stale ? 'No recent report; commands will wait for the Mac agent.' : 'Mac collection bridge is reporting.'), error && /*#__PURE__*/React.createElement("p", {
+  }, updated ? `Mac last reported ${updated.toLocaleString()}.` : 'No Mac collection report yet.', " ", stale ? 'No recent report; commands will wait for the Mac agent.' : 'Mac collection bridge is reporting.'), (error || loadError) && /*#__PURE__*/React.createElement("p", {
     role: "alert",
     className: "workspace-error"
-  }, error), message && /*#__PURE__*/React.createElement("p", {
+  }, error || loadError), message && /*#__PURE__*/React.createElement("p", {
     role: "status"
   }, message), /*#__PURE__*/React.createElement("fieldset", {
     className: "desk-form",
@@ -174,7 +176,7 @@ export function CollectionCloud({
       topic: e.target.value
     })
   })), /*#__PURE__*/React.createElement("div", {
-    className: "desk-filter"
+    className: "desk-filter collection-checks"
   }, [['transcript', 'Event transcripts'], ['broker-report', 'Broker reports']].map(([k, l]) => /*#__PURE__*/React.createElement("label", {
     key: k
   }, /*#__PURE__*/React.createElement("input", {

@@ -270,3 +270,5 @@
 .workspace-thesis-tools[open] summary svg { transform:rotate(180deg); }
 .workspace-thesis-actions { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:0 12px 12px;max-height:200px;overflow:auto; }
 .workspace-thesis-actions button { min-height:44px;justify-content:center;font-size:12px;white-space:normal; }
+
+.collection-checks label{display:flex;align-items:center;gap:8px;flex:0 1 auto}.collection-checks input[type=checkbox]{width:16px;height:16px;padding:0;accent-color:var(--accent)}@media(max-width:600px){.collection-controls .desk-filter>label{flex-basis:100%}.collection-controls input,.collection-controls textarea,.research-chat textarea{font-size:16px}}
