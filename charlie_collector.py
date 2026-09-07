@@ -66,6 +66,39 @@ def pdf_pages(data):
         raise ValueError("PDF validation failed; original remains untouched") from exc
 
 
+def document_key(url):
+    parsed = urlsplit(url)
+    query = dict(parse_qsl(parsed.query))
+    return query.get('docid') or (parsed.path.split('/doc-viewer/', 1)[1]
+                                if '/doc-viewer/' in parsed.path else None)
+
+
+def same_watermarked_export(left, right):
+    """Compare exports of one verified document, ignoring only download timestamps.
+
+    Never use this to infer identity: callers must first match AlphaSense doc IDs.
+    Blank/image-only PDFs and exports without a recognized watermark fail closed.
+    """
+    from PyPDF2 import PdfReader
+    def content(data):
+        reader = PdfReader(io.BytesIO(data), strict=True)
+        pages = []
+        stamps = 0
+        for page in reader.pages:
+            text = page.extract_text() or ''
+            text, count = re.subn(
+                r'([\w.+-]+@[\w.-]+ - [^\n]*? - )\d{2}/\d{2}/\d{4} \d{2}:\d{2} (?:AM|PM) UTC',
+                r'\1[download timestamp]', text)
+            stamps += count
+            pages.append(text)
+        return pages if stamps and all(len(p.strip()) > 100 for p in pages) else None
+    try:
+        a, b = content(left), content(right)
+        return a is not None and a == b
+    except Exception:
+        return False
+
+
 def originals(path):
     """Validate the whole download before returning any files; never extract paths."""
     path = Path(path)
@@ -224,6 +257,20 @@ class Collector:
                 digest = hashlib.sha256(data).hexdigest()
                 staged = self.state / "originals" / (digest + ".pdf")
                 publish(staged, data)
+                key = document_key(url)
+                if key:
+                    candidates = self.db.execute(
+                        "SELECT * FROM documents WHERE run=? AND ticker=? AND kind=?",
+                        (run, ticker, kind)).fetchall()
+                    previous = next((r for r in candidates if document_key(r['source_url']) == key), None)
+                    if previous and previous['sha256'] != digest:
+                        if usage == 'reference_only' or previous['usage'] == 'reference_only':
+                            raise ValueError('Changed restricted export requires manual review')
+                        if not same_watermarked_export(Path(previous['staged']).read_bytes(), data):
+                            raise ValueError('Existing document has different content; review the new export')
+                        self.event(run, 'alternate_export', document=previous['id'], sha256=digest,
+                                   source_url=url, reason='Same document ID and content; download timestamp differs')
+                        continue
                 self.db.execute("""INSERT OR IGNORE INTO documents
                     (id,run,ticker,kind,filename,sha256,pages,source_url,published,publisher,staged,created)
                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",

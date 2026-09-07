@@ -45,9 +45,30 @@ class CollectorTests(unittest.TestCase):
         first = self.collector.handoff(doc["id"])
         second = self.collector.handoff(doc["id"])
         self.assertEqual(first["destination"], second["destination"])
+        self.assertEqual(Path(first["destination"]).parent, self.stocks / "DE")
         self.assertEqual(Path(first["destination"]).read_bytes(), self.file.read_bytes())
         self.assertEqual(len(list(self.stocks.rglob("*.pdf"))), 1)
         self.collector.finish(self.run, "DE", "transcript", 1)
+
+    def test_verified_document_deduplicates_download_timestamps_but_not_revisions(self):
+        from reportlab.pdfgen.canvas import Canvas
+        def report(stamp, revision='original'):
+            stream = io.BytesIO(); canvas = Canvas(stream)
+            canvas.drawString(30, 750, ('Research contents ' * 12) + revision)
+            canvas.drawString(30, 700, 'reader@example.com - Research Team - ' + stamp)
+            canvas.save(); return stream.getvalue()
+        url = 'https://research.alpha-sense.com/company/TK1/summary?docid=ASR-example'
+        self.file.write_bytes(report('07/09/2026 01:09 AM UTC'))
+        self.collector.stage(self.run, 'DE', 'broker-report', self.file, url)
+        self.file.write_bytes(report('07/09/2026 01:36 AM UTC'))
+        self.collector.stage(self.run, 'DE', 'broker-report', self.file, url)
+        self.assertEqual(len(self.collector.status(self.run)['documents']), 1)
+        self.file.write_bytes(report('07/09/2026 01:36 AM UTC', 'revised'))
+        with self.assertRaises(ValueError):
+            self.collector.stage(self.run, 'DE', 'broker-report', self.file, url)
+        other = url.replace('ASR-example', 'ASR-other')
+        self.collector.stage(self.run, 'DE', 'broker-report', self.file, other)
+        self.assertEqual(len(self.collector.status(self.run)['documents']), 2)
 
     def test_existing_library_duplicate(self):
         old = self.stocks / "DE" / "existing.pdf"

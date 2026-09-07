@@ -3,7 +3,7 @@
 Charlie now has a local collection ledger, PDF/ZIP validation, duplicate detection,
 an atomic iCloud handoff, and optional Telegram notifications. Browser collection
 is currently supervised through Codex computer use. This is **not yet an unattended
-browser worker**. No scheduler, AlphaSense API integration, WhatsApp integration,
+browser worker**. No permanent collection schedule, AlphaSense API integration, WhatsApp integration,
 or automatic thesis edits are enabled.
 
 ## Authentication
@@ -69,8 +69,9 @@ content. The expected count is the number of unique originals, not search hits
 when a search contains duplicate versions.
 
 After reviewing an actual empty search, use `finish ... --expected 0`. Do not use
-this merely because downloads failed. A task cannot finish with unhanded staged
-files or a count mismatch. A single local operation lock prevents overlapping
+this merely because downloads failed. A task cannot finish with unhanded eligible staged
+files or a count mismatch. Explicit reference-only exceptions are reported as
+`complete_with_exceptions`, never hidden as successful AI handoffs. A single local operation lock prevents overlapping
 ledger mutations; browser navigation remains one supervised worker.
 
 ## Notifications
@@ -94,15 +95,54 @@ Run `.venv/bin/python tests/unit/test_charlie_collector.py` directly. It uses
 temporary folders and an isolated SQLite ledger; it does not touch Charlie's
 PostgreSQL database, iCloud data, or Telegram.
 
-The first live pilot must still validate login/session persistence, AlphaSense
-company/type/date filters, pagination, original-download behavior, iCloud
-availability, and backend source visibility. Then add a durable browser worker
-with explicit authentication checkpoints and bounded retries, followed by the
-Charlie collection-status UI and a schedule. Record inaccessible documents and
-per-document metadata from actual results before enabling unattended collection.
+The September 6 live pilot verified company/type/date filters, virtualized results,
+original ZIP exports, iCloud handoff, and production manifest visibility. All six
+search tasks are reconciled: DE45 broker reports +1 transcript; ABT34 reports +0
+transcripts; AMT8 reports +1 transcript. Of89 originals,59 eligible originals are
+in the ticker roots and30 AI-restricted originals are held in private staging.
+Production manifests confirmed DE29, ABT24, AMT6 on September7 at01:56UTC.
+Authentication persistence across future session expiry remains unverified. A
+finite overnight Codex follow-up is enabled; no permanent collection schedule
+or independent browser daemon is enabled.
 Do not promise full automation based only on passing local ingestion tests.
 
 Known pilot limits: 12 tickers per run, 100 MB per PDF, 500 MB/500 entries per ZIP;
 PDF originals only. Hashing existing iCloud originals can require their local
 materialization. State and provenance are local to this Mac, and are not a cloud
 backup or a multi-machine queue. No cross-run date watermark advances automatically.
+
+## Live operator workflow and safeguards
+
+Use the already authenticated native Google Chrome through CUA. Re-read the
+accessibility tree before targeting controls. Confirm the ticker company, Broker
+Research or Event Transcripts source, and fixed date interval. Company changes
+reset filters. Review the Results list, not unrelated summary-page widgets.
+AlphaSense limits ZIP exports to20 selected documents: split larger searches
+into batches and reconcile every row. A report's filename date can be one day
+ahead of the UI date; retain the observed publication date. Multi-company reports
+may have a different primary ticker in the filename; the verified company filter
+is the mapping evidence. Never infer missing metadata from a filename alone.
+
+Use `observe RUN --ticker TICKER --kind KIND --url URL --count N --note NOTE`
+to retain the search evidence. Stage each original with verified publisher/date
+and `--usage reference_only` whenever AlphaSense flags GenAI limitations. These
+originals remain outside STOCKS/CATALYSTS, since the existing agents ingest those
+folders. The monitor distinguishes these exceptions.
+
+For a known document permalink, alternate exports with identical content except
+for a recognized download-watermark timestamp are recorded against the original
+ledger entry. Both downloaded artifacts remain in staging. A same-ID content
+change stops for review. Search URLs alone do not prove document identity; retain
+per-document IDs where available and reconcile uncertain duplicates manually.
+
+## Monitor service
+
+`http://127.0.0.1:8766/` is read-only and local to this Mac. It is linked from
+Charlie's local research desk and does not expose the ledger to the internet.
+Run `.venv/bin/python scripts/install-collector-monitor.py` to install the
+`com.charlie.collector-monitor` user LaunchAgent. It restarts the monitor at login
+and after exit; it does not restart or replace the production file agent.
+
+General company sources go directly in `STOCKS/<ticker>/`. Use the existing
+`CATALYSTS/<ticker>/<topic>/` workflow only for a deliberately assigned catalyst
+topic; placing generic reports there could trigger an unrelated synthesis.

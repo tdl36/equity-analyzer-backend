@@ -84,7 +84,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-09-06T02';
+        const BUILD_VERSION = '2026-09-06T03';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -15537,9 +15537,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             </div>
                         </div>
 
-                        {/* MOBILE ACTION BAR - compact icon row on mobile only */}
+                        {/* Mobile thesis actions: readable touch targets in a disclosure. */}
                         {analysis && (
-                            <div className="sm:hidden border-b border-white/[0.08] bg-white/[0.03] px-3 py-2 flex gap-1.5 overflow-x-auto">
+                            <details className="workspace-thesis-tools sm:hidden">
+                                <summary>Thesis actions <ChevronDown className="w-4 h-4" /></summary>
+                                <div className="workspace-thesis-actions">
                                 {!showDocumentManager && (
                                     <button onClick={() => setShowDocumentManager(true)} className="flex items-center gap-1 px-2 py-1.5 bg-amber-500/80 rounded-lg text-[10px] font-medium flex-shrink-0" title="Add Docs">
                                         <Plus className="w-3.5 h-3.5" /><span>Add</span>
@@ -15578,6 +15580,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     Ask AI
                                 </button>
                             </div>
+                            </details>
                         )}
 
                         {/* MOBILE STOCK SWITCHER BAR - Always visible on mobile */}
