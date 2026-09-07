@@ -107,7 +107,7 @@ def create_blueprint(get_db, call_model, get_key):
             cur.execute("UPDATE mp_jobs SET status=%s, result=%s::jsonb, error=%s, updated_at=NOW() WHERE id=%s AND stage=%s AND status IN ('queued','running')",
                         (status,json.dumps(result or {}),error,job_id,STAGE))
 
-    def run(job_id, ticker, baseline, filenames, key):
+    def run(job_id, ticker, baseline, filenames, key, instructions=""):
         with _WORKERS:
             try:
                 with get_db(commit=True) as (_, cur):
@@ -131,7 +131,7 @@ def create_blueprint(get_db, call_model, get_key):
                         '"after":"complete replacement text for that field","reason":"what changed and investment implication",'
                         '"source_id":"catalog id","source_excerpt":"exact contiguous supporting quotation, at least 30 characters"}]}. '
                         'At most 20 changes; return an empty list when no material changes are supported. No additions/removals of pillars in this release.\n'
-                        'EDITABLE FIELDS:\n'+json.dumps(editable_fields(baseline))+'\nSOURCE DOCUMENTS:\n'+json.dumps(sources))
+                        'ANALYST REVISION INSTRUCTIONS:\n'+instructions+'\nEDITABLE FIELDS:\n'+json.dumps(editable_fields(baseline))+'\nSOURCE DOCUMENTS:\n'+json.dumps(sources))
                 raw=call_model(prompt,key,12000)
                 changes=validate_changes(raw,baseline,sources)
                 qc={}
@@ -164,6 +164,8 @@ def create_blueprint(get_db, call_model, get_key):
     def submit(tk, data):
         if not isinstance(data,dict): return jsonify(error='Request body must be an object'),400
         names=data.get('filenames'); job_id=data.get('requestId')
+        instructions=data.get('instructions') or ''
+        if not isinstance(instructions,str) or len(instructions)>6000: return jsonify(error='Instructions must be at most 6,000 characters'),400
         try:
             uuid.UUID(job_id)
             if not isinstance(names,list) or not 1<=len(names)<=10 or any(not isinstance(n,str) or not n or len(n)>255 for n in names) or len(set(names))!=len(names): raise ValueError()
@@ -174,7 +176,7 @@ def create_blueprint(get_db, call_model, get_key):
             cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',('amendment:'+tk,))
             cur.execute('SELECT id,ticker,input,stage FROM mp_jobs WHERE id=%s',(job_id,)); existing=cur.fetchone()
             if existing:
-                if existing.get('stage')!=STAGE or existing['ticker']!=tk or obj(existing['input']).get('filenames')!=names: return jsonify(error='Request ID already used for different inputs.'),409
+                if existing.get('stage')!=STAGE or existing['ticker']!=tk or (obj(existing['input']).get('filenames')!=names or obj(existing['input']).get('instructions','')!=instructions): return jsonify(error='Request ID already used for different inputs.'),409
                 return jsonify(jobId=job_id),200
             cur.execute("SELECT id FROM mp_jobs WHERE ticker=%s AND stage=%s AND status IN ('queued','running','awaiting_approval') LIMIT 1",(tk,STAGE))
             if cur.fetchone(): return jsonify(error='Review or dismiss the existing proposal before starting another.'),409
@@ -183,8 +185,8 @@ def create_blueprint(get_db, call_model, get_key):
             if not editable_fields(baseline): return jsonify(error='A saved thesis with editable text is required.'),400
             cur.execute('SELECT filename FROM document_files WHERE ticker=%s AND filename=ANY(%s)',(tk,names))
             if len(cur.fetchall() or [])!=len(names): return jsonify(error='A selected document is not stored in Charlie. Import it first.'),400
-            cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input) VALUES(%s,%s,%s,'queued',%s::jsonb)",(job_id,STAGE,tk,json.dumps({'baseline':baseline,'filenames':names})))
-        threading.Thread(target=run,args=(job_id,tk,baseline,names,key),daemon=True).start()
+            cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input) VALUES(%s,%s,%s,'queued',%s::jsonb)",(job_id,STAGE,tk,json.dumps({'baseline':baseline,'filenames':names,'instructions':instructions})))
+        threading.Thread(target=run,args=(job_id,tk,baseline,names,key,instructions),daemon=True).start()
         return jsonify(jobId=job_id),202
 
     @bp.route('/api/research/amendment/<job_id>/decide',methods=['POST'])
@@ -194,6 +196,16 @@ def create_blueprint(get_db, call_model, get_key):
         with get_db(commit=True) as (_,cur):
             cur.execute('SELECT * FROM mp_jobs WHERE id=%s AND stage=%s FOR UPDATE',(job_id,STAGE));job=cur.fetchone()
             if not job: return jsonify(error='Proposal not found'),404
+            if data.get('action')=='revert':
+                if job['status']=='reverted': return jsonify(status='reverted'),200
+                if job['status']!='applied': return jsonify(error='Only an applied proposal can be restored'),409
+                result=obj(job.get('result'));baseline=obj(job.get('input')).get('baseline')
+                cur.execute('SELECT analysis FROM portfolio_analyses WHERE ticker=%s FOR UPDATE',(job['ticker'],));row=cur.fetchone()
+                if not row or not isinstance(baseline,dict) or obj(row['analysis'])!=result.get('appliedSnapshot'):
+                    return jsonify(error='The thesis changed after this proposal. Review a new comparison instead of overwriting later edits.'),409
+                cur.execute('UPDATE portfolio_analyses SET analysis=%s::jsonb,updated_at=NOW() WHERE ticker=%s',(json.dumps(baseline),job['ticker']))
+                cur.execute("UPDATE mp_jobs SET status='reverted',updated_at=NOW() WHERE id=%s",(job_id,))
+                return jsonify(status='reverted')
             if data.get('action')=='dismiss':
                 if job['status']=='applied': return jsonify(error='This proposal was already applied.'),409
                 cur.execute("UPDATE mp_jobs SET status='dismissed',updated_at=NOW() WHERE id=%s",(job_id,))

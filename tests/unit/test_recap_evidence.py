@@ -31,3 +31,13 @@ class RecapEvidenceTests(unittest.TestCase):
         env={};exec(compile(ast.Module(body=[fn],type_ignores=[]),'charlie_local_agent.py','exec'),env)
         blocks=env['_build_content_blocks']([{'type':'text','name':'long.txt','content':'a'*9000+'FINAL SOURCE PASSAGE'}],'Task')
         self.assertIn('FINAL SOURCE PASSAGE',blocks[0]['text'])
+
+    def test_text_model_partition_preserves_every_source_character(self):
+        from recap_evidence import text_batches
+        source='First source. '*20000+'FINAL SENTENCE'
+        parts=[{'type':'text','name':'large.txt','content':source}]
+        batches=text_batches(parts)
+        recovered=''.join(p['content'] for batch in batches for p in batch)
+        self.assertIn(source,recovered)
+        self.assertGreater(len(batches),1)
+        for batch in batches:self.assertLess(len(text_prompt(batch,'')),120000)

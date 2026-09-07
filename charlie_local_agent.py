@@ -3388,10 +3388,12 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
         if total_batches > 1:
             log.info(f"Sources exceed context limit (~{est_tokens:,} est tokens). Splitting into {total_batches} batches.")
 
-        from recap_evidence import snapshot as recap_snapshot, text_prompt, IMPACT_INSTRUCTION
+        from recap_evidence import snapshot as recap_snapshot, text_prompt, text_batches, IMPACT_INSTRUCTION
         evidence_snapshot = recap_snapshot(source_parts, recap_provider)
         # Validate every text-only batch before starting any paid synthesis pass.
         if recap_provider != 'anthropic':
+            batches = text_batches(source_parts)
+            total_batches = len(batches)
             for batch in batches:
                 text_prompt(batch, '')
 
@@ -3576,7 +3578,19 @@ Write the complete, updated synthesis report now. ZERO firm names, ALL first per
         # Generate source provenance
         update_job_progress(job_id, "running", "Analyzing source contributions...", 80)
         source_names = [sp['name'] for sp in source_parts]
-        provenance = _generate_source_provenance_local(client, source_names, markdown, ticker, topic)
+        from recap_validation import audit as audit_recap
+        try:
+            def audit_call(prompt, tokens):
+                with client.messages.stream(model="claude-haiku-4-5-20251001", max_tokens=tokens,
+                    messages=[{"role":"user", "content":prompt}]) as stream:
+                    response = stream.get_final_message()
+                return ''.join(b.text for b in response.content if getattr(b, 'type', '') == 'text')
+            claim_review = audit_recap(source_parts, markdown, thesis_block, audit_call)
+        except Exception as exc:
+            log.warning(f"Recap evidence review unavailable: {type(exc).__name__}")
+            claim_review = {'version':1,'status':'unavailable','claims':[], 'changes':[],
+                'limitations':['Evidence review could not complete; draft retained for analyst review.']}
+        provenance = 'See the source-passage review. Input delivery alone does not prove source usage.'
 
         update_job_progress(job_id, "running", "Uploading results...", 90)
 
@@ -3589,6 +3603,7 @@ Write the complete, updated synthesis report now. ZERO firm names, ALL first per
             'sourceFiles': source_names,
             'sourceProvenance': provenance,
             'evidenceSnapshot': evidence_snapshot,
+            'claimReview': claim_review,
         }
 
         outbox_path = catalyst_delivery.save_result(job_id, result_data)

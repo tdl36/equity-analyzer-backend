@@ -53,7 +53,7 @@ export function ResearchDesk({api,analyses,onCompany,onNavigate,renderHtml,rende
     {message&&<p className="workspace-notice" role="status">{message}</p>}
     {section==='overview'&&['127.0.0.1','localhost'].includes(window.location.hostname)&&<section className="workspace-panel"><div className="workspace-section-heading"><div><p className="workspace-eyebrow">SOURCE OPERATIONS</p><h2>AlphaSense collection</h2></div><a className="workspace-link-row" href="http://127.0.0.1:8766/" target="_blank" rel="noopener noreferrer">Open collection monitor ↗</a></div><p className="desk-explainer">Manage ticker refresh schedules, verified originals, iCloud handoffs, and source restrictions. The monitor runs on this Mac.</p></section>}
     {loading?<p className="workspace-empty" role="status">Loading research activity…</p>:<>
-    {section==='earnings'&&<EarningsWorkspace activities={[...data.activities,...data.failed]} onNavigate={onNavigate} onCompany={onCompany} renderHtml={renderRecapHtml||renderHtml}/>}
+    {section==='earnings'&&<EarningsWorkspace api={api} onRefresh={refresh} activities={[...data.activities,...data.failed]} onNavigate={onNavigate} onCompany={onCompany} renderHtml={renderRecapHtml||renderHtml}/>}
     {section==='evidence'&&<EvidenceWorkspace api={api} analyses={analyses} onCompany={onCompany}/>}
     {section==='overview'&&<>
       <div className="desk-metrics">{[[counts.active,'Active in latest 100 runs','runs'],[pending.length,'Awaiting your review','inbox'],[queue.length,`Theses ${days}+ days old or undated`,'queue'],[data.analysts.length,'Sector analysts','playbooks']].map(([n,label,id])=><button key={label} onClick={()=>setSection(id)}><strong>{n}</strong><span>{label}</span><small>Open →</small></button>)}</div>

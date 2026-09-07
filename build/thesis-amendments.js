@@ -11,6 +11,7 @@ export function ThesisAmendments({
   context,
   onApplied
 }) {
+  var [instructions, setInstructions] = useState('');
   var [jobs, setJobs] = useState([]),
     [selected, setSelected] = useState([]),
     [accepted, setAccepted] = useState([]);
@@ -96,7 +97,7 @@ export function ThesisAmendments({
       });
       if (alive.current) {
         await refresh();
-        if (d.status === 'applied') onApplied();
+        if (['applied', 'reverted'].includes(d.status)) onApplied();
       }
     } catch (e) {
       if (alive.current) {
@@ -117,7 +118,8 @@ export function ThesisAmendments({
     return mutate(`/api/research/amendments/${encodeURIComponent(ticker)}`, {
       filenames: selected,
       requestId: requestId.current,
-      apiKey: key
+      apiKey: key,
+      instructions
     });
   };
   var active = job && ['queued', 'running', 'awaiting_approval'].includes(job.status);
@@ -165,7 +167,18 @@ export function ThesisAmendments({
     }
   }), /*#__PURE__*/React.createElement("span", null, d.filename, isNew(d) && /*#__PURE__*/React.createElement("small", null, "Added after thesis update"))))), /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
-  }, "Uses your configured research model and API credits. Up to 10 saved documents per comparison; scanned or oversized sources may need preparation first."), /*#__PURE__*/React.createElement("button", {
+  }, "Uses your configured research model and API credits. Up to 10 saved documents per comparison; scanned or oversized sources may need preparation first."), /*#__PURE__*/React.createElement("label", {
+    className: "earnings-search"
+  }, "Instructions for the thesis analyst", /*#__PURE__*/React.createElement("textarea", {
+    rows: 3,
+    maxLength: 6000,
+    value: instructions,
+    onChange: e => {
+      setInstructions(e.target.value);
+      requestId.current = null;
+    },
+    placeholder: "Correct the guidance period, challenge a pillar, or update a specific conclusion\u2026"
+  })), /*#__PURE__*/React.createElement("button", {
     className: "workspace-primary",
     disabled: busy || !selected.length,
     onClick: launch
@@ -185,7 +198,13 @@ export function ThesisAmendments({
     className: "desk-explainer"
   }, c.passageMatched ? 'Source quotation matched.' : 'Blocked: source quotation did not match.', " ", c.reviewPassed ? 'Independent check passed; analyst judgment required.' : 'Blocked: independent review needs revision.', " ", c.reviewIssue), c.evidence.map((e, i) => /*#__PURE__*/React.createElement("details", {
     key: i
-  }, /*#__PURE__*/React.createElement("summary", null, "Inspect supporting quotation"), /*#__PURE__*/React.createElement("strong", null, job.result.sources?.find(s => s.id === e.sourceId)?.filename || 'Unknown source'), /*#__PURE__*/React.createElement("blockquote", null, e.excerpt))))), changes.length > 0 && job.status === 'awaiting_approval' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("summary", null, "Inspect supporting quotation"), /*#__PURE__*/React.createElement("strong", null, job.result.sources?.find(s => s.id === e.sourceId)?.filename || 'Unknown source'), /*#__PURE__*/React.createElement("blockquote", null, e.excerpt))))), job.status === 'applied' && /*#__PURE__*/React.createElement("button", {
+    className: "workspace-secondary",
+    disabled: busy,
+    onClick: () => mutate(`/api/research/amendment/${job.id}/decide`, {
+      action: 'revert'
+    })
+  }, "Restore thesis from before these edits"), changes.length > 0 && job.status === 'awaiting_approval' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
   }, "Applying saves only checked fields, preserves the original thesis in the proposal history, and rejects the proposal if your saved thesis has changed since comparison."), /*#__PURE__*/React.createElement("button", {
     className: "workspace-primary",

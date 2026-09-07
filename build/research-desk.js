@@ -280,6 +280,8 @@ export function ResearchDesk({
     className: "workspace-empty",
     role: "status"
   }, "Loading research activity\u2026") : /*#__PURE__*/React.createElement(React.Fragment, null, section === 'earnings' && /*#__PURE__*/React.createElement(EarningsWorkspace, {
+    api: api,
+    onRefresh: refresh,
     activities: [...data.activities, ...data.failed],
     onNavigate: onNavigate,
     onCompany: onCompany,

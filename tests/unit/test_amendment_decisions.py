@@ -14,6 +14,7 @@ class DecisionTests(unittest.TestCase):
                 import json
                 self.sql=sql
                 if sql.startswith('UPDATE portfolio_analyses'): state['analysis']=json.loads(args[0])
+                if sql.startswith("UPDATE mp_jobs SET status='reverted'"): state['job']['status']='reverted'
                 if sql.startswith("UPDATE mp_jobs SET status='applied'"):
                     if state['failAudit']: raise RuntimeError('synthetic audit failure')
                     state['job']['status']='applied';state['job']['result']=json.loads(args[0])
@@ -52,5 +53,18 @@ class DecisionTests(unittest.TestCase):
     def test_malformed_decision_rejected(self):
         self.assertEqual(self.decide([{}]).status_code,400)
         self.assertEqual(self.client.post('/api/research/amendment/job/decide',json=[]).status_code,400)
+
+    def test_restore_is_idempotent_and_preserves_original_baseline(self):
+        self.decide()
+        r=self.client.post('/api/research/amendment/job/decide',json={'action':'revert'})
+        self.assertEqual(r.status_code,200)
+        self.assertEqual(self.state['analysis']['thesis']['summary'],'Original')
+        self.assertEqual(self.client.post('/api/research/amendment/job/decide',json={'action':'revert'}).status_code,200)
+
+    def test_restore_rejects_intervening_analyst_changes(self):
+        self.decide();self.state['analysis']['conclusion']='Later judgment'
+        r=self.client.post('/api/research/amendment/job/decide',json={'action':'revert'})
+        self.assertEqual(r.status_code,409)
+        self.assertEqual(self.state['analysis']['conclusion'],'Later judgment')
 
 if __name__=='__main__': unittest.main()
