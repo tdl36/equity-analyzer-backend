@@ -1,3 +1,4 @@
+import { ResearchAutomationControl } from './research-automation';
 import { ThesisAmendments } from './thesis-amendments';
 import { SavedResearchContext } from './saved-research-context';
 import * as React from 'react';
@@ -100,7 +101,9 @@ export function EvidenceWorkspace({
   }, [...new Set((analyses || []).map(a => a.ticker).filter(Boolean))].map(t => /*#__PURE__*/React.createElement("option", {
     key: t,
     value: t
-  }))))), !loading && !error && data && /*#__PURE__*/React.createElement(ThesisAmendments, {
+  }))))), /*#__PURE__*/React.createElement(ResearchAutomationControl, {
+    api: api
+  }), !loading && !error && data && /*#__PURE__*/React.createElement(ThesisAmendments, {
     key: ticker,
     api: api,
     ticker: ticker,

@@ -1,3 +1,4 @@
+import {ResearchAutomationControl} from './research-automation';
 import {ThesisAmendments} from './thesis-amendments';
 import {SavedResearchContext} from './saved-research-context';
 import * as React from 'react';
@@ -26,6 +27,7 @@ export function EvidenceWorkspace({api,analyses,onCompany}) {
   return <section className="evidence-workspace">
     <div className="evidence-intro"><div><p className="workspace-eyebrow">RESEARCH / EVIDENCE & CHANGES</p><h2>Read the change. Inspect the evidence.</h2><p className="desk-explainer">Read your saved thesis, inspect available documents, and compare investment reviews when a baseline exists.</p></div>
     <form className="evidence-search" onSubmit={e=>{e.preventDefault();const tk=input.trim().toUpperCase();if(/^[A-Z0-9][A-Z0-9.\-]{0,19}$/.test(tk)){setTicker(tk);setRefresh(x=>x+1);}else setError('Enter a valid ticker.');}}><label htmlFor="evidence-ticker">Company ticker</label><div><input id="evidence-ticker" list="evidence-companies" value={input} onChange={e=>setInput(e.target.value)} maxLength={20}/><button className="workspace-primary" type="submit">Open →</button></div><datalist id="evidence-companies">{[...new Set((analyses||[]).map(a=>a.ticker).filter(Boolean))].map(t=><option key={t} value={t}/>)}</datalist></form></div>
+    <ResearchAutomationControl api={api}/>
     {!loading&&!error&&data&&<ThesisAmendments key={ticker} api={api} ticker={ticker} context={data} onApplied={()=>setRefresh(x=>x+1)}/>}
     {loading?<p role="status" className="workspace-empty">Loading saved research for {ticker}…</p>:error?<div className="workspace-error" role="alert">{error} <button onClick={()=>setRefresh(x=>x+1)}>Retry</button></div>:!review?<SavedResearchContext key={ticker} data={data} ticker={ticker} onCompany={onCompany}/>:<>
       <details className="workspace-panel evidence-context-toggle"><summary>Saved company thesis & available documents</summary><SavedResearchContext key={ticker} data={data} ticker={ticker} onCompany={onCompany}/></details>

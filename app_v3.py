@@ -6075,6 +6075,7 @@ def save_summary_files(summary_id):
                 WHERE id = %s
             ''', (summary_id,))
 
+        _research_automation.observe([(ticker, d.get('filename')) for d in documents if isinstance(d, dict) and d.get('filename') and d.get('fileData')])
         return jsonify({'success': True, 'savedCount': saved_count})
     except Exception as e:
         print(f"Error saving summary files: {e}")
@@ -19886,6 +19887,7 @@ def agent_file_manifest():
         'manifest': manifest,
         'timestamp': data.get('timestamp', datetime.utcnow().isoformat()),
     }
+    _research_automation.observe(_research_automation.entries(manifest), initial_manifest=True)
     return jsonify({'success': True, 'tickers': len(manifest)})
 
 @app.route('/api/agent/local-files/<ticker>', methods=['GET'])
@@ -20083,6 +20085,7 @@ def agent_heartbeat():
                     last_seen = NOW(),
                     version = EXCLUDED.version
             ''', (agent_id, version))
+        _research_automation.wake()
         return jsonify({'ok': True, 'agentId': agent_id})
     except Exception as e:
         print(f'agent_heartbeat error: {e}')
@@ -28739,9 +28742,30 @@ def _amendment_model_call(prompt, key, max_tokens):
         raise ValueError('Model response was incomplete or invalid. The thesis has not changed.')
     return parsed
 
-app.register_blueprint(research_amendments.create_blueprint(
+_amendment_blueprint = research_amendments.create_blueprint(
     get_db, _amendment_model_call,
-    lambda key: _get_api_keys(key).get('anthropic', '')))
+    lambda key: _get_api_keys(key).get('anthropic', ''))
+app.register_blueprint(_amendment_blueprint)
+
+import research_automation
+
+def _auto_import_sources(ticker, files):
+    with get_db() as (_, cur):
+        cur.execute('SELECT filename FROM document_files WHERE ticker=%s', (ticker,))
+        present = {r['filename'] for r in cur.fetchall() or []}
+    missing = [f for f in files if f['filename'] not in present]
+    if not missing:
+        return present, set()
+    if ticker in _pending_doc_upload_requests:
+        raise ValueError('Another iCloud import is active for this ticker. Inspect it before comparing these sources.')
+    return _request_icloud_files(ticker, missing)
+
+_research_automation = research_automation.ResearchAutomation(
+    app, get_db, _amendment_blueprint.submit, _auto_import_sources,
+    lambda: _local_file_manifest,
+    lambda: bool(_get_api_keys().get('anthropic')),
+    lambda: budget_blocks('evidence-amendment'))
+app.register_blueprint(_research_automation.blueprint)
 
 
 if __name__ == '__main__':

@@ -159,7 +159,9 @@ def create_blueprint(get_db, call_model, get_key):
                 cur.execute('SELECT id,status,result,error,created_at,updated_at FROM mp_jobs WHERE ticker=%s AND stage=%s ORDER BY created_at DESC LIMIT 10',(tk,STAGE))
                 rows=[dict(r) for r in cur.fetchall() or []]
             response=jsonify(jobs=rows);response.headers['Cache-Control']='no-store';return response
-        data=request.get_json(silent=True) or {}
+        return submit(tk, request.get_json(silent=True) or {})
+
+    def submit(tk, data):
         if not isinstance(data,dict): return jsonify(error='Request body must be an object'),400
         names=data.get('filenames'); job_id=data.get('requestId')
         try:
@@ -214,4 +216,5 @@ def create_blueprint(get_db, call_model, get_key):
             cur.execute('UPDATE portfolio_analyses SET analysis=%s::jsonb,updated_at=NOW() WHERE ticker=%s',(json.dumps(merged),job['ticker']))
             cur.execute("UPDATE mp_jobs SET status='applied',result=%s::jsonb,updated_at=NOW() WHERE id=%s",(json.dumps(result),job_id))
         return jsonify(status='applied',appliedCount=len(accepted))
+    bp.submit = submit
     return bp
