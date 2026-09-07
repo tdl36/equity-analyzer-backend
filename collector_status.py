@@ -1,9 +1,14 @@
-"""Read-only, loopback-only monitor for Charlie's local source collection ledger."""
+"""Loopback collection monitor and authenticated same-origin refresh controls."""
 import argparse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 from pathlib import Path
 import sqlite3
+import secrets
+import threading
+import time
+from collection_refresh import RefreshManager
+from charlie_collector import Collector
 from urllib.parse import urlsplit
 from charlie_collector import DEFAULT_STATE, now, handoff_fingerprint
 
@@ -57,9 +62,41 @@ def snapshot(state):
 
 
 def handler(state, port):
+    csrf = secrets.token_urlsafe(32)
     class Monitor(BaseHTTPRequestHandler):
+        def do_POST(self):
+            expected = (f'http://127.0.0.1:{port}', f'http://localhost:{port}')
+            if self.headers.get('Host') not in (f'127.0.0.1:{port}',f'localhost:{port}') or self.headers.get('Origin') not in expected or not secrets.compare_digest(self.headers.get('X-Refresh-Token',''), csrf):
+                self.send_error(403); return
+            try:
+                length = int(self.headers.get('Content-Length','0'))
+                if not 0 < length <= 16000 or self.headers.get('Content-Type','').split(';')[0] != 'application/json':
+                    self.send_error(400); return
+                data = json.loads(self.rfile.read(length))
+            except (ValueError,TypeError):
+                self.send_error(400); return
+            c = None
+            try:
+                if not isinstance(data,dict): raise ValueError('Expected an object')
+                c = Collector(state); manager = RefreshManager(c)
+                path = urlsplit(self.path).path
+                if path == '/api/refresh/policy': result = manager.save(data)
+                elif path == '/api/refresh/trigger': result = {'requestId':manager.trigger(data.get('ticker'))}
+                elif path == '/api/refresh/retry': result = manager.retry(data.get('requestId'))
+                elif path == '/api/refresh/cancel': result = manager.cancel(data.get('requestId'))
+                else: self.send_error(404); return
+                body = json.dumps({'ok':True,'result':result}).encode()
+                code = 200
+            except (ValueError,TypeError,KeyError,OSError,sqlite3.Error) as exc:
+                body = json.dumps({'error':str(exc)[:500]}).encode();code = 400
+            finally:
+                if c: c.db.close()
+            self.send_response(code);self.send_header('Content-Type','application/json')
+            self.send_header('Cache-Control','no-store');self.send_header('Content-Length',str(len(body)))
+            self.end_headers();self.wfile.write(body)
+
         def do_GET(self):
-            # Reject rebinding/foreign-origin access. No CORS or write routes.
+            # Reject rebinding/foreign-origin access. No CORS; write routes additionally require the per-process token.
             if self.headers.get('Host') not in (f'127.0.0.1:{port}', f'localhost:{port}'):
                 self.send_error(403)
                 return
@@ -70,7 +107,12 @@ def handler(state, port):
             path = urlsplit(self.path).path
             if path == '/api/status':
                 try:
-                    data = json.dumps(snapshot(state)).encode()
+                    result = snapshot(state)
+                    c = Collector(state)
+                    try: result['refresh'] = RefreshManager(c).status()
+                    finally: c.db.close()
+                    result['refreshToken'] = csrf
+                    data = json.dumps(result).encode()
                 except sqlite3.Error:
                     self.send_error(503, 'Collection ledger temporarily unavailable')
                     return
@@ -78,6 +120,9 @@ def handler(state, port):
             elif path == '/':
                 data = (Path(__file__).parent / 'src/collector-monitor.html').read_bytes()
                 mime = 'text/html; charset=utf-8'
+            elif path == '/collection-controls.js':
+                data = (Path(__file__).parent / 'src/collection-controls.js').read_bytes()
+                mime = 'text/javascript; charset=utf-8'
             elif path == '/collector-monitor-model.mjs':
                 data = (Path(__file__).parent / 'src/collector-monitor-model.mjs').read_bytes()
                 mime = 'text/javascript; charset=utf-8'
@@ -104,4 +149,16 @@ if __name__ == '__main__':
     parser.add_argument('--port', type=int, default=8766)
     args = parser.parse_args()
     print(f'Charlie collection monitor: http://127.0.0.1:{args.port}', flush=True)
+    def schedule_loop():
+        while True:
+            c = None
+            try:
+                c = Collector(args.state)
+                RefreshManager(c).due()
+            except Exception as exc:
+                print(f'Refresh scheduler needs attention: {type(exc).__name__}', flush=True)
+            finally:
+                if c: c.db.close()
+            time.sleep(30)
+    threading.Thread(target=schedule_loop, daemon=True).start()
     HTTPServer(('127.0.0.1', args.port), handler(args.state, args.port)).serve_forever()

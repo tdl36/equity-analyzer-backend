@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install Charlie's read-only loopback monitor as a per-user macOS service."""
+"""Install Charlie's loopback collection monitor as a per-user macOS service."""
 import os
 from pathlib import Path
 import plistlib

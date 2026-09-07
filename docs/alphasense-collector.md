@@ -185,3 +185,13 @@ does not silently relabel that file as safely held.
 Tests cover truncated archives, publish interruption and retry, repeated auth
 pauses across restart, old evidence after resume, and empty-search completion.
 These validate local recovery semantics, not future AlphaSense session lifetime.
+
+## Ticker refresh controls
+
+The local monitor now has a policy editor: ticker, manual/hourly/4-hour/12-hour/daily/weekly cadence, initial lookback, transcripts/broker reports, instructions, and thesis-intake/note/event-recap routing. Settings and requests live in the private SQLite ledger. Policy saving does not immediately download anything. Refresh now queues a request, and repeated clicks coalesce until it finishes. Pausing prevents future worker claims. A running collection may finish its current operation.
+
+The scheduled Codex browser worker reads `docs/alphasense-refresh-worker.md`. It checks managed requests every 15 minutes; it does not automatically consume the old 49-ticker backlog. Keep this Mac awake, Codex running, Chrome available, and AlphaSense signed in. These are desktop browser sessions, not an AlphaSense API or a cloud service. A manual request can wait until the next worker check and until earlier work finishes.
+
+The default first window is 30 days. Subsequent successful windows overlap by two days. Incomplete searches, failed exports, missing handoffs and authentication pauses never advance the cursor. One browser lease prevents concurrent scheduled workers. Instructions are frozen on each queued request; editing a policy affects subsequent requests.
+
+STOCKS handoffs feed the existing prospective thesis-amendment intake when it is enabled, subject to its daily limit and saved-thesis requirement. The optional note workflow queues a draft using newly delivered source filenames. Event recaps route to covering analysts using the same source fingerprint as the local watcher to avoid duplicate activity creation. Recap sources are the event folder's full current supported inventory. Original source restrictions and approval requirements remain enforced. A dispatch with an uncertain network result requires inspection before retry; it does not blindly repeat paid work.

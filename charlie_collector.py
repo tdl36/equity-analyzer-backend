@@ -316,9 +316,13 @@ class Collector:
                 key = document_key(url)
                 if key:
                     candidates = self.db.execute(
-                        "SELECT * FROM documents WHERE run=? AND ticker=? AND kind=?",
-                        (run, ticker, kind)).fetchall()
+                        "SELECT * FROM documents WHERE ticker=? AND kind=? ORDER BY (run=?) DESC, created DESC",
+                        (ticker, kind, run)).fetchall()
                     previous = next((r for r in candidates if document_key(r['source_url']) == key), None)
+                    if previous and previous['usage'] == 'reference_only':
+                        usage = 'reference_only'
+                    if previous and usage == 'reference_only' and previous['usage'] == 'research' and previous['status'] in ('handed_off','duplicate'):
+                        raise ValueError('New restriction on a previously handed-off document requires isolation review')
                     if previous and previous['sha256'] != digest:
                         if usage == 'reference_only' or previous['usage'] == 'reference_only':
                             raise ValueError('Changed restricted export requires manual review')
@@ -326,7 +330,11 @@ class Collector:
                             raise ValueError('Existing document has different content; review the new export')
                         self.event(run, 'alternate_export', document=previous['id'], sha256=digest,
                                    source_url=url, reason='Same document ID and content; download timestamp differs')
-                        continue
+                        if previous['run'] == run:
+                            continue
+                        # Reuse the canonical bytes across refresh windows, while
+                        # retaining the new download in private staging for audit.
+                        digest, staged, pages = previous['sha256'], Path(previous['staged']), previous['pages']
                 self.db.execute("""INSERT OR IGNORE INTO documents
                     (id,run,ticker,kind,filename,sha256,pages,source_url,published,publisher,staged,created)
                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",

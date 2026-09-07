@@ -65,6 +65,27 @@ class CollectorTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.collector.create(['DE'], '2026-08-07', '2026-09-06', '../wrong')
 
+    def test_cross_window_alternate_export_reuses_canonical_handoff(self):
+        from unittest.mock import patch
+        url='https://research.alpha-sense.com/doc-viewer/ET-123'
+        first=self.collector.stage(self.run,'DE','transcript',self.file,url)['documents'][0]
+        original=self.collector.handoff(first['id'])
+        next_run=self.collector.create(['DE'],'2026-09-01','2026-09-07')['id']
+        self.file.write_bytes(pdf(width=80))
+        with patch('charlie_collector.same_watermarked_export',return_value=True):
+            again=self.collector.stage(next_run,'DE','transcript',self.file,url)['documents'][0]
+        self.assertEqual(first['sha256'],again['sha256'])
+        self.assertEqual(self.collector.handoff(again['id'])['status'],'duplicate')
+        self.assertEqual(self.collector.handoff(again['id'])['destination'],original['destination'])
+
+    def test_same_id_changed_content_requires_review_across_windows(self):
+        url='https://research.alpha-sense.com/doc-viewer/ET-123'
+        self.collector.stage(self.run,'DE','transcript',self.file,url)
+        next_run=self.collector.create(['DE'],'2026-09-01','2026-09-07')['id']
+        self.file.write_bytes(pdf(width=80))
+        with self.assertRaisesRegex(ValueError,'different content'):
+            self.collector.stage(next_run,'DE','transcript',self.file,url)
+
     def test_resume_and_idempotent_handoff(self):
         doc = self.stage()
         self.collector.db.close()
