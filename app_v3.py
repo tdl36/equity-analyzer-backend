@@ -27740,6 +27740,8 @@ def analyst_activities_approve(activity_id):
         ticker = (act.get('ticker') or inp.get('ticker') or '').upper()
         topic = (inp.get('topic') or '').strip()
         markdown = out.get('synthesisMarkdown') or ''
+        if act.get('activity_type') in ('earnings_recap', 'takeaway') and (act.get('status') in ('running', 'failed') or not markdown.strip()):
+            return jsonify({'error': 'Generate and review a completed recap before approving and saving.'}), 409
 
         savings = {'icloud': None, 'research': None}
 
@@ -27796,20 +27798,6 @@ def analyst_activities_approve(activity_id):
                    SET status='approved', reviewed_at=NOW(), output=%s::jsonb, updated_at=NOW()
                  WHERE id=%s
             ''', (json.dumps(out), activity_id))
-
-        # If this was also a catalyst-proposal linked job, approve it too so the
-        # Catalysts UI reflects user intent.
-        catalyst_job_id = out.get('catalystJobId') or inp.get('catalystJobId')
-        if catalyst_job_id:
-            try:
-                with get_db(commit=True) as (_c, cur):
-                    cur.execute('''
-                        UPDATE research_pipeline_jobs
-                           SET status='queued', current_step='Waiting for processing', updated_at=NOW()
-                         WHERE id=%s AND status='proposed'
-                    ''', (catalyst_job_id,))
-            except Exception as e:
-                print(f'approve -> proposal flip failed: {e}')
 
         return jsonify({'ok': True, 'activityId': activity_id, 'savedTo': savings})
     except Exception as e:
@@ -27967,6 +27955,11 @@ def _dispatch_activity_run(activity_id: str, length: str = 'standard', custom_in
         'provider': (provider or 'anthropic').strip().lower(),  # anthropic | openai | google
     }
     with get_db(commit=True) as (_c, cur):
+        cur.execute('SELECT status, output FROM analyst_activities WHERE id=%s FOR UPDATE', (activity_id,))
+        current = cur.fetchone()
+        if not current or current['status'] == 'running':
+            return {'error': 'A recap is already running for this activity.'}, 409
+        act['output'] = current.get('output')
         cur.execute('''
             INSERT INTO research_pipeline_jobs (id, batch_id, ticker, job_type, status, progress, current_step, total_steps, steps_detail)
             VALUES (%s, %s, %s, 'synthesis', 'queued', 0, 'Waiting for local agent', 4, %s)
@@ -28045,10 +28038,12 @@ def analyst_activities_regenerate(activity_id):
         data = request.get_json(silent=True) or {}
         # Clear prior output + reset status so the dispatch sees a clean slate
         with get_db(commit=True) as (_c, cur):
-            cur.execute('SELECT output FROM analyst_activities WHERE id=%s', (activity_id,))
+            cur.execute('SELECT output, status FROM analyst_activities WHERE id=%s FOR UPDATE', (activity_id,))
             row = cur.fetchone()
             if not row:
                 return jsonify({'error': 'activity not found'}), 404
+            if row['status'] == 'running':
+                return jsonify({'error': 'Wait for the current recap to finish before regenerating.'}), 409
             prev = row.get('output') or {}
             if isinstance(prev, str):
                 try:
@@ -28163,8 +28158,8 @@ def _maybe_link_activity_to_job_result(job_id: str, status: str, result):
             cur.execute('''
                 UPDATE analyst_activities
                    SET status=%s, output=%s::jsonb, error=%s, updated_at=NOW()
-                 WHERE id=%s
-            ''', (new_status, json.dumps(out), (err_msg or None), activity_id))
+                 WHERE id=%s AND output->>'catalystJobId'=%s AND status <> 'approved'
+            ''', (new_status, json.dumps(out), (err_msg or None), activity_id, job_id))
 
         # Event-triggered briefing — fires only when the analyst has
         # playbook.briefings.on_recap_ready enabled (checked inside).
@@ -28245,34 +28240,25 @@ def analysts_queue_catalyst_activity():
 
         created = []
         for a in analysts:
-            # Dedup: skip if existing pending_review/running activity for same
-            # (analyst, ticker, topic, fingerprint) within 24h
-            with get_db() as (_c, cur):
-                cur.execute('''
+            # Persist a single activity per source revision, across retries and restarts.
+            act_id = str(uuid.uuid4())
+            inp = {'topic': topic, 'ticker': ticker, 'fingerprint': fingerprint,
+                   'fileCount': file_count, 'catalystJobId': catalyst_job_id}
+            with get_db(commit=True) as (_c, cur):
+                cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))', (f"catalyst:{a['id']}:{ticker}:{topic}",))
+                cur.execute("""
                     SELECT id FROM analyst_activities
-                     WHERE analyst_id=%s AND ticker=%s AND trigger_source='catalyst_folder'
-                       AND status IN ('pending_review','running')
-                       AND created_at > NOW() - INTERVAL '24 hours'
-                       AND (input->>'topic') = %s
-                       AND (input->>'fingerprint') = %s
-                ''', (a['id'], ticker, topic, fingerprint))
+                    WHERE analyst_id=%s AND ticker=%s AND trigger_source='catalyst_folder'
+                      AND input->>'topic'=%s AND input->>'fingerprint'=%s
+                    LIMIT 1
+                """, (a['id'], ticker, topic, fingerprint))
                 if cur.fetchone():
                     continue
-            # Create
-            act_id = str(uuid.uuid4())
-            inp = {
-                'topic': topic,
-                'ticker': ticker,
-                'fingerprint': fingerprint,
-                'fileCount': file_count,
-                'catalystJobId': catalyst_job_id,
-            }
-            with get_db(commit=True) as (_c, cur):
-                cur.execute('''
+                cur.execute("""
                     INSERT INTO analyst_activities
                       (id, analyst_id, activity_type, ticker, status, trigger_source, input, created_at)
                     VALUES (%s, %s, %s, %s, 'pending_review', 'catalyst_folder', %s::jsonb, NOW())
-                ''', (act_id, a['id'], activity_type, ticker, json.dumps(inp)))
+                """, (act_id, a['id'], activity_type, ticker, json.dumps(inp)))
 
             # Per-analyst Auto Mode: two independent switches —
             #   auto_mode.earnings (default: auto_mode.enabled for legacy rows)
@@ -28290,9 +28276,11 @@ def analysts_queue_catalyst_activity():
                 still_valid = True
                 if expires_at:
                     try:
-                        still_valid = datetime.fromisoformat(expires_at.replace('Z', '+00:00')) > datetime.utcnow()
+                        from datetime import timezone as _tz
+                        expiry = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
+                        still_valid = expiry.replace(tzinfo=expiry.tzinfo or _tz.utc) > datetime.now(_tz.utc)
                     except Exception:
-                        still_valid = True
+                        still_valid = False
                 run_earnings = bool(auto.get('earnings', auto.get('enabled', False)))
                 run_takeaways = bool(auto.get('takeaways', False))
                 should_run = (
@@ -28300,8 +28288,8 @@ def analysts_queue_catalyst_activity():
                     or (activity_type == 'takeaway' and run_takeaways)
                 )
                 if should_run and still_valid:
-                    _dispatch_activity_run(act_id)
-                    auto_ran = True
+                    _, dispatch_status = _dispatch_activity_run(act_id)
+                    auto_ran = dispatch_status == 200
             except Exception as _e:
                 print(f'auto_mode dispatch failed for activity {act_id}: {_e}')
 
@@ -28311,7 +28299,7 @@ def analysts_queue_catalyst_activity():
                 'analystName': a['name'],
                 'autoRan': auto_ran,
             })
-        return jsonify({'created': created, 'count': len(created), 'activityType': activity_type})
+        return jsonify({'created': created, 'count': len(analysts), 'createdCount': len(created), 'activityType': activity_type})
     except Exception as e:
         print(f'analysts_queue_catalyst_activity error: {e}')
         return jsonify({'error': str(e)}), 500

@@ -170,6 +170,7 @@ def publish(path, data):
 class Collector:
     def __init__(self, state=DEFAULT_STATE, stocks=DEFAULT_STOCKS):
         self.state, self.stocks = Path(state), Path(stocks)
+        self.catalysts = self.stocks.parent / "CATALYSTS"
         self.state.mkdir(parents=True, exist_ok=True, mode=0o700)
         os.chmod(self.state, 0o700)
         self.db = sqlite3.connect(self.state / "ledger.sqlite3")
@@ -196,6 +197,8 @@ class Collector:
                 expected INTEGER, visible INTEGER, missing TEXT,
                 PRIMARY KEY(run,ticker));
         """)
+        if 'topic' not in {r[1] for r in self.db.execute('PRAGMA table_info(runs)')}:
+            self.db.execute('ALTER TABLE runs ADD COLUMN topic TEXT')
         columns = {r[1] for r in self.db.execute('PRAGMA table_info(documents)')}
         if 'usage' not in columns:
             self.db.execute("ALTER TABLE documents ADD COLUMN usage TEXT DEFAULT 'research'")
@@ -223,19 +226,44 @@ class Collector:
         self.db.execute("INSERT INTO events(run,at,event,details) VALUES(?,?,?,?)",
                         (run, now(), event, json.dumps(details)))
 
-    def create(self, tickers, since, until):
+    def create(self, tickers, since, until, topic=None):
         if date.fromisoformat(since) > date.fromisoformat(until):
             raise ValueError("Start date must be before end date")
         tickers = list(dict.fromkeys(ticker_name(t) for t in tickers))
         if not 1 <= len(tickers) <= 12:
             raise ValueError("Choose 1–12 tickers")
+        if topic:
+            if len(tickers) != 1 or Path(topic).name != topic or topic in ('.', '..') or topic.startswith('.') or '\\' in topic:
+                raise ValueError('Event collection requires one ticker and a plain topic folder name')
+            folder = self.catalysts / tickers[0] / topic
+            if not folder.is_dir() or folder.is_symlink() or not folder.resolve().is_relative_to(self.catalysts.resolve()):
+                raise ValueError('Existing CATALYSTS event folder is required')
         run = uuid.uuid4().hex[:12]
         with self.lock():
-            self.db.execute("INSERT INTO runs VALUES(?,?,?,?)", (run, now(), since, until))
+            self.db.execute("INSERT INTO runs(id,created,since,until_date,topic) VALUES(?,?,?,?,?)", (run, now(), since, until, topic))
             self.db.executemany("INSERT INTO tasks(run,ticker,kind) VALUES(?,?,?)",
                                 [(run, t, k) for t in tickers for k in KINDS])
             self.event(run, "created", tickers=tickers, since=since, until=until)
         return self.status(run)
+
+    def plan(self, tickers, since, until):
+        """Idempotently queue the missing universe for a fixed coverage window."""
+        if date.fromisoformat(since) > date.fromisoformat(until):
+            raise ValueError('Start date must be before end date')
+        tickers = list(dict.fromkeys(ticker_name(t) for t in tickers))
+        created = []
+        with self.lock():
+            existing = {r[0] for r in self.db.execute(
+                'SELECT DISTINCT t.ticker FROM tasks t JOIN runs r ON r.id=t.run WHERE r.since=? AND r.until_date=? AND r.topic IS NULL', (since, until))}
+            missing = [t for t in tickers if t not in existing]
+            for offset in range(0, len(missing), 12):
+                batch = missing[offset:offset+12]
+                run = uuid.uuid4().hex[:12]
+                self.db.execute('INSERT INTO runs(id,created,since,until_date) VALUES(?,?,?,?)', (run, now(), since, until))
+                self.db.executemany('INSERT INTO tasks(run,ticker,kind) VALUES(?,?,?)', [(run,t,k) for t in batch for k in KINDS])
+                self.event(run, 'coverage_queued', tickers=batch, since=since, until=until)
+                created.append(run)
+        return {'createdRuns': created, 'newTickers': missing, 'alreadyQueuedOrReviewed': len(tickers)-len(missing), 'browserWorker': 'supervised'}
 
     def status(self, run):
         result = self.db.execute("SELECT * FROM runs WHERE id=?", (run,)).fetchone()
@@ -326,7 +354,11 @@ class Collector:
             if file_hash(staged) != row["sha256"]:
                 raise ValueError("Staged original changed; handoff stopped")
             # Only existing ticker folders: never silently invent a company mapping.
-            folder = self.stocks / row["ticker"]
+            topic = self.db.execute('SELECT topic FROM runs WHERE id=?', (row['run'],)).fetchone()['topic']
+            folder = (self.catalysts / row['ticker'] / topic) if topic else (self.stocks / row['ticker'])
+            expected_root = self.catalysts if topic else self.stocks
+            if not folder.resolve().is_relative_to(expected_root.resolve()):
+                raise ValueError('Handoff must remain inside the configured iCloud root')
             if not folder.is_dir() or folder.is_symlink():
                 raise ValueError("Existing iCloud ticker folder is required")
             existing = None
@@ -420,8 +452,12 @@ class Collector:
                     valid = False
                     if destination and doc['status'] in ('handed_off', 'duplicate'):
                         try:
-                            relative = destination.relative_to(self.stocks / ticker)
-                            folder = 'main' if relative.parent == Path('.') else relative.parent.as_posix()
+                            if destination.is_relative_to(self.catalysts / ticker):
+                                relative = destination.relative_to(self.catalysts / ticker)
+                                folder = 'Catalysts/' + relative.parent.as_posix()
+                            else:
+                                relative = destination.relative_to(self.stocks / ticker)
+                                folder = 'main' if relative.parent == Path('.') else relative.parent.as_posix()
                             valid = (file_hash(destination) == doc['sha256'] and
                                      any(f.get('filename') == relative.name and f.get('folder') == folder for f in files))
                         except (OSError, ValueError):
@@ -497,8 +533,13 @@ def main():
     commands = parser.add_subparsers(dest="command", required=True)
     create = commands.add_parser("create")
     create.add_argument("--tickers", nargs="+", required=True)
+    create.add_argument("--topic", help="Existing CATALYSTS event folder; requires exactly one ticker")
     create.add_argument("--since", required=True)
     create.add_argument("--until", default=date.today().isoformat())
+    plan = commands.add_parser('plan')
+    plan.add_argument('--tickers', nargs='+', required=True)
+    plan.add_argument('--since', required=True)
+    plan.add_argument('--until', required=True)
     for command in ("status", "verify", "auth-needed", "resume", "stage", "finish", "observe"):
         p = commands.add_parser(command)
         p.add_argument("run")
@@ -526,7 +567,9 @@ def main():
     collector = Collector(args.state, args.stocks)
     try:
         if args.command == "create":
-            result = collector.create(args.tickers, args.since, args.until)
+            result = collector.create(args.tickers, args.since, args.until, args.topic)
+        elif args.command == "plan":
+            result = collector.plan(args.tickers, args.since, args.until)
         elif args.command == "status":
             result = collector.status(args.run)
         elif args.command == "verify":

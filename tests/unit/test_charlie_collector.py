@@ -42,6 +42,29 @@ class CollectorTests(unittest.TestCase):
         return self.collector.observe(self.run, 'DE', kind,
             'https://research.alpha-sense.com/search', count, 'Reviewed unique originals in the fixed window')
 
+    def test_full_universe_plan_is_idempotent_and_bounded(self):
+        tickers = ['DE'] + ['T' + str(i) for i in range(25)]
+        first = self.collector.plan(tickers, '2026-08-07', '2026-09-06')
+        self.assertEqual(len(first['createdRuns']), 3)
+        self.assertEqual(len(first['newTickers']), 25)
+        self.assertEqual(self.collector.plan(tickers, '2026-08-07', '2026-09-06')['createdRuns'], [])
+        for run in first['createdRuns']:
+            self.assertLessEqual(len(self.collector.status(run)['tasks']), 24)
+
+    def test_event_handoff_uses_catalyst_folder_and_manifest(self):
+        folder = self.root / 'CATALYSTS' / 'DE' / 'DE F3Q26 Earnings'
+        folder.mkdir(parents=True)
+        run = self.collector.create(['DE'], '2026-08-07', '2026-09-06', folder.name)['id']
+        doc = self.collector.stage(run, 'DE', 'transcript', self.file, 'https://research.alpha-sense.com/doc/event')['documents'][0]
+        dest = self.collector.handoff(doc['id'])['destination']
+        self.assertEqual(Path(dest).parent, folder)
+        result = self.collector.verify(run, lambda ticker: {'files': [{'filename':Path(dest).name,'folder':'Catalysts/' + folder.name}]})
+        self.assertEqual(result['verifications'][0]['visible'], 1)
+
+    def test_event_path_traversal_rejected(self):
+        with self.assertRaises(ValueError):
+            self.collector.create(['DE'], '2026-08-07', '2026-09-06', '../wrong')
+
     def test_resume_and_idempotent_handoff(self):
         doc = self.stage()
         self.collector.db.close()

@@ -48,7 +48,10 @@ def snapshot(state):
                 doc.pop('staged', None)
                 doc['destination'] = Path(doc['destination']).name if doc['destination'] else None
             runs.append(item)
-        return {'checked': now(), 'runs': runs}
+        all_tasks = [dict(r) for r in db.execute('SELECT ticker,kind,status FROM tasks')]
+        tickers = sorted({t['ticker'] for t in all_tasks})
+        completed = [t for t in tickers if all(any(x['ticker']==t and x['kind']==kind and x['status'] in ('complete','complete_with_exceptions','no_results') for x in all_tasks) for kind in ('transcript','broker-report'))]
+        return {'checked': now(), 'runs': runs, 'coverage': {'tracked': len(tickers), 'everReviewed': len(completed), 'remaining': [t for t in tickers if t not in completed]}}
     finally:
         db.close()
 

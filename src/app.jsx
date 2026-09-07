@@ -84,7 +84,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-09-07T06';
+        const BUILD_VERSION = '2026-09-07T07';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -27919,6 +27919,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                 }`}>
                                                                                 <div className="flex items-center justify-between">
                                                                                     <span className="font-medium">{f.name}</span>
+                                                                                    {f.sourceIssues?.length > 0 && <span className="text-amber-400 text-xs" role="status">Source attention: {f.sourceIssues.join('; ')}</span>}
                                                                                     <span className="text-slate-500">{f.fileCount - catalystExcludedFiles.size}/{f.fileCount} file{f.fileCount !== 1 ? 's' : ''}</span>
                                                                                 </div>
                                                                             </button>

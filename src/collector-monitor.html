@@ -10,7 +10,7 @@
 <body><main>
 <header><div><div class="eyebrow">Charlie / Research operations</div><h1>Source collection</h1><p>Originals, destinations, and evidence of delivery.</p></div><a class="action" href="http://127.0.0.1:3000/?local=0#view=desk">Research desk ↗</a></header>
 <div class="toolbar"><label>Collection <select id="runs" aria-label="Choose collection"></select></label><div><small id="updated"></small> <button id="refresh">Refresh</button></div></div>
-<p id="error" role="alert" hidden></p><div id="overview">Loading collection ledger…</div>
+<p id="error" role="alert" hidden></p><div id="coverage" class="note" role="status"></div><div id="overview">Loading collection ledger…</div>
 <section class="panel" id="originals" hidden><div class="section-heading"><h2>Verified originals</h2><span id="filter-count" role="status"></span></div>
 <div class="filters"><label>Find an original<input id="query" type="search" placeholder="Document, publisher, or folder"></label><label>Company<select id="ticker"><option value="">All companies</option></select></label><label>Disposition<select id="status"><option value="">All originals</option><option value="saved">Saved to iCloud</option><option value="held">Held · reference only</option><option value="pending">Awaiting handoff</option><option value="duplicate">Duplicate skipped</option></select></label><button id="clear">Clear filters</button></div>
 <div class="table-scroll" tabindex="0" role="region" aria-label="Collected originals table"><table><thead><tr><th>Document</th><th>Published</th><th>Destination</th><th>Status</th><th>Source</th></tr></thead><tbody id="rows"></tbody></table></div><p id="empty" class="empty" hidden>No originals match these filters.</p>
@@ -51,6 +51,7 @@ function render(){
 async function refresh(){
  if(busy)return;busy=true;$('refresh').disabled=true;
  try{const response=await fetch('/api/status',{signal:AbortSignal.timeout(10000)});if(!response.ok)throw Error();const result=await response.json(),signature=JSON.stringify(result.runs);data=result.runs;
+ const coverage=result.coverage; if(coverage)$('coverage').textContent=`Coverage ledger: ${coverage.everReviewed} of ${coverage.tracked} companies have both searches reviewed in at least one collection window. ${coverage.remaining.length} companies still await review. Pending searches require the supervised browser worker; queueing does not download documents.`;
  if(signature!==last){last=signature;const prior=selected;$('runs').innerHTML=data.map(r=>`<option value="${esc(r.id)}">${esc(r.since)} — ${esc(r.until_date)} · ${esc(r.id)}</option>`).join('');selected=data.some(r=>r.id===prior)?prior:data[0]?.id||'';$('runs').value=selected;render();}
  $('updated').textContent='Refreshed '+new Date().toLocaleTimeString();$('error').hidden=true;
  }catch{ $('error').hidden=false;$('error').textContent='Could not refresh. Previously displayed evidence may be out of date.';}

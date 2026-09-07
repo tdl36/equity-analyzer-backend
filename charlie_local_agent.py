@@ -35,6 +35,7 @@ from xml.etree import ElementTree
 
 import requests
 import anthropic
+from catalyst_sources import inventory as catalyst_inventory, fingerprint as catalyst_fingerprint, read_sources as read_catalyst_sources, SOURCE_EXTS as CATALYST_SOURCE_EXTS
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -2448,11 +2449,14 @@ def scan_catalyst_topics(ticker: str) -> list[dict]:
     folders = []
     for item in sorted(ticker_dir.iterdir()):
         if item.is_dir() and not item.name.startswith('.'):
-            files = [f.name for f in item.iterdir() if f.is_file() and not f.name.startswith('.')]
+            sources, issues = catalyst_inventory(item)
+            files = [f['name'] for f in sources]
             folders.append({
                 'name': item.name,
                 'fileCount': len(files),
-                'files': files[:50],  # Cap at 50 filenames
+                'files': files[:50],  # Relative paths preserve nested document identity
+                'sourceIssues': issues,
+                'ready': bool(files) and not issues,
             })
     return folders
 
@@ -2876,7 +2880,7 @@ CATALYST_AUTO_DEBOUNCE_S = 120     # wait this long after last file change befor
 # and the 2-minute debounce catches in-progress file drops. The old 15-min
 # cooldown also blocked legit "delete folder, recreate with new files" flows
 # which a single user actively iterating on a catalyst hits constantly.
-CATALYST_SOURCE_EXTS = {'.pdf', '.xlsx', '.xls', '.csv', '.txt', '.md', '.docx', '.doc', '.pptx', '.ppt', '.html'}
+# Supported types are shared with the synthesis reader in catalyst_sources.
 
 
 def _load_catalyst_auto_state() -> dict:
@@ -2934,22 +2938,19 @@ def check_for_catalyst_auto_synth() -> None:
                     continue
                 topic = topic_dir.name
 
-                # Collect source docs in this topic folder
-                source_files = []
-                max_mtime = 0.0
+                # Use the exact same recursive inventory as synthesis.
                 try:
-                    for f in topic_dir.iterdir():
-                        if f.is_file() and not f.name.startswith('.') and f.suffix.lower() in CATALYST_SOURCE_EXTS:
-                            source_files.append(f.name)
-                            try:
-                                max_mtime = max(max_mtime, f.stat().st_mtime)
-                            except Exception:
-                                pass
-                except PermissionError:
+                    sources, issues = catalyst_inventory(topic_dir)
+                except (OSError, ValueError) as exc:
+                    log.warning(f"Catalyst inventory {ticker}/{topic}: {exc}")
                     continue
-
-                if not source_files:
+                if issues:
+                    log.warning(f"Catalyst source attention {ticker}/{topic}: {'; '.join(issues[:3])}")
                     continue
+                if not sources:
+                    continue
+                source_files = [f['name'] for f in sources]
+                max_mtime = max(f['mtime_ns'] for f in sources) / 1e9
 
                 key = f"{ticker}::{topic}"
                 entry = state.get(key, {})
@@ -2958,11 +2959,18 @@ def check_for_catalyst_auto_synth() -> None:
                 prior_fingerprint = entry.get('fingerprint', '')
                 prior_job_id = entry.get('catalyst_job_id')
                 prior_routed = bool(entry.get('analyst_routed'))
-                fingerprint = f"{len(source_files)}@{int(max_mtime)}"
+                fingerprint = catalyst_fingerprint(sources)
+                # Migrate existing inventories without re-firing every historical event.
+                if '@' in prior_fingerprint and prior_fired > 0:
+                    prior_fingerprint = fingerprint
+                changed_at = entry.get('changed_at', now) if fingerprint == prior_fingerprint else now
+                if fingerprint != prior_fingerprint:
+                    prior_fired, prior_job_id, prior_routed = 0.0, None, False
 
                 # Keep state fresh so we don't lose track of what's there
                 state[key] = {
                     'last_seen_mtime': max_mtime,
+                    'changed_at': changed_at,
                     'last_fired_at': prior_fired,
                     'fingerprint': fingerprint,
                     'last_file_count': len(source_files),
@@ -2999,7 +3007,7 @@ def check_for_catalyst_auto_synth() -> None:
                 # Combined with the fingerprint dedup above, this is the only
                 # gate — cooldown was removed because it blocked legitimate
                 # "delete + recreate folder with new files" iteration flows.
-                if now - max_mtime < CATALYST_AUTO_DEBOUNCE_S:
+                if now - max(max_mtime, changed_at) < CATALYST_AUTO_DEBOUNCE_S:
                     continue
 
                 # Decide: auto-fire or just propose?
@@ -3329,67 +3337,15 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
 
         # Read files from CATALYSTS/{ticker}/{topic}/
         topic_dir = CATALYSTS_DIR / ticker / topic
+        if not ticker or not topic or not topic_dir.resolve().is_relative_to(CATALYSTS_DIR.resolve()):
+            raise ValueError('Invalid catalyst event folder')
         if not topic_dir.exists():
             raise FileNotFoundError(f"Folder not found: {topic_dir}")
 
-        excluded_files = set(steps_detail.get('excludedFiles', []))
-        source_parts = []
-        file_count = 0
-        for fpath in sorted(topic_dir.iterdir()):
-            if fpath.is_file() and not fpath.name.startswith('.') and fpath.name not in excluded_files:
-                file_count += 1
-                ext = fpath.suffix.lower()
-                try:
-                    if ext == '.pdf':
-                        # Read PDF as base64 for Claude's native PDF support
-                        pdf_b64 = base64.b64encode(fpath.read_bytes()).decode('ascii')
-                        source_parts.append({
-                            'type': 'pdf',
-                            'name': fpath.name,
-                            'data': pdf_b64,
-                        })
-                    elif ext in ('.docx',):
-                        # Extract text from docx
-                        try:
-                            from docx import Document as DocxDocument
-                            doc = DocxDocument(str(fpath))
-                            text = '\n'.join(p.text for p in doc.paragraphs if p.text.strip())
-                            source_parts.append({
-                                'type': 'text',
-                                'name': fpath.name,
-                                'content': text,
-                            })
-                        except Exception as e2:
-                            log.warning(f"Could not read docx {fpath.name}: {e2}")
-                            source_parts.append({'type': 'text', 'name': fpath.name, 'content': f'[Could not read: {e2}]'})
-                    elif ext in ('.xlsx', '.xls'):
-                        # Extract via zipfile+XML or openpyxl
-                        try:
-                            import openpyxl
-                            wb = openpyxl.load_workbook(str(fpath), data_only=True)
-                            text_parts = []
-                            for ws in wb.worksheets:
-                                text_parts.append(f"Sheet: {ws.title}")
-                                for row in ws.iter_rows(values_only=True):
-                                    vals = [str(c) if c is not None else '' for c in row]
-                                    if any(vals):
-                                        text_parts.append('\t'.join(vals))
-                            source_parts.append({'type': 'text', 'name': fpath.name, 'content': '\n'.join(text_parts)})
-                        except Exception as e2:
-                            log.warning(f"Could not read xlsx {fpath.name}: {e2}")
-                    elif ext in ('.txt', '.md', '.csv', '.tsv'):
-                        text = fpath.read_text(errors='replace')
-                        source_parts.append({'type': 'text', 'name': fpath.name, 'content': text})
-                    else:
-                        log.debug(f"Skipping unsupported file type: {fpath.name}")
-                except Exception as e2:
-                    log.warning(f"Error reading {fpath.name}: {e2}")
-
-        if not source_parts:
-            raise ValueError(f"No readable files found in {topic_dir}")
-
-        log.info(f"Read {file_count} files from {topic_dir}")
-        update_job_progress(job_id, "running", f"Read {file_count} files, calling Claude...", 30)
+        source_parts = read_catalyst_sources(topic_dir, steps_detail.get('excludedFiles', []))
+        file_count = len(source_parts)
+        log.info(f"Read {file_count} source documents from {topic_dir} (including subfolders)")
+        update_job_progress(job_id, "running", f"Validated {file_count} source documents; generating recap...", 30)
 
         # Build Claude API call
         client = anthropic.Anthropic(api_key=api_key)
@@ -4134,7 +4090,7 @@ def main() -> None:
 
         # Between ticks -- no job is in flight here -- pick up a new version of
         # this file by exiting; launchd's KeepAlive restarts us immediately.
-        if _source_changed():
+        if _source_changed() and not _synthesis_in_flight:
             log.info("Agent source changed on disk; restarting to pick it up")
             return
 
