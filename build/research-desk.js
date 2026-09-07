@@ -1,3 +1,4 @@
+import { EarningsWorkspace } from './earnings-workspace';
 import { EvidenceWorkspace } from './evidence-workspace';
 import * as React from 'react';
 import { parseTickers, researchQueue, runCounts, runsNeedingStatusCheck, PLAYBOOKS } from './research-desk-model.mjs';
@@ -60,6 +61,7 @@ export function ResearchDesk({
   var [data, setData] = useState({
     runs: [],
     activities: [],
+    failed: [],
     analysts: [],
     providers: {},
     capabilities: {
@@ -113,7 +115,7 @@ export function ResearchDesk({
   };
   var refresh = async () => {
     var id = ++request.current;
-    var sources = [['runs', '/api/agents/results?limit=100', 'runs'], ['activities', '/api/analyst-activities/pending', 'activities'], ['analysts', '/api/analysts', 'analysts'], ['providers', '/api/agents/providers', null], ['capabilities', '/api/agents/capabilities', null]];
+    var sources = [['runs', '/api/agents/results?limit=100', 'runs'], ['activities', '/api/analyst-activities/pending', 'activities'], ['failed', '/api/analyst-activities/failed?limit=100', 'activities'], ['analysts', '/api/analysts', 'analysts'], ['providers', '/api/agents/providers', null], ['capabilities', '/api/agents/capabilities', null]];
     var results = await Promise.allSettled(sources.map(([, path]) => fetchJson(path)));
     if (!alive.current || id !== request.current) return;
     var next = {},
@@ -241,7 +243,7 @@ export function ResearchDesk({
     className: "desk-toolbar"
   }, /*#__PURE__*/React.createElement("nav", {
     "aria-label": "Research desk sections"
-  }, [['overview', 'Overview'], ['evidence', 'Evidence & changes'], ['inbox', 'Review inbox'], ['queue', 'Coverage queue'], ['launch', 'Batch planner'], ['runs', 'Runs'], ['playbooks', 'Playbooks']].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
+  }, [['overview', 'Overview'], ['earnings', 'Earnings & evidence'], ['evidence', 'Evidence & changes'], ['inbox', 'Review inbox'], ['queue', 'Coverage queue'], ['launch', 'Batch planner'], ['runs', 'Runs'], ['playbooks', 'Playbooks']].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
     key: id,
     "aria-current": section === id ? 'page' : undefined,
     onClick: () => setSection(id)
@@ -261,7 +263,7 @@ export function ResearchDesk({
   }, "Retry")), message && /*#__PURE__*/React.createElement("p", {
     className: "workspace-notice",
     role: "status"
-  }, message), ['127.0.0.1', 'localhost'].includes(window.location.hostname) && /*#__PURE__*/React.createElement("section", {
+  }, message), section === 'overview' && ['127.0.0.1', 'localhost'].includes(window.location.hostname) && /*#__PURE__*/React.createElement("section", {
     className: "workspace-panel"
   }, /*#__PURE__*/React.createElement("div", {
     className: "workspace-section-heading"
@@ -274,10 +276,15 @@ export function ResearchDesk({
     rel: "noopener noreferrer"
   }, "Open collection monitor \u2197")), /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
-  }, "Track the supervised pilot, verified originals, iCloud handoffs, and source restrictions. The monitor runs on this Mac.")), loading ? /*#__PURE__*/React.createElement("p", {
+  }, "Manage ticker refresh schedules, verified originals, iCloud handoffs, and source restrictions. The monitor runs on this Mac.")), loading ? /*#__PURE__*/React.createElement("p", {
     className: "workspace-empty",
     role: "status"
-  }, "Loading research activity\u2026") : /*#__PURE__*/React.createElement(React.Fragment, null, section === 'evidence' && /*#__PURE__*/React.createElement(EvidenceWorkspace, {
+  }, "Loading research activity\u2026") : /*#__PURE__*/React.createElement(React.Fragment, null, section === 'earnings' && /*#__PURE__*/React.createElement(EarningsWorkspace, {
+    activities: [...data.activities, ...data.failed],
+    onNavigate: onNavigate,
+    onCompany: onCompany,
+    renderHtml: renderRecapHtml || renderHtml
+  }), section === 'evidence' && /*#__PURE__*/React.createElement(EvidenceWorkspace, {
     api: api,
     analyses: analyses,
     onCompany: onCompany

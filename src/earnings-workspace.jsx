@@ -1,0 +1,29 @@
+import * as React from 'react';
+import {eventResearch} from './earnings-model.mjs';
+export function EarningsWorkspace({activities,onNavigate,onCompany,renderHtml}) {
+  const [selected,setSelected]=React.useState(null),[query,setQuery]=React.useState(''),[filter,setFilter]=React.useState('all');
+  const events=eventResearch(activities);
+  const visible=events.filter(e=>`${e.ticker} ${e.input.topic} ${e.analystName}`.toLowerCase().includes(query.toLowerCase())&&(filter==='all'||e.state===filter));
+  const event=visible.find(e=>e.id===selected)||visible[0];
+  const labels={queued:'Awaiting synthesis',running:'Processing',failed:'Needs attention',draft:'Draft ready'};
+  return <section className="earnings-workspace">
+    <header className="workspace-panel"><p className="workspace-eyebrow">EARNINGS / EVIDENCE / INVESTMENT IMPACT</p><h2>The event, in context.</h2><p className="desk-explainer">Review the source record, inspect the synthesis and compare it with your investment case. Active and recently failed analyst events appear here; approved events remain in the Analyst archive.</p>
+      <div className="earnings-counts">{[['all','Events'],['draft','Drafts ready'],['running','Processing'],['failed','Need attention']].map(([id,label])=><button key={id} aria-pressed={filter===id} onClick={()=>setFilter(id)}><strong>{id==='all'?events.length:events.filter(e=>e.state===id).length}</strong>{label}</button>)}</div>
+    </header>
+    <div className="earnings-layout"><aside className="workspace-panel"><label className="earnings-search">Find an event<input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Ticker, event or analyst"/></label>
+      <nav aria-label="Earnings events">{visible.map(e=><button className="earnings-event" key={e.id} aria-current={event?.id===e.id?'true':undefined} onClick={()=>setSelected(e.id)}><strong>{e.ticker} <small>{labels[e.state]}</small></strong><span>{e.input.topic}</span><small>{e.analystName||'Analyst team'}</small></button>)}</nav>{!visible.length&&<p className="workspace-empty">No events match this view. Create an event from a CATALYSTS folder in Analyst team.</p>}<button className="workspace-link-row" onClick={()=>onNavigate('analysts')}>Open Analyst team →</button></aside>
+      {event&&<article className="workspace-panel earnings-detail" key={event.id}><p className="workspace-eyebrow">{event.ticker} / {labels[event.state]}</p><h2>{event.input.topic}</h2>
+        <ol className="earnings-stages" aria-label="Evidence processing status"><li>Event detected</li><li>{event.sources.length?`${event.sources.length} source names recorded`:'Source record pending'}</li><li>{labels[event.state]}</li><li>Investment review pending</li></ol>
+        {event.error&&<p className="workspace-error" role="alert">{String(event.error)}</p>}
+        <h3>Source coverage</h3><p className="desk-explainer">Inferred from the filenames recorded with this output. “Not identified” does not prove a document is absent from iCloud. Broker reports and other sources are listed below.</p>
+        <div className="earnings-coverage">{event.coverage.map(c=><div key={c.id}><strong>{c.label}</strong><span>{c.files.length?`${c.files.length} identified`:'Not identified'}</span></div>)}</div>
+        <details><summary>Source register · {event.sources.length} named documents</summary>{event.sources.length?<ul>{event.sources.map(s=><li key={s}>{s}</li>)}</ul>:<p>No source filenames were attached to this activity.</p>}</details>
+        <div className="earnings-checks"><h3>Evidence review</h3><ul><li>{event.sourceMismatch?`Coverage discrepancy: ${event.expected} documents reported, ${event.sources.length} filenames recorded.`:event.sources.length?'Source filenames available for review.':'Source completeness cannot be assessed yet.'}</li><li>{event.provenance?'A model-generated source contribution record is attached.':'No source contribution record attached.'}</li><li>Claim accuracy, page-level citations and numerical consistency are not independently verified for this recap.</li></ul></div>
+        {event.provenance&&<details><summary>Source contribution record · model generated</summary><pre className="earnings-provenance">{typeof event.provenance==='string'?event.provenance:JSON.stringify(event.provenance,null,2)}</pre></details>}
+        <section className="earnings-impact"><h3>Review the investment implications</h3><p>Compare the synthesis below with your saved thesis: what changed in earnings power, guidance, valuation, catalysts and downside risk? Separate reported facts from estimates and interpretation.</p><button className="workspace-link-row" onClick={()=>onCompany(event.ticker,'portfolio')}>Compare with {event.ticker} thesis →</button></section>
+        <div className="workspace-section-heading"><h3>{event.state==='failed'&&event.draft?'Previous synthesis · latest attempt failed':'Event synthesis'}</h3><button onClick={()=>onNavigate('analysts')}>Revise or approve in Analyst team ↗</button></div>
+        {event.draft?<div className="desk-report-prose" dangerouslySetInnerHTML={{__html:renderHtml(event.output.synthesisMarkdown)}}/>:<p className="workspace-empty">{event.state==='failed'?'Synthesis failed. Inspect the error and source folder before retrying in Analyst team.':event.state==='running'?'Synthesis is processing. This workspace refreshes with the research desk.':'No draft is attached yet. Open Analyst team to inspect or start synthesis.'}</p>}
+      </article>}
+    </div>
+  </section>;
+}

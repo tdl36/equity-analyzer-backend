@@ -1,3 +1,4 @@
+import {EarningsWorkspace} from './earnings-workspace';
 import {EvidenceWorkspace} from './evidence-workspace';
 import * as React from 'react';
 import {parseTickers,researchQueue,runCounts,runsNeedingStatusCheck,PLAYBOOKS} from './research-desk-model.mjs';
@@ -12,7 +13,7 @@ function ReportContent({value,renderHtml,depth=0}) {
   return renderHtml?<div className="desk-report-prose" dangerouslySetInnerHTML={{__html:renderHtml(text)}}/>:<pre>{text}</pre>;
 }
 export function ResearchDesk({api,analyses,onCompany,onNavigate,renderHtml,renderRecapHtml}) {
-  const [data,setData]=useState({runs:[],activities:[],analysts:[],providers:{},capabilities:{maxConcurrency:1,maxBatchSize:12}});
+  const [data,setData]=useState({runs:[],activities:[],failed:[],analysts:[],providers:{},capabilities:{maxConcurrency:1,maxBatchSize:12}});
   const [errors,setErrors]=useState([]),[loading,setLoading]=useState(true),[updated,setUpdated]=useState(null);
   const [section,setSection]=useState('overview'),[days,setDays]=useState(90),[query,setQuery]=useState('');
   const [tickers,setTickers]=useState(''),[provider,setProvider]=useState('anthropic'),[model,setModel]=useState('');
@@ -25,7 +26,7 @@ export function ResearchDesk({api,analyses,onCompany,onNavigate,renderHtml,rende
   const fetchJson=async path=>{const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),20000);try{const res=await fetch(`${api}${path}`,{signal:controller.signal});if(!res.ok)throw new Error(res.status===401?'Sign in to load this data.':`Request failed (${res.status})`);const result=await res.json();if(result.error)throw new Error(result.error);return result;}finally{clearTimeout(timer);}};
   const refresh=async()=>{
     const id=++request.current;
-    const sources=[['runs','/api/agents/results?limit=100','runs'],['activities','/api/analyst-activities/pending','activities'],['analysts','/api/analysts','analysts'],['providers','/api/agents/providers',null],['capabilities','/api/agents/capabilities',null]];
+    const sources=[['runs','/api/agents/results?limit=100','runs'],['activities','/api/analyst-activities/pending','activities'],['failed','/api/analyst-activities/failed?limit=100','activities'],['analysts','/api/analysts','analysts'],['providers','/api/agents/providers',null],['capabilities','/api/agents/capabilities',null]];
     const results=await Promise.allSettled(sources.map(([,path])=>fetchJson(path)));
     if(!alive.current||id!==request.current)return;
     const next={},failed=[];
@@ -47,11 +48,12 @@ export function ResearchDesk({api,analyses,onCompany,onNavigate,renderHtml,rende
   };
   return <div className="workspace-page research-desk">
     <div className="desk-heading"><div><p className="workspace-eyebrow">CHARLIE / RESEARCH OPERATIONS</p><h1>Your research desk.</h1><p className="workspace-lead">Prioritize the next question. Coordinate the team. Review the evidence.</p></div><button className="workspace-primary" onClick={()=>setSection('launch')}>Prepare a research batch ↗</button></div>
-    <div className="desk-toolbar"><nav aria-label="Research desk sections">{[['overview','Overview'],['evidence','Evidence & changes'],['inbox','Review inbox'],['queue','Coverage queue'],['launch','Batch planner'],['runs','Runs'],['playbooks','Playbooks']].map(([id,label])=><button key={id} aria-current={section===id?'page':undefined} onClick={()=>setSection(id)}>{label}</button>)}</nav><button onClick={refresh} disabled={loading}>{loading?'Loading…':'Refresh'}{updated&&<small>Updated {updated.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</small>}</button></div>
+    <div className="desk-toolbar"><nav aria-label="Research desk sections">{[['overview','Overview'],['earnings','Earnings & evidence'],['evidence','Evidence & changes'],['inbox','Review inbox'],['queue','Coverage queue'],['launch','Batch planner'],['runs','Runs'],['playbooks','Playbooks']].map(([id,label])=><button key={id} aria-current={section===id?'page':undefined} onClick={()=>setSection(id)}>{label}</button>)}</nav><button onClick={refresh} disabled={loading}>{loading?'Loading…':'Refresh'}{updated&&<small>Updated {updated.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</small>}</button></div>
     {errors.length>0&&<div className="workspace-error" role="alert">Some live data could not be refreshed. Previously loaded records may be out of date.<details><summary>Connection details</summary>{errors.map(e=><p key={e}>{e}</p>)}</details><button onClick={refresh}>Retry</button></div>}
     {message&&<p className="workspace-notice" role="status">{message}</p>}
-    {['127.0.0.1','localhost'].includes(window.location.hostname)&&<section className="workspace-panel"><div className="workspace-section-heading"><div><p className="workspace-eyebrow">SOURCE OPERATIONS</p><h2>AlphaSense collection</h2></div><a className="workspace-link-row" href="http://127.0.0.1:8766/" target="_blank" rel="noopener noreferrer">Open collection monitor ↗</a></div><p className="desk-explainer">Track the supervised pilot, verified originals, iCloud handoffs, and source restrictions. The monitor runs on this Mac.</p></section>}
+    {section==='overview'&&['127.0.0.1','localhost'].includes(window.location.hostname)&&<section className="workspace-panel"><div className="workspace-section-heading"><div><p className="workspace-eyebrow">SOURCE OPERATIONS</p><h2>AlphaSense collection</h2></div><a className="workspace-link-row" href="http://127.0.0.1:8766/" target="_blank" rel="noopener noreferrer">Open collection monitor ↗</a></div><p className="desk-explainer">Manage ticker refresh schedules, verified originals, iCloud handoffs, and source restrictions. The monitor runs on this Mac.</p></section>}
     {loading?<p className="workspace-empty" role="status">Loading research activity…</p>:<>
+    {section==='earnings'&&<EarningsWorkspace activities={[...data.activities,...data.failed]} onNavigate={onNavigate} onCompany={onCompany} renderHtml={renderRecapHtml||renderHtml}/>}
     {section==='evidence'&&<EvidenceWorkspace api={api} analyses={analyses} onCompany={onCompany}/>}
     {section==='overview'&&<>
       <div className="desk-metrics">{[[counts.active,'Active in latest 100 runs','runs'],[pending.length,'Awaiting your review','inbox'],[queue.length,`Theses ${days}+ days old or undated`,'queue'],[data.analysts.length,'Sector analysts','playbooks']].map(([n,label,id])=><button key={label} onClick={()=>setSection(id)}><strong>{n}</strong><span>{label}</span><small>Open →</small></button>)}</div>
