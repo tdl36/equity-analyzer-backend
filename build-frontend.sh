@@ -31,3 +31,4 @@ mkdir -p .worker-assets/dist .worker-assets/static/assets
 cp index.html manifest.json service-worker.js icon-*.png .worker-assets/
 cp dist/app.js dist/tailwind.css .worker-assets/dist/
 cp static/assets/*.png .worker-assets/static/assets/
+node scripts/version-frontend-assets.cjs
