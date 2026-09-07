@@ -14,6 +14,22 @@ class RefreshTests(unittest.TestCase):
         self.clock=1788796800.;self.m=RefreshManager(self.c,lambda:self.clock)
         self.cfg={'ticker':'MDT','hours':24,'lookbackDays':7,'kinds':['transcript']}
 
+    def test_cloud_trigger_receipt_prevents_replay_after_collection_completes(self):
+        self.m.save(self.cfg)
+        value={'action':'trigger','payload':{'ticker':'MDT'}}
+        first=self.m.apply_cloud_command('cloud-test',value)
+        self.c.db.execute("UPDATE refresh_requests SET status='complete'");self.c.db.commit()
+        self.assertEqual(self.m.apply_cloud_command('cloud-test',value),first)
+        self.assertEqual(self.c.db.execute('SELECT COUNT(*) FROM refresh_requests').fetchone()[0],1)
+        with self.assertRaises(ValueError):self.m.apply_cloud_command('cloud-test',{'action':'save','payload':self.cfg})
+
+    def test_cloud_save_and_receipt_commit_together(self):
+        self.m.apply_cloud_command('cloud-save',{'action':'save','payload':self.cfg})
+        self.assertEqual(len(self.m.status()['policies']),1)
+        self.assertEqual(self.c.db.execute('SELECT COUNT(*) FROM cloud_control_receipts').fetchone()[0],1)
+        with self.assertRaises(ValueError):self.m.apply_cloud_command('invalid',{'action':'save','payload':{**self.cfg,'hours':3}})
+        self.assertEqual(self.c.db.execute('SELECT COUNT(*) FROM cloud_control_receipts').fetchone()[0],1)
+
     def test_manual_trigger_coalesces_without_duplicate_browser_runs(self):
         self.m.save(self.cfg)
         a=self.m.trigger('MDT');b=self.m.trigger('MDT')

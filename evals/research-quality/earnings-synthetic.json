@@ -1,0 +1,8 @@
+{
+  "name": "Synthetic quarterly earnings: distinguish guidance and one broker estimate",
+  "sourceParts": [{"type":"text","name":"Synthetic company release.txt","content":"For Q1 FY2027, Example Company reported revenue of $540 million. Full-year FY2027 revenue guidance is $2.20 billion to $2.30 billion. The prior range was $2.10 billion to $2.20 billion. These figures are reported company guidance, not consensus estimates."},{"type":"text","name":"Synthetic broker note.txt","content":"For Q1 FY2027, our individual broker revenue estimate was $520 million. This is a single analyst estimate and should not be described as market consensus."}],
+  "requiredPatterns": ["Q1 FY2027", "540", "520", "2\\.20", "2\\.30", "individual broker"],
+  "forbiddenPatterns": ["540 billion", "consensus (?:of |was )?\\$?520"],
+  "good": {"markdown":"Q1 FY2027 revenue was $540 million versus an individual broker estimate of $520 million. FY2027 guidance is $2.20–2.30 billion.","claimReview":{"claims":[{"statement":"Q1 FY2027 revenue was $540 million.","sourceId":"s1","page":null,"quote":"For Q1 FY2027, Example Company reported revenue of $540 million.","reviewPassed":true}]}},
+  "bad": {"markdown":"Q1 FY2027 revenue was $540 billion versus consensus of $520 million. FY2027 guidance is $2.20–2.30 billion.","claimReview":{"claims":[{"statement":"Revenue was $540 billion.","sourceId":"s1","page":null,"quote":"Example Company reported revenue of $540 billion.","reviewPassed":true}]}}
+}

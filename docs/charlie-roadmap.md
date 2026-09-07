@@ -1,30 +1,29 @@
-# Charlie implementation sequence
+# Charlie implementation ledger — September 7, 2026
 
-This is an implementation ledger, not a claim that the whole roadmap is complete.
+Releases T12–T14 implement the first working increments across the roadmap. This is not a certification of error-free research or complete unattended coverage.
 
-1. Claim validation: selected recap claims now receive exact source/page passage matching and a separate model support check. Extraction gaps and review limits are disclosed. Full claim coverage, mathematical reconciliation and independently benchmarked entailment remain open.
-2. Structured investment changes: source-linked change records are generated with the audit; absent thesis baselines remain explicit. Deterministic before/after financial-period comparisons remain open.
-3. Integrated event workflow: event workspace and collection ledger exist separately. Connect live collection and filesystem status into a single event timeline; add source freshness.
-4. Thesis amendment review: existing source-backed proposals support individual decisions. Extend version restoration and event-to-thesis review linking.
-5. Resilient processing: recap delivery outbox and preflight exist. Automatic partitioning, OCR/hydration and resumable generation checkpoints remain open.
-6. AlphaSense operations: scheduled worker and local ticker policies exist. Mobile controls, full coverage collection, unattended download validation and automatic event-folder suggestions remain open.
-7. Portfolio-aware prioritization: connect verified holdings/exposure and user materiality preferences, with stale position handling.
-8. Evaluation: deterministic unit regressions exist. Add representative source packs, scoring and release thresholds for research quality.
+1. **Claim validation:** new recaps receive selected-claim exact source/page matching and a separate model support check. Source extraction gaps and excerpt limits are disclosed. Full claim coverage, arithmetic reconciliation and independently benchmarked entailment remain open.
+2. **Investment changes:** new recaps include structured, source-linked investment changes, with missing baselines identified. Deterministic financial-period bridges remain open.
+3. **Event workspace:** live authenticated iCloud filename inventory is compared with the draft source register. Unknown/stale states remain visible. This comparison does not detect changed contents within an existing filename.
+4. **Revisions and versions:** event instructions rerun the covering analyst against sources and the prior draft. The last five drafts/evidence and 30 instructions are retained. Thesis proposals accept targeted instructions and support selected edits plus restoration when the current thesis exactly matches the applied snapshot. Later edits block restoration.
+5. **Processing:** text-only recap inputs are partitioned without dropping characters. Merges receive the full preceding draft. Partial batch checkpoints are atomic/private and keyed to source hashes, prompt, model and batch count. They are removed only after the final result is in the durable delivery outbox. Explicit output-token truncation is rejected. OCR and native-PDF splitting remain open; existing iCloud hydration retries remain in place. Checkpoints resume matching retries; they do not automatically restart failed jobs.
+6. **AlphaSense control:** authenticated cloud commands and Mac receipts enable mobile policy changes and refresh triggers. Local policy mutation/refresh creation and receipt commit together, preventing replay after an earlier refresh completes. A cloud command marked applied means the local manager accepted it, not that browser downloads completed. Browser requests and Mac report age are shown separately. Codex/Mac/Chrome availability and sign-in remain necessary. Legacy 49-ticker coverage has not been silently enabled or completed. Mobile cancel/retry controls and unattended validation across full coverage remain open.
+7. **Portfolio priorities:** user-reported signed weights, as-of dates, thesis age and pending/failed activities drive an explicit research ordering heuristic. Weights older than 30 days are excluded. No holdings are fabricated or independently verified; broker import and richer risk/materiality models remain open. Ordering never triggers research or trades automatically.
+8. **Evaluation:** unit regressions cover forged citations, wrong pages, failed reviewers, missing baselines, revision context, rollback conflicts, recovery, cloud replay, conversation idempotency and stale holdings. The offline annotated synthetic earnings pack tests mechanical scoring with positive and negative controls. Representative real-source packs and expert/model benchmark thresholds remain open.
 
-Agent interaction: event-scoped revision conversations now submit instructions and the prior draft to the covering analyst through existing regeneration. Prior drafts and their evidence are retained (last five), instruction history last 30. Replies show queue/processing state, not invented agent speech. Saved research approval is manual. General conversational Q&A, thesis/note revision chat, cross-agent assignment and broader durable chat history remain open. Generation is asynchronous, not instant editing. No paid production regeneration is part of automated QA.
+## Analyst conversations
 
-## T12 implementation update
+The thesis/note discussion drawer and Evidence & changes offer analyst selection and saved conversations. Requests return a job immediately; each request ID is idempotent and one reply may run per conversation. Reopen history after closing the panel. Current research is supplied in full up to an explicit 120,000-character limit; the last 20 messages are model context and a conversation supports up to 100 saved messages. Updated research requires a new conversation.
 
-- Event folder inventories are now fetched from the existing authenticated agent manifest and compared by relative filename against the draft. Timestamp/unknown states remain visible. This is not a content-hash freshness check.
-- Thesis proposal instructions are persisted in job input and participate in request-id conflict detection. The analyst can request targeted changes before reviewing source-supported field edits.
-- Applied thesis proposals have a conflict-protected restore action: restore only if the complete current thesis equals the recorded applied snapshot. Later analyst changes block restoration; repeat restore requests are idempotent.
-- Local text-only recap providers now partition oversized extracted text into bounded batches, retaining every source character. OCR, native-PDF splitting and durable generation checkpoints remain open.
-- Regression suite includes forged quotes, incorrect source/page references, fallible reviewer verdicts, missing baselines, revision context, restoration conflicts and batch preservation.
+Conversations propose replacement wording, with no tool execution or automatic document mutation. Event regeneration and thesis amendment proposals are the executable edit paths. Direct chat-driven note/review application and arbitrary cross-agent tool delegation remain open. Stopping reply delivery prevents a late result being saved but cannot cancel an already billed provider call. Interrupted replies are visible and can be stopped; they are not silently replayed.
 
-The eight-workstream roadmap is not complete. Mobile collection control, full unattended AlphaSense coverage, portfolio-aware priorities, broad agent conversation, OCR/hydration and resumable generation still need implementation and validation.
+## Evaluation commands
 
-## T13 research conversations
+Never use pytest in this repository: its global fixtures truncate the local database.
 
-- Thesis, note and investment-review conversations support the selected configured analyst, saved history, background reply jobs and idempotent message submission. Original research text is supplied in full up to an explicit 120,000-character limit. The last 20 messages are model context; saved conversations support up to 100 messages.
-- Switching to revised research requires a new conversation. Simultaneous replies in one conversation are rejected. Stop reply delivery prevents a late provider reply being saved, but cannot cancel already billed provider work. Interrupted jobs remain visible and can be stopped; they are not silently retried.
-- Conversations propose wording; they cannot claim to have applied edits or accessed source documents. Event revisions and thesis amendment proposals remain the executable revision paths. Arbitrary chat-to-tool execution and direct note/review edit application remain open.
+- `.venv/bin/python -m unittest discover -s tests/unit`
+- `npm run test:frontend`
+- `.venv/bin/python scripts/evaluate-research-quality.py --self-test`
+- For a saved recap: `.venv/bin/python scripts/evaluate-research-quality.py --pack ANNOTATED_PACK.json --candidate RECAP_RESULT.json`
+
+The mechanical evaluation checks annotated text patterns and source quotations. Passing is not proof of correct investment judgment or complete claim entailment. No paid production regeneration is part of automated QA.

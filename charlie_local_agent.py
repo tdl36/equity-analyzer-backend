@@ -1012,6 +1012,29 @@ def push_heartbeat() -> None:
         log.debug(f"Heartbeat push failed: {e}")
 
 
+def sync_collection_control():
+    """Apply bounded, durable mobile commands through the existing local manager."""
+    from charlie_collector import Collector
+    from collection_refresh import RefreshManager
+    response=requests.get(f"{CHARLIE_API}/api/agent/collection-control",headers=_agent_headers(),timeout=15)
+    if response.status_code==404:return  # Backend may still be deploying.
+    response.raise_for_status()
+    collector=Collector()
+    try:
+        manager=RefreshManager(collector);receipts=[]
+        for row in response.json().get('commands',[])[:10]:
+            try:
+                value=row['input'];value=json.loads(value) if isinstance(value,str) else value
+                result=manager.apply_cloud_command(row['id'],value)
+                receipts.append({'id':row['id'],'status':'applied','result':result})
+            except ValueError as exc:
+                if 'Another collection operation' in str(exc):break
+                receipts.append({'id':row['id'],'status':'failed','error':str(exc)[:2000]})
+        result=requests.post(f"{CHARLIE_API}/api/agent/collection-control",headers=_agent_headers(),json={'snapshot':manager.status(),'receipts':receipts},timeout=15)
+        result.raise_for_status()
+    finally:collector.db.close()
+
+
 def push_file_manifest() -> None:
     """Scan all ticker folders recursively and push file manifest to backend.
     Includes both STOCKS/<ticker>/ (main + subfolders) AND CATALYSTS/<ticker>/<topic>/.
@@ -3368,7 +3391,7 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
                     total += int(len(sp.get('content', '')) * 0.3)
             return total
 
-        def _split_source_batches(parts, max_tokens=170_000):
+        def _split_source_batches(parts, max_tokens=100_000):
             batches, current, current_tok = [], [], 0
             for sp in parts:
                 est = _estimate_source_tokens([sp])
@@ -3425,7 +3448,7 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
                     final = stream.get_final_message()
                 stop = getattr(final, 'stop_reason', None)
                 if stop == 'max_tokens':
-                    log.warning(f"Recap call hit max_tokens ({max_tokens}); output likely truncated mid-section")
+                    raise ValueError("Recap output reached its token limit. Partial output was not accepted; use a shorter output format.")
                 # final.content is a list of blocks; concatenate any text blocks (defensive
                 # in case SDK returns multiple — usually it's a single TextBlock).
                 parts = []
@@ -3452,6 +3475,8 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
                     ],
                     max_completion_tokens=max_tokens,
                 )
+                if resp.choices[0].finish_reason == 'length':
+                    raise ValueError('Recap output reached its token limit; partial output was not accepted.')
                 return resp.choices[0].message.content or ''
             elif provider == 'google':
                 try:
@@ -3468,6 +3493,8 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
                     contents=[user_text],
                     config={"system_instruction": system_prompt, "max_output_tokens": max_tokens},
                 )
+                if any(str(getattr(c,'finish_reason','')).endswith('MAX_TOKENS') for c in (getattr(resp,'candidates',None) or [])):
+                    raise ValueError('Recap output reached its token limit; partial output was not accepted.')
                 return getattr(resp, 'text', '') or ''
             else:
                 raise RuntimeError(f"Unknown provider: {provider}")
@@ -3512,21 +3539,32 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
         prompt_text = base_prompt.format(**fmt) + IMPACT_INSTRUCTION
         content_blocks = _build_content_blocks(batches[0], prompt_text)
 
-        markdown = _call_recap_llm(
-            recap_provider, recap_model,
-            "You are a senior equity research analyst. Follow all instructions precisely.",
-            batches[0], prompt_text, content_blocks,
-            max_tokens=24576,
-        )
+        from recap_checkpoint import Checkpoint
+        checkpoint=Checkpoint({'version':1,'sources':evidence_snapshot['sources'],'provider':recap_provider,
+            'model':recap_model,'prompt':prompt_text,'batches':len(batches)})
+        saved=checkpoint.load(len(batches));resumed_batches=saved['completed'] if saved else 0
+        if saved:
+            markdown=saved['markdown']
+            log.info("Resuming recap after %s completed batches",resumed_batches)
+        else:
+            markdown = _call_recap_llm(
+                recap_provider, recap_model,
+                "You are a senior equity research analyst. Follow all instructions precisely.",
+                batches[0], prompt_text, content_blocks,
+                max_tokens=24576,
+            )
+
+            checkpoint.save(1,markdown)
 
         # Process subsequent batches — merge into existing synthesis
         for i, batch in enumerate(batches[1:], 2):
+            if i<=resumed_batches:continue
             update_job_progress(job_id, "running", f"Synthesizing report (batch {i}/{total_batches})...", 50 + int(30 * i / total_batches))
             # For earnings_recap, the existing report has three required
             # <section data-version="..."> blocks. Preserve more of the prior
             # output so the merge model sees the full structure (was truncated
             # to 6000 chars which only covered Quick + part of Summary).
-            existing_excerpt = markdown[:30000]
+            existing_excerpt = markdown
             structure_reminder = ''
             # Both earnings_recap and catalyst variants now use the 4-tier output
             # (pm/quick/summary/comprehensive). Merge MUST preserve all four
@@ -3571,6 +3609,7 @@ Write the complete, updated synthesis report now. ZERO firm names, ALL first per
                 batch, merge_prompt, merge_blocks,
                 max_tokens=24576,
             )
+            checkpoint.save(i,markdown)
             log.info(f"Batch {i}/{total_batches} merged: {len(markdown)} chars")
 
         log.info(f"Synthesis generated: {len(markdown)} chars")
@@ -3604,9 +3643,11 @@ Write the complete, updated synthesis report now. ZERO firm names, ALL first per
             'sourceProvenance': provenance,
             'evidenceSnapshot': evidence_snapshot,
             'claimReview': claim_review,
+            'processingRecovery': {'resumedBatches':resumed_batches,'totalBatches':total_batches},
         }
 
         outbox_path = catalyst_delivery.save_result(job_id, result_data)
+        checkpoint.finish()
         if catalyst_delivery.deliver(outbox_path, CHARLIE_API, _agent_headers()):
             notify(f"*Charlie Agent:* {ticker}/{topic} synthesis complete\n{file_count} docs, {len(markdown):,} chars")
         else:
@@ -3982,6 +4023,8 @@ def main() -> None:
                 try:
                     auto_unzip_stock_folders()
                     auto_unzip_catalyst_folders()
+                    try: sync_collection_control()
+                    except Exception as exc: log.debug("Collection control sync unavailable: %s",type(exc).__name__)
                     push_file_manifest()
                     process_pending_syncs()
                     check_for_new_files()

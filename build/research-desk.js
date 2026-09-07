@@ -1,3 +1,5 @@
+import { PortfolioPriorities } from './portfolio-priorities';
+import { CollectionCloud } from './collection-cloud';
 import { EarningsWorkspace } from './earnings-workspace';
 import { EvidenceWorkspace } from './evidence-workspace';
 import * as React from 'react';
@@ -243,7 +245,7 @@ export function ResearchDesk({
     className: "desk-toolbar"
   }, /*#__PURE__*/React.createElement("nav", {
     "aria-label": "Research desk sections"
-  }, [['overview', 'Overview'], ['earnings', 'Earnings & evidence'], ['evidence', 'Evidence & changes'], ['inbox', 'Review inbox'], ['queue', 'Coverage queue'], ['launch', 'Batch planner'], ['runs', 'Runs'], ['playbooks', 'Playbooks']].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
+  }, [['overview', 'Overview'], ['collection', 'Collection'], ['priorities', 'Portfolio priorities'], ['earnings', 'Earnings & evidence'], ['evidence', 'Evidence & changes'], ['inbox', 'Review inbox'], ['queue', 'Coverage queue'], ['launch', 'Batch planner'], ['runs', 'Runs'], ['playbooks', 'Playbooks']].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
     key: id,
     "aria-current": section === id ? 'page' : undefined,
     onClick: () => setSection(id)
@@ -373,7 +375,15 @@ export function ResearchDesk({
     onClick: () => onNavigate('analysts')
   }, "Review in analyst team \u2192"))), !pending.length && /*#__PURE__*/React.createElement("p", {
     className: "workspace-empty"
-  }, "No analyst output is awaiting review.")), section === 'queue' && /*#__PURE__*/React.createElement("section", {
+  }, "No analyst output is awaiting review.")), section === 'priorities' && /*#__PURE__*/React.createElement(PortfolioPriorities, {
+    api: api,
+    analyses: analyses,
+    activities: [...data.activities, ...data.failed],
+    onCompany: onCompany,
+    onPlan: prepare
+  }), section === 'collection' && /*#__PURE__*/React.createElement(CollectionCloud, {
+    api: api
+  }), section === 'queue' && /*#__PURE__*/React.createElement("section", {
     className: "workspace-panel"
   }, /*#__PURE__*/React.createElement("div", {
     className: "workspace-section-heading"

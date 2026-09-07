@@ -63,16 +63,39 @@ class RefreshManager:
                     kinds=list(dict.fromkeys(kinds)), workflow=workflow, topic=topic)
 
     def save(self, config):
-        cfg = self.validate(config)
         with self.c.lock():
-            old = self.db.execute('SELECT * FROM refresh_policies WHERE ticker=?', (cfg['ticker'],)).fetchone()
-            due = self.clock() + cfg['hours'] * 3600 if cfg['enabled'] and cfg['hours'] else None
-            if old and json.loads(old['config']).get('hours') == cfg['hours'] and json.loads(old['config']).get('enabled') == cfg['enabled']:
-                due = old['next_due']
-            self.db.execute('''INSERT INTO refresh_policies(ticker,config,next_due,updated) VALUES(?,?,?,?)
-                ON CONFLICT(ticker) DO UPDATE SET config=excluded.config,next_due=excluded.next_due,updated=excluded.updated''',
-                (cfg['ticker'], json.dumps(cfg), due, now()))
+            return self._save(config)
+
+    def _save(self, config):
+        cfg = self.validate(config)
+        old = self.db.execute('SELECT * FROM refresh_policies WHERE ticker=?', (cfg['ticker'],)).fetchone()
+        due = self.clock() + cfg['hours'] * 3600 if cfg['enabled'] and cfg['hours'] else None
+        if old and json.loads(old['config']).get('hours') == cfg['hours'] and json.loads(old['config']).get('enabled') == cfg['enabled']:
+            due = old['next_due']
+        self.db.execute('''INSERT INTO refresh_policies(ticker,config,next_due,updated) VALUES(?,?,?,?)
+            ON CONFLICT(ticker) DO UPDATE SET config=excluded.config,next_due=excluded.next_due,updated=excluded.updated''',
+            (cfg['ticker'], json.dumps(cfg), due, now()))
         return cfg
+
+    def apply_cloud_command(self, command_id, value):
+        # Receipt and mutation commit together. Even after a successful collection
+        # finishes, redelivery cannot create another refresh request.
+        with self.c.lock():
+            self.db.execute('CREATE TABLE IF NOT EXISTS cloud_control_receipts(id TEXT PRIMARY KEY, input TEXT, result TEXT)')
+            encoded=json.dumps(value,sort_keys=True)
+            old=self.db.execute('SELECT input,result FROM cloud_control_receipts WHERE id=?',(command_id,)).fetchone()
+            if old:
+                if old['input']!=encoded:raise ValueError('Cloud command ID conflict')
+                return json.loads(old['result'])
+            if value['action']=='save':result={'policy':self._save(value['payload'])}
+            elif value['action']=='trigger':
+                ticker=ticker_name(value['payload']['ticker'])
+                row=self.db.execute('SELECT * FROM refresh_policies WHERE ticker=?',(ticker,)).fetchone()
+                if not row or not json.loads(row['config'])['enabled']:raise ValueError('Save and enable this ticker policy first')
+                result={'refreshRequestId':self._enqueue(row)}
+            else:raise ValueError('Unsupported cloud command')
+            self.db.execute('INSERT INTO cloud_control_receipts VALUES(?,?,?)',(command_id,encoded,json.dumps(result)))
+            return result
 
     def _enqueue(self, row):
         # Caller holds the collector transaction/operation lock.

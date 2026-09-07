@@ -1,0 +1,33 @@
+import * as React from 'react';
+const blank={ticker:'',hours:0,lookbackDays:30,kinds:['transcript','broker-report'],workflow:'thesis',topic:'',instructions:'',enabled:true};
+export function CollectionCloud({api}) {
+  const [data,setData]=React.useState(null),[cfg,setCfg]=React.useState(blank),[error,setError]=React.useState(''),[message,setMessage]=React.useState(''),[busy,setBusy]=React.useState(false),[uncertain,setUncertain]=React.useState(false);
+  const alive=React.useRef(true),lock=React.useRef(false),pending=React.useRef(null);
+  const json=async(options)=>{const c=new AbortController(),timer=setTimeout(()=>c.abort(),20000);try{const r=await fetch(`${api}/api/collection/control`,{...options,signal:c.signal});const d=await r.json();if(!r.ok){const e=new Error(d.error||`Request failed (${r.status})`);e.status=r.status;throw e;}return d;}finally{clearTimeout(timer);}};
+  const refresh=async()=>{try{const value=await json();if(alive.current){setData(value);if(pending.current&&value.commands.some(c=>c.id===pending.current.requestId)){pending.current=null;setUncertain(false);setMessage('Command recorded. Track its Mac acknowledgement below.');}}}catch(e){if(alive.current)setError(e.message);}};
+  React.useEffect(()=>{alive.current=true;refresh();const timer=setInterval(()=>{if(!document.hidden)refresh();},15000);return()=>{alive.current=false;clearInterval(timer);};},[api]);
+  const send=async(action,payload)=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');const req=pending.current||{requestId:crypto.randomUUID(),action,payload};pending.current=req;
+    try{const d=await json({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(req)});if(alive.current){pending.current=null;setUncertain(false);setMessage(`Command ${d.status}. Collection starts only after Mac processing and browser execution.`);await refresh();}}
+    catch(e){if(alive.current){setError(e.message);if(e.status){pending.current=null;setUncertain(false);}else setUncertain(true);await refresh();}}
+    finally{lock.current=false;if(alive.current)setBusy(false);}
+  };
+  const snapshot=data?.snapshot,policies=snapshot?.policies||[];
+  const updated=data?.updatedAt?new Date(data.updatedAt.replace(' ','T')+'Z'):null;
+  const stale=!updated||!Number.isFinite(updated.getTime())||Date.now()-updated.getTime()>180000;
+  return <section className="workspace-panel"><p className="workspace-eyebrow">CLOUD CONTROLS / MAC COLLECTION</p><h2>Refresh your coverage from anywhere.</h2>
+    <p className="desk-explainer">Commands are stored in Charlie and picked up by your Mac agent. AlphaSense downloads still require this Mac awake, Codex running and Chrome signed in. The browser worker checks managed requests every 15 minutes.</p>
+    <p role="status">{updated?`Mac last reported ${updated.toLocaleString()}.`:'No Mac collection report yet.'} {stale?'No recent report; commands will wait for the Mac agent.':'Mac collection bridge is reporting.'}</p>
+    {error&&<p role="alert" className="workspace-error">{error}</p>}{message&&<p role="status">{message}</p>}
+    <fieldset className="desk-form" disabled={busy||uncertain}><div className="desk-filter"><label>Ticker<input value={cfg.ticker} maxLength={20} onChange={e=>setCfg({...cfg,ticker:e.target.value.toUpperCase().trim()})} placeholder="MDT"/></label><label>Frequency<select value={cfg.hours} onChange={e=>setCfg({...cfg,hours:Number(e.target.value)})}>{[[0,'Manual'],[1,'Hourly'],[4,'Every 4 hours'],[12,'Every 12 hours'],[24,'Daily'],[168,'Weekly']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label><label>Initial lookback days<input type="number" min="1" max="365" value={cfg.lookbackDays} onChange={e=>setCfg({...cfg,lookbackDays:Number(e.target.value)})}/></label></div>
+    <label>Destination and workflow<select value={cfg.workflow} onChange={e=>setCfg({...cfg,workflow:e.target.value})}><option value="thesis">STOCKS → thesis proposal intake</option><option value="note">STOCKS → draft note and existing intake</option><option value="recap">CATALYSTS → event recap</option></select></label>
+    {cfg.workflow==='recap'&&<label>Event folder<input value={cfg.topic} maxLength={160} placeholder="MDT F1Q27 Earnings" onChange={e=>setCfg({...cfg,topic:e.target.value})}/></label>}
+    <div className="desk-filter">{[['transcript','Event transcripts'],['broker-report','Broker reports']].map(([k,l])=><label key={k}><input type="checkbox" checked={cfg.kinds.includes(k)} onChange={()=>setCfg({...cfg,kinds:cfg.kinds.includes(k)?cfg.kinds.filter(v=>v!==k):[...cfg.kinds,k]})}/>{l}</label>)}<label><input type="checkbox" checked={cfg.enabled} onChange={e=>setCfg({...cfg,enabled:e.target.checked})}/>Policy enabled</label></div>
+    <label>Collection instructions<textarea rows={3} maxLength={3000} value={cfg.instructions} onChange={e=>setCfg({...cfg,instructions:e.target.value})} placeholder="Prioritize earnings transcripts and material guidance changes…"/></label>
+    <button className="workspace-primary" disabled={!cfg.ticker||!cfg.kinds.length} onClick={()=>send('save',cfg)}>Save policy on Mac</button></fieldset>
+    {uncertain&&<button disabled={busy} onClick={()=>send()}>Retry same command</button>}<button onClick={refresh} disabled={busy}>Check status</button>
+    <p className="desk-explainer">The existing ticker folder must exist in iCloud. A recap event subfolder may be created. Source restrictions and duplicate checks remain enforced. Research generation uses configured API credits; drafts still require review.</p>
+    <h3>Policies reported by Mac · {policies.length}</h3>{policies.map(p=><div className="desk-row" key={p.ticker}><button disabled={busy||uncertain} onClick={()=>setCfg({...p})}><strong>{p.ticker}</strong><span>{p.enabled?(p.hours?`Every ${p.hours} hours`:'Manual'):'Paused'} · {p.workflow==='recap'?`CATALYSTS / ${p.topic}`:'STOCKS'}</span></button><small>Last verified: {p.lastSuccess||'Never'}</small><button disabled={busy||uncertain||!p.enabled} onClick={()=>send('trigger',{ticker:p.ticker})}>Refresh now</button></div>)}
+    <details><summary>Cloud commands · {data?.commands?.length||0}</summary>{(data?.commands||[]).map(c=><p key={c.id}>{c.ticker} · {c.input?.action} · {c.status==='applied'?'Applied on Mac':c.status}{c.error?` · ${c.error}`:''}</p>)}</details>
+    <details><summary>Browser collection requests · {snapshot?.requests?.length||0}</summary>{(snapshot?.requests||[]).map(r=><p key={r.id}>{r.ticker} · {r.status} · {r.issue|| (r.result?.newDocuments!=null?`${r.result.newDocuments} new eligible documents`:'No completed result reported')}</p>)}</details>
+  </section>;
+}

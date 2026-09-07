@@ -28165,6 +28165,7 @@ def _maybe_link_activity_to_job_result(job_id: str, status: str, result):
             out['sourceProvenance'] = result.get('sourceProvenance') or out.get('sourceProvenance')
             out['evidenceSnapshot'] = result.get('evidenceSnapshot')
             out['claimReview'] = result.get('claimReview')
+            out['processingRecovery'] = result.get('processingRecovery')
             out['fileCount'] = result.get('fileCount') or out.get('fileCount')
         if status == 'failed':
             err_msg = (result or {}).get('error') if isinstance(result, dict) else None
@@ -28746,6 +28747,11 @@ def health():
 # invoke the orchestration fan-out or save generated prose without a decision.
 import research_amendments
 import research_conversations
+import collection_control
+import research_priorities
+app.register_blueprint(research_priorities.create_blueprint(get_db))
+app.register_blueprint(collection_control.create_blueprint(get_db,
+    lambda: bool(CHARLIE_API_KEY) and hmac.compare_digest(request.headers.get('Authorization',''), 'ApiKey '+CHARLIE_API_KEY)))
 
 def _research_conversation_call(prompt):
     return call_llm(messages=[{"role":"user","content":prompt}], tier="standard", max_tokens=6000)["text"]
