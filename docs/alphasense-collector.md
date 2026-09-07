@@ -146,3 +146,19 @@ and after exit; it does not restart or replace the production file agent.
 General company sources go directly in `STOCKS/<ticker>/`. Use the existing
 `CATALYSTS/<ticker>/<topic>/` workflow only for a deliberately assigned catalyst
 topic; placing generic reports there could trigger an unrelated synthesis.
+
+## Verifying ingestion visibility
+
+Run `.venv/bin/python charlie_collector.py verify RUN_ID` to read the production
+agent manifests and compare local destination hashes. The command never uploads
+files, starts research, or sends messages. It records per-company counts and
+check times in the private ledger; missing/changed files or unavailable checks
+return a nonzero exit status. Failed requests preserve the previous successful
+evidence. A verification is tied to the exact eligible document set and
+destinations; the monitor marks it outdated after those ledger values change.
+Checks are snapshots, not a promise that a file stays available indefinitely.
+
+The monitor shows ticker-relative iCloud folders without local usernames or full
+filesystem paths, distinguishes held originals from pending handoffs, and supports
+company/disposition/text filters with25-row pages. Browser refresh updates only
+ledger data; it does not run the production verification command.

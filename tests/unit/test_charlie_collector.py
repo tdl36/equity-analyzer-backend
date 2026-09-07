@@ -163,6 +163,35 @@ class CollectorTests(unittest.TestCase):
         result = self.collector.finish(self.run, 'DE', 'broker-report', 1)
         self.assertEqual(result['tasks'][0]['status'],'complete_with_exceptions')
 
+    def test_manifest_verification_binds_to_handoff_and_redacts_paths(self):
+        from collector_status import snapshot
+        doc = self.collector.handoff(self.stage()['id'])
+        manifest = {'files': [{'filename': Path(doc['destination']).name, 'folder': 'main'}]}
+        result = self.collector.verify(self.run, lambda ticker: manifest)
+        self.assertEqual(result['verifications'][0]['visible'], 1)
+        view = snapshot(self.root / 'state')['runs'][0]
+        self.assertTrue(view['verifications'][0]['current'])
+        self.assertEqual(view['documents'][0]['destinationFolder'], 'STOCKS/DE/')
+        self.assertNotIn(str(self.root), str(view))
+        self.file.write_bytes(pdf(99))
+        self.collector.stage(self.run, 'DE', 'broker-report', self.file,
+                             'https://research.alpha-sense.com/search')
+        self.assertFalse(snapshot(self.root / 'state')['runs'][0]['verifications'][0]['current'])
+        result = self.collector.verify(self.run, lambda ticker: manifest)
+        self.assertEqual(result['verifications'][0]['expected'], 2)
+        self.assertEqual(result['verifications'][0]['visible'], 1)
+        Path(doc['destination']).write_bytes(pdf(99))
+        self.assertEqual(self.collector.verify(self.run, lambda ticker: manifest)['verifications'][0]['visible'], 0)
+
+    def test_failed_manifest_check_keeps_previous_evidence_and_hides_error(self):
+        self.collector.verify(self.run, lambda ticker: {'files': []})
+        def failure(ticker):
+            raise RuntimeError('sensitive credentials must not be returned')
+        result = self.collector.verify(self.run, failure)
+        self.assertNotIn('sensitive', str(result))
+        from collector_status import snapshot
+        self.assertEqual(len(snapshot(self.root / 'state')['runs'][0]['verifications']), 1)
+
     def test_observation_does_not_mark_search_complete(self):
         result = self.collector.observe(self.run,'DE','broker-report',
                                        'https://research.alpha-sense.com/search',45,'Source restrictions visible')

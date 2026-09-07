@@ -5,7 +5,21 @@ import json
 from pathlib import Path
 import sqlite3
 from urllib.parse import urlsplit
-from charlie_collector import DEFAULT_STATE, now
+from charlie_collector import DEFAULT_STATE, now, handoff_fingerprint
+
+
+def destination_label(doc):
+    if doc['usage'] == 'reference_only':
+        return 'Private staging · excluded from AI ingestion'
+    if not doc['destination']:
+        return 'Awaiting iCloud handoff'
+    parts = Path(doc['destination']).parts
+    for root in ('STOCKS', 'CATALYSTS'):
+        if root in parts:
+            index = parts.index(root)
+            if len(parts) > index + 2 and parts[index + 1] == doc['ticker']:
+                return '/'.join(parts[index:-1]) + '/'
+    return 'Existing library location'
 
 
 def snapshot(state):
@@ -16,11 +30,21 @@ def snapshot(state):
     db.row_factory = sqlite3.Row
     try:
         runs = []
+        tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         for run in db.execute('SELECT * FROM runs ORDER BY created DESC LIMIT 20'):
             item = dict(run)
             for table in ('tasks', 'documents', 'observations'):
                 item[table] = [dict(r) for r in db.execute(f'SELECT * FROM {table} WHERE run=?', (run['id'],))]
+            item['verifications'] = []
+            if 'verifications' in tables:
+                for row in db.execute('SELECT * FROM verifications WHERE run=? ORDER BY ticker', (run['id'],)):
+                    v = dict(row)
+                    docs = [d for d in item['documents'] if d['ticker'] == v['ticker']]
+                    v['current'] = v.pop('fingerprint') == handoff_fingerprint(docs)
+                    v['missing'] = len(json.loads(v['missing']))
+                    item['verifications'].append(v)
             for doc in item['documents']:
+                doc['destinationFolder'] = destination_label(doc)
                 doc.pop('staged', None)
                 doc['destination'] = Path(doc['destination']).name if doc['destination'] else None
             runs.append(item)
@@ -51,6 +75,9 @@ def handler(state, port):
             elif path == '/':
                 data = (Path(__file__).parent / 'src/collector-monitor.html').read_bytes()
                 mime = 'text/html; charset=utf-8'
+            elif path == '/collector-monitor-model.mjs':
+                data = (Path(__file__).parent / 'src/collector-monitor-model.mjs').read_bytes()
+                mime = 'text/javascript; charset=utf-8'
             else:
                 self.send_error(404)
                 return
@@ -59,7 +86,7 @@ def handler(state, port):
             self.send_header('Content-Length', str(len(data)))
             self.send_header('Cache-Control', 'no-store')
             self.send_header('X-Content-Type-Options', 'nosniff')
-            self.send_header('Content-Security-Policy', "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'")
+            self.send_header('Content-Security-Policy', "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'")
             self.end_headers()
             self.wfile.write(data)
 

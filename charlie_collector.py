@@ -142,6 +142,13 @@ def file_hash(path):
     return digest.hexdigest()
 
 
+def handoff_fingerprint(documents):
+    """Bind a verification to the exact eligible ledger state that was checked."""
+    rows = sorted((d['id'], d['sha256'], d['status'], d['destination'])
+                  for d in documents if d['usage'] == 'research')
+    return hashlib.sha256(json.dumps(rows).encode()).hexdigest()
+
+
 def publish(path, data):
     """Publish a complete file atomically without overwriting an existing original."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -184,6 +191,10 @@ class Collector:
             CREATE TABLE IF NOT EXISTS observations (
                 run TEXT, ticker TEXT, kind TEXT, source_url TEXT, result_count INTEGER,
                 note TEXT, checked TEXT, PRIMARY KEY(run,ticker,kind));
+            CREATE TABLE IF NOT EXISTS verifications (
+                run TEXT, ticker TEXT, checked TEXT, fingerprint TEXT,
+                expected INTEGER, visible INTEGER, missing TEXT,
+                PRIMARY KEY(run,ticker));
         """)
         columns = {r[1] for r in self.db.execute('PRAGMA table_info(documents)')}
         if 'usage' not in columns:
@@ -353,6 +364,56 @@ class Collector:
             self.event(run, 'search_observed', ticker=ticker, kind=kind, result_count=count)
         return self.status(run)
 
+    def verify(self, run, fetcher=None):
+        """Read production manifests and verify local bytes; never upload or generate."""
+        documents = self.status(run)['documents']
+        if fetcher is None:
+            import requests
+            from charlie_local_agent import CHARLIE_API, _agent_headers
+            def fetcher(ticker):
+                response = requests.get(CHARLIE_API + '/api/agent/local-files/' + ticker,
+                                        headers=_agent_headers(), timeout=30)
+                response.raise_for_status()
+                return response.json()
+        results = []
+        for ticker in sorted({t['ticker'] for t in self.status(run)['tasks']}):
+            eligible = [d for d in documents if d['ticker'] == ticker and d['usage'] == 'research']
+            try:
+                manifest = fetcher(ticker)
+                files = manifest['files']
+                if not isinstance(files, list) or any(not isinstance(f, dict) for f in files):
+                    raise ValueError('Invalid manifest')
+                missing = []
+                for doc in eligible:
+                    destination = Path(doc['destination']) if doc['destination'] else None
+                    valid = False
+                    if destination and doc['status'] in ('handed_off', 'duplicate'):
+                        try:
+                            relative = destination.relative_to(self.stocks / ticker)
+                            folder = 'main' if relative.parent == Path('.') else relative.parent.as_posix()
+                            valid = (file_hash(destination) == doc['sha256'] and
+                                     any(f.get('filename') == relative.name and f.get('folder') == folder for f in files))
+                        except (OSError, ValueError):
+                            pass
+                    if not valid:
+                        missing.append(doc['id'])
+                result = dict(ticker=ticker, checked=now(), expected=len(eligible),
+                              visible=len(eligible)-len(missing), missing=missing)
+                with self.lock():
+                    current = [d for d in self.status(run)['documents'] if d['ticker'] == ticker]
+                    if handoff_fingerprint(current) != handoff_fingerprint(eligible):
+                        raise ValueError('Ledger changed during verification')
+                    self.db.execute('INSERT OR REPLACE INTO verifications VALUES(?,?,?,?,?,?,?)',
+                                    (run, ticker, result['checked'], handoff_fingerprint(eligible),
+                                     len(eligible), result['visible'], json.dumps(missing)))
+                    self.event(run, 'manifest_verified', **result)
+                results.append(result)
+            except Exception:
+                # Requests errors can include headers/URLs. Keep previous successful
+                # evidence and return a bounded, credential-free error.
+                results.append(dict(ticker=ticker, error='Verification unavailable; previous evidence retained'))
+        return {'run': run, 'verifications': results}
+
     def notify(self, run, event, sender=None):
         """One notification per run/event. Never send authentication secrets."""
         result = self.status(run)
@@ -407,7 +468,7 @@ def main():
     create.add_argument("--tickers", nargs="+", required=True)
     create.add_argument("--since", required=True)
     create.add_argument("--until", default=date.today().isoformat())
-    for command in ("status", "auth-needed", "resume", "stage", "finish", "observe"):
+    for command in ("status", "verify", "auth-needed", "resume", "stage", "finish", "observe"):
         p = commands.add_parser(command)
         p.add_argument("run")
         if command in ("stage", "finish", "observe"):
@@ -437,6 +498,8 @@ def main():
             result = collector.create(args.tickers, args.since, args.until)
         elif args.command == "status":
             result = collector.status(args.run)
+        elif args.command == "verify":
+            result = collector.verify(args.run)
         elif args.command in ("auth-needed", "resume"):
             result = collector.auth(args.run, args.command == "auth-needed")
         elif args.command == "stage":
@@ -451,6 +514,8 @@ def main():
         else:
             result = collector.finish(args.run, args.ticker, args.kind, args.expected)
         print(json.dumps(result, indent=2))
+        if args.command == 'verify' and any(v.get('error') or v.get('missing') for v in result['verifications']):
+            parser.exit(1, 'Manifest verification needs attention.\n')
     except (ValueError, OSError, zipfile.BadZipFile) as exc:
         parser.exit(1, f"Collection stopped: {exc}\n")
     finally:

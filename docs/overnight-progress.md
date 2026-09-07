@@ -22,3 +22,14 @@ User authorized continued implementation, commits, and production deployment whi
 5. Commit/deploy completed app fixes with matching worker/frontend/service-worker versions. Explicit staged website assets only (.worker-assets), never repository root. Preserve unrelated .omc/.claude/nohup/research handoff files. Run focused tests, never pytest because global conftest truncates testDB.
 
 Finite Codex heartbeat `continue-charlie-overnight` has four hourly follow-ups; stop no later than2026-09-07T05:45UTC or earlier if scoped work is complete. Mac must remain awake and Codex available for local browser work. Authentication/MFA must be completed by the user in AlphaSense; no credentials in chat. No permanent daily collection schedule exists.
+
+## Overnight pass1 —02:45UTC
+- Release262f1cb fully verified in private deployment receipt: Cloudflare2026-09-06T03, matching assets, Render262f1cbcd3b1. Mobile thesis action panel verified at390px.
+- Monitor clarity work complete: ticker-relative destinations, held/pending separation, combined company/status/text filters,25-row pagination, visible verification timestamps.
+- Added `charlie_collector.py verify RUN_ID`: read-only production manifests plus local hash check; ledger-bound fingerprints prevent old checks appearing current after a handoff changes. Errors retain previous timestamped evidence and do not leak credentials.
+- Production verification at02:43UTC passed all59 originals: ABT24, AMT6, DE29. No new downloads or research jobs. Updated stale Deere search note to reflect completed45-report reconciliation.
+-30 focused tests pass (19Python +11frontend). Native Chrome filter QA: Deere46 originals, Deere held17, Deere held/Wolfe7. Read-only endpoint rejects foreign origins/hosts and POST; JSON contains no /Users paths.
+- Local monitor LaunchAgent restarted to serve upgrade. These are local collector changes; public app version remains2026-09-06T03.
+- Remaining: authentication pause/resume while partially collected, stricter completion evidence and interrupted-archive tests, final mobile theme inspection. Do not redo completed pilot or monitor filters.
+
+- Phone-width390px monitor QA complete: filters fit within the viewport; originals use cards with visible destination/status. Pagination confirmed26–50 of89.
