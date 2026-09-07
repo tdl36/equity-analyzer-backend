@@ -22,3 +22,9 @@ Agent interaction: event-scoped revision conversations now submit instructions a
 - Regression suite includes forged quotes, incorrect source/page references, fallible reviewer verdicts, missing baselines, revision context, restoration conflicts and batch preservation.
 
 The eight-workstream roadmap is not complete. Mobile collection control, full unattended AlphaSense coverage, portfolio-aware priorities, broad agent conversation, OCR/hydration and resumable generation still need implementation and validation.
+
+## T13 research conversations
+
+- Thesis, note and investment-review conversations support the selected configured analyst, saved history, background reply jobs and idempotent message submission. Original research text is supplied in full up to an explicit 120,000-character limit. The last 20 messages are model context; saved conversations support up to 100 messages.
+- Switching to revised research requires a new conversation. Simultaneous replies in one conversation are rejected. Stop reply delivery prevents a late provider reply being saved, but cannot cancel already billed provider work. Interrupted jobs remain visible and can be stopped; they are not silently retried.
+- Conversations propose wording; they cannot claim to have applied edits or accessed source documents. Event revisions and thesis amendment proposals remain the executable revision paths. Arbitrary chat-to-tool execution and direct note/review edit application remain open.

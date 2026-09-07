@@ -10,6 +10,7 @@ import * as ReactDOM from 'react-dom';
 import { OnePagerFit, ONEPAGER_STYLES } from './onepager';
 import { DeepDiveArtifact, PageFit, preflightPages, printArtifact, saveArtifact, clampZoom, ZOOM_MIN, ZOOM_MAX, ONEPAGER_TEMPLATES, TWOPAGER_TEMPLATES } from './deepdive';
 import * as htmlToImage from 'html-to-image';
+import { ResearchChat } from './research-chat';
 import { ResearchDesk } from './research-desk';
 import { WorkspaceShell, TodayWorkspace, CompaniesWorkspace, LibraryWorkspace, CreateWorkspace, AutomationsWorkspace, ResearchDocument } from './workspace';
 import { readRoute, routeHash, parseTimestamp, selectedProjectSlide } from './workspace-model.mjs';
@@ -84,7 +85,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-09-07T12';
+        const BUILD_VERSION = '2026-09-07T13';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -2091,12 +2092,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
             // Contextual chat state
             const [ctxChatOpen, setCtxChatOpen] = useState(false);
-            const [ctxChatMessages, setCtxChatMessages] = useState([]);
-            const [ctxChatInput, setCtxChatInput] = useState('');
-            const [ctxChatLoading, setCtxChatLoading] = useState(false);
-            const [ctxChatId, setCtxChatId] = useState(null);
             const [ctxChatContext, setCtxChatContext] = useState({ ticker: '', type: '', content: '' });
-            const ctxChatEndRef = React.useRef(null);
 
             // Research Document Types
             const RESEARCH_DOC_TYPES = [
@@ -10021,41 +10017,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 } catch (e) { console.error('Validation history fetch failed:', e); }
             };
 
-            const sendCtxChatMessage = async () => {
-                if (!ctxChatInput.trim() || ctxChatLoading) return;
-                const msg = ctxChatInput.trim();
-                setCtxChatInput('');
-                setCtxChatMessages(prev => [...prev, { role: 'user', content: msg, ts: new Date().toISOString() }]);
-                setCtxChatLoading(true);
-                try {
-                    const res = await fetch(`${API_URL}/api/chat/context`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            ticker: ctxChatContext.ticker,
-                            contentType: ctxChatContext.type,
-                            content: ctxChatContext.content,
-                            message: msg,
-                            chatId: ctxChatId,
-                        }),
-                    });
-                    if (res.ok) {
-                        const data = await res.json();
-                        setCtxChatId(data.chatId);
-                        setCtxChatMessages(prev => [...prev, { role: 'assistant', content: data.response, ts: new Date().toISOString() }]);
-                    }
-                } catch (e) { setCtxChatMessages(prev => [...prev, { role: 'assistant', content: 'Error: ' + e.message }]); }
-                finally { setCtxChatLoading(false); }
-            };
-
             const openContextChat = (ticker, type, content) => {
                 setCtxChatContext({ ticker, type, content });
-                setCtxChatMessages([]);
-                setCtxChatId(null);
                 setCtxChatOpen(true);
             };
 
-            React.useEffect(() => { ctxChatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [ctxChatMessages]);
 
             // Cross-tab navigation - sync ticker when switching between Portfolio and Overview
             const switchTab = (newTab) => {
@@ -31800,52 +31766,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     </div>
                 )}
 
-                {/* Contextual Chat Drawer */}
-                {ctxChatOpen && (
-                    <div className="fixed inset-0 z-[60] flex flex-col justify-end" onClick={() => setCtxChatOpen(false)}>
-                        <div className="bg-neutral-800 border-t border-white/10 rounded-t-2xl shadow-2xl max-h-[70vh] flex flex-col mb-[calc(env(safe-area-inset-bottom)+80px)] md:mb-0" onClick={e => e.stopPropagation()}>
-                            <div className="p-3 border-b border-white/10 flex items-center justify-between">
-                                <div>
-                                    <span className="text-sm font-semibold">Ask About {ctxChatContext.ticker} {ctxChatContext.type}</span>
-                                    <span className="text-[10px] text-slate-500 ml-2">Challenge assumptions, request edits, ask questions</span>
-                                </div>
-                                <button onClick={() => setCtxChatOpen(false)} className="text-slate-400 hover:text-white text-lg">&times;</button>
-                            </div>
-                            <div className="flex-1 overflow-y-auto p-3 space-y-3 min-h-[200px]">
-                                {ctxChatMessages.length === 0 && (
-                                    <div className="text-center py-8">
-                                        <p className="text-sm text-slate-400">Ask anything about this {ctxChatContext.type}</p>
-                                        <div className="flex flex-wrap gap-1.5 justify-center mt-3">
-                                            {['Why did you choose these assumptions?', 'Walk me through the EPS bridge', 'Make the bear case stronger', 'What are the key risks I should focus on?'].map(q => (
-                                                <button key={q} onClick={() => { setCtxChatInput(q); }}
-                                                    className="text-[10px] px-2 py-1 bg-white/[0.06] rounded-lg text-slate-400 hover:text-white">{q}</button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                                {ctxChatMessages.map((msg, i) => (
-                                    <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                        <div className={`max-w-[85%] p-2.5 rounded-lg text-xs ${
-                                            msg.role === 'user' ? 'bg-amber-600/30 text-amber-100' : 'bg-white/[0.05] text-slate-300'
-                                        }`}>
-                                            <pre className="whitespace-pre-wrap font-sans">{msg.content}</pre>
-                                        </div>
-                                    </div>
-                                ))}
-                                {ctxChatLoading && <div className="flex justify-start"><div className="bg-white/[0.05] p-2.5 rounded-lg text-xs text-slate-500 animate-pulse">Thinking...</div></div>}
-                                <div ref={ctxChatEndRef} />
-                            </div>
-                            <div className="p-3 border-t border-white/10 flex gap-2">
-                                <input value={ctxChatInput} onChange={e => setCtxChatInput(e.target.value)}
-                                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendCtxChatMessage(); }}}
-                                    placeholder="Ask a question or request an edit..."
-                                    className="flex-1 bg-white/[0.06] border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500" />
-                                <button onClick={sendCtxChatMessage} disabled={ctxChatLoading || !ctxChatInput.trim()}
-                                    className="px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white text-sm font-medium rounded-lg">Send</button>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                {/* Contextual research conversation */}
+                {ctxChatOpen && <ResearchChat key={`${ctxChatContext.ticker}:${ctxChatContext.type}`} api={API_URL} context={ctxChatContext} onClose={()=>setCtxChatOpen(false)}/>}
 
                 {/* Validation Result Panel */}
                 {validationResult && (() => {

@@ -28745,6 +28745,12 @@ def health():
 # Evidence proposals use the existing model picker and auth gate, but never
 # invoke the orchestration fan-out or save generated prose without a decision.
 import research_amendments
+import research_conversations
+
+def _research_conversation_call(prompt):
+    return call_llm(messages=[{"role":"user","content":prompt}], tier="standard", max_tokens=6000)["text"]
+
+app.register_blueprint(research_conversations.create_blueprint(get_db, _research_conversation_call))
 
 def _amendment_model_call(prompt, key, max_tokens):
     response = _call_pinned_long(

@@ -1,3 +1,4 @@
+import { ResearchChat } from './research-chat';
 import { ResearchAutomationControl } from './research-automation';
 import { ThesisAmendments } from './thesis-amendments';
 import { SavedResearchContext } from './saved-research-context';
@@ -109,7 +110,17 @@ export function EvidenceWorkspace({
     ticker: ticker,
     context: data,
     onApplied: () => setRefresh(x => x + 1)
-  }), loading ? /*#__PURE__*/React.createElement("p", {
+  }), !loading && !error && (data?.savedThesis || review) && /*#__PURE__*/React.createElement("details", {
+    className: "workspace-panel"
+  }, /*#__PURE__*/React.createElement("summary", null, "Discuss this research with an analyst"), /*#__PURE__*/React.createElement(ResearchChat, {
+    key: `${ticker}:${refresh}`,
+    api: api,
+    context: {
+      ticker,
+      type: review ? 'review' : 'thesis',
+      content: JSON.stringify(review?.state || data.savedThesis)
+    }
+  })), loading ? /*#__PURE__*/React.createElement("p", {
     role: "status",
     className: "workspace-empty"
   }, "Loading saved research for ", ticker, "\u2026") : error ? /*#__PURE__*/React.createElement("div", {

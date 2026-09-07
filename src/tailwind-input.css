@@ -8,6 +8,7 @@
 @import "./workspace.css";
 @import "./evidence-workspace.css";
 @import "./earnings-workspace.css";
+@import "./research-chat.css";
 
 @tailwind base;
 @tailwind components;
