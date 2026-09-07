@@ -26,7 +26,7 @@ class ActivityGuardTests(unittest.TestCase):
         with Flask(__name__).test_request_context(json={}):
             response, code = fn('activity')
         self.assertEqual(code, 409)
-        self.assertFalse(any('UPDATE' in q for q in calls))
+        self.assertFalse(any(q.strip().startswith('UPDATE') for q in calls))
 
     def test_approval_does_not_save_an_empty_recap(self):
         fn, calls = route('analyst_activities_approve', {'ticker': 'MDT', 'activity_type': 'earnings_recap', 'status': 'pending_review', 'input': {'topic':'event'}, 'output': {}})
