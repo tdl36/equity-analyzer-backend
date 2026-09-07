@@ -7569,6 +7569,7 @@ def youtube_summarize():
                 anthropic_api_key,
             ))
 
+        _mirror_transcription_state(job_id)
         print(f"[youtube {job_id}] Enqueued task {task_id} for video {video_id} ('{display_title}')")
         return jsonify({
             'success': True,
@@ -7696,6 +7697,8 @@ def youtube_tasks_result(task_id):
         filename = ' — '.join(filename_parts) + '.youtube'
         source_meta = {
             **meta,
+            'videoId': video_id,
+            'transcriptionJobId': job_id,
             'segmentCount': len(segments),
             'transcriptChars': len(transcript),
         }
@@ -7704,6 +7707,8 @@ def youtube_tasks_result(task_id):
             _transcription_jobs[job_id]['status'] = 'starting'
             _transcription_jobs[job_id]['progress'] = 'Transcript captured — generating Brief / Key Takeaways / Assessment…'
 
+        _transcription_jobs.setdefault(job_id, {'status': 'starting', 'autoProcess': True, 'filename': filename})
+        _mirror_transcription_state(job_id)
         threading.Thread(
             target=_run_auto_process_text,
             args=(job_id, transcript, filename, api_key),
@@ -8229,11 +8234,13 @@ OUTPUT FORMAT: markdown만. HTML 금지. ```fence 금지.
 
         _transcription_jobs[job_id]['status'] = 'complete'
         _transcription_jobs[job_id]['summaryId'] = summary_id
+        _mirror_transcription_state(job_id)
         print(f"[auto-text {job_id}] Complete: saved summary {summary_id}")
     except Exception as e:
         print(f"[auto-text {job_id}] Failed: {e}")
         _transcription_jobs[job_id]['status'] = 'failed'
         _transcription_jobs[job_id]['error'] = str(e)
+        _mirror_transcription_state(job_id)
 
 
 def _run_auto_process_audio(job_id, file_content, filename, mime_type, gemini_api_key, anthropic_api_key, detail_level):
@@ -8775,7 +8782,7 @@ def transcribe_audio_status(job_id):
         except Exception as e:
             print(f'transcribe_audio_status DB fallback: {e}')
         return jsonify({'error': 'Job not found'}), 404
-    if job['status'] == 'done':
+    if job['status'] in ('done', 'complete'):
         result = dict(job)
         # Keep job for 10 min so user can return from background, then clean up
         if 'completed_at' not in job:
@@ -8783,7 +8790,7 @@ def transcribe_audio_status(job_id):
         elif time.time() - job['completed_at'] > 600:
             del _transcription_jobs[job_id]
         return jsonify(result)
-    if job['status'] == 'error':
+    if job['status'] in ('error', 'failed'):
         error = job.get('error', 'Unknown error')
         # Keep errors for 5 min
         if 'completed_at' not in job:
@@ -28714,7 +28721,7 @@ def earnings_fetch_result():
 @app.route('/health', methods=['GET'])
 def health():
     """Health check endpoint"""
-    return jsonify({'status': 'ok', 'database': 'postgresql'})
+    return jsonify({'status': 'ok', 'database': 'postgresql', 'revision': os.environ.get('RENDER_GIT_COMMIT')})
 
 
 # Evidence proposals use the existing model picker and auth gate, but never

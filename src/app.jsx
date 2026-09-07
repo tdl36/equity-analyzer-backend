@@ -84,7 +84,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-09-07T09';
+        const BUILD_VERSION = '2026-09-07T10';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -4637,33 +4637,20 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     for (let i = 0; i < maxIter; i++) {
                         await new Promise(r => setTimeout(r, 4000));
                         try {
-                            const pr = await fetch(`${API_URL}/api/transcribe-audio/${dj.jobId}`);
-                            if (!pr.ok) continue;
+                            const pr = await fetchT(`${API_URL}/api/transcribe-audio/${dj.jobId}`, {}, 15000);
+                            if (!pr.ok) throw new Error(`Status unavailable (${pr.status})`);
                             const pj = await pr.json();
                             // Backend uses 'complete' (set by _run_auto_process_text)
                             // and 'done' (legacy audio path) for success; 'failed' /
                             // 'error' for failure. Match both to stay forward-compatible.
                             if (pj.status === 'complete' || pj.status === 'done') {
                                 summaryId = pj.summaryId || null;
-                                break;
+                                if (summaryId) break;
                             }
                             if (pj.status === 'failed' || pj.status === 'error') {
                                 setSummaryYoutubeStatus({ phase: 'error', message: pj.error || 'Pipeline failed', title: dj.title, author: dj.author });
                                 setSummaryLoading(false);
                                 return;
-                            }
-                            // Belt-and-suspenders: refresh summaries every ~20s and
-                            // if the new row appears (sourceMeta.videoId match), treat
-                            // it as complete. Survives polling outages.
-                            if (i > 0 && i % 5 === 0) {
-                                try {
-                                    const sr = await fetch(`${API_URL}/api/summaries`);
-                                    if (sr.ok) {
-                                        const summaries = await sr.json();
-                                        const hit = (summaries || []).find(s => s.sourceType === 'youtube' && s.sourceMeta && s.sourceMeta.videoId === dj.videoId);
-                                        if (hit) { summaryId = hit.id; break; }
-                                    }
-                                } catch {}
                             }
                             // Surface progress so the user can tell whether we're
                             // still waiting on the agent vs. running the LLM pipeline.
@@ -4674,9 +4661,21 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 : (progress || 'Generating Brief / Key Takeaways / Assessment…');
                             setSummaryYoutubeStatus({ phase, message, jobId: dj.jobId, videoId: dj.videoId, title: dj.title, author: dj.author });
                         } catch {}
+                        // Reconcile saved output even when the status request is unavailable.
+                        if (i % 5 === 0) {
+                            try {
+                                const sr = await fetchT(`${API_URL}/api/summaries`, {}, 15000);
+                                if (sr.ok) {
+                                    const rows = await sr.json();
+                                    const hit = (Array.isArray(rows) ? rows : []).find(s =>
+                                        s.sourceType === 'youtube' && s.sourceMeta?.transcriptionJobId === dj.jobId);
+                                    if (hit) { summaryId = hit.id; break; }
+                                }
+                            } catch {}
+                        }
                     }
                     if (!summaryId) {
-                        setSummaryYoutubeStatus({ phase: 'error', message: 'Timed out after 25 min. Backend may still be working — check Summary tab list in a few minutes (it may show up via the fallback refresh) or check Render logs.', title: dj.title, author: dj.author });
+                        setSummaryYoutubeStatus({ phase: 'running', jobId: dj.jobId, message: 'Still processing or waiting for a status update. Your request has not been cancelled. Check the Summary list before submitting the same video again.', title: dj.title, author: dj.author });
                         setSummaryLoading(false);
                         return;
                     }
