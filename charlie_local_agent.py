@@ -35,6 +35,7 @@ from xml.etree import ElementTree
 
 import requests
 import anthropic
+import catalyst_delivery
 from catalyst_sources import inventory as catalyst_inventory, fingerprint as catalyst_fingerprint, read_sources as read_catalyst_sources, SOURCE_EXTS as CATALYST_SOURCE_EXTS
 
 # ---------------------------------------------------------------------------
@@ -374,10 +375,13 @@ def claim_job(job_id: str) -> bool:
         )
         if resp.status_code == 200:
             return True
-        # Fallback: use the existing progress update mechanism
+        if resp.status_code != 404:
+            return False
+        # Fallback only for older backends without the claim endpoint.
         log.debug(f"Claim endpoint returned {resp.status_code}, falling back to progress update")
     except Exception as e:
-        log.debug(f"Claim endpoint unavailable ({e}), using fallback")
+        log.debug(f"Claim endpoint unavailable ({e}); leaving job unclaimed")
+        return False
 
     # Fallback: update job directly
     return _update_job_progress_fallback(job_id, "running", "Claimed by local agent", 1)
@@ -3357,7 +3361,9 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
             total = 0
             for sp in parts:
                 if sp['type'] == 'pdf':
-                    total += int(len(sp['data']) * 0.3)  # base64 -> tokens rough estimate
+                    # Encoded PDF bytes are not model tokens. Use a conservative page
+                    # allowance; dense/image-heavy PDFs can still require smaller batches.
+                    total += sp.get('pageCount', 0) * 2500 if sp.get('pageCount') else int(len(sp['data']) * 0.3)
                 else:
                     total += int(len(sp.get('content', '')) * 0.3)
             return total
@@ -3609,16 +3615,12 @@ Write the complete, updated synthesis report now. ZERO firm names, ALL first per
             'sourceProvenance': provenance,
         }
 
-        requests.post(
-            f"{CHARLIE_API}/api/pipeline/jobs/{job_id}/result",
-            json={"status": "complete", "result": result_data},
-            headers=_agent_headers(),
-            timeout=30,
-        )
-
-        # Fallback: direct DB update via progress endpoint
-        update_job_progress(job_id, "complete", "Complete", 100, result=result_data)
-        notify(f"*Charlie Agent:* {ticker}/{topic} synthesis complete\n{file_count} docs, {len(markdown):,} chars")
+        outbox_path = catalyst_delivery.save_result(job_id, result_data)
+        if catalyst_delivery.deliver(outbox_path, CHARLIE_API, _agent_headers()):
+            notify(f"*Charlie Agent:* {ticker}/{topic} synthesis complete\n{file_count} docs, {len(markdown):,} chars")
+        else:
+            log.warning(f"Recap {job_id} is saved locally; delivery will retry on the next heartbeat")
+            update_job_progress(job_id, "running", "Recap saved locally; waiting for backend delivery", 95)
 
     except Exception as e:
         log.error(f"Synthesis job {job_id[:12]}... failed: {e}")
@@ -3943,6 +3945,7 @@ def main() -> None:
         while not shutdown.is_set():
             try:
                 push_heartbeat()
+                catalyst_delivery.flush(CHARLIE_API, _agent_headers())
             except Exception as e:
                 log.debug(f"Heartbeat thread error: {e}")
             # Sleep in small chunks so shutdown is responsive

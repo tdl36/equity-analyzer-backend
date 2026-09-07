@@ -28158,8 +28158,10 @@ def _maybe_link_activity_to_job_result(job_id: str, status: str, result):
             cur.execute('''
                 UPDATE analyst_activities
                    SET status=%s, output=%s::jsonb, error=%s, updated_at=NOW()
-                 WHERE id=%s AND output->>'catalystJobId'=%s AND status <> 'approved'
+                 WHERE id=%s AND output->>'catalystJobId'=%s AND status = 'running'
             ''', (new_status, json.dumps(out), (err_msg or None), activity_id, job_id))
+            if not cur.rowcount:
+                return  # Duplicate or superseded delivery must not send another briefing.
 
         # Event-triggered briefing — fires only when the analyst has
         # playbook.briefings.on_recap_ready enabled (checked inside).

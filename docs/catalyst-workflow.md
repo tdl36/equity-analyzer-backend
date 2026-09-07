@@ -19,3 +19,5 @@ Event-specific collection can now target an existing event directory:
     .venv/bin/python charlie_collector.py create --tickers MDT --since 2026-08-07 --until 2026-09-06 --topic 'MDT F1Q27 Earnings'
 
 The destination is stored on the run and survives restarts. Validated eligible originals go to CATALYSTS/MDT/MDT F1Q27 Earnings; restricted originals remain in staging. Manifest verification understands the catalyst folder label. Normal coverage runs continue to use STOCKS. Browser company/date/type confirmation and export remain supervised; no credentials or undocumented authenticated APIs are introduced.
+
+Completed recaps now enter a private local outbox before upload. Failed deliveries retain the original output and retry from the heartbeat without another model call. Duplicate or superseded result callbacks do not re-notify or overwrite an approved draft. Claim conflicts are no longer bypassed through a progress-update fallback. PDF batching uses a page-based estimate instead of encoded PDF byte size; this is an estimate, not a guarantee for unusually dense documents.
