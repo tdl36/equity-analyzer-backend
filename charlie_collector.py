@@ -200,6 +200,11 @@ class Collector:
         if 'usage' not in columns:
             self.db.execute("ALTER TABLE documents ADD COLUMN usage TEXT DEFAULT 'research'")
             self.db.commit()
+        task_columns = {r[1] for r in self.db.execute('PRAGMA table_info(tasks)')}
+        for column in ('paused_status', 'evidence_after'):
+            if column not in task_columns:
+                self.db.execute(f'ALTER TABLE tasks ADD COLUMN {column} TEXT')
+        self.db.commit()
 
     @contextmanager
     def lock(self):
@@ -246,8 +251,12 @@ class Collector:
     def auth(self, run, needed):
         self.status(run)
         with self.lock():
-            self.db.execute("UPDATE tasks SET status=? WHERE run=? AND status IN ('pending','needs_auth')",
-                            ("needs_auth" if needed else "pending", run))
+            if needed:
+                self.db.execute("""UPDATE tasks SET paused_status=status,status='needs_auth',evidence_after=?
+                    WHERE run=? AND status IN ('pending','review')""", (now(), run))
+            else:
+                self.db.execute("""UPDATE tasks SET status=COALESCE(paused_status,'pending'),paused_status=NULL
+                    WHERE run=? AND status='needs_auth'""", (run,))
             self.event(run, "needs_auth" if needed else "auth_resumed")
         return self.status(run)
 
@@ -258,14 +267,22 @@ class Collector:
             raise ValueError('Unknown document usage')
         if published:
             date.fromisoformat(published)
+            window = self.status(run)
+            if not window['since'] <= published <= window['until_date']:
+                raise ValueError('Publication date is outside the collection window')
         files = originals(path)
         with self.lock():
             task = self.db.execute("SELECT * FROM tasks WHERE run=? AND ticker=? AND kind=?",
                                    (run, ticker, kind)).fetchone()
-            if not task or task["status"] in ("complete", "complete_with_exceptions", "no_results"):
-                raise ValueError("Task is missing or already complete")
+            if not task or task["status"] in ("complete", "complete_with_exceptions", "no_results", "needs_auth"):
+                raise ValueError("Task is missing, complete, or paused for sign-in")
             for name, data, pages in files:
                 digest = hashlib.sha256(data).hexdigest()
+                previous_usage = self.db.execute("""SELECT status,usage FROM documents
+                    WHERE run=? AND ticker=? AND kind=? AND sha256=?""", (run, ticker, kind, digest)).fetchone()
+                if (usage == 'reference_only' and previous_usage and
+                        previous_usage['usage'] == 'research' and previous_usage['status'] in ('handed_off','duplicate')):
+                    raise ValueError('New usage restriction on an existing handoff requires manual isolation review')
                 staged = self.state / "originals" / (digest + ".pdf")
                 publish(staged, data)
                 key = document_key(url)
@@ -339,6 +356,15 @@ class Collector:
                                    (run, ticker, kind)).fetchone()
             if task is None or task["status"] == "needs_auth":
                 raise ValueError("Task is missing or requires sign-in")
+            if task['status'] in ('complete', 'complete_with_exceptions', 'no_results'):
+                if task['expected'] != expected:
+                    raise ValueError('Completed search count cannot be changed')
+                return self.status(run)
+            observation = self.db.execute('SELECT * FROM observations WHERE run=? AND ticker=? AND kind=?',
+                                          (run, ticker, kind)).fetchone()
+            if (observation is None or observation['result_count'] != expected or
+                    (task['evidence_after'] and observation['checked'] <= task['evidence_after'])):
+                raise ValueError('Record a current reviewed original count before completing the search')
             rows = self.db.execute("SELECT status,usage FROM documents WHERE run=? AND ticker=? AND kind=?",
                                    (run, ticker, kind)).fetchall()
             if expected < 0 or len(rows) != expected or any(r['status'] == "staged" and r['usage'] != 'reference_only' for r in rows):
@@ -353,12 +379,17 @@ class Collector:
         """Record actual browser search evidence without marking unfinished work complete."""
         ticker = ticker_name(ticker)
         source_url(url)
-        if count < 0 or len(note) > 2000:
+        if type(count) is not int or count < 0 or not note.strip() or len(note) > 2000:
             raise ValueError('Invalid search observation')
         with self.lock():
-            if not self.db.execute('SELECT 1 FROM tasks WHERE run=? AND ticker=? AND kind=?',
-                                   (run, ticker, kind)).fetchone():
+            task = self.db.execute('SELECT * FROM tasks WHERE run=? AND ticker=? AND kind=?',
+                                   (run, ticker, kind)).fetchone()
+            if not task:
                 raise ValueError('Unknown task')
+            if task['status'] == 'needs_auth':
+                raise ValueError('Resume after sign-in before recording browser evidence')
+            if task['expected'] is not None and task['expected'] != count:
+                raise ValueError('Completed search evidence count cannot be changed')
             self.db.execute('INSERT OR REPLACE INTO observations VALUES(?,?,?,?,?,?,?)',
                             (run, ticker, kind, url, count, note, now()))
             self.event(run, 'search_observed', ticker=ticker, kind=kind, result_count=count)

@@ -47,7 +47,9 @@ Run from the repository using `.venv/bin/python charlie_collector.py`:
 .venv/bin/python charlie_collector.py status RUN_ID
 ```
 
-After the user completes sign-in, `resume RUN_ID` clears the authentication pause.
+After the user completes sign-in, `resume RUN_ID` restores each unfinished task
+to its prior state. Re-check the browser search and record a new observation
+before finishing; evidence from before the authentication pause is insufficient.
 Search one ticker and document type at a time in AlphaSense, with the requested
 date range. Download permitted original PDFs, or a ZIP of originals through the
 visible UI. Use the browser's supported download facility; do not extract session
@@ -56,6 +58,7 @@ cookies or call undocumented authenticated endpoints.
 ```sh
 .venv/bin/python charlie_collector.py stage RUN_ID --ticker DE --kind transcript --file /absolute/download.pdf --url 'https://research.alpha-sense.com/OBSERVED_RESEARCH_LINK'
 .venv/bin/python charlie_collector.py handoff DOCUMENT_ID
+.venv/bin/python charlie_collector.py observe RUN_ID --ticker DE --kind transcript --url 'https://research.alpha-sense.com/OBSERVED_RESEARCH_LINK' --count 1 --note 'Reviewed one unique original in the fixed window'
 .venv/bin/python charlie_collector.py finish RUN_ID --ticker DE --kind transcript --expected 1
 ```
 
@@ -65,8 +68,9 @@ when verified in the UI. A ZIP must contain originals from one confirmed ticker 
 document type; use individual files when publication dates or publishers differ.
 Unknown metadata stays unknown. Encrypted, malformed, non-PDF, oversized, or unsafe
 archives stop for review. Repeating a stage/handoff is idempotent for identical
-content. The expected count is the number of unique originals, not search hits
-when a search contains duplicate versions.
+content. The expected count is the number of unique originals. Record that reviewed
+count with `observe` before `finish`; if raw search hits include duplicate
+versions, explain the raw count and reconciliation in the observation note.
 
 After reviewing an actual empty search, use `finish ... --expected 0`. Do not use
 this merely because downloads failed. A task cannot finish with unhanded eligible staged
@@ -162,3 +166,22 @@ The monitor shows ticker-relative iCloud folders without local usernames or full
 filesystem paths, distinguishes held originals from pending handoffs, and supports
 company/disposition/text filters with25-row pages. Browser refresh updates only
 ledger data; it does not run the production verification command.
+
+## Recovery checks
+
+Authentication pauses include partially collected searches and survive process
+restart. Repeating a pause preserves the original progress state. Completed
+searches stay complete. Already validated local files may still be handed off
+while browser work is paused, but new staging, browser observations, and search
+completion require resuming after sign-in. No credential is stored in this state.
+
+Completion requires a recorded reviewed count matching the unique originals,
+including an explicit zero-result observation. A completed count is immutable;
+use a new collection to revisit the date range. Known publication dates outside
+the run's fixed interval are rejected. A newly observed usage restriction on an
+already handed-off original stops for manual isolation review; the collector
+does not silently relabel that file as safely held.
+
+Tests cover truncated archives, publish interruption and retry, repeated auth
+pauses across restart, old evidence after resume, and empty-search completion.
+These validate local recovery semantics, not future AlphaSense session lifetime.

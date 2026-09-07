@@ -38,6 +38,10 @@ class CollectorTests(unittest.TestCase):
         return self.collector.stage(self.run, "DE", "transcript", self.file,
                                     "https://research.alpha-sense.com/doc/example")["documents"][0]
 
+    def observe(self, kind, count):
+        return self.collector.observe(self.run, 'DE', kind,
+            'https://research.alpha-sense.com/search', count, 'Reviewed unique originals in the fixed window')
+
     def test_resume_and_idempotent_handoff(self):
         doc = self.stage()
         self.collector.db.close()
@@ -48,6 +52,7 @@ class CollectorTests(unittest.TestCase):
         self.assertEqual(Path(first["destination"]).parent, self.stocks / "DE")
         self.assertEqual(Path(first["destination"]).read_bytes(), self.file.read_bytes())
         self.assertEqual(len(list(self.stocks.rglob("*.pdf"))), 1)
+        self.observe("transcript", 1)
         self.collector.finish(self.run, "DE", "transcript", 1)
 
     def test_verified_document_deduplicates_download_timestamps_but_not_revisions(self):
@@ -90,20 +95,75 @@ class CollectorTests(unittest.TestCase):
 
     def test_no_completion_with_unprocessed_original(self):
         self.stage()
+        self.observe("transcript", 1)
         with self.assertRaises(ValueError):
             self.collector.finish(self.run, "DE", "transcript", 1)
         with self.assertRaises(ValueError):
             self.collector.finish(self.run, "DE", "transcript", 0)
 
-    def test_auth_does_not_discard_review_progress(self):
-        self.stage()
+    def test_auth_pause_survives_restart_and_requires_fresh_evidence(self):
+        doc = self.stage()
+        self.observe('transcript', 1)
         self.collector.auth(self.run, True)
-        tasks = self.collector.status(self.run)["tasks"]
-        self.assertEqual({r["status"] for r in tasks}, {"needs_auth", "review"})
-        with self.assertRaises(ValueError):
-            self.collector.finish(self.run, "DE", "broker-report", 0)
+        self.collector.auth(self.run, True)  # Repeated pause must preserve review state.
+        self.assertEqual({t['status'] for t in self.collector.status(self.run)['tasks']}, {'needs_auth'})
+        with self.assertRaises(ValueError): self.stage()
+        with self.assertRaises(ValueError): self.observe('transcript', 1)
+        self.collector.handoff(doc['id'])  # Local validated handoff needs no browser session.
+        self.collector.db.close()
+        self.collector = Collector(self.root / 'state', self.stocks)
         self.collector.auth(self.run, False)
-        self.collector.finish(self.run, "DE", "broker-report", 0)
+        statuses = {t['kind']:t['status'] for t in self.collector.status(self.run)['tasks']}
+        self.assertEqual(statuses, {'broker-report':'pending', 'transcript':'review'})
+        with self.assertRaises(ValueError): self.collector.finish(self.run,'DE','transcript',1)
+        self.observe('transcript',1)
+        self.collector.finish(self.run,'DE','transcript',1)
+        self.collector.auth(self.run, True)
+        self.assertEqual(self.collector.status(self.run)['tasks'][1]['status'],'complete')
+
+    def test_completion_requires_matching_evidence_even_for_empty_results(self):
+        with self.assertRaises(ValueError): self.collector.finish(self.run,'DE','broker-report',0)
+        self.observe('broker-report',1)
+        with self.assertRaises(ValueError): self.collector.finish(self.run,'DE','broker-report',0)
+        self.observe('broker-report',0)
+        self.collector.finish(self.run,'DE','broker-report',0)
+        self.collector.finish(self.run,'DE','broker-report',0)  # Safe retry.
+        with self.assertRaises(ValueError): self.observe('broker-report',1)
+        with self.assertRaises(ValueError): self.collector.finish(self.run,'DE','broker-report',1)
+
+    def test_interrupted_archive_never_stages_partial_contents(self):
+        archive = self.root / 'partial.zip'
+        with zipfile.ZipFile(archive, 'w') as z:
+            z.writestr('first.pdf',pdf())
+            z.writestr('second.pdf',pdf(99))
+        intact=archive.read_bytes();archive.write_bytes(intact[:-30])
+        with self.assertRaises(zipfile.BadZipFile):
+            self.collector.stage(self.run,'DE','transcript',archive,'https://research.alpha-sense.com/search')
+        self.assertEqual(self.collector.status(self.run)['documents'],[])
+        archive.write_bytes(intact)
+        self.collector.stage(self.run,'DE','transcript',archive,'https://research.alpha-sense.com/search')
+        self.assertEqual(len(self.collector.status(self.run)['documents']),2)
+
+    def test_interrupted_publish_is_retryable_without_partial_handoff(self):
+        from unittest.mock import patch
+        doc=self.stage()
+        with patch('charlie_collector.os.link',side_effect=OSError('interrupted')):
+            with self.assertRaises(OSError):self.collector.handoff(doc['id'])
+        self.assertEqual(list((self.stocks/'DE').iterdir()),[])
+        self.assertEqual(self.collector.status(self.run)['documents'][0]['status'],'staged')
+        self.collector.handoff(doc['id'])
+        self.assertEqual(len(list((self.stocks/'DE').iterdir())),1)
+
+    def test_late_restriction_and_out_of_window_metadata_stop_for_review(self):
+        doc=self.collector.handoff(self.stage()['id'])
+        with self.assertRaises(ValueError):
+            self.collector.stage(self.run,'DE','transcript',self.file,
+                'https://research.alpha-sense.com/search',usage='reference_only')
+        self.assertEqual(self.collector.status(self.run)['documents'][0]['usage'],'research')
+        self.assertTrue(Path(doc['destination']).exists())
+        with self.assertRaises(ValueError):
+            self.collector.stage(self.run,'DE','broker-report',self.file,
+                'https://research.alpha-sense.com/search',published='2026-07-01')
 
     def test_tampered_staged_file_stops_handoff(self):
         doc = self.stage()
@@ -149,6 +209,7 @@ class CollectorTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.collector.notify(self.run, "digest", sender=messages.append)
         for kind in ("transcript", "broker-report"):
+            self.observe(kind,0)
             self.collector.finish(self.run, "DE", kind, 0)
         self.collector.notify(self.run, "digest", sender=messages.append)
         self.assertEqual(len(messages), 2)
@@ -160,6 +221,7 @@ class CollectorTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.collector.handoff(doc['id'])
         self.assertFalse(list(self.stocks.rglob('*.pdf')))
+        self.observe('broker-report',1)
         result = self.collector.finish(self.run, 'DE', 'broker-report', 1)
         self.assertEqual(result['tasks'][0]['status'],'complete_with_exceptions')
 

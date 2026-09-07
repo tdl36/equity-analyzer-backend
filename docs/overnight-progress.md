@@ -33,3 +33,12 @@ Finite Codex heartbeat `continue-charlie-overnight` has four hourly follow-ups; 
 - Remaining: authentication pause/resume while partially collected, stricter completion evidence and interrupted-archive tests, final mobile theme inspection. Do not redo completed pilot or monitor filters.
 
 - Phone-width390px monitor QA complete: filters fit within the viewport; originals use cards with visible destination/status. Pagination confirmed26–50 of89.
+
+## Overnight pass2 —03:43UTC
+- Confirmed Render is on0d81e0b5449d from the prior collector release; public app version remains2026-09-06T03.
+- Authentication recovery fixed: pending and partially collected searches pause with durable prior state; resume preserves progress; completed tasks stay complete. New browser evidence after a pause is required before completion.
+- Completion now requires a matching reviewed unique-original count, including zero results; completed counts cannot be rewritten. Known out-of-window publication dates are rejected. Late restrictions on already handed-off originals stop for manual review instead of silently claiming held status.
+-23 standalone Python tests pass, including truncated ZIP, interrupted publish/retry, auth restart, stale evidence, and late restriction handling. Existing pilot records and files are untouched.
+
+- Final phone-width390px theme QA: Harbor, Graphite, and Parchment render clearly, selections work, and all7 themes remain reachable. Restored the user's original Dusk choice. No additional theme fix was warranted.
+- All bounded overnight enhancements are complete: deployment/mobile checks, monitor clarity/filtering/verification, and collector recovery safeguards.34 focused tests pass (23Python +11frontend). No paid research, source re-downloads, or saved-thesis changes. Pause the overnight automation after the final commit reaches main.
