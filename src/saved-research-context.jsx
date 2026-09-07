@@ -7,7 +7,11 @@ function ResearchText({value,depth=0}) {
   if(typeof value!=='object')return <p style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{String(value)}</p>;
   if(depth>5)return <p>Open the company research to inspect additional detail.</p>;
   if(Array.isArray(value))return <div>{value.map((v,i)=><ResearchText key={i} value={v} depth={depth+1}/>)}</div>;
-  return <div>{Object.entries(value).filter(([key,v])=>!key.startsWith('_')&&v!=null&&v!=='').map(([key,v])=><section className="evidence-saved-field" key={key}><h4>{key.replaceAll('_',' ').replace(/([a-z])([A-Z])/g,'$1 $2')}</h4><ResearchText value={v} depth={depth+1}/></section>)}</div>;
+  const heading=['title','pillar','metric','threat'].find(k=>typeof value[k]==='string'&&value[k]);
+  const entries=Object.entries(value).filter(([key,v])=>key!==heading&&!key.startsWith('_')&&v!=null&&v!=='');
+  const order=['summary','description','target','triggerPoints','pillars','confidence','sources'];
+  entries.sort(([a],[b])=>(order.includes(a)?order.indexOf(a):5)-(order.includes(b)?order.indexOf(b):5));
+  return <article className="evidence-saved-field">{heading&&<h4 className="evidence-pillar-title">{value[heading]}</h4>}{entries.map(([key,v])=>key==='sources'?<details key={key}><summary>Saved source references · not independently checked</summary><ResearchText value={v} depth={depth+1}/></details>:<section key={key}>{!['summary','description'].includes(key)&&<h4>{key.replaceAll('_',' ').replace(/([a-z])([A-Z])/g,'$1 $2')}</h4>}<ResearchText value={v} depth={depth+1}/></section>)}</article>;
 }
 export function SavedResearchContext({data,ticker,onCompany}) {
   const thesis=data?.savedThesis,documents=data?.documents;

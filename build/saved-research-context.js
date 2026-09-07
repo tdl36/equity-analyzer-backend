@@ -21,10 +21,22 @@ function ResearchText({
     value: v,
     depth: depth + 1
   })));
-  return /*#__PURE__*/React.createElement("div", null, Object.entries(value).filter(([key, v]) => !key.startsWith('_') && v != null && v !== '').map(([key, v]) => /*#__PURE__*/React.createElement("section", {
-    className: "evidence-saved-field",
+  var heading = ['title', 'pillar', 'metric', 'threat'].find(k => typeof value[k] === 'string' && value[k]);
+  var entries = Object.entries(value).filter(([key, v]) => key !== heading && !key.startsWith('_') && v != null && v !== '');
+  var order = ['summary', 'description', 'target', 'triggerPoints', 'pillars', 'confidence', 'sources'];
+  entries.sort(([a], [b]) => (order.includes(a) ? order.indexOf(a) : 5) - (order.includes(b) ? order.indexOf(b) : 5));
+  return /*#__PURE__*/React.createElement("article", {
+    className: "evidence-saved-field"
+  }, heading && /*#__PURE__*/React.createElement("h4", {
+    className: "evidence-pillar-title"
+  }, value[heading]), entries.map(([key, v]) => key === 'sources' ? /*#__PURE__*/React.createElement("details", {
     key: key
-  }, /*#__PURE__*/React.createElement("h4", null, key.replaceAll('_', ' ').replace(/([a-z])([A-Z])/g, '$1 $2')), /*#__PURE__*/React.createElement(ResearchText, {
+  }, /*#__PURE__*/React.createElement("summary", null, "Saved source references \xB7 not independently checked"), /*#__PURE__*/React.createElement(ResearchText, {
+    value: v,
+    depth: depth + 1
+  })) : /*#__PURE__*/React.createElement("section", {
+    key: key
+  }, !['summary', 'description'].includes(key) && /*#__PURE__*/React.createElement("h4", null, key.replaceAll('_', ' ').replace(/([a-z])([A-Z])/g, '$1 $2')), /*#__PURE__*/React.createElement(ResearchText, {
     value: v,
     depth: depth + 1
   }))));
