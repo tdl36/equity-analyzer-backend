@@ -1,3 +1,4 @@
+import { ThesisAmendments } from './thesis-amendments';
 import { SavedResearchContext } from './saved-research-context';
 import * as React from 'react';
 var {
@@ -99,7 +100,13 @@ export function EvidenceWorkspace({
   }, [...new Set((analyses || []).map(a => a.ticker).filter(Boolean))].map(t => /*#__PURE__*/React.createElement("option", {
     key: t,
     value: t
-  }))))), loading ? /*#__PURE__*/React.createElement("p", {
+  }))))), !loading && !error && data && /*#__PURE__*/React.createElement(ThesisAmendments, {
+    key: ticker,
+    api: api,
+    ticker: ticker,
+    context: data,
+    onApplied: () => setRefresh(x => x + 1)
+  }), loading ? /*#__PURE__*/React.createElement("p", {
     role: "status",
     className: "workspace-empty"
   }, "Loading saved research for ", ticker, "\u2026") : error ? /*#__PURE__*/React.createElement("div", {

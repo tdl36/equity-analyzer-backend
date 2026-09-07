@@ -28724,6 +28724,26 @@ def health():
     return jsonify({'status': 'ok', 'database': 'postgresql'})
 
 
+# Evidence proposals use the existing model picker and auth gate, but never
+# invoke the orchestration fan-out or save generated prose without a decision.
+import research_amendments
+
+def _amendment_model_call(prompt, key, max_tokens):
+    response = _call_pinned_long(
+        messages=[{'role': 'user', 'content': prompt}],
+        system='You are a careful buy-side research analyst. Return only the requested JSON.',
+        model_key=PICKER_DEFAULT_MODEL, max_tokens=max_tokens, api_key=key,
+        label='evidence-amendment')
+    parsed = _extract_json(response.get('text') or '')
+    if not isinstance(parsed, dict):
+        raise ValueError('Model response was incomplete or invalid. The thesis has not changed.')
+    return parsed
+
+app.register_blueprint(research_amendments.create_blueprint(
+    get_db, _amendment_model_call,
+    lambda key: _get_api_keys(key).get('anthropic', '')))
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     print("=" * 50)

@@ -1,0 +1,17 @@
+# Evidence-driven thesis amendments
+
+Evidence & changes now offers **What should change?**: choose 1–10 documents already stored in Charlie and request a comparison with the saved thesis. Uploads after the thesis update are labeled using upload timestamps, not claimed publication dates or guaranteed new information. iCloud-only inventory entries still need importing. Starting a comparison uses the configured API credits; it is not scheduled automatically.
+
+The model proposes replacements for existing narrative fields (summary, conclusion, pillar descriptions, selected signpost/risk text). It cannot replace arrays, delete pillars, change confidence or edit bookkeeping. Each proposal carries before/after text, rationale and an exact source quotation bound to a captured document/extraction hash. A separate model pass checks each complete replacement; absent/duplicate verdicts, revise verdicts, nonempty findings and unmatched quotations block application. This is not a guarantee of entailment or investment accuracy: the analyst reviews and selects edits.
+
+Persistence uses existing `mp_jobs` rows with stage `evidence_amendment`. Baseline and selected filenames are stored before computation; keys remain in process memory only. The source extraction budget is 400,000 characters total and oversized or unreadable selections fail instead of silently dropping files. At most one unresolved proposal per ticker is admitted under a database advisory lock. One comparison runs at a time per Python process. Jobs are durable records but execution is a process-bound thread; interrupted jobs must be dismissed and resubmitted. Dismissal prevents a late worker from publishing its result, though an in-flight model call may still incur cost.
+
+Applying locks both the proposal and current thesis row, compares the entire baseline fingerprint and saves only explicitly accepted fields. The complete baseline remains in job input; the applied snapshot and accepted IDs are stored in job result in the same transaction as the thesis update. Failed audit writes roll back the thesis change. Duplicate identical decisions are idempotent. Any intervening thesis change rejects application. No report fan-out, external notifications, automatic trading or original document mutations occur.
+
+## Validation
+
+Pure tests cover selective application, preserved analyst fields, unchanged original objects, conflicting edits, missing evidence, failed independent checks, forbidden paths, duplicate edits/IDs and malformed model outputs. Flask route tests exercise actual decisions with transactional fake database boundaries: successful apply/audit, idempotency, conflict rejection, audit failure rollback and malformed requests. Browser QA uses clearly labeled synthetic proposals and verifies that only the supported edit is selectable and submitted. No production thesis edits or paid model calls are needed for QA.
+
+## Next steps
+
+Durable queue execution and automatic intake triggers remain future work. This release makes source comparison and selective approval usable directly from the evidence workspace; it does not yet detect events independently, import iCloud documents automatically, add/remove thesis pillars, or regenerate dependent deliverables after acceptance.
