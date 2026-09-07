@@ -3796,24 +3796,12 @@ def _run_trading_agent(run_id, ticker, date_str, provider, model):
         _append_log("system", "Initializing agent graph...")
         ta = TradingAgentsGraph(debug=True, config=config)
 
-        # Capture print output as logs
-        import builtins
-        original_print = builtins.print
-        def capturing_print(*args, **kwargs):
-            msg = " ".join(str(a) for a in args)
-            if msg.strip():
-                try:
-                    _append_log("agent", msg[:500])
-                except Exception:
-                    pass
-            original_print(*args, **kwargs)
-        builtins.print = capturing_print
-
-        try:
-            _append_log("system", "Running analysis...")
-            final_state, decision_signal = ta.propagate(ticker, date_str)
-        finally:
-            builtins.print = original_print
+        # Never replace builtins.print: multiple company teams share this
+        # process and a global hook mixes logs between runs. Keep explicit,
+        # run-scoped lifecycle logs; agent debug output stays in server logs.
+        _append_log("system", "Running specialist analysis, debate and risk review...")
+        final_state, decision_signal = ta.propagate(ticker, date_str)
+        _append_log("system", "Research graph complete; assembling reports...")
 
         # Extract full reports from final_state
         full_report = f"""# TradingAgents Analysis: {ticker} ({date_str})
@@ -20734,7 +20722,9 @@ def buildinfo():
         return jsonify({
             'ok': True,
             'startedAt': _PROCESS_STARTED_AT,
+            'commit': os.environ.get('RENDER_GIT_COMMIT', '')[:12],
             'features': {
+                'agentBatchConcurrency': '/api/agents/capabilities' in rules,
                 'deepdive': '/api/deepdive/analyze' in rules,
                 'noteGenServerSide': '/api/notes/plan/<ticker>' in rules,
                 'noteReview': '/api/notes/<note_id>/accept' in rules,
@@ -21182,17 +21172,35 @@ def save_agent_to_research(run_id):
     return jsonify({'success': True, 'docId': doc_id})
 
 
+@app.route('/api/agents/capabilities', methods=['GET'])
+def agent_execution_capabilities():
+    from agent_batch import MAX_CONCURRENCY, MAX_BATCH_SIZE
+    return jsonify({'maxConcurrency': MAX_CONCURRENCY, 'maxBatchSize': MAX_BATCH_SIZE,
+                    'execution': 'background-thread', 'durableQueue': False})
+
+
 @app.route('/api/agents/batch-run', methods=['POST'])
 def start_agent_batch_run():
     """Run TradingAgents on multiple tickers."""
-    data = request.get_json()
-    tickers = data.get('tickers', [])
+    from agent_batch import validate_batch, run_batch_jobs
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({'error': 'Expected a JSON object'}), 400
+    try:
+        tickers, concurrency = validate_batch(data)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
     date_str = data.get('date', '')
     provider = data.get('provider', 'anthropic')
     model = data.get('model') or MODEL_FAST
 
     if not tickers or not date_str:
         return jsonify({'error': 'tickers and date required'}), 400
+
+    try:
+        datetime.strptime(date_str, '%Y-%m-%d')
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Use an analysis date in YYYY-MM-DD format.'}), 400
 
     batch_id = str(uuid.uuid4())
     run_ids = []
@@ -21206,17 +21214,19 @@ def start_agent_batch_run():
             ''', (run_id, ticker.upper().strip(), date_str, provider, model, json.dumps({'batchId': batch_id})))
             run_ids.append({'id': run_id, 'ticker': ticker.upper().strip()})
 
-    # Process sequentially in background
+    # Independent company teams share a bounded process-level batch pool.
     def _run_batch():
-        for run_info in run_ids:
-            try:
-                _run_trading_agent(run_info['id'], run_info['ticker'], date_str, provider, model)
-            except Exception as e:
-                print(f"[agent-batch] Failed {run_info['ticker']}: {e}")
+        def run(info):
+            _run_trading_agent(info['id'], info['ticker'], date_str, provider, model)
+        def failed(info, exc):
+            print(f"[agent-batch] Failed {info['ticker']}: {exc}")
+            with get_db(commit=True) as (_conn, cur):
+                cur.execute("UPDATE agent_runs SET status = 'error', completed_at = NOW() WHERE id = %s", (info['id'],))
+        run_batch_jobs(run_ids, run, concurrency, failed)
 
     threading.Thread(target=_run_batch, daemon=True).start()
 
-    return jsonify({'batchId': batch_id, 'runs': run_ids, 'count': len(run_ids)})
+    return jsonify({'batchId': batch_id, 'runs': run_ids, 'count': len(run_ids), 'concurrency': concurrency})
 
 
 @app.route('/api/agents/compare/<run_id>', methods=['GET'])

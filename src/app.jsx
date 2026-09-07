@@ -10,6 +10,9 @@ import * as ReactDOM from 'react-dom';
 import { OnePagerFit, ONEPAGER_STYLES } from './onepager';
 import { DeepDiveArtifact, PageFit, preflightPages, printArtifact, saveArtifact, clampZoom, ZOOM_MIN, ZOOM_MAX, ONEPAGER_TEMPLATES, TWOPAGER_TEMPLATES } from './deepdive';
 import * as htmlToImage from 'html-to-image';
+import { ResearchDesk } from './research-desk';
+import { WorkspaceShell, TodayWorkspace, CompaniesWorkspace, LibraryWorkspace, CreateWorkspace, AutomationsWorkspace, ResearchDocument } from './workspace';
+import { readRoute, routeHash, parseTimestamp, selectedProjectSlide } from './workspace-model.mjs';
 
 // Expose on window for any inline consumers (pdf.js, etc.)
 if (typeof window !== 'undefined') {
@@ -81,7 +84,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-09-06T01';
+        const BUILD_VERSION = '2026-09-06T02';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -157,6 +160,9 @@ if (typeof window !== 'undefined') {
             { key: 'dusk', label: 'Dusk', ground: '#14110c' },
             { key: 'oak',  label: 'Oak',  ground: '#ece1c9' },
             { key: 'bloc', label: 'Bloc', ground: '#efece2' },
+            { key: 'harbor', label: 'Harbor', ground: '#f3f6fa' },
+            { key: 'graphite', label: 'Graphite', ground: '#101820' },
+            { key: 'parchment', label: 'Parchment', ground: '#f5f2ed' },
         ];
         const DEFAULT_THEME = 'dusk';
         const THEME_STORAGE_KEY = 'charlie_theme';
@@ -280,6 +286,13 @@ if (typeof window !== 'undefined') {
             );
         };
 
+        const ThemeGallery = () => {
+            const [active, setActive] = useState(_currentTheme);
+            useEffect(() => { _themeListeners.add(setActive); return () => _themeListeners.delete(setActive); }, []);
+            const notes = { ink: 'Editorial paper · burgundy', dusk: 'Warm dark · brass', oak: 'Natural parchment · forest', bloc: 'Geometric · electric blue', harbor: 'Institutional white · navy', graphite: 'Trading desk dark · teal', parchment: 'Investment memo · plum' };
+            return <div className="workspace-theme-gallery">{THEMES.map(t => <button key={t.key} aria-pressed={active === t.key} onClick={() => setTheme(t.key)} aria-label={`Apply ${t.label} theme`}><span className="theme-preview" style={{ background:t.ground }}><span className="theme-chip" data-theme-key={t.key}/></span><strong>{t.label}</strong><small>{notes[t.key]}</small>{active === t.key && <em>Selected</em>}</button>)}</div>;
+        };
+
         // Auth token management
         const getAuthToken = () => {
             try { return localStorage.getItem('charlie_auth_token') || ''; } catch(e) { return ''; }
@@ -353,12 +366,7 @@ if (typeof window !== 'undefined') {
         // (the bug Tony spotted on the AMT timestamp). We defensively append Z
         // if missing, then render in America/New_York regardless of browser
         // locale. Spec: all timestamps in the app are ET.
-        const _toUtcIso = (ts) => {
-            if (!ts) return null;
-            const s = String(ts);
-            const hasTz = s.endsWith('Z') || s.includes('+') || /-\d{2}:\d{2}$/.test(s);
-            return hasTz ? s : s + 'Z';
-        };
+        const _toUtcIso = (ts) => parseTimestamp(ts);
         const fmtETDateTime = (ts) => {
             const s = _toUtcIso(ts);
             if (!s) return '';
@@ -1656,8 +1664,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [mobileMenuOpen, setMobileMenuOpen] = useState(false); // Mobile sidebar toggle
             const [showHistory, setShowHistory] = useState(false); // Show version history panel
             const [selectedHistoryVersion, setSelectedHistoryVersion] = useState(null); // Currently viewed history version
-            const [activeTab, setActiveTab] = useState('chat'); // Bottom nav: 'portfolio', 'overview', 'chat', 'summary', 'research', 'settings', 'feed'
-            const [showMoreMenu, setShowMoreMenu] = useState(false); // More menu bottom sheet
+            const [activeTab, setActiveTab] = useState(() => readRoute(window.location.hash).view);
+            const [workspaceTicker, setWorkspaceTicker] = useState(() => readRoute(window.location.hash).ticker);
+            const [settingsSection, setSettingsSection] = useState('account');
+            const workspaceRouteReplace = useRef(false);
             const [showScrollTop, setShowScrollTop] = useState(false); // Show scroll to top button
             const scrollContainerRef = useRef(null);
             const [storedDocuments, setStoredDocuments] = useState([]); // Documents stored in database for current ticker
@@ -2262,6 +2272,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [slideDataLoaded, setSlideDataLoaded] = useState(false);
             const [slideOutlineGenerating, setSlideOutlineGenerating] = useState(false);
             const [slidePreviewImage, setSlidePreviewImage] = useState(null);
+            const [slidePreviewError, setSlidePreviewError] = useState(null);
+            const [slideNavigatorOpen, setSlideNavigatorOpen] = useState(false);
+            const slideImageRequestRef = useRef(0);
             const [slideSelectedSlides, setSlideSelectedSlides] = useState(new Set());
             const [slideGenProgress, setSlideGenProgress] = useState(null); // {current, total}
             const [showOutlineSourceModal, setShowOutlineSourceModal] = useState(false);
@@ -8032,7 +8045,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const openReview = async (ticker) => {
                 try {
                     const r = await fetch(`${API_URL}/api/review/${ticker}`);
-                    if (r.ok) { setReviewData(await r.json()); setReviewTicker(ticker); }
+                    if (r.ok) { setReviewData(await r.json()); setReviewTicker(ticker); setWorkspaceTicker(ticker); }
                     else setReviewStatus(`No review stored for ${ticker} yet.`);
                 } catch (e) { setReviewStatus('Could not load: ' + e.message); }
             };
@@ -9311,6 +9324,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 sectorBundle: null,
             });
             const [feedTickerHeatmap, setFeedTickerHeatmap] = useState([]);
+            const [feedHeatmapStatus, setFeedHeatmapStatus] = useState('loading');
             const [feedThemeClusters, setFeedThemeClusters] = useState({ weekStart: null, clusters: [] });
             const [feedHeatmapOpen, setFeedHeatmapOpen] = useState(true);
             const [feedThemesOpen, setFeedThemesOpen] = useState(false);
@@ -9368,13 +9382,15 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     if (feedFilters.material) params.set('material', 'true');
                     // Bump default limit so 30/60/90-day windows aren't capped at 100.
                     params.set('limit', '300');
-                    const resp = await fetch(`/api/media/feed?${params}`);
+                    const resp = await fetch(`${API_URL}/api/media/feed?${params}`);
+                    if (!resp.ok) throw new Error('Could not load the podcast feed. Please try again.');
                     const data = await resp.json();
                     setFeedEpisodes(data.episodes || []);
                     // Keep the podcast dropdown in sync with newly-added feeds.
                     refetchAllFeeds();
                 } catch (e) {
-                    setFeedError(String(e));
+                    console.error('Feed request failed', e);
+                    setFeedError('The podcast feed could not be loaded. Your saved research is still available.');
                 } finally {
                     setFeedLoading(false);
                 }
@@ -9385,21 +9401,23 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 // 5 minute client-side cache
                 if (now - feedHeatmapCacheRef.current.loadedAt < 5 * 60 * 1000
                         && feedHeatmapCacheRef.current.data.length > 0) {
-                    setFeedTickerHeatmap(feedHeatmapCacheRef.current.data);
+                    setFeedTickerHeatmap(feedHeatmapCacheRef.current.data); setFeedHeatmapStatus('ready');
                     return;
                 }
+                setFeedHeatmapStatus('loading');
                 try {
-                    const resp = await fetch('/api/media/ticker-heatmap?days=7');
+                    const resp = await fetch(`${API_URL}/api/media/ticker-heatmap?days=7`);
+                    if (!resp.ok) throw new Error('Heatmap unavailable');
                     const data = await resp.json();
                     const list = data.heatmap || [];
                     feedHeatmapCacheRef.current = { loadedAt: now, data: list };
-                    setFeedTickerHeatmap(list);
-                } catch (e) {}
+                    setFeedTickerHeatmap(list); setFeedHeatmapStatus('ready');
+                } catch (e) { setFeedHeatmapStatus('error'); }
             }, []);
 
             const fetchThemeClusters = useCallback(async () => {
                 try {
-                    const resp = await fetch('/api/media/theme-clusters?week=current');
+                    const resp = await fetch(`${API_URL}/api/media/theme-clusters?week=current`);
                     const data = await resp.json();
                     setFeedThemeClusters({
                         weekStart: data.weekStart || null,
@@ -9436,7 +9454,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     ticker = ticker.trim().toUpperCase();
                 }
                 try {
-                    const resp = await fetch('/api/media/attach-to-thesis', {
+                    const resp = await fetch(`${API_URL}/api/media/attach-to-thesis`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -9476,7 +9494,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const feedEmailBullet = useCallback(async (ep, p) => {
                 // Try backend first; if SMTP misconfigured, fall back to mailto:
                 try {
-                    const resp = await fetch('/api/media/email-bullet', {
+                    const resp = await fetch(`${API_URL}/api/media/email-bullet`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -9520,7 +9538,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
             const feedEmailEpisode = useCallback(async (ep) => {
                 try {
-                    const resp = await fetch('/api/media/email-episode', {
+                    const resp = await fetch(`${API_URL}/api/media/email-episode`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ episodeId: ep.id }),
@@ -9564,7 +9582,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
             const feedEmailTickerDigest = useCallback(async (ticker, days = 7) => {
                 try {
-                    const resp = await fetch('/api/media/email-ticker-digest', {
+                    const resp = await fetch(`${API_URL}/api/media/email-ticker-digest`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ ticker, days }),
@@ -9591,7 +9609,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 }
                 // Load notes
                 try {
-                    const resp = await fetch(`/api/media/points/${pointId}/notes`);
+                    const resp = await fetch(`${API_URL}/api/media/points/${pointId}/notes`);
                     const data = await resp.json();
                     setFeedNotesState(prev => ({ ...prev, [pointId]: { open: true, notes: data.notes || [], draft: '' } }));
                 } catch (e) {
@@ -9604,7 +9622,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 const text = (cur.draft || '').trim();
                 if (!text) return;
                 try {
-                    const resp = await fetch(`/api/media/points/${pointId}/notes`, {
+                    const resp = await fetch(`${API_URL}/api/media/points/${pointId}/notes`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ noteText: text }),
@@ -9634,7 +9652,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
             const feedDeleteNote = useCallback(async (pointId, noteId) => {
                 try {
-                    const resp = await fetch(`/api/media/point-notes/${noteId}`, { method: 'DELETE' });
+                    const resp = await fetch(`${API_URL}/api/media/point-notes/${noteId}`, { method: 'DELETE' });
                     if (!resp.ok) throw new Error('delete failed');
                     setFeedNotesState(prev => ({
                         ...prev,
@@ -9660,7 +9678,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const feedOpenCluster = useCallback(async (clusterId, theme) => {
                 setFeedClusterModal({ clusterId, theme, episodes: [], loading: true });
                 try {
-                    const resp = await fetch(`/api/media/clusters/${clusterId}/episodes`);
+                    const resp = await fetch(`${API_URL}/api/media/clusters/${clusterId}/episodes`);
                     if (!resp.ok) throw new Error('cluster not found');
                     const data = await resp.json();
                     setFeedClusterModal({
@@ -9698,7 +9716,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 }
                 if (!confirm(`Mute "${theme}"? You won't get alerts on bullets tagged with this theme.`)) return;
                 try {
-                    const resp = await fetch('/api/media/mute-theme', {
+                    const resp = await fetch(`${API_URL}/api/media/mute-theme`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ theme }),
@@ -9715,7 +9733,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 setFeedSummaryJobs(prev => ({ ...prev, [ep.id]: { jobId: null, status: 'starting' } }));
                 try {
                     const apiKey = (typeof apiKeySaved !== 'undefined' ? apiKeySaved : '') || '';
-                    const resp = await fetch(`/api/media/episode/${ep.id}/full-summary`, {
+                    const resp = await fetch(`${API_URL}/api/media/episode/${ep.id}/full-summary`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ apiKey }),
@@ -9881,8 +9899,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 setMtError(null);
                 try {
                     const [f, s, st] = await Promise.all([
-                        fetch('/api/media/feeds').then(r => r.json()),
-                        fetch('/api/media/watchlist').then(r => r.json()),
+                        fetch(`${API_URL}/api/media/feeds`).then(r => r.json()),
+                        fetch(`${API_URL}/api/media/watchlist`).then(r => r.json()),
                         fetch('/api/settings').then(r => r.json()),
                     ]);
                     setMtFeeds(f.feeds || []);
@@ -10093,6 +10111,59 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 }
             };
 
+            const navigateWorkspace = (view, ticker = workspaceTicker) => {
+                if (ticker) {
+                    if (view === 'overview') setCurrentOverviewTicker(ticker);
+                    if (view === 'onepager') setOpTicker(ticker);
+                    if (view === 'deepdive') setDdTicker(ticker);
+                    if (view === 'review') setReviewTicker(ticker);
+                    if (view === 'explain') setDecipherTicker(ticker);
+                    if (view === 'meetingprep') setMpNewTicker(ticker);
+                    if (view === 'slides') setSlideNewTicker(ticker);
+                }
+                switchTab(view);
+            };
+            const openWorkspaceCompany = (ticker, view = 'companies') => {
+                setWorkspaceTicker(ticker);
+                if (view === 'overview') setCurrentOverviewTicker(ticker);
+                if (view === 'portfolio') {
+                    if (savedAnalyses.some(a => a.ticker === ticker)) loadAnalysis(ticker);
+                    else { setCurrentTicker(ticker); setAnalysis(null); }
+                }
+                if (view === 'summary') { setCurrentSummaryTopic(ticker); backToSummaryList(); }
+                navigateWorkspace(view, ticker);
+            };
+            const openWorkspaceSummary = summary => {
+                setCurrentSummary(summary);
+                setSummaryViewMode('detail');
+                switchTab('summary');
+            };
+            // One route for desktop, mobile and direct links. Back/forward restores
+            // the destination and company; no research is generated by navigation.
+            useEffect(() => {
+                const hash = routeHash(activeTab, workspaceTicker);
+                if (window.location.hash !== hash) window.history[workspaceRouteReplace.current ? 'replaceState' : 'pushState'](null, '', hash);
+                workspaceRouteReplace.current = false;
+            }, [activeTab, workspaceTicker]);
+            useEffect(() => {
+                const restore = () => {
+                    const route = readRoute(window.location.hash);
+                    setWorkspaceTicker(route.ticker);
+                    openWorkspaceCompany(route.ticker, route.view);
+                };
+                window.addEventListener('popstate', restore);
+                window.addEventListener('hashchange', restore);
+                return () => { window.removeEventListener('popstate', restore); window.removeEventListener('hashchange', restore); };
+            });
+            useEffect(() => {
+                if (!authToken || authLoading) return;
+                if (workspaceTicker) {
+                    openWorkspaceCompany(workspaceTicker, activeTab);
+                    if (activeTab === 'portfolio') loadAnalysis(workspaceTicker);
+                } else navigateWorkspace(activeTab);
+                loadMpMeetings();
+            }, [authToken, authLoading]);
+
             // ============================================
             // MEETING PREP FUNCTIONS
             // ============================================
@@ -10121,14 +10192,21 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     if (res.ok) {
                         const data = await res.json();
                         setSlideSelectedProject(data);
-                        if (data.slides && data.slides.length > 0 && !slideSelectedSlide) {
-                            selectSlide(data.slides[0]);
+                        const selected = selectedProjectSlide(data, slideSelectedProject?.id, slideSelectedSlide?.slide_number);
+                        if (selected) selectSlide(selected, data.id);
+                        else {
+                            slideImageRequestRef.current += 1;
+                            setSlideSelectedSlide(null);
+                            setSlidePreviewImage(null);
+                            setSlidePreviewError(null);
                         }
                     }
                 } catch (err) { console.error('Failed to load slide project:', err); }
             };
 
-            const selectSlide = (slide) => {
+            const selectSlide = (slide, projectId = slideSelectedProject?.id) => {
+                slideImageRequestRef.current += 1;
+                setSlidePreviewError(null);
                 setSlideSelectedSlide(slide);
                 setSlideEditContent(slide.content || '');
                 setSlideEditTitle(slide.title || '');
@@ -10137,19 +10215,23 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 setSlidePreviewImage(null);
                 // Load image if available
                 if (slide.has_image) {
-                    loadSlideImage(slide.slide_number);
+                    loadSlideImage(slide.slide_number, projectId);
                 }
             };
 
-            const loadSlideImage = async (slideNum) => {
-                if (!slideSelectedProject) return;
+            const loadSlideImage = async (slideNum, projectId = slideSelectedProject?.id) => {
+                if (!projectId) return;
+                const requestId = ++slideImageRequestRef.current;
+                setSlidePreviewError(null);
                 try {
-                    const res = await fetch(`${API_URL}/api/slides/projects/${slideSelectedProject.id}/slides/${slideNum}/image`);
-                    if (res.ok) {
-                        const data = await res.json();
-                        setSlidePreviewImage(data.image_data);
-                    }
-                } catch (err) { console.error('Failed to load slide image:', err); }
+                    const res = await fetch(`${API_URL}/api/slides/projects/${projectId}/slides/${slideNum}/image`);
+                    if (!res.ok) throw new Error(`Preview unavailable (${res.status})`);
+                    const data = await res.json();
+                    if (!data.image_data) throw new Error('No preview image returned');
+                    if (requestId === slideImageRequestRef.current) setSlidePreviewImage(data.image_data);
+                } catch (err) {
+                    if (requestId === slideImageRequestRef.current) setSlidePreviewError('This preview could not be loaded.');
+                }
             };
 
             const createSlideProject = async () => {
@@ -15025,24 +15107,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         </div>
                     )}
                     
-                <div className="flex flex-col h-screen glass-bg-mesh text-slate-100">
-                    {/* Agent stale banner — shown when /api/agent/health reports stale or never-seen.
-                        Sits above the nav so it's the first thing visible on every tab. Dismissible. */}
-                    {agentHealth && !agentBannerDismissed && (agentHealth.status === 'stale' || agentHealth.agentSeenEver === false) && (
-                        <div className={`px-4 py-2 text-xs flex items-center justify-between gap-3 border-b ${agentHealth.status === 'stale' ? 'bg-red-900/40 border-red-500/40 text-red-200' : 'bg-amber-900/40 border-amber-500/40 text-amber-200'}`}>
-                            <div className="flex-1 min-w-0">
-                                <span className="font-semibold">Local agent {agentHealth.status === 'stale' ? 'stale' : 'never seen'}.</span>
-                                {' '}
-                                {agentHealth.status === 'stale'
-                                    ? <>Last heartbeat <strong>{Math.floor((agentHealth.staleSeconds || 0) / 60)}m {Math.floor((agentHealth.staleSeconds || 0) % 60)}s ago</strong> — pipeline jobs (note generation, recap, catalyst synth) are halted until the agent comes back.</>
-                                    : <>The local agent has never checked in. New jobs will sit queued until you start it on your Mac.</>}
-                                {' '}
-                                <span className="opacity-70">Try: <code className="bg-black/30 px-1 rounded">launchctl kickstart -k gui/$(id -u)/com.charlie.local-agent</code></span>
-                            </div>
-                            <button onClick={() => setAgentBannerDismissed(true)} className="text-[10px] px-2 py-0.5 rounded bg-white/10 hover:bg-white/20 flex-shrink-0" title="Dismiss until next outage">×</button>
-                        </div>
-                    )}
-
+                <div className="charlie-workspace flex flex-col text-slate-100">
                     {/* Shared iCloud picker modal — opened by pickFromICloud() from any tab.
                         State is lifted to parent (pickerTk/pickerFilter/pickerSelected/pickerBusy)
                         so a new component identity isn't created on every parent re-render — that
@@ -15176,309 +15241,28 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             </div>
                         );
                     })()}
-                    {/* DESKTOP TOP NAVIGATION - Hidden on mobile */}
-                    <nav className="hidden md:flex items-center justify-between px-6 py-3 bg-white/5 backdrop-blur-xl border-b border-white/10">
-                        <div className="flex items-center gap-3 shrink-0">
-                            <div className="w-9 h-9 rounded-lg flex items-center justify-center overflow-hidden shadow-lg">
-                                <img 
-                                    src="data:image/webp;base64,UklGRvQIAABXRUJQVlA4WAoAAAAgAAAAfwAAfwAASUNDUMgBAAAAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADZWUDggBgcAANAhAJ0BKoAAgAA+USaPRiOiISEkG/m4cAoJQBnNCsXngSDbdnU4DbEeYDzdP8P6iPQA/YDrAPQA/bP01vY0/dfKpFw/2joefGmJLtFPtJ974UdrHdnssf63jJ+s39V9Sv8r/0/oh3wlAD8xf9j+y+sj/uf4f8sfZ98+f9f3Df5X/Wv99/bvax9d3opDviBngxaP0szCIP6VhzhMxEhrrZrdQnFIKVxP4Y2bZ3uJxuuyYwP+cKb/znWAEevnx0y6r5hLtJrjLobvesVayarNPtqoXXDbeQHQYq9NKxupvX+jaF/rJBQ930U5GL6JrQYaJTMd/JlhXPobhyN+etsncCFfpRFC4i5CWcnKRQm1ASO9gybWerhYAAD+/M9Esyi+lNosMo30/K/KVr5sRa0WIV8w05TiIqeB0D3qD50ho2ZCsZqQAAHU8lcfBQRf51sGEb3sfR2Q6LjDk6rJZjtbjP5XzakprFrve/d2zxPjbnY2Nod0KwS81cvix5DA+5L/6b4RJNiIEXtiPniRJCCWmz56jE/eSlqrwmOf8XQlUVlb4RB7pjEJiHzPdPeoGSHbOOkvAm6a/3UG99p1NUqY2M3arYdUrFRH+fM+oypJc/U1/34DFp7H3Oul78r0AK2hid6xd8IypehYEY/qvkpTrZWfgaFFI73mZ2tqwWLAp0Fuem+RnKx++44g0hGdMGVNHE/qy/+RXygtGgfgTLhQOqnJ0Fp7gGRxeRKjpP30jQy2bdkU7rxtH2Uo9vr5byZVUCRbk/2bt2TfzoWFj+ksujTW18N8/SvZH/QJXz1ywAq7SVueR8vziFn+3VOA7LS75uONfgq2uNEiA2Ta53RdGZhOIrmyUDq0RtcYqeFhiCCjGFfkvsDoy5W8YEpnCMipixSC2MK3Qras+7U9yWS1dnp4zjP+RO/gEDaF/xKLnyR1XNFW5ZjCyrpmKHQ5Z6ImUC+/iexAXJizJv9G0D+DMJFY06I7jsy3tcm4RnyoggBZBZZmM3dxv69TJDF9YL43rqbaJcQoxVA30tilQGYlmeSHs+ZSfDcjP+yGqddhLdt9heE96Axxde7Hs9jW5sBcXmfu7rb9HmRjPQZEZLxyPBsSc7/H5R37/vxix9O0LlcNZEHRYwyoXFuiR1Tdgy+wMrVdz3WylvgxXW4xaq2p542Dfx2IAYiWmO66s1C0gdv2fqQM8w5iBpIP5wMmcrNw3kIo8pLrvMlblxGPiW0fBAgalbrs1bqIjitQWqf/EQBsyh+8nfr3fZL8vpGOzrR1F0k9+foaLfu2v01FdxbX2H1Ls/+WK9IHQyQy5G+K9KzibC/x22xUf8wpOmnwltd8XbdZP7fj+55Q5FiOGmS11GRnVmoxiabQyAps8R5WA2vYNrNg2HAXstsGFr/6uf5umUIHst/wav9LkXtoyKlLoLHGpyY3EFzMWpn9Eld2nexl8+Bf3URf/BeJW0JxcT5+6GdHjLhYSPStL9EALjey163OR/QBCJXKQQ12hy0+/f7mkDP4YbQrI6idIsIbg12gEuKl/Tf2rN6uHElhS3S4WGBFxGf/oy4VityLoxanlbn8e9/J9DtMq3nwIZDa4nslw5hSbayFGmeS49sim21cH9fvxtvlhgMGAlEzj7GX/A+tw5r8T+Np3QR4CIS61r5o+2++VdUaRcAtvJFsHMXtxmL/NBsVOCRuutSIGN2IGplPbkq5gNNSkaWpqf40SpVRb8wqPOVR9aXlVVJn6++nTWKNaIh9AR8BD/xqvT/kfXp4MaxV6HYbVLe96uddxp6W3+GJDvsq4FJPXyjXyqW2qB4P/5bCOJrrkfSZc/ETrP3Zw354euJzR75iql81TswtsTsKte+qa9zVTvWqx7iC5yrgsNH89WOsodIgnNWIQv3pcd//Zfiq0CMRBZRPPKHsMD6tQxvTHMgn/SW3/zrRYV3q5TlcUvtsWuJ+UMtCvHHV+RN9Jp7RkyUlkq0uU+vu2SsuVX/+DrAT0LZD6R4jDM/QXbOwlbfb95KTSV0q+5h8S3GD0pVkew5OepHhhxoQg7LkFVYRAVSHfZSIBTsns75Poagz65ee0lxcgxFNOJ1VHgGgojxc+34xWIwlvXFjr67qeGUxLMFcE8AD3Jml3qrznvmWe0sIJy5rf8GMeGiDtBy0Vl6wY39pIcspSqDHNM5QPdueZO/Co6Kbn0gqTAj6rxi8ljloGgjTPNnGy1Lu1nF56vovMtzQW3lf6mcv5iR2A3U/6x5tqFgI7VmoJgC6SK2c0c4/6QgmI2ee1DWdr+c3p7lsA8EVzDixFLX0OgfULNvAkJK0RM07PlrgnMwzdQTLUV4xD2pl2MmYLHlNuvVfQCqN/KfgTVsF7T7TFEJNQQYAcsj5i8H2tTzV8vNtYabCYAA"
-                                    alt="Charlie"
-                                    className="w-full h-full object-cover"
-                                />
-                            </div>
-                            <span className="font-bold text-lg">Charlie</span>
-                            {/* Theme switcher. One instance: the chips always show,
-                                the name only at xl where the nav stops competing.
-                                shrink-0 keeps the nav's flex-wrap from squeezing the
-                                chips or clipping the label against the pill bar. */}
-                            <div className="flex shrink-0 pl-3 pr-1 ml-1 mr-2 border-l border-white/10">
-                                <ThemeSwitch />
-                            </div>
-                        </div>
-                        {/* 16 nav buttons — too wide for sub-2560px screens, so allow wrap.
-                            Without flex-wrap, Analysts/Alerts/Settings get clipped off the right edge
-                            (which is why they showed up in the mobile "More" menu but not on desktop). */}
-                        <div className="flex flex-wrap items-center gap-1 bg-white/10 backdrop-blur-lg rounded-lg p-1 border border-white/10 min-w-0">
-                            <button
-                                onClick={() => switchTab('dashboard')}
-                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                                    activeTab === 'dashboard'
-                                        ? 'bg-amber-600 text-white shadow-lg glow-teal'
-                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
-                                }`}
-                            >
-                                <span className="flex items-center gap-2">
-                                    <LayoutDashboard className="w-4 h-4" />
-                                    Dashboard
-                                </span>
-                            </button>
-                            <button
-                                onClick={() => switchTab('portfolio')}
-                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                                    activeTab === 'portfolio'
-                                        ? 'bg-amber-600 text-white shadow-lg glow-teal'
-                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
-                                }`}
-                            >
-                                <span className="flex items-center gap-2">
-                                    <BarChart2 className="w-4 h-4" />
-                                    Thesis
-                                </span>
-                            </button>
-                            <button 
-                                onClick={() => switchTab('overview')}
-                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                                    activeTab === 'overview' 
-                                        ? 'bg-amber-600 text-white shadow-lg glow-teal'
-                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
-                                }`}
-                            >
-                                <span className="flex items-center gap-2">
-                                    <FileText className="w-4 h-4" />
-                                    Overview
-                                </span>
-                            </button>
-                            <button 
-                                onClick={() => switchTab('chat')}
-                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                                    activeTab === 'chat' 
-                                        ? 'bg-amber-600 text-white shadow-lg glow-teal'
-                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
-                                }`}
-                            >
-                                <span className="flex items-center gap-2">
-                                    <MessageCircle className="w-4 h-4" />
-                                    Chat
-                                </span>
-                            </button>
-                            <button 
-                                onClick={() => switchTab('summary')}
-                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                                    activeTab === 'summary' 
-                                        ? 'bg-amber-600 text-white shadow-lg glow-teal'
-                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
-                                }`}
-                            >
-                                <span className="flex items-center gap-2">
-                                    <ClipboardList className="w-4 h-4" />
-                                    Summary
-                                </span>
-                            </button>
-                            <button 
-                                onClick={() => switchTab('research')}
-                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                                    activeTab === 'research' 
-                                        ? 'bg-amber-600 text-white shadow-lg glow-teal'
-                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
-                                }`}
-                            >
-                                <span className="flex items-center gap-2">
-                                    <Microscope className="w-4 h-4" />
-                                    Research
-                                </span>
-                            </button>
-                            <button
-                                onClick={() => switchTab('meetingprep')}
-                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                                    activeTab === 'meetingprep'
-                                        ? 'bg-amber-600 text-white shadow-lg glow-teal'
-                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
-                                }`}
-                            >
-                                <span className="flex items-center gap-2">
-                                    <Target className="w-4 h-4" />
-                                    Meeting Prep
-                                </span>
-                            </button>
-                            <button
-                                onClick={() => switchTab('slides')}
-                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                                    activeTab === 'slides'
-                                        ? 'bg-amber-600 text-white shadow-lg glow-teal'
-                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
-                                }`}
-                            >
-                                <span className="flex items-center gap-2">
-                                    <Layers className="w-4 h-4" />
-                                    Slides
-                                </span>
-                            </button>
-                            <button
-                                onClick={() => switchTab('studio')}
-                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                                    activeTab === 'studio'
-                                        ? 'bg-amber-600 text-white shadow-lg glow-teal'
-                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
-                                }`}
-                            >
-                                <span className="flex items-center gap-2">
-                                    <Wand className="w-4 h-4" />
-                                    Studio
-                                </span>
-                            </button>
-                            <button
-                                onClick={() => switchTab('formats')}
-                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                                    activeTab === 'formats'
-                                        ? 'bg-amber-600 text-white shadow-lg glow-teal'
-                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
-                                }`}
-                            >
-                                <span className="flex items-center gap-2">
-                                    <LayoutTemplate className="w-4 h-4" />
-                                    Formats
-                                </span>
-                            </button>
-                            <button
-                                onClick={() => switchTab('deepdive')}
-                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                                    activeTab === 'deepdive'
-                                        ? 'bg-amber-600 text-white shadow-lg glow-teal'
-                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
-                                }`}
-                            >
-                                <span className="flex items-center gap-2">
-                                    <BarChart2 className="w-4 h-4" />
-                                    Deep Dive
-                                </span>
-                            </button>
-                            <button
-                                onClick={() => switchTab('explain')}
-                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                                    activeTab === 'explain'
-                                        ? 'bg-amber-600 text-white shadow-lg glow-teal'
-                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
-                                }`}
-                            >
-                                <span className="flex items-center gap-2">
-                                    <FileText className="w-4 h-4" />
-                                    Explain
-                                </span>
-                            </button>
-                            <button
-                                onClick={() => switchTab('onepager')}
-                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                                    activeTab === 'onepager'
-                                        ? 'bg-amber-600 text-white shadow-lg glow-teal'
-                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
-                                }`}
-                            >
-                                <span className="flex items-center gap-2">
-                                    <FileText className="w-4 h-4" />
-                                    One-Pager
-                                </span>
-                            </button>
-                            <button
-                                onClick={() => switchTab('pipeline')}
-                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                                    activeTab === 'pipeline'
-                                        ? 'bg-amber-600 text-white shadow-lg glow-teal'
-                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
-                                }`}
-                            >
-                                <span className="flex items-center gap-2">
-                                    <Workflow className="w-4 h-4" />
-                                    Pipeline
-                                </span>
-                            </button>
-                            <button
-                                onClick={() => switchTab('review')}
-                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                                    activeTab === 'review'
-                                        ? 'bg-emerald-600 text-white shadow-lg'
-                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
-                                }`}
-                            >
-                                <span className="flex items-center gap-2">
-                                    <Target className="w-4 h-4" />
-                                    Review
-                                </span>
-                            </button>
-                            <button
-                                onClick={() => switchTab('agents')}
-                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                                    activeTab === 'agents'
-                                        ? 'bg-amber-600 text-white shadow-lg glow-teal'
-                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
-                                }`}
-                            >
-                                <span className="flex items-center gap-2">
-                                    <Bot className="w-4 h-4" />
-                                    Agents
-                                    {/* Catalyst syntheses waiting on approval. Without this the
-                                        only way to learn work was queued was to go looking. */}
-                                    {catalystProposals.length > 0 && (
-                                        <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-slate-900 text-[9px] font-bold leading-none">
-                                            {catalystProposals.length}
-                                        </span>
-                                    )}
-                                </span>
-                            </button>
-                            <button
-                                onClick={() => switchTab('feed')}
-                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                                    activeTab === 'feed'
-                                        ? 'bg-amber-600 text-white shadow-lg glow-teal'
-                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
-                                }`}
-                            >
-                                <span className="flex items-center gap-2">
-                                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>
-                                    Feed
-                                </span>
-                            </button>
-                            <button
-                                onClick={() => switchTab('analysts')}
-                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all relative ${
-                                    activeTab === 'analysts'
-                                        ? 'bg-amber-600 text-white shadow-lg glow-teal'
-                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
-                                }`}
-                            >
-                                <span className="flex items-center gap-2">
-                                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                                    Analysts
-                                    {analystPendingCount > 0 && (
-                                        <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-[9px] font-bold leading-none">{analystPendingCount}</span>
-                                    )}
-                                </span>
-                            </button>
-                            <button
-                                onClick={() => switchTab('alerts')}
-                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all relative ${
-                                    activeTab === 'alerts'
-                                        ? 'bg-amber-600 text-white shadow-lg glow-teal'
-                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
-                                }`}
-                            >
-                                <span className="flex items-center gap-2">
-                                    <Bell className="w-4 h-4" />
-                                    Alerts
-                                    {alertBadgeCount > 0 && (
-                                        <span className="px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[9px] font-bold leading-none">{alertBadgeCount}</span>
-                                    )}
-                                </span>
-                            </button>
-                            <button
-                                onClick={() => switchTab('settings')}
-                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                                    activeTab === 'settings'
-                                        ? 'bg-amber-600 text-white shadow-lg glow-teal'
-                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
-                                }`}
-                            >
-                                <span className="flex items-center gap-2">
-                                    <Settings className="w-4 h-4" />
-                                    Settings
-                                </span>
-                            </button>
-                        </div>
-                        <div className="w-32"></div> {/* Spacer for balance */}
-                    </nav>
+                    <WorkspaceShell active={activeTab} onNavigate={navigateWorkspace} ticker={workspaceTicker}
+                        onCompany={openWorkspaceCompany} local={_useLocalBackend} health={agentHealth}
+                        themeControl={<ThemeSwitch alwaysLabel />} />
 
+                    {_useLocalBackend && <aside className="workspace-data-notice" aria-label="Data connection">
+                        <span><strong>Local test database</strong> · Saved production theses and pipeline companies are not shown here.</span>
+                        <a href={`?local=0${routeHash(activeTab, workspaceTicker)}`}>Connect to saved production research →</a>
+                    </aside>}
                     {/* MAIN CONTENT AREA */}
-                    <div className="flex-1 flex overflow-hidden">
+                    <div id="workspace-content" tabIndex={-1} className="workspace-content flex-1 flex overflow-hidden">
                         
+                        {activeTab === 'desk' && <ResearchDesk renderHtml={value => sanitizeHtml(renderMarkdown(value))} api={API_URL} analyses={savedAnalyses} onCompany={openWorkspaceCompany} onNavigate={navigateWorkspace} />}
+                        {activeTab === 'today' && <TodayWorkspace analyses={savedAnalyses} overviews={savedOverviews}
+                            summaries={savedSummaries} alerts={agentAlerts} meetings={mpMeetings}
+                            onNavigate={navigateWorkspace} onSummary={openWorkspaceSummary} onCompany={openWorkspaceCompany} />}
+                        {activeTab === 'companies' && <CompaniesWorkspace analyses={savedAnalyses} overviews={savedOverviews}
+                            ticker={workspaceTicker} onCompany={openWorkspaceCompany} onNavigate={navigateWorkspace} />}
+                        {activeTab === 'library' && <LibraryWorkspace summaries={savedSummaries}
+                            onSummary={openWorkspaceSummary} onNavigate={navigateWorkspace} />}
+                        {activeTab === 'create' && <CreateWorkspace ticker={workspaceTicker} onTicker={value => { workspaceRouteReplace.current = true; setWorkspaceTicker(value); }} onNavigate={navigateWorkspace} />}
+                        {activeTab === 'automations' && <AutomationsWorkspace onNavigate={navigateWorkspace} local={_useLocalBackend} />}
+
                         {/* PORTFOLIO TAB */}
                         {activeTab === 'portfolio' && (
                             <div className="flex-1 flex flex-col md:flex-row overflow-hidden pb-24 md:pb-0">
@@ -18287,7 +18071,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     [...savedOverviews].sort((a, b) => safeStr(a.ticker).localeCompare(safeStr(b.ticker))).map(overview => (
                                                         <button
                                                             key={safeStr(overview.ticker, `ov-${Math.random()}`)}
-                                                            onClick={() => overviewSelectMode ? toggleOverviewSelection(overview.ticker) : setCurrentOverviewTicker(overview.ticker)}
+                                                            onClick={() => overviewSelectMode ? toggleOverviewSelection(overview.ticker) : openWorkspaceCompany(overview.ticker, 'overview')}
                                                             className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all flex-shrink-0 ${
                                                                 overviewSelectMode && selectedOverviewTickers.has(overview.ticker)
                                                                     ? 'bg-blue-600 text-white shadow-lg'
@@ -18404,7 +18188,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             };
                                             
                                             return (
-                                                <div className="p-4 sm:p-6">
+                                                <div className="workspace-overview-reader p-4 sm:p-6">
                                                     {/* Header */}
                                                     <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
                                                         <div className="flex-1 min-w-0">
@@ -18799,7 +18583,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
                         {/* SUMMARY TAB */}
                         {activeTab === 'summary' && (
-                            <div className="flex-1 flex flex-col overflow-hidden pb-24 md:pb-0">
+                            <div className={`flex-1 flex flex-col overflow-hidden pb-24 md:pb-0 ${currentSummary && summaryViewMode === 'detail' ? 'summary-reading' : ''}`}>
+                                {currentSummary && summaryViewMode === 'detail' && <div className="workspace-reader-bar"><button onClick={backToSummaryList}>← Back to summaries</button><span>Research reader</span></div>}
                                 {/* Background Transcription Progress Banner */}
                                 {bgTranscriptionJob && (
                                     <div className={`flex-shrink-0 px-4 py-3 flex items-center gap-3 text-sm border-b ${
@@ -18818,7 +18603,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     </div>
                                 )}
                                 {/* Horizontal Topic Navigation Bar */}
-                                <div className="bg-white/[0.04] backdrop-blur-lg border-b border-white/[0.08] flex-shrink-0">
+                                <div className="summary-library-controls bg-white/[0.04] backdrop-blur-lg border-b border-white/[0.08] flex-shrink-0">
                                     <div className="flex items-center gap-2 p-3">
                                         <ClipboardList className="w-5 h-5 text-amber-400 flex-shrink-0" />
                                         <button onClick={() => loadSummaries()} className="p-1.5 hover:bg-white/10 rounded flex-shrink-0" title="Refresh">
@@ -18870,10 +18655,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
                                 {/* Main Content Area */}
                                 <div className="flex-1 overflow-y-auto" onScroll={(e) => { setShowScrollTop(e.target.scrollTop > 300); scrollContainerRef.current = e.target; }}>
-                                    <div className="p-4 pb-8 max-w-4xl mx-auto">
+                                    <div data-reader className="p-4 pb-8 max-w-4xl mx-auto">
                                         
                                         {/* Search Bar */}
-                                        <div className="relative mb-4" ref={summarySearchRef}>
+                                        <div className="summary-library-controls relative mb-4" ref={summarySearchRef}>
                                             <div className="relative">
                                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                                                 <input
@@ -18938,7 +18723,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                         </div>
                                         
                                         {/* Document Type Filter */}
-                                        <div className="mb-4">
+                                        <div className="summary-library-controls mb-4">
                                             <div className="flex items-center gap-2">
                                                 <span className="text-xs text-slate-500 flex-shrink-0">Filter:</span>
                                                 <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
@@ -18976,7 +18761,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                         </div>
                                         
                                         {/* Header with Add button */}
-                                        <div className="flex items-center justify-between mb-4">
+                                        <div className="summary-document-list-heading flex items-center justify-between mb-4">
                                             <div>
                                                 <h2 className="text-xl font-bold flex items-center gap-2">
                                                     {currentSummary && summaryViewMode === 'detail' && (
@@ -22404,7 +22189,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             <div className="flex-1 flex flex-col bg-white/[0.02] overflow-y-auto pb-24 md:pb-0" onScroll={(e) => { setShowScrollTop(e.target.scrollTop > 300); scrollContainerRef.current = e.target; }}>
                                 <div className="p-4 pb-8">
                                     {/* Header */}
-                                    <div className="flex items-center justify-between mb-6">
+                                    <div className="workspace-slide-header flex items-center justify-between mb-6">
                                         <div className="flex items-center gap-3">
                                             {slideSelectedProject && (
                                                 <button onClick={() => { setSlideSelectedProject(null); setSlideSelectedSlide(null); }} className="p-2 hover:bg-white/10 rounded-lg">
@@ -22637,8 +22422,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     {/* Slide Editor (Two-Panel) */}
                                     {slideSelectedProject && (
                                         <div className="flex flex-col md:flex-row gap-4" style={{minHeight: '70vh'}}>
+                                            <button className="workspace-slide-toggle" aria-expanded={slideNavigatorOpen} onClick={() => setSlideNavigatorOpen(!slideNavigatorOpen)}>{slideNavigatorOpen ? 'Hide slide navigator' : `Slide ${slideSelectedSlide?.slide_number || 1} of ${slideSelectedProject.slides?.length || 0} · Choose slide`}</button>
                                             {/* Left Panel: Slide List */}
-                                            <div className="w-full md:w-72 flex-shrink-0 bg-white/5 rounded-xl border border-white/10 overflow-y-auto" style={{maxHeight: '70vh'}}>
+                                            <div className={`workspace-slide-list ${slideNavigatorOpen ? 'is-open' : ''} w-full md:w-72 flex-shrink-0 bg-white/5 rounded-xl border border-white/10 overflow-y-auto`} style={{maxHeight: '70vh'}}>
                                                 <div className="p-3 border-b border-white/10">
                                                     <div className="flex justify-between items-center">
                                                         <div className="flex items-center gap-2">
@@ -22669,7 +22455,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                     onChange={() => toggleSlideSelect(s.slide_number)}
                                                                     className="w-3.5 h-3.5 rounded accent-amber-500" />
                                                             </div>
-                                                            <button onClick={() => selectSlide(s)} className="flex-1 text-left p-3 pl-2">
+                                                            <button onClick={() => { selectSlide(s); setSlideNavigatorOpen(false); }} className="min-w-0 flex-1 text-left p-3 pl-2">
                                                                 <div className="flex items-center gap-2">
                                                                     <span className="text-xs text-slate-500 w-5 text-right">{s.slide_number}</span>
                                                                     <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
@@ -22694,11 +22480,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             </div>
 
                                             {/* Right Panel: Editor + Preview */}
-                                            <div className="flex-1 flex flex-col gap-4">
+                                            <div className="workspace-slide-editor flex-1 flex flex-col gap-4">
                                                 {slideSelectedSlide ? (
                                                     <>
                                                         {/* Editor Section */}
-                                                        <div className="bg-white/5 rounded-xl border border-white/10 p-4">
+                                                        <div className="workspace-slide-fields bg-white/5 rounded-xl border border-white/10 p-4">
                                                             <div className="flex items-center justify-between mb-3">
                                                                 <div className="flex items-center gap-2">
                                                                     <span className="text-xs bg-white/10 px-2 py-0.5 rounded">#{slideSelectedSlide.slide_number}</span>
@@ -22738,14 +22524,14 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         </div>
 
                                                         {/* Preview Section */}
-                                                        <div className="bg-white/5 rounded-xl border border-white/10 p-4 flex-1">
+                                                        <div className="workspace-slide-preview bg-white/5 rounded-xl border border-white/10 p-4 flex-1">
                                                             <div className="text-xs text-slate-400 mb-2">Preview</div>
                                                             {slidePreviewImage ? (
                                                                 <img src={`data:image/png;base64,${slidePreviewImage}`} alt={`Slide ${slideSelectedSlide.slide_number}`}
                                                                     className="w-full rounded-lg shadow-lg" />
                                                             ) : (
                                                                 <div className="flex items-center justify-center h-48 text-slate-500 text-sm">
-                                                                    {slideSelectedSlide.has_image ? 'Loading preview...' : 'No image generated yet. Click "Generate Image" to create one.'}
+                                                                    {slidePreviewError ? <div role="alert">{slidePreviewError}<button className="block mt-3 underline" onClick={() => loadSlideImage(slideSelectedSlide.slide_number)}>Retry preview</button></div> : slideSelectedSlide.has_image ? 'Loading preview…' : 'No image yet. Generate an image when your slide content is ready.'}
                                                                 </div>
                                                             )}
                                                         </div>
@@ -22793,7 +22579,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 { type: 'flashcard', label: 'Flashcards', icon: <RotateCw className="w-6 h-6" />, gradient: 'from-amber-600 to-amber-800', desc: 'Study cards' },
                                             ].map(tile => (
                                                 <button key={tile.type} onClick={() => { setStudioCreateType(tile.type); setStudioCreateTitle(''); setStudioSourceType('research'); setStudioSelectedSourceIds(new Set()); setStudioCustomText(''); setShowStudioCreateModal(true); }}
-                                                    className={`bg-gradient-to-br ${tile.gradient} rounded-2xl p-4 text-left hover:scale-[1.02] transition-all shadow-lg`}>
+                                                    className="workspace-studio-tile">
                                                     <div className="mb-2 opacity-80">{tile.icon}</div>
                                                     <div className="font-semibold text-sm">{tile.label}</div>
                                                     <div className="text-xs opacity-60 mt-0.5">{tile.desc}</div>
@@ -23553,7 +23339,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     {opSavedLoading && <p className="p-3 text-xs text-slate-500">Loading…</p>}
                                     {!opSavedLoading && opSaved.length === 0 && (
                                         <p className="p-3 text-xs text-slate-500">
-                                            Nothing saved yet. Generate one on the right.
+                                            No one-pagers saved yet. Research a company to create your first.
                                         </p>
                                     )}
                                     {opSaved.map(item => (
@@ -25215,7 +25001,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                         <div className="text-center py-20 text-slate-500">
                                             <LayoutDashboard className="w-12 h-12 mx-auto mb-4 opacity-30" />
                                             <p className="text-lg font-medium mb-2">No stocks in portfolio</p>
-                                            <p className="text-sm">Save thesis analyses to see them here</p>
+                                            <p className="text-sm">Saved investment theses appear here with their monitoring status.</p><button className="workspace-primary mt-6" onClick={() => navigateWorkspace('companies')}>Explore your companies</button>
                                         </div>
                                     ) : dashboardSelectedTicker ? (() => {
                                         const stock = dashboardData.stocks.find(s => s.ticker === dashboardSelectedTicker);
@@ -25440,9 +25226,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                         <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-900/40 text-emerald-300 uppercase tracking-wide">Beta</span>
                                     </div>
                                     <p className="text-xs text-slate-500 mb-4">
-                                        Decision-first. Every figure is computed in code, a second model reviews the
-                                        draft before it renders, and each run is compared against the previous one.
-                                        The note generator in Pipeline is unchanged.
+                                        Revisit the investment case, compare scenarios, and see what changed since your last review.
                                     </p>
                                     <div className="flex flex-wrap items-center gap-2">
                                         <input
@@ -25587,10 +25371,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             mostly tables and renderMarkdown does not do tables, so the
                                             first real review displayed as rows of raw pipes. Shown on a
                                             white sheet because the HTML is styled for print. */}
-                                        <div className="p-3 overflow-x-auto bg-white rounded-b-xl">
-                                            <div className="review-sheet"
-                                                dangerouslySetInnerHTML={{ __html: reviewData.html || '' }} />
-                                        </div>
+                                        <ResearchDocument html={reviewData.html} title={`${reviewData.ticker} investment review`} />
                                     </div>
                                 )}
                             </div>
@@ -30308,7 +30089,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     switchTab('settings');
                                                     setMtSection('feeds');
                                                     loadMediaTrackerSettings();
-                                                    setMtSearchOpen(true);
+                                                    setSettingsSection('monitoring'); setMtSearchOpen(true);
                                                 }}
                                                 className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-500"
                                                 title="Search Apple Podcasts and add a new feed"
@@ -30318,9 +30099,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             <button
                                                 onClick={async () => {
                                                     try {
-                                                        await fetch('/api/media/run-scanner', { method: 'POST' });
+                                                        await fetch(`${API_URL}/api/media/run-scanner`, { method: 'POST' });
                                                         setTimeout(fetchFeed, 3000);
-                                                    } catch (e) { setFeedError(String(e)); }
+                                                    } catch (e) { console.error('Feed request failed', e);
+                    setFeedError('The podcast feed could not be loaded. Your saved research is still available.'); }
                                                 }}
                                                 className="px-3 py-2 bg-slate-900 text-white rounded-lg text-sm hover:bg-slate-700"
                                             >
@@ -30413,14 +30195,14 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 <div className="text-[11px] text-slate-500">
                                                     {feedTickerHeatmap.length > 0
                                                         ? `${feedTickerHeatmap.length} tickers · last 7 days`
-                                                        : 'Loading…'}
+                                                        : feedHeatmapStatus === 'loading' ? 'Loading…' : feedHeatmapStatus === 'error' ? 'Could not load activity' : 'No activity in the last 7 days'}
                                                 </div>
                                             </div>
                                             <span className="text-slate-400 text-sm">{feedHeatmapOpen ? '▾' : '▸'}</span>
                                         </button>
                                         {feedHeatmapOpen && (
                                             <div className="px-4 pb-4 border-t border-slate-100">
-                                                {feedTickerHeatmap.length === 0 ? (
+                                                {feedHeatmapStatus === 'error' ? <button className="text-xs underline py-3" onClick={fetchTickerHeatmap}>Retry ticker activity</button> : feedHeatmapStatus === 'loading' ? <p className="text-xs py-3">Loading ticker activity…</p> : feedTickerHeatmap.length === 0 ? (
                                                     <div className="text-xs text-slate-400 py-3">No ticker mentions in the last 7 days yet.</div>
                                                 ) : (() => {
                                                     const maxCount = Math.max(...feedTickerHeatmap.map(t => t.count));
@@ -30655,8 +30437,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     </div>
                                     <div className="space-y-4">
                                         {feedLoading && <div className="text-sm text-slate-500">Loading…</div>}
-                                        {feedError && <div className="text-sm text-rose-600">Error: {feedError}</div>}
-                                        {!feedLoading && feedEpisodes.length === 0 && (
+                                        {feedError && <div className="workspace-error" role="alert">{feedError}<button onClick={fetchFeed}>Try again</button></div>}
+                                        {!feedLoading && !feedError && feedEpisodes.length === 0 && (
                                             <div className="text-sm text-slate-400 text-center py-12">
                                                 No episodes yet. Click "Run Scanner" to trigger a fresh poll.
                                             </div>
@@ -31033,9 +30815,14 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                         <h1 className="text-xl font-bold">Settings</h1>
                                     </div>
                                 
-                                    <div className="space-y-6 max-w-lg">
+                                    <p className="text-sm text-slate-400 mb-5">Manage your workspace, connected services, and research preferences.</p>
+                                    <nav className="workspace-settings-tabs" aria-label="Settings categories">
+                                        {[['account','Account'],['appearance','Appearance'],['connections','Connections'],['notifications','Notifications'],['monitoring','Media trackers'],['usage','API usage'],['data','Data & backups']].map(([id,label]) => <button key={id} aria-current={settingsSection === id ? 'page' : undefined} onClick={() => setSettingsSection(id)}>{label}</button>)}
+                                    </nav>
+                                    {settingsSection === 'appearance' && <section className="workspace-panel max-w-3xl"><h2>Make Charlie yours</h2><p className="text-slate-400 mb-5">Seven distinct environments for research and portfolio work. Your choice is saved in this browser.</p><ThemeGallery /></section>}
+                                    <div className="space-y-6 max-w-3xl">
                                     {/* API spend */}
-                                    <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl p-4 border border-white/10">
+                                    <div hidden={settingsSection !== 'usage'} className="bg-white/[0.07] backdrop-blur-lg rounded-xl p-4 border border-white/10">
                                         <div className="flex items-center justify-between mb-1">
                                             <h3 className="font-semibold flex items-center gap-2">
                                                 <TrendingUp className="w-4 h-4 text-emerald-400" />
@@ -31194,7 +30981,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     </div>
 
                                     {/* Account Section */}
-                                    <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl p-4 border border-white/10">
+                                    <div hidden={settingsSection !== 'account'} className="bg-white/[0.07] backdrop-blur-lg rounded-xl p-4 border border-white/10">
                                         <h3 className="font-semibold mb-3 flex items-center gap-2">
                                             <Key className="w-4 h-4 text-amber-400" />
                                             Account
@@ -31212,7 +30999,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     </div>
 
                                     {/* API Key Section */}
-                                    <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl p-4 border border-white/10">
+                                    <div hidden={settingsSection !== 'connections'} className="bg-white/[0.07] backdrop-blur-lg rounded-xl p-4 border border-white/10">
                                         <h3 className="font-semibold mb-3 flex items-center gap-2">
                                             <Key className="w-4 h-4 text-amber-400" />
                                             Claude API Key
@@ -31239,7 +31026,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     </div>
 
                                     {/* Gemini API Key Section */}
-                                    <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl p-4 border border-white/10">
+                                    <div hidden={settingsSection !== 'connections'} className="bg-white/[0.07] backdrop-blur-lg rounded-xl p-4 border border-white/10">
                                         <h3 className="font-semibold mb-3 flex items-center gap-2">
                                             <Key className="w-4 h-4 text-purple-400" />
                                             Gemini API Key
@@ -31266,7 +31053,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     </div>
 
                                     {/* Finnhub API Key Section (earnings calendar) */}
-                                    <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl p-4 border border-white/10">
+                                    <div hidden={settingsSection !== 'connections'} className="bg-white/[0.07] backdrop-blur-lg rounded-xl p-4 border border-white/10">
                                         <h3 className="font-semibold mb-3 flex items-center gap-2">
                                             <Key className="w-4 h-4 text-emerald-400" />
                                             Finnhub API Key (Earnings Calendar)
@@ -31380,7 +31167,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     </div>
 
                                     {/* Web Push Notifications */}
-                                    <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl p-4 border border-white/10">
+                                    <div hidden={settingsSection !== 'notifications'} className="bg-white/[0.07] backdrop-blur-lg rounded-xl p-4 border border-white/10">
                                         <h3 className="font-semibold mb-3 flex items-center gap-2">
                                             <Key className="w-4 h-4 text-pink-400" />
                                             Web Push Notifications
@@ -31409,7 +31196,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     </div>
 
                                     {/* Google Drive OAuth Client ID Section */}
-                                    <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl p-4 border border-white/10">
+                                    <div hidden={settingsSection !== 'connections'} className="bg-white/[0.07] backdrop-blur-lg rounded-xl p-4 border border-white/10">
                                         <h3 className="font-semibold mb-3 flex items-center gap-2">
                                             <Search className="w-4 h-4 text-indigo-400" />
                                             Google Drive (Meeting Prep)
@@ -31437,7 +31224,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     </div>
 
                                     {/* Email Credentials Section */}
-                                    <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl p-4 border border-white/10">
+                                    <div hidden={settingsSection !== 'notifications'} className="bg-white/[0.07] backdrop-blur-lg rounded-xl p-4 border border-white/10">
                                         <h3 className="font-semibold mb-3 flex items-center gap-2">
                                             <Mail className="w-4 h-4 text-amber-400" />
                                             Email Settings
@@ -31535,7 +31322,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     </div>
                                     
                                     {/* Backup & Restore Section */}
-                                    <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl p-4 border border-white/10">
+                                    <div hidden={settingsSection !== 'data'} className="bg-white/[0.07] backdrop-blur-lg rounded-xl p-4 border border-white/10">
                                         <h3 className="font-semibold mb-3 flex items-center gap-2">
                                             <Save className="w-4 h-4 text-amber-400" />
                                             Backup & Restore
@@ -31580,7 +31367,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     </div>
                                     
                                     {/* About Section */}
-                                    <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl p-4 border border-white/10">
+                                    <div hidden={settingsSection !== 'data'} className="bg-white/[0.07] backdrop-blur-lg rounded-xl p-4 border border-white/10">
                                         <h3 className="font-semibold mb-3 flex items-center gap-2">
                                             <Database className="w-4 h-4 text-amber-400" />
                                             Document Storage
@@ -31624,15 +31411,15 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     </div>
                                     
                                     {/* App Info Section */}
-                                    <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl p-4 border border-white/10">
+                                    <div hidden={settingsSection !== 'account'} className="bg-white/[0.07] backdrop-blur-lg rounded-xl p-4 border border-white/10">
                                         <h3 className="font-semibold mb-3">About</h3>
                                         <p className="text-sm text-slate-400">Charlie - Equity Analyzer</p>
-                                        <p className="text-xs text-slate-500 mt-1">Powered by Claude Sonnet 4</p>
+                                        <p className="text-xs text-slate-500 mt-1">AI-assisted research with configurable models</p>
                                     </div>
                                 </div>
 
                                 {/* Media Trackers Section (M7) */}
-                                <div className="mt-8 bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 p-5 max-w-5xl">
+                                <div hidden={settingsSection !== 'monitoring'} className="mt-8 bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 p-5 max-w-5xl">
                                     <div className="flex items-center justify-between mb-4">
                                         <div>
                                             <h2 className="text-lg font-semibold text-slate-100">Media Trackers</h2>
@@ -31668,7 +31455,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     {mtSection === 'feeds' && (
                                         <div>
                                             <div className="flex justify-end gap-2 mb-3">
-                                                <button onClick={() => { setMtSearchOpen(true); setMtSearchQ(''); setMtSearchResults([]); }} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-md text-xs font-medium">
+                                                <button onClick={() => { setSettingsSection('monitoring'); setMtSearchOpen(true); setMtSearchQ(''); setMtSearchResults([]); }} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-md text-xs font-medium">
                                                     🔎 Search Apple Podcasts
                                                 </button>
                                                 <button onClick={() => setMtAddFeedOpen(true)} className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 rounded-md text-xs font-medium">+ Add by URL</button>
@@ -31683,7 +31470,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             <tr key={f.id} className="border-t border-white/5">
                                                                 <td className="py-2">
                                                                     <input type="checkbox" checked={!!f.muted} onChange={async (e) => {
-                                                                        await fetch(`/api/media/feeds/${f.id}`, {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({muted: e.target.checked})});
+                                                                        await fetch(`${API_URL}/api/media/feeds/${f.id}`, {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({muted: e.target.checked})});
                                                                         loadMediaTrackerSettings();
                                                                     }} />
                                                                 </td>
@@ -31697,7 +31484,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 <td className="py-2 text-right">
                                                                     <button onClick={async () => {
                                                                         if (!confirm(`Delete feed "${f.name}"?`)) return;
-                                                                        await fetch(`/api/media/feeds/${f.id}`, {method: 'DELETE'});
+                                                                        await fetch(`${API_URL}/api/media/feeds/${f.id}`, {method: 'DELETE'});
                                                                         loadMediaTrackerSettings();
                                                                     }} className="text-xs text-rose-400 hover:text-rose-300">Delete</button>
                                                                 </td>
@@ -31728,7 +31515,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             <tr key={s.id} className="border-t border-white/5">
                                                                 <td className="py-2">
                                                                     <input type="checkbox" checked={!!s.muted} onChange={async (e) => {
-                                                                        await fetch(`/api/media/watchlist/${s.id}`, {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({muted: e.target.checked})});
+                                                                        await fetch(`${API_URL}/api/media/watchlist/${s.id}`, {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({muted: e.target.checked})});
                                                                         loadMediaTrackerSettings();
                                                                     }} />
                                                                 </td>
@@ -31739,7 +31526,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 <td className="py-2 text-right">
                                                                     <button onClick={async () => {
                                                                         if (!confirm(`Delete signal "${s.value}"?`)) return;
-                                                                        await fetch(`/api/media/watchlist/${s.id}`, {method: 'DELETE'});
+                                                                        await fetch(`${API_URL}/api/media/watchlist/${s.id}`, {method: 'DELETE'});
                                                                         loadMediaTrackerSettings();
                                                                     }} className="text-xs text-rose-400 hover:text-rose-300">Delete</button>
                                                                 </td>
@@ -31768,7 +31555,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                     ? Array.from(new Set([...mtMutedCoverage, a.ticker]))
                                                                     : mtMutedCoverage.filter(t => t !== a.ticker);
                                                                 setMtMutedCoverage(next);
-                                                                await fetch('/api/settings', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({media_muted_coverage_tickers: next})});
+                                                                await fetch(`${API_URL}/api/settings`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({media_muted_coverage_tickers: next})});
                                                             }} />
                                                             <span className="text-sm font-medium text-slate-200">{a.ticker}</span>
                                                         </label>
@@ -31796,7 +31583,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         <input type="checkbox" checked={!!mtChannels[c.id]} onChange={async (e) => {
                                                             const next = {...mtChannels, [c.id]: e.target.checked};
                                                             setMtChannels(next);
-                                                            await fetch('/api/settings', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({media_notification_channels: next})});
+                                                            await fetch(`${API_URL}/api/settings`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({media_notification_channels: next})});
                                                         }} />
                                                         <span className="text-sm text-slate-200">{c.label}</span>
                                                     </label>
@@ -31909,7 +31696,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     onClick={async () => {
                                                         if (!mtNewFeed.name.trim() || !mtNewFeed.feedUrl.trim()) return;
                                                         const tags = mtNewFeed.sectorTags.split(',').map(s => s.trim()).filter(Boolean);
-                                                        const r = await fetch('/api/media/feeds', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name: mtNewFeed.name.trim(), feedUrl: mtNewFeed.feedUrl.trim(), sourceType: 'podcast', sectorTags: tags, pollIntervalMin: 30})});
+                                                        const r = await fetch(`${API_URL}/api/media/feeds`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name: mtNewFeed.name.trim(), feedUrl: mtNewFeed.feedUrl.trim(), sourceType: 'podcast', sectorTags: tags, pollIntervalMin: 30})});
                                                         if (!r.ok) { setMtError(`Add feed failed: HTTP ${r.status}`); return; }
                                                         setMtAddFeedOpen(false);
                                                         setMtNewFeed({name: '', feedUrl: '', sectorTags: '', pollIntervalMin: 30});
@@ -31942,7 +31729,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 <button
                                                     onClick={async () => {
                                                         if (!mtNewSignal.value.trim()) return;
-                                                        const r = await fetch('/api/media/watchlist', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({kind: mtNewSignal.kind, value: mtNewSignal.value.trim(), associatedTicker: mtNewSignal.associatedTicker.trim() || null, note: mtNewSignal.note.trim() || null})});
+                                                        const r = await fetch(`${API_URL}/api/media/watchlist`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({kind: mtNewSignal.kind, value: mtNewSignal.value.trim(), associatedTicker: mtNewSignal.associatedTicker.trim() || null, note: mtNewSignal.note.trim() || null})});
                                                         if (!r.ok) {
                                                             const body = await r.text().catch(() => '');
                                                             setMtError(`Add signal failed: ${r.status === 409 ? 'already exists' : body.slice(0,100)}`);
@@ -31974,436 +31761,6 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         </button>
                     )}
 
-                    {/* BOTTOM NAVIGATION BAR - Mobile only */}
-                    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 px-4 pb-[calc(env(safe-area-inset-bottom)+8px)] pointer-events-none">
-                        {/* Floating pill container - elevated like CVS/Bloomberg */}
-                        <div className="mb-4 bg-neutral-900/95 backdrop-blur-xl rounded-2xl shadow-2xl shadow-black/50 border border-white/10 pointer-events-auto">
-                            <div className="flex justify-around items-center h-16 px-2">
-                                <button 
-                                    onClick={() => switchTab('portfolio')}
-                                    className={`flex flex-col items-center justify-center gap-1 min-w-[56px] py-2 rounded-xl transition-all ${
-                                        activeTab === 'portfolio' 
-                                            ? 'text-amber-400' 
-                                            : 'text-slate-400 active:text-slate-200'
-                                    }`}
-                                >
-                                    <BarChart2 className={`w-5 h-5 ${activeTab === 'portfolio' ? 'stroke-[2.5]' : 'stroke-[1.5]'}`} />
-                                    <span className={`text-[9px] ${activeTab === 'portfolio' ? 'font-semibold' : 'font-medium'}`}>Thesis</span>
-                                </button>
-                                
-                                <button 
-                                    onClick={() => switchTab('overview')}
-                                    className={`flex flex-col items-center justify-center gap-1 min-w-[56px] py-2 rounded-xl transition-all ${
-                                        activeTab === 'overview' 
-                                            ? 'text-amber-400' 
-                                            : 'text-slate-400 active:text-slate-200'
-                                    }`}
-                                >
-                                    <FileText className={`w-5 h-5 ${activeTab === 'overview' ? 'stroke-[2.5]' : 'stroke-[1.5]'}`} />
-                                    <span className={`text-[9px] ${activeTab === 'overview' ? 'font-semibold' : 'font-medium'}`}>Overview</span>
-                                </button>
-                                
-                                <button 
-                                    onClick={() => switchTab('chat')}
-                                    className={`flex flex-col items-center justify-center gap-1 min-w-[56px] py-2 rounded-xl transition-all ${
-                                        activeTab === 'chat' 
-                                            ? 'text-amber-400' 
-                                            : 'text-slate-400 active:text-slate-200'
-                                    }`}
-                                >
-                                    <MessageCircle className={`w-5 h-5 ${activeTab === 'chat' ? 'stroke-[2.5]' : 'stroke-[1.5]'}`} />
-                                    <span className={`text-[9px] ${activeTab === 'chat' ? 'font-semibold' : 'font-medium'}`}>Chat</span>
-                                </button>
-                                
-                                <button 
-                                    onClick={() => switchTab('summary')}
-                                    className={`flex flex-col items-center justify-center gap-1 min-w-[56px] py-2 rounded-xl transition-all ${
-                                        activeTab === 'summary' 
-                                            ? 'text-amber-400' 
-                                            : 'text-slate-400 active:text-slate-200'
-                                    }`}
-                                >
-                                    <ClipboardList className={`w-5 h-5 ${activeTab === 'summary' ? 'stroke-[2.5]' : 'stroke-[1.5]'}`} />
-                                    <span className={`text-[9px] ${activeTab === 'summary' ? 'font-semibold' : 'font-medium'}`}>Summary</span>
-                                </button>
-                                
-                                <button
-                                    onClick={() => setShowMoreMenu(true)}
-                                    className={`flex flex-col items-center justify-center gap-1 min-w-[56px] py-2 rounded-xl transition-all ${
-                                        activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' || activeTab === 'feed' || activeTab === 'analysts' || activeTab === 'onepager' || activeTab === 'explain' || activeTab === 'deepdive' || activeTab === 'review'
-                                            ? 'text-amber-400'
-                                            : 'text-slate-400 active:text-slate-200'
-                                    }`}
-                                >
-                                    <div className="relative">
-                                        <MoreHorizontal className={`w-5 h-5 ${activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' || activeTab === 'feed' || activeTab === 'analysts' || activeTab === 'onepager' || activeTab === 'explain' || activeTab === 'deepdive' ? 'stroke-[2.5]' : 'stroke-[1.5]'}`} />
-                                        {alertBadgeCount > 0 && (
-                                            <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center">{alertBadgeCount > 9 ? '9+' : alertBadgeCount}</span>
-                                        )}
-                                    </div>
-                                    <span className={`text-[9px] ${activeTab === 'alerts' || activeTab === 'dashboard' || activeTab === 'research' || activeTab === 'settings' || activeTab === 'meetingprep' || activeTab === 'slides' || activeTab === 'studio' || activeTab === 'formats' || activeTab === 'pipeline' || activeTab === 'agents' || activeTab === 'feed' || activeTab === 'analysts' || activeTab === 'onepager' || activeTab === 'explain' || activeTab === 'deepdive' ? 'font-semibold' : 'font-medium'}`}>More</span>
-                                </button>
-                            </div>
-                        </div>
-                    </nav>
-                    
-                    {/* MORE MENU - Bottom Sheet */}
-                    {showMoreMenu && (
-                        <>
-                            <div 
-                                className="fixed inset-0 bg-black/60 z-50 backdrop-blur-sm"
-                                onClick={() => setShowMoreMenu(false)}
-                            />
-                            <div className="fixed bottom-0 left-0 right-0 z-50 bg-neutral-900/95 backdrop-blur-2xl rounded-t-3xl border-t border-white/10 shadow-2xl animate-slide-up max-h-[85vh] flex flex-col">
-                                <div className="w-12 h-1 bg-white/20 rounded-full mx-auto mt-3 mb-2 flex-shrink-0" />
-                                <div className="p-4 pb-[calc(env(safe-area-inset-bottom)+16px)] overflow-y-auto flex-1">
-                                    <h3 className="text-lg font-semibold mb-4 text-center">More Options</h3>
-                                    <div className="space-y-2">
-                                        <button
-                                            onClick={() => {
-                                                setShowMoreMenu(false);
-                                                switchTab('feed');
-                                            }}
-                                            className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
-                                                activeTab === 'feed'
-                                                    ? 'bg-amber-600/20 border border-amber-500/50'
-                                                    : 'bg-white/5 hover:bg-white/10 border border-transparent'
-                                            }`}
-                                        >
-                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${activeTab === 'feed' ? 'bg-amber-600' : 'bg-white/10'}`}>
-                                                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                    <path d="M4 11a9 9 0 0 1 9 9"/>
-                                                    <path d="M4 4a16 16 0 0 1 16 16"/>
-                                                    <circle cx="5" cy="19" r="1"/>
-                                                </svg>
-                                            </div>
-                                            <div className="text-left">
-                                                <div className="font-semibold">Feed</div>
-                                                <div className="text-xs text-slate-400">Podcasts — firehose</div>
-                                            </div>
-                                            <ChevronRight className="w-5 h-5 text-slate-500 ml-auto" />
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                setShowMoreMenu(false);
-                                                switchTab('alerts');
-                                            }}
-                                            className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
-                                                activeTab === 'alerts'
-                                                    ? 'bg-amber-600/20 border border-amber-500/50'
-                                                    : 'bg-white/5 hover:bg-white/10 border border-transparent'
-                                            }`}
-                                        >
-                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center relative ${activeTab === 'alerts' ? 'bg-amber-600' : 'bg-white/10'}`}>
-                                                <Bell className="w-5 h-5" />
-                                                {alertBadgeCount > 0 && (
-                                                    <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center">{alertBadgeCount > 9 ? '9+' : alertBadgeCount}</span>
-                                                )}
-                                            </div>
-                                            <div className="text-left">
-                                                <div className="font-semibold">Alerts</div>
-                                                <div className="text-xs text-slate-400">Agent notifications</div>
-                                            </div>
-                                            <ChevronRight className="w-5 h-5 text-slate-500 ml-auto" />
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                setShowMoreMenu(false);
-                                                switchTab('analysts');
-                                            }}
-                                            className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
-                                                activeTab === 'analysts'
-                                                    ? 'bg-amber-600/20 border border-amber-500/50'
-                                                    : 'bg-white/5 hover:bg-white/10 border border-transparent'
-                                            }`}
-                                        >
-                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center relative ${activeTab === 'analysts' ? 'bg-amber-600' : 'bg-white/10'}`}>
-                                                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                                                {analystPendingCount > 0 && (
-                                                    <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 text-white text-[8px] font-bold flex items-center justify-center">{analystPendingCount > 9 ? '9+' : analystPendingCount}</span>
-                                                )}
-                                            </div>
-                                            <div className="text-left">
-                                                <div className="font-semibold">Analysts</div>
-                                                <div className="text-xs text-slate-400">Agentic analyst team</div>
-                                            </div>
-                                            <ChevronRight className="w-5 h-5 text-slate-500 ml-auto" />
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                setShowMoreMenu(false);
-                                                switchTab('dashboard');
-                                            }}
-                                            className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
-                                                activeTab === 'dashboard'
-                                                    ? 'bg-amber-600/20 border border-amber-500/50'
-                                                    : 'bg-white/5 hover:bg-white/10 border border-transparent'
-                                            }`}
-                                        >
-                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${activeTab === 'dashboard' ? 'bg-amber-600' : 'bg-white/10'}`}>
-                                                <LayoutDashboard className="w-5 h-5" />
-                                            </div>
-                                            <div className="text-left">
-                                                <div className="font-semibold">Dashboard</div>
-                                                <div className="text-xs text-slate-400">Portfolio health overview at a glance</div>
-                                            </div>
-                                            <ChevronRight className="w-5 h-5 text-slate-500 ml-auto" />
-                                        </button>
-
-                                        <button
-                                            onClick={() => {
-                                                setShowMoreMenu(false);
-                                                switchTab('research');
-                                            }}
-                                            className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
-                                                activeTab === 'research' 
-                                                    ? 'bg-amber-600/20 border border-amber-500/50' 
-                                                    : 'bg-white/5 hover:bg-white/10 border border-transparent'
-                                            }`}
-                                        >
-                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${activeTab === 'research' ? 'bg-amber-600' : 'bg-white/10'}`}>
-                                                <Microscope className="w-5 h-5" />
-                                            </div>
-                                            <div className="text-left">
-                                                <div className="font-semibold">Research</div>
-                                                <div className="text-xs text-slate-400">Deep analysis with multiple frameworks</div>
-                                            </div>
-                                            <ChevronRight className="w-5 h-5 text-slate-500 ml-auto" />
-                                        </button>
-
-                                        <button
-                                            onClick={() => {
-                                                setShowMoreMenu(false);
-                                                switchTab('meetingprep');
-                                            }}
-                                            className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
-                                                activeTab === 'meetingprep'
-                                                    ? 'bg-amber-600/20 border border-amber-500/50'
-                                                    : 'bg-white/5 hover:bg-white/10 border border-transparent'
-                                            }`}
-                                        >
-                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${activeTab === 'meetingprep' ? 'bg-amber-600' : 'bg-white/10'}`}>
-                                                <Target className="w-5 h-5" />
-                                            </div>
-                                            <div className="text-left">
-                                                <div className="font-semibold">Meeting Prep</div>
-                                                <div className="text-xs text-slate-400">AI-generated questions for management meetings</div>
-                                            </div>
-                                            <ChevronRight className="w-5 h-5 text-slate-500 ml-auto" />
-                                        </button>
-
-                                        <button
-                                            onClick={() => {
-                                                setShowMoreMenu(false);
-                                                switchTab('slides');
-                                            }}
-                                            className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
-                                                activeTab === 'slides'
-                                                    ? 'bg-amber-600/20 border border-amber-500/50'
-                                                    : 'bg-white/5 hover:bg-white/10 border border-transparent'
-                                            }`}
-                                        >
-                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${activeTab === 'slides' ? 'bg-amber-600' : 'bg-white/10'}`}>
-                                                <Layers className="w-5 h-5" />
-                                            </div>
-                                            <div className="text-left">
-                                                <div className="font-semibold">Slides</div>
-                                                <div className="text-xs text-slate-400">AI-generated sketchnote presentations</div>
-                                            </div>
-                                            <ChevronRight className="w-5 h-5 text-slate-500 ml-auto" />
-                                        </button>
-
-                                        <button
-                                            onClick={() => {
-                                                setShowMoreMenu(false);
-                                                switchTab('studio');
-                                            }}
-                                            className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
-                                                activeTab === 'studio'
-                                                    ? 'bg-purple-600/20 border border-purple-500/50'
-                                                    : 'bg-white/5 hover:bg-white/10 border border-transparent'
-                                            }`}
-                                        >
-                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${activeTab === 'studio' ? 'bg-purple-600' : 'bg-white/10'}`}>
-                                                <Wand className="w-5 h-5" />
-                                            </div>
-                                            <div className="text-left">
-                                                <div className="font-semibold">Studio</div>
-                                                <div className="text-xs text-slate-400">AI content generation suite</div>
-                                            </div>
-                                            <ChevronRight className="w-5 h-5 text-slate-500 ml-auto" />
-                                        </button>
-
-                                        <button
-                                            onClick={() => {
-                                                setShowMoreMenu(false);
-                                                switchTab('formats');
-                                                if (fmtAnalyses.length === 0) loadFmtAnalyses();
-                                            }}
-                                            className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
-                                                activeTab === 'formats'
-                                                    ? 'bg-amber-600/20 border border-amber-500/50'
-                                                    : 'bg-white/5 hover:bg-white/10 border border-transparent'
-                                            }`}
-                                        >
-                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${activeTab === 'formats' ? 'bg-amber-600' : 'bg-white/10'}`}>
-                                                <LayoutTemplate className="w-5 h-5" />
-                                            </div>
-                                            <div className="text-left">
-                                                <div className="font-semibold">Formats</div>
-                                                <div className="text-xs text-slate-400">Professional thesis export templates</div>
-                                            </div>
-                                            <ChevronRight className="w-5 h-5 text-slate-500 ml-auto" />
-                                        </button>
-
-                                        <button
-                                            onClick={() => {
-                                                setShowMoreMenu(false);
-                                                switchTab('deepdive');
-                                            }}
-                                            className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
-                                                activeTab === 'deepdive'
-                                                    ? 'bg-amber-600/20 border border-amber-500/50'
-                                                    : 'bg-white/5 hover:bg-white/10 border border-transparent'
-                                            }`}
-                                        >
-                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${activeTab === 'deepdive' ? 'bg-amber-600' : 'bg-white/10'}`}>
-                                                <BarChart2 className="w-5 h-5" />
-                                            </div>
-                                            <div className="text-left">
-                                                <div className="font-semibold">Deep Dive</div>
-                                                <div className="text-xs text-slate-400">One-pager, two-pager and 3-page memo</div>
-                                            </div>
-                                            <ChevronRight className="w-5 h-5 text-slate-500 ml-auto" />
-                                        </button>
-
-                                        <button
-                                            onClick={() => {
-                                                setShowMoreMenu(false);
-                                                switchTab('explain');
-                                            }}
-                                            className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
-                                                activeTab === 'explain'
-                                                    ? 'bg-amber-600/20 border border-amber-500/50'
-                                                    : 'bg-white/5 hover:bg-white/10 border border-transparent'
-                                            }`}
-                                        >
-                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${activeTab === 'explain' ? 'bg-amber-600' : 'bg-white/10'}`}>
-                                                <FileText className="w-5 h-5" />
-                                            </div>
-                                            <div className="text-left">
-                                                <div className="font-semibold">Explain</div>
-                                                <div className="text-xs text-slate-400">Dense document in, plain language out</div>
-                                            </div>
-                                            <ChevronRight className="w-5 h-5 text-slate-500 ml-auto" />
-                                        </button>
-
-                                        <button
-                                            onClick={() => {
-                                                setShowMoreMenu(false);
-                                                switchTab('onepager');
-                                            }}
-                                            className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
-                                                activeTab === 'onepager'
-                                                    ? 'bg-amber-600/20 border border-amber-500/50'
-                                                    : 'bg-white/5 hover:bg-white/10 border border-transparent'
-                                            }`}
-                                        >
-                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${activeTab === 'onepager' ? 'bg-amber-600' : 'bg-white/10'}`}>
-                                                <FileText className="w-5 h-5" />
-                                            </div>
-                                            <div className="text-left">
-                                                <div className="font-semibold">One-Pager</div>
-                                                <div className="text-xs text-slate-400">Ticker in, visual investment one-pager out</div>
-                                            </div>
-                                            <ChevronRight className="w-5 h-5 text-slate-500 ml-auto" />
-                                        </button>
-
-                                        <button
-                                            onClick={() => {
-                                                setShowMoreMenu(false);
-                                                switchTab('pipeline');
-                                            }}
-                                            className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
-                                                activeTab === 'pipeline'
-                                                    ? 'bg-amber-600/20 border border-amber-500/50'
-                                                    : 'bg-white/5 hover:bg-white/10 border border-transparent'
-                                            }`}
-                                        >
-                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${activeTab === 'pipeline' ? 'bg-amber-600' : 'bg-white/10'}`}>
-                                                <Workflow className="w-5 h-5" />
-                                            </div>
-                                            <div className="text-left">
-                                                <div className="font-semibold">Pipeline</div>
-                                                <div className="text-xs text-slate-400">Batch process and update research</div>
-                                            </div>
-                                            <ChevronRight className="w-5 h-5 text-slate-500 ml-auto" />
-                                        </button>
-
-                                        <button
-                                            onClick={() => {
-                                                setShowMoreMenu(false);
-                                                switchTab('agents');
-                                            }}
-                                            className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
-                                                activeTab === 'agents'
-                                                    ? 'bg-amber-600/20 border border-amber-500/50'
-                                                    : 'bg-white/5 hover:bg-white/10 border border-transparent'
-                                            }`}
-                                        >
-                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${activeTab === 'agents' ? 'bg-amber-600' : 'bg-white/10'}`}>
-                                                <Bot className="w-5 h-5" />
-                                            </div>
-                                            <div className="text-left">
-                                                <div className="font-semibold flex items-center gap-2">
-                                                    Agents
-                                                    {catalystProposals.length > 0 && (
-                                                        <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-slate-900 text-[9px] font-bold leading-none">
-                                                            {catalystProposals.length}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <div className="text-xs text-slate-400">
-                                                    {catalystProposals.length > 0
-                                                        ? `${catalystProposals.length} catalyst synthesis${catalystProposals.length === 1 ? '' : 'es'} awaiting approval`
-                                                        : 'Multi-agent LLM analysis'}
-                                                </div>
-                                            </div>
-                                            <ChevronRight className="w-5 h-5 text-slate-500 ml-auto" />
-                                        </button>
-
-                                        <button
-                                            onClick={() => {
-                                                setShowMoreMenu(false);
-                                                switchTab('settings');
-                                            }}
-                                            className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all ${
-                                                activeTab === 'settings'
-                                                    ? 'bg-amber-600/20 border border-amber-500/50'
-                                                    : 'bg-white/5 hover:bg-white/10 border border-transparent'
-                                            }`}
-                                        >
-                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${activeTab === 'settings' ? 'bg-amber-600' : 'bg-white/10'}`}>
-                                                <Settings className="w-5 h-5" />
-                                            </div>
-                                            <div className="text-left">
-                                                <div className="font-semibold">Settings</div>
-                                                <div className="text-xs text-slate-400">API keys, email, storage</div>
-                                            </div>
-                                            <ChevronRight className="w-5 h-5 text-slate-500 ml-auto" />
-                                        </button>
-                                    </div>
-                                    
-                                    <button
-                                        onClick={() => setShowMoreMenu(false)}
-                                        className="w-full mt-4 p-3 bg-white/10 hover:bg-white/15 rounded-xl text-sm font-medium"
-                                    >
-                                        Cancel
-                                    </button>
-                                </div>
-                            </div>
-                        </>
-                    )}
                 </div>
 
                 {/* Add Ticker Modal */}

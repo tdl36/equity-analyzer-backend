@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "node dev.mjs",
     "build": "./build-frontend.sh",
+    "test:frontend": "node --test tests/frontend/*.test.mjs",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {

@@ -320,7 +320,7 @@ body {
      wins — translucent chips like `bg-amber-500/20 text-amber-300` keep theirs.
    · `[class~="…"]` matches the whole class token, so `bg-amber-500` matches but
      `bg-amber-500/20` does not. Only opaque grounds are recoloured. */
-:where([data-theme="ink"], [data-theme="oak"], [data-theme="bloc"])
+:where([data-theme="ink"], [data-theme="oak"], [data-theme="bloc"], [data-theme="harbor"], [data-theme="parchment"])
 :where(
   [class~="bg-amber-400"], [class~="bg-amber-500"], [class~="bg-amber-600"], [class~="bg-amber-700"],
   [class~="bg-yellow-400"], [class~="bg-yellow-500"], [class~="bg-yellow-600"],
@@ -424,3 +424,126 @@ body {
 .dd-note-prose th { background: rgba(255, 255, 255, 0.05); font-weight: 600; }
 .dd-note-prose strong { color: #e8e8e6; }
 .dd-note-prose em { color: #b9b9b4; }
+
+/* Professional research editions */
+[data-theme="harbor"] {
+  --bg: #f3f6fa; --surface: #ffffff; --ink: #152b43; --muted: #52657b; --faint: #68798b;
+  --line: #dbe3ed; --line-strong: #b5c4d5; --line-weight: 1.5px;
+  --accent: #234b78; --accent-ink: #234b78; --on-accent: #ffffff;
+  --shadow: none; --shadow-panel: none;
+  --font-display: "Archivo", sans-serif;
+  --font-body: "Archivo", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --display-weight: 600; --display-tracking: -.01em; --title-transform: none;
+  --label-transform: uppercase; --label-tracking: .14em;
+  --radius: 6px; --radius-lg: 8px; --radius-xl: 10px; --radius-2xl: 12px; --radius-3xl: 16px;
+
+  --c-white: 21 43 67;            /* overlay / primary contrast = --ink */
+  --c-slate-50: 15 30 48;
+  --c-slate-100: 21 43 67;
+  --c-slate-200: 21 43 67;        /* --ink */
+  --c-slate-300: 49 69 91;
+  --c-slate-400: 82 101 123;      /* --muted */
+  --c-slate-500: 104 121 139;     /* --faint */
+  --c-slate-600: 116 130 148;
+  --c-slate-700: 181 196 213;     /* --line-strong */
+  --c-slate-800: 255 255 255;     /* --surface */
+  --c-slate-900: 255 255 255;     /* --on-accent */
+
+  --c-accent-300: 61 111 164;
+  --c-accent-400: 46 93 143;
+  --c-accent-500: 35 75 120;      /* --accent */
+  --c-accent-600: 29 61 98;
+  --c-accent-700: 24 51 81;
+  --c-accent-800: 20 43 68;
+  --c-accent-900: 16 34 54;
+
+  --c-pos-300: 122 176 134; --c-pos-400: 80 138 96;  --c-pos-500: 47 107 61;
+  --c-pos-600: 38 88 50;    --c-pos-700: 30 70 40;
+  --c-neg-300: 190 106 100; --c-neg-400: 164 70 62;  --c-neg-500: 138 43 36;
+  --c-neg-600: 116 34 28;   --c-neg-700: 94 27 22;
+  --c-info-300: 118 152 190; --c-info-400: 70 110 156; --c-info-500: 52 85 126;
+  --c-info-600: 42 68 102;  --c-info-700: 33 54 80;
+}
+[data-theme="graphite"] {
+  --bg: #101820; --surface: #18232e; --ink: #e4edf5; --muted: #a8bac9; --faint: #91a4b6;
+  --line: #2c3c4b; --line-strong: #43596c; --line-weight: 1px;
+  --accent: #68c5bb; --accent-ink: #85d8ce; --on-accent: #101820;
+  --shadow: 0 30px 70px -40px rgba(0, 0, 0, .8); --shadow-panel: var(--shadow);
+  --font-display: "Archivo", sans-serif;
+  --font-body: "Archivo", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --display-weight: 500; --display-tracking: -.01em; --title-transform: none;
+  --label-transform: uppercase; --label-tracking: .16em;
+  --radius: 6px; --radius-lg: 8px; --radius-xl: 10px; --radius-2xl: 12px; --radius-3xl: 16px;
+
+  --c-white: 228 237 245;         /* --ink, warm */
+  --c-slate-50: 245 249 252;
+  --c-slate-100: 238 245 251;
+  --c-slate-200: 228 237 245;     /* --ink */
+  --c-slate-300: 197 214 228;
+  --c-slate-400: 168 186 201;     /* --muted */
+  --c-slate-500: 145 164 182;       /* --faint */
+  --c-slate-600: 117 138 157;
+  --c-slate-700: 67 89 108;        /* --line-strong */
+  --c-slate-800: 24 35 46;        /* --surface */
+  --c-slate-900: 16 24 32;        /* --on-accent */
+
+  --c-accent-300: 175 232 224;
+  --c-accent-400: 133 216 206;    /* --accent-ink */
+  --c-accent-500: 104 197 187;     /* --accent */
+  --c-accent-600: 72 168 160;
+  --c-accent-700: 51 134 128;
+  --c-accent-800: 34 98 96;
+  --c-accent-900: 25 68 70;
+
+  --c-pos-300: 174 208 158; --c-pos-400: 136 180 115; --c-pos-500: 110 156 90;
+  --c-pos-600: 88 130 70;   --c-pos-700: 68 104 54;
+  --c-neg-300: 226 162 150; --c-neg-400: 207 113 96;  --c-neg-500: 184 88 72;
+  --c-neg-600: 152 68 55;   --c-neg-700: 120 52 42;
+  --c-info-300: 158 184 214; --c-info-400: 111 143 184; --c-info-500: 86 117 156;
+  --c-info-600: 66 92 124;  --c-info-700: 50 71 96;
+}
+[data-theme="parchment"] {
+  --bg: #f5f2ed; --surface: #fffdf9; --ink: #322b32; --muted: #70606b; --faint: #81717b;
+  --line: #ded4d8; --line-strong: #bca9b1; --line-weight: 1.5px;
+  --accent: #753d54; --accent-ink: #753d54; --on-accent: #fffdf9;
+  --shadow: none; --shadow-panel: none;
+  --font-display: "Fraunces", Georgia, serif;
+  --font-body: "Newsreader", Georgia, serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --display-weight: 600; --display-tracking: -.01em; --title-transform: none;
+  --label-transform: uppercase; --label-tracking: .14em;
+  --radius: 6px; --radius-lg: 8px; --radius-xl: 10px; --radius-2xl: 12px; --radius-3xl: 16px;
+
+  --c-white: 50 43 50;            /* overlay / primary contrast = --ink */
+  --c-slate-50: 32 26 32;
+  --c-slate-100: 43 35 43;
+  --c-slate-200: 50 43 50;        /* --ink */
+  --c-slate-300: 71 59 69;
+  --c-slate-400: 112 96 107;      /* --muted */
+  --c-slate-500: 129 113 123;     /* --faint */
+  --c-slate-600: 160 151 133;
+  --c-slate-700: 188 169 177;     /* --line-strong */
+  --c-slate-800: 255 253 249;     /* --surface */
+  --c-slate-900: 255 253 249;     /* --on-accent */
+
+  --c-accent-300: 176 88 92;
+  --c-accent-400: 139 76 101;
+  --c-accent-500: 117 61 84;      /* --accent */
+  --c-accent-600: 99 49 69;
+  --c-accent-700: 88 23 28;
+  --c-accent-800: 68 18 22;
+  --c-accent-900: 48 13 16;
+
+  --c-pos-300: 122 176 134; --c-pos-400: 80 138 96;  --c-pos-500: 47 107 61;
+  --c-pos-600: 38 88 50;    --c-pos-700: 30 70 40;
+  --c-neg-300: 190 106 100; --c-neg-400: 164 70 62;  --c-neg-500: 138 43 36;
+  --c-neg-600: 116 34 28;   --c-neg-700: 94 27 22;
+  --c-info-300: 118 152 190; --c-info-400: 70 110 156; --c-info-500: 52 85 126;
+  --c-info-600: 42 68 102;  --c-info-700: 33 54 80;
+}
+.theme-chip[data-theme-key="harbor"] { --chip-bg:#f3f6fa;--chip-accent:#234b78; }
+.theme-chip[data-theme-key="graphite"] { --chip-bg:#101820;--chip-accent:#68c5bb; }
+.theme-chip[data-theme-key="parchment"] { --chip-bg:#f5f2ed;--chip-accent:#753d54; }
+.theme-switch { flex-wrap:wrap;row-gap:8px; }

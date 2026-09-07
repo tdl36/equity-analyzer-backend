@@ -9,6 +9,8 @@ echo "[1/3] Babel transpile..."
 # -x .jsx because default doesn't pick .jsx
 npx babel src --out-dir build --extensions .jsx,.js 2>&1 | tail -3
 
+cp src/*.mjs build/
+
 echo "[2/3] esbuild bundle..."
 npx esbuild build/app.js \
   --bundle \
@@ -23,3 +25,9 @@ echo "[3/3] Tailwind CSS..."
 npx tailwindcss -i src/tailwind-input.css -o dist/tailwind.css --minify 2>&1 | tail -2
 
 ls -lh dist/app.js dist/tailwind.css
+
+# Publish an explicit set of website assets, never the repository root.
+mkdir -p .worker-assets/dist .worker-assets/static/assets
+cp index.html manifest.json service-worker.js icon-*.png .worker-assets/
+cp dist/app.js dist/tailwind.css .worker-assets/dist/
+cp static/assets/*.png .worker-assets/static/assets/

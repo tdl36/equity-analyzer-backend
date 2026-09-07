@@ -5,6 +5,8 @@
 @import "./deepdive_v24.css";
 @import "./deepdive_shell.css";
 
+@import "./workspace.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

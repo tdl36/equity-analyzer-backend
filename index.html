@@ -9,7 +9,7 @@
          and dependency-free for the same reason. Mirrors THEMES in src/app.jsx. -->
     <script>
     (function () {
-        var THEMES = { ink: '#f4efe4', dusk: '#14110c', oak: '#ece1c9', bloc: '#efece2' };
+        var THEMES = { ink: '#f4efe4', dusk: '#14110c', oak: '#ece1c9', bloc: '#efece2', harbor: '#f3f6fa', graphite: '#101820', parchment: '#f5f2ed' };
         var t;
         try { t = localStorage.getItem('charlie_theme'); } catch (e) {}
         if (!THEMES[t]) t = 'dusk';
@@ -22,7 +22,7 @@
         });
     })();
     </script>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Charlie - Equity Analyzer</title>
     
     <!-- PWA Meta Tags -->
