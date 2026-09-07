@@ -125,3 +125,26 @@ def workspace_payload(ticker, rows):
                         'documentsNotRead': metadata.get('documentsNotRead', [])})
     return {'ticker': ticker, 'current': reviews[0] if reviews else None,
             'prior': reviews[1] if len(reviews) > 1 else None}
+
+
+def research_context(thesis_row=None, documents=None, manifest=None, ticker=''):
+    """Expose saved research without manufacturing review evidence or baselines."""
+    thesis = None
+    if thesis_row:
+        analysis = _object(thesis_row.get('analysis'))
+        thesis = {'company': _text(thesis_row.get('company')),
+                  'updatedAt': str(thesis_row.get('updated_at') or ''),
+                  'thesis': analysis.get('thesis'),
+                  'signposts': analysis.get('signposts'),
+                  'threats': analysis.get('threats'),
+                  'conclusion': analysis.get('conclusion')}
+    # Whitelist inventory fields. Never expose file payloads or private paths.
+    uploaded = [{'filename': _text(d.get('filename')), 'addedAt': str(d.get('created_at') or '')}
+                for d in (documents or []) if isinstance(d, dict)]
+    manifest = manifest or {}
+    files = (manifest.get('manifest') or {}).get(ticker, [])
+    local = [{'filename': _text(d.get('filename')), 'folder': _text(d.get('folder'))}
+             for d in files if isinstance(d, dict)]
+    return {'savedThesis': thesis,
+            'documents': {'uploaded': uploaded, 'local': local,
+                          'localUpdatedAt': manifest.get('timestamp')}}

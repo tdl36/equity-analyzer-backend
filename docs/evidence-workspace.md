@@ -15,3 +15,7 @@ Standalone unittest suites cover fabricated quotes, unknown sources, insufficien
 ## Boundaries and next steps
 
 This release is the evidence foundation for investment reviews, not the full ten-priority roadmap. It compares stored review versions; it does not yet reconcile new iCloud events, apply thesis amendments, provide page-level original viewers, or share a canonical company state across all generators. The existing first-batch coverage limit remains explicit. Follow-on work: all-document extraction and reconciliation, claim entailment evaluation, deterministic financial-period/basis checks, shared fact/version IDs across thesis/notes/one-pagers, and a conflict-aware amendment review flow. Automated checks are not a guarantee of error-free investment analysis.
+
+## Saved-research fallback
+
+Evidence & changes now also reads the company's saved thesis and the uploaded-document inventory, plus a whitelisted snapshot of the local agent's iCloud inventory. Without an investment review it renders that research directly, stating that no investment-review comparison baseline exists. With a review, saved company research is available in an expandable section. Both source locations are listed separately (not counted as unique documents), local inventory timestamps are visible, and an absent manifest is described as unavailable rather than empty iCloud folders. Inventory presence never implies claim verification. This path is read-only and never generates a report.

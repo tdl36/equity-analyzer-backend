@@ -1,3 +1,4 @@
+import { SavedResearchContext } from './saved-research-context';
 import * as React from 'react';
 var {
   useState,
@@ -72,7 +73,7 @@ export function EvidenceWorkspace({
     className: "workspace-eyebrow"
   }, "RESEARCH / EVIDENCE & CHANGES"), /*#__PURE__*/React.createElement("h2", null, "Read the change. Inspect the evidence."), /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
-  }, "Compare saved investment reviews. Source matches establish provenance; the investment judgment remains yours.")), /*#__PURE__*/React.createElement("form", {
+  }, "Read your saved thesis, inspect available documents, and compare investment reviews when a baseline exists.")), /*#__PURE__*/React.createElement("form", {
     className: "evidence-search",
     onSubmit: e => {
       e.preventDefault();
@@ -106,14 +107,19 @@ export function EvidenceWorkspace({
     role: "alert"
   }, error, " ", /*#__PURE__*/React.createElement("button", {
     onClick: () => setRefresh(x => x + 1)
-  }, "Retry")) : !review ? /*#__PURE__*/React.createElement("div", {
-    className: "workspace-panel"
-  }, /*#__PURE__*/React.createElement("h3", null, "No saved investment review for ", ticker), /*#__PURE__*/React.createElement("p", {
-    className: "desk-explainer"
-  }, "A saved thesis and an investment review are separate records. Generate an investment review from the company\u2019s research tools to create an evidence snapshot. Existing theses are preserved."), /*#__PURE__*/React.createElement("button", {
-    className: "workspace-primary",
-    onClick: showCompany
-  }, "Open ", ticker, " research \u2192")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+  }, "Retry")) : !review ? /*#__PURE__*/React.createElement(SavedResearchContext, {
+    key: ticker,
+    data: data,
+    ticker: ticker,
+    onCompany: onCompany
+  }) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("details", {
+    className: "workspace-panel evidence-context-toggle"
+  }, /*#__PURE__*/React.createElement("summary", null, "Saved company thesis & available documents"), /*#__PURE__*/React.createElement(SavedResearchContext, {
+    key: ticker,
+    data: data,
+    ticker: ticker,
+    onCompany: onCompany
+  })), /*#__PURE__*/React.createElement("div", {
     className: "evidence-summary"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", null, ticker), /*#__PURE__*/React.createElement("span", null, "Review \xB7 ", date(review.createdAt)), /*#__PURE__*/React.createElement("span", null, prior ? `Compared with ${date(prior.createdAt)}` : 'First saved review · no baseline')), /*#__PURE__*/React.createElement("span", {
     className: "evidence-badge"

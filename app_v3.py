@@ -14190,7 +14190,13 @@ def research_evidence_workspace(ticker):
                            FROM investment_reviews WHERE ticker = %s
                            ORDER BY created_at DESC, id DESC LIMIT 2""", (tk,))
             rows = list(cur.fetchall() or [])
-        response = jsonify(research_evidence.workspace_payload(tk, rows))
+            cur.execute('SELECT company, analysis, updated_at FROM portfolio_analyses WHERE ticker = %s', (tk,))
+            thesis_row = cur.fetchone()
+            cur.execute('SELECT filename, created_at FROM document_files WHERE ticker = %s ORDER BY created_at DESC, filename', (tk,))
+            documents = list(cur.fetchall() or [])
+        payload = research_evidence.workspace_payload(tk, rows)
+        payload.update(research_evidence.research_context(thesis_row, documents, _local_file_manifest, tk))
+        response = jsonify(payload)
         response.headers['Cache-Control'] = 'no-store'
         return response
     except Exception:

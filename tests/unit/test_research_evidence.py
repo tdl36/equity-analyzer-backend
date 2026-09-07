@@ -1,5 +1,5 @@
 import unittest
-from research_evidence import source_catalog, build_snapshot, quality_status, workspace_payload
+from research_evidence import source_catalog, build_snapshot, quality_status, workspace_payload, research_context
 
 class EvidenceTests(unittest.TestCase):
     def setUp(self):
@@ -41,5 +41,24 @@ class EvidenceTests(unittest.TestCase):
         s=build_snapshot({'facts':'invalid','thesis':None,'evidence_links':{}},self.docs)
         self.assertEqual(s['claims'],[])
         self.assertEqual(quality_status(s,{'verdict':'ship','findings':'invalid'})['status'],'needs_review')
+
+class ResearchContextTests(unittest.TestCase):
+    def test_thesis_without_review_is_preserved_with_both_inventories(self):
+        context=research_context({'company':'Deere','analysis':'{"thesis":{"summary":"Analyst judgment"}}'},
+            [{'filename':'release.pdf','file_data':'PRIVATE'}],
+            {'timestamp':'2026-09-07','manifest':{'DE':[{'filename':'call.pdf','folder':'main','path':'PRIVATE'}]}},'DE')
+        self.assertEqual(context['savedThesis']['thesis']['summary'],'Analyst judgment')
+        self.assertEqual(len(context['documents']['uploaded']),1)
+        self.assertEqual(len(context['documents']['local']),1)
+        self.assertNotIn('PRIVATE',str(context))
+        self.assertNotIn('current',context)
+    def test_no_manifest_is_unknown_not_asserted_empty_folder(self):
+        context=research_context()
+        self.assertIsNone(context['savedThesis'])
+        self.assertIsNone(context['documents']['localUpdatedAt'])
+    def test_malformed_saved_analysis_does_not_hide_document_inventory(self):
+        context=research_context({'analysis':'invalid'},[{'filename':'report.pdf'}])
+        self.assertIsNone(context['savedThesis']['thesis'])
+        self.assertEqual(context['documents']['uploaded'][0]['filename'],'report.pdf')
 
 if __name__=='__main__': unittest.main()
