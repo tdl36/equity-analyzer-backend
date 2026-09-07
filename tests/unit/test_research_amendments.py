@@ -22,6 +22,12 @@ class AmendmentsTests(unittest.TestCase):
         self.assertEqual(out['thesis']['pillars'],original['thesis']['pillars'])
         self.assertEqual(out['documentHistory'],original['documentHistory'])
         self.assertEqual(self.baseline,original)
+    def test_accepted_replacement_carries_its_source_reference(self):
+        changes=self.validated()
+        out=apply_changes(self.baseline,self.baseline,changes,['0'],self.sources)
+        self.assertEqual(out['thesis']['sources'][0]['filename'],'release.txt')
+        self.assertEqual(out['thesis']['sources'][0]['excerpt'],self.sources[0]['text'])
+        self.assertNotIn('sources',self.baseline['thesis'])
     def test_unrelated_analyst_edit_also_blocks_stale_proposal(self):
         live=copy.deepcopy(self.baseline);live['conclusion']='New analyst judgment'
         with self.assertRaisesRegex(ValueError,'changed'): apply_changes(live,self.baseline,self.validated(),['0'])

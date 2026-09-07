@@ -67,7 +67,7 @@ def validate_changes(raw, baseline, sources):
     return result
 
 
-def apply_changes(current, baseline, changes, accepted):
+def apply_changes(current, baseline, changes, accepted, sources=None):
     if fingerprint(current) != fingerprint(baseline):
         raise ValueError('The saved thesis has changed. Prepare a fresh proposal before applying edits.')
     if not isinstance(accepted, list) or not accepted or len(accepted) != len(set(accepted)):
@@ -84,6 +84,18 @@ def apply_changes(current, baseline, changes, accepted):
         parent = merged
         for part in parts[:-1]: parent = parent[int(part)] if isinstance(parent, list) else parent[part]
         parent[parts[-1]] = c['after']
+        lookup_sources = {s['id']: s for s in (sources or [])}
+        refs = [{'filename': lookup_sources[e['sourceId']]['filename'],
+                 'excerpt': e['excerpt'], 'sourceId': e['sourceId']}
+                for e in c.get('evidence', [])
+                if e.get('status') == 'passage_matched' and e.get('sourceId') in lookup_sources]
+        if refs:
+            old_refs = parent.get('sources', [])
+            if isinstance(old_refs, list):
+                parent['sources'] = refs + [r for r in old_refs if r not in refs]
+            else:
+                parent['_amendmentSources'] = refs
+
     return merged
 
 
@@ -194,7 +206,7 @@ def create_blueprint(get_db, call_model, get_key):
             cur.execute('SELECT analysis FROM portfolio_analyses WHERE ticker=%s FOR UPDATE',(job['ticker'],));row=cur.fetchone()
             if not row: return jsonify(error='Saved thesis no longer exists'),409
             current=obj(row['analysis'])
-            try: merged=apply_changes(current,obj(job['input']).get('baseline',{}),result.get('changes',[]),accepted)
+            try: merged=apply_changes(current,obj(job['input']).get('baseline',{}),result.get('changes',[]),accepted,result.get('sources',[]))
             except ValueError as e: return jsonify(error=str(e)),409
             # The locked proposal retains its complete baseline and applied snapshot in
             # the same transaction as the thesis write. A failed audit write rolls back both.
