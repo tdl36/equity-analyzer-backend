@@ -3388,41 +3388,15 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
         if total_batches > 1:
             log.info(f"Sources exceed context limit (~{est_tokens:,} est tokens). Splitting into {total_batches} batches.")
 
-        def _extract_text_from_pdf_b64(b64_data, name):
-            """Extract text from base64-encoded PDF. Used when target provider
-            doesn't accept native PDF blocks (OpenAI / Gemini)."""
-            try:
-                from PyPDF2 import PdfReader
-                import io as _io
-                pdf_bytes = base64.b64decode(b64_data)
-                reader = PdfReader(_io.BytesIO(pdf_bytes))
-                pages = []
-                for i, page in enumerate(reader.pages):
-                    try:
-                        t = page.extract_text() or ''
-                    except Exception:
-                        t = ''
-                    if t.strip():
-                        pages.append(t)
-                return '\n'.join(pages) or f'[Could not extract text from {name}]'
-            except Exception as e:
-                return f'[PDF text extraction failed for {name}: {e}]'
+        from recap_evidence import snapshot as recap_snapshot, text_prompt, IMPACT_INSTRUCTION
+        evidence_snapshot = recap_snapshot(source_parts, recap_provider)
+        # Validate every text-only batch before starting any paid synthesis pass.
+        if recap_provider != 'anthropic':
+            for batch in batches:
+                text_prompt(batch, '')
 
         def _build_text_prompt(parts, prompt_text, char_cap=120000):
-            """Plain-text equivalent of _build_content_blocks for OpenAI/Gemini.
-            Concats source file contents (extracting PDF text inline) followed
-            by the task prompt."""
-            chunks = []
-            for sp in parts:
-                if sp['type'] == 'pdf':
-                    txt = _extract_text_from_pdf_b64(sp['data'], sp['name'])
-                    chunks.append(f"### Source: {sp['name']}\n{txt}")
-                elif sp['type'] == 'text':
-                    chunks.append(f"### Source: {sp['name']}\n{sp['content']}")
-            sources = '\n\n---\n\n'.join(chunks)
-            if len(sources) > char_cap:
-                sources = sources[:char_cap] + '\n\n[...source content truncated for length...]'
-            return f"{sources}\n\n---\n\n{prompt_text}"
+            return text_prompt(parts, prompt_text, char_cap)
 
         def _call_recap_llm(provider, model, system_prompt, parts, prompt_text, anthropic_blocks, max_tokens=24576):
             """Provider-aware single LLM call for the recap pipeline.
@@ -3511,7 +3485,7 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
                     blocks.append({"type": "text", "text": f"[Document: {sp['name']}]"})
                     pdf_count += 1
             text_sources = '\n\n---\n\n'.join([
-                f"### Source: {sp['name']}\n{sp['content'][:8000]}"
+                f"### Source: {sp['name']}\n{sp['content']}"
                 for sp in parts if sp['type'] == 'text'
             ])
             if text_sources:
@@ -3533,7 +3507,7 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
         )
         if prompt_variant == 'earnings_recap':
             fmt['thesis_block'] = thesis_block
-        prompt_text = base_prompt.format(**fmt)
+        prompt_text = base_prompt.format(**fmt) + IMPACT_INSTRUCTION
         content_blocks = _build_content_blocks(batches[0], prompt_text)
 
         markdown = _call_recap_llm(
@@ -3587,6 +3561,7 @@ EXISTING REPORT:
 {custom_block}
 
 Write the complete, updated synthesis report now. ZERO firm names, ALL first person."""
+            merge_prompt += IMPACT_INSTRUCTION
             merge_blocks = _build_content_blocks(batch, merge_prompt)
             markdown = _call_recap_llm(
                 recap_provider, recap_model,
@@ -3613,6 +3588,7 @@ Write the complete, updated synthesis report now. ZERO firm names, ALL first per
             'fileCount': file_count,
             'sourceFiles': source_names,
             'sourceProvenance': provenance,
+            'evidenceSnapshot': evidence_snapshot,
         }
 
         outbox_path = catalyst_delivery.save_result(job_id, result_data)

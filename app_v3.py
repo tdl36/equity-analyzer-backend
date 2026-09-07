@@ -18866,18 +18866,10 @@ def _run_catalyst_synthesis_backend(job_id, ticker, detail):
 
         update_job('Reading uploaded files...', 10)
 
-        # Build source content from uploaded files
-        source_parts = []
-        for f in uploaded_files:
-            name = f.get('name', 'unnamed')
-            content = f.get('text', '')
-            if not content and f.get('data'):
-                content = f'[Binary file: {name} - content extracted on upload]'
-            source_parts.append(f"### Source: {name}\n{content}\n")
-
-        source_content = '\n---\n'.join(source_parts)
-        if len(source_content) > 80000:
-            source_content = source_content[:80000] + '\n\n[Content truncated for length]'
+        from recap_evidence import snapshot as recap_snapshot, text_prompt, IMPACT_INSTRUCTION
+        parts = [{'name': f.get('name', 'unnamed'), 'type': 'text', 'content': f.get('text') or ''} for f in uploaded_files]
+        evidence_snapshot = recap_snapshot(parts, 'backend_text')
+        source_content = text_prompt(parts, '', char_cap=80000)
 
         update_job('Synthesizing report...', 40)
 
@@ -18893,7 +18885,7 @@ def _run_catalyst_synthesis_backend(job_id, ticker, detail):
         )
 
         result = call_llm(
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{"role": "user", "content": prompt + IMPACT_INSTRUCTION}],
             system="You are a senior equity research analyst. Follow all instructions precisely.",
             tier="standard",
             max_tokens=8192,
@@ -18918,6 +18910,7 @@ def _run_catalyst_synthesis_backend(job_id, ticker, detail):
             'fileCount': len(uploaded_files),
             'sourceFiles': source_names,
             'sourceProvenance': provenance,
+            'evidenceSnapshot': evidence_snapshot,
         }, status='complete')
 
         print(f"[catalyst-synthesis {job_id}] Complete: {ticker}/{topic}")
@@ -28147,6 +28140,7 @@ def _maybe_link_activity_to_job_result(job_id: str, status: str, result):
             out['synthesisMarkdown'] = result.get('markdown') or out.get('synthesisMarkdown')
             out['sourceFiles'] = result.get('sourceFiles') or out.get('sourceFiles')
             out['sourceProvenance'] = result.get('sourceProvenance') or out.get('sourceProvenance')
+            out['evidenceSnapshot'] = result.get('evidenceSnapshot')
             out['fileCount'] = result.get('fileCount') or out.get('fileCount')
         if status == 'failed':
             err_msg = (result or {}).get('error') if isinstance(result, dict) else None
