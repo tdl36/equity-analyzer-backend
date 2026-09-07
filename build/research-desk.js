@@ -1,3 +1,4 @@
+import { EvidenceWorkspace } from './evidence-workspace';
 import * as React from 'react';
 import { parseTickers, researchQueue, runCounts, runsNeedingStatusCheck, PLAYBOOKS } from './research-desk-model.mjs';
 import { parseTimestamp } from './workspace-model.mjs';
@@ -239,7 +240,7 @@ export function ResearchDesk({
     className: "desk-toolbar"
   }, /*#__PURE__*/React.createElement("nav", {
     "aria-label": "Research desk sections"
-  }, [['overview', 'Overview'], ['inbox', 'Review inbox'], ['queue', 'Coverage queue'], ['launch', 'Batch planner'], ['runs', 'Runs'], ['playbooks', 'Playbooks']].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
+  }, [['overview', 'Overview'], ['evidence', 'Evidence & changes'], ['inbox', 'Review inbox'], ['queue', 'Coverage queue'], ['launch', 'Batch planner'], ['runs', 'Runs'], ['playbooks', 'Playbooks']].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
     key: id,
     "aria-current": section === id ? 'page' : undefined,
     onClick: () => setSection(id)
@@ -275,7 +276,11 @@ export function ResearchDesk({
   }, "Track the supervised pilot, verified originals, iCloud handoffs, and source restrictions. The monitor runs on this Mac.")), loading ? /*#__PURE__*/React.createElement("p", {
     className: "workspace-empty",
     role: "status"
-  }, "Loading research activity\u2026") : /*#__PURE__*/React.createElement(React.Fragment, null, section === 'overview' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+  }, "Loading research activity\u2026") : /*#__PURE__*/React.createElement(React.Fragment, null, section === 'evidence' && /*#__PURE__*/React.createElement(EvidenceWorkspace, {
+    api: api,
+    analyses: analyses,
+    onCompany: onCompany
+  }), section === 'overview' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "desk-metrics"
   }, [[counts.active, 'Active in latest 100 runs', 'runs'], [pending.length, 'Awaiting your review', 'inbox'], [queue.length, `Theses ${days}+ days old or undated`, 'queue'], [data.analysts.length, 'Sector analysts', 'playbooks']].map(([n, label, id]) => /*#__PURE__*/React.createElement("button", {
     key: label,

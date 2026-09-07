@@ -6,6 +6,7 @@
 @import "./deepdive_shell.css";
 
 @import "./workspace.css";
+@import "./evidence-workspace.css";
 
 @tailwind base;
 @tailwind components;

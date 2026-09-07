@@ -1,3 +1,4 @@
+import {EvidenceWorkspace} from './evidence-workspace';
 import * as React from 'react';
 import {parseTickers,researchQueue,runCounts,runsNeedingStatusCheck,PLAYBOOKS} from './research-desk-model.mjs';
 import {parseTimestamp} from './workspace-model.mjs';
@@ -46,11 +47,12 @@ export function ResearchDesk({api,analyses,onCompany,onNavigate,renderHtml}) {
   };
   return <div className="workspace-page research-desk">
     <div className="desk-heading"><div><p className="workspace-eyebrow">CHARLIE / RESEARCH OPERATIONS</p><h1>Your research desk.</h1><p className="workspace-lead">Prioritize the next question. Coordinate the team. Review the evidence.</p></div><button className="workspace-primary" onClick={()=>setSection('launch')}>Prepare a research batch ↗</button></div>
-    <div className="desk-toolbar"><nav aria-label="Research desk sections">{[['overview','Overview'],['inbox','Review inbox'],['queue','Coverage queue'],['launch','Batch planner'],['runs','Runs'],['playbooks','Playbooks']].map(([id,label])=><button key={id} aria-current={section===id?'page':undefined} onClick={()=>setSection(id)}>{label}</button>)}</nav><button onClick={refresh} disabled={loading}>{loading?'Loading…':'Refresh'}{updated&&<small>Updated {updated.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</small>}</button></div>
+    <div className="desk-toolbar"><nav aria-label="Research desk sections">{[['overview','Overview'],['evidence','Evidence & changes'],['inbox','Review inbox'],['queue','Coverage queue'],['launch','Batch planner'],['runs','Runs'],['playbooks','Playbooks']].map(([id,label])=><button key={id} aria-current={section===id?'page':undefined} onClick={()=>setSection(id)}>{label}</button>)}</nav><button onClick={refresh} disabled={loading}>{loading?'Loading…':'Refresh'}{updated&&<small>Updated {updated.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</small>}</button></div>
     {errors.length>0&&<div className="workspace-error" role="alert">Some live data could not be refreshed. Previously loaded records may be out of date.<details><summary>Connection details</summary>{errors.map(e=><p key={e}>{e}</p>)}</details><button onClick={refresh}>Retry</button></div>}
     {message&&<p className="workspace-notice" role="status">{message}</p>}
     {['127.0.0.1','localhost'].includes(window.location.hostname)&&<section className="workspace-panel"><div className="workspace-section-heading"><div><p className="workspace-eyebrow">SOURCE OPERATIONS</p><h2>AlphaSense collection</h2></div><a className="workspace-link-row" href="http://127.0.0.1:8766/" target="_blank" rel="noopener noreferrer">Open collection monitor ↗</a></div><p className="desk-explainer">Track the supervised pilot, verified originals, iCloud handoffs, and source restrictions. The monitor runs on this Mac.</p></section>}
     {loading?<p className="workspace-empty" role="status">Loading research activity…</p>:<>
+    {section==='evidence'&&<EvidenceWorkspace api={api} analyses={analyses} onCompany={onCompany}/>}
     {section==='overview'&&<>
       <div className="desk-metrics">{[[counts.active,'Active in latest 100 runs','runs'],[pending.length,'Awaiting your review','inbox'],[queue.length,`Theses ${days}+ days old or undated`,'queue'],[data.analysts.length,'Sector analysts','playbooks']].map(([n,label,id])=><button key={label} onClick={()=>setSection(id)}><strong>{n}</strong><span>{label}</span><small>Open →</small></button>)}</div>
       {statusChecks.length>0&&<p className="workspace-notice">{statusChecks.length} run(s) have been marked active for more than two hours. Their status may be stale. <button className="underline" onClick={()=>setSection('runs')}>Inspect runs →</button></p>}

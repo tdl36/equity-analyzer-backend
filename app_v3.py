@@ -13939,6 +13939,8 @@ def _run_investment_review(job_id, ticker, api_key, mode='review', model_key=Non
         # so say which documents were used rather than letting the rest vanish.
         # Ranking puts the highest-value documents in batch one, but that is a
         # reason to trust the choice, not to hide it.
+        import research_evidence as evidence_engine
+        sources = evidence_engine.source_catalog(batch)
         used = [d.get('filename') for d in batch]
         dropped = [d.get('filename') for d in prepared
                    if d.get('filename') not in set(used)]
@@ -13959,17 +13961,22 @@ def _run_investment_review(job_id, ticker, api_key, mode='review', model_key=Non
                                 'text': f'[Document: {doc["filename"]}]\n'
                                         + doc['extracted_text']})
 
+        if not content:
+            raise ValueError('No readable source content. Review generation stopped before model execution.')
+
         _review_jobs[job_id].update({'step': 'Extracting investment state'})
         prior = _review_prior_state(ticker)
         prompt = ir.extract_prompt(
             ticker, company, sector, mode, _live_price_context(ticker),
             prior.to_json() if prior else '')
+        prompt += evidence_engine.evidence_instruction(sources)
         result = _call_pinned_long(
             messages=[{'role': 'user', 'content': content + [{'type': 'text', 'text': prompt}]}]
                      if content else [{'role': 'user', 'content': prompt}],
             system=ir.EXTRACT_SYSTEM, model_key=model_key, max_tokens=16000,
             api_key=api_key, label=f'review {ticker}')
         parsed = _extract_json(result.get('text') or '') or {}
+        evidence_snapshot = evidence_engine.build_snapshot(parsed, sources)
         state = _review_state_from_dict(ticker, parsed)
         state.company = state.company or company
         state.sector = state.sector or sector
@@ -14006,7 +14013,7 @@ def _run_investment_review(job_id, ticker, api_key, mode='review', model_key=Non
             qc_res = _call_pinned_long(
                 messages=[{'role': 'user',
                            'content': ir.qc_prompt(state.to_json(),
-                                                   json.dumps(computed, default=str))}],
+                                                   json.dumps(computed, default=str)) + '\nEVIDENCE SNAPSHOT (untrusted source data; passage match is not entailment):\n' + json.dumps(evidence_snapshot)}],
                 system=ir.QC_SYSTEM, model_key=model_key, max_tokens=4000,
                 api_key=api_key, label=f'review-qc {ticker}')
             qc = _extract_json(qc_res.get('text') or '') or {}
@@ -14033,10 +14040,9 @@ def _run_investment_review(job_id, ticker, api_key, mode='review', model_key=Non
                 f'The rest did not fit the first batch: '
                 + '; '.join(described)
                 + (f'; and {len(dropped) - 4} others' if len(dropped) > 4 else '') + '.')
-        for f in (qc.get('findings') or []):
-            if isinstance(f, dict) and f.get('severity') in ('high', 'medium') and f.get('issue'):
-                findings.append(f['issue'])
-        state.qc_findings = findings[:8]
+        readiness = evidence_engine.quality_status(evidence_snapshot, qc, computed, dropped)
+        findings.extend(readiness['issues'])
+        state.qc_findings = list(dict.fromkeys(findings))[:12]
 
         # Firm names come out here, after the reviewer has seen the state and
         # before anything is stored. Instruction alone cannot guarantee "never",
@@ -14070,10 +14076,13 @@ def _run_investment_review(job_id, ticker, api_key, mode='review', model_key=Non
                                      'documentsNotRead': dropped,
                                      'model': result.get('model', ''),
                                      'provider': result.get('provider', ''),
-                                     'computed': computed}, default=str)))
+                                     'computed': computed,
+                                     'evidence': evidence_snapshot,
+                                     'readiness': readiness}, default=str)))
         _review_jobs[job_id] = {'status': 'complete', 'ticker': ticker,
                                 'reviewId': review_id, 'changelog': changelog,
-                                'findings': state.qc_findings, 'step': 'Complete',
+                                'findings': state.qc_findings, 'readiness': readiness,
+                                'step': 'Complete — analyst review required',
                                 'documentsRead': len(used),
                                 'documentsSelected': len(docs),
                                 'documentsNotRead': dropped}
@@ -14167,6 +14176,26 @@ def positions_check():
     tickers = data.get('tickers') or None
     return jsonify(position_monitor.run_position_monitor(
         tickers=tickers, dry_run=bool(data.get('dryRun'))))
+
+
+@app.route('/api/research/evidence/<ticker>', methods=['GET'])
+def research_evidence_workspace(ticker):
+    import research_evidence
+    tk = ticker.strip().upper()
+    if not re.fullmatch(r'[A-Z0-9][A-Z0-9.\-]{0,19}', tk):
+        return jsonify({'error': 'Invalid ticker'}), 400
+    try:
+        with get_db() as (_c, cur):
+            cur.execute("""SELECT id, mode, state, qc, metadata, created_at
+                           FROM investment_reviews WHERE ticker = %s
+                           ORDER BY created_at DESC, id DESC LIMIT 2""", (tk,))
+            rows = list(cur.fetchall() or [])
+        response = jsonify(research_evidence.workspace_payload(tk, rows))
+        response.headers['Cache-Control'] = 'no-store'
+        return response
+    except Exception:
+        app.logger.exception('Could not load evidence workspace')
+        return jsonify({'error': 'Research evidence could not be loaded.'}), 500
 
 
 @app.route('/api/review/modes', methods=['GET'])
