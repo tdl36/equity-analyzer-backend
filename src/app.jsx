@@ -84,7 +84,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-09-07T07';
+        const BUILD_VERSION = '2026-09-07T08';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -15252,7 +15252,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     {/* MAIN CONTENT AREA */}
                     <div id="workspace-content" tabIndex={-1} className="workspace-content flex-1 flex overflow-hidden">
                         
-                        {activeTab === 'desk' && <ResearchDesk renderHtml={value => sanitizeHtml(renderMarkdown(value))} api={API_URL} analyses={savedAnalyses} onCompany={openWorkspaceCompany} onNavigate={navigateWorkspace} />}
+                        {activeTab === 'desk' && <ResearchDesk renderRecapHtml={value => sanitizeHtml(/^\s*</.test(value) ? value : renderMarkdown(value))} renderHtml={value => sanitizeHtml(renderMarkdown(value))} api={API_URL} analyses={savedAnalyses} onCompany={openWorkspaceCompany} onNavigate={navigateWorkspace} />}
                         {activeTab === 'today' && <TodayWorkspace analyses={savedAnalyses} overviews={savedOverviews}
                             summaries={savedSummaries} alerts={agentAlerts} meetings={mpMeetings}
                             onNavigate={navigateWorkspace} onSummary={openWorkspaceSummary} onCompany={openWorkspaceCompany} />}

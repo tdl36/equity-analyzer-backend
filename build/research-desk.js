@@ -54,7 +54,8 @@ export function ResearchDesk({
   analyses,
   onCompany,
   onNavigate,
-  renderHtml
+  renderHtml,
+  renderRecapHtml
 }) {
   var [data, setData] = useState({
     runs: [],
@@ -344,7 +345,18 @@ export function ResearchDesk({
     key: a.id
   }, /*#__PURE__*/React.createElement("summary", null, /*#__PURE__*/React.createElement("strong", null, a.ticker || a.analystName), /*#__PURE__*/React.createElement("span", null, a.activityType?.replaceAll('_', ' '), " \xB7 ", a.analystName), /*#__PURE__*/React.createElement("small", null, stamp(a.createdAt))), /*#__PURE__*/React.createElement("div", {
     className: "desk-inbox-report"
-  }, /*#__PURE__*/React.createElement("h3", null, a.output ? 'Research output' : 'Proposed work'), /*#__PURE__*/React.createElement(ReportContent, {
+  }, /*#__PURE__*/React.createElement("h3", null, a.output ? 'Research output' : 'Proposed work'), a.output?.synthesisMarkdown ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+    className: "desk-explainer"
+  }, "Draft ready \xB7 ", a.output.fileCount || a.output.sourceFiles?.length || 0, " sources \xB7 Completed ", stamp(a.output.completedAt)), /*#__PURE__*/React.createElement(ReportContent, {
+    value: a.output.synthesisMarkdown,
+    renderHtml: renderRecapHtml || renderHtml
+  }), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Source documents and provenance"), /*#__PURE__*/React.createElement(ReportContent, {
+    value: {
+      sources: a.output.sourceFiles,
+      provenance: a.output.sourceProvenance
+    },
+    renderHtml: renderHtml
+  }))) : /*#__PURE__*/React.createElement(ReportContent, {
     value: a.output || a.input,
     renderHtml: renderHtml
   })), /*#__PURE__*/React.createElement("button", {
