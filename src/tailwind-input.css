@@ -21,3 +21,7 @@
 .source-rule {display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:12px;align-items:end;margin:16px 0;padding-bottom:16px;border-bottom:1px solid #94a3b844;}
 .source-preferences button {margin:6px 12px 6px 0;}
 @media(max-width:800px){.source-rule {grid-template-columns:1fr 1fr;} .source-rule label:first-child {grid-column:1/-1;}}
+
+.source-preferences button {padding:8px 12px;border:1px solid #94a3b866;border-radius:6px;}
+.source-rule {grid-template-columns:repeat(3,minmax(0,1fr));}
+@media(max-width:800px){.source-rule {grid-template-columns:1fr;} .source-rule label:first-child {grid-column:auto;}}

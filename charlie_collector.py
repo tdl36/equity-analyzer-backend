@@ -203,6 +203,8 @@ class Collector:
         if 'usage' not in columns:
             self.db.execute("ALTER TABLE documents ADD COLUMN usage TEXT DEFAULT 'research'")
             self.db.commit()
+        for column in ('analyst','author_evidence'):
+            if column not in columns:self.db.execute(f'ALTER TABLE documents ADD COLUMN {column} TEXT')
         task_columns = {r[1] for r in self.db.execute('PRAGMA table_info(tasks)')}
         for column in ('paused_status', 'evidence_after'):
             if column not in task_columns:
@@ -288,7 +290,7 @@ class Collector:
             self.event(run, "needs_auth" if needed else "auth_resumed")
         return self.status(run)
 
-    def stage(self, run, ticker, kind, path, url, published=None, publisher=None, usage='research'):
+    def stage(self, run, ticker, kind, path, url, published=None, publisher=None, usage='research', analyst=None, author_evidence=None):
         ticker = ticker_name(ticker)
         source_url(url)
         if usage not in ('research', 'reference_only'):
@@ -299,8 +301,10 @@ class Collector:
             if not window['since'] <= published <= window['until_date']:
                 raise ValueError('Publication date is outside the collection window')
         from source_selection_gate import check
-        check(self.db,run,ticker,kind,publisher,url)
+        check(self.db,run,ticker,kind,publisher,url,analyst=analyst,author_evidence=author_evidence)
         files = originals(path)
+        if analyst and (not isinstance(author_evidence,str) or not author_evidence.strip() or len(author_evidence)>2000):raise ValueError("Named analyst requires observed report authorship evidence (up to 2,000 characters).")
+        if analyst and len(files)!=1:raise ValueError("Verify authorship separately for each original; do not assign one analyst to a ZIP batch.")
         with self.lock():
             task = self.db.execute("SELECT * FROM tasks WHERE run=? AND ticker=? AND kind=?",
                                    (run, ticker, kind)).fetchone()
@@ -342,6 +346,8 @@ class Collector:
                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (uuid.uuid4().hex[:16], run, ticker, kind, name, digest, pages,
                      url, published, publisher, str(staged), now()))
+                if analyst and author_evidence:
+                    self.db.execute('UPDATE documents SET analyst=?,author_evidence=? WHERE run=? AND ticker=? AND kind=? AND sha256=?',(analyst,author_evidence,run,ticker,kind,digest))
                 # A restrictive observation can tighten a previous ingestion, never relax it.
                 if usage == 'reference_only':
                     self.db.execute("UPDATE documents SET usage='reference_only' WHERE run=? AND ticker=? AND kind=? AND sha256=?",
@@ -361,7 +367,7 @@ class Collector:
             if row["status"] in ("handed_off", "duplicate"):
                 return dict(row)
             from source_selection_gate import check
-            check(self.db,row['run'],row['ticker'],row['kind'],row['publisher'],row['source_url'])
+            check(self.db,row['run'],row['ticker'],row['kind'],row['publisher'],row['source_url'],analyst=row['analyst'],author_evidence=row['author_evidence'])
             staged = Path(row["staged"])
             if file_hash(staged) != row["sha256"]:
                 raise ValueError("Staged original changed; handoff stopped")
@@ -563,6 +569,8 @@ def main():
             p.add_argument("--url", required=True)
             p.add_argument("--published")
             p.add_argument("--publisher")
+            p.add_argument("--analyst")
+            p.add_argument("--author-evidence")
             p.add_argument('--usage', choices=('research','reference_only'), default='research')
         if command == 'observe':
             p.add_argument('--url', required=True)
@@ -590,7 +598,7 @@ def main():
             result = collector.auth(args.run, args.command == "auth-needed")
         elif args.command == "stage":
             result = collector.stage(args.run, args.ticker, args.kind, args.file, args.url,
-                                     args.published, args.publisher, args.usage)
+                                     args.published, args.publisher, args.usage, args.analyst, args.author_evidence)
         elif args.command == 'observe':
             result = collector.observe(args.run,args.ticker,args.kind,args.url,args.count,args.note)
         elif args.command == "handoff":

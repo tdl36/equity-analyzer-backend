@@ -2,14 +2,14 @@
 import json
 from source_preferences import decision
 
-def check(db,run,ticker,kind,publisher,url,fetch=None):
+def check(db,run,ticker,kind,publisher,url,fetch=None,analyst=None,author_evidence=None):
     if kind!='broker-report':return
     if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='refresh_requests'").fetchone():return
     row=db.execute('SELECT config FROM refresh_requests WHERE run=?',(run,)).fetchone()
     if not row:return
     cfg=json.loads(row['config']);p=cfg.get('researchCommand') or {};policy=p.get('sourcePolicy')
     if policy is None:return
-    outcome=decision(policy,publisher,ticker,'meeting' if p.get('meetingPrep') else p.get('kind','event'))
+    outcome=decision(policy,publisher,ticker,'meeting' if p.get('meetingPrep') else p.get('kind','event'),analyst,author_evidence)
     if outcome in ('excluded','reference_only'):raise ValueError('Source preference excludes this broker from AI collection. Record the exclusion; do not stage or hand off it.')
     if outcome=='include':return
     cid=cfg.get('eventId')

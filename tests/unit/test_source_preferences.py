@@ -53,3 +53,24 @@ class SourceTests(unittest.TestCase):
         self.assertEqual(c.put(path,json={'revision':'old','choices':{url:'include'}}).status_code,409)
         r=c.put(path,json={'revision':revision(value),'choices':{url:'include'}})
         self.assertEqual(r.status_code,200);self.assertEqual(r.json['candidates'][0]['decision'],'include')
+    def test_subsector_stock_and_named_analyst_precedence(self):
+        from source_preferences import resolve
+        p={'mode':'preferred','subsectors':{'UNH':'Healthcare services','ABT':'Medtech'},'rules':[
+            {'name':'Wells Fargo','subsector':'Healthcare services','disposition':'preferred'},
+            {'name':'Wells Fargo','ticker':'UNH','disposition':'standard'},
+            {'name':'Wells Fargo','ticker':'UNH','analyst':'Jane Analyst','disposition':'preferred'}]}
+        self.assertEqual(decision(p,'Wells Fargo','ABT','meeting'),'review')
+        self.assertEqual(decision(p,'Wells Fargo','UNH','meeting'),'review')
+        self.assertEqual(decision(p,'Wells Fargo','UNH','meeting','Jane Analyst','Report byline: Jane Analyst'),'include')
+        self.assertEqual(decision(p,'Wells Fargo','UNH','meeting','Different Author','Observed byline'),'review')
+        p['subsectors']['HUM']='Healthcare services'
+        r=resolve(p,'Wells Fargo','HUM','meeting');self.assertEqual(r['decision'],'include');self.assertEqual(r['rule']['subsector'],'Healthcare services')
+    def test_missing_authorship_never_silently_bypasses_analyst_exclusion(self):
+        p={'mode':'auto','rules':[{'name':'Bank','disposition':'preferred'},{'name':'Bank','analyst':'A','disposition':'excluded'}]}
+        self.assertEqual(decision(p,'Bank','UNH','event'),'review')
+        self.assertEqual(decision(p,'Bank','UNH','event','A',None),'review')
+        self.assertEqual(decision(p,'Bank','UNH','event','A','Visible author byline'),'excluded')
+        self.assertEqual(decision(p,'Bank','UNH','event','B','Visible author byline'),'include')
+    def test_classification_and_scope_validation(self):
+        for p in ({'mode':'auto','subsectors':{'bad/ticker':'Services'}},{'mode':'auto','rules':[{'name':'Bank','ticker':'UNH','subsector':'Services','disposition':'preferred'}]}):
+            with self.assertRaises(ValueError):policy(p)

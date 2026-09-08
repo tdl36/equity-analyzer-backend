@@ -74,3 +74,26 @@ Previously handed-off originals are never silently deleted by later preferences.
 
 Saved defaults currently apply to new Command Charlie assignments. They do not
 retroactively modify old requests or existing scheduled ticker policies.
+
+### Subsector and named-analyst rules
+
+`sourcePolicy.subsectors` is the user's explicit ticker-to-subsector map. Never
+infer or change a classification from a headline. Resolution order is stock,
+then subsector, then general; within each scope named analyst beats broker-wide,
+then task-specific beats all tasks. Equally specific conflicting rules retain
+the more restrictive disposition. Rules remain bound to their named broker;
+an analyst move does not automatically transfer a preference to a new firm.
+
+Use `source_preferences.resolve(policy,publisher,ticker,task,analyst,author_evidence)`
+to inspect both the effective decision and matched rule. If authorship is missing
+and an applicable named-analyst rule could change the result, require document
+review rather than silently falling back to the broker preference.
+
+Only set `--analyst 'Observed Author Name' --author-evidence 'Byline as displayed
+on the original, with its location'` after inspecting that specific original's
+byline. A familiar broker or historical coverage is not author verification.
+Names match case-insensitively, without inferred aliases. Multiple or ambiguous
+bylines should go to review. Do not label an entire ZIP with one author.
+The metadata is persisted and checked again before iCloud handoff. Shortlist
+candidates may include `analyst` and `authorEvidence` for the user's inspection.
+Provider restrictions always remain independent of preferences.
