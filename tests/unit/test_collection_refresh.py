@@ -15,6 +15,18 @@ class RefreshTests(unittest.TestCase):
         self.clock=1788796800.;self.m=RefreshManager(self.c,lambda:self.clock)
         self.cfg={'ticker':'MDT','hours':24,'lookbackDays':7,'kinds':['transcript']}
 
+    def test_snapshot_distinguishes_saved_sources_from_restricted_staging(self):
+        from tests.unit.test_charlie_collector import pdf
+        self.m.save(self.cfg); self.m.trigger('MDT'); claim=self.m.claim()
+        source=Path(self.tmp.name)/'source.pdf';source.write_bytes(pdf())
+        first=self.c.stage(claim['run'],'MDT','transcript',source,'https://research.alpha-sense.com/?docid=one')['documents'][0]
+        self.c.handoff(first['id'])
+        source.write_bytes(pdf(width=90))
+        self.c.stage(claim['run'],'MDT','transcript',source,'https://research.alpha-sense.com/?docid=two',usage='reference_only')
+        progress=self.m.status()['requests'][0]['sourceProgress']
+        self.assertEqual(progress['documents'],{'handed_off':1,'held':1})
+        self.assertNotEqual(progress['tasks'][0]['status'],'complete')
+
     def test_meeting_requests_include_presentations_and_repair_is_fenced(self):
         payload={'ticker':'MDT','until':'2026-09-07','since':'2026-09-01',
                  'kind':'event','instruction':'Prepare meeting questions',

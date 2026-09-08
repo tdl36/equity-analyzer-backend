@@ -197,6 +197,11 @@ class RefreshManager:
         requests = [dict(r) for r in self.db.execute('SELECT id,ticker,run,status,created,issue,result FROM refresh_requests ORDER BY created DESC LIMIT 50')]
         for r in requests:
             r['result'] = json.loads(r['result']) if r['result'] else None
+            r['sourceProgress'] = {
+                'tasks': [dict(t) for t in self.db.execute(
+                    'SELECT kind,status,expected FROM tasks WHERE run=? AND ticker=? ORDER BY kind', (r['run'], r['ticker']))],
+                'documents': {d['state']: d['n'] for d in self.db.execute(
+                    "SELECT CASE WHEN usage='reference_only' THEN 'held' ELSE status END AS state,COUNT(*) AS n FROM documents WHERE run=? AND ticker=? GROUP BY state", (r['run'], r['ticker']))}}
         worker = self.db.execute('SELECT checked,status FROM refresh_worker WHERE id=1').fetchone()
         folders={}
         for name,root in [('stocks',self.c.stocks),('catalysts',self.c.catalysts)]:

@@ -157,9 +157,32 @@ and retained checkpoint failures. Quote matching is not factual entailment.
 Assignment inspection combines frozen instructions/preferences, source decisions,
 collection/preparation status, imported meeting originals and saved versions.
 
-Remaining acceptance work: deploy and test the connected increment; execute a
+The connected increment was deployed as T36 with 326 backend and 22 frontend
+tests passing. Browser inspection confirmed the real assignment workspace.
+Remaining acceptance work: finish the
 real two-company meeting batch, record each stage's elapsed time and failures,
 and verify original-to-output identity and passage support. Broader portfolio
 coverage, automatic handling of authentication expiry, full factual entailment,
 quick packs using only existing sources, and in-workspace agent editing of meeting
 questions still require further work. Do not treat this entry as live validation.
+
+## T37 Live collection findings and readiness receipts
+
+The real ABT/MDT batch is in progress, not passed. MDT has five original sources
+saved in its exact CATALYSTS event folder: transcript, full presentation, earnings
+release and two broker reports. Broker-result reconciliation and SEC sourcing
+remain pending. Stifel's explicit GenAI restriction was honored; an unrelated
+credit-union headline incorrectly tagged MDT was excluded.
+
+An observed transcript re-export had different PDF bytes but identical text and
+all 15 rendered pages. The collector now supports that metadata-only case using
+a bounded local Poppler comparison after exact provider document-ID matching.
+Changed numbers, graphics, unavailable rendering or comparison failures remain
+review cases. Canonical originals and alternate-export receipts are retained.
+
+Assignment inspection now separates iCloud handoff counts, restricted staging,
+individual search progress and imported meeting originals. The read-only
+`scripts/meeting-batch-status.py --batch UUID --tickers ABT MDT` report requires
+the entire expected selection and distinguishes readiness from source/output
+acceptance. First-pack latency includes queueing and collection, and later
+revisions do not inflate it. It does not certify factual or investment quality.

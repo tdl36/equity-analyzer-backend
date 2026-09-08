@@ -332,10 +332,17 @@ class Collector:
                     if previous and previous['sha256'] != digest:
                         if usage == 'reference_only' or previous['usage'] == 'reference_only':
                             raise ValueError('Changed restricted export requires manual review')
-                        if not same_watermarked_export(Path(previous['staged']).read_bytes(), data):
+                        prior_bytes = Path(previous['staged']).read_bytes()
+                        same_export = same_watermarked_export(prior_bytes, data)
+                        reason = 'Same document ID and content; download timestamp differs'
+                        if not same_export:
+                            from pdf_export_identity import same_rendered_original
+                            same_export = same_rendered_original(prior_bytes, data)
+                            reason = 'Same document ID, full extracted text and every rendered page; canonical original reused'
+                        if not same_export:
                             raise ValueError('Existing document has different content; review the new export')
                         self.event(run, 'alternate_export', document=previous['id'], sha256=digest,
-                                   source_url=url, reason='Same document ID and content; download timestamp differs')
+                                   source_url=url, reason=reason)
                         if previous['run'] == run:
                             continue
                         # Reuse the canonical bytes across refresh windows, while
