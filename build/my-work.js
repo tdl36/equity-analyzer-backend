@@ -48,7 +48,8 @@ export function MyWork({
       needs_me: 'Needs me',
       running: 'Running / queued',
       ready: 'Ready',
-      failed: 'Failed'
+      failed: 'Failed',
+      closed: 'Cancelled'
     };
   return /*#__PURE__*/React.createElement("section", {
     className: "workspace-panel"
