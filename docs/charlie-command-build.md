@@ -43,3 +43,11 @@ Completed Command cards now open a command-specific thesis comparison. The exact
 T25 validation: 250 backend tests, 20 frontend tests and production build pass. Live completed-command comparison and paid generation are not exercised solely for QA; deployment verification follows.
 
 T26 follow-up explicitly labels an existing same-ticker proposal from a different comparison, preventing it being mistaken for the current command output. Final validation remains 250 backend/20 frontend tests and build. T25 was briefly deployed; T26 supersedes its frontend cache identifiers.
+
+T26 verified: backend `e00a3fd`, Cloudflare `ad7fae34-175c-472f-b6a6-530dd20d67a6`, live command/amendment routes and frontend hashes passed. The comparison panel was inspected using a styled synthetic browser fixture; source selection enabled submission without executing research.
+
+## Automatic command original import
+
+Before managed command recap dispatch, collection completion now imports only registered handed-off research-eligible AlphaSense originals and verified public originals into document_files. Exact SHA-256 receipts are required; same-name different-content originals are never overwritten. Imports are idempotent and retryable without starting research; the collection lease fences each import. Restriction-held and unregistered folder files are excluded. Limit 60 originals and 60 MB per file. New recap snapshots record original-file hashes separately from extracted-input hashes, so transformed sources can link back to imported originals. Older text snapshots without original hashes remain blocked if bytes differ. General unregistered iCloud auto-import and automatic paid thesis proposal execution remain open.
+
+Validation: 258 backend tests plus a targeted restricted-file regression pass; Mac Python 3.9 imports pass. Backend/local-worker-only release, compatible with T26 frontend; no live import or paid research was executed solely for QA. Next: durable proposal checkpoint/recovery and explicit opt-in post-recap proposal orchestration.

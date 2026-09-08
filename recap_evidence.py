@@ -17,7 +17,7 @@ def snapshot(parts, provider):
             if not payload.strip():
                 raise ValueError(f"{part['name']}: no readable source text")
         sources.append({'filename': part['name'], 'sha256': hashlib.sha256(payload).hexdigest(),
-                        'inputMode': mode, 'characters': chars, 'pages': part.get('pageCount'), 'textExtraction':part.get('textExtraction')})
+                        'originalSha256': part.get('originalSha256'), 'inputMode': mode, 'characters': chars, 'pages': part.get('pageCount'), 'textExtraction':part.get('textExtraction')})
     if not sources:
         raise ValueError('No source documents selected')
     return {'version': 1, 'capturedAt': datetime.now(timezone.utc).isoformat(),

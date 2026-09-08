@@ -271,6 +271,8 @@ class RefreshManager:
             from research_task_sources import verify_public_sources
             public_count=verify_public_sources(self,row,fetcher)
             result['publicDocuments']=public_count
+            from command_source_import import import_sources
+            result['importedOriginals']=import_sources(self,row)
             if not delivered and not public_count:
                 result['research']='No eligible sources found in the verified searches; no recap generated'
         if (delivered or public_count) and cfg['workflow'] in ('note','recap'):

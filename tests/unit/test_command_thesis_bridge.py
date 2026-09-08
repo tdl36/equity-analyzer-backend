@@ -23,6 +23,10 @@ class CommandBridgeTests(unittest.TestCase):
         ready,blocked=match_sources([self.source],[self.doc])
         self.assertEqual(ready,[self.source]);self.assertEqual(blocked,[])
 
+    def test_original_hash_matches_transformed_text_input(self):
+        transformed={**self.source,'sha256':hashlib.sha256(b'extracted text').hexdigest(),'originalSha256':self.source['sha256']}
+        self.assertEqual(match_sources([transformed],[self.doc])[0],[self.source])
+
     def test_missing_different_ambiguous_and_corrupt_sources_block(self):
         for docs in ([],[{**self.doc,'file_data':base64.b64encode(b'changed').decode()}],
                      [self.doc,self.doc],[{**self.doc,'file_data':'not base64'}]):

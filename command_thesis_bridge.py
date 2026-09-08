@@ -22,7 +22,7 @@ def match_sources(sources, documents):
     names = [s.get('filename') for s in sources if isinstance(s, dict)]
     for source in sources:
         name = source.get('filename') if isinstance(source, dict) else None
-        digest = source.get('sha256', '') if isinstance(source, dict) else ''
+        digest = (source.get('originalSha256') or source.get('sha256', '')) if isinstance(source, dict) else ''
         reason = None
         matches = [d for d in documents if d['filename'] == name]
         if not name or names.count(name) != 1 or not re.fullmatch(r'[a-f0-9]{64}', digest):

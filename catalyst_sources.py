@@ -62,7 +62,7 @@ def read_sources(folder, excluded=()):
                 pdf = PdfReader(io.BytesIO(data))
                 if pdf.is_encrypted or not len(pdf.pages):
                     raise ValueError('encrypted PDF or no pages')
-                parts.append({'type': 'pdf', 'name': name, 'data': base64.b64encode(data).decode('ascii'), 'pageCount': len(pdf.pages)})
+                parts.append({'type': 'pdf', 'name': name, 'originalSha256': hashlib.sha256(data).hexdigest(), 'data': base64.b64encode(data).decode('ascii'), 'pageCount': len(pdf.pages)})
                 continue
             if ext == '.docx':
                 from docx import Document
@@ -89,7 +89,7 @@ def read_sources(folder, excluded=()):
                 text = data.decode('utf-8-sig')
             if not text.strip():
                 raise ValueError('no extractable text; export to PDF or OCR this document')
-            parts.append({'type': 'text', 'name': name, 'content': text})
+            parts.append({'type': 'text', 'name': name, 'originalSha256': hashlib.sha256(data).hexdigest(), 'content': text})
         except Exception as exc:
             issues.append(f'{name}: {type(exc).__name__}: {exc}')
     if issues:

@@ -28815,6 +28815,9 @@ app.register_blueprint(pipeline_recovery.create_blueprint(get_db))
 import pipeline_delivery
 app.register_blueprint(pipeline_delivery.create_blueprint(get_db))
 
+import command_source_import
+app.register_blueprint(command_source_import.create_blueprint(get_db))
+
 import research_commands
 app.register_blueprint(research_commands.create_blueprint(get_db))
 
