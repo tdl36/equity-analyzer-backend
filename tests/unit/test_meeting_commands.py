@@ -182,3 +182,19 @@ class MeetingOwnershipTests(unittest.TestCase):
         exec(compile(ast.Module(body=[function],type_ignores=[]),'app_v3.py','exec'),env)
         with self.assertRaises(ValueError):env['_mp_save_results_inline'](1,[],{},0,'model',managed=True,job_id=CID,owner='old')
         self.assertFalse(any('INSERT' in c.args[0] for c in cur.execute.call_args_list))
+
+    def test_revision_preserves_prior_version_and_rejects_stale_editor(self):
+        topics=[{'topic':'Growth','questions':[dict(question='What changed?',context='Release',source='Release',follow_up_angle='Why?',priority='high',source_filenames=['release.html'])]}]
+        cur=Mock();cur.fetchone.side_effect=[{'status':'done','input':{'meetingId':24},'result':{'questionSetId':21,'synthesis':{'old':True}}},{'id':21,'version':1},{'id':22,'version':2},{'company_id':1}]
+        cur.fetchall.return_value=[{'filename':'release.html'}]
+        app=Flask(__name__);app.register_blueprint(create_blueprint(MeetingTests().db(cur),Mock(),lambda:True))
+        response=app.test_client().post('/api/research/meeting-commands/'+job_id(CID)+'/revision',json={'expectedQuestionSetId':21,'reason':'Correct future context','topics':topics})
+        self.assertEqual(response.status_code,200)
+        calls=cur.execute.call_args_list
+        update=next(c for c in calls if 'UPDATE mp_jobs SET result' in c.args[0])
+        result=json.loads(update.args[1][0]);self.assertNotIn('synthesis',result);self.assertEqual(result['previousQuestionSetId'],21)
+        self.assertFalse(any('DELETE' in c.args[0] or 'UPDATE mp_question_sets' in c.args[0] for c in calls))
+        cur.reset_mock();cur.fetchone.side_effect=[{'status':'done','input':{'meetingId':24},'result':{}},{'id':22,'version':2}]
+        response=app.test_client().post('/api/research/meeting-commands/'+job_id(CID)+'/revision',json={'expectedQuestionSetId':21,'reason':'stale','topics':topics})
+        self.assertEqual(response.status_code,409)
+        self.assertFalse(any('INSERT' in c.args[0] for c in cur.execute.call_args_list))

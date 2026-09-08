@@ -70,7 +70,7 @@ def prepare(get_db, command):
         options=obj(command['input'])['payload']['meetingPrep']
         cur.execute("INSERT INTO mp_companies(ticker,name,sector) VALUES(%s,%s,'unknown') ON CONFLICT(ticker) DO UPDATE SET ticker=EXCLUDED.ticker RETURNING id,name,sector",(command['ticker'],command['ticker']))
         company=dict(cur.fetchone())
-        cur.execute("SELECT pq.*,m.meeting_date FROM mp_past_questions pq LEFT JOIN mp_meetings m ON m.id=pq.meeting_id WHERE pq.company_id=%s ORDER BY pq.created_at DESC LIMIT 30",(company['id'],))
+        cur.execute("SELECT pq.*,m.meeting_date FROM mp_past_questions pq LEFT JOIN mp_meetings m ON m.id=pq.meeting_id WHERE pq.company_id=%s AND m.meeting_date<=%s AND pq.status IN ('asked','answered','resolved') ORDER BY m.meeting_date DESC,pq.created_at DESC LIMIT 30",(company['id'],obj(command['input'])['payload']['until']))
         past=[dict(r) for r in cur.fetchall()]
         notes=bridge['instructions']+'\nSource register (verified originals):\n'+'\n'.join(d['filename']+' | SHA256 '+d['sha256']+' | '+(d.get('sourceUrl') or 'Source URL unavailable') for d in docs)
         cur.execute("INSERT INTO mp_meetings(company_id,meeting_date,meeting_type,notes) VALUES(%s,%s,'conference',%s) RETURNING id",(company['id'],options['meetingDate'],notes))
@@ -161,6 +161,39 @@ def create_blueprint(get_db,run,has_key):
                 WHERE c.stage='collection_control' AND c.input->'payload'->'meetingPrep' IS NOT NULL ORDER BY c.created_at DESC LIMIT 100""")
             rows=[dict(r) for r in cur.fetchall()]
         return jsonify(tickers=tickers,jobs=rows)
+
+    @bp.route('/api/research/meeting-commands/<jid>/revision',methods=['POST'])
+    def revise(jid):
+        try:
+            uuid.UUID(jid)
+            data=request.get_json() or {}
+            reason=data.get('reason','').strip()
+            if not reason or len(reason)>1000:raise ValueError('A concise revision reason is required.')
+            with get_db(commit=True) as (_,cur):
+                cur.execute("SELECT input,result,status FROM mp_jobs WHERE id=%s AND stage='command_meeting' FOR UPDATE",(jid,))
+                row=cur.fetchone()
+                if not row or row['status']!='done':return jsonify(error='Only completed meeting packs can be revised.'),409
+                inp=obj(row['input']);result=obj(row['result']);mid=inp['meetingId']
+                cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',('meeting-save:'+str(mid),))
+                cur.execute('SELECT id,version FROM mp_question_sets WHERE meeting_id=%s ORDER BY version DESC LIMIT 1',(mid,))
+                current=cur.fetchone()
+                if not current or current['id']!=data.get('expectedQuestionSetId'):return jsonify(error='Meeting version changed. Reload before revising.'),409
+                cur.execute('SELECT filename FROM mp_documents WHERE meeting_id=%s',(mid,))
+                topics=validate_pack(data.get('topics'),list(cur.fetchall()))
+                cur.execute("INSERT INTO mp_question_sets(meeting_id,version,status,topics_json,synthesis_json,generation_model,generation_tokens) VALUES(%s,%s,'ready',%s,NULL,%s,0) RETURNING id,version",
+                            (mid,current['version']+1,json.dumps(topics),'reviewed revision'))
+                saved=dict(cur.fetchone())
+                result.update(topics=topics,questionSetId=saved['id'],version=saved['version'],revisionReason=reason,previousQuestionSetId=current['id'])
+                # Superseded synthesis remains in its immutable prior version, not in the current pack.
+                result.pop('synthesis',None)
+                cur.execute("UPDATE mp_jobs SET result=%s::jsonb,updated_at=NOW() WHERE id=%s",(json.dumps(result),jid))
+                cur.execute("UPDATE mp_past_questions SET status='superseded' WHERE meeting_id=%s AND status='planned'",(mid,))
+                cur.execute('SELECT company_id FROM mp_meetings WHERE id=%s',(mid,));company=cur.fetchone()
+                for topic in topics:
+                    for q in topic['questions']:
+                        cur.execute("INSERT INTO mp_past_questions(company_id,meeting_id,question,topic,status) VALUES(%s,%s,%s,%s,'planned')",(company['company_id'],mid,q['question'],topic['topic']))
+            return jsonify(questionSetId=saved['id'],version=saved['version'])
+        except (ValueError,TypeError,AttributeError) as exc:return jsonify(error=str(exc)),400
 
     @bp.route('/api/research/meeting-commands/<jid>/retry',methods=['POST'])
     def retry(jid):

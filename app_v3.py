@@ -23543,7 +23543,8 @@ def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sect
             })
             try:
                 topics, q_tokens = _mp_questions_inline(
-                    api_key, ticker, company_name, sector, synthesis, unresolved,
+                    api_key, ticker, company_name, sector,
+                    ({'sourceAnalyses':analyses,'researchWindow':timeframe.split('. Meeting assignment:')[0]} if managed else synthesis), unresolved,
                     **({'source_names':[d['filename'] for d in docs]} if managed else {})
                 )
                 tokens_total += q_tokens
