@@ -56,3 +56,8 @@ class MeetingProfileGenerationTests(QuestionGenerationTests):
         generate('key','ABT','Abbott','Healthcare',{},[],['source.pdf'],client,revision_context={'instruction':'Expand cash conversion','priorQuestions':[]})
         prompt=client.messages.stream.call_args.kwargs['messages'][0]['content']
         self.assertIn('USER REVISION REQUEST',prompt);self.assertIn('Expand cash conversion',prompt)
+    def test_drafting_progress_is_reported_without_exposing_partial_json(self):
+        client=self.client();client.messages.stream.return_value.__enter__.return_value.text_stream=['abc','def']
+        progress=[]
+        generate('key','ABT','Abbott','Healthcare',{},[],['source.pdf'],client,on_progress=progress.append)
+        self.assertEqual(progress[-1],{'outputCharacters':6,'generationAttempt':1})

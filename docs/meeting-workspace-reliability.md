@@ -9,15 +9,17 @@ full unattended AlphaSense coverage or investment accuracy.
    quality instructions: probing inconsistencies, decision relevance, private
    attribution, concrete evasive-answer follow-ups, and planned-versus-answered
    history. New manual jobs freeze server-owned documents and use the managed
-   passage-ID generator. Text-only sources disclose the missing original. Existing
-   in-flight legacy jobs retain their original generation path on retry.
+   passage-ID generator. Text-only sources disclose the missing original. Explicit retries upgrade legacy manual jobs to frozen sources and structured
+   question output while retaining completed analyses and synthesis.
 2. Saved packs expose mechanical quality diagnostics and a repeatable read-only
    audit script. Diagnostics include source coverage, incomplete/duplicate questions,
    passage records, and numeric strings missing from attached passages. Numeric
    flags require human interpretation: requested targets, periods and calculations
    can legitimately differ from quoted text. These are not factual verdicts.
-3. Manual jobs use PostgreSQL connection-scoped ownership and a durable 30-second
-   recovery sweep, capped at two automatic recoveries. Active owners exclude
+3. Manual jobs use process-level exclusion, PostgreSQL ownership and a renewed
+   90-second lease. A 30-second recovery sweep starts after 90 seconds of startup
+   grace and is capped at two automatic recoveries. Only new or explicitly retried
+   jobs opt in; historical running rows are not automatically replayed. Active owners exclude
    duplicate execution. Per-document checkpoints survive interruption. Owner tokens
    prevent stale saves; an atomic saved-question-set receipt prevents duplicate
    versions after interrupted delivery. Explicit retry cannot replay a completed job.
@@ -57,12 +59,25 @@ full unattended AlphaSense coverage or investment accuracy.
   unknown filenames or incomplete questions. Source coverage is not guaranteed by counts.
 - UNH meeting 28 was interrupted at 9/10 analyses by the previous backend restart.
   Explicit retry resumed the same job and reached synthesis and question generation.
-  Final delivery and new-release live checks are recorded after deployment.
+  It completed on September 8 at 20:48 UTC as question set 26: 22 generated items
+  across nine topics, 22 passage records, nine of ten sources cited, zero unknown
+  filenames or exact duplicates. One coverage-note item and eight numeric-premise
+  flags require review. Saved-file passages do not certify factual interpretation.
+- All ten selected UNH originals passed isolated local PDF extraction (0.2–2.1
+  seconds per file). Server extraction now uses a separate process with a 40-second
+  limit, bounded address space on Linux, and explicitly disclosed fallback only to
+  matching frozen extracted text. Originals are processed sequentially.
+- Live work, quality, versions and answers endpoints passed; meeting mode and
+  version history were inspected in the browser. No test management answers or
+  external emails were submitted.
+- The final increment adds drafting-character progress without exposing partial
+  JSON, renewed worker leases and process-level duplicate exclusion. Safe unit
+  suite: 367 tests; frontend suite: 29 tests. Local PostgreSQL recovery/save tests
+  also pass, including stale-owner lease rejection.
 
 ## Still requiring operational proof
 
 Fresh collection across the full covered universe; authentication pause/resume
 under actual expiry; long-running unattended throughput; factual/sector-expert
-review across companies and formats; new manual grounded generation and revision
-on real sources; mobile viewport and cross-device preference behavior. Existing
+review across companies and formats; conversational revision on real sources; mobile viewport and cross-device preference behavior. Existing
 ABT/MDT delivery receipts are evidence for those runs only.

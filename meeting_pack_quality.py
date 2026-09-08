@@ -13,7 +13,7 @@ def inspect(topics,filenames):
     return {'questions':len(questions),'topics':len(topics),'highPriority':sum(q.get('priority')=='high' for q in questions),
         'withVerifiedPassages':support,'availableSources':len(available),'citedSources':len(cited & available),
         'uncitedSources':sorted(available-cited),'unknownCitations':sorted(cited-available),'duplicateQuestions':len(repeated),
-        'incompleteQuestions':missing,'numericPremisesToReview':[{'question':i+1,'values':premise_flags(q)} for i,q in enumerate(questions) if premise_flags(q)],'scope':'Mechanical checks only. Review factual premises, source interpretation, topic coverage and decision relevance against originals. Uncited sources are not automatically omissions.'}
+        'incompleteQuestions':missing,'nonQuestionItems':[i+1 for i,q in enumerate(questions) if '?' not in q.get('question','') and not re.match(r'(?i)^(please|explain|describe|quantify|discuss|walk us)',q.get('question',''))],'numericPremisesToReview':[{'question':i+1,'values':premise_flags(q)} for i,q in enumerate(questions) if premise_flags(q)],'scope':'Mechanical checks only. Review factual premises, source interpretation, topic coverage and decision relevance against originals. Uncited sources are not automatically omissions.'}
 
 
 def premise_flags(question):

@@ -31,3 +31,19 @@ class RecoveryTests(unittest.TestCase):
         def busy(*args):yield False
         with patch('amendment_ownership.worker_session',busy):self.assertFalse(execute(db,'job',run,True))
         run.assert_not_called();cur.execute.assert_not_called()
+    def test_local_worker_guard_survives_unreliable_database_lock(self):
+        import threading
+        db,cur=self.setup_db();entered=threading.Event();release=threading.Event();errors=[]
+        def active(*args):entered.set();release.wait(5)
+        def first():
+            try:execute(db,'local-guard-fixture',active)
+            except Exception as e:errors.append(e)
+        with patch('amendment_ownership.worker_session',self.lock):
+            t=threading.Thread(target=first);t.start();self.assertTrue(entered.wait(2))
+            try:self.assertFalse(execute(db,'local-guard-fixture',Mock(),True))
+            finally:release.set();t.join(5)
+        self.assertFalse(errors)
+    def test_valid_lease_blocks_recovery_even_without_session_lock(self):
+        db,cur=self.setup_db();cur.fetchone.return_value['lease_current']=True;run=Mock()
+        with patch('amendment_ownership.worker_session',self.lock):self.assertFalse(execute(db,'lease-fixture',run,True))
+        run.assert_not_called()

@@ -7,7 +7,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from psycopg2 import sql
-from manual_meeting_recovery import execute
+from manual_meeting_recovery import execute,renew
 
 schema='charlie_recovery_qa_'+uuid.uuid4().hex
 # Deliberately ignores application URLs and credentials: Unix socket, local postgres only.
@@ -37,7 +37,10 @@ try:
         except Exception as e:errors.append(str(e))
     worker=threading.Thread(target=first);worker.start();assert entered.wait(10)
     assert execute(db,'fixture',lambda *_:errors.append('duplicate execution')) is False
+    assert renew(db,'fixture',old_owner[0])
+    assert not renew(db,'fixture','stale-owner')
     release.set();worker.join(10);assert not worker.is_alive();assert not errors,errors
+    with db(True) as (_,cur):cur.execute("UPDATE mp_jobs SET input=input || '{\"workerLeaseUntil\":0}'::jsonb WHERE id='fixture'")
     def resumed(inp,checkpoint):
         assert checkpoint['analyses']==[{'done':True},None]
         assert inp['recoveryAttempts']==1 and inp['workerToken']!=old_owner[0]
@@ -78,7 +81,7 @@ try:
     with db() as (_,cur):
         cur.execute('SELECT count(*) AS n FROM mp_question_sets');assert cur.fetchone()['n']==1
         cur.execute('SELECT status FROM mp_past_questions');assert cur.fetchone()['status']=='planned'
-    print(json.dumps({'passed':['active worker excluded','partial checkpoint retained','owner rotated after interruption','stale owner write rejected','completed job not replayed','atomic save receipt prevents duplicate versions','generated questions marked planned','server source freezing and sequential extraction'],'scope':'Disposable local PostgreSQL schema; no live research or model calls.'},indent=2))
+    print(json.dumps({'passed':['active worker excluded','partial checkpoint retained','owner rotated after interruption','stale owner write rejected','completed job not replayed','atomic save receipt prevents duplicate versions','generated questions marked planned','server source freezing and sequential extraction','worker lease renewal excludes stale owners'],'scope':'Disposable local PostgreSQL schema; no live research or model calls.'},indent=2))
 finally:
     with admin.cursor() as cur:cur.execute(sql.SQL('DROP SCHEMA IF EXISTS {} CASCADE').format(sql.Identifier(schema)))
     admin.close()

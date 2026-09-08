@@ -23357,10 +23357,10 @@ def _mp_synthesize_inline(api_key, ticker, company_name, sector, analyses, past_
     return synthesis, tokens
 
 
-def _mp_questions_inline(api_key, ticker, company_name, sector, synthesis, unresolved, source_names=None, source_evidence=None, meeting_profile=None, revision_context=None):
+def _mp_questions_inline(api_key, ticker, company_name, sector, synthesis, unresolved, source_names=None, source_evidence=None, meeting_profile=None, revision_context=None, on_progress=None):
     if source_names is not None:
         from meeting_question_generation import generate
-        return generate(api_key,ticker,company_name,sector,synthesis,unresolved,source_names,evidence=source_evidence,meeting_profile=meeting_profile,revision_context=revision_context)
+        return generate(api_key,ticker,company_name,sector,synthesis,unresolved,source_names,evidence=source_evidence,meeting_profile=meeting_profile,revision_context=revision_context,on_progress=on_progress)
     unresolved_text = ""
     if unresolved:
         items = [f"- {q.get('question', '')} (from {q.get('meeting_date', '?')})" for q in unresolved[:15]]
@@ -23580,11 +23580,14 @@ def _execute_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, 
                 if grounded:
                     from meeting_source_support import excerpts
                     source_evidence=excerpts(get_db,docs)
+                def drafting_progress(progress):
+                    update(job_id,result={'stage':'generating','completed':n_docs,'total':n_docs,
+                        'analyses':analyses,'synthesis':synthesis,'tokensTotal':tokens_total,**progress})
                 topics, q_tokens = _mp_questions_inline(
                     api_key, ticker, company_name, sector,
                     ({'sourceAnalyses':analyses,'researchWindow':timeframe.split('. Meeting assignment:')[0],
                       'assignmentContext':timeframe} if managed else ({'synthesis':synthesis,'revision':revision_context} if revision_context else synthesis)), unresolved,
-                    **({'source_names':[d['filename'] for d in docs],'source_evidence':source_evidence,'revision_context':revision_context,'meeting_profile':meeting_profile or (None if managed else {'format':'one_on_one','audience':'specialist'})} if grounded else {'meeting_profile':meeting_profile})
+                    **({'source_names':[d['filename'] for d in docs],'source_evidence':source_evidence,'revision_context':revision_context,'on_progress':drafting_progress,'meeting_profile':meeting_profile or (None if managed else {'format':'one_on_one','audience':'specialist'})} if grounded else {'meeting_profile':meeting_profile})
                 )
                 tokens_total += q_tokens
                 if grounded:
@@ -23758,7 +23761,7 @@ def mp_job_retry(job_id):
 
         # Mark running again + clear previous error (keep result as checkpoint)
         with get_db(commit=True) as (_c, cur):
-            cur.execute("UPDATE mp_jobs SET input=(CASE WHEN status='failed' THEN input || '{\"recoveryAttempts\":0}'::jsonb ELSE input END) || %s::jsonb,status='running',error=NULL,updated_at=NOW() WHERE id=%s AND status IN ('running','failed') RETURNING id",(json.dumps(retry_patch),job_id))
+            cur.execute("UPDATE mp_jobs SET input=(CASE WHEN status='failed' THEN input || '{\"recoveryAttempts\":0,\"workerLeaseUntil\":0}'::jsonb ELSE input END) || %s::jsonb,status='running',error=NULL,updated_at=NOW() WHERE id=%s AND status IN ('running','failed') RETURNING id",(json.dumps(retry_patch),job_id))
             if not cur.fetchone():return jsonify(error='This job completed before retry. Reload the saved pack.'),409
 
         threading.Thread(

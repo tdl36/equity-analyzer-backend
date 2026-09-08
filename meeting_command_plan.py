@@ -91,4 +91,5 @@ def question_quality_instruction():
             'For each question provide a concise private rationale, exact source attribution and a concrete follow-up if management is evasive or generic. '
             'Keep spoken questions natural and independent; put broker names and broker-derived observations in private context/source notes. '
             'Never reattribute a broker estimate to management: use an open clarification if primary support is absent. '
+            'Do not create a question that merely lists source limitations. Put missing-coverage notes in topic descriptions or private context, and phrase each question as something management can answer. '
             'Treat planned prior questions as unasked; only refer to a previous answer when a dated actual answer is supplied. ')

@@ -1,5 +1,5 @@
 """Schema-constrained question output for managed meeting assignments."""
-import json
+import json,time
 
 MODEL='claude-opus-4-6'
 
@@ -23,7 +23,7 @@ def schema(source_names,with_quotes=False,passage_ids=None):
     return {'type':'object','properties':{'topics':{'type':'array','items':topic}},'required':['topics'],'additionalProperties':False}
 
 
-def generate(api_key,ticker,company_name,sector,synthesis,unresolved,source_names,client=None,evidence=None,meeting_profile=None,revision_context=None):
+def generate(api_key,ticker,company_name,sector,synthesis,unresolved,source_names,client=None,evidence=None,meeting_profile=None,revision_context=None,on_progress=None):
     if not source_names or len(set(source_names))!=len(source_names):raise ValueError('Distinct verified source names required')
     if client is None:
         import anthropic
@@ -52,6 +52,14 @@ def generate(api_key,ticker,company_name,sector,synthesis,unresolved,source_name
         with client.messages.stream(model=MODEL,max_tokens=32000,thinking={'type':'adaptive'},
                 output_config={'effort':'low','format':{'type':'json_schema','schema':schema(source_names,evidence is not None,register)}},
                 messages=messages) as stream:
+            if on_progress:
+                last=time.monotonic();characters=0
+                for chunk in stream.text_stream:
+                    characters+=len(chunk)
+                    if time.monotonic()-last>=15:
+                        on_progress({'outputCharacters':characters,'generationAttempt':attempt+1})
+                        last=time.monotonic()
+                on_progress({'outputCharacters':characters,'generationAttempt':attempt+1})
             response=stream.get_final_message()
         tokens+=response.usage.input_tokens+response.usage.output_tokens
         if response.stop_reason!='end_turn':raise ValueError(f'Meeting questions did not finish ({response.stop_reason}); checkpoint retained. Retry the question stage.')

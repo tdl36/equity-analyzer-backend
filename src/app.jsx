@@ -11213,7 +11213,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     return { step: 'analyzing', progress: `Analyzing ${total || ''} documents (${completed || 0}/${total || '?'} done)…` };
                 }
                 if (stage === 'synthesizing') return { step: 'synthesizing', progress: 'Synthesizing insights across all documents…' };
-                if (stage === 'generating')   return { step: 'generating',   progress: 'Generating meeting questions…' };
+                if (stage === 'generating')   return { step: 'generating',   progress: result.outputCharacters?`Drafting meeting questions · ${(result.outputCharacters/1000).toFixed(1)}K characters received${result.generationAttempt>1?' · validating a corrected draft':''}…`:'Generating meeting questions · awaiting the model’s draft…' };
                 if (stage === 'saving')       return { step: 'saving',       progress: 'Saving results…' };
                 if (stage === 'done')         return { step: '',             progress: '' };
                 return { step: stage, progress: '' };
