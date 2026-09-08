@@ -233,8 +233,9 @@ def create_blueprint(get_db, call_model, get_key, model_identity=lambda: 'defaul
         if not key:return jsonify(recovered=[],failed=[],blocked='Configure a server research API key for automatic recovery')
         recovered=[];failed=[];pending=[]
         with get_db(commit=True) as (_,cur):
-            cur.execute("SELECT id,ticker,input FROM mp_jobs WHERE stage=%s AND status='running' AND input->>'recoverable'='true' AND updated_at<NOW()-INTERVAL '2 minutes' ORDER BY updated_at LIMIT 3 FOR UPDATE SKIP LOCKED",(STAGE,))
+            cur.execute("SELECT id,ticker,input FROM mp_jobs WHERE stage=%s AND status='running' AND input->>'recoverable'='true' AND updated_at<NOW()-INTERVAL '2 minutes' ORDER BY updated_at LIMIT 20 FOR UPDATE SKIP LOCKED",(STAGE,))
             for job in list(cur.fetchall() or []):
+                if len(recovered)+len(failed)>=3:break
                 cur.execute('SELECT pg_try_advisory_xact_lock(hashtext(%s)) AS locked',(lock_name(job['id']),))
                 if not cur.fetchone()['locked']:continue
                 saved=obj(job['input']);attempts=saved.get('autoRecoveryAttempts',0)
@@ -265,6 +266,9 @@ def create_blueprint(get_db, call_model, get_key, model_identity=lambda: 'defaul
             cur.execute('SELECT ticker,status,input,result FROM mp_jobs WHERE id=%s AND stage=%s FOR UPDATE',(job_id,STAGE));job=cur.fetchone()
             if job['status'] in ('queued','running'):return jsonify(jobId=job_id),200
             if job['status']!='failed':return jsonify(error='Only failed proposals can resume'),409
+            from amendment_ownership import lock_name
+            cur.execute('SELECT pg_try_advisory_xact_lock(hashtext(%s)) AS locked',(lock_name(job_id),))
+            if not cur.fetchone()['locked']:return jsonify(error='The previous worker is still releasing this proposal. Retry resume shortly.'),409
             saved=obj(job['input']);attempts=saved.get('resumeAttempts',0)
             if attempts>=2:return jsonify(error='Two resume attempts used. Inspect the failure and prepare a fresh comparison.'),409
             if not obj(job.get('result')).get('checkpoint'):return jsonify(error='No completed stage was saved. Prepare a new comparison.'),409

@@ -38,12 +38,12 @@ class CheckpointTests(unittest.TestCase):
         self.assertEqual(result['checkpoint']['review'],{'checks':[]})
 
 class ResumeRouteTests(unittest.TestCase):
-    def client(self,attempts=0,changed=False,other=False):
+    def client(self,attempts=0,changed=False,other=False,locked=True):
         from flask import Flask
         from research_amendments import create_blueprint
         baseline={'thesis':{'summary':'saved'}}
         cur=Mock();cur.fetchone.side_effect=[{'ticker':'UNH'},
-            {'ticker':'UNH','status':'failed','input':{'baseline':baseline,'filenames':['source.pdf'],'resumeAttempts':attempts},'result':{'checkpoint':{'key':'saved'}}},
+            {'ticker':'UNH','status':'failed','input':{'baseline':baseline,'filenames':['source.pdf'],'resumeAttempts':attempts},'result':{'checkpoint':{'key':'saved'}}},{'locked':locked},
             {'id':'other'} if other else None,{'analysis':{'thesis':{'summary':'changed'}} if changed else baseline}]
         @contextmanager
         def db(commit=False):yield None,cur
@@ -61,7 +61,7 @@ class ResumeRouteTests(unittest.TestCase):
             self.assertEqual(json.loads(update.args[1][0])['resumeAttempts'],1)
     def test_exhausted_changed_baseline_or_other_active_proposal_blocks(self):
         from unittest.mock import patch
-        for kwargs in ({'attempts':2},{'changed':True},{'other':True}):
+        for kwargs in ({'attempts':2},{'changed':True},{'other':True},{'locked':False}):
             client,cur=self.client(**kwargs)
             with patch('research_amendments.threading.Thread') as thread:
                 self.assertEqual(client.post('/api/research/amendment/job/resume',json={}).status_code,409)

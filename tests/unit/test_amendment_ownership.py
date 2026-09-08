@@ -69,3 +69,16 @@ class RecoveryTests(unittest.TestCase):
             with patch('research_amendments.threading.Thread') as thread:
                 r=client.post('/api/agent/recover-amendments')
                 self.assertEqual(r.json['failed'],['job']);thread.assert_not_called()
+
+    def test_live_owners_do_not_hide_abandoned_work_and_recovery_stays_bounded(self):
+        client,cur=self.client()
+        import copy
+        template=cur.fetchall.return_value[0]
+        cur.fetchall.return_value=[{**copy.deepcopy(template),'id':f'job-{i}'} for i in range(8)]
+        baseline={'analysis':template['input']['baseline']}
+        cur.fetchone.side_effect=[{'locked':False}]*3+[item for _ in range(3) for item in ({'locked':True},baseline)]
+        with patch('research_amendments.threading.Thread') as thread:
+            result=client.post('/api/agent/recover-amendments').json
+            self.assertEqual(result['recovered'],['job-3','job-4','job-5'])
+            self.assertEqual(thread.call_count,3)
+            self.assertIn('LIMIT 20',cur.execute.call_args_list[0].args[0])
