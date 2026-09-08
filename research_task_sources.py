@@ -112,7 +112,13 @@ def verify_public_sources(manager,row,fetcher=None):
 
 
 if __name__=='__main__':
-    parser=argparse.ArgumentParser();parser.add_argument('--request',required=True);parser.add_argument('--owner',required=True);args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument('--request',required=True);parser.add_argument('--owner',required=True);parser.add_argument('--supplement',help='JSON file containing a verified FDA/registry source record');args=parser.parse_args()
     c=Collector()
-    try:print(json.dumps(collect(RefreshManager(c),args.request,args.owner),indent=2))
+    try:
+        manager=RefreshManager(c)
+        if args.supplement:
+            from trusted_research_sources import register
+            result=register(manager,args.request,args.owner,json.loads(Path(args.supplement).read_text()))
+        else:result=collect(manager,args.request,args.owner)
+        print(json.dumps(result,indent=2))
     finally:c.db.close()

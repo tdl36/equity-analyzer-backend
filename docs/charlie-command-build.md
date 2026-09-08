@@ -28,4 +28,10 @@ Baseline T19: commit `698cd54`, frontend `2026-09-08T19`, 181 backend / 20 front
 
 T22 deployed backend `00e9a22`, Cloudflare `db33daf2-4424-4ed8-9260-ea0146a05e74`; agent heartbeat verified current (~27 seconds). T23 release verification pending.
 
-T23 deployed backend `01b1a95`, Cloudflare `42da20b3-59f9-486c-8f51-cba3709603b0`; restoration preview API verified 200 for DE. T24 deployment verification pending. Continue work through the existing heartbeat build extension until 05:40 UTC.
+T23 deployed backend `01b1a95`, Cloudflare `42da20b3-59f9-486c-8f51-cba3709603b0`; restoration preview API verified 200 for DE. T24 deployed and verified: backend `4ebc895`, Cloudflare `5acf5820-1443-4941-8281-96bcdd9e6f9c`; 235 backend/20 frontend tests, live API and asset hashes checked. Continue work through the existing heartbeat build extension until 05:40 UTC.
+
+## Trusted-source supplement increment
+
+The local managed worker now supports FDA HTML and ClinicalTrials.gov study JSON supplements through `research_task_sources.py --supplement RECORD.json`. Original bytes, source date, observed URL, company-relevance assessment and hashes join the existing production manifest gate. SEC remains the deterministic lookup; FDA/registry discovery and publication/relevance verification require the scheduled worker. No general internet/IR adapter or unattended clinical-event validation is claimed. Next: structured command-to-thesis proposal chaining and broader recovery.
+
+Supplement validation: all 241 safe backend tests passed, Mac Python 3.9 compile/import passed, and task diff checks passed. Local-worker-only change; frontend remains verified T24.

@@ -103,3 +103,9 @@ Command Charlie and favorites can request independent challenge and editorial re
 Recaps now receive selected saved thesis narrative fields, where available, in addition to any applicable analyst playbook. Oversized/missing baselines are disclosed explicitly. Non-earnings event recaps now include this baseline in their prompt, improving comparison against the prior investment view. Structured thesis application remains a separate decision.
 
 Validation: 235 backend unit tests, 20 frontend tests, production build and Mac Python coordination tests passed. No paid production research or collaboration run was launched solely for QA. T23 restoration preview returned live saved DE note data without restoring anything; backend health was verified at its release revision.
+
+## Trusted public-source supplements (local worker)
+
+Managed clinical/regulatory commands can supplement SEC and AlphaSense with verified FDA HTML pages and ClinicalTrials.gov registry originals. The worker searches bounded primary domains, checks issuer/sponsor relevance and dates, then registers the original through an allowlisted, size-limited adapter. Registry identity and last posted date must match the official API. Originals share the existing CATALYSTS folder, immutable hash receipt, lease fence and production manifest verification before synthesis. Redirects and arbitrary URLs are rejected. Registry changes are explicitly not represented as clinical readouts.
+
+This extends the local collection runbook; no frontend release is required. Discovery/relevance remains worker-reviewed, not a general internet search engine or independently validated clinical analysis. Safe regression coverage checks invalid URLs, dates, study identity, cancellation during retrieval, changed originals and manifest visibility. No paid research or live catalyst job was launched for QA.
