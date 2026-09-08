@@ -4,30 +4,34 @@ from command_thesis_bridge import file_hash
 
 def excerpts(get_db,docs,budget=120000):
     from recap_validation import catalog,audit_excerpts
-    parts=[];text_limits=[]
+    sources=[];issues=[];text_limits=[]
+    def add(part):
+        selected,limitations=catalog([part])
+        for source in selected:source['id']='s'+str(len(sources)+1);sources.append(source)
+        issues.extend(limitations)
     with get_db() as (_,cur):
         for d in docs:
             cur.execute('SELECT file_data,extracted_text FROM mp_documents WHERE id=%s',(d['id'],));row=cur.fetchone()
             if d.get('textSha256'):
                 text=(row or {}).get('extracted_text') or ''
                 if hashlib.sha256(text.encode()).hexdigest()!=d['textSha256']:raise ValueError('Saved meeting text changed before passage verification.')
-                parts.append({'name':d['filename'],'type':'text','content':text})
+                add({'name':d['filename'],'type':'text','content':text})
                 text_limits.append(d['filename']+': verified against saved extracted text; original-file passage verification unavailable.')
                 continue
             if not row or file_hash(row)!=d['sha256']:raise ValueError('Meeting source changed before passage verification.')
             raw=row['file_data']
-            if d['filename'].lower().endswith('.pdf'):parts.append({'name':d['filename'],'type':'pdf','data':raw})
+            if d['filename'].lower().endswith('.pdf'):add({'name':d['filename'],'type':'pdf','data':raw})
             elif d['filename'].lower().endswith(('.png','.jpg','.jpeg','.gif','.webp')):
                 text=row['extracted_text'] or ''
-                parts.append({'name':d['filename'],'type':'text','content':text})
+                add({'name':d['filename'],'type':'text','content':text})
                 text_limits.append(d['filename']+': image passage support is limited to saved extracted text.')
             else:
                 text=base64.b64decode(raw).decode('utf-8',errors='strict')
                 if d['filename'].lower().endswith(('.htm','.html')):
                     from bs4 import BeautifulSoup
                     text=BeautifulSoup(text,'html.parser').get_text(' ',strip=True)
-                parts.append({'name':d['filename'],'type':'text','content':text})
-    sources,issues=catalog(parts);selected,limits=audit_excerpts(sources,budget)
+                add({'name':d['filename'],'type':'text','content':text})
+    selected,limits=audit_excerpts(sources,budget)
     text_names={d['filename'] for d in docs if d.get('textSha256')}
     for source in selected:source['supportKind']='saved_text' if source['filename'] in text_names else 'original'
     return {'sources':selected,'limitations':issues+limits+text_limits}

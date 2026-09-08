@@ -48,6 +48,17 @@ try:
     assert execute(db,'fixture',resumed,True)
     assert execute(db,'fixture',lambda *_:errors.append('completed replay'),True) is False
     assert not errors,errors
+    import base64,hashlib
+    from manual_meeting_sources import freeze
+    from meeting_source_support import excerpts
+    with db(True) as (_,cur):
+        cur.execute('CREATE TABLE mp_documents(id int,meeting_id int,filename text,file_data text,extracted_text text,doc_type text)')
+        text='Original source evidence describing margin growth and financial performance.'
+        cur.execute('INSERT INTO mp_documents VALUES(1,1,%s,%s,%s,%s)',('source.txt',base64.b64encode(text.encode()).decode(),text,'report'))
+    frozen=freeze(db,1,[{'id':1}])
+    assert frozen[0]['sha256']==hashlib.sha256(text.encode()).hexdigest()
+    evidence=excerpts(db,frozen)
+    assert evidence['sources'][0]['pages'][0]['text']==text
     # Exercise the actual save function in the same isolated schema.
     import ast
     with db(True) as (_,cur):
@@ -67,7 +78,7 @@ try:
     with db() as (_,cur):
         cur.execute('SELECT count(*) AS n FROM mp_question_sets');assert cur.fetchone()['n']==1
         cur.execute('SELECT status FROM mp_past_questions');assert cur.fetchone()['status']=='planned'
-    print(json.dumps({'passed':['active worker excluded','partial checkpoint retained','owner rotated after interruption','stale owner write rejected','completed job not replayed','atomic save receipt prevents duplicate versions','generated questions marked planned'],'scope':'Disposable local PostgreSQL schema; no live research or model calls.'},indent=2))
+    print(json.dumps({'passed':['active worker excluded','partial checkpoint retained','owner rotated after interruption','stale owner write rejected','completed job not replayed','atomic save receipt prevents duplicate versions','generated questions marked planned','server source freezing and sequential extraction'],'scope':'Disposable local PostgreSQL schema; no live research or model calls.'},indent=2))
 finally:
     with admin.cursor() as cur:cur.execute(sql.SQL('DROP SCHEMA IF EXISTS {} CASCADE').format(sql.Identifier(schema)))
     admin.close()
