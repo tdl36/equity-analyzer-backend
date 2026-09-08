@@ -19,7 +19,7 @@ function ReportContent({value,renderHtml,depth=0}) {
 export function ResearchDesk({api,analyses,onCompany,onNavigate,renderHtml,renderRecapHtml}) {
   const [data,setData]=useState({runs:[],activities:[],failed:[],analysts:[],providers:{},capabilities:{maxConcurrency:1,maxBatchSize:12}});
   const [errors,setErrors]=useState([]),[loading,setLoading]=useState(true),[updated,setUpdated]=useState(null);
-  const [section,setSection]=useState('overview'),[days,setDays]=useState(90),[query,setQuery]=useState('');
+  const [section,setSection]=useState(()=>{try{if(sessionStorage.getItem('charlie.openMeetingCommand')){sessionStorage.removeItem('charlie.openMeetingCommand');return 'command';}}catch{}return 'overview';}),[days,setDays]=useState(90),[query,setQuery]=useState('');
   const [tickers,setTickers]=useState(''),[provider,setProvider]=useState('anthropic'),[model,setModel]=useState('');
   const [date,setDate]=useState(new Date().toLocaleDateString('en-CA')),[concurrency,setConcurrency]=useState(1);
   const [review,setReview]=useState(false),[busy,setBusy]=useState(false),[message,setMessage]=useState('');

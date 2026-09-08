@@ -372,6 +372,7 @@ def maintain_job_leases():
     requests.post(CHARLIE_API+'/api/agent/recover-jobs',headers=_agent_headers(),json={},timeout=15).raise_for_status()
     requests.post(CHARLIE_API+'/api/agent/recover-amendments',headers=_agent_headers(),json={},timeout=15).raise_for_status()
     requests.post(CHARLIE_API+'/api/agent/advance-command-proposals',headers=_agent_headers(),json={},timeout=45).raise_for_status()
+    requests.post(CHARLIE_API+'/api/agent/advance-meeting-commands',headers=_agent_headers(),json={},timeout=45).raise_for_status()
 
 
 def verify_job_claim(job_id):

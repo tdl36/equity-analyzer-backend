@@ -1,10 +1,11 @@
+import { MeetingCommand } from './meeting-command';
 import * as React from 'react';
 import { ThesisAmendments } from './thesis-amendments';
 var kinds = [['filing', '8-K and reaction'], ['earnings', 'Earnings review'], ['event', 'Event investigation']];
 var today = () => new Intl.DateTimeFormat('en-CA', {
   timeZone: 'America/New_York'
 }).format(new Date());
-export function CommandCharlie({
+function ResearchCommand({
   api,
   onNavigate,
   onSection
@@ -324,4 +325,17 @@ export function CommandCharlie({
   }, "Collection and recovery controls \u2192"), /*#__PURE__*/React.createElement("button", {
     onClick: () => onNavigate('analysts')
   }, "Open Analyst inbox \u2192"))));
+}
+export function CommandCharlie(props) {
+  var [intent, setIntent] = React.useState('meeting');
+  return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    className: "command-intents",
+    "aria-label": "Choose an assignment"
+  }, /*#__PURE__*/React.createElement("button", {
+    "aria-pressed": intent === 'meeting',
+    onClick: () => setIntent('meeting')
+  }, /*#__PURE__*/React.createElement("strong", null, "Prepare for a meeting"), /*#__PURE__*/React.createElement("span", null, "One company or a conference list \xB7 guided setup")), /*#__PURE__*/React.createElement("button", {
+    "aria-pressed": intent === 'research',
+    onClick: () => setIntent('research')
+  }, /*#__PURE__*/React.createElement("strong", null, "Investigate & update research"), /*#__PURE__*/React.createElement("span", null, "Filings, earnings, catalysts and saved favorites"))), intent === 'meeting' ? /*#__PURE__*/React.createElement(MeetingCommand, props) : /*#__PURE__*/React.createElement(ResearchCommand, props));
 }

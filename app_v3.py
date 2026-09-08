@@ -23299,6 +23299,10 @@ def _mp_analyze_one_doc(api_key, ticker, company_name, doc):
                     file_data = row['file_data']
         except Exception as e:
             print(f"pipeline: could not fetch file_data for doc {doc_id}: {e}")
+    if doc.get('sha256'):
+        from command_thesis_bridge import file_hash
+        if not file_data or file_hash({'file_data':file_data}) != doc['sha256']:
+            raise ValueError('Verified meeting original changed before analysis.')
     user_content = _mp_build_user_content(doc.get('filename', ''), file_data, doc.get('extractedText', ''))
     analysis, llm_result = _llm_json_call_self_heal(
         system=prompt, messages=[{"role": "user", "content": user_content}],
@@ -23342,7 +23346,7 @@ def _mp_synthesize_inline(api_key, ticker, company_name, sector, analyses, past_
     return synthesis, tokens
 
 
-def _mp_questions_inline(api_key, ticker, company_name, sector, synthesis, unresolved):
+def _mp_questions_inline(api_key, ticker, company_name, sector, synthesis, unresolved, source_names=None):
     unresolved_text = ""
     if unresolved:
         items = [f"- {q.get('question', '')} (from {q.get('meeting_date', '?')})" for q in unresolved[:15]]
@@ -23351,6 +23355,8 @@ def _mp_questions_inline(api_key, ticker, company_name, sector, synthesis, unres
         ticker=ticker, company_name=company_name, sector=sector,
         synthesis_text=json.dumps(synthesis, indent=2), unresolved_text=unresolved_text,
     )
+    if source_names is not None:
+        prompt += '\nEvery question must also include source_filenames: a nonempty JSON array of exact filenames from this verified register: '+json.dumps(source_names)+'. Never invent a source or page number. Clearly distinguish historical thesis assumptions from new source evidence.'
     topics, llm_result = _llm_json_call_self_heal(
         system=prompt, messages=[{"role": "user", "content": "Generate the meeting preparation questions."}],
         tier="standard", max_tokens=16384, api_key=api_key, label="Generate questions",
@@ -23359,9 +23365,14 @@ def _mp_questions_inline(api_key, ticker, company_name, sector, synthesis, unres
     return topics, tokens
 
 
-def _mp_save_results_inline(meeting_id, topics, synthesis_json, total_tokens, model):
+def _mp_save_results_inline(meeting_id, topics, synthesis_json, total_tokens, model, managed=False):
     """Mirror of /api/mp/save-results logic, inlined for use from the orchestrator."""
     with get_db(commit=True) as (_, cur):
+        if managed:
+            cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))', ('meeting-save:'+str(meeting_id),))
+            cur.execute('SELECT id,version FROM mp_question_sets WHERE meeting_id=%s ORDER BY version LIMIT 1', (meeting_id,))
+            existing=cur.fetchone()
+            if existing:return dict(existing)
         cur.execute('SELECT COALESCE(MAX(version), 0) + 1 AS next_ver FROM mp_question_sets WHERE meeting_id = %s', (meeting_id,))
         version = cur.fetchone()['next_ver']
         cur.execute('''
@@ -23384,14 +23395,14 @@ def _mp_save_results_inline(meeting_id, topics, synthesis_json, total_tokens, mo
                     if q_text:
                         cur.execute('''
                             INSERT INTO mp_past_questions (company_id, meeting_id, question, topic, status)
-                            VALUES (%s, %s, %s, %s, 'asked')
-                        ''', (company_id, meeting_id, q_text, topic_name))
+                            VALUES (%s, %s, %s, %s, %s)
+                        ''', (company_id, meeting_id, q_text, topic_name, 'planned' if managed else 'asked'))
     return qs
 
 
 def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sector,
                          docs, past_questions, timeframe, unresolved, model,
-                         resume_from=None):
+                         resume_from=None, managed=False):
     """Run the full MP pipeline server-side with stage-level checkpointing.
     After each stage succeeds, writes its output to mp_jobs.result so retries
     resume from the failure point instead of redoing successful work.
@@ -23519,7 +23530,8 @@ def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sect
             })
             try:
                 topics, q_tokens = _mp_questions_inline(
-                    api_key, ticker, company_name, sector, synthesis, unresolved
+                    api_key, ticker, company_name, sector, synthesis, unresolved,
+                    **({'source_names':[d['filename'] for d in docs]} if managed else {})
                 )
                 tokens_total += q_tokens
             except Exception as e:
@@ -23539,8 +23551,18 @@ def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sect
         else:
             print(f"[MP pipeline {job_id}] resume: topics already complete")
 
+        if managed:
+            from meeting_commands import validate_pack
+            try:
+                validate_pack(topics,docs)
+            except ValueError as exc:
+                _mp_update_job(job_id,status='failed',error=str(exc),result={
+                    'stage':'generating','failedAt':'generating','analyses':analyses,
+                    'synthesis':synthesis,'tokensTotal':tokens_total})
+                return
+
         # -------- Stage 4: save --------
-        qs = _mp_save_results_inline(meeting_id, topics, synthesis, tokens_total, model)
+        qs = _mp_save_results_inline(meeting_id, topics, synthesis, tokens_total, model, managed=managed)
 
         _mp_update_job(job_id, status='done', tokens_used=tokens_total, result={
             'stage': 'done',
@@ -23573,6 +23595,11 @@ def mp_run_pipeline():
             return jsonify({'error': 'meetingId required'}), 400
         if not docs:
             return jsonify({'error': 'docs (list of {id, filename, extractedText, docType}) required'}), 400
+
+        with get_db() as (_, cur):
+            cur.execute("SELECT id FROM mp_jobs WHERE stage='command_meeting' AND input->>'meetingId'=%s AND status<>'done' LIMIT 1", (str(meeting_id),))
+            if cur.fetchone():
+                return jsonify(error='This meeting pack is managed by Command Charlie. Follow its progress or use Retry meeting pack there.'),409
 
         ticker = data.get('ticker', '')
         company_name = data.get('companyName', ticker)
@@ -23629,6 +23656,8 @@ def mp_job_retry(job_id):
         inp = row['input'] if isinstance(row['input'], dict) else (json.loads(row['input']) if row['input'] else None)
         if not inp or not inp.get('meetingId') or not inp.get('docs'):
             return jsonify({'error': 'Job input missing — cannot retry (pre-checkpoint job)'}), 400
+        if inp.get('commandId'):
+            return jsonify(error='Use Retry meeting pack in Command Charlie for managed meeting jobs.'),409
         checkpoint = row['result'] if isinstance(row['result'], dict) else (json.loads(row['result']) if row['result'] else None)
 
         # Mark running again + clear previous error (keep result as checkpoint)
@@ -28820,6 +28849,19 @@ app.register_blueprint(command_source_import.create_blueprint(get_db))
 
 import research_commands
 app.register_blueprint(research_commands.create_blueprint(get_db))
+
+import meeting_commands
+
+def _run_command_meeting(job_id, inp, checkpoint):
+    key=os.environ.get('ANTHROPIC_API_KEY','')
+    if not key:raise ValueError('Server research key is missing.')
+    _run_mp_pipeline_job(job_id,key,inp['meetingId'],inp['ticker'],inp['companyName'],inp['sector'],
+        inp['docs'],inp['pastQuestions'],inp['timeframe'],inp['unresolvedQuestions'],
+        MEETING_PREP_DEFAULT_MODEL,resume_from=checkpoint,managed=True)
+
+app.register_blueprint(meeting_commands.create_blueprint(get_db,_run_command_meeting,
+    lambda:bool(os.environ.get('ANTHROPIC_API_KEY',''))))
+
 
 import research_history
 app.register_blueprint(research_history.create_blueprint(get_db))

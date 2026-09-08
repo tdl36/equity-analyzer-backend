@@ -76,7 +76,15 @@ export function ResearchDesk({
   var [errors, setErrors] = useState([]),
     [loading, setLoading] = useState(true),
     [updated, setUpdated] = useState(null);
-  var [section, setSection] = useState('overview'),
+  var [section, setSection] = useState(() => {
+      try {
+        if (sessionStorage.getItem('charlie.openMeetingCommand')) {
+          sessionStorage.removeItem('charlie.openMeetingCommand');
+          return 'command';
+        }
+      } catch {}
+      return 'overview';
+    }),
     [days, setDays] = useState(90),
     [query, setQuery] = useState('');
   var [tickers, setTickers] = useState(''),

@@ -135,3 +135,7 @@ The offline evaluator now includes frozen Microsoft FY2024/FY2025 annual revenue
 ## T29 Automatic proposal preparation after Command research
 
 An optional task/favorite preference now continues completed Command research into a thesis amendment proposal. The Mac heartbeat verifies the exact completed recap and all imported source hashes, then uses the original assignment and stable proposal ID for an idempotent comparison. Automatic sets must contain 1–10 verified originals with no blocked sources; existing proposals and missing server credentials block visibly. Proposal generation consumes model credits; application remains an explicit user decision. Task history exposes actual proposal state and dispatch blockers. Candidate checks rotate with a maximum of three per heartbeat. Validation: 282 backend tests, 20 frontend tests, build and Mac compile; no paid research run solely for QA.
+
+## T30 Guided meeting / conference workflow
+
+Implemented the guided 1–10-company selector, auto-written assignments, exact command-source-to-Meeting-Prep bridge, per-company progress, stage resumption, protected final-save receipt and registered question-source checks. See `docs/charlie-command-build.md` for bounds. Next: validate an actual authorized meeting assignment, then immediate worker dispatch, cache-first preparation, verified presentation/IR retrieval, per-company conference scheduling and measured quality/latency benchmarks. UI selection alone is not proof of collection or output quality.

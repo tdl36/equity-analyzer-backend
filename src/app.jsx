@@ -85,7 +85,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-09-08T29';
+        const BUILD_VERSION = '2026-09-08T30';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -10914,6 +10914,12 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 });
             }, []);
 
+            React.useEffect(() => {
+                const open = event => { if (Number.isInteger(event.detail?.id) && event.detail.id > 0) loadMpMeeting(event.detail.id); };
+                window.addEventListener('charlie-open-meeting', open);
+                return () => window.removeEventListener('charlie-open-meeting', open);
+            }, []);
+
             const loadMpMeeting = async (meetingId) => {
                 try {
                     const res = await fetch(`${API_URL}/api/mp/meetings/${meetingId}`);
@@ -21732,6 +21738,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     <Target className="w-6 h-6 text-amber-400" />
                                                     <h1 className="text-xl font-bold">Meeting Prep</h1>
                                                 </div>
+                                                <button onClick={() => { try { sessionStorage.setItem('charlie.openMeetingCommand','1'); } catch {} navigateWorkspace('desk'); }} className="px-4 py-2 border border-amber-500/40 rounded-lg text-sm">Source & prepare company packs</button>
                                                 <button onClick={() => setShowMpCreateForm(true)} className="px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded-lg text-sm font-medium transition-all">+ New Meeting</button>
                                             </div>
                                         </div>

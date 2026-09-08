@@ -36,7 +36,11 @@ def plan(data):
     if type(auto_proposal)!=bool:raise ValueError('Automatic proposal preference must be enabled or disabled.')
     days=data.get('days',1 if kind=='filing' else 7)
     if type(days)!=int or not 1<=days<=90:raise ValueError('Choose a lookback of 1–90 days.')
-    return {'ticker':ticker,'instruction':instruction.strip().replace('{ticker}',ticker).replace('{date}',until.isoformat()),
+    meeting = None
+    if data.get('meetingPrep') is not None:
+        from meeting_command_plan import meeting_options
+        meeting = meeting_options(data['meetingPrep'])
+    return {**({'meetingPrep':meeting} if meeting else {}), 'ticker':ticker,'instruction':instruction.strip().replace('{ticker}',ticker).replace('{date}',until.isoformat()),
             'kind':kind,'coordinated':coordinated,'autoProposal':auto_proposal,'since':(until-timedelta(days=days-1)).isoformat(),'until':until.isoformat(),
             'steps':['Verify dated primary sources','Collect AlphaSense reaction','Verify iCloud handoff','Run covering analyst recap']+(['Challenge the lead draft','Address each challenge','Run final selected-claim source review'] if coordinated else [])+(['Prepare a source-checked thesis proposal automatically'] if auto_proposal else [])+['Review proposed investment implications'],
             'sources':['SEC EDGAR 8-K and exhibits','AlphaSense press releases, broker reports and transcripts'],
