@@ -31,6 +31,8 @@ export function SourcePreferences({
     return d;
   };
   var reload = async () => {
+    setResolved(null);
+    setMessage('');
     try {
       var d = await call('/api/research/source-preferences');
       setSaved(d);
@@ -281,6 +283,7 @@ export function SourcePreferences({
     type: "button",
     onClick: async () => {
       try {
+        setError('');
         setResolved(await call('/api/research/source-preferences/resolve', {
           policy: draft,
           ticker: previewTicker,
