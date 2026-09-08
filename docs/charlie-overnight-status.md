@@ -30,3 +30,7 @@ The final recovery hardening scans up to 20 candidates so live jobs do not hide 
 6. Full thesis/event restoration, broader real-output benchmarks, independent analyst grading and comprehensive financial/claim reconciliation.
 
 Collection still depends on an available Mac, signed-in Chrome and the managed browser worker. Authentication is completed directly in AlphaSense. Evidence gaps, restricted files and retrieval failures remain visible; unavailable evidence is not treated as a successful empty search.
+
+## Subsequent morning build: T29
+
+Following the user’s request to keep building, Command Charlie and favorites gained an optional automatic thesis-proposal handoff. This implements the opt-in dispatch item above, subject to source verification, the 10-document comparison limit, available server credentials and no competing proposal. The live end-to-end validation gap remains. Latest checks: 282 backend tests, 20 frontend tests and build.

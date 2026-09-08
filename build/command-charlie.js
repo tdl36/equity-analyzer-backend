@@ -14,6 +14,7 @@ export function CommandCharlie({
     [kind, setKind] = React.useState('filing'),
     [days, setDays] = React.useState(1),
     [coordinated, setCoordinated] = React.useState(true),
+    [autoProposal, setAutoProposal] = React.useState(false),
     [instruction, setInstruction] = React.useState('');
   var [fav, setFav] = React.useState({
       favorites: [],
@@ -114,6 +115,7 @@ export function CommandCharlie({
     setKind(f.kind);
     setDays(f.days);
     setCoordinated(f.coordinated === true);
+    setAutoProposal(f.autoProposal === true);
   };
   var run = async () => {
     if (lock.current) return;
@@ -127,7 +129,8 @@ export function CommandCharlie({
       kind,
       days,
       instruction,
-      coordinated
+      coordinated,
+      autoProposal
     };
     pending.current = body;
     try {
@@ -162,7 +165,8 @@ export function CommandCharlie({
         instruction,
         kind,
         days,
-        coordinated
+        coordinated,
+        autoProposal
       };
       var values = remove ? fav.favorites.filter(f => f.id !== favId) : [...fav.favorites.filter(f => f.id !== row.id), row];
       var d = await json('/api/research/command-favorites', {
@@ -238,7 +242,13 @@ export function CommandCharlie({
     type: "checkbox",
     checked: coordinated,
     onChange: e => setCoordinated(e.target.checked)
-  }), /*#__PURE__*/React.createElement("span", null, "Include independent challenge and editorial revision ", /*#__PURE__*/React.createElement("small", null, "Up to two additional model passes. Final selected-claim source review follows."))), /*#__PURE__*/React.createElement("button", {
+  }), /*#__PURE__*/React.createElement("span", null, "Include independent challenge and editorial revision ", /*#__PURE__*/React.createElement("small", null, "Up to two additional model passes. Final selected-claim source review follows."))), /*#__PURE__*/React.createElement("label", {
+    className: "command-team-option"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: autoProposal,
+    onChange: e => setAutoProposal(e.target.checked)
+  }), /*#__PURE__*/React.createElement("span", null, "Prepare thesis updates automatically after the recap ", /*#__PURE__*/React.createElement("small", null, "Uses model credits for a source-checked proposal from up to 10 verified originals. You still choose which edits to apply. Requires the Mac heartbeat and a server research key."))), /*#__PURE__*/React.createElement("button", {
     className: "workspace-primary",
     disabled: !ticker.trim() || !instruction.trim(),
     onClick: run
@@ -300,7 +310,9 @@ export function CommandCharlie({
     className: "workspace-error"
   }, j.error), j.collection?.issue && /*#__PURE__*/React.createElement("p", {
     className: "workspace-error"
-  }, j.collection.issue), /*#__PURE__*/React.createElement("p", null, j.reports?.length ? j.reports.map(r => `${r.has_report ? 'Recap available' : r.status} (${r.id.slice(0, 8)})${r.recovery_attempts ? ` · Recovery ${r.recovery_attempts}/2` : ''}${!r.has_report && r.current_step ? ` · ${r.current_step}` : ''}`).join(' · ') : 'No linked analyst recap is available yet.'), j.reports?.some(r => r.roles?.length) && /*#__PURE__*/React.createElement("p", null, "Team stages: ", j.reports.flatMap(r => r.roles || []).map(r => `${r.role}: ${r.status.replaceAll('_', ' ')}`).join(' · ')), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Execution plan and limits"), /*#__PURE__*/React.createElement("ol", null, j.input.payload.steps.map(s => /*#__PURE__*/React.createElement("li", {
+  }, j.collection.issue), /*#__PURE__*/React.createElement("p", null, j.reports?.length ? j.reports.map(r => `${r.has_report ? 'Recap available' : r.status} (${r.id.slice(0, 8)})${r.recovery_attempts ? ` · Recovery ${r.recovery_attempts}/2` : ''}${!r.has_report && r.current_step ? ` · ${r.current_step}` : ''}`).join(' · ') : 'No linked analyst recap is available yet.'), j.reports?.some(r => r.roles?.length) && /*#__PURE__*/React.createElement("p", null, "Team stages: ", j.reports.flatMap(r => r.roles || []).map(r => `${r.role}: ${r.status.replaceAll('_', ' ')}`).join(' · ')), j.input.payload.autoProposal && /*#__PURE__*/React.createElement("p", {
+    role: "status"
+  }, "Thesis proposal: ", j.proposal ? j.proposal.status.replaceAll('_', ' ') : j.proposalAutomation?.result?.message || 'Waiting for completed research and verified sources.', j.proposal?.error ? ` · ${j.proposal.error}` : ''), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Execution plan and limits"), /*#__PURE__*/React.createElement("ol", null, j.input.payload.steps.map(s => /*#__PURE__*/React.createElement("li", {
     key: s
   }, s))), j.input.payload.limitations.map(s => /*#__PURE__*/React.createElement("p", {
     key: s

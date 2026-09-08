@@ -226,6 +226,11 @@ def create_blueprint(get_db, call_model, get_key, model_identity=lambda: 'defaul
         threading.Thread(target=run,args=(job_id,tk,baseline,names,key,instructions,source_hashes),daemon=True).start()
         return jsonify(jobId=job_id),202
 
+    @bp.route('/api/agent/advance-command-proposals',methods=['POST'])
+    def advance_commands():
+        from command_proposal_dispatch import advance
+        return jsonify(outcomes=advance(get_db,submit))
+
     @bp.route('/api/agent/recover-amendments',methods=['POST'])
     def recover():
         from amendment_ownership import lock_name
