@@ -162,7 +162,7 @@ export function ThesisAmendments({
     className: "workspace-notice"
   }, "The proposal below belongs to another comparison for ", ticker, ". Review or dismiss any active proposal before preparing one from this command."), active ? /*#__PURE__*/React.createElement("div", {
     className: "workspace-notice"
-  }, /*#__PURE__*/React.createElement("strong", null, job.status === 'awaiting_approval' ? 'Proposal ready for your review' : 'Comparing sources…'), job.status !== 'awaiting_approval' && /*#__PURE__*/React.createElement("p", null, "The proposal is saved as a job. If a server restart interrupts it, dismiss it and prepare a new comparison. No thesis edits have been applied."), /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("strong", null, job.status === 'awaiting_approval' ? 'Proposal ready for your review' : 'Comparing sources…'), job.status !== 'awaiting_approval' && /*#__PURE__*/React.createElement("p", null, job.recoverable === 'true' ? `Interrupted running proposals can recover when the Mac heartbeat and server research key are available. Recovery attempts: ${job.recovery_attempts || 0}/2. Queued jobs and provider errors need separate attention.` : 'The proposal is saved as a job. If a server restart interrupts it, dismiss it and prepare a new comparison.', " No thesis edits have been applied."), /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: () => mutate(`/api/research/amendment/${job.id}/decide`, {
       action: 'dismiss'

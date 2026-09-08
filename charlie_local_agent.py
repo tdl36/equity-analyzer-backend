@@ -370,6 +370,7 @@ def maintain_job_leases():
     claims=[{'id':jid,'claimToken':owner} for jid,owner in list(_job_claim_tokens.items()) if jid in _active_job_claims]
     requests.post(CHARLIE_API+'/api/agent/job-leases',headers=_agent_headers(),json={'jobs':claims[:20]},timeout=15).raise_for_status()
     requests.post(CHARLIE_API+'/api/agent/recover-jobs',headers=_agent_headers(),json={},timeout=15).raise_for_status()
+    requests.post(CHARLIE_API+'/api/agent/recover-amendments',headers=_agent_headers(),json={},timeout=15).raise_for_status()
 
 
 def verify_job_claim(job_id):
