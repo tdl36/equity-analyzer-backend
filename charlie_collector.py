@@ -553,7 +553,7 @@ def main():
         p.add_argument("run")
         if command in ("stage", "finish", "observe"):
             p.add_argument("--ticker", required=True)
-            p.add_argument("--kind", choices=KINDS + ("press-release",), required=True)
+            p.add_argument("--kind", choices=KINDS + ("press-release", "presentation"), required=True)
         if command == "stage":
             p.add_argument("--file", type=Path, required=True)
             p.add_argument("--url", required=True)

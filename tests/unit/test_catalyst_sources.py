@@ -63,3 +63,16 @@ class CatalystSourcesTests(unittest.TestCase):
         self.put('blank.txt', '   ')
         with self.assertRaisesRegex(ValueError, 'no extractable text'):
             read_sources(self.root)
+
+    def test_dispatch_receipt_skips_only_the_acknowledged_revision(self):
+        from catalyst_sources import record_dispatch, already_dispatched
+        self.put('source.txt')
+        rev=fingerprint(inventory(self.root)[0])
+        self.assertFalse(already_dispatched(self.root,rev))
+        record_dispatch(self.root,rev,'assignment')
+        self.assertTrue(already_dispatched(self.root,rev))
+        self.assertEqual(len(inventory(self.root)[0]),1)
+        self.put('new.txt')
+        self.assertFalse(already_dispatched(self.root,fingerprint(inventory(self.root)[0])))
+        (self.root/'.charlie-dispatch-receipt.json').write_text('broken')
+        with self.assertRaises(ValueError):already_dispatched(self.root,rev)

@@ -44,6 +44,32 @@ def fingerprint(files):
     return hashlib.sha256(json.dumps([(f['name'], f['size'], f['mtime_ns']) for f in files], separators=(',', ':')).encode()).hexdigest()
 
 
+def record_dispatch(folder, revision, request_id):
+    """Durable acknowledgement before a managed folder is exposed to the watcher."""
+    root = Path(folder)
+    receipt = root / '.charlie-dispatch-receipt.json'
+    temporary = root / '.charlie-dispatch-receipt.part'
+    if receipt.is_symlink() or temporary.is_symlink():
+        raise ValueError('Dispatch receipt cannot be a symlink')
+    temporary.write_text(json.dumps({'version': 1, 'fingerprint': revision, 'requestId': request_id}))
+    temporary.replace(receipt)
+
+
+def already_dispatched(folder, revision):
+    receipt = Path(folder) / '.charlie-dispatch-receipt.json'
+    if not receipt.exists():
+        return False
+    if receipt.is_symlink():
+        raise ValueError('Dispatch receipt cannot be a symlink')
+    try:
+        value = json.loads(receipt.read_text())
+        if value.get('version') != 1 or not value.get('requestId') or not value.get('fingerprint'):
+            raise ValueError('Incomplete dispatch receipt')
+    except (OSError, ValueError, AttributeError) as exc:
+        raise ValueError('Managed dispatch receipt needs inspection before automatic synthesis') from exc
+    return value['fingerprint'] == revision
+
+
 def read_sources(folder, excluded=()):
     """Read all selected sources, or fail before paid generation on partial input."""
     import base64

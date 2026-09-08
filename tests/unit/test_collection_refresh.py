@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,6 +14,34 @@ class RefreshTests(unittest.TestCase):
         self.c=Collector(root/'state',root/'STOCKS');self.addCleanup(self.c.db.close)
         self.clock=1788796800.;self.m=RefreshManager(self.c,lambda:self.clock)
         self.cfg={'ticker':'MDT','hours':24,'lookbackDays':7,'kinds':['transcript']}
+
+    def test_meeting_requests_include_presentations_and_repair_is_fenced(self):
+        payload={'ticker':'MDT','until':'2026-09-07','since':'2026-09-01',
+                 'kind':'event','instruction':'Prepare meeting questions',
+                 'meetingPrep':{'meetingDate':'2026-09-08'}}
+        result=self.m.apply_cloud_command('meeting',{'action':'research_task','payload':payload})
+        claim=self.m.claim()
+        self.assertEqual(result['refreshRequestId'],claim['id'])
+        self.assertIn('presentation',claim['config']['kinds'])
+        before=self.c.status(claim['run'])
+        # Simulate a request created before presentation support.
+        cfg=claim['config'];cfg['kinds'].remove('presentation')
+        self.c.db.execute('UPDATE refresh_requests SET config=? WHERE id=?',(json.dumps(cfg),claim['id']))
+        self.c.db.execute("DELETE FROM tasks WHERE run=? AND kind='presentation'",(claim['run'],))
+        self.c.db.commit()
+        with self.assertRaises(ValueError):self.m.include_meeting_presentations(claim['id'],'stale-owner')
+        self.m.include_meeting_presentations(claim['id'],claim['owner'])
+        self.m.include_meeting_presentations(claim['id'],claim['owner'])
+        after=self.c.status(claim['run'])
+        self.assertEqual(sum(t['kind']=='presentation' for t in after['tasks']),1)
+        self.assertEqual(before['since'],after['since'])
+        self.assertEqual(before['until_date'],after['until_date'])
+        self.m.cancel(claim['id'])
+        with self.assertRaises(ValueError):self.m.include_meeting_presentations(claim['id'],claim['owner'])
+
+    def test_nonmeeting_repair_rejected(self):
+        self.m.save(self.cfg);self.m.trigger('MDT');claim=self.m.claim()
+        with self.assertRaises(ValueError):self.m.include_meeting_presentations(claim['id'],claim['owner'])
 
     def test_cloud_trigger_receipt_prevents_replay_after_collection_completes(self):
         self.m.save(self.cfg)
@@ -143,3 +172,24 @@ class RefreshTests(unittest.TestCase):
         self.assertTrue((self.c.stocks/'ABBV').is_dir())
         self.assertEqual(result,self.m.apply_cloud_command('add-once',cmd))
         self.assertEqual(len(self.m.status()['requests']),1)
+
+    def test_managed_completion_keeps_pending_until_dispatch_and_records_receipt(self):
+        from unittest.mock import patch
+        from catalyst_sources import inventory, fingerprint, already_dispatched
+        payload={'ticker':'MDT','until':'2026-09-07','since':'2026-09-01',
+                 'kind':'event','instruction':'Prepare meeting questions',
+                 'meetingPrep':{'meetingDate':'2026-09-08'}}
+        self.m.apply_cloud_command('meeting-receipt',{'action':'research_task','payload':payload})
+        claim=self.m.claim();folder=self.c.catalysts/'MDT'/claim['config']['topic']
+        (folder/'source.htm').write_text('<html>Original evidence</html>')
+        for task in claim['collection']['tasks']:
+            self.c.observe(claim['run'],'MDT',task['kind'],'https://research.alpha-sense.com/search',0,'Verified empty search')
+            self.c.finish(claim['run'],'MDT',task['kind'],0)
+        def dispatch(cfg,docs):
+            self.assertTrue((folder/'.charlie-collection-pending').exists())
+            self.assertFalse((folder/'.charlie-dispatch-receipt.json').exists())
+            return {'activities':[{'activityId':'test'}]}
+        with patch('research_task_sources.verify_public_sources',return_value=1), patch('command_source_import.import_sources',return_value=1), patch.object(self.m,'dispatch',side_effect=dispatch):
+            self.m.complete(claim['id'],claim['owner'],fetcher=lambda tk:{'files':[]})
+        self.assertFalse((folder/'.charlie-collection-pending').exists())
+        self.assertTrue(already_dispatched(folder,fingerprint(inventory(folder)[0])))

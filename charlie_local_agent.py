@@ -1067,7 +1067,7 @@ def push_file_manifest() -> None:
     Includes both STOCKS/<ticker>/ (main + subfolders) AND CATALYSTS/<ticker>/<topic>/.
     Catalyst entries use folder labels of the form "Catalysts/<topic>" so the
     frontend Update Config modal can group + style them distinctly."""
-    SCAN_EXTS = {'.pdf', '.xlsx', '.xls', '.csv', '.txt', '.md', '.docx', '.pptx', '.png'}
+    SCAN_EXTS = {'.pdf', '.xlsx', '.xls', '.xlsm', '.csv', '.tsv', '.txt', '.md', '.docx', '.pptx', '.png', '.html', '.htm'}
     SKIP_DIRS = {'.icloud'}
     manifest: dict[str, list[dict]] = {}
 
@@ -3014,6 +3014,13 @@ def check_for_catalyst_auto_synth() -> None:
                 prior_job_id = entry.get('catalyst_job_id')
                 prior_routed = bool(entry.get('analyst_routed'))
                 fingerprint = catalyst_fingerprint(sources)
+                from catalyst_sources import already_dispatched
+                try:
+                    if already_dispatched(topic_dir, fingerprint):
+                        continue  # Managed assignment owns this exact source revision.
+                except ValueError as exc:
+                    log.warning(f"Catalyst dispatch attention {ticker}/{topic}: {exc}")
+                    continue
                 # Migrate existing inventories without re-firing every historical event.
                 if '@' in prior_fingerprint and prior_fired > 0:
                     prior_fingerprint = fingerprint
