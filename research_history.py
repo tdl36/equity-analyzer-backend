@@ -39,7 +39,7 @@ def records(groups):
 
 def create_blueprint(get_db):
     bp=Blueprint('research_history',__name__)
-    @bp.route('/api/research/history')
+    @bp.route('/api/research/workspace-history')
     def history():
         ticker=request.args.get('ticker','').strip().upper()
         if ticker and not re.fullmatch(r'[A-Z0-9.^-]{1,20}',ticker):return jsonify(error='Enter a valid ticker.'),400
@@ -55,7 +55,7 @@ def create_blueprint(get_db):
             for kind,sql in queries.items():
                 cur.execute(sql+where+' ORDER BY created_at DESC LIMIT 100',args)
                 groups[kind]=[dict(r) for r in cur.fetchall()]
-            cur.execute("SELECT id,ticker,stage AS title,status,created_at,updated_at,input->>'targetId' AS parent_id FROM mp_jobs WHERE stage IN ('research_edit','research_chat','evidence_amendment','collection_control')"+(' AND ticker=%s' if ticker else '')+' ORDER BY created_at DESC LIMIT 100',args)
+            cur.execute("SELECT id,ticker,stage AS title,status,created_at,updated_at,input->>'targetId' AS parent_id FROM mp_jobs WHERE stage IN ('research_edit','research_chat','evidence_amendment','collection_control','catalyst_signal')"+(' AND ticker=%s' if ticker else '')+' ORDER BY created_at DESC LIMIT 100',args)
             groups['job']=[dict(r) for r in cur.fetchall()]
             cur.execute("SELECT value,updated_at FROM app_settings WHERE key='collection_control_snapshot'")
             snapshot=cur.fetchone()

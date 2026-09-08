@@ -1033,6 +1033,11 @@ def sync_collection_control():
         result=requests.post(f"{CHARLIE_API}/api/agent/collection-control",headers=_agent_headers(),json={'snapshot':manager.status(),'receipts':receipts},timeout=15)
         result.raise_for_status()
     finally:collector.db.close()
+    # The backend rate-limits prospective event scans; this uses the existing Mac heartbeat.
+    try:
+        requests.post(f'{CHARLIE_API}/api/agent/catalyst-scan',headers=_agent_headers(),timeout=10)
+    except requests.RequestException:
+        log.debug('Catalyst scan request unavailable; next heartbeat will retry')
 
 
 def push_file_manifest() -> None:

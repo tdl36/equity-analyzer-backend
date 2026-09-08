@@ -28774,6 +28774,11 @@ _amendment_blueprint = research_amendments.create_blueprint(
     lambda key: _get_api_keys(key).get('anthropic', ''))
 app.register_blueprint(_amendment_blueprint)
 
+import catalyst_watch
+_catalyst_watch=catalyst_watch.CatalystWatch(app,get_db,
+    lambda: bool(CHARLIE_API_KEY) and hmac.compare_digest(request.headers.get('Authorization',''), 'ApiKey '+CHARLIE_API_KEY))
+app.register_blueprint(_catalyst_watch.blueprint)
+
 import research_history
 app.register_blueprint(research_history.create_blueprint(get_db))
 

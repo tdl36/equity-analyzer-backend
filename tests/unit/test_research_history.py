@@ -31,8 +31,8 @@ class HistoryTests(unittest.TestCase):
         @contextmanager
         def db():yield None,Cursor()
         app=Flask(__name__);app.register_blueprint(create_blueprint(db));client=app.test_client()
-        r=client.get('/api/research/history?ticker=de')
+        r=client.get('/api/research/workspace-history?ticker=de')
         self.assertEqual(r.status_code,200);self.assertEqual(r.json['records'][0]['ticker'],'DE')
         self.assertEqual(len(r.json['records']),1);self.assertEqual(r.headers['Cache-Control'],'no-store')
         self.assertTrue(all(args==('DE',) for sql,args in calls[:-1]))
-        before=len(calls);self.assertEqual(client.get('/api/research/history?ticker=DE%27').status_code,400);self.assertEqual(len(calls),before)
+        before=len(calls);self.assertEqual(client.get('/api/research/workspace-history?ticker=DE%27').status_code,400);self.assertEqual(len(calls),before)

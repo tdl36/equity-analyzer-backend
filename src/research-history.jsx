@@ -5,7 +5,7 @@ const labels={source:'Source imported',note:'Note version',review:'Review versio
 export function ResearchHistory({api,onSection,onNavigate}) {
   const [input,setInput]=React.useState(''),[ticker,setTicker]=React.useState(''),[kind,setKind]=React.useState('all'),[data,setData]=React.useState(null),[error,setError]=React.useState(''),[refresh,setRefresh]=React.useState(0);
   React.useEffect(()=>{let active=true;const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),20000);setData(null);setError('');
-    fetch(`${api}/api/research/history${ticker?`?ticker=${encodeURIComponent(ticker)}`:''}`,{signal:controller.signal}).then(async r=>{const d=await r.json();if(!r.ok)throw Error(d.error||`History unavailable (${r.status})`);if(active)setData(d);}).catch(e=>{if(active)setError(e.message);}).finally(()=>clearTimeout(timer));return()=>{active=false;controller.abort();clearTimeout(timer);};
+    fetch(`${api}/api/research/workspace-history${ticker?`?ticker=${encodeURIComponent(ticker)}`:''}`,{signal:controller.signal}).then(async r=>{const d=await r.json();if(!r.ok)throw Error(d.error||`History unavailable (${r.status})`);if(active)setData(d);}).catch(e=>{if(active)setError(e.message);}).finally(()=>clearTimeout(timer));return()=>{active=false;controller.abort();clearTimeout(timer);};
   },[api,ticker,refresh]);
   const rows=(data?.records||[]).filter(r=>kind==='all'||r.kind===kind);
   const open=r=>r.kind==='collection'||(r.kind==='job'&&r.title==='collection_control')?onSection('collection'):r.kind==='activity'?onNavigate('analysts'):r.kind==='note'?onNavigate('pipeline'):onSection('evidence');

@@ -26,7 +26,7 @@ export function ResearchHistory({
     var timer = setTimeout(() => controller.abort(), 20000);
     setData(null);
     setError('');
-    fetch(`${api}/api/research/history${ticker ? `?ticker=${encodeURIComponent(ticker)}` : ''}`, {
+    fetch(`${api}/api/research/workspace-history${ticker ? `?ticker=${encodeURIComponent(ticker)}` : ''}`, {
       signal: controller.signal
     }).then(async r => {
       var d = await r.json();

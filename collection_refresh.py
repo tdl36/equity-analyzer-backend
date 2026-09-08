@@ -7,7 +7,7 @@ import time
 import uuid
 from charlie_collector import Collector, DEFAULT_STATE, DEFAULT_STOCKS, ticker_name, now
 
-KINDS = ('transcript', 'broker-report')
+KINDS = ('transcript', 'broker-report', 'press-release')
 CADENCES = (0, 1, 4, 12, 24, 168)
 TERMINAL = ('complete', 'cancelled')
 
@@ -33,8 +33,8 @@ class RefreshManager:
         ticker = ticker_name(config.get('ticker', ''))
         cadence = config.get('hours', 0)
         days = config.get('lookbackDays', 30)
-        if type(cadence) is not int or cadence not in CADENCES:
-            raise ValueError('Choose manual, hourly, every 4/12 hours, daily or weekly')
+        if type(cadence) is not int or not 0 <= cadence <= 8760:
+            raise ValueError('Choose manual (0) or an interval of 1–8760 hours')
         if type(days) is not int or not 1 <= days <= 365:
             raise ValueError('Lookback must be 1–365 days')
         if not isinstance(config.get('enabled', True), bool):
@@ -56,10 +56,12 @@ class RefreshManager:
         else:
             topic = ''
             ticker_folder = self.c.stocks / ticker
-        if not ticker_folder.is_dir() or ticker_folder.is_symlink():
+        create_folder=config.get('createFolder',False)
+        if type(create_folder)!=bool:raise ValueError('createFolder must be true or false')
+        if ticker_folder.is_symlink() or (not ticker_folder.is_dir() and not (create_folder and not ticker_folder.exists() and ticker_folder.parent.is_dir())):
             raise ValueError(f'Existing iCloud ticker folder required: {ticker}')
         return dict(ticker=ticker, hours=cadence, lookbackDays=days,
-                    enabled=config.get('enabled', True), instructions=instructions.strip(),
+                    enabled=config.get('enabled', True), createFolder=create_folder, instructions=instructions.strip(),
                     kinds=list(dict.fromkeys(kinds)), workflow=workflow, topic=topic)
 
     def save(self, config):
@@ -68,6 +70,9 @@ class RefreshManager:
 
     def _save(self, config):
         cfg = self.validate(config)
+        if cfg['createFolder']:
+            root=self.c.catalysts if cfg['workflow']=='recap' else self.c.stocks
+            (root/cfg['ticker']).mkdir(exist_ok=True)
         old = self.db.execute('SELECT * FROM refresh_policies WHERE ticker=?', (cfg['ticker'],)).fetchone()
         due = self.clock() + cfg['hours'] * 3600 if cfg['enabled'] and cfg['hours'] else None
         if old and json.loads(old['config']).get('hours') == cfg['hours'] and json.loads(old['config']).get('enabled') == cfg['enabled']:
@@ -88,6 +93,10 @@ class RefreshManager:
                 if old['input']!=encoded:raise ValueError('Cloud command ID conflict')
                 return json.loads(old['result'])
             if value['action']=='save':result={'policy':self._save(value['payload'])}
+            elif value['action']=='save_trigger':
+                cfg=self._save(value['payload'])
+                row=self.db.execute('SELECT * FROM refresh_policies WHERE ticker=?',(cfg['ticker'],)).fetchone()
+                result={'policy':cfg,'refreshRequestId':self._enqueue(row,manual=True)}
             elif value['action']=='save_batch':
                 configs=[self.validate(p) for p in value['payload']['policies']]
                 result={'policies':[self._save(p) for p in configs]}
@@ -98,21 +107,36 @@ class RefreshManager:
                 if value['action']=='cancel':self._cancel(rid)
                 else:self._retry(rid)
                 result={'refreshRequestId':rid,'action':value['action']}
+            elif value['action']=='event_refresh':
+                cfg=value['payload']['policy'];event=value['payload']['event']
+                existing=self.db.execute("SELECT id FROM refresh_requests WHERE json_extract(config,'$.eventId')=?",(event['id'],)).fetchone()
+                if existing:result={'refreshRequestId':existing['id']}
+                else:
+                    checked=self.validate(cfg)
+                    if checked.get('createFolder'):(self.c.catalysts/checked['ticker']).mkdir(exist_ok=True)
+                    if not self.db.execute('SELECT ticker FROM refresh_policies WHERE ticker=?',(cfg['ticker'],)).fetchone():raise ValueError('Save a coverage policy before event-triggered collection')
+                    result={'refreshRequestId':self._enqueue({'config':json.dumps(cfg),'last_success':None,'ticker':cfg['ticker']},event=event)}
             elif value['action']=='trigger':
                 ticker=ticker_name(value['payload']['ticker'])
                 row=self.db.execute('SELECT * FROM refresh_policies WHERE ticker=?',(ticker,)).fetchone()
-                if not row or not json.loads(row['config'])['enabled']:raise ValueError('Save and enable this ticker policy first')
-                result={'refreshRequestId':self._enqueue(row)}
+                if not row:raise ValueError('Save this ticker policy first')
+                result={'refreshRequestId':self._enqueue(row,manual=True)}
             else:raise ValueError('Unsupported cloud command')
             self.db.execute('INSERT INTO cloud_control_receipts VALUES(?,?,?)',(command_id,encoded,json.dumps(result)))
             return result
 
-    def _enqueue(self, row):
+    def _enqueue(self, row, manual=False, event=None):
         # Caller holds the collector transaction/operation lock.
         existing = self.db.execute("SELECT id FROM refresh_requests WHERE ticker=? AND status NOT IN ('complete','cancelled') ORDER BY created LIMIT 1", (row['ticker'],)).fetchone()
-        if existing:
+        if existing and not event:
+            if manual:
+                prior=self.db.execute('SELECT config FROM refresh_requests WHERE id=?',(existing['id'],)).fetchone()
+                content=json.loads(prior['config']);content['manual']=True
+                self.db.execute('UPDATE refresh_requests SET config=? WHERE id=?',(json.dumps(content),existing['id']))
             return existing['id']
         cfg = self.validate(json.loads(row['config']))
+        if manual:cfg['manual']=True
+        if event:cfg.update(eventId=event['id'],eventReason=event['reason'],eventUrl=event['url'])
         today = datetime.fromtimestamp(self.clock(), timezone.utc).date()
         since = today - timedelta(days=cfg['lookbackDays'] - 1)
         if row['last_success']:
@@ -129,8 +153,9 @@ class RefreshManager:
         self.db.executemany('INSERT INTO tasks(run,ticker,kind) VALUES(?,?,?)', [(run,cfg['ticker'],k) for k in cfg['kinds']])
         self.db.execute("INSERT INTO refresh_requests(id,ticker,run,config,status,created) VALUES(?,?,?,?,'queued',?)",
                         (request_id,cfg['ticker'],run,json.dumps(cfg),self.clock()))
-        self.db.execute('UPDATE refresh_policies SET next_due=? WHERE ticker=?',
-                        (self.clock()+cfg['hours']*3600 if cfg['hours'] else None,cfg['ticker']))
+        if not manual and not event:
+            self.db.execute('UPDATE refresh_policies SET next_due=? WHERE ticker=?',
+                            (self.clock()+cfg['hours']*3600 if cfg['hours'] else None,cfg['ticker']))
         self.c.event(run, 'refresh_queued', requestId=request_id, workflow=cfg['workflow'])
         return request_id
 
@@ -139,9 +164,7 @@ class RefreshManager:
             row = self.db.execute('SELECT * FROM refresh_policies WHERE ticker=?', (ticker_name(ticker),)).fetchone()
             if not row:
                 raise ValueError('Save ticker settings before refreshing')
-            if not json.loads(row['config'])['enabled']:
-                raise ValueError('Resume this ticker policy before refreshing')
-            return self._enqueue(row)
+            return self._enqueue(row,manual=True)
 
     def due(self):
         with self.c.lock():
@@ -177,7 +200,7 @@ class RefreshManager:
                 return None
             row = self.db.execute("""SELECT q.* FROM refresh_requests q JOIN refresh_policies p ON p.ticker=q.ticker
                 WHERE q.status IN ('queued','collecting','verifying') AND (q.lease_until IS NULL OR q.lease_until<=?)
-                AND json_extract(p.config,'$.enabled')=1 ORDER BY q.created LIMIT 1""", (stamp,)).fetchone()
+                AND (json_extract(p.config,'$.enabled')=1 OR json_extract(q.config,'$.manual')=1) ORDER BY q.created LIMIT 1""", (stamp,)).fetchone()
             if not row:
                 return None
             owner = str(uuid.uuid4())
@@ -246,7 +269,8 @@ class RefreshManager:
             updated = self.db.execute("UPDATE refresh_requests SET status='complete',lease_until=NULL,result=?,issue=NULL WHERE id=? AND owner=? AND lease_until>?", (json.dumps(result),request_id,owner,self.clock()))
             if not updated.rowcount:
                 raise ValueError('Refresh was cancelled or reassigned during verification')
-            self.db.execute('UPDATE refresh_policies SET last_success=? WHERE ticker=?', (collection['until_date'],row['ticker']))
+            if not cfg.get('eventId'):
+                self.db.execute('UPDATE refresh_policies SET last_success=? WHERE ticker=?', (collection['until_date'],row['ticker']))
         return result
 
     def dispatch(self, cfg, documents):

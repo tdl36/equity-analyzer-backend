@@ -1,3 +1,4 @@
+import { CatalystWatch } from './catalyst-watch';
 import { parseTickers } from './research-desk-model.mjs';
 import * as React from 'react';
 var blank = {
@@ -21,7 +22,8 @@ export function CollectionCloud({
     [message, setMessage] = React.useState(''),
     [busy, setBusy] = React.useState(false),
     [uncertain, setUncertain] = React.useState(false);
-  var [bulk, setBulk] = React.useState('');
+  var [bulk, setBulk] = React.useState(''),
+    [custom, setCustom] = React.useState(false);
   var parsed = parseTickers(bulk);
   var alive = React.useRef(true),
     lock = React.useRef(false),
@@ -142,15 +144,28 @@ export function CollectionCloud({
     }),
     placeholder: "MDT"
   })), /*#__PURE__*/React.createElement("label", null, "Frequency", /*#__PURE__*/React.createElement("select", {
-    value: cfg.hours,
+    value: custom ? 'custom' : cfg.hours,
+    onChange: e => {
+      setCustom(e.target.value === 'custom');
+      setCfg({
+        ...cfg,
+        hours: e.target.value === 'custom' ? cfg.hours || 168 : Number(e.target.value)
+      });
+    }
+  }, [[0, 'Manual'], [1, 'Hourly'], [4, 'Every 4 hours'], [12, 'Every 12 hours'], [24, 'Daily'], [168, 'Weekly'], [336, 'Biweekly (14 days)'], [720, 'Monthly (30 days)'], ['custom', 'Custom interval']].map(([v, l]) => /*#__PURE__*/React.createElement("option", {
+    key: v,
+    value: v
+  }, l)))), custom && /*#__PURE__*/React.createElement("label", null, "Custom interval (hours)", /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    min: "1",
+    max: "8760",
+    step: "1",
+    value: cfg.hours || 1,
     onChange: e => setCfg({
       ...cfg,
       hours: Number(e.target.value)
     })
-  }, [[0, 'Manual'], [1, 'Hourly'], [4, 'Every 4 hours'], [12, 'Every 12 hours'], [24, 'Daily'], [168, 'Weekly']].map(([v, l]) => /*#__PURE__*/React.createElement("option", {
-    key: v,
-    value: v
-  }, l)))), /*#__PURE__*/React.createElement("label", null, "Initial lookback days", /*#__PURE__*/React.createElement("input", {
+  })), /*#__PURE__*/React.createElement("label", null, "Initial lookback days", /*#__PURE__*/React.createElement("input", {
     type: "number",
     min: "1",
     max: "365",
@@ -181,7 +196,7 @@ export function CollectionCloud({
     })
   })), /*#__PURE__*/React.createElement("div", {
     className: "desk-filter collection-checks"
-  }, [['transcript', 'Event transcripts'], ['broker-report', 'Broker reports']].map(([k, l]) => /*#__PURE__*/React.createElement("label", {
+  }, [['transcript', 'Event transcripts'], ['broker-report', 'Broker reports'], ['press-release', 'Press releases']].map(([k, l]) => /*#__PURE__*/React.createElement("label", {
     key: k
   }, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
@@ -206,11 +221,21 @@ export function CollectionCloud({
       instructions: e.target.value
     }),
     placeholder: "Prioritize earnings transcripts and material guidance changes\u2026"
-  })), /*#__PURE__*/React.createElement("button", {
+  })), /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: !!cfg.createFolder,
+    onChange: e => setCfg({
+      ...cfg,
+      createFolder: e.target.checked
+    })
+  }), "Create the ticker folder if it does not exist"), /*#__PURE__*/React.createElement("button", {
     className: "workspace-primary",
     disabled: !cfg.ticker || !cfg.kinds.length,
     onClick: () => send('save', cfg)
-  }, "Save policy on Mac")), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Configure a coverage group"), /*#__PURE__*/React.createElement("p", {
+  }, "Save policy on Mac"), /*#__PURE__*/React.createElement("button", {
+    disabled: !cfg.ticker || !cfg.kinds.length,
+    onClick: () => send('save_trigger', cfg)
+  }, "Save & refresh now")), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Configure a coverage group"), /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
   }, "Apply the frequency, source types and workflow above to multiple tickers. Existing policies for these tickers will be replaced. The Mac validates every destination before saving the group; one invalid destination rejects the whole group."), /*#__PURE__*/React.createElement("fieldset", {
     disabled: busy || uncertain,
@@ -221,7 +246,7 @@ export function CollectionCloud({
     onChange: e => setBulk(e.target.value),
     placeholder: "MDT, ABT, DE"
   })), /*#__PURE__*/React.createElement("button", {
-    onClick: () => setBulk([...new Set(coverage.map(a => a.ticker).filter(Boolean))].join(', '))
+    onClick: () => setBulk([...new Set([...coverage.map(a => a.ticker), ...policies.map(p => p.ticker)].filter(Boolean))].join(', '))
   }, "Load covered companies"), /*#__PURE__*/React.createElement("p", null, parsed.tickers.length, "/100 tickers \xB7 ", cfg.hours ? `Every ${cfg.hours} hours` : 'Manual refresh', " \xB7 ", cfg.kinds.join(', '), " \xB7 ", cfg.workflow === 'recap' ? `CATALYSTS / ticker / ${cfg.topic}` : 'STOCKS / ticker'), parsed.invalid.length > 0 && /*#__PURE__*/React.createElement("p", {
     role: "alert"
   }, "Invalid tickers: ", parsed.invalid.join(', ')), /*#__PURE__*/React.createElement("button", {
@@ -241,16 +266,28 @@ export function CollectionCloud({
     disabled: busy
   }, "Check status"), /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
-  }, "The existing ticker folder must exist in iCloud. A recap event subfolder may be created. Source restrictions and duplicate checks remain enforced. Research generation uses configured API credits; drafts still require review."), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Coverage setup gaps"), /*#__PURE__*/React.createElement("p", null, "Covered companies without a managed policy: ", coverage.filter(a => !policies.some(p => p.ticker === a.ticker)).map(a => a.ticker).join(', ') || 'None'), /*#__PURE__*/React.createElement("p", null, "Mac-reported STOCKS folders: ", snapshot?.folders?.stocks?.join(', ') || 'Not yet reported'), /*#__PURE__*/React.createElement("p", null, "Mac-reported CATALYSTS folders: ", snapshot?.folders?.catalysts?.join(', ') || 'Not yet reported')), /*#__PURE__*/React.createElement("h3", null, "Policies reported by Mac \xB7 ", policies.length), policies.map(p => /*#__PURE__*/React.createElement("div", {
+  }, "The existing ticker folder must exist in iCloud. A recap event subfolder may be created. Source restrictions and duplicate checks remain enforced. Research generation uses configured API credits; drafts still require review."), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Coverage setup gaps"), /*#__PURE__*/React.createElement("p", null, "Covered companies without a managed policy: ", coverage.filter(a => !policies.some(p => p.ticker === a.ticker)).map(a => a.ticker).join(', ') || 'None'), /*#__PURE__*/React.createElement("p", null, "Mac-reported STOCKS folders: ", snapshot?.folders?.stocks?.join(', ') || 'Not yet reported'), /*#__PURE__*/React.createElement("p", null, "Mac-reported CATALYSTS folders: ", snapshot?.folders?.catalysts?.join(', ') || 'Not yet reported')), /*#__PURE__*/React.createElement(CatalystWatch, {
+    api: api,
+    policies: policies
+  }), /*#__PURE__*/React.createElement("h3", null, "Policies reported by Mac \xB7 ", policies.length), policies.map(p => /*#__PURE__*/React.createElement("div", {
     className: "desk-row",
     key: p.ticker
   }, /*#__PURE__*/React.createElement("button", {
     disabled: busy || uncertain,
-    onClick: () => setCfg({
-      ...p
+    onClick: () => {
+      setCfg({
+        ...p
+      });
+      setCustom(![0, 1, 4, 12, 24, 168, 336, 720].includes(p.hours));
+    }
+  }, /*#__PURE__*/React.createElement("strong", null, p.ticker), /*#__PURE__*/React.createElement("span", null, p.enabled ? p.hours ? `Every ${p.hours} hours` : 'Manual' : 'Paused', " \xB7 ", p.workflow === 'recap' ? `CATALYSTS / ${p.topic}` : 'STOCKS')), /*#__PURE__*/React.createElement("small", null, "Last verified: ", p.lastSuccess || 'Never', " \xB7 Next due: ", p.nextDue ? new Date(p.nextDue * 1000).toLocaleString() : 'Manual / paused'), /*#__PURE__*/React.createElement("button", {
+    disabled: busy || uncertain,
+    onClick: () => send('save', {
+      ...p,
+      enabled: !p.enabled
     })
-  }, /*#__PURE__*/React.createElement("strong", null, p.ticker), /*#__PURE__*/React.createElement("span", null, p.enabled ? p.hours ? `Every ${p.hours} hours` : 'Manual' : 'Paused', " \xB7 ", p.workflow === 'recap' ? `CATALYSTS / ${p.topic}` : 'STOCKS')), /*#__PURE__*/React.createElement("small", null, "Last verified: ", p.lastSuccess || 'Never'), /*#__PURE__*/React.createElement("button", {
-    disabled: busy || uncertain || !p.enabled,
+  }, p.enabled ? 'Pause schedule' : 'Resume schedule'), /*#__PURE__*/React.createElement("button", {
+    disabled: busy || uncertain,
     onClick: () => send('trigger', {
       ticker: p.ticker
     })
