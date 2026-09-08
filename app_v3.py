@@ -3131,6 +3131,7 @@ def init_db():
                     completed_at TIMESTAMP
                 )
             ''')
+            cur.execute('ALTER TABLE research_pipeline_jobs ADD COLUMN IF NOT EXISTS agent_owner TEXT, ADD COLUMN IF NOT EXISTS agent_lease_until TIMESTAMP, ADD COLUMN IF NOT EXISTS agent_managed BOOLEAN DEFAULT FALSE, ADD COLUMN IF NOT EXISTS recovery_attempts INTEGER DEFAULT 0')
             cur.execute('CREATE INDEX IF NOT EXISTS idx_pipeline_jobs_batch ON research_pipeline_jobs(batch_id)')
             cur.execute('CREATE INDEX IF NOT EXISTS idx_pipeline_jobs_ticker ON research_pipeline_jobs(ticker)')
             cur.execute('CREATE INDEX IF NOT EXISTS idx_pipeline_jobs_status ON research_pipeline_jobs(status)')
@@ -3280,7 +3281,7 @@ def init_db():
             # Clean up stale pipeline jobs (stuck running for > 30 min)
             cur.execute("""
                 UPDATE research_pipeline_jobs SET status = 'failed', error = 'Job timed out', updated_at = NOW()
-                WHERE status IN ('queued', 'running') AND created_at < NOW() - INTERVAL '30 minutes'
+                WHERE status='running' AND agent_managed IS NOT TRUE AND updated_at < NOW() - INTERVAL '30 minutes'
             """)
 
             # Fan out: any analyst_activities row stuck on 'running' for > 30 min
@@ -3293,12 +3294,13 @@ def init_db():
                        error = COALESCE(error, '') || CASE WHEN COALESCE(error, '') = '' THEN '' ELSE ' | ' END || 'Stranded running >30min — auto-failed by reaper',
                        updated_at = NOW()
                  WHERE status = 'running' AND updated_at < NOW() - INTERVAL '30 minutes'
+                   AND NOT EXISTS (SELECT 1 FROM research_pipeline_jobs p WHERE p.id=analyst_activities.output->>'catalystJobId' AND p.agent_managed=TRUE AND p.status IN ('queued','running'))
             """)
 
             # Clean up old completed/failed pipeline jobs (older than 7 days)
             cur.execute("""
                 DELETE FROM research_pipeline_jobs
-                WHERE status IN ('complete', 'failed') AND created_at < NOW() - INTERVAL '7 days'
+                WHERE status IN ('complete', 'failed') AND agent_managed IS NOT TRUE AND created_at < NOW() - INTERVAL '7 days'
             """)
 
             # Ticker Settings table (custom sector assignments, etc.)
@@ -19784,6 +19786,13 @@ def agent_update_job():
     if not job_id:
         return jsonify({'error': 'No jobId provided'}), 400
 
+    import pipeline_recovery
+    managed = pipeline_recovery.update_managed(get_db, data)
+    if managed is not None:
+        if managed[1] == 200 and status == 'failed':
+            _maybe_link_activity_to_job_result(job_id, status, {'error': error})
+        return jsonify(managed[0]), managed[1]
+
     kwargs = {}
     if status:
         kwargs['status'] = status
@@ -28784,6 +28793,12 @@ import catalyst_watch
 _catalyst_watch=catalyst_watch.CatalystWatch(app,get_db,
     lambda: bool(CHARLIE_API_KEY) and hmac.compare_digest(request.headers.get('Authorization',''), 'ApiKey '+CHARLIE_API_KEY))
 app.register_blueprint(_catalyst_watch.blueprint)
+
+import pipeline_recovery
+app.register_blueprint(pipeline_recovery.create_blueprint(get_db))
+
+import pipeline_delivery
+app.register_blueprint(pipeline_delivery.create_blueprint(get_db))
 
 import research_commands
 app.register_blueprint(research_commands.create_blueprint(get_db))

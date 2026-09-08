@@ -4,7 +4,6 @@ import json
 import re
 import uuid
 from datetime import date, timedelta
-from flask import Blueprint, jsonify, request
 
 KEY='research_command_favorites_v1'
 DEFAULTS=[
@@ -59,6 +58,7 @@ def revision(value):return hashlib.sha256(json.dumps(value,sort_keys=True).encod
 
 
 def create_blueprint(get_db):
+    from flask import Blueprint, jsonify, request
     bp=Blueprint('research_commands',__name__)
     @bp.route('/api/research/command-favorites',methods=['GET','PUT'])
     def saved():
@@ -102,6 +102,7 @@ def create_blueprint(get_db):
                 rid=result.get('refreshRequestId');j['collection']=next((r for r in snapshot.get('requests',[]) if r['id']==rid),None)
                 topic=result.get('topic');j['reports']=[]
                 if topic:
-                    cur.execute("SELECT id,status,activity_type,updated_at,(output->>'synthesisMarkdown' IS NOT NULL) AS has_report FROM analyst_activities WHERE ticker=%s AND input->>'topic'=%s ORDER BY created_at DESC LIMIT 10",(j['ticker'],topic));j['reports']=[dict(r) for r in cur.fetchall()]
-        r=jsonify(jobs=jobs,macReportedAt=str(row['updated_at']) if row else None);r.headers['Cache-Control']='no-store';return r
+                    cur.execute("SELECT a.id,a.status,a.activity_type,a.updated_at,(a.output->>'synthesisMarkdown' IS NOT NULL) AS has_report,p.recovery_attempts,p.current_step FROM analyst_activities a LEFT JOIN research_pipeline_jobs p ON p.id=(a.output->>'catalystJobId') WHERE a.ticker=%s AND a.input->>'topic'=%s ORDER BY a.created_at DESC LIMIT 10",(j['ticker'],topic));j['reports']=[dict(r) for r in cur.fetchall()]
+        from research_history import timestamp
+        r=jsonify(jobs=jobs,macReportedAt=timestamp(row['updated_at']) if row else None);r.headers['Cache-Control']='no-store';return r
     return bp

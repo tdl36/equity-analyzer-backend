@@ -361,30 +361,48 @@ def poll_for_jobs() -> list[dict]:
     return []
 
 
+_job_claim_tokens = {}
+_active_job_claims = set()
+
+
+def maintain_job_leases():
+    """Renew active workers before recovering expired synthesis claims."""
+    claims=[{'id':jid,'claimToken':owner} for jid,owner in list(_job_claim_tokens.items()) if jid in _active_job_claims]
+    requests.post(CHARLIE_API+'/api/agent/job-leases',headers=_agent_headers(),json={'jobs':claims[:20]},timeout=15).raise_for_status()
+    requests.post(CHARLIE_API+'/api/agent/recover-jobs',headers=_agent_headers(),json={},timeout=15).raise_for_status()
+
+
+def verify_job_claim(job_id):
+    owner=_job_claim_tokens.get(job_id)
+    if not owner:raise ValueError('Worker claim is missing; refusing a new provider call')
+    r=requests.post(CHARLIE_API+'/api/agent/job-leases',headers=_agent_headers(),json={'jobs':[{'id':job_id,'claimToken':owner}]},timeout=15)
+    r.raise_for_status()
+    if job_id not in r.json().get('active',[]):raise ValueError('Worker claim was revoked; refusing a new provider call')
+
+
 def claim_job(job_id: str) -> bool:
     """Attempt to claim a job via the agent claim endpoint.
 
-    Falls back to direct progress update if the agent endpoint does not exist.
+    A missing or uncertain claim never starts research.
     """
     try:
+        owner=_job_claim_tokens.setdefault(job_id,str(uuid.uuid4()))
         resp = requests.post(
             f"{CHARLIE_API}/api/agent/claim",
-            json={"jobId": job_id, "agentId": _agent_id()},
+            json={"jobId": job_id, "agentId": _agent_id(), "claimToken":owner},
             headers=_agent_headers(),
             timeout=15,
         )
         if resp.status_code == 200:
+            _active_job_claims.add(job_id)
             return True
-        if resp.status_code != 404:
-            return False
-        # Fallback only for older backends without the claim endpoint.
-        log.debug(f"Claim endpoint returned {resp.status_code}, falling back to progress update")
+        if resp.status_code in (400,404,409):_job_claim_tokens.pop(job_id,None)
+        return False
     except Exception as e:
         log.debug(f"Claim endpoint unavailable ({e}); leaving job unclaimed")
         return False
 
-    # Fallback: update job directly
-    return _update_job_progress_fallback(job_id, "running", "Claimed by local agent", 1)
+    return False
 
 
 def update_job_progress(
@@ -399,6 +417,7 @@ def update_job_progress(
     try:
         payload = {
                 "jobId": job_id,
+                "claimToken": _job_claim_tokens.get(job_id),
                 "status": status,
                 "currentStep": step,
                 "progress": progress,
@@ -3432,6 +3451,7 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
             return text_prompt(parts, prompt_text, char_cap)
 
         def _call_recap_llm(provider, model, system_prompt, parts, prompt_text, anthropic_blocks, max_tokens=24576):
+            verify_job_claim(job_id)
             """Provider-aware single LLM call for the recap pipeline.
             anthropic path uses native PDF blocks; openai/google extract text
             via PyPDF2 then call the respective SDK with a single text prompt.
@@ -3628,6 +3648,7 @@ Write the complete, updated synthesis report now. ZERO firm names, ALL first per
         from recap_validation import audit as audit_recap
         try:
             def audit_call(prompt, tokens):
+                verify_job_claim(job_id)
                 with client.messages.stream(model="claude-haiku-4-5-20251001", max_tokens=tokens,
                     messages=[{"role":"user", "content":prompt}]) as stream:
                     response = stream.get_final_message()
@@ -3654,7 +3675,7 @@ Write the complete, updated synthesis report now. ZERO firm names, ALL first per
             'processingRecovery': {'resumedBatches':resumed_batches,'totalBatches':total_batches},
         }
 
-        outbox_path = catalyst_delivery.save_result(job_id, result_data)
+        outbox_path = catalyst_delivery.save_result(job_id, result_data, claim_token=_job_claim_tokens.get(job_id))
         checkpoint.finish()
         if catalyst_delivery.deliver(outbox_path, CHARLIE_API, _agent_headers()):
             notify(f"*Charlie Agent:* {ticker}/{topic} synthesis complete\n{file_count} docs, {len(markdown):,} chars")
@@ -3986,6 +4007,7 @@ def main() -> None:
             try:
                 push_heartbeat()
                 catalyst_delivery.flush(CHARLIE_API, _agent_headers())
+                maintain_job_leases()
             except Exception as e:
                 log.debug(f"Heartbeat thread error: {e}")
             # Sleep in small chunks so shutdown is responsive
@@ -4092,6 +4114,8 @@ def main() -> None:
                                 log.error(f"Synthesis thread crashed for {jid[:12]}: {e}")
                             finally:
                                 _synthesis_in_flight.discard(jid)
+                                _job_claim_tokens.pop(jid,None)
+                                _active_job_claims.discard(jid)
                         threading.Thread(
                             target=_synth_wrapper,
                             args=(job, job_id),
@@ -4114,6 +4138,8 @@ def main() -> None:
                         process_earnings_fetch_job(job)
                     else:
                         process_note_job(job, api_key)
+                    _job_claim_tokens.pop(job_id,None)
+                    _active_job_claims.discard(job_id)
                     break  # only one non-synthesis job per tick
 
                 if synth_dispatched > 0:
@@ -4141,21 +4167,19 @@ def main() -> None:
 
         shutdown.wait(timeout=POLL_INTERVAL)
 
-    # Graceful shutdown: any synthesis daemon thread was killed when the main
-    # process exits. Flag those jobs as failed on the backend NOW so the
-    # frontend Inbox sees a recoverable state immediately, instead of sitting
-    # in zombie 'running' until the 30-min reaper runs (Tony's MRK incident).
+    # Leave interrupted managed synthesis eligible for bounded lease recovery.
+    # Completed batch checkpoints and durable receipts remain on disk.
     if _synthesis_in_flight:
-        log.info(f"Marking {len(_synthesis_in_flight)} in-flight synthesis job(s) as failed before exit")
+        log.info(f"Leaving {len(_synthesis_in_flight)} synthesis job(s) eligible for lease recovery")
         for jid in list(_synthesis_in_flight):
             try:
                 requests.post(
                     f"{CHARLIE_API}/api/agent/update-job",
                     json={
                         'jobId': jid,
-                        'status': 'failed',
-                        'currentStep': 'Killed by agent restart',
-                        'error': 'Synthesis aborted by agent shutdown — re-run from inbox',
+                        'claimToken': _job_claim_tokens.get(jid),
+                        'status': 'running',
+                        'currentStep': 'Agent stopping; automatic recovery after lease expiry',
                     },
                     headers=_agent_headers(),
                     timeout=5,

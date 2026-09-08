@@ -197,7 +197,7 @@ export function CommandCharlie({
     value: instruction,
     onChange: e => setInstruction(e.target.value),
     placeholder: "Review UNH\u2019s 8-K today and sell-side reaction. Explain what changed and propose updates to my thesis."
-  })), /*#__PURE__*/React.createElement("p", null, "SEC EDGAR filings + AlphaSense press releases, broker research and transcripts \u2192 CATALYSTS event folder \u2192 covering analyst recap. Missing sources and retrieval failures are reported explicitly. Thesis changes are proposed for your review, not automatically applied."), /*#__PURE__*/React.createElement("button", {
+  })), instruction && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, "Assignment preview:"), " ", instruction.replace(/\{ticker\}/g, ticker.trim() || '[choose ticker]').replace(/\{date\}/g, date || '[choose date]')), /*#__PURE__*/React.createElement("p", null, "SEC EDGAR filings + AlphaSense press releases, broker research and transcripts \u2192 CATALYSTS event folder \u2192 covering analyst recap. Missing sources and retrieval failures are reported explicitly. Thesis changes are proposed for your review, not automatically applied."), /*#__PURE__*/React.createElement("button", {
     className: "workspace-primary",
     disabled: !ticker.trim() || !instruction.trim(),
     onClick: run
@@ -231,7 +231,7 @@ export function CommandCharlie({
     className: "workspace-section-heading"
   }, /*#__PURE__*/React.createElement("h3", null, "Task history"), /*#__PURE__*/React.createElement("button", {
     onClick: refresh
-  }, "Refresh tasks")), /*#__PURE__*/React.createElement("p", null, "Mac last reported: ", macDate ? new Date(macDate).toLocaleString() : 'not yet available', ". Tasks wait for an available, signed-in browser worker."), !jobs.length && /*#__PURE__*/React.createElement("p", null, "No research assignments have been submitted yet."), jobs.map(j => /*#__PURE__*/React.createElement("article", {
+  }, "Refresh tasks")), /*#__PURE__*/React.createElement("p", null, "Mac last reported: ", macDate ? new Date(macDate).toLocaleString() : 'not yet available', ". Tasks wait for an available, signed-in browser worker."), !jobs.length && /*#__PURE__*/React.createElement("p", null, error ? 'Task history is unavailable. Retry when the connection returns.' : 'No research assignments have been submitted yet.'), jobs.map(j => /*#__PURE__*/React.createElement("article", {
     className: "amendment-card",
     key: j.id
   }, /*#__PURE__*/React.createElement("div", {
@@ -242,7 +242,7 @@ export function CommandCharlie({
     className: "workspace-error"
   }, j.error), j.collection?.issue && /*#__PURE__*/React.createElement("p", {
     className: "workspace-error"
-  }, j.collection.issue), /*#__PURE__*/React.createElement("p", null, j.reports?.length ? j.reports.map(r => `${r.has_report ? 'Recap available' : r.status} (${r.id.slice(0, 8)})`).join(' · ') : 'No linked analyst recap is available yet.'), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Execution plan and limits"), /*#__PURE__*/React.createElement("ol", null, j.input.payload.steps.map(s => /*#__PURE__*/React.createElement("li", {
+  }, j.collection.issue), /*#__PURE__*/React.createElement("p", null, j.reports?.length ? j.reports.map(r => `${r.has_report ? 'Recap available' : r.status} (${r.id.slice(0, 8)})${r.recovery_attempts ? ` · Recovery ${r.recovery_attempts}/2` : ''}${!r.has_report && r.current_step ? ` · ${r.current_step}` : ''}`).join(' · ') : 'No linked analyst recap is available yet.'), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Execution plan and limits"), /*#__PURE__*/React.createElement("ol", null, j.input.payload.steps.map(s => /*#__PURE__*/React.createElement("li", {
     key: s
   }, s))), j.input.payload.limitations.map(s => /*#__PURE__*/React.createElement("p", {
     key: s

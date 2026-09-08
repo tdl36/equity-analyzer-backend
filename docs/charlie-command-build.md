@@ -2,15 +2,17 @@
 
 User authorized implementation, safe testing, commits and deployment. Temporary build follow-up ends September 8, 2026 at 05:40 UTC; existing collection heartbeat then returns to collection only. Preserve saved research and unrelated dirty files. Never run pytest: repository fixtures truncate the database. No paid research runs solely for QA.
 
-## Current increment (not yet released)
+## Released / current increment
 
-`research_commands.py`, `research_task_sources.py`, `src/command-charlie.jsx`, collection refresh/source gating and Research desk navigation implement explicit ticker/date research assignments and cloud favorites. Commands are durable collection-control jobs; browser downloads and SEC sources must verify before covering-analyst recap dispatch. Original weekly policy stays unchanged. Thesis application remains a review action.
+T20 command/favorites was committed as `e8d2ebc` and deployed (Cloudflare `0b5e99ae-6683-472d-979b-fdd69515e231`). Backend health and command/favorite routes returned 200, and command cards were inspected in a fresh browser tab. SEC lookup succeeded, zero matching UNH filings for Sep 1–7. No paid research launched.
 
-Before releasing: finish strict SEC collector/checkpoints and worker runbook integration; test malformed requests, idempotency, lease revocation, date/source coverage, source gates and manifest checks; inspect UI; bump all three frontend release identifiers; build and deploy explicit task files. Do not describe generic internet expansion as implemented: current automated public source adapter is SEC EDGAR only.
+T21 adds the previously missing recap delivery endpoint, atomic receipts and bounded lease recovery for new Mac recap jobs. 208 backend/20 frontend tests and build pass. Confirm its deployment health before proceeding. Mac helpers must not import Flask at module scope: system Python 3.9 lacks Flask. Command validation and result hashing now defer Flask imports to blueprint creation.
+
+Current automated public-source adapter is SEC EDGAR only; wider internet retrieval and automatic structured thesis proposal chaining remain open.
 
 ## Next increments
 
-1. Interrupted-job recovery with durable checkpoints, bounded retries and protection against duplicate uncertain paid dispatches.
+1. Extend interrupted-job recovery beyond new Mac recap jobs to server thesis/edit/chat workers, using durable checkpoints and bounded retries.
 2. OCR for scanned source documents, preserving originals/page provenance and reporting extraction coverage.
 3. Broader immutable version restoration with preview and conflict checks.
 4. Real public-source annotated quality benchmarks; disclose coverage and failure thresholds.
