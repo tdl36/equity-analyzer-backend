@@ -1,3 +1,4 @@
+import {MyWork} from './my-work';
 import {CommandCharlie} from './command-charlie';
 import {ResearchHistory} from './research-history';
 import {PortfolioPriorities} from './portfolio-priorities';
@@ -19,7 +20,7 @@ function ReportContent({value,renderHtml,depth=0}) {
 export function ResearchDesk({api,analyses,onCompany,onNavigate,renderHtml,renderRecapHtml}) {
   const [data,setData]=useState({runs:[],activities:[],failed:[],analysts:[],providers:{},capabilities:{maxConcurrency:1,maxBatchSize:12}});
   const [errors,setErrors]=useState([]),[loading,setLoading]=useState(true),[updated,setUpdated]=useState(null);
-  const [section,setSection]=useState(()=>{try{if(sessionStorage.getItem('charlie.openMeetingCommand')){sessionStorage.removeItem('charlie.openMeetingCommand');return 'command';}}catch{}return 'overview';}),[days,setDays]=useState(90),[query,setQuery]=useState('');
+  const [section,setSection]=useState(()=>{try{if(sessionStorage.getItem('charlie.openMeetingCommand')){sessionStorage.removeItem('charlie.openMeetingCommand');return 'command';}}catch{}return 'work';}),[days,setDays]=useState(90),[query,setQuery]=useState('');
   const [tickers,setTickers]=useState(''),[provider,setProvider]=useState('anthropic'),[model,setModel]=useState('');
   const [date,setDate]=useState(new Date().toLocaleDateString('en-CA')),[concurrency,setConcurrency]=useState(1);
   const [review,setReview]=useState(false),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
@@ -52,11 +53,12 @@ export function ResearchDesk({api,analyses,onCompany,onNavigate,renderHtml,rende
   };
   return <div className="workspace-page research-desk">
     <div className="desk-heading"><div><p className="workspace-eyebrow">CHARLIE / RESEARCH OPERATIONS</p><h1>Your research desk.</h1><p className="workspace-lead">Prioritize the next question. Coordinate the team. Review the evidence.</p></div><button className="workspace-primary" onClick={()=>setSection('launch')}>Prepare a research batch ↗</button></div>
-    <div className="desk-toolbar"><nav aria-label="Research desk sections">{[['overview','Overview'],['command','Command Charlie'],['collection','Collection'],['history','Research history'],['priorities','Portfolio priorities'],['earnings','Earnings & evidence'],['evidence','Evidence & changes'],['inbox','Review inbox'],['queue','Coverage queue'],['launch','Batch planner'],['runs','Runs'],['playbooks','Playbooks']].map(([id,label])=><button key={id} aria-current={section===id?'page':undefined} onClick={()=>setSection(id)}>{label}</button>)}</nav><button onClick={refresh} disabled={loading}>{loading?'Loading…':'Refresh'}{updated&&<small>Updated {updated.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</small>}</button></div>
+    <div className="desk-toolbar"><nav aria-label="Research desk sections">{[['work','My work'],['overview','Overview'],['command','Command Charlie'],['collection','Collection'],['history','Research history'],['priorities','Portfolio priorities'],['earnings','Earnings & evidence'],['evidence','Evidence & changes'],['inbox','Review inbox'],['queue','Coverage queue'],['launch','Batch planner'],['runs','Runs'],['playbooks','Playbooks']].map(([id,label])=><button key={id} aria-current={section===id?'page':undefined} onClick={()=>setSection(id)}>{label}</button>)}</nav><button onClick={refresh} disabled={loading}>{loading?'Loading…':'Refresh'}{updated&&<small>Updated {updated.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</small>}</button></div>
     {errors.length>0&&<div className="workspace-error" role="alert">Some live data could not be refreshed. Previously loaded records may be out of date.<details><summary>Connection details</summary>{errors.map(e=><p key={e}>{e}</p>)}</details><button onClick={refresh}>Retry</button></div>}
     {message&&<p className="workspace-notice" role="status">{message}</p>}
     {section==='overview'&&['127.0.0.1','localhost'].includes(window.location.hostname)&&<section className="workspace-panel"><div className="workspace-section-heading"><div><p className="workspace-eyebrow">SOURCE OPERATIONS</p><h2>AlphaSense collection</h2></div><a className="workspace-link-row" href="http://127.0.0.1:8766/" target="_blank" rel="noopener noreferrer">Open collection monitor ↗</a></div><p className="desk-explainer">Manage ticker refresh schedules, verified originals, iCloud handoffs, and source restrictions. The monitor runs on this Mac.</p></section>}
     {loading?<p className="workspace-empty" role="status">Loading research activity…</p>:<>
+    {section==='work'&&<MyWork api={api} activities={[...data.activities,...data.failed]} onNavigate={onNavigate} onSection={setSection} renderHtml={renderRecapHtml||renderHtml}/>}
     {section==='command'&&<CommandCharlie api={api} onNavigate={onNavigate} onSection={setSection}/>}
     {section==='history'&&<ResearchHistory api={api} onSection={setSection} onNavigate={onNavigate}/>}
     {section==='earnings'&&<EarningsWorkspace api={api} onRefresh={refresh} activities={[...data.activities,...data.failed]} onNavigate={onNavigate} onCompany={onCompany} renderHtml={renderRecapHtml||renderHtml}/>}

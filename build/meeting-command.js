@@ -25,6 +25,7 @@ export function MeetingCommand({
     [days, setDays] = React.useState(90),
     [focuses, setFocuses] = React.useState(['thesis', 'earnings', 'followups']),
     [note, setNote] = React.useState('');
+  var [reuseJob, setReuseJob] = React.useState('');
   var [format, setFormat] = React.useState('conference'),
     [audience, setAudience] = React.useState('specialist');
   var formatLabels = {
@@ -72,7 +73,7 @@ export function MeetingCommand({
     setTickers(d.tickers);
     setJobs(d.jobs);
     setError('');
-    if (pending.current && d.jobs.some(j => j.batch_id === pending.current.requestId)) {
+    if (pending.current && d.jobs.some(j => j.batch_id === pending.current.requestId || j.id === pending.current.requestId)) {
       clear();
       setMessage('Your meeting assignment is recorded. Follow each company below.');
     }
@@ -106,14 +107,15 @@ export function MeetingCommand({
       note,
       format,
       audience,
-      sourcePolicy
+      sourcePolicy,
+      reuseJob
     };
     pending.current = body;
     try {
       sessionStorage.setItem(pendingKey, JSON.stringify(body));
     } catch {}
     try {
-      var d = await json('/api/research/meeting-commands', {
+      var d = await json(body.reuseJob ? `/api/research/meeting-commands/${body.reuseJob}/reuse` : '/api/research/meeting-commands', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -121,7 +123,7 @@ export function MeetingCommand({
         body: JSON.stringify(body)
       });
       clear();
-      setMessage(`Queued ${d.commands.length} meeting pack${d.commands.length === 1 ? '' : 's'}. You can leave this page; progress is saved.`);
+      setMessage(`Queued ${d.commands?.length || 1} meeting pack${!d.commands || d.commands.length === 1 ? '' : 's'}. You can leave this page; progress is saved.`);
       await refresh();
     } catch (e) {
       setError(e.message);
@@ -165,7 +167,21 @@ export function MeetingCommand({
     className: "meeting-command-form"
   }, /*#__PURE__*/React.createElement("div", {
     className: "meeting-command-step"
-  }, /*#__PURE__*/React.createElement("h3", null, /*#__PURE__*/React.createElement("span", null, "1"), " Choose companies"), /*#__PURE__*/React.createElement("label", null, "Find a covered company", /*#__PURE__*/React.createElement("input", {
+  }, /*#__PURE__*/React.createElement("h3", null, /*#__PURE__*/React.createElement("span", null, "1"), " Choose companies"), /*#__PURE__*/React.createElement("label", null, "Source collection", /*#__PURE__*/React.createElement("select", {
+    value: reuseJob,
+    onChange: e => {
+      setReuseJob(e.target.value);
+      var j = jobs.find(j => j.job_id === e.target.value);
+      if (j) setSelected([j.ticker]);
+    }
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "Find fresh sources in AlphaSense"), jobs.filter(j => j.prep_status === 'done').map(j => /*#__PURE__*/React.createElement("option", {
+    key: j.job_id,
+    value: j.job_id
+  }, "Reuse ", j.ticker, " pack \xB7 ", j.options?.meetingPrep?.meetingDate, " \xB7 sources through ", j.options?.until)))), reuseJob && /*#__PURE__*/React.createElement("p", {
+    className: "desk-explainer"
+  }, "Uses this pack\u2019s verified originals and original source preferences. No new search or Mac connection needed. Creates a separate meeting; original pack stays saved. Cached analyses are reused when eligible; generation uses model credits."), /*#__PURE__*/React.createElement("label", null, "Find a covered company", /*#__PURE__*/React.createElement("input", {
     type: "search",
     value: query,
     onChange: e => setQuery(e.target.value),
@@ -178,12 +194,13 @@ export function MeetingCommand({
   }, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
     checked: selected.includes(t),
-    disabled: selected.length >= 10 && !selected.includes(t),
+    disabled: !!reuseJob || selected.length >= 10 && !selected.includes(t),
     onChange: () => toggle(t, selected, setSelected)
   }), t))), !tickers.length && /*#__PURE__*/React.createElement("p", null, "Coverage loads from your analyst team. Assign a covering analyst before requesting a pack."), selected.length > 0 && /*#__PURE__*/React.createElement("p", {
     className: "meeting-selection"
   }, "Selected: ", /*#__PURE__*/React.createElement("strong", null, selected.join(' · ')), " ", /*#__PURE__*/React.createElement("button", {
     type: "button",
+    disabled: !!reuseJob,
     onClick: () => setSelected([])
   }, "Clear selection"))), /*#__PURE__*/React.createElement("div", {
     className: "meeting-command-step"
@@ -194,6 +211,7 @@ export function MeetingCommand({
     value: meetingDate,
     onChange: e => setMeetingDate(e.target.value)
   })), /*#__PURE__*/React.createElement("label", null, "Source lookback", /*#__PURE__*/React.createElement("select", {
+    disabled: !!reuseJob,
     value: days,
     onChange: e => setDays(Number(e.target.value))
   }, /*#__PURE__*/React.createElement("option", {
@@ -236,9 +254,9 @@ export function MeetingCommand({
     className: "meeting-command-preview"
   }, /*#__PURE__*/React.createElement("p", {
     className: "workspace-eyebrow"
-  }, "YOUR ASSIGNMENT"), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, formatLabels[format]), " \xB7 ", audience === 'generalist' ? 'Generalist PM audience' : 'Specialist audience'), /*#__PURE__*/React.createElement("p", null, "Prepare ", selected.length ? selected.join(', ') : 'your selected companies', " for ", meetingDate || 'your meeting date', ", using sources from the past ", days, " days. Seek earnings transcripts, presentations and sell-side reaction. Explain changes and prepare prioritized questions with source references and follow-ups."), /*#__PURE__*/React.createElement("p", {
+  }, "YOUR ASSIGNMENT"), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, formatLabels[format]), " \xB7 ", audience === 'generalist' ? 'Generalist PM audience' : 'Specialist audience'), /*#__PURE__*/React.createElement("p", null, "Prepare ", selected.length ? selected.join(', ') : 'your selected companies', " for ", meetingDate || 'your meeting date', ". ", reuseJob ? `Reuse verified originals from ${jobs.find(j => j.job_id === reuseJob)?.options?.since || 'the saved window'} through ${jobs.find(j => j.job_id === reuseJob)?.options?.until || 'the saved cutoff'}.` : `Seek earnings transcripts, presentations and sell-side reaction from the past ${days} days.`, " Prepare prioritized questions with source references and follow-ups."), /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
-  }, "Collection \u2192 verified originals \u2192 analyst brief \u2192 meeting questions. Uses model credits for each company. Your Mac, signed-in AlphaSense browser and server research key are required. Browser pickup is scheduled, not instant; missing presentations or other sources are disclosed."), /*#__PURE__*/React.createElement("button", {
+  }, reuseJob ? 'Verified saved originals → background meeting preparation. No fresh collection; source dates and coverage remain those of the selected pack.' : 'Collection → verified originals → analyst brief → meeting questions. Requires your Mac and signed-in AlphaSense browser; collection pickup is scheduled.', " Uses model credits; missing evidence is disclosed."), /*#__PURE__*/React.createElement("button", {
     className: "workspace-primary",
     type: "button",
     disabled: !sourcePolicy || !selected.length || !meetingDate,
@@ -286,6 +304,7 @@ export function MeetingCommand({
     disabled: busy || uncertain,
     onClick: () => {
       setSelected([j.ticker]);
+      setReuseJob(j.prep_status === 'done' ? j.job_id : '');
       setFormat('one_on_one');
       setAudience(j.options?.meetingPrep?.audience || 'specialist');
       setMessage('Choose the format and audience above, then submit a new brief. Your existing pack stays saved.');

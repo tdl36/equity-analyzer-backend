@@ -162,6 +162,17 @@ def create_blueprint(get_db,run,has_key):
             rows=[dict(r) for r in cur.fetchall()]
         return jsonify(tickers=tickers,jobs=rows)
 
+    @bp.route('/api/research/meeting-commands/<jid>/reuse',methods=['POST'])
+    def reuse(jid):
+        try:
+            uuid.UUID(jid)
+            if not has_key():return jsonify(error='Server research key is missing.'),400
+            from meeting_reuse import create
+            result=create(get_db,jid,request.get_json() or {})
+        except (ValueError,TypeError,AttributeError,KeyError) as exc:return jsonify(error=str(exc)),400
+        threading.Thread(target=drain,args=(get_db,run),daemon=True).start()
+        return jsonify(result),202
+
     @bp.route('/api/research/meeting-commands/<jid>/revision',methods=['POST'])
     def revise(jid):
         try:
