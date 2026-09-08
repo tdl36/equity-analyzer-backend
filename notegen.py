@@ -179,8 +179,10 @@ def extract_pdf_text(doc, max_tokens=MAX_TOKENS_PER_BATCH // 2):
     try:
         from PyPDF2 import PdfReader
         data = base64.b64decode(raw) if isinstance(raw, str) else raw
-        reader = PdfReader(io.BytesIO(data))
-        pages = [(p.extract_text() or "") for p in reader.pages]
+        from pdf_text import extract,render
+        extraction=extract(data)
+        pages=[render({'pages':[page]}) for page in extraction['pages']]
+        doc['textExtraction']={'ocrPages':extraction['ocrPages'],'limitations':extraction['limitations']}
     except Exception:
         return ""
 

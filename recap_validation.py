@@ -21,13 +21,10 @@ def catalog(parts):
         pages = []
         if p['type'] == 'pdf':
             try:
-                from PyPDF2 import PdfReader
-                reader = PdfReader(io.BytesIO(base64.b64decode(p['data'])))
-                for i,page in enumerate(reader.pages,1):
-                    try: text = page.extract_text() or ''
-                    except Exception: text = ''
-                    pages.append({'page':i,'text':text})
-                    if not text.strip(): issues.append(f"{p['name']}: page {i} could not be checked as text")
+                from pdf_text import extract
+                extraction=extract(base64.b64decode(p['data']),strict=False)
+                pages=[{'page':row['page'],'text':row['text']} for row in extraction['pages']]
+                issues.extend(f"{p['name']}: {issue}" for issue in extraction['limitations'])
             except Exception: issues.append(f"{p['name']}: PDF extraction unavailable")
         else: pages = [{'page':None,'text':p.get('content','')}]
         digest = hashlib.sha256(json.dumps(pages,sort_keys=True).encode()).hexdigest()

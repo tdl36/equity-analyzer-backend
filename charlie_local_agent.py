@@ -3436,7 +3436,6 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
             log.info(f"Sources exceed context limit (~{est_tokens:,} est tokens). Splitting into {total_batches} batches.")
 
         from recap_evidence import snapshot as recap_snapshot, text_prompt, text_batches, native_batches, IMPACT_INSTRUCTION
-        evidence_snapshot = recap_snapshot(source_parts, recap_provider)
         # Validate every text-only batch before starting any paid synthesis pass.
         if recap_provider == 'anthropic':
             batches = native_batches(source_parts)
@@ -3446,6 +3445,7 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
             total_batches = len(batches)
             for batch in batches:
                 text_prompt(batch, '')
+        evidence_snapshot = recap_snapshot(source_parts, recap_provider)
 
         def _build_text_prompt(parts, prompt_text, char_cap=120000):
             return text_prompt(parts, prompt_text, char_cap)

@@ -1,0 +1,66 @@
+{
+  "name": "fda-leqembi-endpoint",
+  "version": 1,
+  "sourceType": "historical-real-public-source-excerpt",
+  "provenance": {
+    "publisher": "FDA",
+    "url": "https://www.fda.gov/drugs/drug-trials-snapshots/drug-trials-snapshots-leqembi",
+    "retrievedAt": "2026-09-08",
+    "excerptSha256": "00ef24a1bbe31672253ec09d4349f6e71e00e8f23485f0210d00dfe177e31e9a",
+    "coverage": "Selected excerpt only. Not a complete clinical dossier or current prescribing guidance."
+  },
+  "annotation": {
+    "method": "Developer-authored positive/negative controls checked against the FDA page",
+    "expertReviewed": false,
+    "modelGenerated": false,
+    "scope": "Mechanical source, endpoint/window and unsupported-conclusion regression. No clinical or investment quality certification."
+  },
+  "sourceParts": [
+    {
+      "type": "text",
+      "name": "fda-leqembi-endpoint.txt",
+      "content": "The primary efficacy endpoint was change from baseline at 18 months in the CDR-SB."
+    }
+  ],
+  "requiredPatterns": [
+    "18\\s*months",
+    "CDR-SB",
+    "baseline",
+    "consensus"
+  ],
+  "forbiddenPatterns": [
+    "cures? Alzheimer",
+    "primary.{0,35}amyloid clearance",
+    "guaranteed.{0,20}revenue"
+  ],
+  "good": {
+    "markdown": "Historical FDA source review: the primary efficacy endpoint was the change from baseline in CDR-SB at 18 months. A change in a clinical decline scale must not be described as reversal of Alzheimer disease. The source alone does not establish a revenue forecast, valuation impact or sell-side consensus. Safety, eligibility and endpoint effect sizes require the full source and label.",
+    "claimReview": {
+      "claims": [
+        {
+          "statement": "Historical study design as described by FDA.",
+          "kind": "reported_fact",
+          "sourceId": "s1",
+          "quote": "The primary efficacy endpoint was change from baseline at 18 months in the CDR-SB.",
+          "page": null,
+          "reviewPassed": true
+        }
+      ]
+    }
+  },
+  "bad": {
+    "markdown": "The primary endpoint was amyloid clearance. The drug cures Alzheimer disease and guarantees revenue growth.",
+    "claimReview": {
+      "claims": [
+        {
+          "statement": "Historical study design as described by FDA.",
+          "kind": "reported_fact",
+          "sourceId": "s1",
+          "quote": "A fabricated quotation not present in the source register.",
+          "page": null,
+          "reviewPassed": true
+        }
+      ]
+    }
+  }
+}

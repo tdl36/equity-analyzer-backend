@@ -1,0 +1,67 @@
+{
+  "name": "fda-rinvoq-crohns",
+  "version": 1,
+  "sourceType": "historical-real-public-source-excerpt",
+  "provenance": {
+    "publisher": "FDA",
+    "url": "https://www.fda.gov/drugs/news-events-human-drugs/fda-approves-first-oral-treatment-moderately-severely-active-crohns-disease",
+    "retrievedAt": "2026-09-08",
+    "excerptSha256": "7499469d62f2b317df378c9122e312ae800e06471c8275b249b0afd329d399cf",
+    "coverage": "Selected excerpt only. Not a complete clinical dossier or current prescribing guidance."
+  },
+  "annotation": {
+    "method": "Developer-authored positive/negative controls checked against the FDA page",
+    "expertReviewed": false,
+    "modelGenerated": false,
+    "scope": "Mechanical source, endpoint/window and unsupported-conclusion regression. No clinical or investment quality certification."
+  },
+  "sourceParts": [
+    {
+      "type": "text",
+      "name": "fda-rinvoq-crohns.txt",
+      "content": "Patients were randomized 2:1 to receive 45 mg of Rinvoq or placebo once a day for 12 weeks."
+    }
+  ],
+  "requiredPatterns": [
+    "2:1",
+    "45\\s*mg",
+    "12\\s*weeks",
+    "maintenance",
+    "consensus"
+  ],
+  "forbiddenPatterns": [
+    "45\\s*mg.{0,30}52\\s*weeks",
+    "proves? a cure",
+    "guaranteed.{0,20}revenue"
+  ],
+  "good": {
+    "markdown": "Historical FDA source review: the induction trial randomized patients 2:1 to 45 mg Rinvoq or placebo once daily for 12 weeks. Induction must be distinguished from maintenance. The source alone does not establish a revenue forecast, valuation impact or sell-side consensus. Material safety and eligibility details require review of the full source and label.",
+    "claimReview": {
+      "claims": [
+        {
+          "statement": "Historical study design as described by FDA.",
+          "kind": "reported_fact",
+          "sourceId": "s1",
+          "quote": "Patients were randomized 2:1 to receive 45 mg of Rinvoq or placebo once a day for 12 weeks.",
+          "page": null,
+          "reviewPassed": true
+        }
+      ]
+    }
+  },
+  "bad": {
+    "markdown": "Rinvoq 45 mg for 52 weeks proves a cure and guaranteed revenue growth.",
+    "claimReview": {
+      "claims": [
+        {
+          "statement": "Historical study design as described by FDA.",
+          "kind": "reported_fact",
+          "sourceId": "s1",
+          "quote": "A fabricated quotation not present in the source register.",
+          "page": null,
+          "reviewPassed": true
+        }
+      ]
+    }
+  }
+}

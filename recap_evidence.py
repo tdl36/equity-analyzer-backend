@@ -17,7 +17,7 @@ def snapshot(parts, provider):
             if not payload.strip():
                 raise ValueError(f"{part['name']}: no readable source text")
         sources.append({'filename': part['name'], 'sha256': hashlib.sha256(payload).hexdigest(),
-                        'inputMode': mode, 'characters': chars, 'pages': part.get('pageCount')})
+                        'inputMode': mode, 'characters': chars, 'pages': part.get('pageCount'), 'textExtraction':part.get('textExtraction')})
     if not sources:
         raise ValueError('No source documents selected')
     return {'version': 1, 'capturedAt': datetime.now(timezone.utc).isoformat(),
@@ -33,18 +33,11 @@ def text_prompt(parts, prompt, char_cap=120000):
     chunks = []
     for part in parts:
         if part['type'] == 'pdf':
-            from PyPDF2 import PdfReader
-            reader = PdfReader(io.BytesIO(base64.b64decode(part['data'], validate=True)))
-            pages = []
-            for i, page in enumerate(reader.pages, 1):
-                try:
-                    text = page.extract_text() or ''
-                except Exception as exc:
-                    raise ValueError(f"{part['name']}, page {i}: text extraction failed; OCR or use a native PDF model") from exc
-                if not text.strip():
-                    raise ValueError(f"{part['name']}, page {i}: no extractable text; OCR or use a native PDF model")
-                pages.append(f'[Page {i}]\n{text}')
-            text = '\n'.join(pages)
+            from pdf_text import extract,render
+            try:extracted=extract(base64.b64decode(part['data'],validate=True))
+            except ValueError as exc:raise ValueError(f"{part['name']}: {exc}. Inspect OCR or use a native PDF model.") from exc
+            part['textExtraction']={'ocrPages':extracted['ocrPages'],'limitations':extracted['limitations']}
+            text=render(extracted)
         else:
             text = part.get('content', '')
         if not text.strip():

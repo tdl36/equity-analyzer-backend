@@ -215,7 +215,10 @@ export function EarningsWorkspace({
     className: "desk-explainer"
   }, "Captured when this draft was generated. This records source delivery, not claim verification."), /*#__PURE__*/React.createElement("ul", null, (event.output.evidenceSnapshot.sources || []).map((s, i) => /*#__PURE__*/React.createElement("li", {
     key: i
-  }, /*#__PURE__*/React.createElement("strong", null, s.filename), " \xB7 ", s.inputMode === 'native_pdf' ? 'Native PDF' : s.inputMode === 'extracted_text' ? 'PDF text extraction' : 'Text', s.pages ? ` · ${s.pages} pages` : '', s.characters != null ? ` · ${s.characters.toLocaleString()} characters` : '', /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, "SHA-256: ", s.sha256))))), event.output?.processingRecovery && /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("strong", null, s.filename), " \xB7 ", s.inputMode === 'native_pdf' ? 'Native PDF' : s.inputMode === 'extracted_text' ? 'PDF text extraction' : 'Text', s.pages ? ` · ${s.pages} pages` : '', s.characters != null ? ` · ${s.characters.toLocaleString()} characters` : '', s.textExtraction?.ocrPages?.length ? ` · OCR pages: ${s.textExtraction.ocrPages.join(', ')}` : '', s.textExtraction?.limitations?.map((issue, n) => /*#__PURE__*/React.createElement("p", {
+    key: n,
+    className: "desk-explainer"
+  }, issue)), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, "SHA-256: ", s.sha256))))), event.output?.processingRecovery && /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
   }, "Processing record: ", event.output.processingRecovery.totalBatches, " source batches \xB7 ", event.output.processingRecovery.resumedBatches, " reused from a matching recovery checkpoint."), /*#__PURE__*/React.createElement("div", {
     className: "earnings-checks"

@@ -3,6 +3,7 @@
 No model requests; passing does not certify investment judgment or entailment.
 """
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -14,6 +15,11 @@ from recap_validation import catalog,validate_claims
 def evaluate(candidate,pack):
     text=candidate.get('markdown','');audit=candidate.get('claimReview') or {}
     sources,issues=catalog(pack['sourceParts'])
+    provenance=pack.get('provenance') or {}
+    if provenance.get('excerptSha256'):
+        payload='\n'.join(p.get('content','') for p in pack['sourceParts'])
+        if hashlib.sha256(payload.encode()).hexdigest()!=provenance['excerptSha256']:
+            issues.append('Annotated public-source excerpt hash changed')
     claims=validate_claims(audit,sources)
     expected=pack.get('requiredPatterns',[])
     missing=[p for p in expected if not re.search(p,text,re.I)]
@@ -30,7 +36,16 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--pack',default=str(Path(__file__).resolve().parents[1]/'evals/research-quality/earnings-synthetic.json'))
     parser.add_argument('--candidate',help='Saved JSON with markdown and claimReview')
-    parser.add_argument('--self-test',action='store_true');args=parser.parse_args()
+    parser.add_argument('--self-test',action='store_true')
+    parser.add_argument('--suite',action='store_true',help='Run positive/negative controls for every checked-in source pack')
+    args=parser.parse_args()
+    if args.suite:
+        checks=[]
+        for path in sorted((Path(__file__).resolve().parents[1]/'evals/research-quality').glob('*.json')):
+            pack=json.loads(path.read_text());positive=evaluate(pack['good'],pack);negative=evaluate(pack['bad'],pack)
+            checks.append({'pack':path.name,'passed':positive['passed'] and not negative['passed'],'sourceType':pack.get('sourceType','synthetic'),'expertReviewed':(pack.get('annotation') or {}).get('expertReviewed',False)})
+        result={'passed':bool(checks) and all(c['passed'] for c in checks),'packs':checks,'scope':'Control-fixture regression, not a benchmark of a live model or investment judgment.'}
+        print(json.dumps(result,indent=2));sys.exit(0 if result['passed'] else 1)
     pack=json.loads(Path(args.pack).read_text())
     if args.self_test:
         good=evaluate(pack['good'],pack);bad=evaluate(pack['bad'],pack)
