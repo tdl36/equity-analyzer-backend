@@ -87,7 +87,7 @@ def prepare(get_db, command):
              'companyName':company['name'],'sector':company['sector'],'docs':docs,'pastQuestions':past,
              'unresolvedQuestions':[q for q in past if q.get('status') not in ('resolved','answered')],
              'timeframe':obj(command['input'])['payload']['since']+' through '+obj(command['input'])['payload']['until']+'. Meeting assignment: '+bridge['instructions']+'\nSaved investment view (historical context, not independently verified evidence):\n'+baseline,
-             'recoveryAttempts':0}
+             'meetingProfile':{k:options.get(k,default) for k,default in [('format','conference'),('audience','specialist')]}, 'recoveryAttempts':0}
         cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input) VALUES(%s,'command_meeting',%s,'queued',%s::jsonb)",(jid,command['ticker'],json.dumps(inp,default=str)))
     return jid
 

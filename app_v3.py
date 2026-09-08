@@ -23357,10 +23357,10 @@ def _mp_synthesize_inline(api_key, ticker, company_name, sector, analyses, past_
     return synthesis, tokens
 
 
-def _mp_questions_inline(api_key, ticker, company_name, sector, synthesis, unresolved, source_names=None, source_evidence=None):
+def _mp_questions_inline(api_key, ticker, company_name, sector, synthesis, unresolved, source_names=None, source_evidence=None, meeting_profile=None):
     if source_names is not None:
         from meeting_question_generation import generate
-        return generate(api_key,ticker,company_name,sector,synthesis,unresolved,source_names,evidence=source_evidence)
+        return generate(api_key,ticker,company_name,sector,synthesis,unresolved,source_names,evidence=source_evidence,meeting_profile=meeting_profile)
     unresolved_text = ""
     if unresolved:
         items = [f"- {q.get('question', '')} (from {q.get('meeting_date', '?')})" for q in unresolved[:15]]
@@ -23419,7 +23419,7 @@ def _mp_save_results_inline(meeting_id, topics, synthesis_json, total_tokens, mo
 
 def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sector,
                          docs, past_questions, timeframe, unresolved, model,
-                         resume_from=None, managed=False, owner=None):
+                         resume_from=None, managed=False, owner=None, meeting_profile=None):
     """Run the full MP pipeline server-side with stage-level checkpointing.
     After each stage succeeds, writes its output to mp_jobs.result so retries
     resume from the failure point instead of redoing successful work.
@@ -23557,7 +23557,7 @@ def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sect
                     api_key, ticker, company_name, sector,
                     ({'sourceAnalyses':analyses,'researchWindow':timeframe.split('. Meeting assignment:')[0],
                       'assignmentContext':timeframe} if managed else synthesis), unresolved,
-                    **({'source_names':[d['filename'] for d in docs],'source_evidence':source_evidence} if managed else {})
+                    **({'source_names':[d['filename'] for d in docs],'source_evidence':source_evidence,'meeting_profile':meeting_profile} if managed else {})
                 )
                 tokens_total += q_tokens
                 if managed:
@@ -28886,7 +28886,7 @@ def _run_command_meeting(job_id, inp, checkpoint):
     if not key:raise ValueError('Server research key is missing.')
     _run_mp_pipeline_job(job_id,key,inp['meetingId'],inp['ticker'],inp['companyName'],inp['sector'],
         inp['docs'],inp['pastQuestions'],inp['timeframe'],inp['unresolvedQuestions'],
-        MEETING_PREP_DEFAULT_MODEL,resume_from=checkpoint,managed=True,owner=inp['workerToken'])
+        MEETING_PREP_DEFAULT_MODEL,resume_from=checkpoint,managed=True,owner=inp['workerToken'],meeting_profile=inp.get('meetingProfile'))
 
 app.register_blueprint(meeting_commands.create_blueprint(get_db,_run_command_meeting,
     lambda:bool(os.environ.get('ANTHROPIC_API_KEY',''))))

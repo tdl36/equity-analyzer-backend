@@ -25,7 +25,7 @@ class QuestionGenerationTests(unittest.TestCase):
 
 class EvidenceRepairTests(unittest.TestCase):
     def response(self,quote):
-        topics=[{'topic':'Growth','description':'Evidence','questions':[dict(question='What changes?',context='Reported evidence',source='Report',follow_up_angle='What reverses it?',priority='high',source_filenames=['source.pdf'],supporting_quotes=[{'filename':'source.pdf','quote':quote}])]}]
+        topics=[{'topic':'Growth','description':'Evidence','questions':[dict(question='What changes?',context='Reported evidence',source='Report',follow_up_angle='What reverses it?',priority='high',source_filenames=['source.pdf'],supporting_passage_ids=['p1' if '10 percent' in quote else 'invented'])]}]
         return SimpleNamespace(stop_reason='end_turn',content=[SimpleNamespace(type='text',text=json.dumps({'topics':topics}))],usage=SimpleNamespace(input_tokens=100,output_tokens=50))
     def test_repairs_invalid_quote_once_and_counts_both_calls(self):
         quote='The company reported revenue growth of 10 percent this quarter.'
@@ -41,3 +41,13 @@ class EvidenceRepairTests(unittest.TestCase):
         evidence={'sources':[{'filename':'source.pdf','pages':[{'text':quote}]}]}
         with self.assertRaises(ValueError):generate('key','MDT','Medtronic','Healthcare',{},[],['source.pdf'],client,evidence)
         self.assertEqual(client.messages.stream.call_count,2)
+
+class MeetingProfileGenerationTests(QuestionGenerationTests):
+    def test_hosted_profile_reaches_final_model_without_short_pack_instruction(self):
+        client=self.client()
+        generate('key','ABT','Abbott','Healthcare',{},[],['source.pdf'],client,meeting_profile={'format':'hosted_pm','audience':'generalist'})
+        prompt=client.messages.stream.call_args.kwargs['messages'][0]['content']
+        self.assertIn('35–45',prompt)
+        self.assertIn('generalist portfolio managers',prompt)
+        self.assertIn('segment economics',prompt)
+        self.assertNotIn('12–15',prompt)

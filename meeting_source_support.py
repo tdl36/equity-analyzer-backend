@@ -34,3 +34,34 @@ def verify(topics,evidence):
                     raise ValueError(f'Topic {ti+1}, question {qi+1}: supporting passage was not found in its cited original. Use an exact contiguous passage from that filename; do not paraphrase or join passages. Question stage retained for retry.')
             q['source_support']='Original quote matched; factual interpretation still requires review.'
     return topics
+
+
+def passage_register(evidence):
+    """Stable, verbatim bounded passages; models select IDs, never transcribe quotes."""
+    register={}
+    for source in evidence['sources']:
+        for page in source['pages']:
+            text=page['text'];offset=0
+            while offset<len(text):
+                end=min(offset+1000,len(text))
+                if end<len(text):
+                    boundary=text.rfind(' ',offset+500,end)
+                    if boundary>offset:end=boundary
+                quote=text[offset:end];offset=end
+                if len(' '.join(quote.split()))<30:continue
+                ident='p'+str(len(register)+1)
+                register[ident]={'filename':source['filename'],'page':page.get('page'),'quote':quote}
+    if not register:raise ValueError('No readable original passages for meeting questions.')
+    return register
+
+
+def attach_passages(topics,register):
+    for ti,topic in enumerate(topics):
+        for qi,q in enumerate(topic['questions']):
+            refs=q.pop('supporting_passage_ids',None)
+            if not isinstance(refs,list) or not refs or len(refs)>6:
+                raise ValueError(f'Topic {ti+1}, question {qi+1}: choose 1–6 original passage IDs.')
+            if any(not isinstance(ref,str) or ref not in register or register[ref]['filename'] not in q['source_filenames'] for ref in refs):
+                raise ValueError(f'Topic {ti+1}, question {qi+1}: passage ID must belong to its cited filename.')
+            q['supporting_quotes']=[dict(register[ref]) for ref in dict.fromkeys(refs)]
+    return topics
