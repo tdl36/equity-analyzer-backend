@@ -213,3 +213,12 @@ version comparisons; per-company conference dates; improved primary IR coverage;
 portfolio-wide collection reliability under authentication interruption. Existing
 OCR, recovery, restoration and delegated analyst stages need ongoing real-source
 acceptance, not claims of universal completion. No paid synthetic jobs were created.
+
+T40 live acceptance: the original two-company ABT/MDT batch now passes all 11
+mechanical delivery/source-identity checks per company. MDT: 8 originals, 11
+questions. ABT: 9 originals, 12 questions. The checker confirms source continuity
+and saved receipts, not factual entailment, investment merit or ideal breadth.
+The 60-minute MDT assignment is being moved to the saved-source path separately.
+A server-side queue loop resumes managed meeting jobs every 30 seconds using the
+existing cross-process ownership lock and bounded recovery, so saved-source work
+no longer depends on Mac heartbeat pickup, including after server restarts.

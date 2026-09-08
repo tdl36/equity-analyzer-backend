@@ -28890,6 +28890,8 @@ def _run_command_meeting(job_id, inp, checkpoint):
 
 app.register_blueprint(meeting_commands.create_blueprint(get_db,_run_command_meeting,
     lambda:bool(os.environ.get('ANTHROPIC_API_KEY',''))))
+meeting_commands.start_server_worker(get_db,_run_command_meeting,
+    lambda:bool(os.environ.get('ANTHROPIC_API_KEY','')))
 
 
 import research_history

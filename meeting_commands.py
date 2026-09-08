@@ -235,3 +235,16 @@ def create_blueprint(get_db,run,has_key):
         threading.Thread(target=drain,args=(get_db,run),daemon=True).start()
         return jsonify(outcomes=outcomes)
     return bp
+
+
+def start_server_worker(get_db,run,has_key):
+    """Resume durable meeting jobs without requiring the user's Mac heartbeat."""
+    import time
+    def loop():
+        while True:
+            try:
+                if has_key():drain(get_db,run)
+            except Exception as exc:
+                print('[meeting worker] Queue check failed: '+type(exc).__name__)
+            time.sleep(30)
+    threading.Thread(target=loop,daemon=True,name='managed-meeting-queue').start()
