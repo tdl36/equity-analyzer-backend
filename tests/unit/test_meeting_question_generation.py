@@ -20,3 +20,22 @@ class QuestionGenerationTests(unittest.TestCase):
     def test_truncated_or_unknown_sources_never_saved(self):
         for client in (self.client('max_tokens'),self.client(filename='invented.pdf')):
             with self.assertRaises(ValueError):generate('key','ABT','Abbott','Healthcare',{},[],['source.pdf'],client)
+
+class EvidenceRepairTests(unittest.TestCase):
+    def response(self,quote):
+        topics=[{'topic':'Growth','description':'Evidence','questions':[dict(question='What changes?',context='Reported evidence',source='Report',follow_up_angle='What reverses it?',priority='high',source_filenames=['source.pdf'],supporting_quotes=[{'filename':'source.pdf','quote':quote}])]}]
+        return SimpleNamespace(stop_reason='end_turn',content=[SimpleNamespace(type='text',text=json.dumps({'topics':topics}))],usage=SimpleNamespace(input_tokens=100,output_tokens=50))
+    def test_repairs_invalid_quote_once_and_counts_both_calls(self):
+        quote='The company reported revenue growth of 10 percent this quarter.'
+        client=MagicMock();client.messages.stream.return_value.__enter__.return_value.get_final_message.side_effect=[self.response(quote.replace('10','20')),self.response(quote)]
+        evidence={'sources':[{'filename':'source.pdf','pages':[{'text':quote}]}]}
+        topics,tokens=generate('key','MDT','Medtronic','Healthcare',{},[],['source.pdf'],client,evidence)
+        self.assertEqual(tokens,300);self.assertEqual(client.messages.stream.call_count,2)
+        self.assertIn('Topic 1, question 1',client.messages.stream.call_args.kwargs['messages'][-1]['content'])
+        self.assertEqual(topics[0]['questions'][0]['supporting_quotes'][0]['quote'],quote)
+    def test_second_invalid_draft_is_rejected_without_more_calls(self):
+        quote='The company reported revenue growth of 10 percent this quarter.'
+        client=MagicMock();client.messages.stream.return_value.__enter__.return_value.get_final_message.return_value=self.response(quote.replace('10','20'))
+        evidence={'sources':[{'filename':'source.pdf','pages':[{'text':quote}]}]}
+        with self.assertRaises(ValueError):generate('key','MDT','Medtronic','Healthcare',{},[],['source.pdf'],client,evidence)
+        self.assertEqual(client.messages.stream.call_count,2)

@@ -23,14 +23,14 @@ def excerpts(get_db,docs,budget=120000):
 def verify(topics,evidence):
     norm=lambda x:' '.join(x.split())
     sources={s['filename']:s for s in evidence['sources']}
-    for topic in topics:
-        for q in topic['questions']:
+    for ti,topic in enumerate(topics):
+        for qi,q in enumerate(topic['questions']):
             quotes=q.get('supporting_quotes')
             if not isinstance(quotes,list) or not quotes:raise ValueError('Question lacks an original supporting passage.')
             for item in quotes:
                 if not isinstance(item,dict):raise ValueError('Invalid supporting passage.')
                 source=sources.get(item.get('filename'));quote=item.get('quote','')
                 if not source or item['filename'] not in q['source_filenames'] or not isinstance(quote,str) or len(norm(quote))<30 or not any(norm(quote) in norm(p['text']) for p in source['pages']):
-                    raise ValueError('Supporting passage was not found in the cited original; question stage retained for retry.')
+                    raise ValueError(f'Topic {ti+1}, question {qi+1}: supporting passage was not found in its cited original. Use an exact contiguous passage from that filename; do not paraphrase or join passages. Question stage retained for retry.')
             q['source_support']='Original quote matched; factual interpretation still requires review.'
     return topics

@@ -34,15 +34,33 @@ def generate(api_key,ticker,company_name,sector,synthesis,unresolved,source_name
             '\nPRIOR QUESTIONS:\n'+json.dumps(unresolved,default=str)+'\nVERIFIED FILENAMES:\n'+json.dumps(source_names))
     if evidence is not None:
         prompt+='\nFor each question supply supporting_quotes with one or more exact, contiguous quotations of at least 30 characters from the original excerpts below. Each numerical or dated premise must be supported; otherwise ask an open clarification without asserting the premise. Do not cite earlier thesis or inferred answers as original evidence. Avoid material claims not supported by these excerpts.\nORIGINAL EXCERPTS (bounded; missing coverage is not absence of evidence):\n'+json.dumps(evidence)
-    with client.messages.stream(model=MODEL,max_tokens=18000,thinking={'type':'adaptive'},
-            output_config={'effort':'medium','format':{'type':'json_schema','schema':schema(source_names,evidence is not None)}},
-            messages=[{'role':'user','content':prompt}]) as stream:
-        response=stream.get_final_message()
-    if response.stop_reason!='end_turn':raise ValueError('Meeting questions did not finish; checkpoint retained. Retry the question stage.')
-    value=json.loads(''.join(b.text for b in response.content if getattr(b,'type','')=='text'))
-    from meeting_commands import validate_pack
-    topics=validate_pack(value.get('topics'),[{'filename':n} for n in source_names])
-    if evidence is not None:
-        from meeting_source_support import verify
-        verify(topics,evidence)
-    return topics,response.usage.input_tokens+response.usage.output_tokens
+    messages=[{'role':'user','content':prompt}]
+    tokens=0
+    # One bounded correction of an invalid draft, using the same original excerpts.
+    # Never silently remove an unsupported question or relax passage verification.
+    for attempt in range(2):
+        with client.messages.stream(model=MODEL,max_tokens=18000,thinking={'type':'adaptive'},
+                output_config={'effort':'medium','format':{'type':'json_schema','schema':schema(source_names,evidence is not None)}},
+                messages=messages) as stream:
+            response=stream.get_final_message()
+        tokens+=response.usage.input_tokens+response.usage.output_tokens
+        if response.stop_reason!='end_turn':raise ValueError('Meeting questions did not finish; checkpoint retained. Retry the question stage.')
+        draft=''.join(b.text for b in response.content if getattr(b,'type','')=='text')
+        from meeting_commands import validate_pack
+        try:
+            value=json.loads(draft)
+            topics=validate_pack(value.get('topics'),[{'filename':n} for n in source_names])
+            if evidence is not None:
+                from meeting_source_support import verify
+                verify(topics,evidence)
+            return topics,tokens
+        except (ValueError,KeyError,TypeError) as error:
+            if attempt or evidence is None:raise
+            messages=messages+[
+                {'role':'assistant','content':draft},
+                {'role':'user','content':
+                 'The draft failed deterministic validation: '+str(error)+
+                 '\nReturn the complete corrected pack. Audit EVERY supporting quote against its cited original excerpt. '
+                 'Copy exact contiguous text, preserving numbers, punctuation and wording. Do not stitch across pages or insert ellipses. '
+                 'If a premise is unsupported, rewrite the question as a supported clarification and update its context. '
+                 'Do not drop questions to evade validation. Retain the assignment focus. All original constraints still apply.'}]
