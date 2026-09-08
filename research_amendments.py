@@ -173,7 +173,7 @@ def create_blueprint(get_db, call_model, get_key):
         if not re.fullmatch(r'[A-Z0-9][A-Z0-9.\-]{0,19}',tk): return jsonify(error='Invalid ticker'),400
         if request.method=='GET':
             with get_db() as (_,cur):
-                cur.execute('SELECT id,status,result,error,created_at,updated_at FROM mp_jobs WHERE ticker=%s AND stage=%s ORDER BY created_at DESC LIMIT 10',(tk,STAGE))
+                cur.execute("SELECT id,status,result,error,created_at,updated_at,input->>'commandId' AS command_id FROM mp_jobs WHERE ticker=%s AND stage=%s ORDER BY created_at DESC LIMIT 10",(tk,STAGE))
                 rows=[dict(r) for r in cur.fetchall() or []]
             response=jsonify(jobs=rows);response.headers['Cache-Control']='no-store';return response
         return submit(tk, request.get_json(silent=True) or {})

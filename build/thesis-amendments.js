@@ -149,7 +149,9 @@ export function ThesisAmendments({
     }
   }, "Refresh status")), !loaded ? /*#__PURE__*/React.createElement("p", {
     role: "status"
-  }, "Loading proposals\u2026") : /*#__PURE__*/React.createElement(React.Fragment, null, active ? /*#__PURE__*/React.createElement("div", {
+  }, "Loading proposals\u2026") : /*#__PURE__*/React.createElement(React.Fragment, null, context?.bridge && job && job.command_id !== context.bridge.commandId && /*#__PURE__*/React.createElement("p", {
+    className: "workspace-notice"
+  }, "The proposal below belongs to another comparison for ", ticker, ". Review or dismiss any active proposal before preparing one from this command."), active ? /*#__PURE__*/React.createElement("div", {
     className: "workspace-notice"
   }, /*#__PURE__*/React.createElement("strong", null, job.status === 'awaiting_approval' ? 'Proposal ready for your review' : 'Comparing sources…'), job.status !== 'awaiting_approval' && /*#__PURE__*/React.createElement("p", null, "The proposal is saved as a job. If a server restart interrupts it, dismiss it and prepare a new comparison. No thesis edits have been applied."), /*#__PURE__*/React.createElement("button", {
     disabled: busy,
