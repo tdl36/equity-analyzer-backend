@@ -23816,7 +23816,12 @@ def mp_job_status(job_id):
     if not row:
         return jsonify({'error': 'not found'}), 404
     result = row['result'] if isinstance(row['result'], dict) else (json.loads(row['result']) if row['result'] else None)
+    job_input=row['input'] if isinstance(row['input'],dict) else json.loads(row['input'] or '{}')
     return jsonify({
+        'recoveryEnabled':bool(job_input.get('recoveryEnabled')),
+        'recoveryAttempts':job_input.get('recoveryAttempts',0),
+        'workerOwned':bool(job_input.get('workerToken')),
+        'verifiedSourceCount':sum(bool(d.get('sha256') or d.get('textSha256')) for d in job_input.get('docs',[])),
         'id': row['id'],
         'stage': row['stage'],
         'status': row['status'],

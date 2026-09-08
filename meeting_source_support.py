@@ -4,7 +4,7 @@ from command_thesis_bridge import file_hash
 
 def excerpts(get_db,docs,budget=120000):
     from recap_validation import catalog,audit_excerpts
-    sources=[];issues=[];text_limits=[]
+    sources=[];issues=[];text_limits=[];fallback_names=set()
     def add(part):
         selected,limitations=catalog([part])
         for source in selected:source['id']='s'+str(len(sources)+1);sources.append(source)
@@ -20,7 +20,19 @@ def excerpts(get_db,docs,budget=120000):
                 continue
             if not row or file_hash(row)!=d['sha256']:raise ValueError('Meeting source changed before passage verification.')
             raw=row['file_data']
-            if d['filename'].lower().endswith('.pdf'):add({'name':d['filename'],'type':'pdf','data':raw})
+            if d['filename'].lower().endswith('.pdf'):
+                from meeting_pdf_worker import extract_original
+                try:
+                    extracted=extract_original(raw)
+                    sources.append({'id':'s'+str(len(sources)+1),'filename':d['filename'],'pages':extracted['pages']})
+                    issues.extend(d['filename']+': '+issue for issue in extracted['limitations'])
+                except ValueError as exc:
+                    text=row['extracted_text'] or ''
+                    if not text or text!=d.get('extractedText'):
+                        raise ValueError(d['filename']+': '+str(exc)+' No matching frozen extracted text is available; checkpoint retained.') from exc
+                    add({'name':d['filename'],'type':'text','content':text})
+                    fallback_names.add(d['filename'])
+                    text_limits.append(d['filename']+': original extraction unavailable; supporting passages checked against frozen extracted text only.')
             elif d['filename'].lower().endswith(('.png','.jpg','.jpeg','.gif','.webp')):
                 text=row['extracted_text'] or ''
                 add({'name':d['filename'],'type':'text','content':text})
@@ -32,7 +44,7 @@ def excerpts(get_db,docs,budget=120000):
                     text=BeautifulSoup(text,'html.parser').get_text(' ',strip=True)
                 add({'name':d['filename'],'type':'text','content':text})
     selected,limits=audit_excerpts(sources,budget)
-    text_names={d['filename'] for d in docs if d.get('textSha256')}
+    text_names={d['filename'] for d in docs if d.get('textSha256')} | fallback_names
     for source in selected:source['supportKind']='saved_text' if source['filename'] in text_names else 'original'
     return {'sources':selected,'limitations':issues+limits+text_limits}
 
