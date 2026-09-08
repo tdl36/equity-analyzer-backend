@@ -11,7 +11,7 @@ export function ThesisAmendments({
   context,
   onApplied
 }) {
-  var [instructions, setInstructions] = useState('');
+  var [instructions, setInstructions] = useState(context?.bridge?.instructions || '');
   var [jobs, setJobs] = useState([]),
     [selected, setSelected] = useState([]),
     [accepted, setAccepted] = useState([]);
@@ -119,7 +119,11 @@ export function ThesisAmendments({
       filenames: selected,
       requestId: requestId.current,
       apiKey: key,
-      instructions
+      instructions,
+      ...(context?.bridge ? {
+        commandId: context.bridge.commandId,
+        commandRevision: context.bridge.revision
+      } : {})
     });
   };
   var active = job && ['queued', 'running', 'awaiting_approval'].includes(job.status);
@@ -129,7 +133,13 @@ export function ThesisAmendments({
     className: "workspace-eyebrow"
   }, "NEW EVIDENCE \u2192 PROPOSED THESIS EDITS"), /*#__PURE__*/React.createElement("h3", null, "What should change?"), /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
-  }, "Compare selected sources with your saved thesis. Charlie drafts targeted edits and checks their supporting quotations. Your thesis changes only when you apply selected edits."), error && /*#__PURE__*/React.createElement("div", {
+  }, "Compare selected sources with your saved thesis. Charlie drafts targeted edits and checks their supporting quotations. Your thesis changes only when you apply selected edits."), context?.bridge && /*#__PURE__*/React.createElement("div", {
+    className: "workspace-notice"
+  }, /*#__PURE__*/React.createElement("strong", null, "Sources from ", context.bridge.topic), /*#__PURE__*/React.createElement("p", null, context.bridge.ready.length, " source(s) match the recap input hashes. Choose up to 10 below. This comparison uses original documents, not the recap as evidence."), context.bridge.blocked.length > 0 && /*#__PURE__*/React.createElement("details", {
+    open: true
+  }, /*#__PURE__*/React.createElement("summary", null, context.bridge.blocked.length, " source(s) need attention"), context.bridge.blocked.map((d, i) => /*#__PURE__*/React.createElement("p", {
+    key: i
+  }, /*#__PURE__*/React.createElement("strong", null, d.filename), " \xB7 ", d.reason)))), error && /*#__PURE__*/React.createElement("div", {
     className: "workspace-error",
     role: "alert"
   }, error, /*#__PURE__*/React.createElement("button", {

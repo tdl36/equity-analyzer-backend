@@ -35,3 +35,9 @@ T23 deployed backend `01b1a95`, Cloudflare `42da20b3-59f9-486c-8f51-cba3709603b0
 The local managed worker now supports FDA HTML and ClinicalTrials.gov study JSON supplements through `research_task_sources.py --supplement RECORD.json`. Original bytes, source date, observed URL, company-relevance assessment and hashes join the existing production manifest gate. SEC remains the deterministic lookup; FDA/registry discovery and publication/relevance verification require the scheduled worker. No general internet/IR adapter or unattended clinical-event validation is claimed. Next: structured command-to-thesis proposal chaining and broader recovery.
 
 Supplement validation: all 241 safe backend tests passed, Mac Python 3.9 compile/import passed, and task diff checks passed. Local-worker-only change; frontend remains verified T24.
+
+## T25 Command-to-thesis comparison
+
+Completed Command cards now open a command-specific thesis comparison. The exact latest topic/ticker recap source register is matched to cloud-imported original bytes; missing, ambiguous, transformed or changed inputs are blocked. Assignment instructions carry forward, selected source hashes and command/activity provenance persist on the proposal, and hashes are checked again before model work. User selects up to 10 verified documents and explicitly requests comparison; existing selective approval remains. This is a reviewable handoff, not automatic paid proposal chaining or automatic local-source import. Next: import eligible event originals safely for comparison, then opt-in durable proposal orchestration; broader server worker recovery remains open.
+
+T25 validation: 250 backend tests, 20 frontend tests and production build pass. Live completed-command comparison and paid generation are not exercised solely for QA; deployment verification follows.

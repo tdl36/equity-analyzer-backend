@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { ThesisAmendments } from './thesis-amendments';
 var kinds = [['filing', '8-K and reaction'], ['earnings', 'Earnings review'], ['event', 'Event investigation']];
 var today = () => new Intl.DateTimeFormat('en-CA', {
   timeZone: 'America/New_York'
@@ -27,6 +28,19 @@ export function CommandCharlie({
     [message, setMessage] = React.useState(''),
     [busy, setBusy] = React.useState(false),
     [uncertain, setUncertain] = React.useState(false);
+  var [comparison, setComparison] = React.useState(null),
+    [comparisonError, setComparisonError] = React.useState('');
+  var comparisonSequence = React.useRef(0),
+    comparisonPanel = React.useRef(null);
+  React.useEffect(() => {
+    if (comparison) {
+      comparisonPanel.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start'
+      });
+      comparisonPanel.current?.focus();
+    }
+  }, [comparison]);
   var alive = React.useRef(true),
     lock = React.useRef(false),
     pending = React.useRef(null);
@@ -42,6 +56,23 @@ export function CommandCharlie({
       throw e;
     }
     return d;
+  };
+  var openComparison = async j => {
+    var seq = ++comparisonSequence.current;
+    setComparison(null);
+    setComparisonError('Loading command sources…');
+    try {
+      var context = await json(`/api/research/commands/${j.id}/thesis-context`);
+      if (alive.current && seq === comparisonSequence.current) {
+        setComparison({
+          id: j.id,
+          context
+        });
+        setComparisonError('');
+      }
+    } catch (e) {
+      if (alive.current && seq === comparisonSequence.current) setComparisonError(e.message);
+    }
   };
   var refresh = async () => {
     try {
@@ -237,7 +268,24 @@ export function CommandCharlie({
     className: "workspace-error"
   }, error), message && /*#__PURE__*/React.createElement("p", {
     role: "status"
-  }, message), /*#__PURE__*/React.createElement("div", {
+  }, message), comparisonError && /*#__PURE__*/React.createElement("p", {
+    role: "status"
+  }, comparisonError), comparison && /*#__PURE__*/React.createElement("div", {
+    ref: comparisonPanel,
+    tabIndex: -1,
+    "aria-label": "Command thesis comparison"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      comparisonSequence.current++;
+      setComparison(null);
+    }
+  }, "Close thesis comparison"), /*#__PURE__*/React.createElement(ThesisAmendments, {
+    key: comparison.id,
+    api: api,
+    ticker: comparison.context.bridge.ticker,
+    context: comparison.context,
+    onApplied: refresh
+  })), /*#__PURE__*/React.createElement("div", {
     className: "workspace-section-heading"
   }, /*#__PURE__*/React.createElement("h3", null, "Task history"), /*#__PURE__*/React.createElement("button", {
     onClick: refresh
@@ -256,7 +304,10 @@ export function CommandCharlie({
     key: s
   }, s))), j.input.payload.limitations.map(s => /*#__PURE__*/React.createElement("p", {
     key: s
-  }, s))), /*#__PURE__*/React.createElement("button", {
+  }, s))), j.reports?.some(r => r.has_report) && /*#__PURE__*/React.createElement("button", {
+    className: "workspace-primary",
+    onClick: () => openComparison(j)
+  }, "Compare command sources with thesis \u2192"), /*#__PURE__*/React.createElement("button", {
     onClick: () => onSection('collection')
   }, "Collection and recovery controls \u2192"), /*#__PURE__*/React.createElement("button", {
     onClick: () => onNavigate('analysts')

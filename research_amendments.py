@@ -107,7 +107,7 @@ def create_blueprint(get_db, call_model, get_key):
             cur.execute("UPDATE mp_jobs SET status=%s, result=%s::jsonb, error=%s, updated_at=NOW() WHERE id=%s AND stage=%s AND status IN ('queued','running')",
                         (status,json.dumps(result or {}),error,job_id,STAGE))
 
-    def run(job_id, ticker, baseline, filenames, key, instructions=""):
+    def run(job_id, ticker, baseline, filenames, key, instructions="", source_hashes=None):
         with _WORKERS:
             try:
                 with get_db(commit=True) as (_, cur):
@@ -118,6 +118,9 @@ def create_blueprint(get_db, call_model, get_key):
                 if len(docs)!=len(filenames): raise ValueError('Some selected documents are no longer available.')
                 total=0
                 for d in docs:
+                    if source_hashes:
+                        from command_thesis_bridge import file_hash
+                        if file_hash(d)!=source_hashes.get(d['filename']): raise ValueError('A command source changed after submission; prepare a fresh comparison.')
                     text=notegen.extract_pdf_text(d,max_tokens=100001) if d['filename'].lower().endswith('.pdf') else notegen.extract_file_text(d,max_chars=400001)
                     total+=len(text)
                     if not text.strip(): raise ValueError('A selected document has no readable text. Choose readable sources.')
@@ -150,6 +153,20 @@ def create_blueprint(get_db, call_model, get_key):
                 logging.getLogger(__name__).exception("Thesis comparison failed for %s", job_id)
                 finish(job_id,'failed',error='Comparison could not complete. Your saved thesis was not changed. Retry or inspect server logs.')
 
+    @bp.route('/api/research/commands/<command_id>/thesis-context')
+    def command_context(command_id):
+        from command_thesis_bridge import resolve
+        try:
+            with get_db() as (_,cur):
+                bridge=resolve(cur,command_id)
+                cur.execute('SELECT analysis FROM portfolio_analyses WHERE ticker=%s',(bridge['ticker'],))
+                row=cur.fetchone();baseline=obj((row or {}).get('analysis'))
+            response=jsonify(bridge=bridge,savedThesis=baseline if editable_fields(baseline) else None,
+                             documents={'uploaded':bridge['ready']})
+            response.headers['Cache-Control']='no-store'
+            return response
+        except (ValueError,TypeError,AttributeError) as e:return jsonify(error=str(e)),409
+
     @bp.route('/api/research/amendments/<ticker>', methods=['GET','POST'])
     def proposals(ticker):
         tk=ticker.strip().upper()
@@ -165,6 +182,7 @@ def create_blueprint(get_db, call_model, get_key):
         if not isinstance(data,dict): return jsonify(error='Request body must be an object'),400
         names=data.get('filenames'); job_id=data.get('requestId')
         instructions=data.get('instructions') or ''
+        command_id=data.get('commandId');source_hashes=None;bridge=None
         if not isinstance(instructions,str) or len(instructions)>6000: return jsonify(error='Instructions must be at most 6,000 characters'),400
         try:
             uuid.UUID(job_id)
@@ -176,8 +194,16 @@ def create_blueprint(get_db, call_model, get_key):
             cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',('amendment:'+tk,))
             cur.execute('SELECT id,ticker,input,stage FROM mp_jobs WHERE id=%s',(job_id,)); existing=cur.fetchone()
             if existing:
-                if existing.get('stage')!=STAGE or existing['ticker']!=tk or (obj(existing['input']).get('filenames')!=names or obj(existing['input']).get('instructions','')!=instructions): return jsonify(error='Request ID already used for different inputs.'),409
+                if existing.get('stage')!=STAGE or existing['ticker']!=tk or (obj(existing['input']).get('filenames')!=names or obj(existing['input']).get('instructions','')!=instructions or obj(existing['input']).get('commandId')!=command_id): return jsonify(error='Request ID already used for different inputs.'),409
                 return jsonify(jobId=job_id),200
+            if command_id:
+                from command_thesis_bridge import resolve
+                try:bridge=resolve(cur,command_id,tk)
+                except (ValueError,TypeError,AttributeError) as e:return jsonify(error=str(e)),409
+                if bridge['revision']!=data.get('commandRevision'):return jsonify(error='The command recap changed. Reopen its thesis comparison.'),409
+                source_hashes={s['filename']:s['sha256'] for s in bridge['ready']}
+                if any(n not in source_hashes for n in names):return jsonify(error='Selected files are not verified inputs of this command recap.'),409
+                source_hashes={n:source_hashes[n] for n in names}
             cur.execute("SELECT id FROM mp_jobs WHERE ticker=%s AND stage=%s AND status IN ('queued','running','awaiting_approval') LIMIT 1",(tk,STAGE))
             if cur.fetchone(): return jsonify(error='Review or dismiss the existing proposal before starting another.'),409
             cur.execute('SELECT analysis FROM portfolio_analyses WHERE ticker=%s',(tk,));row=cur.fetchone()
@@ -185,8 +211,8 @@ def create_blueprint(get_db, call_model, get_key):
             if not editable_fields(baseline): return jsonify(error='A saved thesis with editable text is required.'),400
             cur.execute('SELECT filename FROM document_files WHERE ticker=%s AND filename=ANY(%s)',(tk,names))
             if len(cur.fetchall() or [])!=len(names): return jsonify(error='A selected document is not stored in Charlie. Import it first.'),400
-            cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input) VALUES(%s,%s,%s,'queued',%s::jsonb)",(job_id,STAGE,tk,json.dumps({'baseline':baseline,'filenames':names,'instructions':instructions})))
-        threading.Thread(target=run,args=(job_id,tk,baseline,names,key,instructions),daemon=True).start()
+            cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input) VALUES(%s,%s,%s,'queued',%s::jsonb)",(job_id,STAGE,tk,json.dumps({'baseline':baseline,'filenames':names,'instructions':instructions,'commandId':command_id,'commandBridge':bridge,'sourceHashes':source_hashes})))
+        threading.Thread(target=run,args=(job_id,tk,baseline,names,key,instructions,source_hashes),daemon=True).start()
         return jsonify(jobId=job_id),202
 
     @bp.route('/api/research/amendment/<job_id>/decide',methods=['POST'])

@@ -2,7 +2,7 @@ import {parseTimestamp} from './workspace-model.mjs';
 import * as React from 'react';
 const {useState,useEffect,useRef}=React;
 export function ThesisAmendments({api,ticker,context,onApplied}) {
-  const [instructions,setInstructions]=useState('');
+  const [instructions,setInstructions]=useState(context?.bridge?.instructions||'');
   const [jobs,setJobs]=useState([]),[selected,setSelected]=useState([]),[accepted,setAccepted]=useState([]);
   const [error,setError]=useState(''),[busy,setBusy]=useState(false),[loaded,setLoaded]=useState(false);
   const alive=useRef(true),lock=useRef(false),requestId=useRef(null),sequence=useRef(0);
@@ -21,9 +21,10 @@ export function ThesisAmendments({api,ticker,context,onApplied}) {
   useEffect(()=>{alive.current=true;refresh();const timer=setInterval(()=>{if(!document.hidden)refresh();},5000);return()=>{alive.current=false;sequence.current++;clearInterval(timer);};},[api,ticker]);
   useEffect(()=>{setAccepted([]);if(job&&!['queued','running','awaiting_approval'].includes(job.status))requestId.current=null;},[job?.id,job?.status]);
   const mutate=async(path,body)=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');try{const d=await fetchJson(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(alive.current){await refresh();if(['applied','reverted'].includes(d.status))onApplied();}}catch(e){if(alive.current){setError(e.message+' Check the proposal status before retrying.');await refresh();}}finally{lock.current=false;if(alive.current)setBusy(false);}};
-  const launch=()=>{if(!requestId.current)requestId.current=crypto.randomUUID();let key='';try{key=localStorage.getItem('equity_analyzer_api_key')||'';}catch{}return mutate(`/api/research/amendments/${encodeURIComponent(ticker)}`,{filenames:selected,requestId:requestId.current,apiKey:key,instructions});};
+  const launch=()=>{if(!requestId.current)requestId.current=crypto.randomUUID();let key='';try{key=localStorage.getItem('equity_analyzer_api_key')||'';}catch{}return mutate(`/api/research/amendments/${encodeURIComponent(ticker)}`,{filenames:selected,requestId:requestId.current,apiKey:key,instructions,...(context?.bridge?{commandId:context.bridge.commandId,commandRevision:context.bridge.revision}:{})});};
   const active=job&&['queued','running','awaiting_approval'].includes(job.status);
   return <section className="workspace-panel thesis-amendments"><p className="workspace-eyebrow">NEW EVIDENCE → PROPOSED THESIS EDITS</p><h3>What should change?</h3><p className="desk-explainer">Compare selected sources with your saved thesis. Charlie drafts targeted edits and checks their supporting quotations. Your thesis changes only when you apply selected edits.</p>
+    {context?.bridge&&<div className="workspace-notice"><strong>Sources from {context.bridge.topic}</strong><p>{context.bridge.ready.length} source(s) match the recap input hashes. Choose up to 10 below. This comparison uses original documents, not the recap as evidence.</p>{context.bridge.blocked.length>0&&<details open><summary>{context.bridge.blocked.length} source(s) need attention</summary>{context.bridge.blocked.map((d,i)=><p key={i}><strong>{d.filename}</strong> · {d.reason}</p>)}</details>}</div>}
     {error&&<div className="workspace-error" role="alert">{error}<button onClick={()=>{setError('');refresh();}}>Refresh status</button></div>}
     {!loaded?<p role="status">Loading proposals…</p>:<>
       {active?<div className="workspace-notice"><strong>{job.status==='awaiting_approval'?'Proposal ready for your review':'Comparing sources…'}</strong>{job.status!=='awaiting_approval'&&<p>The proposal is saved as a job. If a server restart interrupts it, dismiss it and prepare a new comparison. No thesis edits have been applied.</p>}<button disabled={busy} onClick={()=>mutate(`/api/research/amendment/${job.id}/decide`,{action:'dismiss'})}>Dismiss proposal</button></div>:<>
