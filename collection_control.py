@@ -91,5 +91,10 @@ def create_blueprint(get_db, is_agent):
                     cur.execute("UPDATE mp_jobs SET status=%s,result=%s::jsonb,error=%s,updated_at=NOW() WHERE id=%s AND stage=%s AND status='queued'",(receipt['status'],json.dumps(receipt.get('result',{})),str(receipt.get('error',''))[:2000] or None,receipt.get('id'),STAGE))
                 return jsonify(ok=True)
             cur.execute("SELECT id,input FROM mp_jobs WHERE stage=%s AND status='queued' ORDER BY created_at LIMIT 10",(STAGE,))
-            return jsonify(commands=[dict(r) for r in cur.fetchall()])
+            commands=[dict(r) for r in cur.fetchall()]
+            from source_preferences import DEFAULT,KEY as SOURCE_KEY,revision
+            cur.execute('SELECT value FROM app_settings WHERE key=%s',(SOURCE_KEY,));row=cur.fetchone();sources=decode(row['value']) if row else DEFAULT
+            cur.execute("SELECT value FROM app_settings WHERE key LIKE 'source_shortlist:%' ORDER BY updated_at DESC LIMIT 100")
+            shortlists=[dict(decode(r['value']),revision=revision(decode(r['value']))) for r in cur.fetchall()]
+            return jsonify(commands=commands,sourcePolicy=sources,sourceShortlists=shortlists)
     return bp

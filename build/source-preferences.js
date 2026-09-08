@@ -100,7 +100,7 @@ export function SourcePreferences({
         }
       });
       setLists((await call('/api/research/source-shortlists')).shortlists);
-      setMessage('Choice saved. Resume the paused request in Collection and recovery controls when your selection is complete.');
+      setMessage('Choice saved. Once the complete shortlist has no pending choices, the Mac agent queues a source-selection pause to resume automatically.');
       setError('');
     } catch (e) {
       setError(e.message);
@@ -298,7 +298,7 @@ export function SourcePreferences({
     role: "status"
   }, /*#__PURE__*/React.createElement("strong", null, resolved.decision, " \xB7 ", resolved.disposition), /*#__PURE__*/React.createElement("p", null, resolved.reason, " Subsector: ", resolved.subsector || 'not assigned', "."), resolved.rule && /*#__PURE__*/React.createElement("p", null, "Applied rule: ", resolved.rule.name, " \xB7 ", resolved.rule.ticker || resolved.rule.subsector || 'all companies', " \xB7 ", resolved.rule.analyst || 'all analysts', " \xB7 ", resolved.rule.task || 'all tasks', "."), /*#__PURE__*/React.createElement("p", null, "Preview assumes the report author is not yet verified. Named-analyst rules are checked against observed authorship during collection."))), /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
-  }, "Charlie should prioritize expertise, original analysis, relevance, freshness and credible disagreement\u2014not brand prestige or the number of similar notes. Provider usage restrictions always apply. These defaults apply to new Command Charlie assignments; existing scheduled ticker policies are separate."), /*#__PURE__*/React.createElement("button", {
+  }, "Charlie should prioritize expertise, original analysis, relevance, freshness and credible disagreement\u2014not brand prestige or the number of similar notes. Provider usage restrictions always apply. Defaults apply to new commands and scheduled refreshes after the Mac syncs. Existing requests retain their frozen policy."), /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: save
   }, "Save as my defaults"), /*#__PURE__*/React.createElement("button", {

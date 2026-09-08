@@ -1,3 +1,4 @@
+import { AssignmentWorkspace } from './assignment-workspace';
 import * as React from 'react';
 var today = () => new Intl.DateTimeFormat('en-CA', {
   timeZone: 'America/New_York'
@@ -233,7 +234,12 @@ export function MeetingCommand({
     className: "meeting-pack-list"
   }, jobs.map(j => /*#__PURE__*/React.createElement("article", {
     key: j.id
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", null, j.ticker), /*#__PURE__*/React.createElement("span", null, j.options?.meetingPrep?.meetingDate)), /*#__PURE__*/React.createElement("p", null, j.prep_status === 'done' ? 'Pack ready' : j.prep_status === 'running' ? `Preparing questions · ${j.prep_step || 'starting'}${j.completed ? ` (${j.completed}/${j.total})` : ''}` : j.prep_status === 'queued' ? 'Sources verified · waiting for preparation' : j.prep_status === 'failed' ? 'Preparation needs attention' : j.status === 'failed' ? 'Collection request failed' : j.status === 'queued' ? 'Waiting for Mac acknowledgment' : 'Collecting sources / preparing analyst brief'), (j.prep_error || j.meeting_issue || j.error) && /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement(AssignmentWorkspace, {
+    api: api,
+    id: j.id,
+    onNavigate: onNavigate,
+    onSection: onSection
+  }), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", null, j.ticker), /*#__PURE__*/React.createElement("span", null, j.options?.meetingPrep?.meetingDate)), /*#__PURE__*/React.createElement("p", null, j.prep_status === 'done' ? 'Pack ready' : j.prep_status === 'running' ? `Preparing questions · ${j.prep_step || 'starting'}${j.completed ? ` (${j.completed}/${j.total})` : ''}` : j.prep_status === 'queued' ? 'Sources verified · waiting for preparation' : j.prep_status === 'failed' ? 'Preparation needs attention' : j.status === 'failed' ? 'Collection request failed' : j.status === 'queued' ? 'Waiting for Mac acknowledgment' : 'Collecting sources / preparing analyst brief'), (j.prep_error || j.meeting_issue || j.error) && /*#__PURE__*/React.createElement("p", {
     className: "workspace-error"
   }, j.prep_error || j.meeting_issue || j.error), j.meeting_id && /*#__PURE__*/React.createElement("button", {
     onClick: () => {

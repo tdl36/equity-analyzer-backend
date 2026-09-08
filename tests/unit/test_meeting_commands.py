@@ -105,7 +105,9 @@ class ExistingPipelineBridgeTests(unittest.TestCase):
         from pathlib import Path
         tree=ast.parse(Path('app_v3.py').read_text())
         function=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='_run_mp_pipeline_job')
-        env={'threading':threading}
+        evidence_patch=patch('meeting_source_support.excerpts',return_value={'sources':[],'limitations':[]})
+        evidence_patch.start();self.addCleanup(evidence_patch.stop)
+        env={'threading':threading,'get_db':Mock()}
         exec(compile(ast.Module(body=[function],type_ignores=[]),'app_v3.py','exec'),env)
         env['_mp_update_job']=Mock()
         env['_mp_analyze_one_doc']=Mock(return_value=({'facts':['source-backed fact']},10))

@@ -73,6 +73,8 @@ def create_blueprint(get_db):
     bp=Blueprint('research_commands',__name__)
     from source_preferences import create_routes
     create_routes(bp,get_db)
+    from assignment_workspace import routes
+    routes(bp,get_db)
     @bp.route('/api/research/command-favorites',methods=['GET','PUT'])
     def saved():
         with get_db(commit=True) as (_,cur):

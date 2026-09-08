@@ -97,3 +97,21 @@ bylines should go to review. Do not label an entire ZIP with one author.
 The metadata is persisted and checked again before iCloud handoff. Shortlist
 candidates may include `analyst` and `authorEvidence` for the user's inspection.
 Provider restrictions always remain independent of preferences.
+
+## Automatic source-selection resume and scheduled defaults
+
+New scheduled requests freeze the latest source defaults synced by the Mac in
+`config.sourcePolicy`. For commands use `config.researchCommand.sourcePolicy`.
+Use `config.sourceReviewId` as the shortlist identity for either workflow (fall
+back to the older command ID only for older requests). Scheduled requests must
+first be visible in the cloud Mac snapshot before posting their shortlist.
+
+Submit the complete observed shortlist with `scripts/source-shortlist.py --seal`.
+Until sealed, partial choices must never trigger automatic resumption. Registering
+additional candidates without --seal reopens selection. Mark the pause as
+`attention` with an issue beginning exactly `Source selection:`. The Mac will
+resume only that specific pause after all candidates have explicit include/exclude
+choices and the shortlist is sealed. It will not resume authentication, cancelled,
+dispatch-uncertainty or unrelated error states. Paused ticker policies also remain
+paused, except explicit manual requests. Browser pickup still requires the next
+available scheduled worker; approval does not imply immediate downloads.

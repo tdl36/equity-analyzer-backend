@@ -34,7 +34,11 @@ def candidate(ticker,article,after,now):
     if isinstance(related,str) and related.strip() and ticker not in [x.strip().upper() for x in related.split(',')]:return None
     # Same ticker, normalized headline and publication day deduplicate syndication.
     identity=hashlib.sha256((ticker+'|'+datetime.fromtimestamp(ts,timezone.utc).date().isoformat()+'|'+re.sub(r'\W+',' ',title.lower()).strip()).encode()).hexdigest()
-    return {'id':identity,'ticker':ticker,'title':title[:500],'url':url[:2000],'publishedAt':ts,'category':category,
+    third_party_purchase=category=='corporate' and bool(re.search(r'\b(acquires?|purchases?|buys?)\b.*\b(gpus?|compute cluster|servers?|hardware|equipment)\b',title,re.I))
+    issuer_explicit=bool(re.match(r'^'+re.escape(ticker)+r'\b',title.strip(),re.I))
+    requires_review=third_party_purchase or (category=='corporate' and not issuer_explicit)
+    triage='Hardware purchase may be a customer event, not a material issuer transaction.' if third_party_purchase else 'Verify the transaction parties and issuer relevance before automatic collection.' if requires_review else 'Potential catalyst; original-source verification still required.'
+    return {'id':identity,'ticker':ticker,'title':title[:500],'url':url[:2000],'publishedAt':ts,'category':category,'requiresReview':requires_review,'triageReason':triage,
             'reason':f'Potential {category} catalyst: {title[:500]}. Rule-based news signal; confirm company, event and materiality in primary sources.'}
 
 
@@ -119,12 +123,14 @@ class CatalystWatch:
                 cur.execute('SELECT id FROM mp_jobs WHERE id=%s',(jid,))
                 if cur.fetchone():continue
                 status='detected';result={}
-                if state['automatic'] and policy and analyst and state['used']<state['dailyLimit']:
+                if not signal.get('requiresReview') and state['automatic'] and policy and analyst and state['used']<state['dailyLimit']:
                     cfg={**policy,'createFolder':True,'workflow':'recap','topic':f"{ticker} {now.date().isoformat()} {signal['category']} {signal['id'][:8]}",'lookbackDays':7,'kinds':['press-release','broker-report','transcript'],'instructions':signal['reason']+' Source URL: '+signal['url']}
                     cid=str(uuid.uuid5(uuid.NAMESPACE_URL,'charlie-event-refresh:'+signal['id']))
                     value=command({'requestId':cid,'action':'event_refresh','payload':{'policy':cfg,'event':{'id':signal['id'],'reason':signal['reason'],'url':signal['url']}}})
                     cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input) VALUES(%s,'collection_control',%s,'queued',%s::jsonb) ON CONFLICT(id) DO NOTHING",(cid,ticker,json.dumps(value)))
                     status='collection_queued';result={'commandId':cid};state['used']+=1
+                elif signal.get('requiresReview'):
+                    status='needs_review';result={'reason':signal['triageReason']}
                 else:result={'reason':'Automatic collection off, daily limit reached, no enabled policy, or no covering analyst. Use the collection controls to research this signal.'}
                 cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input,result) VALUES(%s,%s,%s,%s,%s::jsonb,%s::jsonb)",(jid,STAGE,ticker,status,json.dumps(signal),json.dumps(result)))
             state['lastSuccessAt']=stamp

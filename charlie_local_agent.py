@@ -1044,6 +1044,10 @@ def sync_collection_control():
     collector=Collector()
     try:
         manager=RefreshManager(collector);receipts=[]
+        sync=response.json()
+        if sync.get("sourcePolicy") is not None:
+            from collection_source_sync import reconcile
+            reconcile(manager,sync["sourcePolicy"],sync.get("sourceShortlists",[]))
         for row in response.json().get('commands',[])[:10]:
             try:
                 value=row['input'];value=json.loads(value) if isinstance(value,str) else value

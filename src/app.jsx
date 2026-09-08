@@ -21741,6 +21741,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                         {mpShowContext && q.source && (
                                                                                             <div className="mt-1 text-xs text-slate-400">Source: {q.source}</div>
                                                                                         )}
+                                                                                        {mpShowContext && q.supporting_quotes?.map((citation,ci)=><blockquote key={ci} className="mt-2 border-l-2 pl-3 text-xs"><p>{citation.quote}</p><cite>{citation.filename}</cite><p>Exact passage matched; interpretation requires review.</p></blockquote>)}
                                                                                         {q.follow_up_angle && (
                                                                                             <details className="mt-2">
                                                                                                 <summary className="text-xs text-amber-500 cursor-pointer">Follow-up angle</summary>

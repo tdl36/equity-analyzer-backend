@@ -94,14 +94,19 @@ def create_routes(bp,get_db):
         with get_db(commit=True) as (_,cur):
             cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',(key,))
             cur.execute("SELECT input FROM mp_jobs WHERE id=%s AND stage='collection_control'",(cid,));command=cur.fetchone()
-            if not command:return jsonify(error='Command not found'),404
-            p=obj(command['input'])['payload']
+            if command:p=obj(command['input'])['payload']
+            else:
+                cur.execute("SELECT value FROM app_settings WHERE key='collection_control_snapshot'");snapshot=cur.fetchone()
+                matches=[r for r in (obj(snapshot['value']).get('requests',[]) if snapshot else []) if r['id']==cid]
+                if len(matches)!=1:return jsonify(error='Request not yet visible in the Mac snapshot.'),404
+                p={'ticker':matches[0]['ticker']}
             cur.execute('SELECT value FROM app_settings WHERE key=%s',(key,));r=cur.fetchone()
             value=obj(r['value']) if r else {'commandId':cid,'ticker':p['ticker'],'candidates':[]}
             if request.method!='GET':
                 data=request.get_json(silent=True) or {}
                 if request.method=='POST':
                     rows=data.get('candidates')
+                    if data.get('sealed') is not None and type(data['sealed']) is not bool:return jsonify(error='Invalid shortlist finalization.'),400
                     if not isinstance(rows,list) or not 1<=len(rows)<=100:return jsonify(error='Submit 1–100 observed candidates.'),400
                     from urllib.parse import urlsplit
                     for item in rows:
@@ -111,6 +116,7 @@ def create_routes(bp,get_db):
                         if url.scheme!='https' or url.hostname!='research.alpha-sense.com' or url.username or url.password:return jsonify(error='Use an observed AlphaSense document URL.'),400
                         if not any(x['url']==item['url'] for x in value['candidates']):
                             value['candidates'].append({k:item[k] for k in ('url','title','publisher','reason','analyst','authorEvidence') if k in item}|{'decision':'pending'})
+                    value['sealed']=data.get('sealed',False)
                     if len(value['candidates'])>200:return jsonify(error='Narrow this shortlist to 200 sources.'),400
                 else:
                     if data.get('revision')!=revision(value):return jsonify(error='Shortlist changed. Reload before choosing.'),409

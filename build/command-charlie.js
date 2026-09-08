@@ -1,4 +1,5 @@
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
+import { AssignmentWorkspace } from './assignment-workspace';
 import { SourcePreferences } from './source-preferences';
 import { MeetingCommand } from './meeting-command';
 import * as React from 'react';
@@ -307,7 +308,12 @@ function ResearchCommand({
   }, "Refresh tasks")), /*#__PURE__*/React.createElement("p", null, "Mac last reported: ", macDate ? new Date(macDate).toLocaleString() : 'not yet available', ". Tasks wait for an available, signed-in browser worker."), !jobs.length && /*#__PURE__*/React.createElement("p", null, error ? 'Task history is unavailable. Retry when the connection returns.' : 'No research assignments have been submitted yet.'), jobs.map(j => /*#__PURE__*/React.createElement("article", {
     className: "amendment-card",
     key: j.id
-  }, /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement(AssignmentWorkspace, {
+    api: api,
+    id: j.id,
+    onNavigate: onNavigate,
+    onSection: onSection
+  }), /*#__PURE__*/React.createElement("div", {
     className: "workspace-section-heading"
   }, /*#__PURE__*/React.createElement("h3", null, j.ticker, " \xB7 ", j.input.payload.kind, " research"), /*#__PURE__*/React.createElement("span", {
     className: "desk-status"

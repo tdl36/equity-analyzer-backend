@@ -23308,12 +23308,19 @@ def _mp_analyze_one_doc(api_key, ticker, company_name, doc):
         if not file_data or file_hash({'file_data':file_data}) != doc['sha256']:
             raise ValueError('Verified meeting original changed before analysis.')
     user_content = _mp_build_user_content(doc.get('filename', ''), file_data, doc.get('extractedText', ''))
+    from meeting_analysis_cache import key as cache_key, get as cached_analysis, put as save_analysis
+    ck=cache_key(ticker,prompt,user_content,MODEL_TIERS.get('standard'))
+    cached=cached_analysis(get_db,ck) if doc.get('sha256') else None
+    if cached is not None:
+        cached.update(_source_filename=doc.get('filename',''),_source_id=doc_id,_tokensUsed=0,_cacheHit=True)
+        return cached,0
     analysis, llm_result = _llm_json_call_self_heal(
         system=prompt, messages=[{"role": "user", "content": user_content}],
         tier="standard", max_tokens=16384, api_key=api_key,
         label=f"Analyze {doc.get('filename','?')}",
     )
     tokens = llm_result["usage"]["input_tokens"] + llm_result["usage"]["output_tokens"]
+    if doc.get('sha256'):save_analysis(get_db,ck,analysis)
     analysis['_source_filename'] = doc.get('filename', '')
     analysis['_source_id'] = doc_id
     analysis['_tokensUsed'] = tokens
@@ -23350,10 +23357,10 @@ def _mp_synthesize_inline(api_key, ticker, company_name, sector, analyses, past_
     return synthesis, tokens
 
 
-def _mp_questions_inline(api_key, ticker, company_name, sector, synthesis, unresolved, source_names=None):
+def _mp_questions_inline(api_key, ticker, company_name, sector, synthesis, unresolved, source_names=None, source_evidence=None):
     if source_names is not None:
         from meeting_question_generation import generate
-        return generate(api_key,ticker,company_name,sector,synthesis,unresolved,source_names)
+        return generate(api_key,ticker,company_name,sector,synthesis,unresolved,source_names,evidence=source_evidence)
     unresolved_text = ""
     if unresolved:
         items = [f"- {q.get('question', '')} (from {q.get('meeting_date', '?')})" for q in unresolved[:15]]
@@ -23542,10 +23549,14 @@ def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sect
                 'analyses': analyses, 'synthesis': synthesis, 'tokensTotal': tokens_total,
             })
             try:
+                source_evidence=None
+                if managed:
+                    from meeting_source_support import excerpts
+                    source_evidence=excerpts(get_db,docs)
                 topics, q_tokens = _mp_questions_inline(
                     api_key, ticker, company_name, sector,
                     ({'sourceAnalyses':analyses,'researchWindow':timeframe.split('. Meeting assignment:')[0]} if managed else synthesis), unresolved,
-                    **({'source_names':[d['filename'] for d in docs]} if managed else {})
+                    **({'source_names':[d['filename'] for d in docs],'source_evidence':source_evidence} if managed else {})
                 )
                 tokens_total += q_tokens
                 if managed:

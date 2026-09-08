@@ -147,6 +147,10 @@ class RefreshManager:
         if manual:cfg['manual']=True
         if event:cfg.update(eventId=event['id'],eventReason=event['reason'],eventUrl=event['url'])
         if command:cfg['researchCommand']=command
+        else:
+            from collection_source_sync import frozen_default
+            default=frozen_default(self.db)
+            if default is not None:cfg['sourcePolicy']=default
         today = datetime.fromtimestamp(self.clock(), timezone.utc).date()
         since = today - timedelta(days=cfg['lookbackDays'] - 1)
         if row['last_success']:
@@ -161,6 +165,8 @@ class RefreshManager:
             folder.mkdir(exist_ok=True)
             if command:(folder/'.charlie-collection-pending').write_text(event['id'])
         run, request_id = uuid.uuid4().hex[:12], str(uuid.uuid4())
+        cfg['sourceReviewId']=event['id'] if command else request_id
+        if topic and cfg.get('sourcePolicy'):(folder/'.charlie-collection-pending').write_text(request_id)
         self.db.execute('INSERT INTO runs(id,created,since,until_date,topic) VALUES(?,?,?,?,?)',
                         (run, now(), since.isoformat(), today.isoformat(), topic))
         self.db.executemany('INSERT INTO tasks(run,ticker,kind) VALUES(?,?,?)', [(run,cfg['ticker'],k) for k in cfg['kinds']])
@@ -282,12 +288,13 @@ class RefreshManager:
                   'verification':verification, 'research':'existing Charlie intake' if delivered else 'no new eligible documents'}
         cfg = json.loads(row['config'])
         public_count=0
-        if cfg.get('researchCommand'):
+        if cfg.get('researchCommand') or (cfg.get('sourcePolicy') and cfg.get('topic')):
             from catalyst_sources import inventory, fingerprint, record_dispatch
             folder = self.c.catalysts/cfg['ticker']/cfg['topic']
             source_inventory, source_issues = inventory(folder, allow_pending=True)
             if source_issues: raise ValueError('Source inventory needs attention before dispatch')
             dispatch_revision = fingerprint(source_inventory)
+        if cfg.get('researchCommand'):
             from research_task_sources import verify_public_sources
             public_count=verify_public_sources(self,row,fetcher)
             result['publicDocuments']=public_count
@@ -311,7 +318,7 @@ class RefreshManager:
             updated = self.db.execute("UPDATE refresh_requests SET status='complete',lease_until=NULL,result=?,issue=NULL WHERE id=? AND owner=? AND lease_until>?", (json.dumps(result),request_id,owner,self.clock()))
             if not updated.rowcount:
                 raise ValueError('Refresh was cancelled or reassigned during verification')
-            if cfg.get('researchCommand'):
+            if cfg.get('researchCommand') or (cfg.get('sourcePolicy') and cfg.get('topic')):
                 from catalyst_sources import inventory, fingerprint, record_dispatch
                 folder = self.c.catalysts/cfg['ticker']/cfg['topic']
                 sources, issues = inventory(folder, allow_pending=True)
@@ -336,7 +343,7 @@ class RefreshManager:
             r = requests.post(CHARLIE_API+'/api/notes/generate',headers=headers,json=body,timeout=30)
         else:
             from catalyst_sources import inventory, fingerprint
-            sources, issues = inventory(self.c.catalysts / cfg['ticker'] / cfg['topic'], allow_pending=bool(cfg.get('researchCommand')))
+            sources, issues = inventory(self.c.catalysts / cfg['ticker'] / cfg['topic'], allow_pending=bool(cfg.get('researchCommand') or cfg.get('sourcePolicy')))
             if issues: raise ValueError('Event sources need attention before recap generation')
             revision = fingerprint(sources)
             r = requests.post(CHARLIE_API+'/api/analysts/queue-catalyst-activity',headers=headers,

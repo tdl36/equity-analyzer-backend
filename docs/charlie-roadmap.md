@@ -139,3 +139,27 @@ An optional task/favorite preference now continues completed Command research in
 ## T30 Guided meeting / conference workflow
 
 Implemented the guided 1–10-company selector, auto-written assignments, exact command-source-to-Meeting-Prep bridge, per-company progress, stage resumption, protected final-save receipt and registered question-source checks. See `docs/charlie-command-build.md` for bounds. Next: validate an actual authorized meeting assignment, then immediate worker dispatch, cache-first preparation, verified presentation/IR retrieval, per-company conference scheduling and measured quality/latency benchmarks. UI selection alone is not proof of collection or output quality.
+
+## Connected workflow reliability increment (September 8)
+
+Implemented source-shortlist sealing and Mac reconciliation: only complete,
+sealed selections resume specifically labeled source-selection pauses. Scheduled
+requests freeze the last synced source defaults; in-flight requests are unchanged.
+New corporate hardware-purchase signals and corporate headlines without explicit
+ticker attribution remain review-only rather than automatically spending credits.
+This conservative triage does not establish materiality or replace primary review.
+
+Managed meeting source analysis has a 30-day cache keyed by original content,
+company, prompt and configured model chain. Source bytes are rechecked before
+reuse; meeting-specific synthesis is regenerated. New meeting questions carry
+exact original quotations verified before saving, with bounded excerpt coverage
+and retained checkpoint failures. Quote matching is not factual entailment.
+Assignment inspection combines frozen instructions/preferences, source decisions,
+collection/preparation status, imported meeting originals and saved versions.
+
+Remaining acceptance work: deploy and test the connected increment; execute a
+real two-company meeting batch, record each stage's elapsed time and failures,
+and verify original-to-output identity and passage support. Broader portfolio
+coverage, automatic handling of authentication expiry, full factual entailment,
+quick packs using only existing sources, and in-workspace agent editing of meeting
+questions still require further work. Do not treat this entry as live validation.
