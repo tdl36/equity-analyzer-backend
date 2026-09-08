@@ -39,12 +39,12 @@ def generate(api_key,ticker,company_name,sector,synthesis,unresolved,source_name
     # One bounded correction of an invalid draft, using the same original excerpts.
     # Never silently remove an unsupported question or relax passage verification.
     for attempt in range(2):
-        with client.messages.stream(model=MODEL,max_tokens=18000,thinking={'type':'adaptive'},
-                output_config={'effort':'medium','format':{'type':'json_schema','schema':schema(source_names,evidence is not None)}},
+        with client.messages.stream(model=MODEL,max_tokens=32000,thinking={'type':'adaptive'},
+                output_config={'effort':'low','format':{'type':'json_schema','schema':schema(source_names,evidence is not None)}},
                 messages=messages) as stream:
             response=stream.get_final_message()
         tokens+=response.usage.input_tokens+response.usage.output_tokens
-        if response.stop_reason!='end_turn':raise ValueError('Meeting questions did not finish; checkpoint retained. Retry the question stage.')
+        if response.stop_reason!='end_turn':raise ValueError(f'Meeting questions did not finish ({response.stop_reason}); checkpoint retained. Retry the question stage.')
         draft=''.join(b.text for b in response.content if getattr(b,'type','')=='text')
         from meeting_commands import validate_pack
         try:

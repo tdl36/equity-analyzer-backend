@@ -15,6 +15,8 @@ class QuestionGenerationTests(unittest.TestCase):
         self.assertEqual(tokens,150)
         params=client.messages.stream.call_args.kwargs
         self.assertEqual(params['model'],MODEL)
+        self.assertEqual(params['max_tokens'],32000)
+        self.assertEqual(params['output_config']['effort'],'low')
         self.assertEqual(params['output_config']['format']['type'],'json_schema')
         self.assertEqual(len(topics),1)
     def test_truncated_or_unknown_sources_never_saved(self):
