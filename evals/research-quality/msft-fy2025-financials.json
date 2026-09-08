@@ -1,0 +1,573 @@
+{
+  "name": "Microsoft FY2025 audited financial arithmetic and unsupported inference controls",
+  "version": 1,
+  "sourceType": "historical-real-SEC-XBRL-facts",
+  "provenance": {
+    "publisher": "SEC EDGAR / Microsoft filer",
+    "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000789019.json",
+    "retrievedAt": "2026-09-08",
+    "accession": "0000950170-25-100235",
+    "responseSha256": "f8aae2965b20ad0df44bdf7ccbedf797d275b6b8dc030154a7a311361bb7246f",
+    "coverage": "Four frozen annual USD facts from one 10-K accession; normalized factual extracts, not verbatim filing quotations."
+  },
+  "annotation": {
+    "expertReviewed": false,
+    "modelGenerated": false,
+    "scope": "Developer-authored offline structured arithmetic/period/unit controls. Not prose entailment, a live model benchmark or investment judgment certification."
+  },
+  "sourceParts": [
+    {
+      "type": "text",
+      "name": "MSFT-FY2024-SEC-normalized-facts.txt",
+      "content": "Microsoft FY2024; period 2023-07-01 through 2024-06-30. Revenue: USD 245122000000. Operating income: USD 109433000000. Reported historical facts from 10-K accession 0000950170-25-100235. This normalized factual extract supplies no guidance, consensus estimate, market price or valuation multiple."
+    },
+    {
+      "type": "text",
+      "name": "MSFT-FY2025-SEC-normalized-facts.txt",
+      "content": "Microsoft FY2025; period 2024-07-01 through 2025-06-30. Revenue: USD 281724000000. Operating income: USD 128528000000. Reported historical facts from 10-K accession 0000950170-25-100235. This normalized factual extract supplies no guidance, consensus estimate, market price or valuation multiple."
+    }
+  ],
+  "sourceHashes": {
+    "MSFT-FY2024-SEC-normalized-facts.txt": "421e8a6108ec563ff400706d8c4f2a97fe7bf7f6192e45da8f6297aca8a54469",
+    "MSFT-FY2025-SEC-normalized-facts.txt": "b90b07e5f1b1324da81049695eae7af3828f03fc65984bc9cc1b8636c461ad8c"
+  },
+  "financialFacts": {
+    "revenue_2024": {
+      "value": "245122000000",
+      "unit": "USD",
+      "start": "2023-07-01",
+      "end": "2024-06-30",
+      "taxonomy": "us-gaap",
+      "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+      "accession": "0000950170-25-100235",
+      "filed": "2025-07-30",
+      "kind": "reported_fact"
+    },
+    "revenue_2025": {
+      "value": "281724000000",
+      "unit": "USD",
+      "start": "2024-07-01",
+      "end": "2025-06-30",
+      "taxonomy": "us-gaap",
+      "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+      "accession": "0000950170-25-100235",
+      "filed": "2025-07-30",
+      "kind": "reported_fact"
+    },
+    "operating_income_2024": {
+      "value": "109433000000",
+      "unit": "USD",
+      "start": "2023-07-01",
+      "end": "2024-06-30",
+      "taxonomy": "us-gaap",
+      "tag": "OperatingIncomeLoss",
+      "accession": "0000950170-25-100235",
+      "filed": "2025-07-30",
+      "kind": "reported_fact"
+    },
+    "operating_income_2025": {
+      "value": "128528000000",
+      "unit": "USD",
+      "start": "2024-07-01",
+      "end": "2025-06-30",
+      "taxonomy": "us-gaap",
+      "tag": "OperatingIncomeLoss",
+      "accession": "0000950170-25-100235",
+      "filed": "2025-07-30",
+      "kind": "reported_fact"
+    }
+  },
+  "financialExpectations": [
+    {
+      "id": "revenue",
+      "operation": "reported",
+      "source": "revenue_2025",
+      "unit": "USD",
+      "period": "FY2025",
+      "kind": "reported_fact",
+      "tolerance": "1000"
+    },
+    {
+      "id": "revenue_growth",
+      "operation": "growth_percent",
+      "current": "revenue_2025",
+      "prior": "revenue_2024",
+      "unit": "percent",
+      "period": "FY2025 vs FY2024",
+      "kind": "calculated"
+    },
+    {
+      "id": "operating_margin",
+      "operation": "margin_percent",
+      "numerator": "operating_income_2025",
+      "denominator": "revenue_2025",
+      "unit": "percent",
+      "period": "FY2025",
+      "kind": "calculated"
+    },
+    {
+      "id": "margin_change",
+      "operation": "margin_change_pp",
+      "currentNumerator": "operating_income_2025",
+      "currentDenominator": "revenue_2025",
+      "priorNumerator": "operating_income_2024",
+      "priorDenominator": "revenue_2024",
+      "unit": "percentage_points",
+      "period": "FY2025 vs FY2024",
+      "kind": "calculated"
+    }
+  ],
+  "requiredPatterns": [
+    "FY2025",
+    "FY2024",
+    "281\\.724",
+    "percentage points"
+  ],
+  "forbiddenPatterns": [
+    "raised FY2026 revenue guidance",
+    "price target is",
+    "consensus revenue estimate was"
+  ],
+  "good": {
+    "markdown": "Microsoft FY2025 revenue was $281.724 billion. Growth and operating margin are calculated from FY2025 and FY2024 reported values. Margin change is expressed in percentage points. These historical figures do not establish guidance, consensus or a price target.",
+    "financialAssertions": [
+      {
+        "id": "revenue",
+        "unit": "USD_billion",
+        "period": "FY2025",
+        "kind": "reported_fact",
+        "value": "281.724"
+      },
+      {
+        "id": "revenue_growth",
+        "unit": "percent",
+        "period": "FY2025 vs FY2024",
+        "kind": "calculated",
+        "value": "14.932"
+      },
+      {
+        "id": "operating_margin",
+        "unit": "percent",
+        "period": "FY2025",
+        "kind": "calculated",
+        "value": "45.622"
+      },
+      {
+        "id": "margin_change",
+        "unit": "percentage_points",
+        "period": "FY2025 vs FY2024",
+        "kind": "calculated",
+        "value": "0.978"
+      }
+    ],
+    "claimReview": {
+      "claims": [
+        {
+          "statement": "FY2025 reported revenue was USD 281724000000.",
+          "sourceId": "s2",
+          "quote": "Revenue: USD 281724000000. Operating income: USD 128528000000.",
+          "page": null,
+          "reviewPassed": true
+        }
+      ]
+    }
+  },
+  "bad": {
+    "markdown": "Microsoft FY2025 revenue was $281.724 billion. Growth and operating margin are calculated from FY2025 and FY2024 reported values. Margin change is expressed in percentage points. These historical figures do not establish guidance, consensus or a price target.",
+    "financialAssertions": [
+      {
+        "id": "revenue",
+        "unit": "USD_million",
+        "period": "FY2025",
+        "kind": "reported_fact",
+        "value": "281.724"
+      },
+      {
+        "id": "revenue_growth",
+        "unit": "percent",
+        "period": "FY2025 vs FY2024",
+        "kind": "calculated",
+        "value": "14.932"
+      },
+      {
+        "id": "operating_margin",
+        "unit": "percent",
+        "period": "FY2025",
+        "kind": "calculated",
+        "value": "45.622"
+      },
+      {
+        "id": "margin_change",
+        "unit": "percentage_points",
+        "period": "FY2025 vs FY2024",
+        "kind": "calculated",
+        "value": "0.978"
+      }
+    ],
+    "claimReview": {
+      "claims": [
+        {
+          "statement": "FY2025 reported revenue was USD 281724000000.",
+          "sourceId": "s2",
+          "quote": "Revenue: USD 281724000000. Operating income: USD 128528000000.",
+          "page": null,
+          "reviewPassed": true
+        }
+      ]
+    }
+  },
+  "badCases": [
+    {
+      "markdown": "Microsoft FY2025 revenue was $281.724 billion. Growth and operating margin are calculated from FY2025 and FY2024 reported values. Margin change is expressed in percentage points. These historical figures do not establish guidance, consensus or a price target.",
+      "financialAssertions": [
+        {
+          "id": "revenue",
+          "unit": "USD_billion",
+          "period": "FY2025",
+          "kind": "reported_fact",
+          "value": "281.724"
+        },
+        {
+          "id": "revenue_growth",
+          "unit": "percent",
+          "period": "Q4 FY2025 vs Q4 FY2024",
+          "kind": "calculated",
+          "value": "14.932"
+        },
+        {
+          "id": "operating_margin",
+          "unit": "percent",
+          "period": "FY2025",
+          "kind": "calculated",
+          "value": "45.622"
+        },
+        {
+          "id": "margin_change",
+          "unit": "percentage_points",
+          "period": "FY2025 vs FY2024",
+          "kind": "calculated",
+          "value": "0.978"
+        }
+      ],
+      "claimReview": {
+        "claims": [
+          {
+            "statement": "FY2025 reported revenue was USD 281724000000.",
+            "sourceId": "s2",
+            "quote": "Revenue: USD 281724000000. Operating income: USD 128528000000.",
+            "page": null,
+            "reviewPassed": true
+          }
+        ]
+      }
+    },
+    {
+      "markdown": "Microsoft FY2025 revenue was $281.724 billion. Growth and operating margin are calculated from FY2025 and FY2024 reported values. Margin change is expressed in percentage points. These historical figures do not establish guidance, consensus or a price target.",
+      "financialAssertions": [
+        {
+          "id": "revenue",
+          "unit": "USD_billion",
+          "period": "FY2025",
+          "kind": "reported_fact",
+          "value": "281.724"
+        },
+        {
+          "id": "revenue_growth",
+          "unit": "percent",
+          "period": "FY2025 vs FY2024",
+          "kind": "calculated",
+          "value": "14.932"
+        },
+        {
+          "id": "operating_margin",
+          "unit": "percent",
+          "period": "FY2025",
+          "kind": "guidance",
+          "value": "45.622"
+        },
+        {
+          "id": "margin_change",
+          "unit": "percentage_points",
+          "period": "FY2025 vs FY2024",
+          "kind": "calculated",
+          "value": "0.978"
+        }
+      ],
+      "claimReview": {
+        "claims": [
+          {
+            "statement": "FY2025 reported revenue was USD 281724000000.",
+            "sourceId": "s2",
+            "quote": "Revenue: USD 281724000000. Operating income: USD 128528000000.",
+            "page": null,
+            "reviewPassed": true
+          }
+        ]
+      }
+    },
+    {
+      "markdown": "Microsoft FY2025 revenue was $281.724 billion. Growth and operating margin are calculated from FY2025 and FY2024 reported values. Margin change is expressed in percentage points. These historical figures do not establish guidance, consensus or a price target.",
+      "financialAssertions": [
+        {
+          "id": "revenue",
+          "unit": "USD_billion",
+          "period": "FY2025",
+          "kind": "reported_fact",
+          "value": "281.724"
+        },
+        {
+          "id": "revenue_growth",
+          "unit": "percent",
+          "period": "FY2025 vs FY2024",
+          "kind": "calculated",
+          "value": "14.932"
+        },
+        {
+          "id": "operating_margin",
+          "unit": "percent",
+          "period": "FY2025",
+          "kind": "calculated",
+          "value": "45.622"
+        },
+        {
+          "id": "margin_change",
+          "unit": "percent",
+          "period": "FY2025 vs FY2024",
+          "kind": "calculated",
+          "value": "0.978"
+        }
+      ],
+      "claimReview": {
+        "claims": [
+          {
+            "statement": "FY2025 reported revenue was USD 281724000000.",
+            "sourceId": "s2",
+            "quote": "Revenue: USD 281724000000. Operating income: USD 128528000000.",
+            "page": null,
+            "reviewPassed": true
+          }
+        ]
+      }
+    },
+    {
+      "markdown": "Microsoft FY2025 revenue was $281.724 billion. Growth and operating margin are calculated from FY2025 and FY2024 reported values. Margin change is expressed in percentage points. These historical figures do not establish guidance, consensus or a price target.",
+      "financialAssertions": [
+        {
+          "id": "revenue",
+          "unit": "USD_billion",
+          "period": "FY2025",
+          "kind": "reported_fact",
+          "value": "281.724"
+        },
+        {
+          "id": "revenue_growth",
+          "unit": "percent",
+          "period": "FY2025 vs FY2024",
+          "kind": "calculated",
+          "value": "149.3"
+        },
+        {
+          "id": "operating_margin",
+          "unit": "percent",
+          "period": "FY2025",
+          "kind": "calculated",
+          "value": "45.622"
+        },
+        {
+          "id": "margin_change",
+          "unit": "percentage_points",
+          "period": "FY2025 vs FY2024",
+          "kind": "calculated",
+          "value": "0.978"
+        }
+      ],
+      "claimReview": {
+        "claims": [
+          {
+            "statement": "FY2025 reported revenue was USD 281724000000.",
+            "sourceId": "s2",
+            "quote": "Revenue: USD 281724000000. Operating income: USD 128528000000.",
+            "page": null,
+            "reviewPassed": true
+          }
+        ]
+      }
+    },
+    {
+      "markdown": "Microsoft FY2025 revenue was $281.724 billion. Growth and operating margin are calculated from FY2025 and FY2024 reported values. Margin change is expressed in percentage points. These historical figures do not establish guidance, consensus or a price target.",
+      "financialAssertions": [
+        {
+          "id": "revenue",
+          "unit": "USD_billion",
+          "period": "FY2025",
+          "kind": "reported_fact",
+          "value": "281.724"
+        },
+        {
+          "id": "revenue_growth",
+          "unit": "percent",
+          "period": "FY2025 vs FY2024",
+          "kind": "calculated",
+          "value": "14.932"
+        },
+        {
+          "id": "operating_margin",
+          "unit": "percent",
+          "period": "FY2025",
+          "kind": "calculated",
+          "value": "NaN"
+        },
+        {
+          "id": "margin_change",
+          "unit": "percentage_points",
+          "period": "FY2025 vs FY2024",
+          "kind": "calculated",
+          "value": "0.978"
+        }
+      ],
+      "claimReview": {
+        "claims": [
+          {
+            "statement": "FY2025 reported revenue was USD 281724000000.",
+            "sourceId": "s2",
+            "quote": "Revenue: USD 281724000000. Operating income: USD 128528000000.",
+            "page": null,
+            "reviewPassed": true
+          }
+        ]
+      }
+    },
+    {
+      "markdown": "Microsoft FY2025 revenue was $281.724 billion. Growth and operating margin are calculated from FY2025 and FY2024 reported values. Margin change is expressed in percentage points. These historical figures do not establish guidance, consensus or a price target. Management raised FY2026 revenue guidance to $310 billion.",
+      "financialAssertions": [
+        {
+          "id": "revenue",
+          "unit": "USD_billion",
+          "period": "FY2025",
+          "kind": "reported_fact",
+          "value": "281.724"
+        },
+        {
+          "id": "revenue_growth",
+          "unit": "percent",
+          "period": "FY2025 vs FY2024",
+          "kind": "calculated",
+          "value": "14.932"
+        },
+        {
+          "id": "operating_margin",
+          "unit": "percent",
+          "period": "FY2025",
+          "kind": "calculated",
+          "value": "45.622"
+        },
+        {
+          "id": "margin_change",
+          "unit": "percentage_points",
+          "period": "FY2025 vs FY2024",
+          "kind": "calculated",
+          "value": "0.978"
+        }
+      ],
+      "claimReview": {
+        "claims": [
+          {
+            "statement": "FY2025 reported revenue was USD 281724000000.",
+            "sourceId": "s2",
+            "quote": "Revenue: USD 281724000000. Operating income: USD 128528000000.",
+            "page": null,
+            "reviewPassed": true
+          }
+        ]
+      }
+    },
+    {
+      "markdown": "Microsoft FY2025 revenue was $281.724 billion. Growth and operating margin are calculated from FY2025 and FY2024 reported values. Margin change is expressed in percentage points. These historical figures do not establish guidance, consensus or a price target. Our price target is $600.",
+      "financialAssertions": [
+        {
+          "id": "revenue",
+          "unit": "USD_billion",
+          "period": "FY2025",
+          "kind": "reported_fact",
+          "value": "281.724"
+        },
+        {
+          "id": "revenue_growth",
+          "unit": "percent",
+          "period": "FY2025 vs FY2024",
+          "kind": "calculated",
+          "value": "14.932"
+        },
+        {
+          "id": "operating_margin",
+          "unit": "percent",
+          "period": "FY2025",
+          "kind": "calculated",
+          "value": "45.622"
+        },
+        {
+          "id": "margin_change",
+          "unit": "percentage_points",
+          "period": "FY2025 vs FY2024",
+          "kind": "calculated",
+          "value": "0.978"
+        }
+      ],
+      "claimReview": {
+        "claims": [
+          {
+            "statement": "FY2025 reported revenue was USD 281724000000.",
+            "sourceId": "s2",
+            "quote": "Revenue: USD 281724000000. Operating income: USD 128528000000.",
+            "page": null,
+            "reviewPassed": true
+          }
+        ]
+      }
+    },
+    {
+      "markdown": "Microsoft FY2025 revenue was $281.724 billion. Growth and operating margin are calculated from FY2025 and FY2024 reported values. Margin change is expressed in percentage points. These historical figures do not establish guidance, consensus or a price target. The consensus revenue estimate was $281.724 billion.",
+      "financialAssertions": [
+        {
+          "id": "revenue",
+          "unit": "USD_billion",
+          "period": "FY2025",
+          "kind": "reported_fact",
+          "value": "281.724"
+        },
+        {
+          "id": "revenue_growth",
+          "unit": "percent",
+          "period": "FY2025 vs FY2024",
+          "kind": "calculated",
+          "value": "14.932"
+        },
+        {
+          "id": "operating_margin",
+          "unit": "percent",
+          "period": "FY2025",
+          "kind": "calculated",
+          "value": "45.622"
+        },
+        {
+          "id": "margin_change",
+          "unit": "percentage_points",
+          "period": "FY2025 vs FY2024",
+          "kind": "calculated",
+          "value": "0.978"
+        }
+      ],
+      "claimReview": {
+        "claims": [
+          {
+            "statement": "FY2025 reported revenue was USD 281724000000.",
+            "sourceId": "s2",
+            "quote": "Revenue: USD 281724000000. Operating income: USD 128528000000.",
+            "page": null,
+            "reviewPassed": true
+          }
+        ]
+      }
+    }
+  ]
+}

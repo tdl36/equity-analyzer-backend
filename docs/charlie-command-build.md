@@ -61,3 +61,11 @@ T27 verified: backend `c39cf88`, Cloudflare `08f4211f-59d0-47d3-a42b-3f5091e48b4
 ## T28 Abandoned running proposal recovery
 
 New thesis proposals hold a PostgreSQL session advisory lock during execution. The Mac heartbeat checks running recoverable proposals older than two minutes, skips live owners, and requeues abandoned work at most twice under the same ID. Worker tokens fence checkpoint writes and final results after ownership changes. Recovery requires a server research key and rejects changed saved theses. SQL connection loss releases execution ownership; a lost in-flight provider response may still need recomputation. One pooled DB connection is held for each executing proposal. Queued jobs, old proposals without recoverable=true, ordinary provider failures and automatic paid command-to-proposal chaining remain open. UI discloses recovery count/dependencies. 272 full backend tests, 20 frontend tests, build and Mac compile pass, plus ownership regressions after final cleanup hardening.
+
+T28 verified: backend `f098df4`, Cloudflare `d7d0473f-ba51-4f58-bc37-f937f607edbf`; recovery returned 200 with no abandoned jobs, agent heartbeat was ~6 seconds old, and the frontend hash matched. Synthetic browser fixture showed recovery count/dependencies.
+
+## SEC financial control pack
+
+Added a frozen MSFT FY2025 10-K XBRL pack (four FY2024/FY2025 revenue/operating-income facts, selected by start/end period and accession). Four structured Decimal checks cover revenue, growth, operating margin and percentage-point change, with nine adversarial controls plus source-hash drift checks. This is offline annotation/fixture scoring, not automatic prose extraction or a live/expert model benchmark. 275 full backend tests and four evaluation packs pass, with targeted numeric-bound/source regression checks after final hardening. No model calls. Frontend remains verified T28; evaluator-only change needs no UI release.
+
+Next remaining build priorities: queued proposal recovery without misclassifying live waiting work; opt-in automatic command-to-proposal dispatch after verified recap; broader expert/real-output benchmarks and comprehensive claim/financial reconciliation. Continue scheduled collection as configured after 05:40 UTC.
