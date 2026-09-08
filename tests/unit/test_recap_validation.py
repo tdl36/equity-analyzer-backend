@@ -26,3 +26,21 @@ class RecapValidationTests(unittest.TestCase):
         responses=iter([{'claims':[self.claim]}, {'checks':[{'id':'1','verdict':'pass','issue':''}]}])
         result=audit(self.parts,'Draft','',lambda *args:next(responses))
         self.assertTrue(result['claims'][0]['reviewPassed']);self.assertEqual(result['status'],'needs_review')
+
+    def test_malformed_audit_json_retries_once_then_validates_normally(self):
+        from recap_validation import structured_call
+        from unittest.mock import Mock
+        call=Mock(side_effect=['{"claims":', '{"claims":[]}'])
+        self.assertEqual(structured_call(call,'Audit',100),{'claims':[]})
+        self.assertEqual(call.call_count,2)
+        self.assertIn('FORMAT RETRY',call.call_args.args[0])
+        call=Mock(return_value='broken')
+        with self.assertRaises(ValueError):structured_call(call,'Audit',100)
+        self.assertEqual(call.call_count,2)
+
+    def test_long_first_document_does_not_starve_later_audit_sources(self):
+        from recap_validation import audit_excerpts
+        sources=[{'id':str(i),'filename':str(i)+'.pdf','pages':[{'page':1,'text':'x'*5000}]} for i in range(3)]
+        excerpts,issues=audit_excerpts(sources,budget=3000)
+        self.assertEqual([len(s['pages'][0]['text']) for s in excerpts],[1000,1000,1000])
+        self.assertEqual(len(issues),3)
