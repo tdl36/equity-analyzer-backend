@@ -10,7 +10,7 @@ export function MeetingCommand({api,onNavigate,onSection}){
   const pending=React.useRef(stored()),lock=React.useRef(false),alive=React.useRef(true);
   const json=async(path,options={})=>{const r=await fetch(api+path,{...options,signal:AbortSignal.timeout(20000)});let d;try{d=await r.json();}catch{throw Error('The server response could not be confirmed.');}if(!r.ok){const e=Error(d.error||`Request failed (${r.status})`);e.status=r.status;throw e;}return d;};
   const clear=()=>{pending.current=null;try{sessionStorage.removeItem(pendingKey);}catch{}setUncertain(false);};
-  const refresh=async()=>{const d=await json('/api/research/meeting-commands');if(!alive.current)return;setTickers(d.tickers);setJobs(d.jobs);if(pending.current&&d.jobs.some(j=>j.batch_id===pending.current.requestId)){clear();setMessage('Your meeting assignment is recorded. Follow each company below.');}};
+  const refresh=async()=>{const d=await json('/api/research/meeting-commands');if(!alive.current)return;setTickers(d.tickers);setJobs(d.jobs);setError('');if(pending.current&&d.jobs.some(j=>j.batch_id===pending.current.requestId)){clear();setMessage('Your meeting assignment is recorded. Follow each company below.');}};
   React.useEffect(()=>{alive.current=true;refresh().catch(e=>setError(e.message));const timer=setInterval(()=>{if(!document.hidden)refresh().catch(e=>{if(alive.current)setError(e.message);});},10000);return()=>{alive.current=false;clearInterval(timer);};},[api]);
   const toggle=(v,list,set)=>set(list.includes(v)?list.filter(x=>x!==v):[...list,v]);
   const submit=async()=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');

@@ -109,6 +109,7 @@ def drain(get_db,run):
                     if attempts>=2:
                         cur.execute("UPDATE mp_jobs SET status='failed',error='Automatic recovery limit reached; retry this meeting pack.',updated_at=NOW() WHERE id=%s",(row['id'],));return
                     inp['recoveryAttempts']=attempts+1
+                inp['workerToken']=str(uuid.uuid4())
                 cur.execute("UPDATE mp_jobs SET status='running',error=NULL,input=%s::jsonb,updated_at=NOW() WHERE id=%s",(json.dumps(inp),row['id']))
             try:
                 with get_db() as (_,cur):
@@ -120,7 +121,7 @@ def drain(get_db,run):
                 run(row['id'],inp,obj(row['result']))
             except Exception as exc:
                 with get_db(commit=True) as (_,cur):
-                    cur.execute("UPDATE mp_jobs SET status='failed',error=%s,updated_at=NOW() WHERE id=%s",(str(exc)[:1500],row['id']))
+                    cur.execute("UPDATE mp_jobs SET status='failed',error=%s,updated_at=NOW() WHERE id=%s AND status='running' AND input->>'workerToken'=%s",(str(exc)[:1500],row['id'],inp['workerToken']))
     finally:_WORKER.release()
 
 

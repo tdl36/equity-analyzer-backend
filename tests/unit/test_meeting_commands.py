@@ -155,3 +155,30 @@ class PackQualityTests(unittest.TestCase):
         validate_pack([{'topic':'Margins','questions':[q]}],docs)
         for change in ({'source_filenames':['invented.pdf']},{'follow_up_angle':''},{'priority':'urgent'}):
             with self.assertRaises(ValueError):validate_pack([{'topic':'Margins','questions':[{**q,**change}]}],docs)
+
+class MeetingOwnershipTests(unittest.TestCase):
+    def test_lost_owner_cannot_publish_progress(self):
+        import ast
+        from pathlib import Path
+        tree=ast.parse(Path('app_v3.py').read_text())
+        function=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='_mp_update_job')
+        cur=Mock();cur.rowcount=0
+        @contextmanager
+        def db(commit=False):yield None,cur
+        env={'get_db':db,'json':json}
+        exec(compile(ast.Module(body=[function],type_ignores=[]),'app_v3.py','exec'),env)
+        with self.assertRaises(ValueError):env['_mp_update_job'](CID,_owner='old',status='done',result={'topics':[]})
+        sql,values=cur.execute.call_args.args
+        self.assertIn("input->>'workerToken'",sql);self.assertEqual(values[-1],'old')
+    def test_lost_owner_cannot_save_question_set(self):
+        import ast
+        from pathlib import Path
+        tree=ast.parse(Path('app_v3.py').read_text())
+        function=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='_mp_save_results_inline')
+        cur=Mock();cur.fetchone.return_value=None
+        @contextmanager
+        def db(commit=False):yield None,cur
+        env={'get_db':db,'json':json}
+        exec(compile(ast.Module(body=[function],type_ignores=[]),'app_v3.py','exec'),env)
+        with self.assertRaises(ValueError):env['_mp_save_results_inline'](1,[],{},0,'model',managed=True,job_id=CID,owner='old')
+        self.assertFalse(any('INSERT' in c.args[0] for c in cur.execute.call_args_list))

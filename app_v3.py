@@ -22995,6 +22995,7 @@ def _mp_update_job(job_id, **kwargs):
     """Update an mp_jobs row. Stores result/input as JSONB when provided."""
     if not kwargs:
         return
+    owner=kwargs.pop('_owner',None)
     fields, values = [], []
     for k, v in kwargs.items():
         if k in ('result', 'input') and v is not None:
@@ -23006,7 +23007,10 @@ def _mp_update_job(job_id, **kwargs):
     fields.append("updated_at = NOW()")
     values.append(job_id)
     with get_db(commit=True) as (_c, cur):
-        cur.execute(f"UPDATE mp_jobs SET {', '.join(fields)} WHERE id = %s", values)
+        where=" AND status='running' AND input->>'workerToken'=%s" if owner else ''
+        if owner:values.append(owner)
+        cur.execute(f"UPDATE mp_jobs SET {', '.join(fields)} WHERE id = %s"+where, values)
+        if owner and cur.rowcount!=1:raise ValueError('Meeting execution ownership changed; stale output was not saved.')
 
 
 def _run_mp_synthesize_job(job_id, api_key, ticker, company_name, sector,
@@ -23365,10 +23369,13 @@ def _mp_questions_inline(api_key, ticker, company_name, sector, synthesis, unres
     return topics, tokens
 
 
-def _mp_save_results_inline(meeting_id, topics, synthesis_json, total_tokens, model, managed=False):
+def _mp_save_results_inline(meeting_id, topics, synthesis_json, total_tokens, model, managed=False, job_id=None, owner=None):
     """Mirror of /api/mp/save-results logic, inlined for use from the orchestrator."""
     with get_db(commit=True) as (_, cur):
         if managed:
+            if owner:
+                cur.execute("SELECT id FROM mp_jobs WHERE id=%s AND status='running' AND input->>'workerToken'=%s FOR UPDATE",(job_id,owner))
+                if not cur.fetchone():raise ValueError('Meeting execution ownership changed before saving.')
             cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))', ('meeting-save:'+str(meeting_id),))
             cur.execute('SELECT id,version FROM mp_question_sets WHERE meeting_id=%s ORDER BY version LIMIT 1', (meeting_id,))
             existing=cur.fetchone()
@@ -23402,7 +23409,7 @@ def _mp_save_results_inline(meeting_id, topics, synthesis_json, total_tokens, mo
 
 def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sector,
                          docs, past_questions, timeframe, unresolved, model,
-                         resume_from=None, managed=False):
+                         resume_from=None, managed=False, owner=None):
     """Run the full MP pipeline server-side with stage-level checkpointing.
     After each stage succeeds, writes its output to mp_jobs.result so retries
     resume from the failure point instead of redoing successful work.
@@ -23416,6 +23423,8 @@ def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sect
       - tokensTotal: running token count
       - questionSetId / version: set when stage 4 saves to DB
     """
+    def update(jid, **kwargs):
+        return _mp_update_job(jid, **({'_owner':owner} if owner else {}), **kwargs)
     try:
         n_docs = len(docs)
         # Carry forward any checkpoint from a prior (failed) run
@@ -23433,7 +23442,7 @@ def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sect
                 if i < n_docs and a:
                     analyses[i] = a
 
-            _mp_update_job(job_id, result={
+            update(job_id, result={
                 'stage': 'analyzing',
                 'completed': sum(1 for a in analyses if a),
                 'total': n_docs,
@@ -23454,7 +23463,7 @@ def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sect
                             analyses[i] = analysis
                             results_tokens[i] = tokens
                             done_count = sum(1 for a in analyses if a)
-                            _mp_update_job(job_id, result={
+                            update(job_id, result={
                                 'stage': 'analyzing', 'completed': done_count, 'total': n_docs,
                                 'analyses': analyses, 'tokensTotal': tokens_total + sum(results_tokens),
                             })
@@ -23474,7 +23483,7 @@ def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sect
 
             if errors:
                 # Persist whatever analyses DID succeed so retry can resume past them
-                _mp_update_job(job_id, status='failed',
+                update(job_id, status='failed',
                                error=f"Analyze errors: {errors[0][0]} — {errors[0][1]}",
                                result={
                                    'stage': 'analyzing',
@@ -23486,7 +23495,7 @@ def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sect
                                })
                 return
             tokens_total += sum(results_tokens)
-            _mp_update_job(job_id, result={
+            update(job_id, result={
                 'stage': 'synthesizing', 'completed': n_docs, 'total': n_docs,
                 'analyses': analyses, 'tokensTotal': tokens_total,
             })
@@ -23496,7 +23505,7 @@ def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sect
         # -------- Stage 2: synthesize --------
         synthesis = cp.get('synthesis')
         if not synthesis:
-            _mp_update_job(job_id, result={
+            update(job_id, result={
                 'stage': 'synthesizing', 'completed': n_docs, 'total': n_docs,
                 'analyses': analyses, 'tokensTotal': tokens_total,
             })
@@ -23506,7 +23515,7 @@ def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sect
                 )
                 tokens_total += synth_tokens
             except Exception as e:
-                _mp_update_job(job_id, status='failed',
+                update(job_id, status='failed',
                                error=f"Synthesize failed: {str(e)[:1000]}",
                                result={
                                    'stage': 'synthesizing', 'completed': n_docs, 'total': n_docs,
@@ -23514,7 +23523,7 @@ def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sect
                                    'tokensTotal': tokens_total, 'failedAt': 'synthesizing',
                                })
                 return
-            _mp_update_job(job_id, result={
+            update(job_id, result={
                 'stage': 'generating', 'completed': n_docs, 'total': n_docs,
                 'analyses': analyses, 'synthesis': synthesis, 'tokensTotal': tokens_total,
             })
@@ -23524,7 +23533,7 @@ def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sect
         # -------- Stage 3: generate questions --------
         topics = cp.get('topics')
         if not topics:
-            _mp_update_job(job_id, result={
+            update(job_id, result={
                 'stage': 'generating', 'completed': n_docs, 'total': n_docs,
                 'analyses': analyses, 'synthesis': synthesis, 'tokensTotal': tokens_total,
             })
@@ -23535,7 +23544,7 @@ def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sect
                 )
                 tokens_total += q_tokens
             except Exception as e:
-                _mp_update_job(job_id, status='failed',
+                update(job_id, status='failed',
                                error=f"Generate questions failed: {str(e)[:1000]}",
                                result={
                                    'stage': 'generating', 'completed': n_docs, 'total': n_docs,
@@ -23543,7 +23552,7 @@ def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sect
                                    'tokensTotal': tokens_total, 'failedAt': 'generating',
                                })
                 return
-            _mp_update_job(job_id, result={
+            update(job_id, result={
                 'stage': 'saving', 'completed': n_docs, 'total': n_docs,
                 'analyses': analyses, 'synthesis': synthesis, 'topics': topics,
                 'tokensTotal': tokens_total,
@@ -23556,15 +23565,15 @@ def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sect
             try:
                 validate_pack(topics,docs)
             except ValueError as exc:
-                _mp_update_job(job_id,status='failed',error=str(exc),result={
+                update(job_id,status='failed',error=str(exc),result={
                     'stage':'generating','failedAt':'generating','analyses':analyses,
                     'synthesis':synthesis,'tokensTotal':tokens_total})
                 return
 
         # -------- Stage 4: save --------
-        qs = _mp_save_results_inline(meeting_id, topics, synthesis, tokens_total, model, managed=managed)
+        qs = _mp_save_results_inline(meeting_id, topics, synthesis, tokens_total, model, managed=managed, job_id=job_id, owner=owner)
 
-        _mp_update_job(job_id, status='done', tokens_used=tokens_total, result={
+        update(job_id, status='done', tokens_used=tokens_total, result={
             'stage': 'done',
             'questionSetId': qs['id'], 'version': qs['version'],
             'topics': topics, 'synthesis': synthesis,
@@ -23572,7 +23581,7 @@ def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sect
         })
     except Exception as e:
         print(f"MP pipeline job {job_id} error: {e}")
-        _mp_update_job(job_id, status='failed', error=str(e)[:2000])
+        update(job_id, status='failed', error=str(e)[:2000])
 
 
 @app.route('/api/mp/run-pipeline', methods=['POST'])
@@ -28857,7 +28866,7 @@ def _run_command_meeting(job_id, inp, checkpoint):
     if not key:raise ValueError('Server research key is missing.')
     _run_mp_pipeline_job(job_id,key,inp['meetingId'],inp['ticker'],inp['companyName'],inp['sector'],
         inp['docs'],inp['pastQuestions'],inp['timeframe'],inp['unresolvedQuestions'],
-        MEETING_PREP_DEFAULT_MODEL,resume_from=checkpoint,managed=True)
+        MEETING_PREP_DEFAULT_MODEL,resume_from=checkpoint,managed=True,owner=inp['workerToken'])
 
 app.register_blueprint(meeting_commands.create_blueprint(get_db,_run_command_meeting,
     lambda:bool(os.environ.get('ANTHROPIC_API_KEY',''))))

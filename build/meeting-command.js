@@ -61,6 +61,7 @@ export function MeetingCommand({
     if (!alive.current) return;
     setTickers(d.tickers);
     setJobs(d.jobs);
+    setError('');
     if (pending.current && d.jobs.some(j => j.batch_id === pending.current.requestId)) {
       clear();
       setMessage('Your meeting assignment is recorded. Follow each company below.');
