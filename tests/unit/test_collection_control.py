@@ -40,3 +40,16 @@ class ControlTests(unittest.TestCase):
         for key,val in [('hours',True),('topic','../bad'),('instructions','x'*3001),('kinds',[]),('enabled','yes')]:
             with self.subTest(key=key):
                 with self.assertRaises(ValueError):cc.command({**self.data,'action':'save','payload':{**p,key:val}})
+
+    def test_batch_validation_is_bounded_and_rejects_duplicates(self):
+        p={'ticker':'MDT','hours':24,'lookbackDays':7,'enabled':True,'workflow':'thesis','topic':'','kinds':['transcript'],'instructions':''}
+        valid={**self.data,'action':'save_batch','payload':{'policies':[p,{**p,'ticker':'DE'}]}}
+        self.assertEqual(len(cc.command(valid)['payload']['policies']),2)
+        with self.assertRaises(ValueError):cc.command({**valid,'payload':{'policies':[p,p]}})
+        with self.assertRaises(ValueError):cc.command({**valid,'payload':{'policies':[]}})
+
+    def test_recovery_commands_require_specific_refresh_id(self):
+        for action in ('cancel','retry'):
+            value={**self.data,'action':action,'payload':{'ticker':'MDT','refreshRequestId':str(uuid.uuid4())}}
+            self.assertEqual(cc.command(value)['action'],action)
+            with self.assertRaises(ValueError):cc.command({**value,'payload':{'ticker':'MDT','refreshRequestId':'bad'}})

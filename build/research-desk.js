@@ -382,7 +382,8 @@ export function ResearchDesk({
     onCompany: onCompany,
     onPlan: prepare
   }), section === 'collection' && /*#__PURE__*/React.createElement(CollectionCloud, {
-    api: api
+    api: api,
+    coverage: analyses
   }), section === 'queue' && /*#__PURE__*/React.createElement("section", {
     className: "workspace-panel"
   }, /*#__PURE__*/React.createElement("div", {

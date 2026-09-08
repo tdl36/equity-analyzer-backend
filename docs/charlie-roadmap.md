@@ -39,3 +39,11 @@ The chat instruction can now prepare source-backed narrative edits to a selected
 Notes create new drafts and retain the accepted note, original version and source register. Review inherited charts before publication; DOCX is not reused from the old note. Investment reviews create new immutable versions and render markdown, HTML and PDF from the updated structured state. Existing full-review evidence/readiness is invalidated rather than incorrectly carried forward. Numeric investment-model inputs, personal ratings and convictions are not model-editable in this narrative revision path.
 
 This closes the initial chat-to-note/review narrative edit gap. Numeric model updates, broader restoration UI, multi-agent delegation and the other remaining workstreams still need implementation.
+
+## T17 coverage controls and numerical reconciliation
+
+Collection now supports an explicit batch of ticker policies using the selected cadence, source types and destination. All local destinations validate before the group commits; duplicate commands return their original receipt. Mobile retry/cancel controls target an exact ticker/request. Cancellation prevents further managed export/handoff steps; an already-running browser action may finish. Coverage gaps are shown against saved company coverage and the Mac's available ticker folders. No new schedules have been enabled without the user's ticker/cadence choices.
+
+New recap audits can include up to eight source-linked numerical comparisons. Deterministic checks validate exact numeric tokens, declared currency scales, fiscal periods, measurement bases, consensus labels and arithmetic, including percentage points versus basis points. Unsupported comparisons remain flagged without a calculated result. These selected checks do not establish comprehensive numerical accuracy or prove the model's semantic interpretation.
+
+Validation: 162 safe backend unit tests and 20 frontend tests passed; production build passed. Tests use synthetic/stubbed inputs and do not incur paid research generation.

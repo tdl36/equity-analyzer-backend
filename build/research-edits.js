@@ -16,6 +16,7 @@ export function ResearchEdits({
     [jobId, setJobId] = React.useState(''),
     [selected, setSelected] = React.useState([]);
   var [error, setError] = React.useState(''),
+    [loadError, setLoadError] = React.useState(''),
     [busy, setBusy] = React.useState(false),
     [uncertain, setUncertain] = React.useState(false),
     [loading, setLoading] = React.useState(true);
@@ -46,6 +47,7 @@ export function ResearchEdits({
       var d = await fetchJson(`/api/research/edit-targets/${encodeURIComponent(ticker)}`);
       if (alive.current) {
         setData(d);
+        setLoadError('');
         setLoading(false);
         if (pending.current && d.jobs.some(j => j.id === pending.current.requestId)) {
           setJobId(pending.current.requestId);
@@ -56,7 +58,7 @@ export function ResearchEdits({
     } catch (e) {
       if (alive.current) {
         setLoading(false);
-        setError(e.message);
+        setLoadError(e.message);
       }
     }
   };
@@ -149,10 +151,10 @@ export function ResearchEdits({
   };
   return /*#__PURE__*/React.createElement("details", {
     className: "research-edit-panel"
-  }, /*#__PURE__*/React.createElement("summary", null, "Turn your instruction into source-backed edits"), /*#__PURE__*/React.createElement("p", null, "Choose the exact saved document and the sources supporting your instruction above. The analyst proposes narrative changes; numeric investment-model fields remain unchanged. A separate review checks proposed wording against source quotations."), error && /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("summary", null, "Turn your instruction into source-backed edits"), /*#__PURE__*/React.createElement("p", null, "Choose the exact saved document and the sources supporting your instruction above. The analyst proposes narrative changes; numeric investment-model fields remain unchanged. A separate review checks proposed wording against source quotations."), (error || loadError) && /*#__PURE__*/React.createElement("p", {
     className: "workspace-error",
     role: "alert"
-  }, error), loading ? /*#__PURE__*/React.createElement("p", {
+  }, error || loadError), loading ? /*#__PURE__*/React.createElement("p", {
     role: "status"
   }, "Loading saved documents\u2026") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("fieldset", {
     disabled: busy || uncertain,

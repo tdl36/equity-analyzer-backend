@@ -30,6 +30,25 @@ class RefreshTests(unittest.TestCase):
         with self.assertRaises(ValueError):self.m.apply_cloud_command('invalid',{'action':'save','payload':{**self.cfg,'hours':3}})
         self.assertEqual(self.c.db.execute('SELECT COUNT(*) FROM cloud_control_receipts').fetchone()[0],1)
 
+    def test_cloud_batch_is_atomic_and_replay_safe(self):
+        (self.c.stocks/'DE').mkdir()
+        configs=[self.cfg,{**self.cfg,'ticker':'DE'}]
+        first=self.m.apply_cloud_command('batch',{'action':'save_batch','payload':{'policies':configs}})
+        self.assertEqual(len(first['policies']),2)
+        with self.assertRaises(ValueError):self.m.apply_cloud_command('bad-batch',{'action':'save_batch','payload':{'policies':[{**self.cfg,'hours':4},{**self.cfg,'ticker':'MISSING'}]}})
+        self.assertEqual(next(p['hours'] for p in self.m.status()['policies'] if p['ticker']=='MDT'),24)
+        self.assertEqual(self.m.apply_cloud_command('batch',{'action':'save_batch','payload':{'policies':configs}}),first)
+
+    def test_cloud_retry_and_cancel_validate_ticker_and_preserve_progress(self):
+        self.m.save(self.cfg);rid=self.m.trigger('MDT')
+        self.c.db.execute("UPDATE refresh_requests SET status='attention' WHERE id=?",(rid,));self.c.db.commit()
+        cmd={'action':'retry','payload':{'ticker':'MDT','refreshRequestId':rid}}
+        self.m.apply_cloud_command('retry',cmd);self.m.apply_cloud_command('retry',cmd)
+        self.assertEqual(self.m.status()['requests'][0]['status'],'queued')
+        with self.assertRaises(ValueError):self.m.apply_cloud_command('wrong',{'action':'cancel','payload':{'ticker':'DE','refreshRequestId':rid}})
+        self.m.apply_cloud_command('cancel',{'action':'cancel','payload':{'ticker':'MDT','refreshRequestId':rid}})
+        self.assertEqual(self.m.status()['requests'][0]['status'],'cancelled')
+
     def test_manual_trigger_coalesces_without_duplicate_browser_runs(self):
         self.m.save(self.cfg)
         a=self.m.trigger('MDT');b=self.m.trigger('MDT')

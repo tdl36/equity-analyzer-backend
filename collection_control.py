@@ -16,7 +16,13 @@ def command(data):
     try:uuid.UUID(data.get('requestId',''))
     except (ValueError,TypeError,AttributeError):raise ValueError('A valid request ID is required.')
     action=data.get('action');payload=data.get('payload')
-    if action not in ('save','trigger') or not isinstance(payload,dict):raise ValueError('Choose save or trigger.')
+    if action not in ('save','trigger','save_batch','cancel','retry') or not isinstance(payload,dict):raise ValueError('Unsupported collection command.')
+    if action=='save_batch':
+        policies=payload.get('policies')
+        if not isinstance(policies,list) or not 1<=len(policies)<=100:raise ValueError('Choose 1–100 ticker policies.')
+        values=[command({'requestId':data['requestId'],'action':'save','payload':p})['payload'] for p in policies]
+        if len({p['ticker'] for p in values})!=len(values):raise ValueError('A ticker appears more than once.')
+        return {'action':action,'payload':{'policies':values}}
     import re
     ticker=payload.get('ticker')
     if not isinstance(ticker,str) or not re.fullmatch(r'[A-Z0-9][A-Z0-9.\-]{0,19}',ticker):raise ValueError('A valid uppercase ticker is required.')
@@ -31,6 +37,10 @@ def command(data):
         topic=payload.get('topic','')
         if not isinstance(topic,str) or len(topic)>160 or '/' in topic or '\\' in topic or topic.startswith('.') or (payload['workflow']=='recap' and not topic.strip()):raise ValueError('A plain event folder name is required for recaps.')
         payload={k:payload.get(k,'') for k in ('ticker','hours','lookbackDays','enabled','workflow','instructions','kinds','topic')}
+    elif action in ('cancel','retry'):
+        try:uuid.UUID(payload.get('refreshRequestId',''))
+        except (ValueError,TypeError,AttributeError):raise ValueError('Choose a valid browser refresh request.')
+        payload={'ticker':ticker,'refreshRequestId':payload['refreshRequestId']}
     else:payload={'ticker':ticker}
     return {'action':action,'payload':payload}
 
@@ -50,7 +60,7 @@ def create_blueprint(get_db, is_agent):
                 if old:
                     if old['stage']!=STAGE or decode(old['input'])!=value:return jsonify(error='Request ID is already used for a different command.'),409
                     return jsonify(id=jid,status=old['status'])
-                cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input) VALUES(%s,%s,%s,'queued',%s::jsonb)",(jid,STAGE,value['payload']['ticker'],json.dumps(value)))
+                cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input) VALUES(%s,%s,%s,'queued',%s::jsonb)",(jid,STAGE,value['payload'].get('ticker'),json.dumps(value)))
             return jsonify(id=jid,status='queued'),202
         with get_db() as (_,cur):
             cur.execute('SELECT value,updated_at FROM app_settings WHERE key=%s',(KEY,));row=cur.fetchone()

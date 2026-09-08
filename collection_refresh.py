@@ -88,6 +88,16 @@ class RefreshManager:
                 if old['input']!=encoded:raise ValueError('Cloud command ID conflict')
                 return json.loads(old['result'])
             if value['action']=='save':result={'policy':self._save(value['payload'])}
+            elif value['action']=='save_batch':
+                configs=[self.validate(p) for p in value['payload']['policies']]
+                result={'policies':[self._save(p) for p in configs]}
+            elif value['action'] in ('cancel','retry'):
+                rid=value['payload']['refreshRequestId']
+                row=self.db.execute('SELECT ticker FROM refresh_requests WHERE id=?',(rid,)).fetchone()
+                if not row or row['ticker']!=value['payload']['ticker']:raise ValueError('Refresh request does not match the selected ticker')
+                if value['action']=='cancel':self._cancel(rid)
+                else:self._retry(rid)
+                result={'refreshRequestId':rid,'action':value['action']}
             elif value['action']=='trigger':
                 ticker=ticker_name(value['payload']['ticker'])
                 row=self.db.execute('SELECT * FROM refresh_policies WHERE ticker=?',(ticker,)).fetchone()
@@ -146,7 +156,17 @@ class RefreshManager:
         for r in requests:
             r['result'] = json.loads(r['result']) if r['result'] else None
         worker = self.db.execute('SELECT checked,status FROM refresh_worker WHERE id=1').fetchone()
-        return {'policies':policies,'requests':requests,'worker':dict(worker) if worker else None}
+        folders={}
+        for name,root in [('stocks',self.c.stocks),('catalysts',self.c.catalysts)]:
+            values=[]
+            if root.is_dir():
+                for path in root.iterdir():
+                    if not path.is_dir() or path.is_symlink():continue
+                    try:
+                        if ticker_name(path.name)==path.name:values.append(path.name)
+                    except ValueError:pass
+            folders[name]=sorted(values)
+        return {'policies':policies,'requests':requests,'worker':dict(worker) if worker else None,'folders':folders}
 
     def claim(self):
         self.due()
@@ -177,20 +197,24 @@ class RefreshManager:
                             (status,str(issue)[:1500] or None,self.clock()+1800 if status=='collecting' else None,request_id))
 
     def cancel(self, request_id):
-        with self.c.lock():
-            row = self.db.execute('SELECT status FROM refresh_requests WHERE id=?', (request_id,)).fetchone()
-            if not row or row['status'] == 'complete':
-                raise ValueError('A completed refresh cannot be cancelled')
-            self.db.execute("UPDATE refresh_requests SET status='cancelled',lease_until=NULL,owner=NULL,issue='Cancelled; validated originals retained' WHERE id=?", (request_id,))
+        with self.c.lock():return self._cancel(request_id)
+
+    def _cancel(self, request_id):
+        row = self.db.execute('SELECT status FROM refresh_requests WHERE id=?', (request_id,)).fetchone()
+        if not row or row['status'] == 'complete':
+            raise ValueError('A completed refresh cannot be cancelled')
+        self.db.execute("UPDATE refresh_requests SET status='cancelled',lease_until=NULL,owner=NULL,issue='Cancelled; validated originals retained' WHERE id=?", (request_id,))
 
     def retry(self, request_id):
-        with self.c.lock():
-            row = self.db.execute('SELECT run,status FROM refresh_requests WHERE id=?', (request_id,)).fetchone()
-            if not row or row['status'] not in ('attention','needs_auth'):
-                raise ValueError('Only a request needing attention can be resumed')
-            # Restore authentication-paused tasks without discarding validated downloads.
-            self.db.execute("UPDATE tasks SET status=COALESCE(paused_status,'pending'),paused_status=NULL,evidence_after=? WHERE run=? AND status='needs_auth'", (now(),row['run']))
-            self.db.execute("UPDATE refresh_requests SET status='queued',lease_until=NULL,owner=NULL,issue=NULL WHERE id=?", (request_id,))
+        with self.c.lock():return self._retry(request_id)
+
+    def _retry(self, request_id):
+        row = self.db.execute('SELECT run,status FROM refresh_requests WHERE id=?', (request_id,)).fetchone()
+        if not row or row['status'] not in ('attention','needs_auth'):
+            raise ValueError('Only a request needing attention can be resumed')
+        # Restore authentication-paused tasks without discarding validated downloads.
+        self.db.execute("UPDATE tasks SET status=COALESCE(paused_status,'pending'),paused_status=NULL,evidence_after=? WHERE run=? AND status='needs_auth'", (now(),row['run']))
+        self.db.execute("UPDATE refresh_requests SET status='queued',lease_until=NULL,owner=NULL,issue=NULL WHERE id=?", (request_id,))
 
     def complete(self, request_id, owner, fetcher=None):
         row = self.db.execute('SELECT * FROM refresh_requests WHERE id=? AND owner=? AND lease_until>?', (request_id,owner,self.clock())).fetchone()

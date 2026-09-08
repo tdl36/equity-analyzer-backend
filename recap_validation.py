@@ -78,6 +78,11 @@ def audit(parts, draft, baseline, call_model):
       'Review up to 20 material claims, prioritizing figures, guidance and investment conclusions. Use null page for text documents. '
       'Claim IDs are 1-based positions. Do not invent quotes or baseline values. Changes require supporting claims; '
       'without an explicit supplied baseline, baselineAvailable must be false and describe an update, not a proven delta. '
+      'Also return numericComparisons (up to 8): [{"metric":"Revenue","benchmarkType":"prior_period|guidance|broker_estimate|consensus",'
+      '"actual":{"value":540,"unit":"usd_m","period":"Q1 FY2027","basis":"reported","sourceId":"s1","page":1,"quote":"exact passage including value, unit and period"},'
+      '"benchmark":{"value":520,"unit":"usd_m","period":"Q1 FY2027","basis":"reported","sourceId":"s2","page":1,"quote":"exact passage including value, unit and period"}}]. '
+      'Allowed units: usd, usd_m, usd_bn, usd_per_share, percent, bps, count, millions, multiple. '
+      'Basis: reported, organic, adjusted, gaap, non_gaap. Never infer missing values or periods to fill these records. '
       'Distinguish broker estimates from consensus.\nBASELINE:\n'+str(baseline or 'No prior thesis supplied')[:30000]+
       '\nDRAFT:\n'+draft[:60000]+'\nSOURCES:\n'+json.dumps(excerpt_sources))
     raw=parse_json(call_model(prompt,10000));claims=validate_claims(raw,sources)
@@ -103,6 +108,8 @@ def audit(parts, draft, baseline, call_model):
           'implication':str(ch.get('implication',''))[:3000],'claimIds':refs,
           'baselineAvailable':bool(baseline) and ch.get('baselineAvailable') is True,
           'status':'needs_review'})
-    return {'version':1,'status':'needs_review','claims':claims,'changes':changes[:12],
+    from research_numbers import reconcile
+    comparisons=reconcile(raw.get('numericComparisons'),sources)
+    return {'version':1,'numericComparisons':comparisons,'status':'needs_review','claims':claims,'changes':changes[:12],
       'sources':[{k:v for k,v in s.items() if k!='pages'} for s in sources],
       'limitations':list(dict.fromkeys(issues))+['Selected-claim review only. Model review is fallible; analyst approval remains required.']}

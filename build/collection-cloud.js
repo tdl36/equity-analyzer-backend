@@ -1,3 +1,4 @@
+import { parseTickers } from './research-desk-model.mjs';
 import * as React from 'react';
 var blank = {
   ticker: '',
@@ -10,7 +11,8 @@ var blank = {
   enabled: true
 };
 export function CollectionCloud({
-  api
+  api,
+  coverage = []
 }) {
   var [data, setData] = React.useState(null),
     [cfg, setCfg] = React.useState(blank),
@@ -19,6 +21,8 @@ export function CollectionCloud({
     [message, setMessage] = React.useState(''),
     [busy, setBusy] = React.useState(false),
     [uncertain, setUncertain] = React.useState(false);
+  var [bulk, setBulk] = React.useState('');
+  var parsed = parseTickers(bulk);
   var alive = React.useRef(true),
     lock = React.useRef(false),
     pending = React.useRef(null);
@@ -206,7 +210,30 @@ export function CollectionCloud({
     className: "workspace-primary",
     disabled: !cfg.ticker || !cfg.kinds.length,
     onClick: () => send('save', cfg)
-  }, "Save policy on Mac")), uncertain && /*#__PURE__*/React.createElement("button", {
+  }, "Save policy on Mac")), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Configure a coverage group"), /*#__PURE__*/React.createElement("p", {
+    className: "desk-explainer"
+  }, "Apply the frequency, source types and workflow above to multiple tickers. Existing policies for these tickers will be replaced. The Mac validates every destination before saving the group; one invalid destination rejects the whole group."), /*#__PURE__*/React.createElement("fieldset", {
+    disabled: busy || uncertain,
+    className: "desk-form"
+  }, /*#__PURE__*/React.createElement("label", null, "Tickers", /*#__PURE__*/React.createElement("textarea", {
+    rows: 3,
+    value: bulk,
+    onChange: e => setBulk(e.target.value),
+    placeholder: "MDT, ABT, DE"
+  })), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setBulk([...new Set(coverage.map(a => a.ticker).filter(Boolean))].join(', '))
+  }, "Load covered companies"), /*#__PURE__*/React.createElement("p", null, parsed.tickers.length, "/100 tickers \xB7 ", cfg.hours ? `Every ${cfg.hours} hours` : 'Manual refresh', " \xB7 ", cfg.kinds.join(', '), " \xB7 ", cfg.workflow === 'recap' ? `CATALYSTS / ticker / ${cfg.topic}` : 'STOCKS / ticker'), parsed.invalid.length > 0 && /*#__PURE__*/React.createElement("p", {
+    role: "alert"
+  }, "Invalid tickers: ", parsed.invalid.join(', ')), /*#__PURE__*/React.createElement("button", {
+    className: "workspace-primary",
+    disabled: !parsed.tickers.length || parsed.tickers.length > 100 || !!parsed.invalid.length,
+    onClick: () => send('save_batch', {
+      policies: parsed.tickers.map(ticker => ({
+        ...cfg,
+        ticker
+      }))
+    })
+  }, "Save ", parsed.tickers.length, " ticker policies on Mac"))), uncertain && /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: () => send()
   }, "Retry same command"), /*#__PURE__*/React.createElement("button", {
@@ -214,7 +241,7 @@ export function CollectionCloud({
     disabled: busy
   }, "Check status"), /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
-  }, "The existing ticker folder must exist in iCloud. A recap event subfolder may be created. Source restrictions and duplicate checks remain enforced. Research generation uses configured API credits; drafts still require review."), /*#__PURE__*/React.createElement("h3", null, "Policies reported by Mac \xB7 ", policies.length), policies.map(p => /*#__PURE__*/React.createElement("div", {
+  }, "The existing ticker folder must exist in iCloud. A recap event subfolder may be created. Source restrictions and duplicate checks remain enforced. Research generation uses configured API credits; drafts still require review."), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Coverage setup gaps"), /*#__PURE__*/React.createElement("p", null, "Covered companies without a managed policy: ", coverage.filter(a => !policies.some(p => p.ticker === a.ticker)).map(a => a.ticker).join(', ') || 'None'), /*#__PURE__*/React.createElement("p", null, "Mac-reported STOCKS folders: ", snapshot?.folders?.stocks?.join(', ') || 'Not yet reported'), /*#__PURE__*/React.createElement("p", null, "Mac-reported CATALYSTS folders: ", snapshot?.folders?.catalysts?.join(', ') || 'Not yet reported')), /*#__PURE__*/React.createElement("h3", null, "Policies reported by Mac \xB7 ", policies.length), policies.map(p => /*#__PURE__*/React.createElement("div", {
     className: "desk-row",
     key: p.ticker
   }, /*#__PURE__*/React.createElement("button", {
@@ -229,7 +256,21 @@ export function CollectionCloud({
     })
   }, "Refresh now"))), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Cloud commands \xB7 ", data?.commands?.length || 0), (data?.commands || []).map(c => /*#__PURE__*/React.createElement("p", {
     key: c.id
-  }, c.ticker, " \xB7 ", c.input?.action, " \xB7 ", c.status === 'applied' ? 'Applied on Mac' : c.status, c.error ? ` · ${c.error}` : ''))), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Browser collection requests \xB7 ", snapshot?.requests?.length || 0), (snapshot?.requests || []).map(r => /*#__PURE__*/React.createElement("p", {
+  }, c.ticker || 'Coverage group', " \xB7 ", c.input?.action, " \xB7 ", c.status === 'applied' ? 'Applied on Mac' : c.status, c.error ? ` · ${c.error}` : ''))), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Browser collection requests \xB7 ", snapshot?.requests?.length || 0), (snapshot?.requests || []).map(r => /*#__PURE__*/React.createElement("p", {
     key: r.id
-  }, r.ticker, " \xB7 ", r.status, " \xB7 ", r.issue || (r.result?.newDocuments != null ? `${r.result.newDocuments} new eligible documents` : 'No completed result reported')))));
+  }, r.ticker, " \xB7 ", r.status, " \xB7 ", r.issue || (r.result?.newDocuments != null ? `${r.result.newDocuments} new eligible documents` : 'No completed result reported'), ['needs_auth', 'attention'].includes(r.status) && /*#__PURE__*/React.createElement("button", {
+    disabled: busy || uncertain,
+    onClick: () => send('retry', {
+      ticker: r.ticker,
+      refreshRequestId: r.id
+    })
+  }, r.status === 'needs_auth' ? 'Signed in on Mac — resume' : 'Retry after resolving'), !['complete', 'cancelled'].includes(r.status) && /*#__PURE__*/React.createElement("button", {
+    disabled: busy || uncertain,
+    onClick: () => send('cancel', {
+      ticker: r.ticker,
+      refreshRequestId: r.id
+    })
+  }, "Cancel refresh")))), /*#__PURE__*/React.createElement("p", {
+    className: "desk-explainer"
+  }, "Cancellation stops future work when acknowledged on Mac; an in-progress browser download may finish. Complete sign-in directly in AlphaSense before resuming an authentication-paused request."));
 }
