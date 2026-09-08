@@ -92,7 +92,16 @@ class RefreshManager:
             if old:
                 if old['input']!=encoded:raise ValueError('Cloud command ID conflict')
                 return json.loads(old['result'])
-            if value['action']=='save':result={'policy':self._save(value['payload'])}
+            if value['action']=='research_task':
+                from research_commands import plan
+                raw=value['payload'];p=plan({**raw,'date':raw['until'],'days':(datetime.fromisoformat(raw['until'])-datetime.fromisoformat(raw['since'])).days+1})
+                tk=p['ticker'];topic=f"{tk} {p['until']} {p['kind']} {command_id[:8]}"
+                cfg=dict(ticker=tk,hours=0,enabled=True,createFolder=True,lookbackDays=7,workflow='recap',topic=topic,kinds=list(KINDS),instructions=p['instruction'])
+                self.validate(cfg);(self.c.catalysts/tk).mkdir(exist_ok=True)
+                if not self.db.execute('SELECT ticker FROM refresh_policies WHERE ticker=?',(tk,)).fetchone():self._save(cfg)
+                rid=self._enqueue({'ticker':tk,'config':json.dumps(cfg),'last_success':None},manual=True,event={'id':command_id,'reason':p['instruction'],'url':'https://www.sec.gov/edgar/search/'},command=p)
+                result={'refreshRequestId':rid,'topic':topic,'plan':p}
+            elif value['action']=='save':result={'policy':self._save(value['payload'])}
             elif value['action']=='save_trigger':
                 cfg=self._save(value['payload'])
                 row=self.db.execute('SELECT * FROM refresh_policies WHERE ticker=?',(cfg['ticker'],)).fetchone()
@@ -125,7 +134,7 @@ class RefreshManager:
             self.db.execute('INSERT INTO cloud_control_receipts VALUES(?,?,?)',(command_id,encoded,json.dumps(result)))
             return result
 
-    def _enqueue(self, row, manual=False, event=None):
+    def _enqueue(self, row, manual=False, event=None, command=None):
         # Caller holds the collector transaction/operation lock.
         existing = self.db.execute("SELECT id FROM refresh_requests WHERE ticker=? AND status NOT IN ('complete','cancelled') ORDER BY created LIMIT 1", (row['ticker'],)).fetchone()
         if existing and not event:
@@ -137,16 +146,20 @@ class RefreshManager:
         cfg = self.validate(json.loads(row['config']))
         if manual:cfg['manual']=True
         if event:cfg.update(eventId=event['id'],eventReason=event['reason'],eventUrl=event['url'])
+        if command:cfg['researchCommand']=command
         today = datetime.fromtimestamp(self.clock(), timezone.utc).date()
         since = today - timedelta(days=cfg['lookbackDays'] - 1)
         if row['last_success']:
             since = min(today, datetime.fromisoformat(row['last_success']).date() - timedelta(days=2))
+        if command:
+            since=datetime.fromisoformat(command['since']).date();today=datetime.fromisoformat(command['until']).date()
         topic = cfg['topic'] or None
         if topic:
             folder = self.c.catalysts / cfg['ticker'] / topic
             if folder.is_symlink() or not folder.resolve().is_relative_to(self.c.catalysts.resolve()):
                 raise ValueError('Event folder must stay inside CATALYSTS')
             folder.mkdir(exist_ok=True)
+            if command:(folder/'.charlie-collection-pending').write_text(event['id'])
         run, request_id = uuid.uuid4().hex[:12], str(uuid.uuid4())
         self.db.execute('INSERT INTO runs(id,created,since,until_date,topic) VALUES(?,?,?,?,?)',
                         (run, now(), since.isoformat(), today.isoformat(), topic))
@@ -253,7 +266,14 @@ class RefreshManager:
         result = {'newDocuments':len(delivered),'heldDocuments':sum(d['usage']=='reference_only' for d in collection['documents']),
                   'verification':verification, 'research':'existing Charlie intake' if delivered else 'no new eligible documents'}
         cfg = json.loads(row['config'])
-        if delivered and cfg['workflow'] in ('note','recap'):
+        public_count=0
+        if cfg.get('researchCommand'):
+            from research_task_sources import verify_public_sources
+            public_count=verify_public_sources(self,row,fetcher)
+            result['publicDocuments']=public_count
+            if not delivered and not public_count:
+                result['research']='No eligible sources found in the verified searches; no recap generated'
+        if (delivered or public_count) and cfg['workflow'] in ('note','recap'):
             # Reserve dispatch before the network call. Uncertain POSTs are never replayed blindly.
             with self.c.lock():
                 reserved = self.db.execute('UPDATE refresh_requests SET result=? WHERE id=? AND owner=? AND lease_until>? AND result IS NULL',
@@ -269,6 +289,8 @@ class RefreshManager:
             updated = self.db.execute("UPDATE refresh_requests SET status='complete',lease_until=NULL,result=?,issue=NULL WHERE id=? AND owner=? AND lease_until>?", (json.dumps(result),request_id,owner,self.clock()))
             if not updated.rowcount:
                 raise ValueError('Refresh was cancelled or reassigned during verification')
+            if cfg.get('researchCommand'):
+                (self.c.catalysts/cfg['ticker']/cfg['topic']/'.charlie-collection-pending').unlink(missing_ok=True)
             if not cfg.get('eventId'):
                 self.db.execute('UPDATE refresh_policies SET last_success=? WHERE ticker=?', (collection['until_date'],row['ticker']))
         return result
@@ -286,13 +308,17 @@ class RefreshManager:
             r = requests.post(CHARLIE_API+'/api/notes/generate',headers=headers,json=body,timeout=30)
         else:
             from catalyst_sources import inventory, fingerprint
-            sources, issues = inventory(self.c.catalysts / cfg['ticker'] / cfg['topic'])
+            sources, issues = inventory(self.c.catalysts / cfg['ticker'] / cfg['topic'], allow_pending=bool(cfg.get('researchCommand')))
             if issues: raise ValueError('Event sources need attention before recap generation')
             revision = fingerprint(sources)
             r = requests.post(CHARLIE_API+'/api/analysts/queue-catalyst-activity',headers=headers,
-                json={'ticker':cfg['ticker'],'topic':cfg['topic'],'fingerprint':revision,'fileCount':len(sources)},timeout=30)
+                json={'ticker':cfg['ticker'],'topic':cfg['topic'],'fingerprint':revision,'fileCount':len(sources),'customInstructions':cfg['instructions'],'deferAutomaticRun':bool(cfg.get('researchCommand'))},timeout=30)
             r.raise_for_status()
             created = r.json().get('created',[])
+            if cfg.get('researchCommand'):
+                # Persist the assignment before exposing the completed folder to
+                # the scanner; its dedup then finds the correctly instructed job.
+                (self.c.catalysts/cfg['ticker']/cfg['topic']/'.charlie-collection-pending').unlink(missing_ok=True)
             pending = requests.get(CHARLIE_API+'/api/analyst-activities/pending',headers=headers,timeout=30)
             pending.raise_for_status()
             candidates = [a for a in pending.json().get('activities',[]) if a.get('ticker')==cfg['ticker'] and (a.get('input') or {}).get('topic')==cfg['topic'] and (a.get('input') or {}).get('fingerprint')==revision]

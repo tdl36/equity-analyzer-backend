@@ -27924,6 +27924,8 @@ def _dispatch_activity_run(activity_id: str, length: str = 'standard', custom_in
             inp = {}
     ticker = (act.get('ticker') or inp.get('ticker') or '').upper()
     topic = (inp.get('topic') or '').strip()
+    if not custom_instructions:
+        custom_instructions = inp.get('customInstructions') or ''
     if not ticker or not topic:
         return {'error': 'activity is missing ticker or topic'}, 400
 
@@ -28243,6 +28245,9 @@ def analysts_queue_catalyst_activity():
         fingerprint = data.get('fingerprint') or ''
         file_count = int(data.get('fileCount') or 0)
         catalyst_job_id = data.get('catalystJobId')  # optional -- link to proposal
+        custom_instructions = data.get('customInstructions') or ''
+        if not isinstance(custom_instructions, str) or len(custom_instructions) > 6000:
+            return jsonify({'error': 'Instructions must be at most 6,000 characters'}), 400
         if not ticker or not topic:
             return jsonify({'error': 'ticker + topic required'}), 400
 
@@ -28271,7 +28276,8 @@ def analysts_queue_catalyst_activity():
             # Persist a single activity per source revision, across retries and restarts.
             act_id = str(uuid.uuid4())
             inp = {'topic': topic, 'ticker': ticker, 'fingerprint': fingerprint,
-                   'fileCount': file_count, 'catalystJobId': catalyst_job_id}
+                   'fileCount': file_count, 'catalystJobId': catalyst_job_id,
+                   'customInstructions': custom_instructions}
             with get_db(commit=True) as (_c, cur):
                 cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))', (f"catalyst:{a['id']}:{ticker}:{topic}",))
                 cur.execute("""
@@ -28315,7 +28321,7 @@ def analysts_queue_catalyst_activity():
                     (activity_type == 'earnings_recap' and run_earnings)
                     or (activity_type == 'takeaway' and run_takeaways)
                 )
-                if should_run and still_valid:
+                if should_run and still_valid and data.get('deferAutomaticRun') is not True:
                     _, dispatch_status = _dispatch_activity_run(act_id)
                     auto_ran = dispatch_status == 200
             except Exception as _e:
@@ -28778,6 +28784,9 @@ import catalyst_watch
 _catalyst_watch=catalyst_watch.CatalystWatch(app,get_db,
     lambda: bool(CHARLIE_API_KEY) and hmac.compare_digest(request.headers.get('Authorization',''), 'ApiKey '+CHARLIE_API_KEY))
 app.register_blueprint(_catalyst_watch.blueprint)
+
+import research_commands
+app.register_blueprint(research_commands.create_blueprint(get_db))
 
 import research_history
 app.register_blueprint(research_history.create_blueprint(get_db))

@@ -1,3 +1,4 @@
+import { CommandCharlie } from './command-charlie';
 import { ResearchHistory } from './research-history';
 import { PortfolioPriorities } from './portfolio-priorities';
 import { CollectionCloud } from './collection-cloud';
@@ -246,7 +247,7 @@ export function ResearchDesk({
     className: "desk-toolbar"
   }, /*#__PURE__*/React.createElement("nav", {
     "aria-label": "Research desk sections"
-  }, [['overview', 'Overview'], ['collection', 'Collection'], ['history', 'Research history'], ['priorities', 'Portfolio priorities'], ['earnings', 'Earnings & evidence'], ['evidence', 'Evidence & changes'], ['inbox', 'Review inbox'], ['queue', 'Coverage queue'], ['launch', 'Batch planner'], ['runs', 'Runs'], ['playbooks', 'Playbooks']].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
+  }, [['overview', 'Overview'], ['command', 'Command Charlie'], ['collection', 'Collection'], ['history', 'Research history'], ['priorities', 'Portfolio priorities'], ['earnings', 'Earnings & evidence'], ['evidence', 'Evidence & changes'], ['inbox', 'Review inbox'], ['queue', 'Coverage queue'], ['launch', 'Batch planner'], ['runs', 'Runs'], ['playbooks', 'Playbooks']].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
     key: id,
     "aria-current": section === id ? 'page' : undefined,
     onClick: () => setSection(id)
@@ -282,7 +283,11 @@ export function ResearchDesk({
   }, "Manage ticker refresh schedules, verified originals, iCloud handoffs, and source restrictions. The monitor runs on this Mac.")), loading ? /*#__PURE__*/React.createElement("p", {
     className: "workspace-empty",
     role: "status"
-  }, "Loading research activity\u2026") : /*#__PURE__*/React.createElement(React.Fragment, null, section === 'history' && /*#__PURE__*/React.createElement(ResearchHistory, {
+  }, "Loading research activity\u2026") : /*#__PURE__*/React.createElement(React.Fragment, null, section === 'command' && /*#__PURE__*/React.createElement(CommandCharlie, {
+    api: api,
+    onNavigate: onNavigate,
+    onSection: setSection
+  }), section === 'history' && /*#__PURE__*/React.createElement(ResearchHistory, {
     api: api,
     onSection: setSection,
     onNavigate: onNavigate

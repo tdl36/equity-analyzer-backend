@@ -7,10 +7,12 @@ SOURCE_EXTS = {'.pdf', '.docx', '.xlsx', '.xlsm', '.txt', '.md', '.csv', '.tsv',
 GENERATED_PREFIXES = ('recap_', 'synthesis_')
 
 
-def inventory(folder, excluded=()):
+def inventory(folder, excluded=(), allow_pending=False):
     root = Path(folder).resolve()
     if not root.is_dir():
         raise ValueError(f'Event folder is missing: {root.name}')
+    if not allow_pending and (root/'.charlie-collection-pending').exists():
+        return [], ['Source collection is still in progress; synthesis waits for verified completion.']
     excluded = set(excluded)
     files, issues = [], []
     for path in sorted(root.rglob('*')):
