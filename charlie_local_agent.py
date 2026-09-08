@@ -3411,10 +3411,13 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
         if total_batches > 1:
             log.info(f"Sources exceed context limit (~{est_tokens:,} est tokens). Splitting into {total_batches} batches.")
 
-        from recap_evidence import snapshot as recap_snapshot, text_prompt, text_batches, IMPACT_INSTRUCTION
+        from recap_evidence import snapshot as recap_snapshot, text_prompt, text_batches, native_batches, IMPACT_INSTRUCTION
         evidence_snapshot = recap_snapshot(source_parts, recap_provider)
         # Validate every text-only batch before starting any paid synthesis pass.
-        if recap_provider != 'anthropic':
+        if recap_provider == 'anthropic':
+            batches = native_batches(source_parts)
+            total_batches = len(batches)
+        else:
             batches = text_batches(source_parts)
             total_batches = len(batches)
             for batch in batches:
@@ -3511,7 +3514,7 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
                     if pdf_count < 4:
                         block["cache_control"] = {"type": "ephemeral"}
                     blocks.append(block)
-                    blocks.append({"type": "text", "text": f"[Document: {sp['name']}]"})
+                    blocks.append({"type": "text", "text": f"[Document: {sp['name']}]" + (f" PDF page 1 corresponds to original page {sp['pageStart']}. Cite original filename and original page numbers." if sp.get('pageStart') else "")})
                     pdf_count += 1
             text_sources = '\n\n---\n\n'.join([
                 f"### Source: {sp['name']}\n{sp['content']}"
@@ -3540,7 +3543,7 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
         content_blocks = _build_content_blocks(batches[0], prompt_text)
 
         from recap_checkpoint import Checkpoint
-        checkpoint=Checkpoint({'version':1,'sources':evidence_snapshot['sources'],'provider':recap_provider,
+        checkpoint=Checkpoint({'version':2,'sources':evidence_snapshot['sources'],'provider':recap_provider,
             'model':recap_model,'prompt':prompt_text,'batches':len(batches)})
         saved=checkpoint.load(len(batches));resumed_batches=saved['completed'] if saved else 0
         if saved:

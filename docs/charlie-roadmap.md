@@ -47,3 +47,11 @@ Collection now supports an explicit batch of ticker policies using the selected 
 New recap audits can include up to eight source-linked numerical comparisons. Deterministic checks validate exact numeric tokens, declared currency scales, fiscal periods, measurement bases, consensus labels and arithmetic, including percentage points versus basis points. Unsupported comparisons remain flagged without a calculated result. These selected checks do not establish comprehensive numerical accuracy or prove the model's semantic interpretation.
 
 Validation: 162 safe backend unit tests and 20 frontend tests passed; production build passed. Tests use synthetic/stubbed inputs and do not incur paid research generation.
+
+## T18 large native PDFs and research history
+
+Native-PDF recap synthesis now splits long originals into bounded page segments and combines them into conservative page/byte/text batches. Every page is preserved in order; prompts map segment pages back to the original filename and page numbers. A single page exceeding the byte budget fails before synthesis with an actionable error. The original evidence snapshot remains based on unchanged original bytes. Checkpoint algorithm version changes prevent reuse across incompatible batch layouts. The UI shows matching batches recovered on a completed recap. OCR is still required for scanned pages sent to text-only models; no OCR engine is installed on this Mac.
+
+Research desk now has Research history: a read-only chronology of up to 100 latest imports, notes, reviews, analyst activities (including approved records), research/control jobs and Mac-reported browser requests. Filter by ticker and record type. Exact revision parent/proposal IDs are shown when stored. Creation timestamps and current statuses are distinct from a full transition audit; shared tickers never imply causal links. Source dates are ingestion dates, and collection snapshot age is explicit.
+
+Remaining: approved coverage schedules/full-universe operational validation, OCR and automatic interrupted-job recovery, comprehensive event linkage and version restoration, numerical model edits, representative real-source/expert benchmarks, and bounded cross-agent task delegation. New controls and selected numerical checks do not establish unattended reliability or institutional-grade accuracy by themselves.

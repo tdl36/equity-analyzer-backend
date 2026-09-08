@@ -28774,6 +28774,9 @@ _amendment_blueprint = research_amendments.create_blueprint(
     lambda key: _get_api_keys(key).get('anthropic', ''))
 app.register_blueprint(_amendment_blueprint)
 
+import research_history
+app.register_blueprint(research_history.create_blueprint(get_db))
+
 import research_edits
 
 def _render_edited_review(ticker, value, mode):
