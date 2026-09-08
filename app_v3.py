@@ -28801,7 +28801,7 @@ def _amendment_model_call(prompt, key, max_tokens):
 
 _amendment_blueprint = research_amendments.create_blueprint(
     get_db, _amendment_model_call,
-    lambda key: _get_api_keys(key).get('anthropic', ''))
+    lambda key: _get_api_keys(key).get('anthropic', ''), lambda: PICKER_DEFAULT_MODEL)
 app.register_blueprint(_amendment_blueprint)
 
 import catalyst_watch

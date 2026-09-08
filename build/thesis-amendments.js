@@ -126,6 +126,15 @@ export function ThesisAmendments({
       } : {})
     });
   };
+  var resume = () => {
+    var key = '';
+    try {
+      key = localStorage.getItem('equity_analyzer_api_key') || '';
+    } catch {}
+    return mutate(`/api/research/amendment/${job.id}/resume`, {
+      apiKey: key
+    });
+  };
   var active = job && ['queued', 'running', 'awaiting_approval'].includes(job.status);
   return /*#__PURE__*/React.createElement("section", {
     className: "workspace-panel thesis-amendments"
@@ -158,7 +167,12 @@ export function ThesisAmendments({
     onClick: () => mutate(`/api/research/amendment/${job.id}/decide`, {
       action: 'dismiss'
     })
-  }, "Dismiss proposal")) : /*#__PURE__*/React.createElement(React.Fragment, null, job && /*#__PURE__*/React.createElement("p", {
+  }, "Dismiss proposal")) : /*#__PURE__*/React.createElement(React.Fragment, null, job?.status === 'failed' && job.result?.checkpoint && /*#__PURE__*/React.createElement("div", {
+    className: "workspace-notice"
+  }, /*#__PURE__*/React.createElement("p", null, "A completed proposal stage is saved. Resume checks the original inputs and reuses saved work; an unfinished model call may need to run again. Up to two resume attempts."), /*#__PURE__*/React.createElement("button", {
+    disabled: busy,
+    onClick: resume
+  }, "Resume saved proposal work \u2192")), job && /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer",
     role: "status"
   }, "Last proposal: ", job.status.replaceAll('_', ' '), job.error ? ` · ${job.error}` : ''), !context?.savedThesis ? /*#__PURE__*/React.createElement("p", null, "Save an investment thesis before preparing edits.") : !documents.length ? /*#__PURE__*/React.createElement("p", null, "Import source documents into Charlie first. Files listed only in the iCloud inventory must be imported before this comparison can read them.") : /*#__PURE__*/React.createElement("details", {
