@@ -23351,6 +23351,9 @@ def _mp_synthesize_inline(api_key, ticker, company_name, sector, analyses, past_
 
 
 def _mp_questions_inline(api_key, ticker, company_name, sector, synthesis, unresolved, source_names=None):
+    if source_names is not None:
+        from meeting_question_generation import generate
+        return generate(api_key,ticker,company_name,sector,synthesis,unresolved,source_names)
     unresolved_text = ""
     if unresolved:
         items = [f"- {q.get('question', '')} (from {q.get('meeting_date', '?')})" for q in unresolved[:15]]
@@ -23429,6 +23432,7 @@ def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sect
         n_docs = len(docs)
         # Carry forward any checkpoint from a prior (failed) run
         cp = resume_from or {}
+        question_model = cp.get('questionModel') or model
         tokens_total = int(cp.get('tokensTotal') or 0)
 
         # -------- Stage 1: analyze --------
@@ -23543,6 +23547,8 @@ def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sect
                     **({'source_names':[d['filename'] for d in docs]} if managed else {})
                 )
                 tokens_total += q_tokens
+                if managed:
+                    from meeting_question_generation import MODEL as question_model
             except Exception as e:
                 update(job_id, status='failed',
                                error=f"Generate questions failed: {str(e)[:1000]}",
@@ -23555,7 +23561,7 @@ def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sect
             update(job_id, result={
                 'stage': 'saving', 'completed': n_docs, 'total': n_docs,
                 'analyses': analyses, 'synthesis': synthesis, 'topics': topics,
-                'tokensTotal': tokens_total,
+                'tokensTotal': tokens_total, 'questionModel': question_model,
             })
         else:
             print(f"[MP pipeline {job_id}] resume: topics already complete")
@@ -23571,7 +23577,7 @@ def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sect
                 return
 
         # -------- Stage 4: save --------
-        qs = _mp_save_results_inline(meeting_id, topics, synthesis, tokens_total, model, managed=managed, job_id=job_id, owner=owner)
+        qs = _mp_save_results_inline(meeting_id, topics, synthesis, tokens_total, question_model, managed=managed, job_id=job_id, owner=owner)
 
         update(job_id, status='done', tokens_used=tokens_total, result={
             'stage': 'done',

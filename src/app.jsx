@@ -4,6 +4,7 @@
 // existing `React.createElement`, `React.Fragment`, and `ReactDOM.render`
 // calls inside the main app body continue to work unchanged.
 import * as React from 'react';
+import { managedMeetingState } from './meeting-command-state.mjs';
 import * as ReactDOM from 'react-dom';
 // Extensionless on purpose: Babel leaves the specifier alone, so esbuild resolves
 // it to src/onepager.jsx in dev and build/onepager.js in the prod bundle.
@@ -2132,6 +2133,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [mpNewMeetingType, setMpNewMeetingType] = useState('earnings');
             const [showMpCreateForm, setShowMpCreateForm] = useState(false);
             const [mpPipelineRunning, setMpPipelineRunning] = useState(false);
+            const [mpManagedJob, setMpManagedJob] = useState(null);
+            const mpManagedState = managedMeetingState(mpManagedJob);
             const [mpPipelineStep, setMpPipelineStep] = useState('');
             const [mpPipelineProgress, setMpPipelineProgress] = useState('');
             const [mpPipelineError, setMpPipelineError] = useState(null);
@@ -10919,6 +10922,40 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 window.addEventListener('charlie-open-meeting', open);
                 return () => window.removeEventListener('charlie-open-meeting', open);
             }, []);
+
+            React.useEffect(() => {
+                if (!mpSelectedMeeting?.id || activeTab !== 'meetingprep') return;
+                let stopped = false;
+                let timer;
+                const meetingId = mpSelectedMeeting.id;
+                setMpManagedJob({status:'checking'});
+                const check = async () => {
+                    try {
+                        const response = await fetch(`${API_URL}/api/research/meeting-commands`);
+                        if (!response.ok) throw new Error('Assignment status unavailable');
+                        const data = await response.json();
+                        if (stopped) return;
+                        const job = (data.jobs || []).find(j => Number(j.meeting_id) === meetingId);
+                        setMpManagedJob(job || null);
+                        if (job?.prep_status === 'done') {
+                            const saved = await fetch(`${API_URL}/api/mp/meetings/${meetingId}`);
+                            if (!saved.ok) throw new Error('Saved pack unavailable');
+                            const detail = await saved.json();
+                            if (stopped) return;
+                            setMpSelectedMeeting(detail.meeting);
+                            setMpQuestionSet(detail.questionSet);
+                            setMpDocuments(detail.documents);
+                            return;
+                        }
+                        if (!job || job.prep_status === 'failed') return;
+                    } catch (error) {
+                        if (!stopped) setMpManagedJob({status:'unavailable'});
+                    }
+                    if (!stopped) timer = setTimeout(check, 5000);
+                };
+                check();
+                return () => { stopped = true; clearTimeout(timer); };
+            }, [mpSelectedMeeting?.id, activeTab]);
 
             const loadMpMeeting = async (meetingId) => {
                 try {
@@ -21572,7 +21609,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 <FileText className="w-4 h-4 text-white" />
                                                             </button>
                                                         </>)}
-                                                        {mpDocuments.length > 0 && !mpPipelineRunning && (<>
+                                                        {mpDocuments.length > 0 && !mpPipelineRunning && !mpManagedState.blocked && (<>
                                                             <ModelPicker
                                                     models={pipelineModels}
                                                                 value={mpModel}
@@ -21586,6 +21623,10 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     </div>
                                                 </div>
 
+                                                {mpManagedState.message && <div role="status" className="p-4 rounded-xl border border-amber-500/30 mb-3">
+                                                    <p className="text-sm font-medium">{mpManagedState.message}</p>
+                                                    {mpManagedState.blocked && <p className="text-xs mt-2">This assignment runs in the background. Follow progress or retry a failed pack in Research desk → Command Charlie.</p>}
+                                                </div>}
                                                 {/* Pipeline Progress */}
                                                 {mpPipelineRunning && (
                                                     <div className="p-4 bg-white/5 rounded-xl border border-amber-500/30 mb-3">
@@ -21721,7 +21762,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             </div>
                                                         )}
                                                     </div>
-                                                ) : !mpPipelineRunning && (
+                                                ) : !mpPipelineRunning && !mpManagedState.blocked && (
                                                     <p className="text-center text-slate-400 text-sm py-4">
                                                         {mpDocuments.length === 0 ? 'Upload documents first, then generate questions.' : 'Click "Generate Questions" to start.'}
                                                     </p>
