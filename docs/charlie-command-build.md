@@ -16,8 +16,9 @@ Current automated public-source adapter is SEC EDGAR only; wider internet retrie
 2. Local OCR is implemented in T22 with 217 tests plus a real OCR fixture. Extend cloud OCR availability/coverage later; do not claim comprehensive image/table extraction.
 3. T23 implements note/review restoration with preview, immutable clones and source/latest hash checks. Confirm deployed preview UI. General thesis/event draft restoration remain open. T23 has 226 backend/20 frontend tests.
 4. T22 adds two historical FDA excerpt regression packs; expand to financial multi-source packs and analyst/expert grading. `scripts/evaluate-research-quality.py --suite` runs the current three control packs.
-5. NEXT: bounded coordinated Charlie analyst assignments: lead/challenge/editor roles with checkpoints, exact source provenance, visible role outputs, user-selectable extra passes and final evidence audit. App functionality, not permission to spawn Codex development agents. Current recap audit already independently checks selected claims; do not mislabel ungrounded critique as source verification.
-6. Expand trusted public-source collection and command-to-thesis proposal linkage, then remaining gaps in `docs/charlie-roadmap.md`.
+5. T24 implements opt-in lead/challenger/editor passes and saved-thesis context, with visible role outputs and checkpoints. 235 backend/20 frontend tests. This is draft reasoning review, not independently sourced sector-agent research. Live paid end-to-end validation remains for a real user task; never incur model charges solely for QA.
+6. NEXT: expand trusted public-source collection and command-to-thesis proposal linkage. SEC is currently the only automatic public adapter. Consider verified investor-relations/FDA/clinical registry sources, bounded source registration and explicit provenance; avoid arbitrary URLs/SSRF. Command inputs currently use explicit ticker/date fields, not a general chat tool planner.
+7. Improve automatic event follow-up windows, general server-worker recovery, full causal history and source/portfolio quality monitoring. Preserve the original weekly policy and never silently modify an approved thesis.
 
 ## Validation/release
 
@@ -26,3 +27,5 @@ Run `.venv/bin/python -m unittest discover -s tests/unit`, `npm run test:fronten
 Baseline T19: commit `698cd54`, frontend `2026-09-08T19`, 181 backend / 20 frontend tests. Existing weekly 70-ticker policies and prospective catalyst watch are enabled; managed browser work still requires Mac, Chrome authentication and worker availability. User originals remain in iCloud STOCKS/CATALYSTS ticker folders.
 
 T22 deployed backend `00e9a22`, Cloudflare `db33daf2-4424-4ed8-9260-ea0146a05e74`; agent heartbeat verified current (~27 seconds). T23 release verification pending.
+
+T23 deployed backend `01b1a95`, Cloudflare `42da20b3-59f9-486c-8f51-cba3709603b0`; restoration preview API verified 200 for DE. T24 deployment verification pending. Continue work through the existing heartbeat build extension until 05:40 UTC.

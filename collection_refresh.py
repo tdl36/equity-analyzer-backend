@@ -312,7 +312,7 @@ class RefreshManager:
             if issues: raise ValueError('Event sources need attention before recap generation')
             revision = fingerprint(sources)
             r = requests.post(CHARLIE_API+'/api/analysts/queue-catalyst-activity',headers=headers,
-                json={'ticker':cfg['ticker'],'topic':cfg['topic'],'fingerprint':revision,'fileCount':len(sources),'customInstructions':cfg['instructions'],'deferAutomaticRun':bool(cfg.get('researchCommand'))},timeout=30)
+                json={'ticker':cfg['ticker'],'topic':cfg['topic'],'fingerprint':revision,'fileCount':len(sources),'customInstructions':cfg['instructions'],'deferAutomaticRun':bool(cfg.get('researchCommand')),'coordinated':(cfg.get('researchCommand') or {}).get('coordinated',False)},timeout=30)
             r.raise_for_status()
             created = r.json().get('created',[])
             if cfg.get('researchCommand'):

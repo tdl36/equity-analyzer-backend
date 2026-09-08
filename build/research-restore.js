@@ -12,6 +12,16 @@ export function ResearchRestore({
     [uncertain, setUncertain] = React.useState(false);
   var pending = React.useRef(null),
     locked = React.useRef(false);
+  var panel = React.useRef(null);
+  React.useEffect(() => {
+    panel.current?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start'
+    });
+    panel.current?.focus({
+      preventScroll: true
+    });
+  }, [record.kind, record.recordId]);
   var json = async (path, options = {}) => {
     var r = await fetch(`${api}${path}`, {
       ...options,
@@ -80,6 +90,8 @@ export function ResearchRestore({
     }
   };
   return /*#__PURE__*/React.createElement("section", {
+    ref: panel,
+    tabIndex: -1,
     className: "workspace-panel research-restoration",
     "aria-label": "Restore a historical research version"
   }, /*#__PURE__*/React.createElement("div", {

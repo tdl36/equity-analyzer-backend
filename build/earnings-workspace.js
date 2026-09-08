@@ -218,7 +218,18 @@ export function EarningsWorkspace({
   }, /*#__PURE__*/React.createElement("strong", null, s.filename), " \xB7 ", s.inputMode === 'native_pdf' ? 'Native PDF' : s.inputMode === 'extracted_text' ? 'PDF text extraction' : 'Text', s.pages ? ` · ${s.pages} pages` : '', s.characters != null ? ` · ${s.characters.toLocaleString()} characters` : '', s.textExtraction?.ocrPages?.length ? ` · OCR pages: ${s.textExtraction.ocrPages.join(', ')}` : '', s.textExtraction?.limitations?.map((issue, n) => /*#__PURE__*/React.createElement("p", {
     key: n,
     className: "desk-explainer"
-  }, issue)), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, "SHA-256: ", s.sha256))))), event.output?.processingRecovery && /*#__PURE__*/React.createElement("p", {
+  }, issue)), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, "SHA-256: ", s.sha256))))), event.output?.coordination && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Coordinated research review \xB7 ", event.output.coordination.issues?.length || 0, " challenge findings"), /*#__PURE__*/React.createElement("p", null, event.output.coordination.scope), /*#__PURE__*/React.createElement("p", null, event.output.coordination.roles?.map(r => `${r.role}: ${r.status.replaceAll('_', ' ')}`).join(' · ')), event.output.coordination.issues?.map(issue => /*#__PURE__*/React.createElement("article", {
+    className: "amendment-card",
+    key: issue.id
+  }, /*#__PURE__*/React.createElement("h4", null, "Challenge ", issue.id), /*#__PURE__*/React.createElement("blockquote", null, issue.draftQuote), /*#__PURE__*/React.createElement("p", null, issue.issue), /*#__PURE__*/React.createElement("p", null, issue.recommendation), event.output.coordination.decisions?.filter(d => d.id === issue.id).map(d => /*#__PURE__*/React.createElement("p", {
+    key: d.id
+  }, /*#__PURE__*/React.createElement("strong", null, d.action), " \xB7 ", d.reason)))), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Lead draft before challenge review"), /*#__PURE__*/React.createElement("pre", {
+    style: {
+      whiteSpace: 'pre-wrap',
+      maxHeight: 440,
+      overflow: 'auto'
+    }
+  }, event.output.coordination.leadDraft))), event.output?.processingRecovery && /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
   }, "Processing record: ", event.output.processingRecovery.totalBatches, " source batches \xB7 ", event.output.processingRecovery.resumedBatches, " reused from a matching recovery checkpoint."), /*#__PURE__*/React.createElement("div", {
     className: "earnings-checks"

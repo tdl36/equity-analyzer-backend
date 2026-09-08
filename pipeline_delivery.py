@@ -52,7 +52,7 @@ def create_blueprint(get_db):
                 cur.execute('SELECT status,output FROM analyst_activities WHERE id=%s FOR UPDATE',(activity_id,));activity=cur.fetchone()
                 out=obj(activity['output']) if activity else {}
                 if activity and out.get('catalystJobId')==job_id and activity['status'] in ('running','failed'):
-                    for key,source in [('synthesisMarkdown','markdown'),('sourceFiles','sourceFiles'),('sourceProvenance','sourceProvenance'),('evidenceSnapshot','evidenceSnapshot'),('claimReview','claimReview'),('processingRecovery','processingRecovery'),('fileCount','fileCount')]:out[key]=result.get(source)
+                    for key,source in [('synthesisMarkdown','markdown'),('sourceFiles','sourceFiles'),('sourceProvenance','sourceProvenance'),('evidenceSnapshot','evidenceSnapshot'),('claimReview','claimReview'),('processingRecovery','processingRecovery'),('coordination','coordination'),('fileCount','fileCount')]:out[key]=result.get(source)
                     from datetime import datetime,timezone
                     out['completedAt']=datetime.now(timezone.utc).isoformat()
                     cur.execute("UPDATE analyst_activities SET status='pending_review',output=%s::jsonb,error=NULL,updated_at=NOW() WHERE id=%s",(json.dumps(out),activity_id));linked=True

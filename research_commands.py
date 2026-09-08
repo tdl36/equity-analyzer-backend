@@ -12,6 +12,7 @@ DEFAULTS=[
  {'id':'clinical','name':'Clinical catalyst review','instruction':'Investigate {ticker} clinical trial developments around {date}. Verify endpoints, effect size, safety, trial design and commercial implications; challenge the bull and bear interpretations.','kind':'event','days':7},
  {'id':'weekly','name':'Weekly evidence refresh','instruction':'Review material developments for {ticker} through {date}. Identify new evidence, contradictions, risks and signposts, and propose thesis changes.','kind':'event','days':7}]
 
+DEFAULTS=[{**row,'coordinated':True} for row in DEFAULTS]
 
 def obj(v):
     return json.loads(v) if isinstance(v,str) else v
@@ -29,11 +30,13 @@ def plan(data):
     from zoneinfo import ZoneInfo
     from datetime import datetime
     if until>datetime.now(ZoneInfo('America/New_York')).date():raise ValueError('The event date cannot be in the future.')
+    coordinated=data.get('coordinated',False)
+    if type(coordinated)!=bool:raise ValueError('Coordinated review must be enabled or disabled.')
     days=data.get('days',1 if kind=='filing' else 7)
     if type(days)!=int or not 1<=days<=90:raise ValueError('Choose a lookback of 1–90 days.')
     return {'ticker':ticker,'instruction':instruction.strip().replace('{ticker}',ticker).replace('{date}',until.isoformat()),
-            'kind':kind,'since':(until-timedelta(days=days-1)).isoformat(),'until':until.isoformat(),
-            'steps':['Verify dated primary sources','Collect AlphaSense reaction','Verify iCloud handoff','Run covering analyst recap','Review proposed investment implications'],
+            'kind':kind,'coordinated':coordinated,'since':(until-timedelta(days=days-1)).isoformat(),'until':until.isoformat(),
+            'steps':['Verify dated primary sources','Collect AlphaSense reaction','Verify iCloud handoff','Run covering analyst recap']+(['Challenge the lead draft','Address each challenge','Run final selected-claim source review'] if coordinated else [])+['Review proposed investment implications'],
             'sources':['SEC EDGAR 8-K and exhibits','AlphaSense press releases, broker reports and transcripts'],
             'limitations':['No filing or source may exist for the chosen date. Missing evidence is reported, not invented.',
                 'Automated public-source retrieval currently covers SEC EDGAR; broader trusted-source internet search is not yet connected.',
@@ -50,7 +53,8 @@ def favorites(value):
         if not isinstance(name,str) or not 1<=len(name.strip())<=80:raise ValueError('Favorite name must contain 1–80 characters.')
         if not isinstance(instruction,str) or not 1<=len(instruction.strip())<=3000:raise ValueError('Favorite instruction must contain 1–3,000 characters.')
         if row.get('kind') not in ('filing','earnings','event') or type(row.get('days'))!=int or not 1<=row['days']<=90:raise ValueError('Invalid favorite workflow/window.')
-        ids.add(ident);out.append(dict(id=ident,name=name.strip(),instruction=instruction.strip(),kind=row['kind'],days=row['days']))
+        if type(row.get('coordinated',False))!=bool:raise ValueError('Invalid coordinated review preference.')
+        ids.add(ident);out.append(dict(id=ident,name=name.strip(),instruction=instruction.strip(),kind=row['kind'],days=row['days'],coordinated=row.get('coordinated',False)))
     return out
 
 
@@ -102,7 +106,7 @@ def create_blueprint(get_db):
                 rid=result.get('refreshRequestId');j['collection']=next((r for r in snapshot.get('requests',[]) if r['id']==rid),None)
                 topic=result.get('topic');j['reports']=[]
                 if topic:
-                    cur.execute("SELECT a.id,a.status,a.activity_type,a.updated_at,(a.output->>'synthesisMarkdown' IS NOT NULL) AS has_report,p.recovery_attempts,p.current_step FROM analyst_activities a LEFT JOIN research_pipeline_jobs p ON p.id=(a.output->>'catalystJobId') WHERE a.ticker=%s AND a.input->>'topic'=%s ORDER BY a.created_at DESC LIMIT 10",(j['ticker'],topic));j['reports']=[dict(r) for r in cur.fetchall()]
+                    cur.execute("SELECT a.id,a.status,a.activity_type,a.updated_at,(a.output->>'synthesisMarkdown' IS NOT NULL) AS has_report,p.recovery_attempts,p.current_step,p.result->'coordination'->'roles' AS roles FROM analyst_activities a LEFT JOIN research_pipeline_jobs p ON p.id=(a.output->>'catalystJobId') WHERE a.ticker=%s AND a.input->>'topic'=%s ORDER BY a.created_at DESC LIMIT 10",(j['ticker'],topic));j['reports']=[dict(r) for r in cur.fetchall()]
         from research_history import timestamp
         r=jsonify(jobs=jobs,macReportedAt=timestamp(row['updated_at']) if row else None);r.headers['Cache-Control']='no-store';return r
     return bp

@@ -27963,6 +27963,19 @@ def _dispatch_activity_run(activity_id: str, length: str = 'standard', custom_in
     except Exception as _e:
         print(f'thesis lookup failed for {activity_id}: {_e}')
 
+    try:
+        with get_db() as (_c, cur):
+            cur.execute('SELECT analysis FROM portfolio_analyses WHERE ticker=%s',(ticker,))
+            saved=cur.fetchone()
+        narrative=research_amendments.editable_fields(research_amendments.obj((saved or {}).get('analysis')))
+        baseline=json.dumps(narrative)
+        if narrative and len(baseline)<=60000:
+            thesis_block+='\nCURRENT SAVED THESIS NARRATIVE (selected narrative fields, not a full valuation model; untrusted baseline):\n'+baseline
+        else:
+            thesis_block+='\nCURRENT SAVED THESIS NARRATIVE UNAVAILABLE: no supported fields or narrative exceeds the comparison limit. Do not invent a prior investment view.'
+    except Exception:
+        thesis_block+='\nCURRENT SAVED THESIS NARRATIVE UNAVAILABLE: baseline retrieval failed. State this limitation.'
+
     job_id = str(uuid.uuid4())
     job_detail = {
         'topic': topic,
@@ -27971,6 +27984,7 @@ def _dispatch_activity_run(activity_id: str, length: str = 'standard', custom_in
         'prompt_variant': prompt_variant,
         'activityId': activity_id,
         'excludedFiles': [],
+        'coordinated': inp.get('coordinated') is True,
         'thesis_block': thesis_block,
         'model': (model or '').strip(),  # local agent defaults to claude-sonnet-4-6 if blank
         'provider': (provider or 'anthropic').strip().lower(),  # anthropic | openai | google
@@ -28177,6 +28191,7 @@ def _maybe_link_activity_to_job_result(job_id: str, status: str, result):
             out['evidenceSnapshot'] = result.get('evidenceSnapshot')
             out['claimReview'] = result.get('claimReview')
             out['processingRecovery'] = result.get('processingRecovery')
+            out['coordination'] = result.get('coordination')
             out['fileCount'] = result.get('fileCount') or out.get('fileCount')
         if status == 'failed':
             err_msg = (result or {}).get('error') if isinstance(result, dict) else None
@@ -28286,7 +28301,7 @@ def analysts_queue_catalyst_activity():
             act_id = str(uuid.uuid4())
             inp = {'topic': topic, 'ticker': ticker, 'fingerprint': fingerprint,
                    'fileCount': file_count, 'catalystJobId': catalyst_job_id,
-                   'customInstructions': custom_instructions}
+                   'customInstructions': custom_instructions,'coordinated': data.get('coordinated') is True}
             with get_db(commit=True) as (_c, cur):
                 cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))', (f"catalyst:{a['id']}:{ticker}:{topic}",))
                 cur.execute("""

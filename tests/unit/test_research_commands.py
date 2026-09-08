@@ -21,6 +21,11 @@ class CommandTests(unittest.TestCase):
         for change in ({'ticker':'../UNH'},{'date':'2999-01-01'},{'days':True},{'days':0},{'kind':'shell'},{'instruction':' '}):
             with self.assertRaises(ValueError):plan({**d,**change})
         with self.assertRaises(ValueError):plan([])
+    def test_coordinated_preference_is_explicit_and_bounded(self):
+        data=dict(ticker='UNH',instruction='Review',kind='filing',date='2026-09-07',days=1)
+        self.assertFalse(plan(data)['coordinated'])
+        self.assertIn('Challenge the lead draft',plan({**data,'coordinated':True})['steps'])
+        with self.assertRaises(ValueError):plan({**data,'coordinated':'yes'})
 
     def test_favorite_validation_and_optimistic_revision(self):
         self.assertEqual(favorites(DEFAULTS),DEFAULTS)

@@ -12,6 +12,7 @@ export function CommandCharlie({
     [date, setDate] = React.useState(today),
     [kind, setKind] = React.useState('filing'),
     [days, setDays] = React.useState(1),
+    [coordinated, setCoordinated] = React.useState(true),
     [instruction, setInstruction] = React.useState('');
   var [fav, setFav] = React.useState({
       favorites: [],
@@ -81,6 +82,7 @@ export function CommandCharlie({
     setInstruction(f.instruction);
     setKind(f.kind);
     setDays(f.days);
+    setCoordinated(f.coordinated === true);
   };
   var run = async () => {
     if (lock.current) return;
@@ -93,7 +95,8 @@ export function CommandCharlie({
       date,
       kind,
       days,
-      instruction
+      instruction,
+      coordinated
     };
     pending.current = body;
     try {
@@ -127,7 +130,8 @@ export function CommandCharlie({
         name,
         instruction,
         kind,
-        days
+        days,
+        coordinated
       };
       var values = remove ? fav.favorites.filter(f => f.id !== favId) : [...fav.favorites.filter(f => f.id !== row.id), row];
       var d = await json('/api/research/command-favorites', {
@@ -197,7 +201,13 @@ export function CommandCharlie({
     value: instruction,
     onChange: e => setInstruction(e.target.value),
     placeholder: "Review UNH\u2019s 8-K today and sell-side reaction. Explain what changed and propose updates to my thesis."
-  })), instruction && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, "Assignment preview:"), " ", instruction.replace(/\{ticker\}/g, ticker.trim() || '[choose ticker]').replace(/\{date\}/g, date || '[choose date]')), /*#__PURE__*/React.createElement("p", null, "SEC EDGAR filings + AlphaSense press releases, broker research and transcripts \u2192 CATALYSTS event folder \u2192 covering analyst recap. Missing sources and retrieval failures are reported explicitly. Thesis changes are proposed for your review, not automatically applied."), /*#__PURE__*/React.createElement("button", {
+  })), instruction && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, "Assignment preview:"), " ", instruction.replace(/\{ticker\}/g, ticker.trim() || '[choose ticker]').replace(/\{date\}/g, date || '[choose date]')), /*#__PURE__*/React.createElement("p", null, "SEC EDGAR filings + AlphaSense press releases, broker research and transcripts \u2192 CATALYSTS event folder \u2192 covering analyst recap. Missing sources and retrieval failures are reported explicitly. Thesis changes are proposed for your review, not automatically applied."), /*#__PURE__*/React.createElement("label", {
+    className: "command-team-option"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: coordinated,
+    onChange: e => setCoordinated(e.target.checked)
+  }), /*#__PURE__*/React.createElement("span", null, "Include independent challenge and editorial revision ", /*#__PURE__*/React.createElement("small", null, "Up to two additional model passes. Final selected-claim source review follows."))), /*#__PURE__*/React.createElement("button", {
     className: "workspace-primary",
     disabled: !ticker.trim() || !instruction.trim(),
     onClick: run
@@ -242,7 +252,7 @@ export function CommandCharlie({
     className: "workspace-error"
   }, j.error), j.collection?.issue && /*#__PURE__*/React.createElement("p", {
     className: "workspace-error"
-  }, j.collection.issue), /*#__PURE__*/React.createElement("p", null, j.reports?.length ? j.reports.map(r => `${r.has_report ? 'Recap available' : r.status} (${r.id.slice(0, 8)})${r.recovery_attempts ? ` · Recovery ${r.recovery_attempts}/2` : ''}${!r.has_report && r.current_step ? ` · ${r.current_step}` : ''}`).join(' · ') : 'No linked analyst recap is available yet.'), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Execution plan and limits"), /*#__PURE__*/React.createElement("ol", null, j.input.payload.steps.map(s => /*#__PURE__*/React.createElement("li", {
+  }, j.collection.issue), /*#__PURE__*/React.createElement("p", null, j.reports?.length ? j.reports.map(r => `${r.has_report ? 'Recap available' : r.status} (${r.id.slice(0, 8)})${r.recovery_attempts ? ` · Recovery ${r.recovery_attempts}/2` : ''}${!r.has_report && r.current_step ? ` · ${r.current_step}` : ''}`).join(' · ') : 'No linked analyst recap is available yet.'), j.reports?.some(r => r.roles?.length) && /*#__PURE__*/React.createElement("p", null, "Team stages: ", j.reports.flatMap(r => r.roles || []).map(r => `${r.role}: ${r.status.replaceAll('_', ' ')}`).join(' · ')), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Execution plan and limits"), /*#__PURE__*/React.createElement("ol", null, j.input.payload.steps.map(s => /*#__PURE__*/React.createElement("li", {
     key: s
   }, s))), j.input.payload.limitations.map(s => /*#__PURE__*/React.createElement("p", {
     key: s

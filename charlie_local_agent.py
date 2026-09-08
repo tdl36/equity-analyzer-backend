@@ -3564,7 +3564,7 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
         )
         if prompt_variant == 'earnings_recap':
             fmt['thesis_block'] = thesis_block
-        prompt_text = base_prompt.format(**fmt) + IMPACT_INSTRUCTION
+        prompt_text = base_prompt.format(**fmt) + (('\n'+thesis_block) if prompt_variant!='earnings_recap' else '') + IMPACT_INSTRUCTION
         content_blocks = _build_content_blocks(batches[0], prompt_text)
 
         from recap_checkpoint import Checkpoint
@@ -3642,6 +3642,15 @@ Write the complete, updated synthesis report now. ZERO firm names, ALL first per
 
         log.info(f"Synthesis generated: {len(markdown)} chars")
 
+        collaboration=None;collaboration_checkpoints=[]
+        if steps_detail.get('coordinated') is True:
+            from recap_coordination import coordinate
+            def team_call(prompt,tokens):
+                return _call_recap_llm(recap_provider,recap_model,'Follow the bounded research role instructions. Return only the requested JSON.',[],prompt,[{'type':'text','text':prompt}],max_tokens=tokens)
+            markdown,collaboration,collaboration_checkpoints=coordinate(markdown,team_call,
+                {'sources':evidence_snapshot['sources'],'provider':recap_provider,'model':recap_model,'instructions':custom_instructions},
+                progress=lambda role:update_job_progress(job_id,'running','Coordinated review: '+role,76 if role=='challenge' else 78))
+
         # Generate source provenance
         update_job_progress(job_id, "running", "Analyzing source contributions...", 80)
         source_names = [sp['name'] for sp in source_parts]
@@ -3673,10 +3682,13 @@ Write the complete, updated synthesis report now. ZERO firm names, ALL first per
             'evidenceSnapshot': evidence_snapshot,
             'claimReview': claim_review,
             'processingRecovery': {'resumedBatches':resumed_batches,'totalBatches':total_batches},
+            'coordination': collaboration,
         }
 
+        verify_job_claim(job_id)
         outbox_path = catalyst_delivery.save_result(job_id, result_data, claim_token=_job_claim_tokens.get(job_id))
         checkpoint.finish()
+        for stage_checkpoint in collaboration_checkpoints:stage_checkpoint.finish()
         if catalyst_delivery.deliver(outbox_path, CHARLIE_API, _agent_headers()):
             notify(f"*Charlie Agent:* {ticker}/{topic} synthesis complete\n{file_count} docs, {len(markdown):,} chars")
         else:
