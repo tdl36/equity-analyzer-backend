@@ -125,6 +125,16 @@ class ExistingPipelineBridgeTests(unittest.TestCase):
         final=env['_mp_update_job'].call_args.kwargs
         self.assertEqual(final['status'],'done');self.assertEqual(final['result']['questionSetId'],7)
         self.assertEqual(env['_mp_synthesize_inline'].call_args.args[-1],'Meeting focus: margins')
+        self.assertEqual(env['_mp_questions_inline'].call_args.args[4]['assignmentContext'],'Meeting focus: margins')
+    def test_success_keeps_cache_reuse_receipt(self):
+        env=self.pipeline();env['_mp_analyze_one_doc'].return_value=({'facts':['existing fact'],'_cacheHit':True},0)
+        env['_run_mp_pipeline_job'](CID,'fake-key',1,'ABT','Abbott','Health',
+            [{'id':2,'filename':'release.txt','extractedText':'Reported facts'}],[],
+            '2026-06-11 through 2026-09-08. Meeting assignment: Focus on reimbursement.',[], 'model',managed=True)
+        context=env['_mp_questions_inline'].call_args.args[4]
+        self.assertIn('Focus on reimbursement.',context['assignmentContext'])
+        self.assertEqual(context['researchWindow'],'2026-06-11 through 2026-09-08')
+        self.assertEqual(env['_mp_update_job'].call_args.kwargs['result']['cachedSources'],1)
     def test_failed_questions_resume_without_repeating_document_analysis(self):
         env=self.pipeline();env['_mp_questions_inline'].side_effect=ValueError('test interruption')
         args=(CID,'fake-key',1,'ABT','Abbott','Health',[{'id':2,'filename':'release.txt','extractedText':'facts'}],[],'window',[],'model')

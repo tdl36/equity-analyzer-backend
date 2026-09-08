@@ -23555,7 +23555,8 @@ def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sect
                     source_evidence=excerpts(get_db,docs)
                 topics, q_tokens = _mp_questions_inline(
                     api_key, ticker, company_name, sector,
-                    ({'sourceAnalyses':analyses,'researchWindow':timeframe.split('. Meeting assignment:')[0]} if managed else synthesis), unresolved,
+                    ({'sourceAnalyses':analyses,'researchWindow':timeframe.split('. Meeting assignment:')[0],
+                      'assignmentContext':timeframe} if managed else synthesis), unresolved,
                     **({'source_names':[d['filename'] for d in docs],'source_evidence':source_evidence} if managed else {})
                 )
                 tokens_total += q_tokens
@@ -23596,6 +23597,7 @@ def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sect
             'questionSetId': qs['id'], 'version': qs['version'],
             'topics': topics, 'synthesis': synthesis,
             'totalTokens': tokens_total,
+            'cachedSources': sum(bool(a and a.get('_cacheHit')) for a in analyses),
         })
     except Exception as e:
         print(f"MP pipeline job {job_id} error: {e}")
