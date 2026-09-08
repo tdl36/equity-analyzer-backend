@@ -7,6 +7,7 @@ class ManualProfileRouteTests(unittest.TestCase):
     def client(self):
         tree=ast.parse(Path('app_v3.py').read_text());node=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='mp_run_pipeline');node.decorator_list=[]
         cur=Mock();cur.fetchone.return_value=None
+        cur.fetchall.return_value=[{'id':2,'filename':'source.txt','doc_type':'report','file_data':None,'extracted_text':'Saved source text for this meeting.'}]
         @contextmanager
         def db(**kwargs):yield None,cur
         thread=Mock();scope=dict(request=request,jsonify=jsonify,os=os,json=json,uuid=uuid,get_db=db,threading=Mock(Thread=thread),_run_mp_pipeline_job=Mock(),resolve_picker_model=lambda a,b:b,MEETING_PREP_DEFAULT_MODEL='model')
@@ -24,3 +25,16 @@ class ManualProfileRouteTests(unittest.TestCase):
         client,cur,thread=self.client()
         response=client.post('/run',json={'apiKey':'test-only','meetingId':1,'docs':[{'id':2}],'meetingProfile':{'format':'invalid'}})
         self.assertEqual(response.status_code,400);thread.assert_not_called();cur.execute.assert_not_called()
+    def test_revision_requires_current_version_before_start(self):
+        client,cur,thread=self.client()
+        cur.fetchone.side_effect=[None,{'id':9,'version':2,'topics_json':'[]'}]
+        response=client.post('/run',json={'apiKey':'test-only','meetingId':1,'docs':[{'id':2}],'revisionInstruction':'Expand margin questions','expectedQuestionSetId':8})
+        self.assertEqual(response.status_code,409);thread.assert_not_called()
+    def test_revision_freezes_prior_pack_and_instruction(self):
+        client,cur,thread=self.client()
+        cur.fetchone.side_effect=[None,{'id':9,'version':2,'topics_json':'[]'},None]
+        response=client.post('/run',json={'apiKey':'test-only','meetingId':1,'docs':[{'id':2}],'revisionInstruction':'Expand margin questions','expectedQuestionSetId':9})
+        self.assertEqual(response.status_code,202)
+        persisted=json.loads(next(c.args[1][-1] for c in cur.execute.call_args_list if 'INSERT INTO mp_jobs' in c.args[0]))
+        self.assertEqual(persisted['revisionContext']['baseQuestionSetId'],9)
+        self.assertEqual(persisted['revisionContext']['instruction'],'Expand margin questions')

@@ -42,7 +42,7 @@ def command(data):
         if payload.get('workflow') not in ('thesis','note','recap'):raise ValueError('Invalid workflow.')
         if not isinstance(payload.get('instructions',''),str) or len(payload.get('instructions',''))>3000:raise ValueError('Instructions limit is 3,000 characters.')
         kinds=payload.get('kinds')
-        if not isinstance(kinds,list) or not kinds or any(k not in ('transcript','broker-report','press-release') for k in kinds):raise ValueError('Choose source types.')
+        if not isinstance(kinds,list) or not kinds or any(k not in ('transcript','broker-report','press-release','presentation') for k in kinds):raise ValueError('Choose source types.')
         topic=payload.get('topic','')
         if not isinstance(topic,str) or len(topic)>160 or '/' in topic or '\\' in topic or topic.startswith('.') or (payload['workflow']=='recap' and not topic.strip()):raise ValueError('A plain event folder name is required for recaps.')
         create_folder=payload.get('createFolder',False)

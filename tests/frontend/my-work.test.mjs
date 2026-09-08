@@ -2,3 +2,7 @@ import {test} from 'node:test';import assert from 'node:assert/strict';import {w
 test('meeting assignment supersedes duplicate command and readiness means completed preparation',()=>{const items=workItems([{id:'x',ticker:'MDT',status:'applied'}],[{id:'x',status:'applied',collection:{status:'complete'}}]);assert.equal(items.length,1);assert.equal(items[0].bucket,'running');assert.equal(workItems([{id:'x',prep_status:'done'}])[0].bucket,'ready');});
 test('attention and failed work remain actionable',()=>{assert.equal(workItems([],[{id:'a',collection:{status:'needs_auth'}}])[0].bucket,'needs_me');assert.equal(workItems([{id:'b',prep_status:'failed',prep_error:'source changed'}])[0].bucket,'failed');});
 test('cancelled collection is never counted as running or ready',()=>{assert.equal(workItems([],[{id:'a',collection:{status:'cancelled'}}])[0].bucket,'closed');});
+test('manual meeting jobs remain visible with their exact meeting destination',()=>{
+ const items=workItems([],[],[],[{id:'manual',ticker:'UNH',status:'running',step:'generating',meeting_id:'28'}]);
+ assert.equal(items[0].bucket,'running');assert.equal(items[0].manual,true);assert.equal(items[0].job.meeting_id,'28');
+});

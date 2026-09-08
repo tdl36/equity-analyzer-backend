@@ -23357,10 +23357,10 @@ def _mp_synthesize_inline(api_key, ticker, company_name, sector, analyses, past_
     return synthesis, tokens
 
 
-def _mp_questions_inline(api_key, ticker, company_name, sector, synthesis, unresolved, source_names=None, source_evidence=None, meeting_profile=None):
+def _mp_questions_inline(api_key, ticker, company_name, sector, synthesis, unresolved, source_names=None, source_evidence=None, meeting_profile=None, revision_context=None):
     if source_names is not None:
         from meeting_question_generation import generate
-        return generate(api_key,ticker,company_name,sector,synthesis,unresolved,source_names,evidence=source_evidence,meeting_profile=meeting_profile)
+        return generate(api_key,ticker,company_name,sector,synthesis,unresolved,source_names,evidence=source_evidence,meeting_profile=meeting_profile,revision_context=revision_context)
     unresolved_text = ""
     if unresolved:
         items = [f"- {q.get('question', '')} (from {q.get('meeting_date', '?')})" for q in unresolved[:15]]
@@ -23385,14 +23385,25 @@ def _mp_questions_inline(api_key, ticker, company_name, sector, synthesis, unres
 def _mp_save_results_inline(meeting_id, topics, synthesis_json, total_tokens, model, managed=False, job_id=None, owner=None):
     """Mirror of /api/mp/save-results logic, inlined for use from the orchestrator."""
     with get_db(commit=True) as (_, cur):
+        if owner:
+            cur.execute("SELECT input->>'savedQuestionSetId' AS saved_id,input->'revisionContext'->>'baseQuestionSetId' AS revision_base FROM mp_jobs WHERE id=%s AND status='running' AND input->>'workerToken'=%s FOR UPDATE",(job_id,owner))
+            owned_job=cur.fetchone()
+            if not owned_job:raise ValueError('Meeting execution ownership changed before saving.')
+            if owned_job['saved_id']:
+                cur.execute('SELECT id,version FROM mp_question_sets WHERE id=%s AND meeting_id=%s',(int(owned_job['saved_id']),meeting_id))
+                saved=cur.fetchone()
+                if saved:return dict(saved)
         if managed:
-            if owner:
-                cur.execute("SELECT id FROM mp_jobs WHERE id=%s AND status='running' AND input->>'workerToken'=%s FOR UPDATE",(job_id,owner))
-                if not cur.fetchone():raise ValueError('Meeting execution ownership changed before saving.')
             cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))', ('meeting-save:'+str(meeting_id),))
             cur.execute('SELECT id,version FROM mp_question_sets WHERE meeting_id=%s ORDER BY version LIMIT 1', (meeting_id,))
             existing=cur.fetchone()
             if existing:return dict(existing)
+        cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',('meeting-save:'+str(meeting_id),))
+        if owner and owned_job.get('revision_base'):
+            cur.execute('SELECT id FROM mp_question_sets WHERE meeting_id=%s ORDER BY version DESC LIMIT 1',(meeting_id,))
+            latest=cur.fetchone()
+            if not latest or str(latest['id'])!=owned_job['revision_base']:
+                raise ValueError('A newer question pack was saved during revision. Your draft checkpoint is retained; reload before starting another revision.')
         cur.execute('SELECT COALESCE(MAX(version), 0) + 1 AS next_ver FROM mp_question_sets WHERE meeting_id = %s', (meeting_id,))
         version = cur.fetchone()['next_ver']
         cur.execute('''
@@ -23416,13 +23427,25 @@ def _mp_save_results_inline(meeting_id, topics, synthesis_json, total_tokens, mo
                         cur.execute('''
                             INSERT INTO mp_past_questions (company_id, meeting_id, question, topic, status)
                             VALUES (%s, %s, %s, %s, %s)
-                        ''', (company_id, meeting_id, q_text, topic_name, 'planned' if managed else 'asked'))
+                        ''', (company_id, meeting_id, q_text, topic_name, 'planned'))
+        if owner:
+            cur.execute("UPDATE mp_jobs SET input=input || %s::jsonb WHERE id=%s",(json.dumps({'savedQuestionSetId':qs['id']}),job_id))
     return qs
 
 
-def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sector,
+def _run_mp_pipeline_job(job_id, api_key, *args, **kwargs):
+    if kwargs.get('managed'):
+        return _execute_mp_pipeline_job(job_id, api_key, *args, **kwargs)
+    from manual_meeting_recovery import execute
+    def run(inp, checkpoint):
+        options=dict(kwargs, resume_from=checkpoint, owner=inp['workerToken'],revision_context=inp.get('revisionContext'))
+        return _execute_mp_pipeline_job(job_id, api_key, *args, **options)
+    return execute(get_db,job_id,run)
+
+
+def _execute_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sector,
                          docs, past_questions, timeframe, unresolved, model,
-                         resume_from=None, managed=False, owner=None, meeting_profile=None):
+                         resume_from=None, managed=False, owner=None, meeting_profile=None, revision_context=None):
     """Run the full MP pipeline server-side with stage-level checkpointing.
     After each stage succeeds, writes its output to mp_jobs.result so retries
     resume from the failure point instead of redoing successful work.
@@ -23553,17 +23576,18 @@ def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sect
             })
             try:
                 source_evidence=None
-                if managed:
+                grounded=managed or all(d.get('sha256') or d.get('textSha256') for d in docs)
+                if grounded:
                     from meeting_source_support import excerpts
                     source_evidence=excerpts(get_db,docs)
                 topics, q_tokens = _mp_questions_inline(
                     api_key, ticker, company_name, sector,
                     ({'sourceAnalyses':analyses,'researchWindow':timeframe.split('. Meeting assignment:')[0],
-                      'assignmentContext':timeframe} if managed else synthesis), unresolved,
-                    **({'source_names':[d['filename'] for d in docs],'source_evidence':source_evidence,'meeting_profile':meeting_profile} if managed else {'meeting_profile':meeting_profile})
+                      'assignmentContext':timeframe} if managed else ({'synthesis':synthesis,'revision':revision_context} if revision_context else synthesis)), unresolved,
+                    **({'source_names':[d['filename'] for d in docs],'source_evidence':source_evidence,'revision_context':revision_context,'meeting_profile':meeting_profile or (None if managed else {'format':'one_on_one','audience':'specialist'})} if grounded else {'meeting_profile':meeting_profile})
                 )
                 tokens_total += q_tokens
-                if managed:
+                if grounded:
                     from meeting_question_generation import MODEL as question_model
             except Exception as e:
                 update(job_id, status='failed',
@@ -23636,6 +23660,10 @@ def mp_run_pipeline():
             if cur.fetchone():
                 return jsonify(error='This meeting pack is managed by Command Charlie. Follow its progress or use Retry meeting pack there.'),409
 
+        from manual_meeting_sources import freeze
+        try: docs=freeze(get_db,meeting_id,docs)
+        except ValueError as exc:return jsonify(error=str(exc)),400
+
         ticker = data.get('ticker', '')
         company_name = data.get('companyName', ticker)
         sector = data.get('sector', 'unknown')
@@ -23644,15 +23672,37 @@ def mp_run_pipeline():
         unresolved = data.get('unresolvedQuestions') or []
         model = resolve_picker_model(data.get('model'), MEETING_PREP_DEFAULT_MODEL)
 
+        revision_context=None
+        instruction=data.get('revisionInstruction','')
+        if not isinstance(instruction,str) or len(instruction)>2000:
+            return jsonify(error='Revision instructions must be at most 2,000 characters.'),400
+        if instruction.strip():
+            with get_db() as (_,cur):
+                cur.execute('SELECT id,version,topics_json FROM mp_question_sets WHERE meeting_id=%s ORDER BY version DESC LIMIT 1',(meeting_id,))
+                base=cur.fetchone()
+            if not base or base['id']!=data.get('expectedQuestionSetId'):
+                return jsonify(error='The question pack changed. Reload before requesting a revision.'),409
+            prior=base['topics_json'] if isinstance(base['topics_json'],list) else json.loads(base['topics_json'])
+            revision_context={'instruction':instruction.strip(),'baseQuestionSetId':base['id'],'baseVersion':base['version'],'priorQuestions':prior,
+                'rules':'Produce a complete revised question bank. Apply the requested changes, retain useful unaffected questions, and verify all premises against the selected sources. Prior question text is not evidence. Preserve source limitations.'}
+
         # Persist full input (excluding API key) so retries have everything needed
         persisted_input = {
             'meetingId': meeting_id, 'ticker': ticker, 'companyName': company_name,
             'sector': sector, 'docs': docs, 'pastQuestions': past_questions,
-            'timeframe': timeframe, 'unresolvedQuestions': unresolved, 'model': model, 'meetingProfile':profile,
+            'timeframe': timeframe, 'unresolvedQuestions': unresolved, 'model': model, 'meetingProfile':profile,'revisionContext':revision_context,'recoveryEnabled':True,
         }
 
         job_id = str(uuid.uuid4())
         with get_db(commit=True) as (_c, cur):
+            cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',('manual-meeting-start:'+str(meeting_id),))
+            cur.execute("SELECT id,input FROM mp_jobs WHERE stage='pipeline' AND input->>'meetingId'=%s AND status='running' ORDER BY created_at DESC LIMIT 1",(str(meeting_id),))
+            active=cur.fetchone()
+            if active:
+                old=active['input'] if isinstance(active['input'],dict) else json.loads(active['input'])
+                if all(old.get(k)==persisted_input.get(k) for k in ('docs','meetingProfile','revisionContext')):
+                    return jsonify(jobId=active['id'],alreadyRunning=True),202
+                return jsonify(error='This meeting already has a running pack. Wait for it before changing the assignment.'),409
             cur.execute('''
                 INSERT INTO mp_jobs (id, stage, ticker, status, input)
                 VALUES (%s, 'pipeline', %s, 'running', %s::jsonb)
@@ -23689,17 +23739,27 @@ def mp_job_retry(job_id):
         if not row:
             return jsonify({'error': 'Job not found'}), 404
 
+        if row['status'] not in ('running','failed'):
+            return jsonify(error='This job is already complete. Generate a new version to revise it.'),409
         inp = row['input'] if isinstance(row['input'], dict) else (json.loads(row['input']) if row['input'] else None)
         if not inp or not inp.get('meetingId') or not inp.get('docs'):
             return jsonify({'error': 'Job input missing — cannot retry (pre-checkpoint job)'}), 400
         if inp.get('commandId'):
             return jsonify(error='Use Retry meeting pack in Command Charlie for managed meeting jobs.'),409
+        if row['status']=='running' and inp.get('workerToken'):
+            return jsonify(jobId=job_id,alreadyRunning=True),202
+        from manual_meeting_sources import freeze
+        try:
+            if not all(d.get('sha256') or d.get('textSha256') for d in inp['docs']):
+                inp['docs']=freeze(get_db,inp['meetingId'],inp['docs'])
+        except ValueError as exc:return jsonify(error=str(exc)),400
+        retry_patch={'docs':inp['docs'],'recoveryEnabled':True}
         checkpoint = row['result'] if isinstance(row['result'], dict) else (json.loads(row['result']) if row['result'] else None)
 
         # Mark running again + clear previous error (keep result as checkpoint)
         with get_db(commit=True) as (_c, cur):
-            cur.execute('UPDATE mp_jobs SET status = %s, error = NULL, updated_at = NOW() WHERE id = %s',
-                        ('running', job_id))
+            cur.execute("UPDATE mp_jobs SET input=(CASE WHEN status='failed' THEN input || '{\"recoveryAttempts\":0}'::jsonb ELSE input END) || %s::jsonb,status='running',error=NULL,updated_at=NOW() WHERE id=%s AND status IN ('running','failed') RETURNING id",(json.dumps(retry_patch),job_id))
+            if not cur.fetchone():return jsonify(error='This job completed before retry. Reload the saved pack.'),409
 
         threading.Thread(
             target=_run_mp_pipeline_job,
@@ -28900,6 +28960,22 @@ app.register_blueprint(meeting_commands.create_blueprint(get_db,_run_command_mee
 meeting_commands.start_server_worker(get_db,_run_command_meeting,
     lambda:bool(os.environ.get('ANTHROPIC_API_KEY','')))
 
+
+import manual_meeting_recovery
+
+def _resume_manual_meeting(job_id,inp,checkpoint):
+    _execute_mp_pipeline_job(job_id,os.environ['ANTHROPIC_API_KEY'],inp['meetingId'],
+        inp.get('ticker',''),inp.get('companyName',''),inp.get('sector','unknown'),
+        inp['docs'],inp.get('pastQuestions') or [],inp.get('timeframe','recent'),
+        inp.get('unresolvedQuestions') or [],resolve_picker_model(inp.get('model'),MEETING_PREP_DEFAULT_MODEL),
+        resume_from=checkpoint,owner=inp['workerToken'],meeting_profile=inp.get('meetingProfile'),revision_context=inp.get('revisionContext'))
+
+manual_meeting_recovery.start(get_db,_resume_manual_meeting,
+    lambda:bool(os.environ.get('ANTHROPIC_API_KEY','')))
+
+
+import meeting_workspace
+app.register_blueprint(meeting_workspace.create_blueprint(get_db))
 
 import research_history
 app.register_blueprint(research_history.create_blueprint(get_db))

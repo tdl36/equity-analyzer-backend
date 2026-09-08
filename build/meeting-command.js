@@ -1,5 +1,6 @@
 import { AssignmentWorkspace } from './assignment-workspace';
 import * as React from 'react';
+import { readMeetingPreferences, saveMeetingPreferences } from './meeting-preferences.mjs';
 var today = () => new Intl.DateTimeFormat('en-CA', {
   timeZone: 'America/New_York'
 }).format(new Date());
@@ -26,8 +27,8 @@ export function MeetingCommand({
     [focuses, setFocuses] = React.useState(['thesis', 'earnings', 'followups']),
     [note, setNote] = React.useState('');
   var [reuseJob, setReuseJob] = React.useState('');
-  var [format, setFormat] = React.useState('conference'),
-    [audience, setAudience] = React.useState('specialist');
+  var [format, setFormat] = React.useState(() => readMeetingPreferences().format),
+    [audience, setAudience] = React.useState(() => readMeetingPreferences().audience);
   var formatLabels = {
     conference: '30-minute conference · 12–15 questions',
     one_on_one: '60-minute 1×1 · 25–30 questions',
@@ -224,13 +225,19 @@ export function MeetingCommand({
     className: "desk-filter"
   }, /*#__PURE__*/React.createElement("label", null, "Meeting format", /*#__PURE__*/React.createElement("select", {
     value: format,
-    onChange: e => setFormat(e.target.value)
+    onChange: e => {
+      setFormat(e.target.value);
+      saveMeetingPreferences(e.target.value, audience);
+    }
   }, Object.entries(formatLabels).map(([id, label]) => /*#__PURE__*/React.createElement("option", {
     key: id,
     value: id
   }, label)))), /*#__PURE__*/React.createElement("label", null, "Audience", /*#__PURE__*/React.createElement("select", {
     value: audience,
-    onChange: e => setAudience(e.target.value)
+    onChange: e => {
+      setAudience(e.target.value);
+      saveMeetingPreferences(format, e.target.value);
+    }
   }, /*#__PURE__*/React.createElement("option", {
     value: "specialist"
   }, "Sector specialists"), /*#__PURE__*/React.createElement("option", {

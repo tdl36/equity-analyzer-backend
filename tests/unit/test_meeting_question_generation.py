@@ -51,3 +51,8 @@ class MeetingProfileGenerationTests(QuestionGenerationTests):
         self.assertIn('generalist portfolio managers',prompt)
         self.assertIn('segment economics',prompt)
         self.assertNotIn('12–15',prompt)
+    def test_revision_instruction_reaches_model_as_request_not_source_evidence(self):
+        client=self.client()
+        generate('key','ABT','Abbott','Healthcare',{},[],['source.pdf'],client,revision_context={'instruction':'Expand cash conversion','priorQuestions':[]})
+        prompt=client.messages.stream.call_args.kwargs['messages'][0]['content']
+        self.assertIn('USER REVISION REQUEST',prompt);self.assertIn('Expand cash conversion',prompt)

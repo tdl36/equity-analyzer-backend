@@ -38,7 +38,7 @@ def profile_instruction(value):
         text+=('Audience: generalist portfolio managers. Begin with accessible business and industry framing, explain acronyms, '
                'and connect operating questions to earnings durability, returns on capital and investment implications. Avoid unexplained specialist jargon. ')
     else:text+='Audience: sector specialists; use precise company-specific operating questions. '
-    return text+'Do not pad the list or invent evidence to meet the target. Clearly disclose any source coverage gaps. '
+    return text+question_quality_instruction()+'Do not pad the list or invent evidence to meet the target. Clearly disclose any source coverage gaps. '
 
 
 def meeting_options(value):
@@ -82,3 +82,13 @@ def manual_question_prompt(prompt,profile):
     prompt=prompt.replace('25-30 sophisticated questions','prioritized questions')
     prompt='\n'.join(line for line in prompt.split('\n') if not ('**Prioritized**' in line))
     return profile_instruction(settings)+'\n'+prompt+'\nNever present broker estimates or interpretations as company disclosures. If a premise lacks primary support, ask management to clarify rather than assert it as fact.'
+
+
+def question_quality_instruction():
+    return ('Organize questions into company-specific topics emerging from the sources, not a generic checklist. '
+            'Connect disclosures across periods and documents; probe inconsistencies, missing information and changes in management messaging. '
+            'Prioritize decision-relevant questions over repetitions or questions already answered in the sources. '
+            'For each question provide a concise private rationale, exact source attribution and a concrete follow-up if management is evasive or generic. '
+            'Keep spoken questions natural and independent; put broker names and broker-derived observations in private context/source notes. '
+            'Never reattribute a broker estimate to management: use an open clarification if primary support is absent. '
+            'Treat planned prior questions as unasked; only refer to a previous answer when a dated actual answer is supplied. ')

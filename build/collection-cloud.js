@@ -1,6 +1,7 @@
 import { CatalystWatch } from './catalyst-watch';
 import { parseTickers } from './research-desk-model.mjs';
 import * as React from 'react';
+import { collectionHealth } from './collection-health.mjs';
 var blank = {
   ticker: '',
   hours: 0,
@@ -115,6 +116,7 @@ export function CollectionCloud({
   };
   var snapshot = data?.snapshot,
     policies = snapshot?.policies || [];
+  var health = collectionHealth(snapshot);
   var updated = data?.updatedAt ? new Date(data.updatedAt.replace(' ', 'T') + 'Z') : null;
   var stale = !updated || !Number.isFinite(updated.getTime()) || Date.now() - updated.getTime() > 180000;
   return /*#__PURE__*/React.createElement("section", {
@@ -125,7 +127,13 @@ export function CollectionCloud({
     className: "desk-explainer"
   }, "Commands are stored in Charlie and picked up by your Mac agent. AlphaSense downloads still require this Mac awake, Codex running and Chrome signed in. The browser worker checks managed requests every 15 minutes."), /*#__PURE__*/React.createElement("p", {
     role: "status"
-  }, updated ? `Mac last reported ${updated.toLocaleString()}.` : 'No Mac collection report yet.', " ", stale ? 'No recent report; commands will wait for the Mac agent.' : 'Mac collection bridge is reporting.'), (error || loadError) && /*#__PURE__*/React.createElement("p", {
+  }, updated ? `Mac last reported ${updated.toLocaleString()}.` : 'No Mac collection report yet.', " ", stale ? 'No recent report; commands will wait for the Mac agent.' : 'Mac collection bridge is reporting.'), /*#__PURE__*/React.createElement("div", {
+    className: "workspace-panel"
+  }, /*#__PURE__*/React.createElement("h3", null, "Automation readiness"), /*#__PURE__*/React.createElement("p", null, health.scheduled, " scheduled tickers \xB7 ", health.verified, "/", health.total, " policies with a successful refresh recorded \xB7 ", health.pending, " open requests \xB7 ", health.needsAttention, " need attention"), health.overdue > 0 && /*#__PURE__*/React.createElement("p", {
+    role: "status"
+  }, health.overdue, " queued requests have waited over 30 minutes; oldest ", health.oldestMinutes, " minutes. A connected Mac is not proof that browser collection is progressing. Inspect the requests below and the browser worker."), /*#__PURE__*/React.createElement("p", {
+    className: "desk-explainer"
+  }, "Counts reflect the latest Mac snapshot. A successful refresh is delivery evidence, not a guarantee of complete source coverage or research accuracy.")), (error || loadError) && /*#__PURE__*/React.createElement("p", {
     role: "alert",
     className: "workspace-error"
   }, error || loadError), message && /*#__PURE__*/React.createElement("p", {
@@ -196,7 +204,7 @@ export function CollectionCloud({
     })
   })), /*#__PURE__*/React.createElement("div", {
     className: "desk-filter collection-checks"
-  }, [['transcript', 'Event transcripts'], ['broker-report', 'Broker reports'], ['press-release', 'Press releases']].map(([k, l]) => /*#__PURE__*/React.createElement("label", {
+  }, [['transcript', 'Event transcripts'], ['broker-report', 'Broker reports'], ['press-release', 'Press releases'], ['presentation', 'Presentations']].map(([k, l]) => /*#__PURE__*/React.createElement("label", {
     key: k
   }, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",

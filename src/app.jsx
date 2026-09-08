@@ -4,6 +4,8 @@
 // existing `React.createElement`, `React.Fragment`, and `ReactDOM.render`
 // calls inside the main app body continue to work unchanged.
 import * as React from 'react';
+import {MeetingSession} from './meeting-session';
+import {readMeetingPreferences,saveMeetingPreferences,meetingJobTiming} from './meeting-preferences.mjs';
 import { managedMeetingState } from './meeting-command-state.mjs';
 import * as ReactDOM from 'react-dom';
 // Extensionless on purpose: Babel leaves the specifier alone, so esbuild resolves
@@ -2124,6 +2126,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [mpCollapsedTickers, setMpCollapsedTickers] = useState(new Set());
             const [mpDocuments, setMpDocuments] = useState([]);
             const [mpQuestionSet, setMpQuestionSet] = useState(null);
+            const [mpRevisionInstruction,setMpRevisionInstruction]=useState('');
             const [mpFiles, setMpFiles] = useState([]);
             const mpFileInputRef = useRef(null);
             const [mpNewTicker, setMpNewTicker] = useState('');
@@ -2407,8 +2410,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [pipelineModel, setPipelineModel] = usePersistedModel('charlie.pipelineModel', 'opus-4-6');
             const [thesisModel, setThesisModel] = usePersistedModel('charlie.thesisModel', 'opus-4-6');
             const [decipherModel, setDecipherModel] = usePersistedModel('charlie.decipherModel', 'opus-4-7');
-            const [mpFormat,setMpFormat]=useState('one_on_one');
-            const [mpAudience,setMpAudience]=useState('specialist');
+            const [mpFormat,setMpFormat]=useState(()=>readMeetingPreferences('one_on_one').format);
+            const [mpAudience,setMpAudience]=useState(()=>readMeetingPreferences('one_on_one').audience);
             const [mpModel, setMpModel] = usePersistedModel('charlie.mpModel', 'sonnet-5');
             const [studioModel, setStudioModel] = usePersistedModel('charlie.studioModel', 'sonnet-5');
             // How opinionated a generated note is. Separate from the model:
@@ -11236,7 +11239,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         }
                         const { step, progress } = renderMpStageProgress(j.result);
                         setMpPipelineStep(step);
-                        setMpPipelineProgress(progress);
+                        setMpPipelineProgress(progress+' '+meetingJobTiming(j));
                         if (j.status === 'done') {
                             clearMpPipelineJob();
                             await loadMpMeeting(meetingId);
@@ -11283,7 +11286,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 }
             };
 
-            const runMpPipeline = async () => {
+            const runMpPipeline = async (revisionInstruction = '') => {
+                if (typeof revisionInstruction !== 'string') revisionInstruction='';
                 const apiKey = loadApiKeyFromStorage();
                 if (!apiKey) { alert('Please add your API key in Settings first.'); return; }
                 if (!mpSelectedMeeting || !mpDocuments.length) return;
@@ -11311,7 +11315,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         })
                     );
                     const docsWithText = textResults.filter(Boolean);
-                    if (!docsWithText.length) throw new Error('No analyzable documents found');
+                    if (docsWithText.length !== mpDocuments.length) throw new Error(`${mpDocuments.length-docsWithText.length} selected document(s) could not be loaded. Reload or restore those sources before generating; Charlie will not silently omit them.`);
 
                     const docDates = mpDocuments.map(d => d.doc_date).filter(Boolean).sort();
                     const timeframe = docDates.length >= 2 ? `${docDates[0]} to ${docDates[docDates.length - 1]}` : docDates.length === 1 ? `around ${docDates[0]}` : 'recent';
@@ -11331,6 +11335,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             pastQuestions: mpPastQuestions || [],
                             model: mpModel,
                             meetingProfile:{format:mpFormat,audience:mpAudience},
+                            revisionInstruction,expectedQuestionSetId:revisionInstruction?mpQuestionSet?.id:undefined,
                             timeframe,
                             unresolvedQuestions: unresolved,
                         })
@@ -21595,7 +21600,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 )}
                                             </div>
 
-                                            {!mpManagedState.blocked&&<div className="workspace-panel"><h2 className="font-semibold mb-3">Meeting brief</h2><fieldset disabled={mpPipelineRunning} className="desk-filter"><label>Meeting format<select value={mpFormat} onChange={e=>setMpFormat(e.target.value)}><option value="conference">30-minute conference · 12–15 questions</option><option value="one_on_one">60-minute 1×1 · 25–30 questions</option><option value="hosted_pm">Hosted PM discussion · 35–45 questions</option></select></label><label>Audience<select value={mpAudience} onChange={e=>setMpAudience(e.target.value)}><option value="specialist">Sector specialists</option><option value="generalist">Generalist portfolio managers</option></select></label></fieldset><p className="desk-explainer">Uses the documents listed above. Longer formats cover enduring business and investment debates alongside recent events. Counts are targets, subject to available evidence. Changes apply when you generate or regenerate questions; retry keeps the original job settings.</p></div>}
+                                            {!mpManagedState.blocked&&<div className="workspace-panel"><h2 className="font-semibold mb-3">Meeting brief</h2><fieldset disabled={mpPipelineRunning} className="desk-filter"><label>Meeting format<select value={mpFormat} onChange={e=>{setMpFormat(e.target.value);saveMeetingPreferences(e.target.value,mpAudience);}}><option value="conference">30-minute conference · 12–15 questions</option><option value="one_on_one">60-minute 1×1 · 25–30 questions</option><option value="hosted_pm">Hosted PM discussion · 35–45 questions</option></select></label><label>Audience<select value={mpAudience} onChange={e=>{setMpAudience(e.target.value);saveMeetingPreferences(mpFormat,e.target.value);}}><option value="specialist">Sector specialists</option><option value="generalist">Generalist portfolio managers</option></select></label></fieldset><p className="desk-explainer">Format and audience are remembered on this browser. Uses the documents listed above. Longer formats cover enduring business and investment debates alongside recent events. Counts are targets, subject to available evidence. Changes apply when you generate or regenerate questions; retry keeps the original job settings.</p></div>}
                                             {/* Generate Section */}
                                             <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl border border-white/10 p-4">
                                                 <div className="flex items-center justify-between mb-3">
@@ -21694,6 +21699,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 {/* Questions Display */}
                                                 {mpQuestionSet && mpQuestionSet.status === 'ready' && mpQuestionSet.topics && mpQuestionSet.topics.length > 0 ? (
                                                     <div>
+                                                        {!mpManagedState.blocked&&<div className="workspace-panel mb-3"><h3 className="font-semibold">Ask Charlie to revise this pack</h3><p className="desk-explainer">Describe what to expand, challenge, clarify or remove. Charlie uses the selected documents above and saves a new version; the previous version is retained.</p><textarea aria-label="Question pack revision instructions" maxLength={2000} value={mpRevisionInstruction} onChange={e=>setMpRevisionInstruction(e.target.value)} placeholder="Expand the segment economics, probe downside risks, and remove repeated questions…" className="w-full" disabled={mpPipelineRunning}/><button disabled={mpPipelineRunning||!mpRevisionInstruction.trim()} onClick={()=>runMpPipeline(mpRevisionInstruction.trim())}>Generate revised version</button></div>}
+                                                        <MeetingSession api={API_URL} meetingId={mpSelectedMeeting.id} questionSet={mpQuestionSet}/>
                                                         {/* Filters */}
                                                         <div className="flex gap-2 flex-wrap mb-3">
                                                             {['all', 'high', 'medium', 'low'].map(p => (
@@ -21745,7 +21752,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                         {mpShowContext && q.source && (
                                                                                             <div className="mt-1 text-xs text-slate-400">Source: {q.source}</div>
                                                                                         )}
-                                                                                        {mpShowContext && q.supporting_quotes?.map((citation,ci)=><blockquote key={ci} className="mt-2 border-l-2 pl-3 text-xs"><p>{citation.quote}</p><cite>{citation.filename}</cite><p>Exact passage matched; interpretation requires review.</p></blockquote>)}
+                                                                                        {mpShowContext && q.supporting_quotes?.map((citation,ci)=><blockquote key={ci} className="mt-2 border-l-2 pl-3 text-xs"><p>{citation.quote}</p><cite>{citation.filename}</cite><p>{q.source_support||'Exact passage matched; interpretation requires review.'}</p></blockquote>)}
                                                                                         {q.follow_up_angle && (
                                                                                             <details className="mt-2">
                                                                                                 <summary className="text-xs text-amber-500 cursor-pointer">Follow-up angle</summary>

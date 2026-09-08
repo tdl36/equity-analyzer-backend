@@ -1,5 +1,6 @@
 import {AssignmentWorkspace} from './assignment-workspace';
 import * as React from 'react';
+import {readMeetingPreferences,saveMeetingPreferences} from './meeting-preferences.mjs';
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York'}).format(new Date());
 const focusOptions=[['thesis','Investment thesis'],['earnings','Earnings & guidance'],['competition','Competition & demand'],['capital','Capital allocation'],['followups','Previous meeting follow-ups']];
 const pendingKey='charlie-meeting-request-v1';
@@ -8,7 +9,7 @@ export function MeetingCommand({api,onNavigate,onSection,sourcePolicy}){
   const [tickers,setTickers]=React.useState([]),[selected,setSelected]=React.useState([]),[query,setQuery]=React.useState('');
   const [meetingDate,setMeetingDate]=React.useState(today),[days,setDays]=React.useState(90),[focuses,setFocuses]=React.useState(['thesis','earnings','followups']),[note,setNote]=React.useState('');
   const [reuseJob,setReuseJob]=React.useState('');
-  const [format,setFormat]=React.useState('conference'),[audience,setAudience]=React.useState('specialist');
+  const [format,setFormat]=React.useState(()=>readMeetingPreferences().format),[audience,setAudience]=React.useState(()=>readMeetingPreferences().audience);
   const formatLabels={conference:'30-minute conference · 12–15 questions',one_on_one:'60-minute 1×1 · 25–30 questions',hosted_pm:'Hosted PM discussion · 35–45 questions'};
   const [jobs,setJobs]=React.useState([]),[busy,setBusy]=React.useState(false),[error,setError]=React.useState(''),[message,setMessage]=React.useState(''),[uncertain,setUncertain]=React.useState(()=>!!stored());
   const formRef=React.useRef(null);
@@ -35,7 +36,7 @@ export function MeetingCommand({api,onNavigate,onSection,sourcePolicy}){
         {selected.length>0&&<p className="meeting-selection">Selected: <strong>{selected.join(' · ')}</strong> <button type="button" disabled={!!reuseJob} onClick={()=>setSelected([])}>Clear selection</button></p>}
       </div>
       <div className="meeting-command-step"><h3><span>2</span> Set the brief</h3><div className="desk-filter"><label>Meeting date<input type="date" value={meetingDate} onChange={e=>setMeetingDate(e.target.value)}/></label><label>Source lookback<select disabled={!!reuseJob} value={days} onChange={e=>setDays(Number(e.target.value))}><option value={30}>Past 30 days</option><option value={60}>Past 60 days</option><option value={90}>Past 90 days · default</option></select></label></div>
-        <div className="desk-filter"><label>Meeting format<select value={format} onChange={e=>setFormat(e.target.value)}>{Object.entries(formatLabels).map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label><label>Audience<select value={audience} onChange={e=>setAudience(e.target.value)}><option value="specialist">Sector specialists</option><option value="generalist">Generalist portfolio managers</option></select></label></div>
+        <div className="desk-filter"><label>Meeting format<select value={format} onChange={e=>{setFormat(e.target.value);saveMeetingPreferences(e.target.value,audience);}}>{Object.entries(formatLabels).map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label><label>Audience<select value={audience} onChange={e=>{setAudience(e.target.value);saveMeetingPreferences(format,e.target.value);}}><option value="specialist">Sector specialists</option><option value="generalist">Generalist portfolio managers</option></select></label></div>
         <p className="desk-explainer">{format==='conference'?'Focused on the most important investment debates and recent developments.':'Broader coverage of strategy, business economics, competition, growth, margins, capital allocation and risks, alongside recent events.'} Every pack marks must-ask questions; the rest are optional follow-ups. Counts are targets, subject to available evidence.</p>
         <p>What matters most? <small>Optional—start with the selected defaults.</small></p><div className="meeting-focuses">{focusOptions.map(([id,label])=><label key={id}><input type="checkbox" checked={focuses.includes(id)} onChange={()=>toggle(id,focuses,setFocuses)}/>{label}</label>)}</div>
         <label>Anything specific? <small>Optional</small><textarea maxLength={1000} value={note} onChange={e=>setNote(e.target.value)} placeholder="For example: focus on FreeStyle Libre adoption and margin durability."/></label>

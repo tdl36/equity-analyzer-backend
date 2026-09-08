@@ -8,6 +8,7 @@ export function MyWork({
   onSection,
   renderHtml
 }) {
+  var [manual, setManual] = React.useState([]);
   var [meetings, setMeetings] = React.useState([]),
     [commands, setCommands] = React.useState([]),
     [error, setError] = React.useState(''),
@@ -17,7 +18,7 @@ export function MyWork({
     var alive = true;
     var load = async () => {
       try {
-        var values = await Promise.all(['/api/research/meeting-commands', '/api/research/commands'].map(async path => {
+        var values = await Promise.allSettled(['/api/research/meeting-commands', '/api/research/commands', '/api/mp/work'].map(async path => {
           var r = await fetch(api + path, {
             signal: AbortSignal.timeout(20000)
           });
@@ -25,9 +26,10 @@ export function MyWork({
           return r.json();
         }));
         if (alive) {
-          setMeetings(values[0].jobs || []);
-          setCommands(values[1].jobs || []);
-          setError('');
+          if (values[2].status === 'fulfilled') setManual(values[2].value.jobs || []);
+          if (values[0].status === 'fulfilled') setMeetings(values[0].value.jobs || []);
+          if (values[1].status === 'fulfilled') setCommands(values[1].value.jobs || []);
+          setError(values.some(v => v.status === 'rejected') ? 'Some work could not be refreshed. Previously loaded items may be stale.' : '');
         }
       } catch (e) {
         if (alive) setError(e.message);
@@ -42,7 +44,7 @@ export function MyWork({
       clearInterval(timer);
     };
   }, [api]);
-  var items = workItems(meetings, commands, activities),
+  var items = workItems(meetings, commands, activities, manual),
     labels = {
       all: 'All work',
       needs_me: 'Needs me',
@@ -88,7 +90,7 @@ export function MyWork({
     className: "desk-status"
   }, labels[i.bucket])), /*#__PURE__*/React.createElement("p", null, i.status), i.activity?.input?.topic && /*#__PURE__*/React.createElement("p", null, i.activity.input.topic), i.error && /*#__PURE__*/React.createElement("p", {
     className: "workspace-error"
-  }, i.error), i.job?.options?.meetingPrep && /*#__PURE__*/React.createElement("p", null, i.job.options.meetingPrep.format?.replaceAll('_', ' ') || 'Conference', " \xB7 ", i.job.options.meetingPrep.meetingDate), i.job && /*#__PURE__*/React.createElement(AssignmentWorkspace, {
+  }, i.error), i.manual && /*#__PURE__*/React.createElement("p", null, i.job.completed || 0, "/", i.job.total || '?', " documents analyzed \xB7 ", i.job.profile?.format?.replaceAll('_', ' ') || 'Original settings'), i.job?.options?.meetingPrep && /*#__PURE__*/React.createElement("p", null, i.job.options.meetingPrep.format?.replaceAll('_', ' ') || 'Conference', " \xB7 ", i.job.options.meetingPrep.meetingDate), i.job && !i.manual && /*#__PURE__*/React.createElement(AssignmentWorkspace, {
     api: api,
     id: i.id,
     onNavigate: onNavigate,
@@ -113,7 +115,7 @@ export function MyWork({
     }
   }, i.activity.output.synthesisMarkdown) : /*#__PURE__*/React.createElement("p", null, "No completed recap is attached yet. Open Analyst inbox for this item\u2019s full details.")), /*#__PURE__*/React.createElement("button", {
     onClick: () => onNavigate('analysts')
-  }, "Review in Analyst inbox \u2192")), (i.bucket === 'failed' || i.bucket === 'needs_me') && i.job && /*#__PURE__*/React.createElement("button", {
+  }, "Review in Analyst inbox \u2192")), (i.bucket === 'failed' || i.bucket === 'needs_me') && i.job && !i.manual && /*#__PURE__*/React.createElement("button", {
     onClick: () => onSection(i.kind === 'Meeting pack' ? 'command' : 'collection')
   }, "Resolve / retry \u2192")))), !items.length && !error && /*#__PURE__*/React.createElement("p", null, "No recent assignments or inbox items loaded."));
 }

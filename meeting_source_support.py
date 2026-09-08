@@ -1,16 +1,26 @@
 """Original-passage support for new managed meeting questions."""
-import base64,json,re
+import base64,json,re,hashlib
 from command_thesis_bridge import file_hash
 
 def excerpts(get_db,docs,budget=120000):
     from recap_validation import catalog,audit_excerpts
-    parts=[]
+    parts=[];text_limits=[]
     with get_db() as (_,cur):
         for d in docs:
-            cur.execute('SELECT file_data FROM mp_documents WHERE id=%s',(d['id'],));row=cur.fetchone()
+            cur.execute('SELECT file_data,extracted_text FROM mp_documents WHERE id=%s',(d['id'],));row=cur.fetchone()
+            if d.get('textSha256'):
+                text=(row or {}).get('extracted_text') or ''
+                if hashlib.sha256(text.encode()).hexdigest()!=d['textSha256']:raise ValueError('Saved meeting text changed before passage verification.')
+                parts.append({'name':d['filename'],'type':'text','content':text})
+                text_limits.append(d['filename']+': verified against saved extracted text; original-file passage verification unavailable.')
+                continue
             if not row or file_hash(row)!=d['sha256']:raise ValueError('Meeting source changed before passage verification.')
             raw=row['file_data']
             if d['filename'].lower().endswith('.pdf'):parts.append({'name':d['filename'],'type':'pdf','data':raw})
+            elif d['filename'].lower().endswith(('.png','.jpg','.jpeg','.gif','.webp')):
+                text=row['extracted_text'] or ''
+                parts.append({'name':d['filename'],'type':'text','content':text})
+                text_limits.append(d['filename']+': image passage support is limited to saved extracted text.')
             else:
                 text=base64.b64decode(raw).decode('utf-8',errors='strict')
                 if d['filename'].lower().endswith(('.htm','.html')):
@@ -18,7 +28,9 @@ def excerpts(get_db,docs,budget=120000):
                     text=BeautifulSoup(text,'html.parser').get_text(' ',strip=True)
                 parts.append({'name':d['filename'],'type':'text','content':text})
     sources,issues=catalog(parts);selected,limits=audit_excerpts(sources,budget)
-    return {'sources':selected,'limitations':issues+limits}
+    text_names={d['filename'] for d in docs if d.get('textSha256')}
+    for source in selected:source['supportKind']='saved_text' if source['filename'] in text_names else 'original'
+    return {'sources':selected,'limitations':issues+limits+text_limits}
 
 def verify(topics,evidence):
     norm=lambda x:' '.join(x.split())
@@ -32,7 +44,8 @@ def verify(topics,evidence):
                 source=sources.get(item.get('filename'));quote=item.get('quote','')
                 if not source or item['filename'] not in q['source_filenames'] or not isinstance(quote,str) or len(norm(quote))<30 or not any(norm(quote) in norm(p['text']) for p in source['pages']):
                     raise ValueError(f'Topic {ti+1}, question {qi+1}: supporting passage was not found in its cited original. Use an exact contiguous passage from that filename; do not paraphrase or join passages. Question stage retained for retry.')
-            q['source_support']='Original quote matched; factual interpretation still requires review.'
+            text_only=any(sources.get(item['filename'],{}).get('supportKind')=='saved_text' for item in quotes)
+            q['source_support']=('Saved extracted text matched; original-file passage verification unavailable for one or more citations.' if text_only else 'Original quote matched; factual interpretation still requires review.')
     return topics
 
 
