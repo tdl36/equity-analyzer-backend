@@ -14,7 +14,8 @@ function stored() {
 export function MeetingCommand({
   api,
   onNavigate,
-  onSection
+  onSection,
+  sourcePolicy
 }) {
   var [tickers, setTickers] = React.useState([]),
     [selected, setSelected] = React.useState([]),
@@ -93,7 +94,8 @@ export function MeetingCommand({
       date: today(),
       days,
       focuses,
-      note
+      note,
+      sourcePolicy
     };
     pending.current = body;
     try {
@@ -209,7 +211,7 @@ export function MeetingCommand({
   }, "Collection \u2192 verified originals \u2192 analyst brief \u2192 meeting questions. Uses model credits for each company. Your Mac, signed-in AlphaSense browser and server research key are required. Browser pickup is scheduled, not instant; missing presentations or other sources are disclosed."), /*#__PURE__*/React.createElement("button", {
     className: "workspace-primary",
     type: "button",
-    disabled: !selected.length || !meetingDate,
+    disabled: !sourcePolicy || !selected.length || !meetingDate,
     onClick: submit
   }, busy ? 'Queuing…' : selected.length > 1 ? `Prepare ${selected.length} company packs →` : 'Prepare meeting pack →'))), uncertain && /*#__PURE__*/React.createElement("div", {
     role: "status"

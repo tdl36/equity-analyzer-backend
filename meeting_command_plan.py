@@ -39,6 +39,6 @@ def batch(data):
     commands=[]
     for ticker in tickers:
         p=plan({'ticker':ticker,'date':data.get('date'),'days':data.get('days',90),'kind':'event',
-                'instruction':instruction,'coordinated':False,'meetingPrep':options})
+                'instruction':instruction,'coordinated':False,'meetingPrep':options, **({'sourcePolicy':data['sourcePolicy']} if data.get('sourcePolicy') is not None else {})})
         commands.append({'id':str(uuid.uuid5(uuid.UUID(ident),ticker)), 'payload':p})
     return ident,commands

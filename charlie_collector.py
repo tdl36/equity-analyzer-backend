@@ -298,6 +298,8 @@ class Collector:
             window = self.status(run)
             if not window['since'] <= published <= window['until_date']:
                 raise ValueError('Publication date is outside the collection window')
+        from source_selection_gate import check
+        check(self.db,run,ticker,kind,publisher,url)
         files = originals(path)
         with self.lock():
             task = self.db.execute("SELECT * FROM tasks WHERE run=? AND ticker=? AND kind=?",
@@ -358,6 +360,8 @@ class Collector:
                 raise ValueError('Reference-only original remains in staging; AI pipeline handoff is blocked')
             if row["status"] in ("handed_off", "duplicate"):
                 return dict(row)
+            from source_selection_gate import check
+            check(self.db,row['run'],row['ticker'],row['kind'],row['publisher'],row['source_url'])
             staged = Path(row["staged"])
             if file_hash(staged) != row["sha256"]:
                 raise ValueError("Staged original changed; handoff stopped")

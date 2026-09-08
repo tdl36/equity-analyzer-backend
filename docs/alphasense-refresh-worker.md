@@ -30,3 +30,47 @@ inspection, not a second paid run. Existing manually triggered reruns are unaffe
 The local file manifest includes `.htm` and `.html` SEC originals, matching catalyst
 source ingestion. A local PDF handoff alone is not evidence that all public sources
 were imported or that the meeting pack was saved.
+
+## Source preferences and user selection
+
+For `config.researchCommand.sourcePolicy`, apply the frozen policy before exports.
+Modes: `auto` delegates relevance selection while honoring rules; `preferred`
+requires review for any broker not explicitly preferred; `review` requires an
+explicit per-document include. Rules match verified AlphaSense publisher names
+exactly (case-insensitive); never assume an alias is the same approved source.
+More-specific ticker/task rules override general rules; equally specific conflicts
+favor exclusions. Use `source_preferences.decision` with task `meeting` for meeting
+commands, otherwise the command's kind. Excluded and reference-only source
+preferences must not enter AI collection. Do not export them just to fulfill a
+count. Record their observed title, publisher and exclusion reason in observations.
+Primary filings, releases, presentations and transcripts remain eligible separately.
+
+Rank eligible brokers by company/analyst expertise, original analysis, event
+relevance, freshness, depth and user preference. Do not let report count imply
+consensus or firm prestige substitute for evidence. Record relevant contrary
+views; ask for an exception when a non-preferred source offers unique evidence.
+No approval permits violation of a provider's GenAI restriction.
+
+Before exporting a document requiring review, record a private JSON array of
+`url`, `title`, `publisher`, `reason`. Use an observed individual AlphaSense
+URL, verified publisher and a concise inclusion rationale (including dissent or
+missing coverage where relevant). Do not include licensed report bodies. Submit:
+
+```
+.venv/bin/python scripts/source-shortlist.py --command COMMAND_ID --file /absolute/private/shortlist.json
+```
+
+The command ID is `config.eventId` for a managed research command. The shortlist
+appears in Command Charlie under Research standards. Do not post an include
+decision yourself; only the user chooses. Approved primary/other eligible sources
+may be collected, but do not finish the broker search or complete/dispatch the
+assignment with pending choices. Mark the request `attention` with the instruction
+“Choose documents in Command Charlie → Research standards, then resume this
+request in Collection and recovery controls.” Preserve the pending marker and
+partial ledger. On resumption, read the same script without `--file` and honor the
+saved choices. Excluded candidates count as explained exclusions, not originals.
+The collector validates the policy again before staging and iCloud handoff.
+Previously handed-off originals are never silently deleted by later preferences.
+
+Saved defaults currently apply to new Command Charlie assignments. They do not
+retroactively modify old requests or existing scheduled ticker policies.

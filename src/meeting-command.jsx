@@ -3,7 +3,7 @@ const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York'}).f
 const focusOptions=[['thesis','Investment thesis'],['earnings','Earnings & guidance'],['competition','Competition & demand'],['capital','Capital allocation'],['followups','Previous meeting follow-ups']];
 const pendingKey='charlie-meeting-request-v1';
 function stored(){try{return JSON.parse(sessionStorage.getItem(pendingKey)||'null');}catch{return null;}}
-export function MeetingCommand({api,onNavigate,onSection}){
+export function MeetingCommand({api,onNavigate,onSection,sourcePolicy}){
   const [tickers,setTickers]=React.useState([]),[selected,setSelected]=React.useState([]),[query,setQuery]=React.useState('');
   const [meetingDate,setMeetingDate]=React.useState(today),[days,setDays]=React.useState(90),[focuses,setFocuses]=React.useState(['thesis','earnings','followups']),[note,setNote]=React.useState('');
   const [jobs,setJobs]=React.useState([]),[busy,setBusy]=React.useState(false),[error,setError]=React.useState(''),[message,setMessage]=React.useState(''),[uncertain,setUncertain]=React.useState(()=>!!stored());
@@ -14,7 +14,7 @@ export function MeetingCommand({api,onNavigate,onSection}){
   React.useEffect(()=>{alive.current=true;refresh().catch(e=>setError(e.message));const timer=setInterval(()=>{if(!document.hidden)refresh().catch(e=>{if(alive.current)setError(e.message);});},10000);return()=>{alive.current=false;clearInterval(timer);};},[api]);
   const toggle=(v,list,set)=>set(list.includes(v)?list.filter(x=>x!==v):[...list,v]);
   const submit=async()=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');
-    const body=pending.current||{requestId:crypto.randomUUID(),tickers:selected,meetingDate,date:today(),days,focuses,note};
+    const body=pending.current||{requestId:crypto.randomUUID(),tickers:selected,meetingDate,date:today(),days,focuses,note,sourcePolicy};
     pending.current=body;try{sessionStorage.setItem(pendingKey,JSON.stringify(body));}catch{}
     try{const d=await json('/api/research/meeting-commands',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});clear();setMessage(`Queued ${d.commands.length} meeting pack${d.commands.length===1?'':'s'}. You can leave this page; progress is saved.`);await refresh();}
     catch(e){setError(e.message);if(e.status&&e.status<500)clear();else setUncertain(true);}finally{lock.current=false;setBusy(false);}
@@ -32,7 +32,7 @@ export function MeetingCommand({api,onNavigate,onSection}){
         <p>What matters most? <small>Optional—start with the selected defaults.</small></p><div className="meeting-focuses">{focusOptions.map(([id,label])=><label key={id}><input type="checkbox" checked={focuses.includes(id)} onChange={()=>toggle(id,focuses,setFocuses)}/>{label}</label>)}</div>
         <label>Anything specific? <small>Optional</small><textarea maxLength={1000} value={note} onChange={e=>setNote(e.target.value)} placeholder="For example: focus on FreeStyle Libre adoption and margin durability."/></label>
       </div>
-      <div className="meeting-command-preview"><p className="workspace-eyebrow">YOUR ASSIGNMENT</p><p>Prepare {selected.length?selected.join(', '):'your selected companies'} for {meetingDate||'your meeting date'}, using sources from the past {days} days. Seek earnings transcripts, presentations and sell-side reaction. Explain changes and prepare prioritized questions with source references and follow-ups.</p><p className="desk-explainer">Collection → verified originals → analyst brief → meeting questions. Uses model credits for each company. Your Mac, signed-in AlphaSense browser and server research key are required. Browser pickup is scheduled, not instant; missing presentations or other sources are disclosed.</p><button className="workspace-primary" type="button" disabled={!selected.length||!meetingDate} onClick={submit}>{busy?'Queuing…':selected.length>1?`Prepare ${selected.length} company packs →`:'Prepare meeting pack →'}</button></div>
+      <div className="meeting-command-preview"><p className="workspace-eyebrow">YOUR ASSIGNMENT</p><p>Prepare {selected.length?selected.join(', '):'your selected companies'} for {meetingDate||'your meeting date'}, using sources from the past {days} days. Seek earnings transcripts, presentations and sell-side reaction. Explain changes and prepare prioritized questions with source references and follow-ups.</p><p className="desk-explainer">Collection → verified originals → analyst brief → meeting questions. Uses model credits for each company. Your Mac, signed-in AlphaSense browser and server research key are required. Browser pickup is scheduled, not instant; missing presentations or other sources are disclosed.</p><button className="workspace-primary" type="button" disabled={!sourcePolicy||!selected.length||!meetingDate} onClick={submit}>{busy?'Queuing…':selected.length>1?`Prepare ${selected.length} company packs →`:'Prepare meeting pack →'}</button></div>
     </fieldset>
     {uncertain&&<div role="status"><p>Submission is not yet confirmed. Retry checks the same request; it does not create a new batch.</p><button disabled={busy} onClick={submit}>Check / retry same assignment</button></div>}
     {error&&<p role="alert" className="workspace-error">{error}</p>}{message&&<p role="status">{message}</p>}

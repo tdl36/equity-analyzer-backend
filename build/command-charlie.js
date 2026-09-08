@@ -1,3 +1,5 @@
+function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
+import { SourcePreferences } from './source-preferences';
 import { MeetingCommand } from './meeting-command';
 import * as React from 'react';
 import { ThesisAmendments } from './thesis-amendments';
@@ -8,7 +10,8 @@ var today = () => new Intl.DateTimeFormat('en-CA', {
 function ResearchCommand({
   api,
   onNavigate,
-  onSection
+  onSection,
+  sourcePolicy
 }) {
   var [ticker, setTicker] = React.useState(''),
     [date, setDate] = React.useState(today),
@@ -131,7 +134,8 @@ function ResearchCommand({
       days,
       instruction,
       coordinated,
-      autoProposal
+      autoProposal,
+      sourcePolicy
     };
     pending.current = body;
     try {
@@ -251,7 +255,7 @@ function ResearchCommand({
     onChange: e => setAutoProposal(e.target.checked)
   }), /*#__PURE__*/React.createElement("span", null, "Prepare thesis updates automatically after the recap ", /*#__PURE__*/React.createElement("small", null, "Uses model credits for a source-checked proposal from up to 10 verified originals. You still choose which edits to apply. Requires the Mac heartbeat and a server research key."))), /*#__PURE__*/React.createElement("button", {
     className: "workspace-primary",
-    disabled: !ticker.trim() || !instruction.trim(),
+    disabled: !sourcePolicy || !ticker.trim() || !instruction.trim(),
     onClick: run
   }, "Run research task \u2197"), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Save or edit a repeatable favorite"), /*#__PURE__*/React.createElement("p", null, "Use ", '{ticker}', " and ", '{date}', " in the instruction to reuse it for another company or event date."), /*#__PURE__*/React.createElement("label", null, "Favorite name", /*#__PURE__*/React.createElement("input", {
     value: name,
@@ -327,8 +331,12 @@ function ResearchCommand({
   }, "Open Analyst inbox \u2192"))));
 }
 export function CommandCharlie(props) {
+  var [sourcePolicy, setSourcePolicy] = React.useState(null);
   var [intent, setIntent] = React.useState('meeting');
-  return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+  return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(SourcePreferences, {
+    api: props.api,
+    onChange: setSourcePolicy
+  }), /*#__PURE__*/React.createElement("div", {
     className: "command-intents",
     "aria-label": "Choose an assignment"
   }, /*#__PURE__*/React.createElement("button", {
@@ -337,5 +345,9 @@ export function CommandCharlie(props) {
   }, /*#__PURE__*/React.createElement("strong", null, "Prepare for a meeting"), /*#__PURE__*/React.createElement("span", null, "One company or a conference list \xB7 guided setup")), /*#__PURE__*/React.createElement("button", {
     "aria-pressed": intent === 'research',
     onClick: () => setIntent('research')
-  }, /*#__PURE__*/React.createElement("strong", null, "Investigate & update research"), /*#__PURE__*/React.createElement("span", null, "Filings, earnings, catalysts and saved favorites"))), intent === 'meeting' ? /*#__PURE__*/React.createElement(MeetingCommand, props) : /*#__PURE__*/React.createElement(ResearchCommand, props));
+  }, /*#__PURE__*/React.createElement("strong", null, "Investigate & update research"), /*#__PURE__*/React.createElement("span", null, "Filings, earnings, catalysts and saved favorites"))), intent === 'meeting' ? /*#__PURE__*/React.createElement(MeetingCommand, _extends({}, props, {
+    sourcePolicy: sourcePolicy
+  })) : /*#__PURE__*/React.createElement(ResearchCommand, _extends({}, props, {
+    sourcePolicy: sourcePolicy
+  })));
 }

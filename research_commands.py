@@ -40,7 +40,7 @@ def plan(data):
     if data.get('meetingPrep') is not None:
         from meeting_command_plan import meeting_options
         meeting = meeting_options(data['meetingPrep'])
-    return {**({'meetingPrep':meeting} if meeting else {}), 'ticker':ticker,'instruction':instruction.strip().replace('{ticker}',ticker).replace('{date}',until.isoformat()),
+    return {**({'sourcePolicy':__import__('source_preferences').policy(data['sourcePolicy'])} if data.get('sourcePolicy') is not None else {}), **({'meetingPrep':meeting} if meeting else {}), 'ticker':ticker,'instruction':instruction.strip().replace('{ticker}',ticker).replace('{date}',until.isoformat()),
             'kind':kind,'coordinated':coordinated,'autoProposal':auto_proposal,'since':(until-timedelta(days=days-1)).isoformat(),'until':until.isoformat(),
             'steps':['Verify dated primary sources','Collect AlphaSense reaction','Verify iCloud handoff','Run covering analyst recap']+(['Challenge the lead draft','Address each challenge','Run final selected-claim source review'] if coordinated else [])+(['Prepare a source-checked thesis proposal automatically'] if auto_proposal else [])+['Review proposed investment implications'],
             'sources':['SEC EDGAR 8-K and exhibits','AlphaSense press releases, broker reports and transcripts'],
@@ -71,6 +71,8 @@ def revision(value):return hashlib.sha256(json.dumps(value,sort_keys=True).encod
 def create_blueprint(get_db):
     from flask import Blueprint, jsonify, request
     bp=Blueprint('research_commands',__name__)
+    from source_preferences import create_routes
+    create_routes(bp,get_db)
     @bp.route('/api/research/command-favorites',methods=['GET','PUT'])
     def saved():
         with get_db(commit=True) as (_,cur):
