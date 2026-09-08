@@ -23369,6 +23369,9 @@ def _mp_questions_inline(api_key, ticker, company_name, sector, synthesis, unres
         ticker=ticker, company_name=company_name, sector=sector,
         synthesis_text=json.dumps(synthesis, indent=2), unresolved_text=unresolved_text,
     )
+    if meeting_profile is not None:
+        from meeting_command_plan import manual_question_prompt
+        prompt=manual_question_prompt(prompt,meeting_profile)
     if source_names is not None:
         prompt += '\nEvery question must also include source_filenames: a nonempty JSON array of exact filenames from this verified register: '+json.dumps(source_names)+'. Never invent a source or page number. Clearly distinguish historical thesis assumptions from new source evidence.'
     topics, llm_result = _llm_json_call_self_heal(
@@ -23557,7 +23560,7 @@ def _run_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, sect
                     api_key, ticker, company_name, sector,
                     ({'sourceAnalyses':analyses,'researchWindow':timeframe.split('. Meeting assignment:')[0],
                       'assignmentContext':timeframe} if managed else synthesis), unresolved,
-                    **({'source_names':[d['filename'] for d in docs],'source_evidence':source_evidence,'meeting_profile':meeting_profile} if managed else {})
+                    **({'source_names':[d['filename'] for d in docs],'source_evidence':source_evidence,'meeting_profile':meeting_profile} if managed else {'meeting_profile':meeting_profile})
                 )
                 tokens_total += q_tokens
                 if managed:
@@ -23618,6 +23621,9 @@ def mp_run_pipeline():
         if not api_key:
             return jsonify({'error': 'No API key provided.'}), 400
 
+        from meeting_command_plan import meeting_profile as validate_profile
+        try: profile=validate_profile(data.get('meetingProfile')) if data.get('meetingProfile') is not None else None
+        except (ValueError,TypeError,AttributeError):return jsonify(error='Choose a valid meeting format and audience.'),400
         meeting_id = data.get('meetingId')
         docs = data.get('docs') or []
         if not meeting_id:
@@ -23642,7 +23648,7 @@ def mp_run_pipeline():
         persisted_input = {
             'meetingId': meeting_id, 'ticker': ticker, 'companyName': company_name,
             'sector': sector, 'docs': docs, 'pastQuestions': past_questions,
-            'timeframe': timeframe, 'unresolvedQuestions': unresolved, 'model': model,
+            'timeframe': timeframe, 'unresolvedQuestions': unresolved, 'model': model, 'meetingProfile':profile,
         }
 
         job_id = str(uuid.uuid4())
@@ -23656,6 +23662,7 @@ def mp_run_pipeline():
             target=_run_mp_pipeline_job,
             args=(job_id, api_key, meeting_id, ticker, company_name, sector,
                   docs, past_questions, timeframe, unresolved, model),
+            kwargs={'meeting_profile':profile},
             daemon=True,
         ).start()
         return jsonify({'jobId': job_id}), 202
@@ -23703,7 +23710,7 @@ def mp_job_retry(job_id):
                   inp.get('timeframe', 'recent'),
                   inp.get('unresolvedQuestions') or [],
                   resolve_picker_model(inp.get('model'), MEETING_PREP_DEFAULT_MODEL)),
-            kwargs={'resume_from': checkpoint},
+            kwargs={'resume_from': checkpoint,'meeting_profile':inp.get('meetingProfile')},
             daemon=True,
         ).start()
         return jsonify({'jobId': job_id, 'resuming': True}), 202

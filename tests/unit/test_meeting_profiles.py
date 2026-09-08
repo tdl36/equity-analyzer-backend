@@ -14,3 +14,13 @@ class MeetingProfileTests(unittest.TestCase):
     def test_long_formats_cover_durable_debates(self):
         for fmt in ('one_on_one','hosted_pm'):
             self.assertIn('capital allocation',profile_instruction({'format':fmt}))
+
+class ManualMeetingProfileTests(unittest.TestCase):
+    def test_manual_prompt_has_shared_counts_without_legacy_conflicts(self):
+        from meeting_command_plan import manual_question_prompt
+        legacy='Prepare 25-30 sophisticated questions\n- **Prioritized**: high (8-10), medium (10-12)\nPreserve this source context'
+        for fmt,count in [('conference','12–15'),('one_on_one','25–30'),('hosted_pm','35–45')]:
+            prompt=manual_question_prompt(legacy,{'format':fmt,'audience':'generalist'})
+            self.assertIn(count,prompt);self.assertIn('generalist portfolio managers',prompt)
+            self.assertIn('Preserve this source context',prompt)
+            self.assertNotIn('25-30 sophisticated',prompt);self.assertNotIn('medium (10-12)',prompt)

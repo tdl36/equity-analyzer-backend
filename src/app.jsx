@@ -2407,6 +2407,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [pipelineModel, setPipelineModel] = usePersistedModel('charlie.pipelineModel', 'opus-4-6');
             const [thesisModel, setThesisModel] = usePersistedModel('charlie.thesisModel', 'opus-4-6');
             const [decipherModel, setDecipherModel] = usePersistedModel('charlie.decipherModel', 'opus-4-7');
+            const [mpFormat,setMpFormat]=useState('one_on_one');
+            const [mpAudience,setMpAudience]=useState('specialist');
             const [mpModel, setMpModel] = usePersistedModel('charlie.mpModel', 'sonnet-5');
             const [studioModel, setStudioModel] = usePersistedModel('charlie.studioModel', 'sonnet-5');
             // How opinionated a generated note is. Separate from the model:
@@ -11328,6 +11330,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             docs: docsWithText,
                             pastQuestions: mpPastQuestions || [],
                             model: mpModel,
+                            meetingProfile:{format:mpFormat,audience:mpAudience},
                             timeframe,
                             unresolvedQuestions: unresolved,
                         })
@@ -21592,6 +21595,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 )}
                                             </div>
 
+                                            {!mpManagedState.blocked&&<div className="workspace-panel"><h2 className="font-semibold mb-3">Meeting brief</h2><fieldset disabled={mpPipelineRunning} className="desk-filter"><label>Meeting format<select value={mpFormat} onChange={e=>setMpFormat(e.target.value)}><option value="conference">30-minute conference · 12–15 questions</option><option value="one_on_one">60-minute 1×1 · 25–30 questions</option><option value="hosted_pm">Hosted PM discussion · 35–45 questions</option></select></label><label>Audience<select value={mpAudience} onChange={e=>setMpAudience(e.target.value)}><option value="specialist">Sector specialists</option><option value="generalist">Generalist portfolio managers</option></select></label></fieldset><p className="desk-explainer">Uses the documents listed above. Longer formats cover enduring business and investment debates alongside recent events. Counts are targets, subject to available evidence. Changes apply when you generate or regenerate questions; retry keeps the original job settings.</p></div>}
                                             {/* Generate Section */}
                                             <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl border border-white/10 p-4">
                                                 <div className="flex items-center justify-between mb-3">

@@ -74,3 +74,11 @@ def batch(data):
                 'instruction':instruction,'coordinated':False,'meetingPrep':options, **({'sourcePolicy':data['sourcePolicy']} if data.get('sourcePolicy') is not None else {})})
         commands.append({'id':str(uuid.uuid5(uuid.UUID(ident),ticker)), 'payload':p})
     return ident,commands
+
+
+def manual_question_prompt(prompt,profile):
+    """Apply the shared format to the legacy manual-source generator."""
+    settings=meeting_profile(profile)
+    prompt=prompt.replace('25-30 sophisticated questions','prioritized questions')
+    prompt='\n'.join(line for line in prompt.split('\n') if not ('**Prioritized**' in line))
+    return profile_instruction(settings)+'\n'+prompt+'\nNever present broker estimates or interpretations as company disclosures. If a premise lacks primary support, ask management to clarify rather than assert it as fact.'
