@@ -34,6 +34,8 @@ def execute(get_db, job_id, run, recovery=False):
 
 def start(get_db, resume, has_key):
     def loop():
+        # Let the web process finish startup before resuming expensive documents.
+        threading.Event().wait(90)
         while True:
             try:
                 if has_key():
