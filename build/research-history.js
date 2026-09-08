@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { ResearchRestore } from './research-restore';
 import { parseTimestamp } from './workspace-model.mjs';
 var stamp = v => parseTimestamp(v)?.toLocaleString() || 'Date unavailable';
 var labels = {
@@ -14,6 +15,7 @@ export function ResearchHistory({
   onSection,
   onNavigate
 }) {
+  var [restoreRecord, setRestoreRecord] = React.useState(null);
   var [input, setInput] = React.useState(''),
     [ticker, setTicker] = React.useState(''),
     [kind, setKind] = React.useState('all'),
@@ -71,7 +73,13 @@ export function ResearchHistory({
     value: k
   }, l)))), /*#__PURE__*/React.createElement("button", {
     type: "submit"
-  }, "Load history")), error ? /*#__PURE__*/React.createElement("p", {
+  }, "Load history")), restoreRecord && /*#__PURE__*/React.createElement(ResearchRestore, {
+    key: restoreRecord.recordId,
+    api: api,
+    record: restoreRecord,
+    onClose: () => setRestoreRecord(null),
+    onRestored: () => setRefresh(n => n + 1)
+  }), error ? /*#__PURE__*/React.createElement("p", {
     className: "workspace-error",
     role: "alert"
   }, error, " ", /*#__PURE__*/React.createElement("button", {
@@ -88,7 +96,9 @@ export function ResearchHistory({
     className: "workspace-section-heading"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("small", null, labels[r.kind], " \xB7 ", r.ticker || 'Coverage group'), /*#__PURE__*/React.createElement("h3", null, r.title.replaceAll('_', ' '))), /*#__PURE__*/React.createElement("span", {
     className: "desk-status"
-  }, r.status.replaceAll('_', ' '))), /*#__PURE__*/React.createElement("p", null, "Created ", stamp(r.createdAt), r.updatedAt && r.updatedAt !== r.createdAt ? ` · Updated ${stamp(r.updatedAt)}` : ''), (r.parentId || r.proposalId) && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Recorded version links"), r.parentId && /*#__PURE__*/React.createElement("p", null, "Parent / target document: ", r.parentId), r.proposalId && /*#__PURE__*/React.createElement("p", null, "Revision proposal: ", r.proposalId)), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Record identifier"), /*#__PURE__*/React.createElement("code", null, r.recordId)), /*#__PURE__*/React.createElement("button", {
+  }, r.status.replaceAll('_', ' '))), /*#__PURE__*/React.createElement("p", null, "Created ", stamp(r.createdAt), r.updatedAt && r.updatedAt !== r.createdAt ? ` · Updated ${stamp(r.updatedAt)}` : ''), (r.parentId || r.proposalId) && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Recorded version links"), r.parentId && /*#__PURE__*/React.createElement("p", null, "Parent / target document: ", r.parentId), r.proposalId && /*#__PURE__*/React.createElement("p", null, "Revision proposal: ", r.proposalId)), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Record identifier"), /*#__PURE__*/React.createElement("code", null, r.recordId)), ['note', 'review'].includes(r.kind) && /*#__PURE__*/React.createElement("button", {
+    onClick: () => setRestoreRecord(r)
+  }, "Preview restoration"), /*#__PURE__*/React.createElement("button", {
     onClick: () => open(r)
   }, "Open ", r.kind === 'collection' ? 'collection controls' : r.kind === 'activity' ? 'Analyst team' : r.kind === 'note' ? 'Research Pipeline' : 'related workspace', " \u2192")))))));
 }

@@ -13823,7 +13823,7 @@ def _review_state_from_dict(ticker, d):
     st = ir.ReviewState(ticker=ticker)
     # 'rating' is absent by design: the model does not issue a call, so a
     # rating it volunteered anyway would be ignored rather than rendered.
-    for k in ('company', 'sector', 'as_of', 'mode', 'horizon',
+    for k in ('company', 'sector', 'as_of', 'historical_as_of', 'mode', 'horizon',
               'price_date', 'key_question', 'upgrade_if', 'downgrade_if',
               'priced_in', 'business_quality'):
         if isinstance(d.get(k), str):
@@ -28823,6 +28823,20 @@ def _render_edited_review(ticker, value, mode):
 app.register_blueprint(research_edits.create_blueprint(get_db,_amendment_model_call,
     lambda key:_get_api_keys(key).get('anthropic',''),_render_edited_review))
 
+
+import research_restore
+
+def _render_restored_review(ticker, value, mode):
+    state=_review_state_from_dict(ticker,value)
+    for name in ('rating','conviction','add_below','trim_above','coverage_note'):
+        if name in value:setattr(state,name,value[name])
+    state.qc_findings=['Restored historical snapshot. Prices, estimates and assumptions have not been refreshed.']+investment_review.consistency_findings(state)
+    value['qc_findings']=state.qc_findings
+    pdf=investment_review.render_pdf(state,mode)
+    if not pdf:raise ValueError('Historical review rendering failed; restoration was not saved')
+    return investment_review.render_markdown(state,mode),investment_review.render_html(state,mode),base64.b64encode(pdf).decode('ascii')
+
+app.register_blueprint(research_restore.create_blueprint(get_db,_render_restored_review))
 
 import research_automation
 

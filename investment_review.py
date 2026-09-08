@@ -197,6 +197,7 @@ class ReviewState:
     company: str = ''
     sector: str = ''
     as_of: str = ''
+    historical_as_of: str = ''
     mode: str = 'review'            # flash | review | initiation
 
     # The model does not set these. It presents the evidence, the scenarios and
@@ -732,6 +733,12 @@ def render_markdown(state: ReviewState, mode: str = 'review') -> str:
     # ---- page 1: decision ----
     w(f'# {state.company or state.ticker} ({state.ticker})')
     w('')
+    if state.historical_as_of:
+        w(f'**Historical restoration · Original research as of {state.historical_as_of}. Figures have not been refreshed.**')
+        w('')
+    elif state.as_of:
+        w(f'Research as of {state.as_of}')
+        w('')
     head = []
     if state.rating:
         head.append(f'**{state.rating.upper()}**')      # only if a person set it
@@ -1062,6 +1069,10 @@ def render_html(state: ReviewState, mode: str = 'review') -> str:
     w = o.append
 
     w(f'<h1>{_esc(state.company or state.ticker)} ({_esc(state.ticker)})</h1>')
+    if state.historical_as_of:
+        w(f'<p><strong>Historical restoration · Original research as of {_esc(state.historical_as_of)}. Figures have not been refreshed.</strong></p>')
+    elif state.as_of:
+        w(f'<p>Research as of {_esc(state.as_of)}</p>')
     bits = []
     if state.rating:
         bits.append(_esc(state.rating.upper()))

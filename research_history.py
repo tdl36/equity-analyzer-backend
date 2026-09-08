@@ -49,13 +49,13 @@ def create_blueprint(get_db):
         with get_db() as (_,cur):
             queries={
                 'source':"SELECT id,ticker,filename AS title,created_at FROM document_files",
-                'note':"SELECT id,ticker,'Research note ' || version AS title,status,created_at,updated_at,metadata->'revision'->>'parentId' AS parent_id,metadata->'revision'->>'proposalId' AS proposal_id FROM research_notes",
-                'review':"SELECT id,ticker,'Investment review' AS title,created_at,metadata->'revision'->>'parentId' AS parent_id,metadata->'revision'->>'proposalId' AS proposal_id FROM investment_reviews",
+                'note':"SELECT id,ticker,'Research note ' || version AS title,status,created_at,updated_at,COALESCE(metadata->'restoration'->>'sourceId',metadata->'revision'->>'parentId') AS parent_id,metadata->'revision'->>'proposalId' AS proposal_id FROM research_notes",
+                'review':"SELECT id,ticker,'Investment review' AS title,created_at,COALESCE(metadata->'restoration'->>'sourceId',metadata->'revision'->>'parentId') AS parent_id,metadata->'revision'->>'proposalId' AS proposal_id FROM investment_reviews",
                 'activity':"SELECT id,ticker,activity_type || COALESCE(' · ' || (input->>'topic'),'') AS title,status,created_at,updated_at FROM analyst_activities"}
             for kind,sql in queries.items():
                 cur.execute(sql+where+' ORDER BY created_at DESC LIMIT 100',args)
                 groups[kind]=[dict(r) for r in cur.fetchall()]
-            cur.execute("SELECT id,ticker,stage AS title,status,created_at,updated_at,input->>'targetId' AS parent_id FROM mp_jobs WHERE stage IN ('research_edit','research_chat','evidence_amendment','collection_control','catalyst_signal')"+(' AND ticker=%s' if ticker else '')+' ORDER BY created_at DESC LIMIT 100',args)
+            cur.execute("SELECT id,ticker,stage AS title,status,created_at,updated_at,input->>'targetId' AS parent_id FROM mp_jobs WHERE stage IN ('research_edit','research_chat','evidence_amendment','collection_control','catalyst_signal','research_restore')"+(' AND ticker=%s' if ticker else '')+' ORDER BY created_at DESC LIMIT 100',args)
             groups['job']=[dict(r) for r in cur.fetchall()]
             cur.execute("SELECT value,updated_at FROM app_settings WHERE key='collection_control_snapshot'")
             snapshot=cur.fetchone()

@@ -14,9 +14,9 @@ Current automated public-source adapter is SEC EDGAR only; wider internet retrie
 
 1. Extend interrupted-job recovery beyond new Mac recap jobs to server thesis/edit/chat workers, using durable checkpoints and bounded retries.
 2. Local OCR is implemented in T22 with 217 tests plus a real OCR fixture. Extend cloud OCR availability/coverage later; do not claim comprehensive image/table extraction.
-3. NEXT: broader immutable note/review version restoration with preview and conflict checks. Read research_edits.py and src/research-history.jsx; preserve all originals, use expected latest ID and source fingerprints, idempotent restoration request IDs.
+3. T23 implements note/review restoration with preview, immutable clones and source/latest hash checks. Confirm deployed preview UI. General thesis/event draft restoration remain open. T23 has 226 backend/20 frontend tests.
 4. T22 adds two historical FDA excerpt regression packs; expand to financial multi-source packs and analyst/expert grading. `scripts/evaluate-research-quality.py --suite` runs the current three control packs.
-5. Bounded coordinated Charlie analyst assignments, evidence/challenge/synthesis roles and visible subtasks. This means app functionality, not permission to spawn Codex development agents.
+5. NEXT: bounded coordinated Charlie analyst assignments: lead/challenge/editor roles with checkpoints, exact source provenance, visible role outputs, user-selectable extra passes and final evidence audit. App functionality, not permission to spawn Codex development agents. Current recap audit already independently checks selected claims; do not mislabel ungrounded critique as source verification.
 6. Expand trusted public-source collection and command-to-thesis proposal linkage, then remaining gaps in `docs/charlie-roadmap.md`.
 
 ## Validation/release
@@ -24,3 +24,5 @@ Current automated public-source adapter is SEC EDGAR only; wider internet retrie
 Run `.venv/bin/python -m unittest discover -s tests/unit`, `npm run test:frontend`, `npm run build`; compile Mac paths under Python 3.9. Use CUA for UI inspection. Update release identifiers in `src/app.jsx`, `worker.js`, `service-worker.js`; copy `dist/tailwind.css` to ignored `dev/tailwind.css`. Commit/push only explicit task files; deploy using existing Wrangler configuration. Verify Render `/health` revision and frontend assets. Record what actually passed; source/paid-generation stubs are not live end-to-end validation.
 
 Baseline T19: commit `698cd54`, frontend `2026-09-08T19`, 181 backend / 20 frontend tests. Existing weekly 70-ticker policies and prospective catalyst watch are enabled; managed browser work still requires Mac, Chrome authentication and worker availability. User originals remain in iCloud STOCKS/CATALYSTS ticker folders.
+
+T22 deployed backend `00e9a22`, Cloudflare `db33daf2-4424-4ed8-9260-ea0146a05e74`; agent heartbeat verified current (~27 seconds). T23 release verification pending.
