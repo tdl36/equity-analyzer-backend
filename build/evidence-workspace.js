@@ -115,6 +115,7 @@ export function EvidenceWorkspace({
   }, /*#__PURE__*/React.createElement("summary", null, "Discuss this research with an analyst"), /*#__PURE__*/React.createElement(ResearchChat, {
     key: `${ticker}:${refresh}`,
     api: api,
+    onApplied: () => setRefresh(x => x + 1),
     context: {
       ticker,
       type: review ? 'review' : 'thesis',

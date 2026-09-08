@@ -1,8 +1,10 @@
+import { ResearchEdits } from './research-edits';
 import * as React from 'react';
 export function ResearchChat({
   api,
   context,
-  onClose
+  onClose,
+  onApplied
 }) {
   var [conversation, setConversation] = React.useState(() => crypto.randomUUID());
   var [messages, setMessages] = React.useState([]),
@@ -237,7 +239,14 @@ export function ResearchChat({
     disabled: busy || active || uncertain,
     onChange: e => setText(e.target.value),
     placeholder: "Ask the analyst to explain, challenge or revise\u2026"
-  })), /*#__PURE__*/React.createElement("footer", null, /*#__PURE__*/React.createElement("span", null, "Uses configured model API credits. Conversation replies are proposed research, not verified source claims."), /*#__PURE__*/React.createElement("button", {
+  })), /*#__PURE__*/React.createElement(ResearchEdits, {
+    key: context.ticker,
+    api: api,
+    ticker: context.ticker,
+    instruction: text,
+    analystId: analyst,
+    onApplied: onApplied
+  }), /*#__PURE__*/React.createElement("footer", null, /*#__PURE__*/React.createElement("span", null, "Uses configured model API credits. Conversation replies are proposed research, not verified source claims."), /*#__PURE__*/React.createElement("button", {
     onClick: () => refresh(),
     disabled: busy
   }, "Check status"), /*#__PURE__*/React.createElement("button", {

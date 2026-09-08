@@ -28774,6 +28774,24 @@ _amendment_blueprint = research_amendments.create_blueprint(
     lambda key: _get_api_keys(key).get('anthropic', ''))
 app.register_blueprint(_amendment_blueprint)
 
+import research_edits
+
+def _render_edited_review(ticker, value, mode):
+    state=_review_state_from_dict(ticker,value)
+    for name in ('rating','conviction','add_below','trim_above','coverage_note'):
+        if name in value:setattr(state,name,value[name])
+    state.qc_findings=['Narrative revised; full research quality review required.']+investment_review.consistency_findings(state)
+    value['qc_findings']=state.qc_findings
+    computed={'market_cap_m':investment_review.market_cap(state),'enterprise_value_m':investment_review.enterprise_value(state),
+        'expected_return':investment_review.expected_return(state),'scenario_targets':{s.name:investment_review.scenario_target(s) for s in state.scenarios},
+        'consistency':investment_review.consistency_findings(state)}
+    pdf=investment_review.render_pdf(state,mode)
+    return investment_review.render_markdown(state,mode),investment_review.render_html(state,mode),base64.b64encode(pdf).decode('ascii') if pdf else '',computed
+
+app.register_blueprint(research_edits.create_blueprint(get_db,_amendment_model_call,
+    lambda key:_get_api_keys(key).get('anthropic',''),_render_edited_review))
+
+
 import research_automation
 
 def _auto_import_sources(ticker, files):

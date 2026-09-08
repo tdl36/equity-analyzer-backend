@@ -31,3 +31,11 @@ The mechanical evaluation checks annotated text patterns and source quotations. 
 ## Live verification
 
 Backend T14 and the cloud/agent endpoints returned successfully after deployment. An unchanged MDT manual transcript policy was submitted through the browser, acknowledged by the local collector, and reported as applied through the cloud bridge. Its manual frequency, seven-day lookback and transcript-only scope remained unchanged. No new collection or paid research run was launched for this check. Analyst selection and conversation controls were inspected in the browser; automated reply tests use a stub provider.
+
+## T16 actionable research revisions
+
+The chat instruction can now prepare source-backed narrative edits to a selected saved note or investment review. Select 1–10 imported documents, review before/after text and source checks, then apply selected edits. Requests are idempotent; changed document content/status and newer review versions block stale proposals.
+
+Notes create new drafts and retain the accepted note, original version and source register. Review inherited charts before publication; DOCX is not reused from the old note. Investment reviews create new immutable versions and render markdown, HTML and PDF from the updated structured state. Existing full-review evidence/readiness is invalidated rather than incorrectly carried forward. Numeric investment-model inputs, personal ratings and convictions are not model-editable in this narrative revision path.
+
+This closes the initial chat-to-note/review narrative edit gap. Numeric model updates, broader restoration UI, multi-agent delegation and the other remaining workstreams still need implementation.

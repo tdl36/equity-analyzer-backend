@@ -85,7 +85,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-09-07T15';
+        const BUILD_VERSION = '2026-09-08T16';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -31767,7 +31767,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 )}
 
                 {/* Contextual research conversation */}
-                {ctxChatOpen && <ResearchChat key={`${ctxChatContext.ticker}:${ctxChatContext.type}`} api={API_URL} context={ctxChatContext} onClose={()=>setCtxChatOpen(false)}/>}
+                {ctxChatOpen && <ResearchChat key={`${ctxChatContext.ticker}:${ctxChatContext.type}`} api={API_URL} context={ctxChatContext} onApplied={r=>r.kind==='note'?fetchResearchNote(ctxChatContext.ticker):openReview(ctxChatContext.ticker)} onClose={()=>setCtxChatOpen(false)}/>}
 
                 {/* Validation Result Panel */}
                 {validationResult && (() => {

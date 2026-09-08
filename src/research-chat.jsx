@@ -1,5 +1,6 @@
+import {ResearchEdits} from './research-edits';
 import * as React from 'react';
-export function ResearchChat({api,context,onClose}) {
+export function ResearchChat({api,context,onClose,onApplied}) {
   const [conversation,setConversation]=React.useState(()=>crypto.randomUUID());
   const [messages,setMessages]=React.useState([]),[history,setHistory]=React.useState([]),[analysts,setAnalysts]=React.useState([]);
   const [analyst,setAnalyst]=React.useState(''),[text,setText]=React.useState(''),[job,setJob]=React.useState(null);
@@ -33,6 +34,7 @@ export function ResearchChat({api,context,onClose}) {
     <div role="status">{active?`Analyst ${job.status==='queued'?'queued':'working'} · you can close this panel and reopen the saved conversation.`:job?.error||''}</div>
     {active&&<><p className="desk-explainer">If processing was interrupted, stop this reply before sending another message. A provider request already running may still incur charges.</p><button disabled={busy} onClick={stop}>Stop reply delivery</button></>}
     <label className="earnings-search">Your instruction<textarea rows={3} maxLength={6000} value={text} disabled={busy||active||uncertain} onChange={e=>setText(e.target.value)} placeholder="Ask the analyst to explain, challenge or revise…"/></label>
+    <ResearchEdits key={context.ticker} api={api} ticker={context.ticker} instruction={text} analystId={analyst} onApplied={onApplied}/>
     <footer><span>Uses configured model API credits. Conversation replies are proposed research, not verified source claims.</span><button onClick={()=>refresh()} disabled={busy}>Check status</button><button className="workspace-primary" disabled={busy||active||(!text.trim()&&!uncertain)} onClick={send}>{busy?'Submitting…':uncertain?'Retry same request':'Send to analyst'}</button></footer>
   </section>;
   return onClose?<div role="dialog" aria-modal="true" aria-label="Research analyst conversation" className="research-chat-backdrop" onKeyDown={e=>{if(e.key==='Escape')onClose();}}>{panel}</div>:panel;
