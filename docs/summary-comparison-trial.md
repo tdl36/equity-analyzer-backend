@@ -19,9 +19,11 @@ bound individual model requests; every part is processed and its detailed manage
 saved. Analytical sections consume all part records, with recursive consolidation when needed.
 This is hierarchical synthesis, not a claim that a model has unlimited context or that generated
 records cannot omit a detail. Exact raw source is frozen privately with a SHA-256 fingerprint.
-Existing baseline generation still has its historical limits during this controlled comparison.
-Consequently a comparison measures both source-coverage and editorial changes, not prompt
-changes alone. Input must already exist as saved source text; this cannot recover missing audio
+Original generation also sends complete source text as of September 9, 2026, without
+20K/50K/200K slices, while retaining its existing editorial prompts. It uses direct model
+requests and remains subject to provider context limits; only the comparison path has
+hierarchical processing. Previously saved baseline notes are not regenerated automatically,
+so older comparisons may still reflect differences in source coverage. Input must already exist as saved source text; this cannot recover missing audio
 or omitted text from an earlier transcription/extraction stage.
 
 ## Conservative editorial changes

@@ -1668,7 +1668,7 @@ def _run_podcast_fullsummary_job(job_id, episode_id, api_key):
 
         try:
             summary_result = _call_llm_stream_with_retry(
-                messages=[{"role": "user", "content": f"{summary_instruction}\n\nTRANSCRIPT:\n{transcript[:50000]}"}],
+                messages=[{"role": "user", "content": f"{summary_instruction}\n\nTRANSCRIPT:\n{transcript}"}],
                 system="You are a meeting notes analyst. Generate structured HTML summaries.",
                 tier="standard", max_tokens=8192, api_key=api_key,
                 label=f"podcast summary ({episode_id})",
@@ -1679,7 +1679,7 @@ def _run_podcast_fullsummary_job(job_id, episode_id, api_key):
 
         try:
             questions_result = _call_llm_stream_with_retry(
-                messages=[{"role": "user", "content": f"Based on this transcript, generate 3-5 key follow-up questions.\nReturn raw HTML: <ol><li>Question?</li></ol>\n\nTRANSCRIPT:\n{transcript[:20000]}"}],
+                messages=[{"role": "user", "content": f"Based on this transcript, generate 3-5 key follow-up questions.\nReturn raw HTML: <ol><li>Question?</li></ol>\n\nTRANSCRIPT:\n{transcript}"}],
                 system="Generate insightful follow-up questions.",
                 tier="fast", max_tokens=2048, api_key=api_key,
                 label=f"podcast questions ({episode_id})",
@@ -1691,7 +1691,7 @@ def _run_podcast_fullsummary_job(job_id, episode_id, api_key):
 
         try:
             assessment_result = _call_llm_stream_with_retry(
-                messages=[{"role": "user", "content": f"{assessment_instruction}\n\nTRANSCRIPT:\n{transcript[:50000]}"}],
+                messages=[{"role": "user", "content": f"{assessment_instruction}\n\nTRANSCRIPT:\n{transcript}"}],
                 system="You are a sharp advisor giving candid assessments.",
                 tier="standard", max_tokens=4096, api_key=api_key,
                 label=f"podcast assessment ({episode_id})",
@@ -1703,7 +1703,7 @@ def _run_podcast_fullsummary_job(job_id, episode_id, api_key):
 
         try:
             meeting_summary_result = _call_llm_stream_with_retry(
-                messages=[{"role": "user", "content": f"{meeting_summary_instruction}\n\nTRANSCRIPT:\n{transcript[:50000]}"}],
+                messages=[{"role": "user", "content": f"{meeting_summary_instruction}\n\nTRANSCRIPT:\n{transcript}"}],
                 system="You are a meeting notes analyst. Generate narrative topic-grouped HTML summaries.",
                 tier="standard", max_tokens=8192, api_key=api_key,
                 label=f"podcast meeting_summary ({episode_id})",
@@ -7920,7 +7920,7 @@ OUTPUT FORMAT: raw HTML only. No markdown. No code fences.{thesis_addendum}"""
         else:
             try:
                 summary_result = _call_llm_stream_with_retry(
-                    messages=[{"role": "user", "content": f"Process the document per your instructions. Begin with the Source type line, then the sections in order.\n\nDOCUMENT:\n{text[:200000]}"}],
+                    messages=[{"role": "user", "content": f"Process the document per your instructions. Begin with the Source type line, then the sections in order.\n\nDOCUMENT:\n{text}"}],
                     system=summary_system_prompt,
                     tier="standard", max_tokens=24576, api_key=anthropic_api_key,
                     label=f"text summary ({filename})",
@@ -7998,7 +7998,7 @@ OUTPUT FORMAT: raw HTML only."""
         if not korean_only:
             try:
                 brief_result = _call_llm_stream_with_retry(
-                    messages=[{"role": "user", "content": f"Process the document per your instructions. Return only the Brief HTML.\n\nDOCUMENT:\n{text[:200000]}"}],
+                    messages=[{"role": "user", "content": f"Process the document per your instructions. Return only the Brief HTML.\n\nDOCUMENT:\n{text}"}],
                     system=brief_system_prompt,
                     tier="standard", max_tokens=12288, api_key=anthropic_api_key,
                     label=f"text brief ({filename})",
@@ -8018,7 +8018,7 @@ Organize into 3-6 logical sections (e.g., Business Update, Strategic Priorities,
         if not korean_only:
             try:
                 meeting_summary_result = _call_llm_stream_with_retry(
-                    messages=[{"role": "user", "content": f"{meeting_summary_instruction}\n\nDOCUMENT:\n{text[:50000]}"}],
+                    messages=[{"role": "user", "content": f"{meeting_summary_instruction}\n\nDOCUMENT:\n{text}"}],
                     system="You are a meeting notes analyst. Generate narrative topic-grouped HTML summaries.",
                     tier="standard", max_tokens=8192, api_key=anthropic_api_key,
                     label=f"text meeting_summary ({filename})",
@@ -8033,7 +8033,7 @@ Organize into 3-6 logical sections (e.g., Business Update, Strategic Priorities,
         if not korean_only:
             try:
                 questions_result = _call_llm_stream_with_retry(
-                    messages=[{"role": "user", "content": f"Based on this document, generate 3-5 key follow-up questions.\nReturn raw HTML: <ol><li>Question?</li></ol>\n\nDOCUMENT:\n{text[:20000]}"}],
+                    messages=[{"role": "user", "content": f"Based on this document, generate 3-5 key follow-up questions.\nReturn raw HTML: <ol><li>Question?</li></ol>\n\nDOCUMENT:\n{text}"}],
                     system="Generate insightful follow-up questions.",
                     tier="fast", max_tokens=2048, api_key=anthropic_api_key,
                     label=f"text questions ({filename})",
@@ -8055,7 +8055,7 @@ Use: <h2>Section Title</h2>, <p><strong>Topic:</strong> Description.</p>, <ul><l
         if not korean_only:
             try:
                 assessment_result = _call_llm_stream_with_retry(
-                    messages=[{"role": "user", "content": f"{assessment_instruction}\n\nDOCUMENT:\n{text[:50000]}"}],
+                    messages=[{"role": "user", "content": f"{assessment_instruction}\n\nDOCUMENT:\n{text}"}],
                     system="You are a sharp advisor giving candid document assessments.",
                     tier="standard", max_tokens=4096, api_key=anthropic_api_key,
                     label=f"text assessment ({filename})",
@@ -8193,7 +8193,7 @@ OUTPUT FORMAT: markdown만. HTML 금지. ```fence 금지.
             korean_ask = (
                 "위 지침에 따라 아래 전사를 한국어 핵심 정리로 변환하라. "
                 "전사의 원래 화자 발화 순서가 아닌, 투자 중요도 순서로 인사이트를 재구성하라.\n\n"
-                f"전사:\n{text[:200000]}"
+                f"전사:\n{text}"
             )
             try:
                 korean_result = _call_llm_stream_with_retry(
@@ -8574,11 +8574,10 @@ Be conversational and direct. Don't hedge.
             # New spec produces 4 sections (Key Takeaways + Q&A Log of every
             # exchange + Critical Drill-Down + Corrections Log) with verbatim
             # tags on every numeric claim. Output is much longer than the old
-            # bullet summary — bump max_tokens 8K -> 24K. Also lift transcript
-            # cap 50K -> 200K so long earnings call transcripts don't lose
-            # their second-hour Q&A.
+            # bullet summary, so retain the 24K output budget. Send the complete
+            # transcript to every Summary section; never silently slice its tail.
             summary_result = _call_llm_stream_with_retry(
-                messages=[{"role": "user", "content": f"{summary_instruction}\n\nTRANSCRIPT:\n{transcript[:200000]}"}],
+                messages=[{"role": "user", "content": f"{summary_instruction}\n\nTRANSCRIPT:\n{transcript}"}],
                 system=summary_system_prompt,
                 tier="standard", max_tokens=24576, api_key=anthropic_api_key,
                 label=f"audio summary ({filename})",
@@ -8589,7 +8588,7 @@ Be conversational and direct. Don't hedge.
 
         try:
             questions_result = _call_llm_stream_with_retry(
-                messages=[{"role": "user", "content": f"Based on this transcript, generate 3-5 key follow-up questions.\nReturn raw HTML: <ol><li>Question?</li></ol>\n\nTRANSCRIPT:\n{transcript[:20000]}"}],
+                messages=[{"role": "user", "content": f"Based on this transcript, generate 3-5 key follow-up questions.\nReturn raw HTML: <ol><li>Question?</li></ol>\n\nTRANSCRIPT:\n{transcript}"}],
                 system="Generate insightful follow-up questions.",
                 tier="fast", max_tokens=2048, api_key=anthropic_api_key,
                 label=f"audio questions ({filename})",
@@ -8601,7 +8600,7 @@ Be conversational and direct. Don't hedge.
 
         try:
             assessment_result = _call_llm_stream_with_retry(
-                messages=[{"role": "user", "content": f"{assessment_instruction}\n\nTRANSCRIPT:\n{transcript[:50000]}"}],
+                messages=[{"role": "user", "content": f"{assessment_instruction}\n\nTRANSCRIPT:\n{transcript}"}],
                 system="You are a sharp advisor giving candid meeting assessments.",
                 tier="standard", max_tokens=4096, api_key=anthropic_api_key,
                 label=f"audio assessment ({filename})",
@@ -8613,7 +8612,7 @@ Be conversational and direct. Don't hedge.
 
         try:
             meeting_summary_result = _call_llm_stream_with_retry(
-                messages=[{"role": "user", "content": f"{meeting_summary_instruction}\n\nTRANSCRIPT:\n{transcript[:50000]}"}],
+                messages=[{"role": "user", "content": f"{meeting_summary_instruction}\n\nTRANSCRIPT:\n{transcript}"}],
                 system="You are a meeting notes analyst. Generate narrative topic-grouped HTML summaries.",
                 tier="standard", max_tokens=8192, api_key=anthropic_api_key,
                 label=f"audio meeting_summary ({filename})",
@@ -8703,7 +8702,7 @@ OUTPUT FORMAT: raw HTML only. No markdown. No code fences."""
 
         try:
             brief_result = _call_llm_stream_with_retry(
-                messages=[{"role": "user", "content": f"Process the transcript per your instructions. Return only the Brief HTML.\n\nTRANSCRIPT:\n{transcript[:200000]}"}],
+                messages=[{"role": "user", "content": f"Process the transcript per your instructions. Return only the Brief HTML.\n\nTRANSCRIPT:\n{transcript}"}],
                 system=brief_system_prompt,
                 tier="standard", max_tokens=12288, api_key=anthropic_api_key,
                 label=f"audio brief ({filename})",
