@@ -4,6 +4,7 @@
 // existing `React.createElement`, `React.Fragment`, and `ReactDOM.render`
 // calls inside the main app body continue to work unchanged.
 import * as React from 'react';
+import {SummaryComparison} from './summary-comparison';
 import {MeetingSession} from './meeting-session';
 import {readMeetingPreferences,saveMeetingPreferences,meetingJobTiming} from './meeting-preferences.mjs';
 import { managedMeetingState } from './meeting-command-state.mjs';
@@ -19131,6 +19132,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         </div>
                                                     </div>
                                                 </div>
+
+                                                <SummaryComparison key={currentSummary.id} summary={currentSummary} api={API_URL} getKey={loadApiKeyFromStorage} renderHtml={sanitizeHtml} />
 
                                                 {/* Expand/Collapse All Toggle. Skips sections that aren't present
                                                     on this summary (brief / meetingSummary / assessment / transcript
