@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { ResearchDecisions } from './research-decisions';
 import { CaseEvidence } from './investment-case-evidence';
 var empty = () => ({
   thesis: '',
@@ -259,7 +260,11 @@ export function InvestmentCase({
     }
   }, /*#__PURE__*/React.createElement("h3", null, "Saved scenario sensitivities"), /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Scenario"), /*#__PURE__*/React.createElement("th", null, "Implied price (", body.scenarios.currency, ")"), /*#__PURE__*/React.createElement("th", null, "Price return"))), /*#__PURE__*/React.createElement("tbody", null, Object.entries(bridge).map(([name, v]) => /*#__PURE__*/React.createElement("tr", {
     key: name
-  }, /*#__PURE__*/React.createElement("th", null, name), /*#__PURE__*/React.createElement("td", null, v.impliedPrice), /*#__PURE__*/React.createElement("td", null, v.priceReturnPct, "%")))))), /*#__PURE__*/React.createElement(CaseEvidence, {
+  }, /*#__PURE__*/React.createElement("th", null, name), /*#__PURE__*/React.createElement("td", null, v.impliedPrice), /*#__PURE__*/React.createElement("td", null, v.priceReturnPct, "%")))))), /*#__PURE__*/React.createElement(ResearchDecisions, {
+    key: active + '-decisions',
+    api: api,
+    ticker: active
+  }), /*#__PURE__*/React.createElement(CaseEvidence, {
     key: active,
     revision: revision,
     api: api,

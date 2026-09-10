@@ -223,7 +223,7 @@ export function ResearchChat({
     className: m.role === 'user' ? 'chat-user' : 'chat-analyst'
   }, /*#__PURE__*/React.createElement("strong", null, m.role === 'user' ? 'You' : m.analystName || 'Research analyst'), /*#__PURE__*/React.createElement("p", null, m.content), m.memoryHash && /*#__PURE__*/React.createElement("small", {
     className: "desk-explainer"
-  }, "Company context at reply: ", m.memoryReceipt?.length ? m.memoryReceipt.map(e => e.kind === 'investment_case' ? `investment case v${e.revision}` : 'legacy thesis').join(' · ') : 'no saved case or thesis', ". Sources not reverified."))) : /*#__PURE__*/React.createElement("p", {
+  }, "Company context at reply: ", m.memoryReceipt?.length ? m.memoryReceipt.map(e => e.kind === 'investment_case' ? `investment case v${e.revision}` : e.kind === 'analyst_decision' ? `decision #${e.revision}` : 'legacy thesis').join(' · ') : 'no saved case or thesis', ". Sources not reverified."))) : /*#__PURE__*/React.createElement("p", {
     className: "workspace-empty"
   }, "Start with a specific instruction: \u201CChallenge the second thesis pillar,\u201D or \u201CRewrite the conclusion to distinguish facts from estimates.\u201D")), /*#__PURE__*/React.createElement("div", {
     role: "status"

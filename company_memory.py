@@ -10,7 +10,7 @@ from flask import Blueprint, jsonify
 from research_amendments import editable_fields, obj
 
 
-def assemble(ticker, case=None, legacy=None):
+def assemble(ticker, case=None, legacy=None, decisions=None, decisions_more=False):
     entries = []
     if case:
         entries.append({'kind': 'investment_case', 'status': 'saved_analyst_view',
@@ -20,10 +20,14 @@ def assemble(ticker, case=None, legacy=None):
         entries.append({'kind': 'legacy_thesis', 'status': 'saved_research_not_verified_fact',
             'savedAt': str(legacy['updated_at']),
             'body': editable_fields(obj(legacy['analysis']))})
-    content = {'schemaVersion': 1, 'ticker': ticker, 'entries': entries,
+    for record in decisions or []:
+        entries.append({'kind':'analyst_decision','status':'superseded' if record['superseded'] else 'recorded_not_revalidated',
+            'id':record['id'],'revision':record['revision'],'savedAt':str(record['created_at']),'body':obj(record['body'])})
+    content = {'schemaVersion': 2, 'ticker': ticker, 'entries': entries,
         'limitations': ['Original documents have not been retrieved or reverified.',
-            'Only the latest investment case and selected legacy thesis fields are included.',
-            'Prior meetings, full revision history, portfolio context and analyst adjudications are not yet retrieved.']}
+            'Investment-case and legacy-thesis context includes only the latest case and selected legacy fields.',
+            'Decision context includes at most the latest 20 recorded entries; older history is omitted.' if decisions_more else 'All recorded analyst decisions are included.',
+            'Prior meetings, full case revision history and portfolio context are not yet retrieved.']}
     content['snapshotHash'] = hashlib.sha256(json.dumps(content, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     return content
 
@@ -43,7 +47,12 @@ def load(get_db, ticker):
             case = cur.fetchone()
         cur.execute('SELECT analysis,updated_at FROM portfolio_analyses WHERE ticker=%s', (ticker,))
         legacy = cur.fetchone()
-    return assemble(ticker, case, legacy)
+        cur.execute("SELECT to_regclass('research_decisions') AS name")
+        decisions,more=[],False
+        if cur.fetchone()['name']:
+            from research_decisions import read
+            decisions,more=read(cur,ticker,20)
+    return assemble(ticker, case, legacy,decisions,more)
 
 
 def render(snapshot):
@@ -53,6 +62,7 @@ def render(snapshot):
         'Surface disagreements; do not silently merge them or assume timestamps establish correctness. '
         'Distinguish management statements, broker estimates, analyst interpretations and accepted edits. '
         'Evidence links record provenance at acceptance, not independent verification or currentness. '
+        'Analyst decisions are dated reasoning, not executed trades or management answers. Superseded entries are historical. An unsuperseded record may still be stale; do not infer a current holding or position size. Revisit conditions are not automated monitors. '
         'Do not infer an investment decision from an omitted field. Cite the case revision when discussing it.\n'
         + json.dumps(snapshot, sort_keys=True, ensure_ascii=False))
 

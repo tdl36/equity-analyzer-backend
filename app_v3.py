@@ -28954,6 +28954,8 @@ def health():
 import research_amendments
 import research_conversations
 import company_memory
+import research_decisions
+app.register_blueprint(research_decisions.create_blueprint(get_db))
 app.register_blueprint(company_memory.create_blueprint(get_db))
 import collection_control
 import research_priorities

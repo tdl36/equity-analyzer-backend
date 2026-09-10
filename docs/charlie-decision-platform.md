@@ -173,3 +173,24 @@ financial-model/portfolio propagation, and the broader sequence above.
 - Next: explicit dated analyst decisions and historical retrieval, versioned investor
   framework, belief adjudication and alert suppression. A thesis revision is not
   automatically classified as an investment decision or management answer.
+
+## T53: dated analyst decisions
+
+- Investment Case contains a decision journal: decision date, reasoning and explicit
+  revisit condition. New entries never change a portfolio or saved thesis. Superseding
+  an entry creates a linked record; the original remains immutable. Server revision
+  checks and request receipts prevent stale saves and duplicate request replay.
+- Shared memory includes the latest 20 decision records with dates and supersession
+  status. Older-record omission is explicit. The journal displays the latest 50.
+  Unsuperseded records are not certified current; prompts distinguish decisions from
+  management answers, verified facts and executed trades. Existing job snapshots
+  remain unchanged. Revisit conditions are not yet automatically monitored.
+- Validation: 430 safe unit-test executions, 29 frontend tests, production build,
+  isolated PostgreSQL tests for journal creation, replay, ticker isolation, stale
+  revisions, immutable supersession and memory retrieval. Browser fixture loaded;
+  interactive browser acceptance was not completed. No live research writes or paid
+  generations were used in validation.
+- Next: complete historical pagination/search and contextual decision retrieval;
+  editable versioned investor framework; belief adjudication and repeat-alert
+  suppression; real-source quality evaluation. Decision records deliberately require
+  explicit analyst entry rather than being inferred from thesis edits.

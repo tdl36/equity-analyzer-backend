@@ -50,6 +50,27 @@ try:
     try: meeting_memory.freeze(db,'meeting','ABT','wrong-owner')
     except ValueError: pass
     else: raise AssertionError('Wrong owner accepted')
+    import research_decisions
+    journal=Flask('journal');journal.register_blueprint(research_decisions.create_blueprint(db))
+    client=journal.test_client();url='/api/research/decisions/ABT'
+    assert client.get(url).json['revision']==0
+    payload={'requestId':str(uuid.uuid4()),'revision':0,'decisionDate':'2026-01-01',
+        'decision':'Keep researching','rationale':'Cash quality unresolved','revisitWhen':'Two quarters of conversion above hurdle'}
+    assert client.post(url,json=payload).status_code==201
+    assert client.post(url,json=payload).json['replayed']
+    assert client.post('/api/research/decisions/MDT',json=payload).status_code==409
+    assert client.post(url,json={**payload,'requestId':str(uuid.uuid4())}).status_code==409
+    replacement={**payload,'requestId':str(uuid.uuid4()),'revision':1,'supersedes':payload['requestId'],'decision':'Reopen the debate'}
+    assert client.post(url,json=replacement).status_code==201
+    records=client.get(url).json['decisions']
+    assert records[0]['superseded'] is False and records[1]['superseded'] is True
+    assert records[1]['body']['decision']=='Keep researching'
+    assert client.post(url,json={**replacement,'requestId':str(uuid.uuid4()),'revision':2}).status_code==409
+    memory=cm.load(db,'ABT');decisions=[e for e in memory['entries'] if e['kind']=='analyst_decision']
+    assert decisions[0]['body']['decision']=='Reopen the debate' and decisions[1]['status']=='superseded'
+    assert not [e for e in cm.load(db,'MDT')['entries'] if e['kind']=='analyst_decision']
+    assert meeting_memory.freeze(db,'meeting','ABT','qa')==frozen
+    print('PASS: immutable decisions, request replay, conflicts, supersession and memory inclusion; old job stays frozen.')
     print('PASS: meeting snapshot persists across later revisions and rejects wrong worker.')
     print('PASS: latest revision, provenance, ticker isolation, stable snapshots, missing case table and no-store route.')
 finally:
