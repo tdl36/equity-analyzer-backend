@@ -66,3 +66,19 @@ explicit Resume, not an automatic paid replay. Provider keys are never persisted
 Review preview: http://127.0.0.1:8777/ (temporary local service, synthetic data only).
 Production activation requires backend deployment and matching frontend/worker/service-worker
 release IDs. Do not restart production during active audio/research work.
+
+## Improved-note exports
+
+Improved and Side by side views offer Save to iCloud, Download Word, Copy, and
+Email me for all sections and each section. Exports require a completed version.
+Word/iCloud read the exact comparison ID scoped to its parent summary, never the
+original fields. Filenames include Improved and the immutable comparison ID.
+The iCloud button queues the existing Mac export worker into SUMMARIES/Word Exports;
+queue acceptance is not confirmation of a local file write. Email uses the existing
+Settings credentials and labels subject/body Improved Notes. No email is sent by
+rendering the controls or automatically completing generation. Timeout messages
+warn of unknown delivery rather than automatically retrying a potentially sent email.
+
+Validation: three isolated export-handler tests inspect real generated DOCX contents,
+section selection, iCloud queue payload, scope rejection, and incomplete-version rejection.
+Browser fixture verified controls and Copy. No live email or iCloud write used for testing.

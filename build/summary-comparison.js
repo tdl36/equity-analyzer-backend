@@ -15,6 +15,8 @@ export function SummaryComparison({
     [error, setError] = React.useState(''),
     [feedback, setFeedback] = React.useState(''),
     [saved, setSaved] = React.useState(false);
+  var [exportBusy, setExportBusy] = React.useState(''),
+    [exportMessage, setExportMessage] = React.useState('');
   var epoch = React.useRef(0);
   var base = `${api}/api/summaries/${encodeURIComponent(summary.id)}/comparisons`;
   React.useEffect(() => {
@@ -93,6 +95,101 @@ export function SummaryComparison({
     }
   }
   var record = Object.keys(state.parts || {}).sort((a, b) => Number(a) - Number(b)).map(k => state.parts[k].record).join('\n\n');
+  var escapeHtml = value => String(value).replace(/[&<>"']/g, c => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[c]);
+  async function exportNotes(action, key = 'all') {
+    if (!row || row.status !== 'complete' || exportBusy) return;
+    setExportBusy(`${action}:${key}`);
+    setExportMessage('');
+    var chosen = sections.filter(([k]) => key === 'all' || k === key);
+    var title = `Improved — ${row.baseline?.title || summary.title || 'Meeting notes'}`;
+    var label = key === 'all' ? 'All sections' : chosen[0][1];
+    var texts = chosen.map(([k, label]) => [label, k === 'record' ? record : state.sections?.[k] || '']);
+    try {
+      if (texts.some(([, text]) => !text.trim())) throw Error('The requested section is not available.');
+      if (action === 'copy') {
+        await navigator.clipboard.writeText(`${title}\n${label}\n\n` + texts.map(([label, text]) => `${label}\n\n${text}`).join('\n\n---\n\n'));
+        setExportMessage('Improved notes copied.');
+        return;
+      }
+      var url, body;
+      if (action === 'email') {
+        var creds;
+        try {
+          creds = JSON.parse(localStorage.getItem('emailCredentials') || 'null');
+        } catch {}
+        if (!creds?.email) throw Error('Set your email credentials in Settings first.');
+        url = `${api}/api/email-summary-section`;
+        body = {
+          email: creds.email,
+          subject: `${title} — ${label}`,
+          section: 'improved',
+          title: escapeHtml(title),
+          topic: escapeHtml(summary.topic || 'General'),
+          content: texts.map(([label, text]) => `<h2>${escapeHtml(label)}</h2>` + text.split('\n\n').map(p => `<p>${escapeHtml(p).replace(/\n/g, '<br>')}</p>`).join('')).join(''),
+          smtpConfig: {
+            use_gmail: creds.useGmail,
+            gmail_user: creds.gmailUser,
+            gmail_app_password: creds.gmailPassword,
+            from_email: creds.gmailUser
+          }
+        };
+      } else {
+        url = action === 'icloud' ? `${api}/api/summaries/${encodeURIComponent(summary.id)}/save-to-icloud` : `${api}/api/summary-section-to-docx`;
+        body = {
+          summaryId: summary.id,
+          comparisonId: row.id,
+          section: key === 'record' ? 'meeting' : key
+        };
+      }
+      var r = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(60000)
+      });
+      var d = await r.json();
+      if (!r.ok) throw Error(d.error || 'Export failed.');
+      if (action === 'word') {
+        var bytes = Uint8Array.from(atob(d.fileData), c => c.charCodeAt(0));
+        var downloadUrl = URL.createObjectURL(new Blob([bytes], {
+          type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        }));
+        var link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = d.filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(downloadUrl), 60000);
+        setExportMessage('Improved Word document downloaded.');
+      } else setExportMessage(action === 'icloud' ? `Queued for iCloud: ${d.filename}. Your connected Mac agent will save it in SUMMARIES/Word Exports.` : 'Improved notes emailed.');
+    } catch (e) {
+      setExportMessage(e.name === 'TimeoutError' || e.name === 'AbortError' ? 'No confirmation received. Check your email or iCloud export queue before retrying to avoid duplicates.' : e.message);
+    } finally {
+      setExportBusy('');
+    }
+  }
+  function controls(key = 'all') {
+    return /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-wrap gap-2",
+      "aria-label": `Improved ${key} export controls`
+    }, [['icloud', 'Save to iCloud'], ['word', 'Download Word'], ['copy', 'Copy'], ['email', 'Email me']].map(([action, label]) => /*#__PURE__*/React.createElement("button", {
+      key: action,
+      type: "button",
+      disabled: !!exportBusy || row?.status !== 'complete',
+      onClick: () => exportNotes(action, key),
+      className: "px-3 py-2 rounded-lg text-xs font-medium bg-white/10 border border-white/15 hover:bg-white/15 disabled:opacity-50",
+      "aria-label": `${label} — Improved ${key}`
+    }, exportBusy === `${action}:${key}` ? 'Working…' : label)));
+  }
   var status = row?.status === 'complete' ? 'Ready' : row?.status === 'failed' ? 'Needs retry' : running ? 'Generating' : loaded ? 'Not generated' : 'Loading';
   return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("section", {
     className: "rounded-xl border border-white/15 p-4 my-4",
@@ -133,7 +230,14 @@ export function SummaryComparison({
     className: "bg-amber-600 text-white rounded-lg px-4 py-2 disabled:opacity-50"
   }, busy ? 'Starting…' : 'Generate improved notes'), !summary.rawNotes?.trim() && /*#__PURE__*/React.createElement("p", {
     className: "mt-2 text-sm"
-  }, "No saved source text is available.")), row && /*#__PURE__*/React.createElement(React.Fragment, null, rows.length > 1 && /*#__PURE__*/React.createElement("label", {
+  }, "No saved source text is available.")), row && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    className: "rounded-xl border border-amber-500/30 p-4 space-y-3"
+  }, /*#__PURE__*/React.createElement("strong", {
+    className: "text-sm"
+  }, "Improved notes \xB7 All sections"), controls(), /*#__PURE__*/React.createElement("p", {
+    role: "status",
+    className: "text-sm text-slate-400"
+  }, exportMessage || (row.status === 'complete' ? 'Exports use this saved improved version and leave original notes intact.' : 'Export controls become available when generation finishes.'))), rows.length > 1 && /*#__PURE__*/React.createElement("label", {
     className: "block text-sm"
   }, "Saved version ", /*#__PURE__*/React.createElement("select", {
     className: "bg-transparent border border-white/20 p-2 rounded",
@@ -161,9 +265,11 @@ export function SummaryComparison({
     return /*#__PURE__*/React.createElement("section", {
       key: key,
       className: "space-y-3"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-wrap justify-between items-center gap-3"
     }, /*#__PURE__*/React.createElement("h3", {
       className: "text-lg font-semibold"
-    }, label), /*#__PURE__*/React.createElement("div", {
+    }, label), controls(key)), /*#__PURE__*/React.createElement("div", {
       className: `grid gap-4 ${view === 'compare' ? 'xl:grid-cols-2' : 'grid-cols-1'}`
     }, view === 'compare' && /*#__PURE__*/React.createElement("article", {
       className: "min-w-0 rounded-xl border border-white/10 p-5"

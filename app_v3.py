@@ -6154,7 +6154,9 @@ def email_summary_section():
         # Format the section label + gradient. Decipher content arrives as
         # markdown (frontend buildFullMarkdown), so convert it before the
         # template injects it raw.
-        if section == 'takeaways':
+        if section == 'improved':
+            section_label, header_color, gradient_to = 'Improved Notes', '#0d9488', '#0891b2'
+        elif section == 'takeaways':
             section_label, header_color, gradient_to = "Key Takeaways", "#0d9488", "#0891b2"
         elif section == 'earnings_recap':
             section_label, header_color, gradient_to = "Earnings Recap", "#0369a1", "#0284c7"
@@ -9200,17 +9202,28 @@ def summary_section_to_docx():
         if section not in _VALID_SECTION_KEYS:
             return jsonify({'error': f'invalid section: {section}'}), 400
 
+        comparison_id = data.get('comparisonId')
         with get_db() as (_, cur):
-            cur.execute('SELECT * FROM meeting_summaries WHERE id = %s', (summary_id,))
+            if comparison_id:
+                cur.execute('SELECT * FROM summary_comparisons WHERE id=%s AND summary_id=%s', (comparison_id, summary_id))
+            else:
+                cur.execute('SELECT * FROM meeting_summaries WHERE id = %s', (summary_id,))
             row = cur.fetchone()
         if not row:
-            return jsonify({'error': 'summary not found'}), 404
+            return jsonify({'error': 'Saved note version not found'}), 404
+        if comparison_id:
+            try:
+                row = summary_comparison.export_row(dict(row), section)
+            except ValueError as exc:
+                return jsonify({'error': str(exc)}), 409
 
         sections = None if section == 'all' else [section]
         docx_bytes = _generate_summary_docx_bytes(dict(row), sections=sections)
         title_part = _safe_filename(row['title'] or 'Summary', 60)
         label_part = _SECTION_LABEL.get(section, section.title())
         filename = f"{title_part} - {label_part}.docx" if section != 'all' else f"{title_part}.docx"
+        if comparison_id:
+            filename = filename[:-5] + " - " + _safe_filename(str(comparison_id), 40) + ".docx"
 
         return jsonify({
             'success': True,
@@ -9239,17 +9252,28 @@ def summary_save_to_icloud(summary_id):
         if section not in _VALID_SECTION_KEYS:
             return jsonify({'error': f'invalid section: {section}'}), 400
 
+        comparison_id = data.get('comparisonId')
         with get_db() as (_, cur):
-            cur.execute('SELECT * FROM meeting_summaries WHERE id = %s', (summary_id,))
+            if comparison_id:
+                cur.execute('SELECT * FROM summary_comparisons WHERE id=%s AND summary_id=%s', (comparison_id, summary_id))
+            else:
+                cur.execute('SELECT * FROM meeting_summaries WHERE id = %s', (summary_id,))
             row = cur.fetchone()
         if not row:
-            return jsonify({'error': 'summary not found'}), 404
+            return jsonify({'error': 'Saved note version not found'}), 404
+        if comparison_id:
+            try:
+                row = summary_comparison.export_row(dict(row), section)
+            except ValueError as exc:
+                return jsonify({'error': str(exc)}), 409
 
         sections = None if section == 'all' else [section]
         docx_bytes = _generate_summary_docx_bytes(dict(row), sections=sections)
         title_part = _safe_filename(row['title'] or 'Summary', 60)
         label_part = _SECTION_LABEL.get(section, section.title())
         filename = f"{title_part} - {label_part}.docx" if section != 'all' else f"{title_part}.docx"
+        if comparison_id:
+            filename = filename[:-5] + " - " + _safe_filename(str(comparison_id), 40) + ".docx"
 
         task_id = str(uuid.uuid4())
         with get_db(commit=True) as (_, cur):

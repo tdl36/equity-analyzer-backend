@@ -248,3 +248,31 @@ def create_blueprint(get_db):
             if not cur.fetchone():return jsonify(error='Comparison not found.'),404
         return jsonify(saved=True)
     return bp
+
+
+def export_row(row, section='all'):
+    """Project an immutable comparison into the existing Word exporter schema."""
+    from html import escape
+    mapping = {'brief': 'brief', 'takeaways': 'summary', 'record': 'meeting_summary',
+               'questions': 'questions', 'assessment': 'assessment'}
+    selected = 'record' if section == 'meeting' else section
+    if selected != 'all' and selected not in mapping:
+        raise ValueError('Unsupported improved-note section.')
+    if row['status'] != 'complete':
+        raise ValueError('Improved notes are still generating. Export when complete.')
+    state = row.get('state') or {}
+    if isinstance(state, str): state = json.loads(state)
+    baseline = row.get('baseline') or {}
+    if isinstance(baseline, str): baseline = json.loads(baseline)
+    values = dict(state.get('sections') or {})
+    values['record'] = '\n\n'.join(p['record'] for _, p in sorted(
+        (state.get('parts') or {}).items(), key=lambda item: int(item[0])))
+    required = mapping if selected == 'all' else [selected]
+    if any(not (values.get(key) or '').strip() for key in required):
+        raise ValueError('The requested improved-note section is not available.')
+    result = {'title': 'Improved — ' + (baseline.get('title') or 'Meeting notes'),
+              'created_at': row.get('created_at'), 'raw_notes': '', 'source_type': 'comparison'}
+    for key, column in mapping.items():
+        # Model text is untrusted; preserve literal text without interpreting HTML.
+        result[column] = ''.join('<p>'+escape(p).replace('\n','<br>')+'</p>' for p in (values.get(key) or '').split('\n\n'))
+    return result
