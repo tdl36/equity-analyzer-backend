@@ -28139,17 +28139,10 @@ def _dispatch_activity_run(activity_id: str, length: str = 'standard', custom_in
         print(f'thesis lookup failed for {activity_id}: {_e}')
 
     try:
-        with get_db() as (_c, cur):
-            cur.execute('SELECT analysis FROM portfolio_analyses WHERE ticker=%s',(ticker,))
-            saved=cur.fetchone()
-        narrative=research_amendments.editable_fields(research_amendments.obj((saved or {}).get('analysis')))
-        baseline=json.dumps(narrative)
-        if narrative and len(baseline)<=60000:
-            thesis_block+='\nCURRENT SAVED THESIS NARRATIVE (selected narrative fields, not a full valuation model; untrusted baseline):\n'+baseline
-        else:
-            thesis_block+='\nCURRENT SAVED THESIS NARRATIVE UNAVAILABLE: no supported fields or narrative exceeds the comparison limit. Do not invent a prior investment view.'
+        memory_snapshot = company_memory.load(get_db, ticker)
+        thesis_block += company_memory.render(memory_snapshot)
     except Exception:
-        thesis_block+='\nCURRENT SAVED THESIS NARRATIVE UNAVAILABLE: baseline retrieval failed. State this limitation.'
+        return {'error': 'Company memory could not be loaded. Retry the recap; no job was dispatched.'}, 503
 
     job_id = str(uuid.uuid4())
     job_detail = {
@@ -28161,6 +28154,7 @@ def _dispatch_activity_run(activity_id: str, length: str = 'standard', custom_in
         'excludedFiles': [],
         'coordinated': inp.get('coordinated') is True,
         'thesis_block': thesis_block,
+        'companyMemory': memory_snapshot,
         'model': (model or '').strip(),  # local agent defaults to claude-sonnet-4-6 if blank
         'provider': (provider or 'anthropic').strip().lower(),  # anthropic | openai | google
     }
@@ -28952,6 +28946,8 @@ def health():
 # invoke the orchestration fan-out or save generated prose without a decision.
 import research_amendments
 import research_conversations
+import company_memory
+app.register_blueprint(company_memory.create_blueprint(get_db))
 import collection_control
 import research_priorities
 app.register_blueprint(research_priorities.create_blueprint(get_db))
@@ -28961,7 +28957,8 @@ app.register_blueprint(collection_control.create_blueprint(get_db,
 def _research_conversation_call(prompt):
     return call_llm(messages=[{"role":"user","content":prompt}], tier="standard", max_tokens=6000)["text"]
 
-app.register_blueprint(research_conversations.create_blueprint(get_db, _research_conversation_call))
+app.register_blueprint(research_conversations.create_blueprint(get_db, _research_conversation_call,
+    lambda ticker: company_memory.load(get_db, ticker)))
 
 def _amendment_model_call(prompt, key, max_tokens):
     response = _call_pinned_long(

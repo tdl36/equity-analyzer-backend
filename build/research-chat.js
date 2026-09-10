@@ -186,7 +186,7 @@ export function ResearchChat({
     onClick: onClose
   }, "Close \xD7")), /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
-  }, "Ask questions or request replacement wording for this ", context.type, ". Replies use the research shown here and the last 20 conversation messages; original source files are not automatically consulted. Saved research is unchanged until you review and apply edits in its workflow."), /*#__PURE__*/React.createElement("div", {
+  }, "Ask questions or request replacement wording for this ", context.type, ". New replies use the research shown here, the latest saved investment case and legacy thesis context, and the last 20 conversation messages. Original source files are not automatically consulted. Saved research is unchanged until you review and apply edits in its workflow."), /*#__PURE__*/React.createElement("div", {
     className: "research-chat-controls"
   }, /*#__PURE__*/React.createElement("label", null, "Replying analyst", /*#__PURE__*/React.createElement("select", {
     value: analyst,
@@ -221,7 +221,9 @@ export function ResearchChat({
   }, messages.length ? messages.map((m, i) => /*#__PURE__*/React.createElement("article", {
     key: i,
     className: m.role === 'user' ? 'chat-user' : 'chat-analyst'
-  }, /*#__PURE__*/React.createElement("strong", null, m.role === 'user' ? 'You' : m.analystName || 'Research analyst'), /*#__PURE__*/React.createElement("p", null, m.content))) : /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("strong", null, m.role === 'user' ? 'You' : m.analystName || 'Research analyst'), /*#__PURE__*/React.createElement("p", null, m.content), m.memoryHash && /*#__PURE__*/React.createElement("small", {
+    className: "desk-explainer"
+  }, "Company context at reply: ", m.memoryReceipt?.length ? m.memoryReceipt.map(e => e.kind === 'investment_case' ? `investment case v${e.revision}` : 'legacy thesis').join(' · ') : 'no saved case or thesis', ". Sources not reverified."))) : /*#__PURE__*/React.createElement("p", {
     className: "workspace-empty"
   }, "Start with a specific instruction: \u201CChallenge the second thesis pillar,\u201D or \u201CRewrite the conclusion to distinguish facts from estimates.\u201D")), /*#__PURE__*/React.createElement("div", {
     role: "status"

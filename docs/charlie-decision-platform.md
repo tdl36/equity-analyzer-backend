@@ -129,3 +129,26 @@ full model integration or unattended end-to-end certification.
 
 Remaining: event-triggered case proposals, real-source quality acceptance, numeric
 financial-model/portfolio propagation, and the broader sequence above.
+
+## T51: shared company-memory reader, first integration
+
+- A read-only company-memory service assembles the latest saved investment-case
+  revision, its evidence attribution, and separately labelled legacy thesis fields.
+  Repeatable-read database snapshots and content hashes make the context auditable.
+  An absent case is explicit. No research records are migrated or overwritten.
+- Newly dispatched analyst recaps and research-chat replies consume this same service.
+  Their jobs retain the snapshot. Chat replies show a case-revision/legacy-context
+  receipt. Retrieval failures stop submission instead of silently losing context.
+  Existing queued jobs and completed replies keep their original context.
+- Prompts distinguish saved beliefs from verified facts, surface conflicts, retain
+  provenance, and disclose that original sources have not been reverified. Full case
+  content is preserved; the former 60,000-character recap baseline omission is removed.
+  Model context windows still apply; this is not unlimited model capacity.
+- Validation: safe unittest suite (418 executions, including inherited chat regression
+  cases), 29 frontend tests, production build, and disposable local PostgreSQL checks
+  for latest revision, source attribution, ticker isolation, stable hashes, missing
+  case-table fallback and no-store responses. No live model quality claim is made.
+- Scope remaining: meeting-prep integration, historical decisions/meeting retrieval,
+  source-document retrieval, editable versioned investor framework, belief adjudication
+  and repeat-alert suppression, followed by the benchmark-underweight replay. This is
+  a shared current-context reader, not the complete canonical company-memory system.
