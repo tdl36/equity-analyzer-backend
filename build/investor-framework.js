@@ -1,0 +1,171 @@
+import * as React from 'react';
+var sections = [['philosophy', 'Investment philosophy'], ['businessQuality', 'Business quality and economics'], ['valuation', 'Valuation and market expectations'], ['valueRealization', 'Value realization and catalysts'], ['evidenceDiscipline', 'Evidence and interpretation'], ['riskAndDisconfirmation', 'Risk and what would disprove the case']];
+var blank = () => Object.fromEntries(sections.map(([k]) => [k, '']));
+var starter = {
+  philosophy: 'Evaluate the gap between price and normalized business value. State the variant view and what the market may already discount. Revisit material underweights and previously rejected ideas when evidence changes.',
+  businessQuality: 'Assess segment economics, competitive durability, cash conversion, reinvestment returns and management capital allocation. Separate structural improvement from cyclical recovery and temporary benefits.',
+  valuation: 'Distinguish reported from normalized earnings and cash flow. State the period, assumptions, sources and downside/base/upside scenarios. Do not invent market consensus, prices or model inputs.',
+  valueRealization: 'Identify why value should be realized, what needs to happen, and when the case should be reassessed. Distinguish delayed inflection from evidence of a value trap.',
+  evidenceDiscipline: 'Preserve what management actually said, including qualifiers and unresolved questions. Separate reported facts, management statements, broker estimates and analyst interpretation. Explain what changed, why it matters, and confidence based on evidence quality; do not invent numerical confidence scores.',
+  riskAndDisconfirmation: 'Seek contrary evidence, challenge the strongest assumption, and identify what would change the decision. Consider shared exposures across holdings only when portfolio data is available. Treat prior decisions as dated reasoning, not proof that the current view is correct.'
+};
+export function InvestorFramework({
+  api
+}) {
+  var [body, setBody] = React.useState(blank),
+    [revision, setRevision] = React.useState(null),
+    [versions, setVersions] = React.useState([]),
+    [selected, setSelected] = React.useState(''),
+    [busy, setBusy] = React.useState(false),
+    [dirty, setDirty] = React.useState(false),
+    [message, setMessage] = React.useState('');
+  var alive = React.useRef(true),
+    lock = React.useRef(false),
+    pending = React.useRef(null);
+  var json = async options => {
+    var r = await fetch(api + '/api/research/investor-framework', {
+      ...options,
+      signal: AbortSignal.timeout(20000)
+    });
+    var d = await r.json();
+    if (!r.ok) throw Error(d.error || 'Framework unavailable');
+    return d;
+  };
+  var load = async () => {
+    if (lock.current) return;
+    lock.current = true;
+    setBusy(true);
+    try {
+      var d = await json();
+      if (alive.current) {
+        setBody({
+          ...blank(),
+          ...d.body
+        });
+        setRevision(d.revision);
+        setVersions(d.versions);
+        setDirty(false);
+        pending.current = null;
+        setMessage('Saved framework loaded.');
+      }
+    } catch (e) {
+      if (alive.current) setMessage(e.message);
+    } finally {
+      lock.current = false;
+      if (alive.current) setBusy(false);
+    }
+  };
+  React.useEffect(() => {
+    alive.current = true;
+    load();
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  var edit = next => {
+    setBody(next);
+    setDirty(true);
+    pending.current = null;
+    setMessage('Draft only. Save to use this framework in new research jobs.');
+  };
+  var save = async sourceRevision => {
+    if (lock.current || revision === null) return;
+    lock.current = true;
+    setBusy(true);
+    var operation = sourceRevision ? {
+      sourceRevision
+    } : {
+      body
+    };
+    var signature = JSON.stringify({
+      revision,
+      ...operation
+    });
+    var payload = pending.current?.signature === signature ? pending.current.payload : {
+      revision,
+      ...operation,
+      requestId: crypto.randomUUID()
+    };
+    pending.current = {
+      signature,
+      payload
+    };
+    try {
+      var d = await json({
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+      if (alive.current) {
+        setRevision(d.revision);
+        setBody(d.body);
+        setDirty(false);
+        pending.current = null;
+        setMessage(`Framework v${d.revision} saved. New shared-context research will use this version.`);
+        try {
+          var fresh = await json();
+          if (alive.current) setVersions(fresh.versions);
+        } catch {
+          setMessage(`Framework v${d.revision} saved; history refresh unavailable.`);
+        }
+      }
+    } catch (e) {
+      if (alive.current) setMessage(e.message + ' Your draft is retained. Unchanged retries reuse the same request.');
+    } finally {
+      lock.current = false;
+      if (alive.current) setBusy(false);
+    }
+  };
+  var prior = versions.find(v => String(v.revision) === selected);
+  return /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "My investment framework \xB7 ", revision ? `v${revision}` : 'not saved'), /*#__PURE__*/React.createElement("p", {
+    className: "desk-explainer"
+  }, "Your shared research methodology across companies. New research-chat replies, analyst recaps and meeting packs use the saved version. Existing jobs keep their captured version. This does not change every legacy workflow or automatically accept research, monitor events, or trade."), /*#__PURE__*/React.createElement("fieldset", {
+    disabled: busy
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => edit({
+      ...starter
+    })
+  }, "Use value-investor starter draft"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => edit(blank())
+  }, "Clear draft"), sections.map(([key, label]) => /*#__PURE__*/React.createElement("label", {
+    key: key
+  }, label, /*#__PURE__*/React.createElement("textarea", {
+    rows: 4,
+    maxLength: 6000,
+    value: body[key] || '',
+    onChange: e => edit({
+      ...body,
+      [key]: e.target.value
+    })
+  }))), /*#__PURE__*/React.createElement("button", {
+    className: "workspace-primary",
+    disabled: revision === null || !dirty && revision > 0,
+    onClick: () => save()
+  }, "Save framework version"), /*#__PURE__*/React.createElement("button", {
+    onClick: load
+  }, dirty ? 'Discard draft and reload saved framework' : 'Reload framework')), /*#__PURE__*/React.createElement("p", {
+    role: "status"
+  }, busy ? 'Working…' : message), /*#__PURE__*/React.createElement("p", {
+    className: "desk-explainer"
+  }, "Framework preferences guide reasoning; they cannot override evidence checks, attribution, selected sources, or current assignment instructions. Saving an empty framework clears the active preferences while retaining history."), /*#__PURE__*/React.createElement("label", null, "Saved versions \xB7 latest ", versions.length, /*#__PURE__*/React.createElement("select", {
+    disabled: busy,
+    value: selected,
+    onChange: e => setSelected(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "Choose a version to inspect"), versions.map(v => /*#__PURE__*/React.createElement("option", {
+    key: v.revision,
+    value: v.revision
+  }, "v", v.revision, " \xB7 ", new Date(v.created_at).toLocaleString())))), prior && /*#__PURE__*/React.createElement("article", null, sections.map(([key, label]) => /*#__PURE__*/React.createElement("section", {
+    key: key
+  }, /*#__PURE__*/React.createElement("h4", null, label), /*#__PURE__*/React.createElement("p", {
+    style: {
+      whiteSpace: 'pre-wrap'
+    }
+  }, prior.body[key] || 'Not specified'))), /*#__PURE__*/React.createElement("button", {
+    disabled: busy || dirty || prior.revision === revision,
+    onClick: () => save(prior.revision)
+  }, "Restore v", prior.revision, " as a new version"), /*#__PURE__*/React.createElement("p", null, "Restoring keeps all intervening versions.")));
+}

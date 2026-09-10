@@ -75,7 +75,7 @@ def create_blueprint(get_db, call_model, load_memory=None):
                     if not row or row['status'] != 'running': return
                     cur.execute('SELECT messages FROM content_chats WHERE id=%s FOR UPDATE', (payload['conversationId'],))
                     messages = unpack(cur.fetchone()['messages'], [])
-                    messages.append({'role':'assistant', 'content':response, 'analystName':analyst['name'], 'requestId':job_id, 'memoryHash':payload.get('companyMemory',{}).get('snapshotHash'), 'memoryReceipt': [{'kind':e['kind'],'revision':e.get('revision'),'savedAt':e.get('savedAt')} for e in payload.get('companyMemory',{}).get('entries',[])], 'ts':datetime.now(timezone.utc).isoformat()})
+                    messages.append({'role':'assistant', 'content':response, 'analystName':analyst['name'], 'requestId':job_id, 'frameworkRevision':(payload.get('companyMemory',{}).get('framework') or {}).get('revision'), 'memoryHash':payload.get('companyMemory',{}).get('snapshotHash'), 'memoryReceipt': [{'kind':e['kind'],'revision':e.get('revision'),'savedAt':e.get('savedAt')} for e in payload.get('companyMemory',{}).get('entries',[])], 'ts':datetime.now(timezone.utc).isoformat()})
                     cur.execute('UPDATE content_chats SET messages=%s::jsonb,updated_at=NOW() WHERE id=%s', (json.dumps(messages), payload['conversationId']))
                     cur.execute("UPDATE mp_jobs SET status='completed',result=%s::jsonb,updated_at=NOW() WHERE id=%s", (json.dumps({'conversationId':payload['conversationId']}), job_id))
             except Exception as exc:

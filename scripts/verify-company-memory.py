@@ -88,6 +88,36 @@ try:
     assert client.get('/api/research/decisions/MDT',query_string={'id':payload['requestId']}).json['decisions']==[]
     assert client.get(url,query_string={'from':'bad'}).status_code==400
     assert 'older history is omitted' in cm.render(cm.load(db,'ABT'))
+    import investor_framework
+    framework_app=Flask('framework');framework_app.register_blueprint(investor_framework.create_blueprint(db))
+    fc=framework_app.test_client();fu='/api/research/investor-framework'
+    assert fc.get(fu).json['revision']==0
+    fbody={'philosophy':'Test normalized cash earnings','evidenceDiscipline':'Retain management qualifiers'}
+    fsave={'requestId':str(uuid.uuid4()),'revision':0,'body':fbody}
+    assert fc.post(fu,json=fsave).status_code==201
+    assert fc.post(fu,json=fsave).json['replayed']
+    assert fc.post(fu,json={**fsave,'body':{'philosophy':'Changed request'}}).status_code==409
+    assert fc.post(fu,json={**fsave,'requestId':str(uuid.uuid4())}).status_code==409
+    context=cm.load(db,'ABT')
+    assert context['framework']['revision']==1
+    assert 'Test normalized cash earnings' in cm.render(context)
+    assert 'cannot override original-source verification' in cm.render(context)
+    assert cm.load(db,'MDT')['framework']==context['framework']
+    with db(True) as (_,c):
+        c.execute("INSERT INTO mp_jobs VALUES('framework-meeting','ABT',%s,'running',NOW())",(json.dumps({'companyMemoryRequested':True,'workerToken':'qa'}),))
+    frozen_framework=meeting_memory.freeze(db,'framework-meeting','ABT','qa')
+    assert frozen_framework['framework']['revision']==1
+    assert fc.post(fu,json={'requestId':str(uuid.uuid4()),'revision':1,'body':{}}).status_code==201
+    assert not any(cm.load(db,'ABT')['framework']['body'].values())
+    restore={'requestId':str(uuid.uuid4()),'revision':2,'sourceRevision':1}
+    assert fc.post(fu,json=restore).status_code==201
+    assert fc.post(fu,json=restore).json['replayed']
+    assert len(fc.get(fu).json['versions'])==3
+    assert cm.load(db,'ABT')['framework']['revision']==3
+    assert cm.load(db,'ABT')['framework']['body']['philosophy']==fbody['philosophy']
+    assert meeting_memory.freeze(db,'framework-meeting','ABT','qa')==frozen_framework
+    assert meeting_memory.freeze(db,'meeting','ABT','qa')==frozen
+    print('PASS: framework save/replay/conflict, cross-company context, clearing, non-destructive restoration and frozen meeting version.')
     print('PASS: 64-record pagination, no overlap, literal search, dates, independent write revision and isolated prior-record lookup.')
     print('PASS: immutable decisions, request replay, conflicts, supersession and memory inclusion; old job stays frozen.')
     print('PASS: meeting snapshot persists across later revisions and rejects wrong worker.')

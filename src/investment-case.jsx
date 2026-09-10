@@ -1,4 +1,5 @@
 import * as React from 'react';
+import {InvestorFramework} from './investor-framework';
 import {ResearchDecisions} from './research-decisions';
 import {CaseEvidence} from './investment-case-evidence';
 
@@ -18,6 +19,7 @@ export function InvestmentCase({api,analyses=[]}) {
  const assumption=(i,key,value)=>edit({...body,assumptions:body.assumptions.map((a,j)=>i===j?{...a,[key]:value}:a)});
  const snapshot=versions.find(v=>String(v.revision)===selectedVersion);
  return <section className="workspace-panel" aria-label="Investment case"><p className="workspace-eyebrow">INVESTMENT CASE / YOUR ASSUMPTIONS</p><h2>Make the investment case explicit.</h2><p>Record what you believe, the evidence against it, and the next test. These are your working assumptions. Manual source references are unverified; accepted research links retain the original excerpt and its provenance.</p>
+ <InvestorFramework api={api}/>
  <div className="desk-filter"><label>Company<input list="investment-case-tickers" value={ticker} disabled={busy||dirty} onChange={e=>setTicker(e.target.value.toUpperCase())} placeholder="ABBV" maxLength={20}/></label><datalist id="investment-case-tickers">{[...new Set(analyses.map(a=>a.ticker).filter(Boolean))].sort().map(t=><option key={t} value={t}/>)}</datalist><button disabled={busy||dirty||!ticker.trim()} onClick={load}>Open investment case</button></div>
  {dirty&&<p>Save your edits before switching companies. To discard them, use <button disabled={busy} onClick={()=>{setDirty(false);setMessage('Edits remain visible until you open a company again.');}}>Allow reload without saving</button>.</p>}
  <p role="status">{message}</p>

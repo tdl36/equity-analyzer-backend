@@ -28955,6 +28955,8 @@ import research_amendments
 import research_conversations
 import company_memory
 import research_decisions
+import investor_framework
+app.register_blueprint(investor_framework.create_blueprint(get_db))
 app.register_blueprint(research_decisions.create_blueprint(get_db))
 app.register_blueprint(company_memory.create_blueprint(get_db))
 import collection_control

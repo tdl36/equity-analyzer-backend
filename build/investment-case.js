@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { InvestorFramework } from './investor-framework';
 import { ResearchDecisions } from './research-decisions';
 import { CaseEvidence } from './investment-case-evidence';
 var empty = () => ({
@@ -138,7 +139,9 @@ export function InvestmentCase({
     "aria-label": "Investment case"
   }, /*#__PURE__*/React.createElement("p", {
     className: "workspace-eyebrow"
-  }, "INVESTMENT CASE / YOUR ASSUMPTIONS"), /*#__PURE__*/React.createElement("h2", null, "Make the investment case explicit."), /*#__PURE__*/React.createElement("p", null, "Record what you believe, the evidence against it, and the next test. These are your working assumptions. Manual source references are unverified; accepted research links retain the original excerpt and its provenance."), /*#__PURE__*/React.createElement("div", {
+  }, "INVESTMENT CASE / YOUR ASSUMPTIONS"), /*#__PURE__*/React.createElement("h2", null, "Make the investment case explicit."), /*#__PURE__*/React.createElement("p", null, "Record what you believe, the evidence against it, and the next test. These are your working assumptions. Manual source references are unverified; accepted research links retain the original excerpt and its provenance."), /*#__PURE__*/React.createElement(InvestorFramework, {
+    api: api
+  }), /*#__PURE__*/React.createElement("div", {
     className: "desk-filter"
   }, /*#__PURE__*/React.createElement("label", null, "Company", /*#__PURE__*/React.createElement("input", {
     list: "investment-case-tickers",

@@ -212,3 +212,26 @@ financial-model/portfolio propagation, and the broader sequence above.
   and isolated PostgreSQL checks with 64 records for no-overlap pagination, literal
   search, dates, empty-result write revision, cross-ticker isolation, predecessor
   lookup and memory omission disclosure. Interactive browser QA is not claimed.
+
+## T55: editable investor framework
+
+- Investment Case now contains a cross-company framework editor with six sections:
+  philosophy, business quality, valuation, value realization, evidence discipline,
+  and risk/disconfirmation. An optional value-investor starter fills an unsaved draft;
+  no preferences are activated until the user saves. Clearing and saving removes
+  active preferences. History retains immutable versions; restoration creates another
+  version. Revision checks and request receipts protect against stale/duplicate saves.
+- Company-memory schema 3 carries the saved framework separately from company
+  evidence. Prompts apply methodology without overriding original-source checks,
+  attribution, selected documents, current assignment instructions, or meeting breadth.
+  Shared-context chat, analyst recap and meeting-question workflows receive it. This
+  does not retrofit every legacy generator or authorize actions. Chat receipts record
+  the framework revision; meeting recovery retains its captured version.
+- Validation: 436 safe backend test executions, 29 frontend tests, build, disposable
+  PostgreSQL save/replay/conflict/clear/restore tests and cross-company/frozen-job
+  checks. Interactive browser fixture verified starter draft, save v1, clear/save v2,
+  inspect history and restore v1 as v3. No production preferences or paid model runs
+  were created by validation. This proves workflow mechanics, not research quality.
+- Next: real-source framework comparison, broader generator integration, contextual
+  historical retrieval, belief adjudication and repeat-alert suppression. Revisit
+  conditions remain recorded instructions, not monitored event triggers.
