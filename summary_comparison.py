@@ -110,6 +110,7 @@ def create_blueprint(get_db):
             if ready:
                 return
             with get_db(commit=True) as (_, cur):
+                cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',('summary-comparison-schema',))
                 cur.execute('''CREATE TABLE IF NOT EXISTS summary_comparisons (
                     id TEXT PRIMARY KEY, summary_id TEXT NOT NULL, source_hash TEXT NOT NULL,
                     version TEXT NOT NULL, source TEXT NOT NULL, baseline JSONB NOT NULL,
@@ -160,8 +161,14 @@ def create_blueprint(get_db):
     def run(jid, api_key, recovery=False):
         # Session advisory lock excludes concurrent workers across processes/restarts.
         with get_db() as (conn, lockcur):
-            lockcur.execute('SELECT pg_try_advisory_lock(hashtext(%s)) AS acquired', ('summary-comparison:'+jid,))
-            if not lockcur.fetchone()['acquired']:
+            try:
+                lockcur.execute('SELECT pg_try_advisory_lock(hashtext(%s)) AS acquired', ('summary-comparison:'+jid,))
+                acquired=lockcur.fetchone()['acquired']
+                conn.commit()
+            except Exception:
+                conn.close()
+                raise
+            if not acquired:
                 return
             try:
                 with get_db() as (_, cur):
@@ -213,7 +220,13 @@ def create_blueprint(get_db):
                 with get_db(commit=True) as (_, cur):
                     cur.execute("UPDATE summary_comparisons SET status='failed',error=%s,updated_at=NOW() WHERE id=%s AND worker_token=%s", (message, jid, locals().get('owner')))
             finally:
-                lockcur.execute('SELECT pg_advisory_unlock(hashtext(%s))', ('summary-comparison:'+jid,))
+                try:
+                    lockcur.execute('SELECT pg_advisory_unlock(hashtext(%s))', ('summary-comparison:'+jid,))
+                    conn.commit()
+                except Exception:
+                    # A possibly locked connection must never return to the pool.
+                    conn.close()
+                    raise
 
     @bp.get('/api/summaries/<sid>/comparisons')
     def get(sid):

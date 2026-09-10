@@ -75,6 +75,7 @@ def create_blueprint(get_db):
         with schema_lock:
             if ready:return
             with get_db(commit=True) as (_,cur):
+                cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',('investment-case-schema',))
                 cur.execute('''CREATE TABLE IF NOT EXISTS investment_case_versions (
                   ticker TEXT NOT NULL, revision INTEGER NOT NULL, request_id TEXT UNIQUE NOT NULL,
                   payload_hash TEXT NOT NULL, body JSONB NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW(),
