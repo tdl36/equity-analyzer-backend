@@ -6,19 +6,20 @@ from research_commands import obj
 def delivery_contract(payload, command, collection, source_reuse, prep, versions, reports, proposal, dispatch):
     """Delivery means a stored output exists, not that work was dispatched."""
     def stage(key,label,state,detail):return dict(key=key,label=label,state=state,detail=detail)
-    failed={'failed','error','cancelled','canceled','needs_attention','attention_required','needs_review','dismissed','reverted'}
+    failed={'failed','error','blocked','cancelled','canceled','needs_attention','attention_required','needs_review','dismissed','reverted'}
     collection=collection or {};prep=prep or {};proposal=proposal or {};dispatch=dispatch or {}
     collected=bool(source_reuse or collection.get('status')=='complete')
     steps=[stage('collection','Source collection','delivered' if collected else 'attention' if collection.get('status') in failed or command.get('status') in failed else 'pending',
                  'Saved sources reused' if source_reuse else collection.get('issue') or collection.get('status') or 'Waiting for the Mac collection snapshot')]
     has_report=any(r.get('has_report') for r in reports)
     recap_failed=bool(reports and reports[0].get('status') in failed)
-    steps.append(stage('recap','Analyst recap','attention' if recap_failed else 'delivered' if has_report else 'pending',
-                       'Latest recap needs attention; an earlier saved report may still be available in Analyst Inbox' if recap_failed else 'Report saved in Analyst Inbox; approval is separate' if has_report else 'Recap not saved yet; dispatch alone is not completion'))
+    if not source_reuse:
+        steps.append(stage('recap','Analyst recap','attention' if recap_failed else 'delivered' if has_report else 'pending',
+                           'Latest recap needs attention; an earlier saved report may still be available in Analyst Inbox' if recap_failed else 'Report saved in Analyst Inbox; approval is separate' if has_report else 'Recap not saved yet; dispatch alone is not completion'))
     if payload.get('meetingPrep'):
         ready=prep.get('status')=='done' and any(v.get('status')=='ready' for v in versions)
         steps.append(stage('questions','Meeting question pack','delivered' if ready else 'attention' if prep.get('status') in failed else 'pending',
-                           'Question pack saved; open questions to inspect its supporting passages' if ready else prep.get('error') or prep.get('stage') or 'Waiting for verified sources and the analyst recap'))
+                           'Question pack saved; open questions to inspect its supporting passages' if ready else prep.get('error') or prep.get('stage') or ('Preparing from saved originals; no new recap requested' if source_reuse else 'Waiting for verified sources and the analyst recap')))
     if payload.get('autoProposal'):
         status=proposal.get('status')
         steps.append(stage('proposal','Thesis change proposal','delivered' if status in ('awaiting_approval','applied') else 'attention' if status in failed or dispatch.get('status') in failed else 'pending',
