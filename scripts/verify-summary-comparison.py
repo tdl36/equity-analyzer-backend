@@ -32,8 +32,10 @@ try:
  with db(True) as (_,c):
   c.execute('CREATE TABLE meeting_summaries(id text,title text,raw_notes text,brief text,summary text,questions text,assessment text,meeting_summary text)')
   c.execute("INSERT INTO meeting_summaries VALUES ('fixture','Original','Full transcript','Original brief','Original takeaways','Original questions','Original assessment','Original record')")
- app=Flask(__name__);app.register_blueprint(comparison.create_blueprint(db));client=app.test_client();url='/api/summaries/fixture/comparisons'
- assert client.post(url,json={'apiKey':'test-never-used'}).status_code==202
+ app=Flask(__name__);bp=comparison.create_blueprint(db);app.register_blueprint(bp);client=app.test_client();url='/api/summaries/fixture/comparisons'
+ automatic_id=bp.enqueue('fixture','test-never-used',automatic=True)
+ assert automatic_id
+ assert bp.enqueue('fixture','test-never-used',automatic=True)==automatic_id
  assert entered.wait(5)
  rows=client.get(url).json['comparisons'];jid=rows[0]['id'];assert rows[0]['state']['parts']
  assert client.post(url,json={'apiKey':'test-never-used'}).json['id']==jid
@@ -57,7 +59,9 @@ try:
   c.execute("SELECT * FROM meeting_summaries WHERE id='fixture'");r=c.fetchone();assert r['brief']=='Original brief' and r['raw_notes']=='Full transcript'
  assert client.post(url,json={'apiKey':'test-never-used','resumeId':jid}).status_code==202
  time.sleep(.1);assert len(calls)==2,'Completed comparison regenerated'
- print('PASS: real SQL checkpoints, concurrent duplicate exclusion, resume, immutable original, scoped feedback, completed replay protection. No provider calls.')
+ assert bp.enqueue('fixture','test-never-used',automatic=True)==jid
+ time.sleep(.1);assert len(calls)==2,'Automatic save replayed completed work'
+ print('PASS: automatic enqueue and replay protection; real SQL checkpoints, concurrent duplicate exclusion, resume, immutable original, scoped feedback, completed replay protection. No provider calls.')
 finally:
  release.set()
  with admin.cursor() as c:c.execute(sql.SQL('DROP SCHEMA {} CASCADE').format(sql.Identifier(schema)))

@@ -1615,6 +1615,20 @@ def media_scan_status(scan_id):
 # MEDIA TRACKER — EPISODE FULL SUMMARY (Feature 8)
 # ============================================
 
+def _queue_improved_summary(summary_id, api_key=None):
+    """Start the separate version after original save; preserve original on failure."""
+    try:
+        summary_comparison_bp.enqueue(summary_id, api_key, automatic=True)
+    except Exception as exc:
+        print(f"[improved-summary] Queue failed for {summary_id}: {type(exc).__name__}")
+        try:
+            with get_db(commit=True) as (_, cur):
+                cur.execute("INSERT INTO agent_alerts (id,alert_type,ticker,title,detail,status,created_at) VALUES (%s,'summary_comparison_error','','Improved notes could not start',%s,'new',NOW())",
+                    (str(uuid.uuid4()), json.dumps({'summaryId': summary_id, 'action': 'Open Summary > Improved and retry. Original notes are saved.'})))
+        except Exception:
+            pass
+
+
 def _run_podcast_fullsummary_job(job_id, episode_id, api_key):
     """Generate 4-section Meeting Summary from an episode transcript.
     Inserts a row into meeting_summaries, marks mp_jobs done with {summaryId}.
@@ -1728,6 +1742,7 @@ def _run_podcast_fullsummary_job(job_id, episode_id, api_key):
         try: cache.invalidate('summaries')
         except Exception: pass
 
+        _queue_improved_summary(summary_id, api_key)
         _mp_update_job(job_id, status='done', result={'summaryId': summary_id, 'title': title})
         print(f"[podcast-fullsummary {job_id}] Complete: {title} saved as {summary_id}")
     except Exception as e:
@@ -5896,7 +5911,7 @@ def save_summary():
                     source_url = EXCLUDED.source_url,
                     source_meta = EXCLUDED.source_meta,
                     korean_takeaways = EXCLUDED.korean_takeaways
-                RETURNING id
+                RETURNING id, (xmax = 0) AS inserted
             ''', (
                 summary_id,
                 data.get('title', 'Meeting Summary'),
@@ -5920,6 +5935,8 @@ def save_summary():
 
             result = cur.fetchone()
 
+        if result['inserted'] and data.get('rawNotes', '').strip() and data.get('sourceType') != 'decipher':
+            _queue_improved_summary(summary_id, data.get('apiKey'))
         cache.invalidate('summaries')
         return jsonify({'success': True, 'id': result['id']})
     except Exception as e:
@@ -8237,6 +8254,7 @@ OUTPUT FORMAT: markdown만. HTML 금지. ```fence 금지.
         _transcription_jobs[job_id]['status'] = 'complete'
         _transcription_jobs[job_id]['summaryId'] = summary_id
         _mirror_transcription_state(job_id)
+        _queue_improved_summary(summary_id, anthropic_api_key)
         print(f"[auto-text {job_id}] Complete: saved summary {summary_id}")
     except Exception as e:
         print(f"[auto-text {job_id}] Failed: {e}")
@@ -8738,6 +8756,7 @@ OUTPUT FORMAT: raw HTML only. No markdown. No code fences."""
         _transcription_jobs[job_id]['status'] = 'complete'
         _transcription_jobs[job_id]['summaryId'] = summary_id
         _mirror_transcription_state(job_id)
+        _queue_improved_summary(summary_id, anthropic_api_key)
         print(f"[auto-audio {job_id}] Complete: {title} saved as {summary_id}")
 
     except Exception as e:
@@ -28982,7 +29001,8 @@ manual_meeting_recovery.start(get_db,_resume_manual_meeting,
 
 
 import summary_comparison
-app.register_blueprint(summary_comparison.create_blueprint(get_db))
+summary_comparison_bp = summary_comparison.create_blueprint(get_db)
+app.register_blueprint(summary_comparison_bp)
 
 import meeting_workspace
 app.register_blueprint(meeting_workspace.create_blueprint(get_db))

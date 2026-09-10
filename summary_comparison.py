@@ -1,4 +1,4 @@
-"""Opt-in, checkpointed full-transcript comparison. Never updates meeting_summaries."""
+"""Automatic, checkpointed full-transcript alternative notes. Never updates meeting_summaries."""
 import hashlib
 import json
 import os
@@ -118,6 +118,12 @@ def create_blueprint(get_db):
                     updated_at TIMESTAMP DEFAULT NOW(), UNIQUE(summary_id,source_hash,version))''')
             ready = True
 
+    slots = threading.BoundedSemaphore(2)
+
+    def launch(jid, api_key):
+        with slots:
+            run(jid, api_key)
+
     def run(jid, api_key):
         # Session advisory lock excludes concurrent workers across processes/restarts.
         with get_db() as (conn, lockcur):
@@ -181,38 +187,55 @@ def create_blueprint(get_db):
                 r[k] = r[k].isoformat()+'Z'
         return jsonify(comparisons=rows)
 
-    @bp.post('/api/summaries/<sid>/comparisons')
-    def start(sid):
+    def enqueue(sid, api_key=None, resume_id=None, automatic=False):
         ensure()
-        body = request.get_json(silent=True) or {}
-        api_key = body.get('apiKey') or os.environ.get('ANTHROPIC_API_KEY')
-        if not isinstance(api_key, str) or not api_key.strip():
-            return jsonify(error='Add your research API key in Settings.'), 400
+        api_key = api_key or os.environ.get('ANTHROPIC_API_KEY')
+        missing_key = not isinstance(api_key, str) or not api_key.strip()
+        if missing_key and not automatic:
+            raise ValueError('Add your research API key in Settings.')
         with get_db(commit=True) as (_, cur):
-            if body.get('resumeId'):
-                cur.execute('SELECT id FROM summary_comparisons WHERE id=%s AND summary_id=%s', (body['resumeId'], sid))
+            if resume_id:
+                cur.execute('SELECT id FROM summary_comparisons WHERE id=%s AND summary_id=%s', (resume_id, sid))
                 row = cur.fetchone()
                 if not row:
-                    return jsonify(error='Comparison not found.'), 404
+                    raise LookupError('Comparison not found.')
                 jid = row['id']
             else:
                 cur.execute('SELECT title,raw_notes,brief,summary,questions,assessment,meeting_summary FROM meeting_summaries WHERE id=%s', (sid,))
                 row = cur.fetchone()
                 if not row:
-                    return jsonify(error='Summary not found.'), 404
+                    raise LookupError('Summary not found.')
                 source = row['raw_notes'] or ''
                 if not source.strip():
-                    return jsonify(error='No saved transcript/source text. Add source text before comparing.'), 400
+                    raise ValueError('No saved transcript/source text. Add source text before comparing.')
                 baseline = dict(row); baseline.pop('raw_notes')
                 digest = hashlib.sha256(source.encode()).hexdigest()
                 jid = str(uuid.uuid4())
                 cur.execute('''INSERT INTO summary_comparisons (id,summary_id,source_hash,version,source,baseline)
                     VALUES (%s,%s,%s,%s,%s,%s::jsonb) ON CONFLICT (summary_id,source_hash,version)
                     DO NOTHING''', (jid,sid,digest,VERSION,source,json.dumps(baseline)))
+                inserted = cur.rowcount == 1
                 cur.execute('SELECT id FROM summary_comparisons WHERE summary_id=%s AND source_hash=%s AND version=%s', (sid,digest,VERSION))
                 jid = cur.fetchone()['id']
-        threading.Thread(target=run,args=(jid,api_key),daemon=True).start()
-        return jsonify(id=jid), 202
+                if automatic and not inserted:
+                    return jid
+            if missing_key:
+                cur.execute("UPDATE summary_comparisons SET status='failed',error=%s WHERE id=%s", ('Research API key unavailable. Add it in Settings, then retry improved notes.', jid))
+        if not missing_key:
+            threading.Thread(target=launch,args=(jid,api_key),daemon=True).start()
+        return jid
+
+    bp.enqueue = enqueue
+
+    @bp.post('/api/summaries/<sid>/comparisons')
+    def start(sid):
+        body = request.get_json(silent=True) or {}
+        try:
+            return jsonify(id=enqueue(sid, body.get('apiKey'), body.get('resumeId'))), 202
+        except LookupError as exc:
+            return jsonify(error=str(exc)), 404
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
 
     @bp.post('/api/summaries/<sid>/comparisons/<jid>/feedback')
     def feedback(sid,jid):

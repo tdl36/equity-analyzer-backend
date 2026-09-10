@@ -1,16 +1,24 @@
 # Full-transcript comparison trial
 
-Status: approved for opt-in deployment September 9, 2026. Existing generation prompts,
+Status: automatic companion generation approved September 9, 2026. Existing generation prompts,
 original notes, and automatic iCloud ingestion remain unchanged during the comparison trial.
 
 ## Entry point
 
-Summary → open an existing saved note → Compare improved notes → Generate improved comparison.
-The alternative uses the entire saved raw_notes text, not a new audio transcription. The existing
-output is frozen as the baseline when a comparison is created. Different source text creates a
-new comparison; same source/version coalesces. No original note is overwritten, published,
-emailed, or made the default. The comparison can be reviewed alongside the original and
-feedback saved over multiple days.
+Summary → open a saved note → Original / Improved / Side by side.
+New audio, text/document/YouTube, podcast full summaries and newly saved manual notes
+queue a separate improved version after the original save commits. Original generation
+and content remain independent. No historical backfill is automatically started.
+Older notes have one Generate improved notes button. Progress is visible without
+opening nested controls; every improved section appears in one scrollable reader.
+The comparison source and original snapshot are immutable. Duplicate saves do not
+replay the same source/version. At most two comparison model workers execute per
+server process; PostgreSQL advisory locks exclude concurrent execution of the same job.
+Keys are never persisted. Missing keys are recorded as a retryable failure.
+Original saves remain successful if companion queueing fails; an alert points to retry.
+Interrupted workers retain checkpoints; Retry is available after failure or stale progress.
+This release does not add automatic restart recovery or change the editorial prompts.
+No original is overwritten, emailed, approved or published by comparison generation.
 
 ## Scope of full-source processing
 
@@ -52,7 +60,7 @@ explicit Resume, not an automatic paid replay. Provider keys are never persisted
 - Existing frontend suite: 29 passing tests. Frontend build and Python compile passed.
 - Browser component preview: synthetic 250,001-character completion, section navigation,
   all eleven fixture records visible. No paid generation or production mutation performed.
-- Still to validate after approved activation: real note quality, long-source latency/cost,
+- Still to validate: real note quality, long-source latency/cost,
   actual provider interruptions and mobile viewport behavior.
 
 Review preview: http://127.0.0.1:8777/ (temporary local service, synthetic data only).

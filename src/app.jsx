@@ -19133,7 +19133,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     </div>
                                                 </div>
 
-                                                <SummaryComparison key={currentSummary.id} summary={currentSummary} api={API_URL} getKey={loadApiKeyFromStorage} renderHtml={sanitizeHtml} />
+                                                <SummaryComparison key={currentSummary.id} summary={currentSummary} api={API_URL} getKey={loadApiKeyFromStorage} renderHtml={sanitizeHtml}>
 
                                                 {/* Expand/Collapse All Toggle. Skips sections that aren't present
                                                     on this summary (brief / meetingSummary / assessment / transcript
@@ -19894,6 +19894,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         Delete
                                                     </button>
                                                 </div>
+                                                </SummaryComparison>
                                             </div>
                                         )}
                                     </div>
