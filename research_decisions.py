@@ -30,10 +30,43 @@ def validate(data):
     return rid,revision,body
 
 
-def read(cur,ticker,limit=50):
+def query_options(args):
+    result={}
+    query=args.get('q','').strip()
+    if len(query)>200:raise ValueError('Search text must be 200 characters or fewer.')
+    result['q']=query
+    for key in ('from','to'):
+        value=args.get(key,'')
+        if value:
+            try:result[key]=date.fromisoformat(value).isoformat()
+            except (ValueError,TypeError):raise ValueError('Use valid decision dates.')
+    if result.get('from','')>result.get('to','9999-12-31'):raise ValueError('Start date must not follow end date.')
+    if args.get('before'):
+        try:result['before']=int(args['before'])
+        except ValueError:raise ValueError('Invalid history cursor.')
+        if not 0<result['before']<=2147483647:raise ValueError('Invalid history cursor.')
+    if args.get('id'):
+        try:result['id']=str(uuid.UUID(args['id']))
+        except ValueError:raise ValueError('Invalid decision identifier.')
+    return result
+
+
+def read(cur,ticker,limit=50,options=None):
+    options=options or {}
+    clauses=['d.ticker=%s'];params=[ticker]
+    if options.get('q'):
+        clauses.append("strpos(lower(concat_ws(' ',d.body->>'decision',d.body->>'rationale',d.body->>'revisitWhen')),lower(%s))>0")
+        params.append(options['q'])
+    for key,op in [('from','>='),('to','<=')]:
+        if options.get(key):
+            clauses.append("d.body->>'decisionDate' "+op+" %s");params.append(options[key])
+    if options.get('before'):
+        clauses.append('d.revision<%s');params.append(options['before'])
+    if options.get('id'):
+        clauses.append('d.id=%s');params.append(options['id'])
     cur.execute('''SELECT d.id,d.revision,d.body,d.created_at,
         EXISTS(SELECT 1 FROM research_decisions n WHERE n.ticker=d.ticker AND n.body->>'supersedes'=d.id) AS superseded
-        FROM research_decisions d WHERE ticker=%s ORDER BY revision DESC LIMIT %s''',(ticker,limit+1))
+        FROM research_decisions d WHERE '''+' AND '.join(clauses)+' ORDER BY d.revision DESC LIMIT %s',tuple(params+[limit+1]))
     rows=[dict(r) for r in cur.fetchall()]
     return rows[:limit],len(rows)>limit
 
@@ -53,10 +86,16 @@ def create_blueprint(get_db):
         if request.method=='POST':
             try:rid,revision,body=validate(request.get_json(silent=True))
             except ValueError as exc:return jsonify(error=str(exc)),400
+        if request.method=='GET':
+            try: options=query_options(request.args)
+            except ValueError as exc:return jsonify(error=str(exc)),400
         ensure()
         if request.method=='GET':
-            with get_db() as (_,cur): rows,more=read(cur,ticker)
-            response=jsonify(decisions=rows,hasMore=more,revision=rows[0]['revision'] if rows else 0)
+            with get_db() as (_,cur):
+                rows,more=read(cur,ticker,options=options)
+                cur.execute('SELECT COALESCE(MAX(revision),0) AS revision FROM research_decisions WHERE ticker=%s',(ticker,))
+                revision=cur.fetchone()['revision']
+            response=jsonify(decisions=rows,hasMore=more,revision=revision,nextBefore=rows[-1]['revision'] if more else None)
             response.headers['Cache-Control']='no-store';return response
         fp=hashlib.sha256(json.dumps([ticker,revision,body],sort_keys=True).encode()).hexdigest()
         with get_db(commit=True) as (_,cur):

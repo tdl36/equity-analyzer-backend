@@ -194,3 +194,21 @@ financial-model/portfolio propagation, and the broader sequence above.
   editable versioned investor framework; belief adjudication and repeat-alert
   suppression; real-source quality evaluation. Decision records deliberately require
   explicit analyst entry rather than being inferred from thesis edits.
+
+## T54: complete decision-history browsing
+
+- The decision journal now searches decision wording, rationale and revisit conditions,
+  filters by decision date, and pages through older matching records using a revision
+  cursor. Literal search treats `%` and `_` as text. The latest write revision remains
+  independent of filtered/paged results. Stale history responses cannot replace newer
+  results in the UI, and draft text survives reloads.
+- Superseding entries open their predecessor directly, including records outside the
+  loaded page; the predecessor can in turn open its own predecessor. Lookups remain
+  ticker scoped. Server supersession checks continue to prevent invalid replacements.
+- This is user-facing history retrieval. Searching does not alter an agent's context:
+  shared memory still discloses its latest-20-record limit. Contextual model retrieval
+  and automatic monitoring remain separate follow-on work.
+- Validation: 432 safe backend test executions, 29 frontend tests, production build,
+  and isolated PostgreSQL checks with 64 records for no-overlap pagination, literal
+  search, dates, empty-result write revision, cross-ticker isolation, predecessor
+  lookup and memory omission disclosure. Interactive browser QA is not claimed.

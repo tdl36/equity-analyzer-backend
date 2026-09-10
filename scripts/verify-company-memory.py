@@ -70,6 +70,25 @@ try:
     assert decisions[0]['body']['decision']=='Reopen the debate' and decisions[1]['status']=='superseded'
     assert not [e for e in cm.load(db,'MDT')['entries'] if e['kind']=='analyst_decision']
     assert meeting_memory.freeze(db,'meeting','ABT','qa')==frozen
+    with db(True) as (_,c):
+        for revision in range(3,65):
+            body={'decision':'Literal 10% hurdle' if revision==3 else 'Historical review',
+                  'rationale':'Cash conversion','revisitWhen':'New filing','decisionDate':'2026-02-01','supersedes':None}
+            c.execute("INSERT INTO research_decisions(id,ticker,revision,fingerprint,body) VALUES(%s,'ABT',%s,'fixture',%s)",(str(uuid.uuid4()),revision,json.dumps(body)))
+    first=client.get(url).json
+    assert len(first['decisions'])==50 and first['hasMore'] and first['revision']==64
+    second=client.get(url+'?before='+str(first['nextBefore'])).json
+    assert len(second['decisions'])==14 and not second['hasMore'] and second['revision']==64
+    assert not set(r['id'] for r in first['decisions']) & set(r['id'] for r in second['decisions'])
+    match=client.get(url,query_string={'q':'10%'}).json
+    assert len(match['decisions'])==1 and match['decisions'][0]['revision']==3 and match['revision']==64
+    assert len(client.get(url,query_string={'to':'2026-01-31'}).json['decisions'])==2
+    assert client.get(url,query_string={'q':'missing'}).json['revision']==64
+    assert client.get(url,query_string={'id':payload['requestId']}).json['decisions'][0]['superseded'] is True
+    assert client.get('/api/research/decisions/MDT',query_string={'id':payload['requestId']}).json['decisions']==[]
+    assert client.get(url,query_string={'from':'bad'}).status_code==400
+    assert 'older history is omitted' in cm.render(cm.load(db,'ABT'))
+    print('PASS: 64-record pagination, no overlap, literal search, dates, independent write revision and isolated prior-record lookup.')
     print('PASS: immutable decisions, request replay, conflicts, supersession and memory inclusion; old job stays frozen.')
     print('PASS: meeting snapshot persists across later revisions and rejects wrong worker.')
     print('PASS: latest revision, provenance, ticker isolation, stable snapshots, missing case table and no-store route.')

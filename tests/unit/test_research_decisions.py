@@ -17,3 +17,12 @@ class DecisionTests(unittest.TestCase):
         self.assertEqual(snap['entries'][0]['status'],'superseded')
         self.assertIn('older history is omitted',render(snap))
         self.assertIn('not executed trades',render(snap))
+
+class HistoryQueryTests(unittest.TestCase):
+    def test_rejects_bad_dates_ranges_and_cursors(self):
+        from research_decisions import query_options
+        for data in [{'from':'bad'},{'from':'2026-02-01','to':'2026-01-01'},{'before':'0'},{'before':'bad'},{'q':'a'*201},{'id':'bad'}]:
+            with self.subTest(data=data),self.assertRaises(ValueError):query_options(data)
+    def test_literal_search_and_valid_date_filters(self):
+        from research_decisions import query_options
+        self.assertEqual(query_options({'q':'  cash %  ','before':'51','from':'2026-01-01'}),{'q':'cash %','before':51,'from':'2026-01-01'})
