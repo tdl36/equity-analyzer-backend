@@ -25,9 +25,25 @@ def fingerprint(v):
     return hashlib.sha256(json.dumps(v, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode()).hexdigest()
 
 
+def baseline_current(cur,ticker,saved):
+    baseline=saved['baseline']
+    if '_investmentCase' in baseline:
+        cur.execute('SELECT revision,body FROM investment_case_versions WHERE ticker=%s ORDER BY revision DESC LIMIT 1',(ticker,));row=cur.fetchone()
+        if not row:return False
+        body=dict(row['body']);body.pop('evidenceLinks',None)
+        return fingerprint({'_investmentCase':{'revision':row['revision'],'body':body}})==fingerprint(baseline)
+    cur.execute('SELECT analysis FROM portfolio_analyses WHERE ticker=%s',(ticker,));row=cur.fetchone()
+    return bool(row and fingerprint(obj(row['analysis']))==fingerprint(baseline))
+
+
 def editable_fields(baseline):
     """Only existing textual research fields; never bookkeeping or entire arrays."""
     fields = {}
+    if '_investmentCase' in baseline:
+        for a in baseline['_investmentCase']['body'].get('assumptions',[]):
+            for key in ('support','contrary','nextTest'):
+                fields[f"assumptions.{a['id']}.{key}"]=a.get(key,'')
+        return fields
     thesis = baseline.get('thesis') or {}
     if isinstance(thesis, dict):
         if isinstance(thesis.get('summary'), str): fields['thesis.summary'] = thesis['summary']
@@ -64,10 +80,17 @@ def validate_changes(raw, baseline, sources):
         result.append({'id':str(len(result)), 'path':path, 'before':fields[path], 'after':after,
                        'reason':reason[:6000], 'evidence':claim['evidence'],
                        'passageMatched':claim['status']=='passage_matched'})
+        if '_investmentCase' in baseline:
+            if len(after)>12000:raise ValueError('Proposed assumption wording exceeds the field size.')
+            _,aid,field=path.split('.')
+            from investment_case import case_context_hash
+            result[-1].update(assumptionId=aid,field=field,caseContextHash=case_context_hash(baseline['_investmentCase']['body']),caseRevision=baseline['_investmentCase']['revision'])
     return result
 
 
 def apply_changes(current, baseline, changes, accepted, sources=None):
+    if '_investmentCase' in baseline:
+        raise ValueError('Investment-case proposals must be accepted through case revisions.')
     if fingerprint(current) != fingerprint(baseline):
         raise ValueError('The saved thesis has changed. Prepare a fresh proposal before applying edits.')
     if not isinstance(accepted, list) or not accepted or len(accepted) != len(set(accepted)):
@@ -138,6 +161,16 @@ def create_blueprint(get_db, call_model, get_key, model_identity=lambda: 'defaul
                         '"source_id":"catalog id","source_excerpt":"exact contiguous supporting quotation, at least 30 characters"}]}. '
                         'At most 20 changes; return an empty list when no material changes are supported. No additions/removals of pillars in this release.\n'
                         'ANALYST REVISION INSTRUCTIONS:\n'+instructions+'\nEDITABLE FIELDS:\n'+json.dumps(editable_fields(baseline))+'\nSOURCE DOCUMENTS:\n'+json.dumps(sources))
+                if '_investmentCase' in baseline:
+                    prompt=('INVESTMENT ASSUMPTION REVIEW. The target is a versioned investment case, not the legacy thesis. '
+                            'Read the full case context below. Match new evidence to existing assumption IDs. '
+                            'Update only supporting evidence, contrary evidence/unresolved questions, or the next test. '
+                            'Preserve management wording and qualifiers in quotations; attribute broker estimates. '
+                            'Separate what was stated from your interpretation. Explain what changed, why it matters, '
+                            'what remains unknown and how strong the evidence is, without invented confidence scores. '
+                            'Keep replacements under 12000 characters each. Do not change the assumption claim, basis, or model inputs. '
+                            'Return no changes if evidence is immaterial or insufficient.\nCASE CONTEXT:\n'+
+                            json.dumps(baseline['_investmentCase'],sort_keys=True)+'\n'+prompt)
                 from amendment_checkpoints import Checkpoints,identity
                 from command_thesis_bridge import file_hash
                 checkpoints=Checkpoints(get_db,job_id,owner)
@@ -184,16 +217,22 @@ def create_blueprint(get_db, call_model, get_key, model_identity=lambda: 'defaul
         if not re.fullmatch(r'[A-Z0-9][A-Z0-9.\-]{0,19}',tk): return jsonify(error='Invalid ticker'),400
         if request.method=='GET':
             with get_db() as (_,cur):
-                cur.execute("SELECT id,status,result,error,created_at,updated_at,input->>'commandId' AS command_id,input->>'recoverable' AS recoverable,input->>'autoRecoveryAttempts' AS recovery_attempts FROM mp_jobs WHERE ticker=%s AND stage=%s ORDER BY created_at DESC LIMIT 10",(tk,STAGE))
+                cur.execute("SELECT id,status,result,error,created_at,updated_at,input->>'commandId' AS command_id,input->>'recoverable' AS recoverable,input->>'autoRecoveryAttempts' AS recovery_attempts FROM mp_jobs WHERE ticker=%s AND stage=%s AND COALESCE(input->>'target','thesis')='thesis' ORDER BY created_at DESC LIMIT 10",(tk,STAGE))
                 rows=[dict(r) for r in cur.fetchall() or []]
             response=jsonify(jobs=rows);response.headers['Cache-Control']='no-store';return response
         return submit(tk, request.get_json(silent=True) or {})
 
-    def submit(tk, data):
+    @bp.post('/api/research/investment-case/<ticker>/proposals')
+    def case_proposal(ticker):
+        if not re.fullmatch(r'[A-Z0-9][A-Z0-9.\-]{0,19}',ticker):return jsonify(error='Invalid ticker'),400
+        return submit(ticker,request.get_json(silent=True) or {},target='investment_case')
+
+    def submit(tk, data, target='thesis'):
         if not isinstance(data,dict): return jsonify(error='Request body must be an object'),400
         names=data.get('filenames'); job_id=data.get('requestId')
         instructions=data.get('instructions') or ''
         command_id=data.get('commandId');source_hashes=None;bridge=None
+        if target=='investment_case' and command_id:return jsonify(error='Choose saved originals directly for this investment-case comparison.'),400
         if not isinstance(instructions,str) or len(instructions)>6000: return jsonify(error='Instructions must be at most 6,000 characters'),400
         try:
             uuid.UUID(job_id)
@@ -205,7 +244,7 @@ def create_blueprint(get_db, call_model, get_key, model_identity=lambda: 'defaul
             cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',('amendment:'+tk,))
             cur.execute('SELECT id,ticker,input,stage FROM mp_jobs WHERE id=%s',(job_id,)); existing=cur.fetchone()
             if existing:
-                if existing.get('stage')!=STAGE or existing['ticker']!=tk or (obj(existing['input']).get('filenames')!=names or obj(existing['input']).get('instructions','')!=instructions or obj(existing['input']).get('commandId')!=command_id): return jsonify(error='Request ID already used for different inputs.'),409
+                if existing.get('stage')!=STAGE or existing['ticker']!=tk or obj(existing['input']).get('target','thesis')!=target or (target=='investment_case' and obj(existing['input']).get('baseline',{}).get('_investmentCase',{}).get('revision')!=data.get('revision')) or (obj(existing['input']).get('filenames')!=names or obj(existing['input']).get('instructions','')!=instructions or obj(existing['input']).get('commandId')!=command_id): return jsonify(error='Request ID already used for different inputs.'),409
                 return jsonify(jobId=job_id),200
             if command_id:
                 from command_thesis_bridge import resolve
@@ -215,14 +254,28 @@ def create_blueprint(get_db, call_model, get_key, model_identity=lambda: 'defaul
                 source_hashes={s['filename']:s['sha256'] for s in bridge['ready']}
                 if any(n not in source_hashes for n in names):return jsonify(error='Selected files are not verified inputs of this command recap.'),409
                 source_hashes={n:source_hashes[n] for n in names}
-            cur.execute("SELECT id FROM mp_jobs WHERE ticker=%s AND stage=%s AND status IN ('queued','running','awaiting_approval') LIMIT 1",(tk,STAGE))
+            cur.execute("SELECT id FROM mp_jobs WHERE ticker=%s AND stage=%s AND COALESCE(input->>'target','thesis')=%s AND status IN ('queued','running','awaiting_approval') LIMIT 1",(tk,STAGE,target))
             if cur.fetchone(): return jsonify(error='Review or dismiss the existing proposal before starting another.'),409
-            cur.execute('SELECT analysis FROM portfolio_analyses WHERE ticker=%s',(tk,));row=cur.fetchone()
-            baseline=obj((row or {}).get('analysis'))
-            if not editable_fields(baseline): return jsonify(error='A saved thesis with editable text is required.'),400
+            if target=='investment_case':
+                cur.execute('SELECT revision,body FROM investment_case_versions WHERE ticker=%s ORDER BY revision DESC LIMIT 1',(tk,));row=cur.fetchone()
+                if not row or type(data.get('revision'))!=int or row['revision']!=data['revision']:return jsonify(error='Open the latest saved investment case before generating proposals.'),409
+                baseline={'_investmentCase':{'revision':row['revision'],'body':row['body']}}
+            else:
+                cur.execute('SELECT analysis FROM portfolio_analyses WHERE ticker=%s',(tk,));row=cur.fetchone()
+                baseline=obj((row or {}).get('analysis'))
+            if not editable_fields(baseline): return jsonify(error='Save at least one investment assumption first.' if target=='investment_case' else 'A saved thesis with editable text is required.'),400
+            if target=='investment_case':
+                baseline['_investmentCase']['body']=dict(baseline['_investmentCase']['body'])
+                baseline['_investmentCase']['body'].pop('evidenceLinks',None)
+                if len(json.dumps(baseline))>100000:return jsonify(error='The saved investment case is too large for a single comparison. Shorten its working assumptions before retrying.'),400
             cur.execute('SELECT filename FROM document_files WHERE ticker=%s AND filename=ANY(%s)',(tk,names))
             if len(cur.fetchall() or [])!=len(names): return jsonify(error='A selected document is not stored in Charlie. Import it first.'),400
-            cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input) VALUES(%s,%s,%s,'queued',%s::jsonb)",(job_id,STAGE,tk,json.dumps({'baseline':baseline,'filenames':names,'instructions':instructions,'commandId':command_id,'commandBridge':bridge,'sourceHashes':source_hashes,'recoverable':True})))
+            if target=='investment_case':
+                from command_thesis_bridge import file_hash
+                cur.execute('SELECT filename,file_data,file_type FROM document_files WHERE ticker=%s AND filename=ANY(%s)',(tk,names))
+                try:source_hashes={r['filename']:file_hash(r) for r in cur.fetchall()}
+                except (ValueError,TypeError):return jsonify(error='A selected original could not be verified. Reimport the document before retrying.'),400
+            cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input) VALUES(%s,%s,%s,'queued',%s::jsonb)",(job_id,STAGE,tk,json.dumps({'baseline':baseline,'filenames':names,'instructions':instructions,'commandId':command_id,'commandBridge':bridge,'sourceHashes':source_hashes,'recoverable':True,'target':target})))
         threading.Thread(target=run,args=(job_id,tk,baseline,names,key,instructions,source_hashes),daemon=True).start()
         return jsonify(jobId=job_id),202
 
@@ -244,10 +297,10 @@ def create_blueprint(get_db, call_model, get_key, model_identity=lambda: 'defaul
                 cur.execute('SELECT pg_try_advisory_xact_lock(hashtext(%s)) AS locked',(lock_name(job['id']),))
                 if not cur.fetchone()['locked']:continue
                 saved=obj(job['input']);attempts=saved.get('autoRecoveryAttempts',0)
-                cur.execute('SELECT analysis FROM portfolio_analyses WHERE ticker=%s',(job['ticker'],));current=cur.fetchone()
+                current=baseline_current(cur,job['ticker'],saved)
                 issue=None
                 if attempts>=2:issue='Automatic recovery limit reached. Inspect this proposal before retrying.'
-                elif not current or fingerprint(obj(current['analysis']))!=fingerprint(saved['baseline']):issue='Saved thesis changed during interruption. Prepare a fresh comparison.'
+                elif not current:issue='Saved research changed during interruption. Prepare a fresh comparison.'
                 saved.pop('workerToken',None)
                 if issue:
                     cur.execute("UPDATE mp_jobs SET status='failed',error=%s,input=%s::jsonb,updated_at=NOW() WHERE id=%s",(issue,json.dumps(saved),job['id']));failed.append(job['id']);continue
@@ -277,10 +330,9 @@ def create_blueprint(get_db, call_model, get_key, model_identity=lambda: 'defaul
             saved=obj(job['input']);attempts=saved.get('resumeAttempts',0)
             if attempts>=2:return jsonify(error='Two resume attempts used. Inspect the failure and prepare a fresh comparison.'),409
             if not obj(job.get('result')).get('checkpoint'):return jsonify(error='No completed stage was saved. Prepare a new comparison.'),409
-            cur.execute("SELECT id FROM mp_jobs WHERE ticker=%s AND stage=%s AND status IN ('queued','running','awaiting_approval') AND id<>%s LIMIT 1",(job['ticker'],STAGE,job_id))
+            cur.execute("SELECT id FROM mp_jobs WHERE ticker=%s AND stage=%s AND status IN ('queued','running','awaiting_approval') AND id<>%s AND COALESCE(input->>'target','thesis')=%s LIMIT 1",(job['ticker'],STAGE,job_id,saved.get('target','thesis')))
             if cur.fetchone():return jsonify(error='Review or dismiss the other active proposal first.'),409
-            cur.execute('SELECT analysis FROM portfolio_analyses WHERE ticker=%s',(job['ticker'],));current=cur.fetchone()
-            if not current or fingerprint(obj(current['analysis']))!=fingerprint(saved['baseline']):return jsonify(error='Saved thesis changed. Prepare a fresh comparison.'),409
+            if not baseline_current(cur,job['ticker'],saved):return jsonify(error='Saved research changed. Prepare a fresh comparison.'),409
             saved['resumeAttempts']=attempts+1
             cur.execute("UPDATE mp_jobs SET status='queued',error=NULL,input=%s::jsonb,updated_at=NOW() WHERE id=%s",(json.dumps(saved),job_id))
         threading.Thread(target=run,args=(job_id,job['ticker'],saved['baseline'],saved['filenames'],key,saved.get('instructions',''),saved.get('sourceHashes')),daemon=True).start()
@@ -293,6 +345,8 @@ def create_blueprint(get_db, call_model, get_key, model_identity=lambda: 'defaul
         with get_db(commit=True) as (_,cur):
             cur.execute('SELECT * FROM mp_jobs WHERE id=%s AND stage=%s FOR UPDATE',(job_id,STAGE));job=cur.fetchone()
             if not job: return jsonify(error='Proposal not found'),404
+            if obj(job.get('input')).get('target')=='investment_case' and data.get('action')!='dismiss':
+                return jsonify(error='Review and accept assumption changes in Investment cases; this action cannot write the legacy thesis.'),409
             if data.get('action')=='revert':
                 if job['status']=='reverted': return jsonify(status='reverted'),200
                 if job['status']!='applied': return jsonify(error='Only an applied proposal can be restored'),409

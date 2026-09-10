@@ -101,3 +101,31 @@ and direct AlphaSense authentication.
 The remaining sequence above still applies. This release advances parts of steps
 1 and 2; it does not provide global cancellation, automatic assumption matching,
 full model integration or unattended end-to-end certification.
+
+## T50: assumption-specific proposal generation
+
+- Investment cases now offer a saved-document selector and optional instructions.
+  Generation freezes the case revision and selected original hashes, then runs the
+  existing background amendment engine with a case-specific prompt. Up to ten
+  originals are supported; oversized inputs fail explicitly, never silently clip.
+- Stable assumption IDs constrain proposals to support, contrary evidence and
+  next-test fields. Claims, attribution basis, model inputs and the legacy thesis
+  are not automatically edited. Passage matching and a model reviewer gate acceptance;
+  failed checks remain visible. Empty change lists are valid outcomes.
+- Acceptance verifies unchanged core case context and unchanged target wording.
+  Disjoint accepted fields can be reviewed separately. Restored, edited or retargeted
+  assumptions cannot silently receive stale changes. Provenance remains in revisions.
+- The UI polls saved jobs, exposes checkpoint resume and closes proposals without
+  removing accepted case revisions. Case proposals are separated from legacy thesis
+  queues and cannot use the legacy apply/revert endpoint. Existing running-job
+  recovery now checks the correct case baseline; queued-before-worker-start recovery
+  remains a broader operational gap. Recovery still depends on the existing worker
+  invoking the recovery endpoint.
+- Validation: 394 safe backend tests, existing frontend tests, build, browser fixture
+  and disposable local PostgreSQL. The SQL fixture exercises a reviewer failure,
+  draft reuse on resume, original-source provenance, legacy isolation, no automatic
+  application, and idempotent acceptance. Canonical case-context serialization fixes
+  checkpoint drift after a JSONB round trip. No paid model acceptance run was made.
+
+Remaining: event-triggered case proposals, real-source quality acceptance, numeric
+financial-model/portfolio propagation, and the broader sequence above.

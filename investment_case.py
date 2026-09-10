@@ -9,6 +9,12 @@ from decimal import Decimal, InvalidOperation
 from flask import Blueprint, jsonify, request
 
 
+def case_context_hash(body):
+    context={k:body.get(k,'') for k in ('thesis','variantView','marketBaseline','changeConditions','scenarios')}
+    context['assumptions']=[{k:a.get(k,'') for k in ('id','claim','evidenceType')} for a in body.get('assumptions',[])]
+    return hashlib.sha256(json.dumps(context,sort_keys=True).encode()).hexdigest()
+
+
 def source_change(body, job, selection):
     """Bind a user-selected assumption field to an immutable reviewed excerpt snapshot.
 
@@ -29,6 +35,11 @@ def source_change(body, job, selection):
     assumption=next((a for a in merged.get('assumptions',[]) if a['id']==selection['assumptionId']),None)
     if not assumption:raise ValueError('The assumption no longer exists.')
     field=selection['field']
+    if change.get('assumptionId'):
+        if change['assumptionId']!=selection['assumptionId'] or change['field']!=field:
+            raise ValueError('This proposal belongs to a different assumption or field.')
+        if change.get('caseContextHash')!=case_context_hash(body) or assumption.get(field,'')!=change['before']:
+            raise ValueError('The investment case changed after generation. Prepare a fresh proposal before accepting this edit.')
     before=assumption.get(field,'');after=text(change['after'],'Proposed wording')
     if before==after:raise ValueError('This wording is already in the selected field.')
     assumption[field]=after
@@ -116,9 +127,11 @@ def create_blueprint(get_db):
     def source_proposals(ticker):
         if not re.fullmatch(r'[A-Z0-9][A-Z0-9.\-]{0,19}',ticker):return jsonify(error='Choose a valid ticker.'),400
         with get_db() as (_,cur):
-            cur.execute("SELECT id,status,result,created_at FROM mp_jobs WHERE ticker=%s AND stage='evidence_amendment' AND status IN ('awaiting_approval','applied') ORDER BY created_at DESC LIMIT 30",(ticker,))
+            cur.execute("SELECT id,status,result,error,created_at,input->>'target' AS target FROM mp_jobs WHERE ticker=%s AND stage='evidence_amendment' AND (status IN ('awaiting_approval','applied') OR (input->>'target'='investment_case' AND status IN ('queued','running','failed'))) ORDER BY created_at DESC LIMIT 30",(ticker,))
             rows=[dict(r) for r in cur.fetchall()]
-        response=jsonify(proposals=rows);response.headers['Cache-Control']='no-store';return response
+            cur.execute('SELECT filename FROM document_files WHERE ticker=%s ORDER BY filename',(ticker,))
+            documents=[r['filename'] for r in cur.fetchall()]
+        response=jsonify(proposals=rows,documents=documents);response.headers['Cache-Control']='no-store';return response
     @bp.route('/api/research/investment-case/<ticker>',methods=['GET','POST'])
     def case(ticker):
         if not re.fullmatch(r'[A-Z0-9][A-Z0-9.\-]{0,19}',ticker):return jsonify(error='Choose a valid ticker.'),400

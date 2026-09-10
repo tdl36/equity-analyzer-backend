@@ -44,7 +44,8 @@ try:
     assert client.get(url).json['revision']==3
     assumption=str(uuid.uuid4());job_id=str(uuid.uuid4())
     with db(commit=True) as (_,cur):
-        cur.execute("CREATE TABLE mp_jobs(id TEXT PRIMARY KEY,ticker TEXT,stage TEXT,status TEXT,result JSONB,created_at TIMESTAMPTZ DEFAULT NOW())")
+        cur.execute("CREATE TABLE mp_jobs(id TEXT PRIMARY KEY,ticker TEXT,stage TEXT,status TEXT,result JSONB,input JSONB DEFAULT '{}'::jsonb,error TEXT,updated_at TIMESTAMPTZ DEFAULT NOW(),created_at TIMESTAMPTZ DEFAULT NOW())")
+        cur.execute("CREATE TABLE document_files(ticker TEXT,filename TEXT,file_data TEXT,file_type TEXT)")
         import json
         result={'changes':[{'id':'0','after':'Management guided to steady growth, subject to demand.','reason':'New guidance','passageMatched':True,'reviewPassed':True,'evidence':[{'sourceId':'s','status':'passage_matched','excerpt':'We expect steady growth, subject to demand.'}]}],'sources':[{'id':'s','filename':'Original transcript','extractionHash':'immutable-hash'}]}
         cur.execute("INSERT INTO mp_jobs(id,ticker,stage,status,result) VALUES(%s,'ABBV','evidence_amendment','awaiting_approval',%s::jsonb)",(job_id,json.dumps(result)))
