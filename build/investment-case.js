@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { CaseEvidence } from './investment-case-evidence';
 var empty = () => ({
   thesis: '',
   variantView: '',
@@ -73,17 +74,26 @@ export function InvestmentCase({
     pending.current = null;
     setMessage('Unsaved changes');
   };
-  var save = async () => {
+  var save = async (operation = {
+    body
+  }) => {
     if (lock.current) return;
     lock.current = true;
     setBusy(true);
     setMessage('Saving…');
-    var payload = pending.current || {
+    var signature = JSON.stringify({
+      revision,
+      ...operation
+    });
+    var payload = pending.current?.signature === signature ? pending.current.payload : {
       requestId: crypto.randomUUID(),
       revision,
-      body
+      ...operation
     };
-    pending.current = payload;
+    pending.current = {
+      signature,
+      payload
+    };
     try {
       var d = await json('/api/research/investment-case/' + encodeURIComponent(active), {
         method: 'POST',
@@ -94,6 +104,8 @@ export function InvestmentCase({
       });
       if (!alive.current) return;
       setRevision(d.revision);
+      setBody(d.body || payload.body);
+      setBridge(d.bridge || {});
       setDirty(false);
       pending.current = null;
       setMessage(`Saved revision ${d.revision}. Your thesis documents remain separate.`);
@@ -101,7 +113,6 @@ export function InvestmentCase({
         var fresh = await json('/api/research/investment-case/' + encodeURIComponent(active));
         if (alive.current) {
           setVersions(fresh.versions);
-          setBridge(fresh.bridge);
         }
       } catch {
         if (alive.current) setMessage(`Revision ${d.revision} saved; history refresh unavailable.`);
@@ -126,7 +137,7 @@ export function InvestmentCase({
     "aria-label": "Investment case"
   }, /*#__PURE__*/React.createElement("p", {
     className: "workspace-eyebrow"
-  }, "INVESTMENT CASE / YOUR ASSUMPTIONS"), /*#__PURE__*/React.createElement("h2", null, "Make the investment case explicit."), /*#__PURE__*/React.createElement("p", null, "Record what you believe, the evidence against it, and the next test. These are your working assumptions; source references are entered by you and are not automatically verified."), /*#__PURE__*/React.createElement("div", {
+  }, "INVESTMENT CASE / YOUR ASSUMPTIONS"), /*#__PURE__*/React.createElement("h2", null, "Make the investment case explicit."), /*#__PURE__*/React.createElement("p", null, "Record what you believe, the evidence against it, and the next test. These are your working assumptions. Manual source references are unverified; accepted research links retain the original excerpt and its provenance."), /*#__PURE__*/React.createElement("div", {
     className: "desk-filter"
   }, /*#__PURE__*/React.createElement("label", null, "Company", /*#__PURE__*/React.createElement("input", {
     list: "investment-case-tickers",
@@ -241,14 +252,37 @@ export function InvestmentCase({
     })
   }))))), /*#__PURE__*/React.createElement("button", {
     className: "workspace-primary",
-    onClick: save
+    onClick: () => save()
   }, busy ? 'Saving…' : 'Save investment case revision')), !dirty && Object.keys(bridge).length > 0 && /*#__PURE__*/React.createElement("div", {
     style: {
       overflowX: 'auto'
     }
   }, /*#__PURE__*/React.createElement("h3", null, "Saved scenario sensitivities"), /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Scenario"), /*#__PURE__*/React.createElement("th", null, "Implied price (", body.scenarios.currency, ")"), /*#__PURE__*/React.createElement("th", null, "Price return"))), /*#__PURE__*/React.createElement("tbody", null, Object.entries(bridge).map(([name, v]) => /*#__PURE__*/React.createElement("tr", {
     key: name
-  }, /*#__PURE__*/React.createElement("th", null, name), /*#__PURE__*/React.createElement("td", null, v.impliedPrice), /*#__PURE__*/React.createElement("td", null, v.priceReturnPct, "%")))))), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Revision history \xB7 latest ", versions.length), /*#__PURE__*/React.createElement("label", null, "Read a saved revision", /*#__PURE__*/React.createElement("select", {
+  }, /*#__PURE__*/React.createElement("th", null, name), /*#__PURE__*/React.createElement("td", null, v.impliedPrice), /*#__PURE__*/React.createElement("td", null, v.priceReturnPct, "%")))))), /*#__PURE__*/React.createElement(CaseEvidence, {
+    api: api,
+    ticker: active,
+    body: body,
+    disabled: busy || dirty,
+    onCommit: save
+  }), /*#__PURE__*/React.createElement("button", {
+    disabled: busy || dirty || !revision,
+    onClick: () => {
+      var blob = new Blob([JSON.stringify({
+        ticker: active,
+        revision,
+        body
+      }, null, 2)], {
+        type: 'application/json'
+      });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = `${active}-investment-case-r${revision}.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+  }, "Download saved case with evidence \xB7 JSON"), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Revision history \xB7 latest ", versions.length), /*#__PURE__*/React.createElement("label", null, "Read a saved revision", /*#__PURE__*/React.createElement("select", {
     value: selectedVersion,
     onChange: e => setSelectedVersion(e.target.value)
   }, /*#__PURE__*/React.createElement("option", {
@@ -256,7 +290,21 @@ export function InvestmentCase({
   }, "Choose revision"), versions.map(v => /*#__PURE__*/React.createElement("option", {
     key: v.revision,
     value: v.revision
-  }, "Revision ", v.revision, " \xB7 ", new Date(v.created_at).toLocaleString())))), snapshot && /*#__PURE__*/React.createElement("div", null, fields.map(([key, label]) => /*#__PURE__*/React.createElement("section", {
+  }, "Revision ", v.revision, " \xB7 ", new Date(v.created_at).toLocaleString())))), snapshot && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", null, "Restore makes a new revision; all intervening history is retained. Review this snapshot before restoring."), /*#__PURE__*/React.createElement("button", {
+    disabled: busy || dirty || snapshot.revision === revision,
+    onClick: () => save({
+      mode: 'restore',
+      sourceRevision: snapshot.revision
+    })
+  }, "Restore revision ", snapshot.revision, " as a new revision"), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Scenario inputs and evidence metadata"), /*#__PURE__*/React.createElement("pre", {
+    style: {
+      whiteSpace: 'pre-wrap',
+      overflowWrap: 'anywhere'
+    }
+  }, JSON.stringify({
+    scenarios: snapshot.body.scenarios,
+    evidenceLinks: snapshot.body.evidenceLinks || []
+  }, null, 2))), fields.map(([key, label]) => /*#__PURE__*/React.createElement("section", {
     key: key
   }, /*#__PURE__*/React.createElement("h4", null, label), /*#__PURE__*/React.createElement("p", {
     style: {

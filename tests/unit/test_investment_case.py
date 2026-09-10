@@ -48,3 +48,19 @@ class CaseTests(unittest.TestCase):
         self.assertEqual(client.get(url).json['versions'][1]['body']['thesis'],'Original belief')
         self.assertEqual(len(rows),2)
         self.assertEqual(client.get('/api/research/investment-case/PFE').json['revision'],0)
+
+class EvidenceTests(unittest.TestCase):
+    def test_source_link_preserves_original_and_attribution(self):
+        from investment_case import source_change
+        original={'assumptions':[{'id':'a','claim':'My interpretation','support':'Earlier support','evidenceType':'interpretation'}]}
+        selection={'assumptionId':'a','field':'support','changeId':'0'}
+        job={'id':'j','status':'awaiting_approval','result':{'changes':[{'id':'0','after':'Management expects growth','passageMatched':True,'reviewPassed':True,'evidence':[{'sourceId':'s','status':'passage_matched','excerpt':'Exact management statement'}]}],'sources':[{'id':'s','filename':'Transcript','extractionHash':'abc'}]}}
+        updated=source_change(original,job,selection)
+        self.assertEqual(original['assumptions'][0]['support'],'Earlier support')
+        self.assertEqual(updated['assumptions'][0]['claim'],'My interpretation')
+        self.assertEqual(updated['evidenceLinks'][0]['evidence'][0]['source']['extractionHash'],'abc')
+        job['result']['changes'][0]['reviewPassed']=False
+        with self.assertRaises(ValueError):source_change(original,job,selection)
+        job['result']['changes'][0]['reviewPassed']=True
+        job['status']='dismissed'
+        with self.assertRaises(ValueError):source_change(original,job,selection)

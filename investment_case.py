@@ -1,11 +1,42 @@
 """User-authored investment cases with immutable revisions and deterministic scenarios."""
 import hashlib
+import copy
 import json
 import re
 import threading
 import uuid
 from decimal import Decimal, InvalidOperation
 from flask import Blueprint, jsonify, request
+
+
+def source_change(body, job, selection):
+    """Bind a user-selected assumption field to an immutable reviewed excerpt snapshot.
+
+    Passage matching proves provenance at generation, not currentness or truth.
+    This function never changes the original thesis or the amendment's decision.
+    """
+    if not job or job['status'] not in ('awaiting_approval', 'applied'):
+        raise ValueError('This source proposal is no longer available for review.')
+    result=job['result'] or {}
+    change=next((c for c in result.get('changes',[]) if c['id']==selection['changeId']),None)
+    if not change or not change.get('passageMatched') or not change.get('reviewPassed'):
+        raise ValueError('The selected change has unresolved evidence or review findings.')
+    sources={s['id']:s for s in result.get('sources',[])}
+    refs=[{**e,'source':sources[e['sourceId']]} for e in change.get('evidence',[])
+          if e.get('status')=='passage_matched' and e.get('sourceId') in sources]
+    if not refs:raise ValueError('No matching source snapshot is available.')
+    merged=copy.deepcopy(body)
+    assumption=next((a for a in merged.get('assumptions',[]) if a['id']==selection['assumptionId']),None)
+    if not assumption:raise ValueError('The assumption no longer exists.')
+    field=selection['field']
+    before=assumption.get(field,'');after=text(change['after'],'Proposed wording')
+    if before==after:raise ValueError('This wording is already in the selected field.')
+    assumption[field]=after
+    merged.setdefault('evidenceLinks',[]).append({
+        'assumptionId':assumption['id'],'field':field,'before':before,'after':after,
+        'jobId':str(job['id']),'changeId':change['id'],'reason':change.get('reason',''),
+        'evidence':refs,'provenance':'Passage matched and model reviewed at proposal generation; analyst accepted.'})
+    return merged
 
 
 def text(value, label, maximum=12000):
@@ -81,6 +112,13 @@ def create_blueprint(get_db):
                   payload_hash TEXT NOT NULL, body JSONB NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW(),
                   PRIMARY KEY(ticker,revision))''')
             ready=True
+    @bp.get('/api/research/investment-case/<ticker>/source-proposals')
+    def source_proposals(ticker):
+        if not re.fullmatch(r'[A-Z0-9][A-Z0-9.\-]{0,19}',ticker):return jsonify(error='Choose a valid ticker.'),400
+        with get_db() as (_,cur):
+            cur.execute("SELECT id,status,result,created_at FROM mp_jobs WHERE ticker=%s AND stage='evidence_amendment' AND status IN ('awaiting_approval','applied') ORDER BY created_at DESC LIMIT 30",(ticker,))
+            rows=[dict(r) for r in cur.fetchall()]
+        response=jsonify(proposals=rows);response.headers['Cache-Control']='no-store';return response
     @bp.route('/api/research/investment-case/<ticker>',methods=['GET','POST'])
     def case(ticker):
         if not re.fullmatch(r'[A-Z0-9][A-Z0-9.\-]{0,19}',ticker):return jsonify(error='Choose a valid ticker.'),400
@@ -99,19 +137,50 @@ def create_blueprint(get_db):
             ident=str(uuid.UUID(d.get('requestId','')))
             revision=d.get('revision')
             if type(revision)!=int or revision<0:raise ValueError('Load the current revision before saving.')
-            body=validate(d.get('body'))
+            mode=d.get('mode','save')
+            if mode=='save':operation={'body':validate(d.get('body'))}
+            elif mode=='restore':
+                target=d.get('sourceRevision')
+                if type(target)!=int or target<1:raise ValueError('Choose a saved revision.')
+                operation={'sourceRevision':target}
+            elif mode=='source_change':
+                selection=d.get('sourceChange',{})
+                if not isinstance(selection,dict):raise ValueError('Choose a source change.')
+                selection={'jobId':str(uuid.UUID(selection.get('jobId',''))),
+                           'assumptionId':str(uuid.UUID(selection.get('assumptionId',''))),
+                           'changeId':text(selection.get('changeId'),'Change ID',100),
+                           'field':selection.get('field')}
+                if selection['field'] not in ('support','contrary','nextTest'):
+                    raise ValueError('Choose supporting evidence, contrary evidence or next test.')
+                operation={'sourceChange':selection}
+            else:raise ValueError('Unknown save operation.')
         except (ValueError,TypeError,AttributeError) as e:return jsonify(error=str(e)),400
-        digest=hashlib.sha256(json.dumps({'ticker':ticker,'revision':revision,'body':body},sort_keys=True).encode()).hexdigest()
+        digest=hashlib.sha256(json.dumps({'ticker':ticker,'revision':revision,**({} if mode=='save' else {'mode':mode}),**operation},sort_keys=True).encode()).hexdigest()
         with get_db(commit=True) as (_,cur):
             cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',('investment-case-request:'+ident,))
-            cur.execute('SELECT ticker,revision,payload_hash FROM investment_case_versions WHERE request_id=%s',(ident,));receipt=cur.fetchone()
+            cur.execute('SELECT ticker,revision,payload_hash,body FROM investment_case_versions WHERE request_id=%s',(ident,));receipt=cur.fetchone()
             if receipt:
                 if receipt['payload_hash']!=digest:return jsonify(error='This request ID was already used for different edits.'),409
-                return jsonify(ticker=ticker,revision=receipt['revision'],replayed=True)
+                return jsonify(ticker=ticker,revision=receipt['revision'],body=receipt['body'],bridge=scenario_bridge(receipt['body'].get('scenarios',{})),replayed=True)
             cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',('investment-case:'+ticker,))
-            cur.execute('SELECT revision FROM investment_case_versions WHERE ticker=%s ORDER BY revision DESC LIMIT 1',(ticker,));current=cur.fetchone()
+            cur.execute('SELECT revision,body FROM investment_case_versions WHERE ticker=%s ORDER BY revision DESC LIMIT 1',(ticker,));current=cur.fetchone()
             if (current['revision'] if current else 0)!=revision:
                 return jsonify(error='A newer investment case was saved. Your unsaved edits are retained; reload and reconcile them before saving.'),409
+            if mode=='save':
+                body=operation['body']
+                # Evidence metadata can only originate in a server-reviewed operation.
+                body['evidenceLinks']=(current['body'].get('evidenceLinks',[]) if current else [])
+            elif mode=='restore':
+                cur.execute('SELECT body FROM investment_case_versions WHERE ticker=%s AND revision=%s',(ticker,operation['sourceRevision']))
+                original=cur.fetchone()
+                if not original:return jsonify(error='Saved revision not found.'),404
+                body=copy.deepcopy(original['body'])
+                body['restoredFromRevision']=operation['sourceRevision']
+            else:
+                selection=operation['sourceChange']
+                cur.execute("SELECT id,status,result FROM mp_jobs WHERE id=%s AND ticker=%s AND stage='evidence_amendment' FOR SHARE",(selection['jobId'],ticker))
+                try:body=source_change(current['body'] if current else {},cur.fetchone(),selection)
+                except ValueError as e:return jsonify(error=str(e)),409
             cur.execute('INSERT INTO investment_case_versions(ticker,revision,request_id,payload_hash,body) VALUES(%s,%s,%s,%s,%s::jsonb)',(ticker,revision+1,ident,digest,json.dumps(body)))
-        return jsonify(ticker=ticker,revision=revision+1,bridge=scenario_bridge(body['scenarios']))
+        return jsonify(ticker=ticker,revision=revision+1,body=body,bridge=scenario_bridge(body.get('scenarios',{})))
     return bp

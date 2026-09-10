@@ -72,3 +72,32 @@ remains open. No provider calls, test research edits or emails were sent.
 No automatic thesis acceptance, portfolio changes or external communications are
 introduced. Current collection continues to depend on Mac/Codex/Chrome availability
 and direct AlphaSense authentication.
+
+## T49: reviewed evidence links and delivery clarity
+
+- Investment cases can accept an existing source-supported amendment into a chosen
+  assumption's support, contrary evidence or next-test field. The UI previews the
+  old/new wording and original excerpt. The server checks ticker identity, proposal
+  availability, passage-match and model-review flags, plus the current case revision.
+  Source identity/extraction hash, quotation, rationale, original and replacement
+  wording are retained in that immutable case revision. Later manual edits mark the
+  displayed link historical. This records provenance at proposal generation; it does
+  not re-fetch sources or certify interpretation/currentness. Case-specific automatic
+  proposal generation and numeric model propagation remain open.
+- Restoring a historical case creates a new revision, preserving later history.
+  Download exports the saved case, scenarios and evidence metadata as JSON. Cross-device
+  conflicts and request replay protection apply to restoration and evidence acceptance.
+- Inspect assignment now distinguishes source collection, saved analyst recap, saved
+  meeting questions and requested thesis proposals. Dispatch alone is never a completed
+  output. Existing reports remain accessible when a regeneration fails, with attention
+  surfaced. Results use exact command/topic links; no same-ticker inference.
+- Verification: 389 safe backend tests passed before a further delivery regression
+  test was added; targeted tests and the production build are rerun for release.
+  Disposable local PostgreSQL verifies restore/replay, immutable evidence, rejection
+  of forged metadata, dismissed proposals and stale revisions. Browser fixture checks
+  source selection, before/after acceptance, restoration and assignment status.
+  These checks use synthetic data, not paid generation or live research writes.
+
+The remaining sequence above still applies. This release advances parts of steps
+1 and 2; it does not provide global cancellation, automatic assumption matching,
+full model integration or unattended end-to-end certification.
