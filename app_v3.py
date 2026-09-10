@@ -23399,10 +23399,11 @@ def _mp_synthesize_inline(api_key, ticker, company_name, sector, analyses, past_
     return synthesis, tokens
 
 
-def _mp_questions_inline(api_key, ticker, company_name, sector, synthesis, unresolved, source_names=None, source_evidence=None, meeting_profile=None, revision_context=None, on_progress=None):
+def _mp_questions_inline(api_key, ticker, company_name, sector, synthesis, unresolved, source_names=None, source_evidence=None, meeting_profile=None, revision_context=None, on_progress=None, company_context=None):
     if source_names is not None:
         from meeting_question_generation import generate
-        return generate(api_key,ticker,company_name,sector,synthesis,unresolved,source_names,evidence=source_evidence,meeting_profile=meeting_profile,revision_context=revision_context,on_progress=on_progress)
+        return generate(api_key,ticker,company_name,sector,synthesis,unresolved,source_names,evidence=source_evidence,meeting_profile=meeting_profile,revision_context=revision_context,on_progress=on_progress,company_context=company_context)
+    from meeting_memory import instruction
     unresolved_text = ""
     if unresolved:
         items = [f"- {q.get('question', '')} (from {q.get('meeting_date', '?')})" for q in unresolved[:15]]
@@ -23411,6 +23412,7 @@ def _mp_questions_inline(api_key, ticker, company_name, sector, synthesis, unres
         ticker=ticker, company_name=company_name, sector=sector,
         synthesis_text=json.dumps(synthesis, indent=2), unresolved_text=unresolved_text,
     )
+    prompt += instruction(company_context)
     if meeting_profile is not None:
         from meeting_command_plan import manual_question_prompt
         prompt=manual_question_prompt(prompt,meeting_profile)
@@ -23504,6 +23506,8 @@ def _execute_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, 
     def update(jid, **kwargs):
         return _mp_update_job(jid, **({'_owner':owner} if owner else {}), **kwargs)
     try:
+        from meeting_memory import freeze
+        company_context = freeze(get_db, job_id, ticker, owner)
         n_docs = len(docs)
         # Carry forward any checkpoint from a prior (failed) run
         cp = resume_from or {}
@@ -23629,6 +23633,7 @@ def _execute_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, 
                     api_key, ticker, company_name, sector,
                     ({'sourceAnalyses':analyses,'researchWindow':timeframe.split('. Meeting assignment:')[0],
                       'assignmentContext':timeframe} if managed else ({'synthesis':synthesis,'revision':revision_context} if revision_context else synthesis)), unresolved,
+                    company_context=company_context,
                     **({'source_names':[d['filename'] for d in docs],'source_evidence':source_evidence,'revision_context':revision_context,'on_progress':drafting_progress,'meeting_profile':meeting_profile or (None if managed else {'format':'one_on_one','audience':'specialist'})} if grounded else {'meeting_profile':meeting_profile})
                 )
                 tokens_total += q_tokens
@@ -23669,6 +23674,7 @@ def _execute_mp_pipeline_job(job_id, api_key, meeting_id, ticker, company_name, 
             'questionSetId': qs['id'], 'version': qs['version'],
             'topics': topics, 'synthesis': synthesis,
             'totalTokens': tokens_total,
+            'companyMemory': company_context,
             'cachedSources': sum(bool(a and a.get('_cacheHit')) for a in analyses),
         })
     except Exception as e:
@@ -23733,6 +23739,7 @@ def mp_run_pipeline():
 
         # Persist full input (excluding API key) so retries have everything needed
         persisted_input = {
+            'companyMemoryRequested': True,
             'meetingId': meeting_id, 'ticker': ticker, 'companyName': company_name,
             'sector': sector, 'docs': docs, 'pastQuestions': past_questions,
             'timeframe': timeframe, 'unresolvedQuestions': unresolved, 'model': model, 'meetingProfile':profile,'revisionContext':revision_context,'recoveryEnabled':True,

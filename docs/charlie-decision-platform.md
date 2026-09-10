@@ -152,3 +152,24 @@ financial-model/portfolio propagation, and the broader sequence above.
   source-document retrieval, editable versioned investor framework, belief adjudication
   and repeat-alert suppression, followed by the benchmark-underweight replay. This is
   a shared current-context reader, not the complete canonical company-memory system.
+
+## T52: meeting-prep company context (backend release)
+
+- New manual and Command meeting packs freeze shared company memory before source
+  analysis. The job retains the exact snapshot; retries reuse it even if the saved
+  investment case changes. Worker ownership and ticker identity are checked before
+  retrieval. Older jobs keep their existing context contract.
+- Question generation receives the snapshot separately from selected documents.
+  Instructions use beliefs as questions to test, prohibit treating them as original
+  evidence, preserve source checks and attribution, and retain the chosen meeting
+  length and breadth. Document analysis/synthesis remains source-focused.
+- Removed the Command preparation path's 40,000-character legacy-thesis clipping;
+  both entry paths now use the shared reader. Model context-window limits still
+  apply. Completed job results retain the context receipt as well as job input.
+- Validation: 426 safe unit-test executions plus a subsequent targeted 20-test
+  pipeline run; isolated PostgreSQL verifies frozen context across later revisions
+  and ownership rejection. No paid real-source generation was run, so output-quality
+  improvements remain to be evaluated with actual packs. No frontend changes.
+- Next: explicit dated analyst decisions and historical retrieval, versioned investor
+  framework, belief adjudication and alert suppression. A thesis revision is not
+  automatically classified as an investment decision or management answer.

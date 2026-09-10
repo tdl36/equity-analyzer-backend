@@ -61,3 +61,14 @@ class MeetingProfileGenerationTests(QuestionGenerationTests):
         progress=[]
         generate('key','ABT','Abbott','Healthcare',{},[],['source.pdf'],client,on_progress=progress.append)
         self.assertEqual(progress[-1],{'outputCharacters':6,'generationAttempt':1})
+
+class SharedMeetingContextTests(QuestionGenerationTests):
+    def test_context_reaches_question_model_with_evidence_boundary(self):
+        import company_memory
+        client=self.client()
+        snapshot=company_memory.assemble('ABT',{'revision':9,'created_at':'today','body':{'thesis':'Cash conversion is the disputed assumption'}})
+        generate('key','ABT','Abbott','Healthcare',{},[],['source.pdf'],client,company_context=snapshot)
+        prompt=client.messages.stream.call_args.kwargs['messages'][0]['content']
+        self.assertIn('Cash conversion is the disputed assumption',prompt)
+        self.assertIn('must never satisfy a source citation',prompt)
+        self.assertIn('"revision": 9',prompt)

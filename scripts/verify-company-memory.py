@@ -37,6 +37,20 @@ try:
     assert 'superseded' not in r.get_data(as_text=True)
     assert r.json==app.test_client().get('/api/research/company-memory/ABT').json
     assert cm.load(db,'UNKNOWN')['entries']==[]
+    import meeting_memory
+    with db(True) as (_,c):
+        c.execute('CREATE TABLE mp_jobs(id TEXT PRIMARY KEY,ticker TEXT,input JSONB,status TEXT,updated_at TIMESTAMPTZ DEFAULT NOW())')
+        c.execute("INSERT INTO mp_jobs VALUES('meeting','ABT',%s,'running',NOW())",(json.dumps({'companyMemoryRequested':True,'workerToken':'qa'}),))
+    frozen=meeting_memory.freeze(db,'meeting','ABT','qa')
+    assert frozen['entries'][0]['revision']==2
+    with db(True) as (_,c):
+        c.execute("INSERT INTO investment_case_versions(ticker,revision,body) VALUES('ABT',3,%s)",(json.dumps({'thesis':'new belief after dispatch'}),))
+    assert meeting_memory.freeze(db,'meeting','ABT','qa')==frozen
+    assert cm.load(db,'ABT')['entries'][0]['revision']==3
+    try: meeting_memory.freeze(db,'meeting','ABT','wrong-owner')
+    except ValueError: pass
+    else: raise AssertionError('Wrong owner accepted')
+    print('PASS: meeting snapshot persists across later revisions and rejects wrong worker.')
     print('PASS: latest revision, provenance, ticker isolation, stable snapshots, missing case table and no-store route.')
 finally:
     with admin.cursor() as c:c.execute(sql.SQL('DROP SCHEMA {} CASCADE').format(sql.Identifier(schema)))

@@ -79,14 +79,10 @@ def prepare(get_db, command):
             cur.execute('INSERT INTO mp_documents(meeting_id,filename,file_data,doc_type,extracted_text,upload_order,file_size,token_estimate) VALUES(%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id',
                         (mid,d['filename'],d['fileData'],d['docType'],d['extractedText'],i,len(base64.b64decode(d['fileData'])),len(d['extractedText'])//4))
             d['id']=cur.fetchone()['id'];del d['fileData']
-        cur.execute('SELECT analysis FROM portfolio_analyses WHERE ticker=%s',(command['ticker'],))
-        thesis=cur.fetchone()
-        baseline=json.dumps(obj(thesis['analysis']),default=str) if thesis else 'No saved thesis available.'
-        baseline=baseline if len(baseline)<=40000 else baseline[:40000]+' [Saved thesis context truncated]'
-        inp={'commandId':cid,'commandRevision':bridge['revision'],'meetingId':mid,'ticker':command['ticker'],
+        inp={'companyMemoryRequested':True,'commandId':cid,'commandRevision':bridge['revision'],'meetingId':mid,'ticker':command['ticker'],
              'companyName':company['name'],'sector':company['sector'],'docs':docs,'pastQuestions':past,
              'unresolvedQuestions':[q for q in past if q.get('status') not in ('resolved','answered')],
-             'timeframe':obj(command['input'])['payload']['since']+' through '+obj(command['input'])['payload']['until']+'. Meeting assignment: '+bridge['instructions']+'\nSaved investment view (historical context, not independently verified evidence):\n'+baseline,
+             'timeframe':obj(command['input'])['payload']['since']+' through '+obj(command['input'])['payload']['until']+'. Meeting assignment: '+bridge['instructions'],
              'meetingProfile':{k:options.get(k,default) for k,default in [('format','conference'),('audience','specialist')]}, 'recoveryAttempts':0}
         cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input) VALUES(%s,'command_meeting',%s,'queued',%s::jsonb)",(jid,command['ticker'],json.dumps(inp,default=str)))
     return jid

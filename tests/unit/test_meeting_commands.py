@@ -105,6 +105,8 @@ class ExistingPipelineBridgeTests(unittest.TestCase):
         from pathlib import Path
         tree=ast.parse(Path('app_v3.py').read_text())
         function=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='_execute_mp_pipeline_job')
+        memory_patch=patch('meeting_memory.freeze',return_value=None)
+        memory_patch.start();self.addCleanup(memory_patch.stop)
         evidence_patch=patch('meeting_source_support.excerpts',return_value={'sources':[],'limitations':[]})
         evidence_patch.start();self.addCleanup(evidence_patch.stop)
         env={'threading':threading,'get_db':Mock()}
@@ -127,6 +129,16 @@ class ExistingPipelineBridgeTests(unittest.TestCase):
         self.assertEqual(final['status'],'done');self.assertEqual(final['result']['questionSetId'],7)
         self.assertEqual(env['_mp_synthesize_inline'].call_args.args[-1],'Meeting focus: margins')
         self.assertEqual(env['_mp_questions_inline'].call_args.args[4]['assignmentContext'],'Meeting focus: margins')
+    def test_shared_memory_reaches_question_stage_and_saved_receipt(self):
+        env=self.pipeline()
+        snapshot={'ticker':'ABT','snapshotHash':'fixture','entries':[]}
+        with patch('meeting_memory.freeze',return_value=snapshot):
+            env['_run_mp_pipeline_job'](CID,'fake-key',1,'ABT','Abbott','Health',
+                [{'id':2,'filename':'release.txt','extractedText':'Reported facts'}],[],
+                'Meeting focus: margins',[],'model',managed=True)
+        self.assertEqual(env['_mp_questions_inline'].call_args.kwargs['company_context'],snapshot)
+        self.assertEqual(env['_mp_update_job'].call_args.kwargs['result']['companyMemory'],snapshot)
+
     def test_success_keeps_cache_reuse_receipt(self):
         env=self.pipeline();env['_mp_analyze_one_doc'].return_value=({'facts':['existing fact'],'_cacheHit':True},0)
         env['_run_mp_pipeline_job'](CID,'fake-key',1,'ABT','Abbott','Health',
