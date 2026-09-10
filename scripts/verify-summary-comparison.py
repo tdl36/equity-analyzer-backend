@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Real SQL/HTTP verification in disposable LOCAL schema. Model work is mocked."""
-import sys,uuid,threading,time,json
+import sys,uuid,threading,time,json,os
 from pathlib import Path
 from contextlib import contextmanager
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
@@ -61,7 +61,28 @@ try:
  time.sleep(.1);assert len(calls)==2,'Completed comparison regenerated'
  assert bp.enqueue('fixture','test-never-used',automatic=True)==jid
  time.sleep(.1);assert len(calls)==2,'Automatic save replayed completed work'
+ # Only a stale eligible job can recover; completed/failed/legacy jobs stay put.
+ with db(True) as (_,c):
+  for ident,status,enabled,attempts in [('abandoned','running',True,0),('exhausted','running',True,2),('legacy','running',False,0),('failed','failed',True,0),('owned','running',True,0)]:
+   c.execute("INSERT INTO summary_comparisons(id,summary_id,source_hash,version,source,baseline,state,status,recovery_enabled,recovery_attempts,updated_at) SELECT %s,summary_id,%s,version,source,baseline,state,%s,%s,%s,NOW()-INTERVAL '10 minutes' FROM summary_comparisons WHERE id=%s",(ident,ident,status,enabled,attempts,jid))
+ oldkey=os.environ.get('ANTHROPIC_API_KEY');os.environ['ANTHROPIC_API_KEY']='test-never-used'
+ held=psycopg2.connect(dbname='postgres',host='/tmp')
+ try:
+  with held.cursor() as c:c.execute("SELECT pg_advisory_lock(hashtext('summary-comparison:owned'))")
+  bp.recover_once()
+  with db() as (_,c):
+   c.execute('SELECT id,status,recovery_attempts FROM summary_comparisons');states={r['id']:dict(r) for r in c.fetchall()}
+  assert states['abandoned']['status']=='complete' and states['abandoned']['recovery_attempts']==1
+  assert states['exhausted']['status']=='failed'
+  assert states['legacy']['status']=='running' and states['failed']['status']=='failed'
+  assert states['owned']['status']=='running' and states['owned']['recovery_attempts']==0
+  assert len(calls)==3
+ finally:
+  held.close()
+  if oldkey is None:os.environ.pop('ANTHROPIC_API_KEY',None)
+  else:os.environ['ANTHROPIC_API_KEY']=oldkey
  print('PASS: automatic enqueue and replay protection; real SQL checkpoints, concurrent duplicate exclusion, resume, immutable original, scoped feedback, completed replay protection. No provider calls.')
+ print('PASS: automatic abandoned-job recovery reuses checkpoints, skips live owners/failed/legacy jobs, and stops at recovery limit.')
 finally:
  release.set()
  with admin.cursor() as c:c.execute(sql.SQL('DROP SCHEMA {} CASCADE').format(sql.Identifier(schema)))

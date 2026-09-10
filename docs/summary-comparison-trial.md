@@ -82,3 +82,14 @@ warn of unknown delivery rather than automatically retrying a potentially sent e
 Validation: three isolated export-handler tests inspect real generated DOCX contents,
 section selection, iCloud queue payload, scope rejection, and incomplete-version rejection.
 Browser fixture verified controls and Copy. No live email or iCloud write used for testing.
+
+## T48 recovery update — September 10
+
+This supersedes the earlier explicit-retry-only description for NEW comparisons.
+New queued/running jobs are eligible for bounded automatic restart recovery using
+the server research key. Stale candidates must obtain the same execution lock;
+active local jobs and database owners are skipped. Completed and failed jobs are
+never automatically replayed. At most two automatic recoveries are attempted;
+historical rows remain opt-out. Saved checkpoints survive; a response lost before
+checkpointing can require repeated provider computation. Explicit retry remains
+available. See docs/charlie-decision-platform.md for verification and scope.

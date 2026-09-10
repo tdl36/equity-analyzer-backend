@@ -251,7 +251,9 @@ export function SummaryComparison({
     className: "rounded-xl border border-amber-500/30 p-4"
   }, /*#__PURE__*/React.createElement("strong", null, state.progress || 'Queued for generation'), /*#__PURE__*/React.createElement("p", {
     className: "text-sm text-slate-400 mt-1"
-  }, "You can leave this page. Completed sections appear below as they are saved.")), (row.status === 'failed' || stale) && /*#__PURE__*/React.createElement("div", {
+  }, "You can leave this page. Completed sections appear below as they are saved."), row.recovery_enabled && /*#__PURE__*/React.createElement("p", {
+    className: "text-sm text-slate-400"
+  }, "Interrupted work can resume automatically with the server research key. Recovery attempts: ", row.recovery_attempts || 0, " of 2. Provider failures still require review.")), (row.status === 'failed' || stale) && /*#__PURE__*/React.createElement("div", {
     role: "alert",
     className: "rounded-xl border border-amber-500/30 p-4"
   }, /*#__PURE__*/React.createElement("p", null, row.error || 'No recent progress. Resume from the last saved checkpoint.'), /*#__PURE__*/React.createElement("button", {

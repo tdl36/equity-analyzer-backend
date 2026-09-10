@@ -30,17 +30,20 @@ class WatchDispatchTests(unittest.TestCase):
         class Cursor:
             def execute(self,sql,args=()):
                 self.row=None
+                self.rows=[]
                 if sql.startswith('SELECT value FROM app_settings WHERE key=%s'):self.row={'value':json.dumps(owner.state)}
                 elif "key='finnhub_api_key'" in sql:self.row={'value':'fake-test-key'}
                 elif "key='collection_control_snapshot'" in sql:self.row={'value':{'policies':[{'ticker':'ABBV','enabled':True,'hours':168,'lookbackDays':7,'workflow':'thesis','kinds':['transcript'],'topic':'','instructions':''}]}}
                 elif sql.startswith('INSERT INTO app_settings'):owner.state=json.loads(args[1])
                 elif sql.startswith('SELECT id FROM analysts'):self.row={'id':'covering-analyst'}
                 elif sql.startswith('SELECT id FROM mp_jobs'):self.row=owner.jobs.get(args[0])
+                elif sql.startswith('SELECT id,input,result FROM mp_jobs'):self.rows=[j for j in owner.jobs.values() if j['stage']=='catalyst_signal']
                 elif sql.startswith('INSERT INTO mp_jobs'):
                     if "'collection_control'" in sql:owner.jobs[args[0]]={'id':args[0],'stage':'collection_control','input':json.loads(args[2])}
                     else:owner.jobs[args[0]]={'id':args[0],'stage':args[1],'status':args[3],'input':json.loads(args[4]),'result':json.loads(args[5])}
                 elif not sql.startswith('SELECT pg_advisory'):raise AssertionError(sql)
             def fetchone(self):return self.row
+            def fetchall(self):return self.rows
         @contextmanager
         def db(commit=False):yield None,Cursor()
         self.watch=CatalystWatch(Flask(__name__),db,lambda:True)
@@ -66,3 +69,18 @@ class WatchDispatchTests(unittest.TestCase):
     def test_detection_only_does_not_queue_collection(self):
         self.state['automatic']=False;self.tick([self.article])
         self.assertEqual(len(self.jobs),1);self.assertEqual(next(iter(self.jobs.values()))['status'],'detected')
+
+    def test_different_luna_headlines_hold_second_dispatch_across_scans(self):
+        self.state['dailyLimit']=10
+        self.tick([{**self.article,'headline':'AbbVie Extends Migraine Leadership with Positive Phase 3 Atogepant Results in Menstrual Migraine'}])
+        self.state['lastCheck']=0
+        self.tick([{**self.article,'headline':'AbbVie Announces Topline Results From Its Phase 3 LUNA Study Of Atogepant For Preventive Treatment Of Menstrual Migraine In Adults; Meeting Primary And All Eight Ranked Secondary Endpoints Versus Placebo'}])
+        self.assertEqual(len([j for j in self.jobs.values() if j['stage']=='collection_control']),1)
+        held=[j for j in self.jobs.values() if j.get('result',{}).get('duplicateReview')]
+        self.assertEqual(len(held),1)
+        self.assertTrue(held[0]['result']['commandId'])
+        self.assertEqual(self.state['used'],1)
+
+    def test_mining_results_do_not_create_clinical_assignment(self):
+        self.tick([{**self.article,'headline':'Myriad Uranium Announces Further Phase II Drill Results from Copper Mountain'}])
+        self.assertEqual(self.jobs,{})

@@ -116,15 +116,48 @@ def create_blueprint(get_db):
                     state JSONB NOT NULL DEFAULT '{}'::jsonb, status TEXT NOT NULL DEFAULT 'queued',
                     error TEXT, worker_token TEXT, feedback TEXT NOT NULL DEFAULT '', created_at TIMESTAMP DEFAULT NOW(),
                     updated_at TIMESTAMP DEFAULT NOW(), UNIQUE(summary_id,source_hash,version))''')
+                cur.execute('ALTER TABLE summary_comparisons ADD COLUMN IF NOT EXISTS recovery_enabled BOOLEAN NOT NULL DEFAULT FALSE')
+                cur.execute('ALTER TABLE summary_comparisons ADD COLUMN IF NOT EXISTS recovery_attempts INTEGER NOT NULL DEFAULT 0')
             ready = True
 
     slots = threading.BoundedSemaphore(2)
 
-    def launch(jid, api_key):
-        with slots:
-            run(jid, api_key)
+    active=set()
+    active_lock=threading.Lock()
 
-    def run(jid, api_key):
+    def launch(jid, api_key, recovery=False):
+        with active_lock:
+            if jid in active:return
+            active.add(jid)
+        try:
+            with slots:
+                run(jid, api_key, recovery)
+        finally:
+            with active_lock:active.discard(jid)
+
+    def recover_once():
+        api_key=os.environ.get('ANTHROPIC_API_KEY','').strip()
+        if not api_key:return
+        ensure()
+        with get_db() as (_,cur):
+            cur.execute("SELECT id FROM summary_comparisons WHERE recovery_enabled AND status IN ('queued','running') AND updated_at<NOW()-INTERVAL '3 minutes' ORDER BY updated_at LIMIT 20")
+            jobs=[r['id'] for r in cur.fetchall()]
+        for jid in jobs:
+            # Synchronous within this background sweep; launch shares generation slots
+            # and the session lock with manual work. No growing thread queue per sweep.
+            launch(jid,api_key,recovery=True)
+
+    def start_recovery():
+        def loop():
+            stop=threading.Event()
+            stop.wait(90)
+            while True:
+                try:recover_once()
+                except Exception as exc:print('[Improved note recovery]',type(exc).__name__)
+                stop.wait(30)
+        threading.Thread(target=loop,daemon=True,name='improved-note-recovery').start()
+
+    def run(jid, api_key, recovery=False):
         # Session advisory lock excludes concurrent workers across processes/restarts.
         with get_db() as (conn, lockcur):
             lockcur.execute('SELECT pg_try_advisory_lock(hashtext(%s)) AS acquired', ('summary-comparison:'+jid,))
@@ -132,13 +165,19 @@ def create_blueprint(get_db):
                 return
             try:
                 with get_db() as (_, cur):
-                    cur.execute('SELECT * FROM summary_comparisons WHERE id=%s', (jid,))
+                    cur.execute("SELECT *,updated_at<NOW()-INTERVAL '3 minutes' AS stale FROM summary_comparisons WHERE id=%s", (jid,))
                     row = cur.fetchone()
-                if row['status'] == 'complete':
+                if not row or row['status'] == 'complete':
                     return
+                if recovery:
+                    if not row['recovery_enabled'] or row['status'] not in ('queued','running') or not row['stale']:return
+                    if row['recovery_attempts']>=2 or row['version']!=VERSION:
+                        with get_db(commit=True) as (_,cur):
+                            cur.execute("UPDATE summary_comparisons SET status='failed',error='Automatic recovery stopped. Review the saved checkpoints and retry improved notes.',updated_at=NOW() WHERE id=%s",(jid,))
+                        return
                 owner = str(uuid.uuid4())
                 with get_db(commit=True) as (_, cur):
-                    cur.execute('UPDATE summary_comparisons SET worker_token=%s WHERE id=%s', (owner, jid))
+                    cur.execute("UPDATE summary_comparisons SET worker_token=%s,status='running',updated_at=NOW(),recovery_attempts=recovery_attempts+%s WHERE id=%s", (owner,1 if recovery else 0,jid))
                 state = row['state'] or {}
                 if isinstance(state, str):
                     state = json.loads(state)
@@ -180,7 +219,7 @@ def create_blueprint(get_db):
     def get(sid):
         ensure()
         with get_db() as (_, cur):
-            cur.execute('SELECT id,status,state,baseline,version,feedback,error,created_at,updated_at FROM summary_comparisons WHERE summary_id=%s ORDER BY created_at DESC', (sid,))
+            cur.execute('SELECT id,status,state,baseline,version,feedback,error,recovery_enabled,recovery_attempts,created_at,updated_at FROM summary_comparisons WHERE summary_id=%s ORDER BY created_at DESC', (sid,))
             rows = [dict(r) for r in cur.fetchall()]
         for r in rows:
             for k in ('created_at','updated_at'):
@@ -211,8 +250,8 @@ def create_blueprint(get_db):
                 baseline = dict(row); baseline.pop('raw_notes')
                 digest = hashlib.sha256(source.encode()).hexdigest()
                 jid = str(uuid.uuid4())
-                cur.execute('''INSERT INTO summary_comparisons (id,summary_id,source_hash,version,source,baseline)
-                    VALUES (%s,%s,%s,%s,%s,%s::jsonb) ON CONFLICT (summary_id,source_hash,version)
+                cur.execute('''INSERT INTO summary_comparisons (id,summary_id,source_hash,version,source,baseline,recovery_enabled)
+                    VALUES (%s,%s,%s,%s,%s,%s::jsonb,TRUE) ON CONFLICT (summary_id,source_hash,version)
                     DO NOTHING''', (jid,sid,digest,VERSION,source,json.dumps(baseline)))
                 inserted = cur.rowcount == 1
                 cur.execute('SELECT id FROM summary_comparisons WHERE summary_id=%s AND source_hash=%s AND version=%s', (sid,digest,VERSION))
@@ -226,6 +265,8 @@ def create_blueprint(get_db):
         return jid
 
     bp.enqueue = enqueue
+    bp.recover_once = recover_once
+    bp.start_recovery = start_recovery
 
     @bp.post('/api/summaries/<sid>/comparisons')
     def start(sid):

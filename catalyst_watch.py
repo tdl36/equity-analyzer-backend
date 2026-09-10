@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 from flask import Blueprint, jsonify, request
 import requests
 from collection_control import command
+from catalyst_identity import clinical_context, possible_duplicate
 
 KEY='catalyst_watch_v1'
 STAGE='catalyst_signal'
@@ -29,6 +30,7 @@ def candidate(ticker,article,after,now):
     if re.search(r'\b(will present|to present|will announce|to announce|preview|rumou?r|could acquire|may acquire)\b',title,re.I):return None
     category=next((k for k,p in RULES.items() if re.search(p,title,re.I)),None)
     if not category:return None
+    if category=='clinical' and not clinical_context(title):return None
     if category=='clinical' and not re.search(r'\b(results?|met|meets|failed|fails|positive|negative|readout|read-out|topline|top-line)\b',title,re.I):return None
     related=article.get('related')
     if isinstance(related,str) and related.strip() and ticker not in [x.strip().upper() for x in related.split(',')]:return None
@@ -118,12 +120,17 @@ class CatalystWatch:
             cur.execute("SELECT value FROM app_settings WHERE key='collection_control_snapshot'");row=cur.fetchone();snapshot=decode(row['value']) if row else {}
             policy=next((p for p in snapshot.get('policies',[]) if p.get('ticker')==ticker and p.get('enabled')),None)
             cur.execute('SELECT id FROM analysts WHERE %s=ANY(coverage_tickers) LIMIT 1',(ticker,));analyst=cur.fetchone()
+            cur.execute('SELECT id,input,result FROM mp_jobs WHERE stage=%s AND ticker=%s AND created_at>=NOW()-INTERVAL \'3 days\' ORDER BY created_at ASC',(STAGE,ticker))
+            prior=[{**dict(r),'input':decode(r['input']),'result':decode(r['result'])} for r in cur.fetchall()]
             for signal in signals:
                 jid=str(uuid.uuid5(uuid.NAMESPACE_URL,'charlie-catalyst:'+signal['id']))
                 cur.execute('SELECT id FROM mp_jobs WHERE id=%s',(jid,))
                 if cur.fetchone():continue
                 status='detected';result={}
-                if not signal.get('requiresReview') and state['automatic'] and policy and analyst and state['used']<state['dailyLimit']:
+                duplicate=possible_duplicate(signal,prior)
+                if duplicate:
+                    status='needs_review';result={'reason':'Possible duplicate clinical event: same issuer, publication day, phase, named asset/trial and outcome. Review the existing event before requesting another collection. Headlines alone do not prove identical indications or endpoints.', 'relatedSignalId':duplicate['id'], 'commandId':duplicate['result'].get('commandId'), 'duplicateReview':True}
+                elif not signal.get('requiresReview') and state['automatic'] and policy and analyst and state['used']<state['dailyLimit']:
                     cfg={**policy,'createFolder':True,'workflow':'recap','topic':f"{ticker} {now.date().isoformat()} {signal['category']} {signal['id'][:8]}",'lookbackDays':7,'kinds':['press-release','broker-report','transcript'],'instructions':signal['reason']+' Source URL: '+signal['url']}
                     cid=str(uuid.uuid5(uuid.NAMESPACE_URL,'charlie-event-refresh:'+signal['id']))
                     value=command({'requestId':cid,'action':'event_refresh','payload':{'policy':cfg,'event':{'id':signal['id'],'reason':signal['reason'],'url':signal['url']}}})
@@ -133,6 +140,7 @@ class CatalystWatch:
                     status='needs_review';result={'reason':signal['triageReason']}
                 else:result={'reason':'Automatic collection off, daily limit reached, no enabled policy, or no covering analyst. Use the collection controls to research this signal.'}
                 cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input,result) VALUES(%s,%s,%s,%s,%s::jsonb,%s::jsonb)",(jid,STAGE,ticker,status,json.dumps(signal),json.dumps(result)))
+                prior.append({'id':jid,'input':signal,'result':result})
             state['lastSuccessAt']=stamp
             if len(articles)>300:state['lastIssue']='News response exceeded 300 articles; this scan was limited.'
             self.save(cur,state)

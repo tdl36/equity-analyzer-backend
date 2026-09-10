@@ -29027,9 +29027,13 @@ manual_meeting_recovery.start(get_db,_resume_manual_meeting,
 import summary_comparison
 summary_comparison_bp = summary_comparison.create_blueprint(get_db)
 app.register_blueprint(summary_comparison_bp)
+summary_comparison_bp.start_recovery()
 
 import meeting_workspace
 app.register_blueprint(meeting_workspace.create_blueprint(get_db))
+
+import investment_case
+app.register_blueprint(investment_case.create_blueprint(get_db))
 
 import research_history
 app.register_blueprint(research_history.create_blueprint(get_db))

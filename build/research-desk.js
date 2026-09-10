@@ -2,6 +2,7 @@ import { MyWork } from './my-work';
 import { CommandCharlie } from './command-charlie';
 import { ResearchHistory } from './research-history';
 import { PortfolioPriorities } from './portfolio-priorities';
+import { InvestmentCase } from './investment-case';
 import { CollectionCloud } from './collection-cloud';
 import { EarningsWorkspace } from './earnings-workspace';
 import { EvidenceWorkspace } from './evidence-workspace';
@@ -256,7 +257,7 @@ export function ResearchDesk({
     className: "desk-toolbar"
   }, /*#__PURE__*/React.createElement("nav", {
     "aria-label": "Research desk sections"
-  }, [['work', 'My work'], ['overview', 'Overview'], ['command', 'Command Charlie'], ['collection', 'Collection'], ['history', 'Research history'], ['priorities', 'Portfolio priorities'], ['earnings', 'Earnings & evidence'], ['evidence', 'Evidence & changes'], ['inbox', 'Review inbox'], ['queue', 'Coverage queue'], ['launch', 'Batch planner'], ['runs', 'Runs'], ['playbooks', 'Playbooks']].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
+  }, [['work', 'My work'], ['overview', 'Overview'], ['command', 'Command Charlie'], ['collection', 'Collection'], ['history', 'Research history'], ['priorities', 'Investment cases & portfolio'], ['earnings', 'Earnings & evidence'], ['evidence', 'Evidence & changes'], ['inbox', 'Review inbox'], ['queue', 'Coverage queue'], ['launch', 'Batch planner'], ['runs', 'Runs'], ['playbooks', 'Playbooks']].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
     key: id,
     "aria-current": section === id ? 'page' : undefined,
     onClick: () => setSection(id)
@@ -400,13 +401,16 @@ export function ResearchDesk({
     onClick: () => onNavigate('analysts')
   }, "Review in analyst team \u2192"))), !pending.length && /*#__PURE__*/React.createElement("p", {
     className: "workspace-empty"
-  }, "No analyst output is awaiting review.")), section === 'priorities' && /*#__PURE__*/React.createElement(PortfolioPriorities, {
+  }, "No analyst output is awaiting review.")), section === 'priorities' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(InvestmentCase, {
+    api: api,
+    analyses: analyses
+  }), /*#__PURE__*/React.createElement(PortfolioPriorities, {
     api: api,
     analyses: analyses,
     activities: [...data.activities, ...data.failed],
     onCompany: onCompany,
     onPlan: prepare
-  }), section === 'collection' && /*#__PURE__*/React.createElement(CollectionCloud, {
+  })), section === 'collection' && /*#__PURE__*/React.createElement(CollectionCloud, {
     api: api,
     coverage: analyses
   }), section === 'queue' && /*#__PURE__*/React.createElement("section", {
