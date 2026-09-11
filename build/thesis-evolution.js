@@ -124,7 +124,10 @@ export function ThesisEvolution({
     key: r.id
   }, /*#__PURE__*/React.createElement("h4", null, r.body.title), /*#__PURE__*/React.createElement("p", null, r.body.mandate, " \xB7 active weight ", r.body.activeWeightPct, "% \xB7 inputs as of ", r.body.asOf), /*#__PURE__*/React.createElement("p", null, r.body.rationale), /*#__PURE__*/React.createElement("p", null, "Decision: ", (r.body.reviewDecision || 'pending').replaceAll('_', ' '), " \xB7 ", r.body.outcome || 'Review remains open'), r.body.reviewConditions?.map(c => /*#__PURE__*/React.createElement("p", {
     key: c.id
-  }, /*#__PURE__*/React.createElement("strong", null, c.category, " \xB7 ", c.state.replaceAll('_', ' ')), ": ", c.trigger, /*#__PURE__*/React.createElement("br", null), c.evidence)))), /*#__PURE__*/React.createElement("h3", null, "Decision and work timeline"), /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("strong", null, c.category, " \xB7 ", c.state.replaceAll('_', ' ')), ": ", c.trigger, /*#__PURE__*/React.createElement("br", null), c.evidence)))), /*#__PURE__*/React.createElement("h3", null, "Evidence review decisions"), !(data.proposalReviews || []).length && /*#__PURE__*/React.createElement("p", null, "No proposal conclusions recorded at this cutoff."), (data.proposalReviews || []).map(r => /*#__PURE__*/React.createElement("article", {
+    className: "workspace-panel",
+    key: r.id
+  }, /*#__PURE__*/React.createElement("h4", null, r.review.outcome.replaceAll('_', ' ')), /*#__PURE__*/React.createElement("p", null, r.review.rationale), /*#__PURE__*/React.createElement("p", null, "Recorded ", stamp(r.review.recordedAt), " \xB7 compared with case R", r.case_revision))), /*#__PURE__*/React.createElement("h3", null, "Decision and work timeline"), /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
   }, "These records are shown by save time. Proximity to a thesis revision does not establish that it caused the change."), !events.length && /*#__PURE__*/React.createElement("p", null, "No decisions or work records at this cutoff."), events.map(r => /*#__PURE__*/React.createElement("details", {
     key: r.kind + r.id + r.revision

@@ -43,10 +43,35 @@ def create_blueprint(get_db):
                 limited[key] = len(rows) > 100
                 groups[key] = [{k: r[k] for k in ('id', 'revision', 'body', 'created_at') if k in r}
                                for r in rows[:100]]
+            cur.execute("SELECT to_regclass('mp_jobs') AS name")
+            groups['proposalReviews']=[]
+            if cur.fetchone()['name']:
+                cur.execute("""SELECT id,input->'baseline'->'_investmentCase'->>'revision' AS case_revision,
+                    result->'reviewDecision' AS review,created_at FROM mp_jobs
+                    WHERE ticker=%s AND stage='evidence_amendment' AND input->>'target'='investment_case'
+                    AND result->'reviewDecision'->>'recordedAt' IS NOT NULL
+                    AND (result->'reviewDecision'->>'recordedAt')::timestamptz<=%s
+                    ORDER BY result->'reviewDecision'->>'recordedAt' DESC LIMIT 101""",(ticker,at))
+                reviews=[dict(r) for r in cur.fetchall()]
+                limited['proposalReviews']=len(reviews)>100
+                groups['proposalReviews']=reviews[:100]
         response = jsonify(**groups, limited=limited, asOf=at.isoformat(), ticker=ticker,
                            scope='Saved case and decision history by recorded time; latest 100 per category. '
                            'Not a historical market-data reconstruction. Thesis documents remain separate.')
         response.headers['Cache-Control'] = 'no-store'
+        return response
+
+    @bp.get('/api/research/underweights')
+    def underweights():
+        with get_db() as (_,cur):
+            cur.execute("SELECT to_regclass('research_work_versions') AS name")
+            if not cur.fetchone()['name']:return jsonify(records=[],limited=False)
+            cur.execute("""SELECT * FROM
+                (SELECT DISTINCT ON(id) id,ticker,revision,body,created_at FROM research_work_versions ORDER BY id,revision DESC) latest
+                WHERE body->>'kind'='underweight' ORDER BY body->>'dueDate',ticker,id LIMIT 201""")
+            rows=[dict(r) for r in cur.fetchall()]
+        response=jsonify(records=rows[:200],limited=len(rows)>200)
+        response.headers['Cache-Control']='no-store'
         return response
 
     return bp

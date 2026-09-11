@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { ThesisMonitor } from './thesis-monitor';
 import { ResearchChat } from './research-chat';
 export function CaseEvidence({
   api,
@@ -20,7 +21,8 @@ export function CaseEvidence({
     [working, setWorking] = React.useState(false),
     [notice, setNotice] = React.useState(''),
     [refresh, setRefresh] = React.useState(0);
-  var [debate, setDebate] = React.useState(null);
+  var [debate, setDebate] = React.useState(null),
+    [reviews, setReviews] = React.useState({});
   var requestRef = React.useRef(null),
     mutationLock = React.useRef(false),
     alive = React.useRef(true);
@@ -126,7 +128,11 @@ export function CaseEvidence({
   return /*#__PURE__*/React.createElement("details", {
     open: true,
     className: "amendment-card"
-  }, /*#__PURE__*/React.createElement("summary", null, "Evidence, debate and proposed changes"), /*#__PURE__*/React.createElement("p", null, "Choose an existing research change and review its excerpt before adding it to your investment case. A passage match establishes provenance at generation; it does not prove the interpretation or that the source is still current."), /*#__PURE__*/React.createElement("details", {
+  }, /*#__PURE__*/React.createElement("summary", null, "Evidence, debate and proposed changes"), /*#__PURE__*/React.createElement("p", null, "Choose an existing research change and review its excerpt before adding it to your investment case. A passage match establishes provenance at generation; it does not prove the interpretation or that the source is still current."), /*#__PURE__*/React.createElement(ThesisMonitor, {
+    api: api,
+    ticker: ticker,
+    disabled: disabled || !revision || !body.assumptions.length
+  }), /*#__PURE__*/React.createElement("details", {
     open: true
   }, /*#__PURE__*/React.createElement("summary", null, "Generate proposals for this investment case"), /*#__PURE__*/React.createElement("p", null, "Select up to 10 saved originals. Charlie checks new evidence against your assumptions and proposes only material changes. Model usage is incurred when you generate. Oversized source sets fail visibly rather than being silently clipped."), /*#__PURE__*/React.createElement("fieldset", {
     disabled: disabled || working || activeJob
@@ -156,17 +162,54 @@ export function CaseEvidence({
     key: j.id
   }, /*#__PURE__*/React.createElement("strong", null, j.status.replaceAll('_', ' '), " \xB7 ", new Date(j.created_at).toLocaleString()), j.error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
-  }, j.error), j.status === 'awaiting_approval' && /*#__PURE__*/React.createElement("p", null, j.result?.changes?.length || 0, " proposed changes \xB7 ", (j.result?.changes || []).filter(c => c.reviewPassed && c.passageMatched).length, " passed passage and model checks. Review below, then close this proposal to start another."), (j.result?.changes || []).filter(c => !c.reviewPassed || !c.passageMatched).map(c => /*#__PURE__*/React.createElement("p", {
+  }, j.error), j.result?.conditionAssessments?.map(c => /*#__PURE__*/React.createElement("article", {
+    className: "workspace-panel",
+    key: c.id
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "workspace-eyebrow"
+  }, "UNDERWEIGHT CONDITION \xB7 AI SUGGESTION"), /*#__PURE__*/React.createElement("h4", null, c.workTitle), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, "Condition:"), " ", c.trigger), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, "Suggested assessment:"), " ", c.assessment.replaceAll('_', ' ')), /*#__PURE__*/React.createElement("p", null, c.reason), /*#__PURE__*/React.createElement("p", null, c.passageMatched && c.reviewPassed ? 'Passed excerpt and model checks; your judgment is still required.' : 'Needs further verification · ' + (c.reviewIssue || 'Supporting passage did not match.')), c.evidence?.filter(e => e.status === 'passage_matched').map((e, i) => /*#__PURE__*/React.createElement("blockquote", {
+    key: i
+  }, /*#__PURE__*/React.createElement("strong", null, j.result.sources?.find(s => s.id === e.sourceId)?.filename), /*#__PURE__*/React.createElement("p", null, e.excerpt))), /*#__PURE__*/React.createElement("p", null, "Based on work revision ", c.workRevision, " and case R", c.caseRevision, ". Review the current record in Decisions & underweights before recording your own assessment."))), j.status === 'awaiting_approval' && /*#__PURE__*/React.createElement("p", null, j.result?.changes?.length || 0, " proposed changes \xB7 ", (j.result?.changes || []).filter(c => c.reviewPassed && c.passageMatched).length, " passed passage and model checks. Review below, then close this proposal to start another."), (j.result?.changes || []).filter(c => !c.reviewPassed || !c.passageMatched).map(c => /*#__PURE__*/React.createElement("p", {
     key: c.id
   }, "Needs review: ", c.after, " \u2014 ", c.reviewIssue || 'Supporting passage did not match.')), j.status === 'failed' && j.result?.checkpoint && /*#__PURE__*/React.createElement("button", {
     disabled: disabled || working,
     onClick: () => mutate('/api/research/amendment/' + j.id + '/resume', {})
-  }, "Resume from saved checkpoint"), ['failed', 'awaiting_approval'].includes(j.status) && /*#__PURE__*/React.createElement("button", {
-    disabled: disabled || working,
-    onClick: () => mutate('/api/research/amendment/' + j.id + '/decide', {
-      action: 'dismiss'
+  }, "Resume from saved checkpoint"), j.result?.reviewDecision && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, "My review: ", j.result.reviewDecision.outcome.replaceAll('_', ' ')), " \xB7 ", j.result.reviewDecision.rationale), ['failed', 'awaiting_approval'].includes(j.status) && /*#__PURE__*/React.createElement("fieldset", {
+    disabled: disabled || working
+  }, /*#__PURE__*/React.createElement("label", null, "My conclusion", /*#__PURE__*/React.createElement("select", {
+    value: reviews[j.id]?.outcome || 'no_change',
+    onChange: e => setReviews({
+      ...reviews,
+      [j.id]: {
+        ...reviews[j.id],
+        outcome: e.target.value
+      }
     })
-  }, "Close proposal \xB7 keep accepted case revisions")))), loading && /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "no_change"
+  }, "No thesis change warranted"), /*#__PURE__*/React.createElement("option", {
+    value: "rejected"
+  }, "Reject proposed interpretation"), /*#__PURE__*/React.createElement("option", {
+    value: "changes_reviewed"
+  }, "Selected changes reviewed / accepted separately"))), /*#__PURE__*/React.createElement("label", null, "Why I reached this conclusion", /*#__PURE__*/React.createElement("textarea", {
+    value: reviews[j.id]?.rationale || '',
+    onChange: e => setReviews({
+      ...reviews,
+      [j.id]: {
+        ...reviews[j.id],
+        rationale: e.target.value
+      }
+    })
+  })), /*#__PURE__*/React.createElement("button", {
+    disabled: !reviews[j.id]?.rationale?.trim(),
+    onClick: () => mutate('/api/research/amendment/' + j.id + '/decide', {
+      action: 'dismiss',
+      reviewDecision: {
+        outcome: reviews[j.id]?.outcome || 'no_change',
+        rationale: reviews[j.id].rationale
+      }
+    })
+  }, "Record decision and close proposal"))))), loading && /*#__PURE__*/React.createElement("p", {
     role: "status"
   }, "Loading source proposals\u2026"), error && /*#__PURE__*/React.createElement("p", {
     role: "alert"

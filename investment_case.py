@@ -123,11 +123,25 @@ def create_blueprint(get_db):
                   payload_hash TEXT NOT NULL, body JSONB NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW(),
                   PRIMARY KEY(ticker,revision))''')
             ready=True
+    @bp.get('/api/research/investment-case/<ticker>/saved-thesis-draft')
+    def saved_thesis_draft(ticker):
+        if not re.fullmatch(r'[A-Z0-9][A-Z0-9.-]{0,19}',ticker):return jsonify(error='Invalid ticker'),400
+        from thesis_baseline import draft
+        with get_db() as (_,cur):
+            cur.execute('SELECT analysis FROM portfolio_analyses WHERE ticker=%s',(ticker,))
+            row=cur.fetchone()
+        if not row:return jsonify(error='No saved thesis found for this company.'),404
+        try:
+            analysis=row['analysis']
+            if isinstance(analysis,str):analysis=json.loads(analysis)
+            return jsonify(**draft(ticker,analysis))
+        except (ValueError,TypeError) as exc:return jsonify(error=str(exc)),409
+
     @bp.get('/api/research/investment-case/<ticker>/source-proposals')
     def source_proposals(ticker):
         if not re.fullmatch(r'[A-Z0-9][A-Z0-9.\-]{0,19}',ticker):return jsonify(error='Choose a valid ticker.'),400
         with get_db() as (_,cur):
-            cur.execute("SELECT id,status,result,error,created_at,input->>'target' AS target FROM mp_jobs WHERE ticker=%s AND stage='evidence_amendment' AND (status IN ('awaiting_approval','applied') OR (input->>'target'='investment_case' AND status IN ('queued','running','failed'))) ORDER BY created_at DESC LIMIT 30",(ticker,))
+            cur.execute("SELECT id,status,result,error,created_at,input->>'target' AS target FROM mp_jobs WHERE ticker=%s AND stage='evidence_amendment' AND (status IN ('awaiting_approval','applied') OR (input->>'target'='investment_case' AND status IN ('queued','running','failed','dismissed'))) ORDER BY created_at DESC LIMIT 30",(ticker,))
             rows=[dict(r) for r in cur.fetchall()]
             cur.execute('SELECT filename FROM document_files WHERE ticker=%s ORDER BY filename',(ticker,))
             documents=[r['filename'] for r in cur.fetchall()]

@@ -2,6 +2,7 @@ import * as React from 'react';
 import { InvestorFramework } from './investor-framework';
 import { ResearchDecisions } from './research-decisions';
 import { ResearchWorkbench } from './research-workbench';
+import { UnderweightMonitor } from './underweight-monitor';
 import { ThesisEvolution } from './thesis-evolution';
 import { CaseEvidence } from './investment-case-evidence';
 var empty = () => ({
@@ -47,13 +48,14 @@ export function InvestmentCase({
     if (!r.ok) throw Error(d.error || 'Investment case unavailable');
     return d;
   };
-  var load = async () => {
+  var load = async (selectedTicker = ticker) => {
     if (lock.current) return;
     lock.current = true;
     setBusy(true);
     setMessage('');
     try {
-      var t = ticker.trim().toUpperCase();
+      var t = (typeof selectedTicker === 'string' ? selectedTicker : ticker).trim().toUpperCase();
+      setTicker(t);
       var d = await json('/api/research/investment-case/' + encodeURIComponent(t));
       if (!alive.current) return;
       setActive(t);
@@ -148,6 +150,13 @@ export function InvestmentCase({
     className: "workspace-eyebrow"
   }, "INVESTMENT CASE / YOUR ASSUMPTIONS"), /*#__PURE__*/React.createElement("h2", null, "Investment thesis workspace."), /*#__PURE__*/React.createElement("p", null, "Record what you believe, the evidence against it, and the next test. These are your working assumptions. Manual source references are unverified; accepted research links retain the original excerpt and its provenance."), /*#__PURE__*/React.createElement(InvestorFramework, {
     api: api
+  }), /*#__PURE__*/React.createElement(UnderweightMonitor, {
+    api: api,
+    disabled: busy || dirty,
+    onOpen: t => {
+      setWorkspaceTab('reviews');
+      load(t);
+    }
   }), /*#__PURE__*/React.createElement("div", {
     className: "desk-filter"
   }, /*#__PURE__*/React.createElement("label", null, "Company", /*#__PURE__*/React.createElement("input", {
@@ -184,7 +193,28 @@ export function InvestmentCase({
     onClick: () => setWorkspaceTab(id)
   }, label))), /*#__PURE__*/React.createElement("div", {
     hidden: workspaceTab !== 'case'
-  }, /*#__PURE__*/React.createElement("fieldset", {
+  }, !revision && /*#__PURE__*/React.createElement("section", {
+    className: "workspace-panel"
+  }, /*#__PURE__*/React.createElement("h3", null, "Start from your saved thesis"), /*#__PURE__*/React.createElement("p", null, "Copy its summary, pillars and textual risks/signposts into an unsaved baseline for review. Original thesis documents remain unchanged."), /*#__PURE__*/React.createElement("button", {
+    disabled: busy || dirty,
+    onClick: async () => {
+      if (lock.current) return;
+      lock.current = true;
+      setBusy(true);
+      try {
+        var d = await json('/api/research/investment-case/' + active + '/saved-thesis-draft');
+        if (alive.current) {
+          edit(d.body);
+          setMessage(d.scope + ' Review the draft below, then save the first revision.');
+        }
+      } catch (e) {
+        if (alive.current) setMessage(e.message);
+      } finally {
+        lock.current = false;
+        if (alive.current) setBusy(false);
+      }
+    }
+  }, "Load saved thesis as a draft")), /*#__PURE__*/React.createElement("fieldset", {
     disabled: busy,
     className: "desk-form"
   }, fields.map(([key, label]) => /*#__PURE__*/React.createElement("label", {

@@ -75,3 +75,10 @@
 .thesis-evolution details{padding:12px 0;border-top:1px solid var(--line);}
 @media(max-width:650px){.evolution-change>div{grid-template-columns:1fr;}.evolution-controls input{max-width:100%;}}
 .evolution-controls input{background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:10px;min-height:42px;}
+.underweight-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:16px;margin-top:16px;}
+.underweight-grid article{border:1px solid var(--line);border-radius:12px;padding:20px;background:var(--surface);min-width:0;overflow-wrap:anywhere;}
+.thesis-monitor,.underweight-monitor{font:14px/1.6 var(--font-ui);color:var(--ink);}
+.thesis-monitor h3,.underweight-monitor h3{font:500 23px/1.25 var(--font-display);margin:12px 0;}
+.thesis-monitor button,.underweight-monitor button{border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:6px 8px 6px 0;color:var(--ink);background:var(--surface);}
+.thesis-monitor button.workspace-primary{background:var(--accent);color:var(--bg);}
+.underweight-monitor select{display:block;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:10px;margin:8px 0;}

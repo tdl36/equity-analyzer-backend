@@ -20151,6 +20151,8 @@ def agent_heartbeat():
                     version = EXCLUDED.version
             ''', (agent_id, version))
         _research_automation.wake()
+        import thesis_monitor
+        thesis_monitor.wake(app)
         return jsonify({'ok': True, 'agentId': agent_id})
     except Exception as e:
         print(f'agent_heartbeat error: {e}')
