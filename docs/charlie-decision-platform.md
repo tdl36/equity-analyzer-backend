@@ -337,3 +337,9 @@ Headless Chrome checks and screenshots cover Dusk at 1200/390px and Ink at 1200p
 six readable themed fields, correct mobile column count and no horizontal overflow.
 Desktop screenshot inspected visually. This corrects the earlier isolated-fixture
 validation gap. Production build completed.
+
+## T60 — Summary bulk export and pooled email (2026-09-11)
+
+Library → Summary → Select now exposes Brief and Meeting Summary alongside existing sections for Word/PDF, with All sections, Korean takeaways and audio transcript options. PDF generation uses the same ordered section registry as pooled email. Email selected sends one message containing all saved sections of each selected entry to the Settings recipient; export toggles only affect exports. Selection order is preserved. Missing IDs or invalid section filters fail explicitly rather than creating partial exports. Email has an in-flight click guard and no automatic retry after ambiguous delivery. Existing saved content is unchanged; no generation or SMTP delivery occurs during tests.
+
+Validation: five isolated unit tests cover real DOCX/PDF extraction, ordered ZIP entries, validation, long transcript preservation, escaping, and mocked pooled SMTP. Browser fixture exercised section toggles/email action at desktop and 390px without overflow. Frontend production build passes.

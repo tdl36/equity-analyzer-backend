@@ -6138,6 +6138,19 @@ def email_summary_section():
         title = data.get('title', 'Meeting Summary')
         topic = data.get('topic', 'General')
         smtp_config = data.get('smtpConfig', {})
+        if 'summaryIds' in data:
+            from summary_bulk import ordered_rows, pooled_html
+            try:
+                with get_db() as (_, cur): rows = ordered_rows(cur, data['summaryIds'])
+            except ValueError as exc:
+                return jsonify(error=str(exc)), 400
+            content = pooled_html(rows)
+            section = 'bulk_all'
+            title = f'{len(rows)} selected summaries'
+            subject = f'Charlie — {len(rows)} selected summaries'
+            topic = 'All saved sections'
+        if not smtp_config.get('use_gmail', True):
+            return jsonify(error='This email action requires Gmail delivery configured in Settings.'), 400
         
         if not email or not content:
             return jsonify({'error': 'Email and content are required'}), 400
@@ -6154,7 +6167,9 @@ def email_summary_section():
         # Format the section label + gradient. Decipher content arrives as
         # markdown (frontend buildFullMarkdown), so convert it before the
         # template injects it raw.
-        if section == 'improved':
+        if section == 'bulk_all':
+            section_label, header_color, gradient_to = 'Selected Summaries', '#0d9488', '#0891b2'
+        elif section == 'improved':
             section_label, header_color, gradient_to = 'Improved Notes', '#0d9488', '#0891b2'
         elif section == 'takeaways':
             section_label, header_color, gradient_to = "Key Takeaways", "#0d9488", "#0891b2"
@@ -9089,28 +9104,12 @@ def _generate_summary_pdf_bytes(row, sections_filter=None):
     """
     from xhtml2pdf import pisa
 
-    include_all = sections_filter is None
-    sect_set = set(sections_filter) if sections_filter else set()
-
-    title = row.get('title') or 'Summary'
+    from html import escape
+    title = escape(row.get('title') or 'Summary')
     created = row.get('created_at')
     date_str = str(created)[:10] if created else ''
-    summary_html = row.get('summary') or ''
-    questions_html = row.get('questions') or ''
-    assessment_html = row.get('assessment') or ''
-    raw_notes = row.get('raw_notes') or ''
-    source_type = row.get('source_type') or ''
-
-    sections = ''
-    if summary_html and (include_all or 'takeaways' in sect_set):
-        sections += f'<h2>Key Takeaways</h2>{summary_html}'
-    if questions_html and (include_all or 'questions' in sect_set):
-        sections += f'<h2>Follow-up Questions</h2>{questions_html}'
-    if assessment_html and (include_all or 'assessment' in sect_set):
-        sections += f'<h2>Assessment</h2>{assessment_html}'
-    if source_type == 'audio' and raw_notes and include_all:
-        escaped = raw_notes.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('\n', '<br/>')
-        sections += f'<h2>Full Transcript</h2><p style="font-size:10pt;">{escaped}</p>'
+    from summary_bulk import sections_html
+    sections = sections_html(row, sections_filter, pdf=True)
 
     full_html = f"""<html><head><style>
         @page {{ margin: 1in; }}
@@ -9129,7 +9128,9 @@ def _generate_summary_pdf_bytes(row, sections_filter=None):
     </body></html>"""
 
     buf = io.BytesIO()
-    pisa.CreatePDF(full_html, dest=buf)
+    result = pisa.CreatePDF(full_html, dest=buf)
+    if result.err:
+        raise ValueError("PDF generation failed. Please retry or export to Word.")
     return buf.getvalue()
 
 
@@ -9406,13 +9407,14 @@ def summaries_bulk_export():
         if not summary_ids:
             return jsonify({'error': 'No summary IDs provided'}), 400
 
-        with get_db() as (_, cur):
-            placeholders = ','.join(['%s'] * len(summary_ids))
-            cur.execute(f'SELECT * FROM meeting_summaries WHERE id IN ({placeholders})', summary_ids)
-            rows = cur.fetchall()
-
-        if not rows:
-            return jsonify({'error': 'No summaries found'}), 404
+        from summary_bulk import ordered_rows, validate_sections
+        if export_format not in ('docx','pdf'):
+            return jsonify(error='Choose Word or PDF.'), 400
+        try:
+            validate_sections(export_sections)
+            with get_db() as (_, cur): rows = ordered_rows(cur, summary_ids)
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
 
         zip_buf = io.BytesIO()
         with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zf:
@@ -9422,8 +9424,10 @@ def summaries_bulk_export():
                 safe_title = re.sub(r'[^\w\s-]', '', row_dict.get('title') or 'Summary')[:50].strip().replace(' ', '_')
                 filename = f"{safe_title}.{export_format}"
                 # Deduplicate
+                suffix = 2
                 while filename in used_names:
-                    filename = f"{safe_title}_{len(used_names)}.{export_format}"
+                    filename = f"{safe_title}_{suffix}.{export_format}"
+                    suffix += 1
                 used_names.add(filename)
 
                 if export_format == 'pdf':

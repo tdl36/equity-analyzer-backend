@@ -89,7 +89,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-09-11T59';
+        const BUILD_VERSION = '2026-09-11T60';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -3576,6 +3576,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [summarySelectMode, setSummarySelectMode] = useState(false);
             const [selectedSummaryIds, setSelectedSummaryIds] = useState(new Set());
             const [bulkExportLoading, setBulkExportLoading] = useState(false);
+            const [bulkSummaryEmailLoading, setBulkSummaryEmailLoading] = useState(false);
+            const bulkSummaryEmailLock = useRef(false);
             const [bulkExportSections, setBulkExportSections] = useState(new Set(['takeaways']));
             
             // Document types for Summary tab
@@ -4170,6 +4172,27 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     else next.add(key);
                     return next;
                 });
+            };
+
+            const bulkEmailSummaries = async () => {
+                if (!selectedSummaryIds.size || bulkSummaryEmailLock.current) return;
+                let creds;
+                try { creds = JSON.parse(localStorage.getItem('emailCredentials') || 'null'); } catch {}
+                if (!creds?.email) { alert('Set your recipient and Gmail credentials in Settings first.'); return; }
+                bulkSummaryEmailLock.current = true;
+                setBulkSummaryEmailLoading(true);
+                const ids = Array.from(selectedSummaryIds);
+                try {
+                    const r = await fetch(`${API_URL}/api/email-summary-section`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ summaryIds: ids, email: creds.email,
+                            smtpConfig: { use_gmail: creds.useGmail, gmail_user: creds.gmailUser, gmail_app_password: creds.gmailPassword, from_email: creds.gmailUser } })
+                    });
+                    const result = await r.json();
+                    if (!r.ok) throw new Error(result.error || 'Email failed');
+                    alert(`${ids.length} summaries emailed together to ${creds.email}, including all saved sections.`);
+                } catch (e) { alert('Bulk email could not be confirmed: ' + e.message + '. Check your inbox before retrying to avoid duplicates.'); }
+                finally { bulkSummaryEmailLock.current = false; setBulkSummaryEmailLoading(false); }
             };
 
             const bulkDownloadSummaries = async (format) => {
@@ -18927,13 +18950,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             {/* Floating bulk action bar */}
                                             {summarySelectMode && selectedSummaryIds.size > 0 && (
                                                 <div className="sticky bottom-0 mt-4 p-3 bg-neutral-800/95 backdrop-blur-xl rounded-xl border border-white/15 shadow-2xl space-y-2">
-                                                    <div className="flex items-center justify-between gap-3">
+                                                    <div className="flex flex-wrap items-center justify-between gap-3">
                                                         <div className="flex items-center gap-3 text-sm">
                                                             <span className="font-medium">{selectedSummaryIds.size} selected</span>
                                                             <button onClick={() => setSelectedSummaryIds(new Set(getFilteredSummaries().map(s => s.id)))} className="text-blue-400 hover:text-blue-300 text-xs">Select All</button>
                                                             <button onClick={() => setSelectedSummaryIds(new Set())} className="text-slate-400 hover:text-slate-300 text-xs">Deselect All</button>
                                                         </div>
-                                                        <div className="flex items-center gap-2">
+                                                        <div className="flex flex-wrap items-center gap-2">
                                                             <button
                                                                 onClick={() => bulkDownloadSummaries('docx')}
                                                                 disabled={bulkExportLoading}
@@ -18952,16 +18975,22 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             </button>
                                                         </div>
                                                     </div>
+                                                    <div className="flex flex-wrap items-center gap-2 text-xs"><button onClick={bulkEmailSummaries} disabled={bulkSummaryEmailLoading} className="px-3 py-2 rounded-lg bg-amber-600 text-white disabled:opacity-50">{bulkSummaryEmailLoading ? 'Sending…' : 'Email selected · all sections'}</button><span className="text-slate-400">One combined email to your saved recipient. Includes every available section, regardless of export toggles.</span></div>
                                                     {/* Section toggles */}
-                                                    <div className="flex items-center gap-2 text-xs">
-                                                        <span className="text-slate-400">Include:</span>
+                                                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                                                        <span className="text-slate-400">Word / PDF sections:</span><button onClick={() => setBulkExportSections(new Set(['brief','takeaways','meeting','questions','assessment','korean','transcript']))}>All sections</button>
                                                         {[
+                                                            { key: 'brief', label: 'Brief' },
                                                             { key: 'takeaways', label: 'Key Takeaways' },
+                                                            { key: 'meeting', label: 'Meeting Summary' },
                                                             { key: 'questions', label: 'Follow-up Questions' },
                                                             { key: 'assessment', label: 'Assessment' },
+                                                            { key: 'korean', label: 'Korean Takeaways' },
+                                                            { key: 'transcript', label: 'Audio Transcript' },
                                                         ].map(s => (
                                                             <button
                                                                 key={s.key}
+                                                                aria-pressed={bulkExportSections.has(s.key)}
                                                                 onClick={() => toggleBulkExportSection(s.key)}
                                                                 className={`px-2 py-1 rounded-lg transition-all ${bulkExportSections.has(s.key) ? 'bg-amber-600 text-white' : 'bg-white/10 text-slate-400 hover:bg-white/15'}`}
                                                             >
