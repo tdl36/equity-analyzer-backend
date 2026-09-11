@@ -136,6 +136,37 @@ try:
     assert meeting_memory.freeze(db,'framework-meeting','ABT','qa')==frozen_framework
     assert meeting_memory.freeze(db,'meeting','ABT','qa')==frozen
     print('PASS: framework save/replay/conflict, cross-company context, clearing, non-destructive restoration and frozen meeting version.')
+    with db(True) as (_,c):
+        c.execute('CREATE TABLE mp_companies(id INTEGER PRIMARY KEY,ticker TEXT)')
+        c.execute('CREATE TABLE mp_meetings(id INTEGER PRIMARY KEY,company_id INTEGER,meeting_date DATE)')
+        c.execute('CREATE TABLE mp_past_questions(id INTEGER PRIMARY KEY,company_id INTEGER,meeting_id INTEGER,question TEXT,response_notes TEXT,status TEXT,topic TEXT)')
+        c.execute('CREATE TABLE mp_documents(id INTEGER PRIMARY KEY,meeting_id INTEGER,filename TEXT,doc_date TEXT,extracted_text TEXT)')
+        c.execute("INSERT INTO mp_companies VALUES(1,'ABT'),(2,'MDT')")
+        c.execute("INSERT INTO mp_meetings VALUES(1,1,'2026-01-01'),(2,2,'2026-01-01'),(3,1,'2099-01-01')")
+        c.execute("INSERT INTO mp_past_questions VALUES(1,1,1,'Cash quality?','Management expects improvement; analyst not convinced.','answered','Cash'),(2,1,1,'Cash plans?','Not actually asked','planned','Cash'),(3,2,2,'Cash?','Other company secret','answered','Cash'),(4,1,3,'Cash?','Future answer','answered','Cash')")
+        c.execute("INSERT INTO mp_documents VALUES(1,1,'original.pdf','2026-01-01','Cash conversion remains uncertain.'),(2,2,'other.pdf','2026-01-01','Cash other company secret'),(3,3,'future.pdf','2099-01-01','Cash future source')")
+    live=cm.load(db,'ABT',focus='Cash conversion',include_sources=True)
+    answers=[e for e in live['entries'] if e['kind']=='meeting_answer']
+    sources=[e for e in live['entries'] if e['kind']=='saved_source_excerpt']
+    assert len(answers)==1 and answers[0]['body']['id']==1
+    assert len(sources)==1 and sources[0]['body']['passage']=='Cash conversion remains uncertain.'
+    assert sources[0]['body']['startCharacter']==1
+    source_review={**payload,'requestId':str(uuid.uuid4()),'revision':66,'issue':'Cash durability',
+        'disposition':'unchanged','evidenceDocumentIds':[1],'evidenceHashes':{'1':sources[0]['body']['extraction_digest']}}
+    assert client.post(url,json=source_review).status_code==201
+    assert client.post(url,json=source_review).json['replayed']
+    reviewed=cm.load(db,'ABT',focus='Cash',include_sources=True)
+    reviewed_source=next(e for e in reviewed['entries'] if e['kind']=='saved_source_excerpt')
+    assert reviewed_source['body']['priorIssueReviews'][0]['id']==source_review['requestId']
+    with db(True) as (_,c):c.execute("UPDATE mp_documents SET extracted_text='Cash conversion has deteriorated.' WHERE id=1")
+    changed=cm.load(db,'ABT',focus='Cash',include_sources=True)
+    assert next(e for e in changed['entries'] if e['kind']=='saved_source_excerpt')['body']['priorIssueReviews']==[]
+    assert client.post(url,json={**source_review,'requestId':str(uuid.uuid4()),'revision':67}).status_code==409
+    assert client.post(url,json={**source_review,'requestId':str(uuid.uuid4()),'revision':67,'evidenceDocumentIds':[2],'evidenceHashes':{'2':sources[0]['body']['extraction_digest']}}).status_code==409
+    assert not any(e['kind']=='saved_source_excerpt' for e in cm.load(db,'ABT')['entries'])
+    assert 'Other company secret' not in cm.render(live) and 'Future answer' not in cm.render(live)
+    assert meeting_memory.freeze(db,'meeting','ABT','qa')==frozen
+    print('PASS: actual answer filtering, ticker/date isolation, exact cached passages and selected-source boundary.')
     print('PASS: 64-record pagination, no overlap, literal search, dates, independent write revision and isolated prior-record lookup.')
     print('PASS: immutable decisions, request replay, conflicts, supersession and memory inclusion; old job stays frozen.')
     print('PASS: meeting snapshot persists across later revisions and rejects wrong worker.')

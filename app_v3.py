@@ -28969,7 +28969,8 @@ def _research_conversation_call(prompt):
     return call_llm(messages=[{"role":"user","content":prompt}], tier="standard", max_tokens=6000)["text"]
 
 app.register_blueprint(research_conversations.create_blueprint(get_db, _research_conversation_call,
-    lambda ticker: company_memory.load(get_db, ticker)))
+    lambda ticker: company_memory.load(get_db, ticker),
+    lambda ticker, message: company_memory.load(get_db, ticker, focus=message, include_sources=True)))
 
 def _amendment_model_call(prompt, key, max_tokens):
     response = _call_pinned_long(

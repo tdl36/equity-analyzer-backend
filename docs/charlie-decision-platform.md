@@ -1,5 +1,34 @@
 # Decision-platform implementation ledger
 
+## T58: recorded answers, source passages and scoped review recognition
+
+- Shared context now retrieves up to eight dated answered/resolved meeting records
+  with nonempty response notes, company isolation and exclusion of future meetings.
+  These are analyst-recorded notes, not verified verbatim management statements.
+- Research chat prioritizes the current question's literal terms before saved case
+  terms and freezes the resulting context. It can include up to six partial cached
+  meeting-document excerpts with source IDs, extraction SHA-256, exact offsets and
+  passage hashes. It does not fetch fresh originals or claim complete coverage.
+  Other meeting-generation context excludes these additional source excerpts so
+  manually selected source boundaries are retained.
+- Recall preview shows answers and passages. Users can attach up to six reviewed
+  documents to a named issue. Server checks company ownership and the previewed
+  extraction hash before saving. Immutable review records retain source identities.
+- Later matching excerpts carry up to five unsuperseded issue-review records for
+  that exact saved extraction. Changed text is not considered already reviewed;
+  stale-preview acceptance fails. Prompts preserve the prior rationale and scope,
+  requiring reassessment for new evidence or changed conditions. No alerts are
+  suppressed automatically and no general preferences are learned from dismissal.
+- Validation: isolated PostgreSQL verifies actual/planned/future answer handling,
+  ticker isolation, exact passages, frozen jobs, issue replay, source-change conflict
+  and changed-text review recognition. Focused backend tests cover question-driven
+  context routing. Desktop/mobile fixture checks source selection and recall.
+  Existing research-history routes are retained. No paid generation was performed.
+- Remaining: semantic ranking, full source retrieval/verification beyond cached
+  meeting text, source entitlements for multi-user distribution, scheduled review
+  reminders and operational alert adjudication. This is a recall integration, not
+  full unattended monitoring or a claim of model factual accuracy.
+
 ## T57: bounded decision recall and issue reviews
 
 - Shared memory supplements the latest 20 decisions with up to 12 older literal

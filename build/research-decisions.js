@@ -7,7 +7,9 @@ var blank = () => ({
   supersedes: '',
   issue: '',
   disposition: 'unresolved',
-  reviewDate: ''
+  reviewDate: '',
+  evidenceDocumentIds: [],
+  evidenceHashes: {}
 });
 var dispositions = {
   unchanged: 'View unchanged',
@@ -38,7 +40,7 @@ export function ResearchDecisions({
   var previewRecall = async () => {
     setRecalling(true);
     try {
-      var response = await fetch(`${api}/api/research/company-memory/${encodeURIComponent(ticker)}`, {
+      var response = await fetch(`${api}/api/research/company-memory/${encodeURIComponent(ticker)}?sources=1&q=${encodeURIComponent(filters.q)}`, {
         signal: AbortSignal.timeout(20000)
       });
       var data = await response.json();
@@ -247,12 +249,54 @@ export function ResearchDecisions({
     onClick: () => inspect(e.id)
   }, "#", e.revision, " \xB7 ", e.body.decisionDate, " \xB7 ", e.body.decision), " \xB7 ", e.status === 'superseded' ? 'Historical / superseded' : 'Recorded view, not revalidated', recall.historyRetrieval?.selectedIds.includes(e.id) ? ' · Older matching decision' : '')), /*#__PURE__*/React.createElement("button", {
     onClick: () => setRecall(null)
-  }, "Close recall preview")), inspected && /*#__PURE__*/React.createElement("aside", {
+  }, "Close recall preview"), /*#__PURE__*/React.createElement("h4", null, "Recorded meeting answers"), recall.entries.filter(e => e.kind === 'meeting_answer').map(e => /*#__PURE__*/React.createElement("details", {
+    key: 'answer' + e.body.id
+  }, /*#__PURE__*/React.createElement("summary", null, e.body.meeting_date, " \xB7 ", e.body.question), /*#__PURE__*/React.createElement("p", {
+    style: {
+      whiteSpace: 'pre-wrap'
+    }
+  }, e.body.response_notes), /*#__PURE__*/React.createElement("p", {
+    className: "desk-explainer"
+  }, "Analyst-recorded answer notes; not verified verbatim management wording."))), /*#__PURE__*/React.createElement("h4", null, "Saved source passages"), /*#__PURE__*/React.createElement("p", {
+    className: "desk-explainer"
+  }, "Matching uses the history search text above, then the saved case. Partial cached extraction; originals have not been reverified. Select only sources you have reviewed for the named issue."), recall.entries.filter(e => e.kind === 'saved_source_excerpt').map(e => /*#__PURE__*/React.createElement("details", {
+    key: 'source' + e.body.id
+  }, /*#__PURE__*/React.createElement("summary", null, e.body.filename), /*#__PURE__*/React.createElement("blockquote", {
+    style: {
+      whiteSpace: 'pre-wrap'
+    }
+  }, e.body.passage), /*#__PURE__*/React.createElement("p", null, "Document ", e.body.id, " \xB7 starts at character ", e.body.startCharacter), /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: 'block'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    style: {
+      width: 20,
+      minHeight: 20,
+      marginRight: 8
+    },
+    type: "checkbox",
+    checked: draft.evidenceDocumentIds.includes(e.body.id),
+    disabled: busy || !draft.evidenceDocumentIds.includes(e.body.id) && draft.evidenceDocumentIds.length >= 6,
+    onChange: ev => {
+      var ids = ev.target.checked ? [...draft.evidenceDocumentIds, e.body.id] : draft.evidenceDocumentIds.filter(id => id !== e.body.id);
+      change('evidenceDocumentIds', ids);
+      change('evidenceHashes', Object.fromEntries(ids.map(id => [String(id), id === e.body.id ? e.body.extraction_digest : draft.evidenceHashes[String(id)]])));
+    }
+  }), "Attach this source to my issue review"), e.body.priorIssueReviews?.map(r => /*#__PURE__*/React.createElement("p", {
+    key: r.id
+  }, "Previously reviewed for ", r.issue, ": ", dispositions[r.disposition] || r.disposition, ". ", r.rationale, " Revisit: ", r.revisit_when)))), !!draft.evidenceDocumentIds.length && /*#__PURE__*/React.createElement("p", null, draft.evidenceDocumentIds.length, " sources selected for the issue review above. ", /*#__PURE__*/React.createElement("button", {
+    disabled: busy,
+    onClick: () => {
+      change('evidenceDocumentIds', []);
+      change('evidenceHashes', {});
+    }
+  }, "Clear source selection"))), inspected && /*#__PURE__*/React.createElement("aside", {
     style: {
       border: '1px solid var(--border, #bbb)',
       padding: 12
     }
-  }, /*#__PURE__*/React.createElement("strong", null, "Earlier record #", inspected.revision, " \xB7 ", inspected.body.decisionDate, " \xB7 ", inspected.superseded ? 'Superseded' : 'Recorded decision'), /*#__PURE__*/React.createElement("h4", null, inspected.body.decision), inspected.body.issue && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, inspected.body.issue), " \xB7 ", dispositions[inspected.body.disposition] || inspected.body.disposition, inspected.body.reviewDate && ` · Review ${inspected.body.reviewDate}`), /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("strong", null, "Earlier record #", inspected.revision, " \xB7 ", inspected.body.decisionDate, " \xB7 ", inspected.superseded ? 'Superseded' : 'Recorded decision'), /*#__PURE__*/React.createElement("h4", null, inspected.body.decision), inspected.body.reviewedSources?.length > 0 && /*#__PURE__*/React.createElement("p", null, "Reviewed sources: ", inspected.body.reviewedSources.map(s => s.filename).join(', ')), inspected.body.issue && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, inspected.body.issue), " \xB7 ", dispositions[inspected.body.disposition] || inspected.body.disposition, inspected.body.reviewDate && ` · Review ${inspected.body.reviewDate}`), /*#__PURE__*/React.createElement("p", {
     style: {
       whiteSpace: 'pre-wrap'
     }
@@ -268,7 +312,7 @@ export function ResearchDecisions({
       borderTop: '1px solid var(--border, #bbb)',
       padding: '12px 0'
     }
-  }, /*#__PURE__*/React.createElement("strong", null, "#", r.revision, " \xB7 ", r.body.decisionDate, " \xB7 ", r.superseded ? 'Superseded' : 'Recorded decision'), /*#__PURE__*/React.createElement("h4", null, r.body.decision), r.body.issue && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, r.body.issue), " \xB7 ", dispositions[r.body.disposition] || r.body.disposition, r.body.reviewDate && ` · Review ${r.body.reviewDate}`), /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("strong", null, "#", r.revision, " \xB7 ", r.body.decisionDate, " \xB7 ", r.superseded ? 'Superseded' : 'Recorded decision'), /*#__PURE__*/React.createElement("h4", null, r.body.decision), r.body.reviewedSources?.length > 0 && /*#__PURE__*/React.createElement("p", null, "Reviewed sources: ", r.body.reviewedSources.map(s => s.filename).join(', ')), r.body.issue && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, r.body.issue), " \xB7 ", dispositions[r.body.disposition] || r.body.disposition, r.body.reviewDate && ` · Review ${r.body.reviewDate}`), /*#__PURE__*/React.createElement("p", {
     style: {
       whiteSpace: 'pre-wrap'
     }

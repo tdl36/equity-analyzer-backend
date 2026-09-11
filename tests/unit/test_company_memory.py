@@ -65,3 +65,16 @@ class MemoryConversationTests(ConversationTests):
         self.assertEqual(r.status_code,503)
         self.assertEqual(self.store.jobs,{})
         self.assertEqual(self.store.chats,{})
+
+    def test_current_question_drives_focused_retrieval_and_freezes_result(self):
+        import research_conversations as rc
+        lookups=[]
+        def focused(ticker,message):
+            lookups.append((ticker,message));return self.snapshot
+        app=Flask('focused')
+        app.register_blueprint(rc.create_blueprint(self.store.db,lambda _: 'Reply',load_focused_memory=focused))
+        response=app.test_client().post('/api/research/conversations/messages',json=self.payload)
+        self.assertEqual(response.status_code,202)
+        self.assertEqual(lookups,[(self.payload['ticker'].upper(),self.payload['message'])])
+        stored=self.store.jobs[self.payload['requestId']]['input']['companyMemory']
+        self.assertEqual(stored['snapshotHash'],self.snapshot['snapshotHash'])

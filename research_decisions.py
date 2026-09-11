@@ -42,6 +42,16 @@ def validate(data):
             except (ValueError,TypeError):raise ValueError('Choose a valid review date.')
     elif data.get('reviewDate'):
         raise ValueError('Name the issue before setting a review date.')
+    evidence=data.get('evidenceDocumentIds',[])
+    if not isinstance(evidence,list) or len(evidence)>6 or any(type(i) is not int or i<=0 for i in evidence) or len(set(evidence))!=len(evidence):
+        raise ValueError('Choose up to six distinct saved source documents.')
+    if evidence:
+        if not body.get('issue'):raise ValueError('Name the issue before attaching reviewed sources.')
+        body['evidenceDocumentIds']=evidence
+        hashes=data.get('evidenceHashes')
+        if not isinstance(hashes,dict) or set(hashes)!=set(map(str,evidence)) or any(not isinstance(h,str) or not re.fullmatch('[a-f0-9]{64}',h) for h in hashes.values()):
+            raise ValueError('Reload the source preview before attaching evidence.')
+        body['evidenceHashes']=hashes
     return rid,revision,body
 
 
@@ -122,6 +132,16 @@ def create_blueprint(get_db):
             cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',('decision-ticker:'+ticker,))
             cur.execute('SELECT COALESCE(MAX(revision),0) AS revision FROM research_decisions WHERE ticker=%s',(ticker,));current=cur.fetchone()['revision']
             if revision!=current:return jsonify(error='Decision log changed. Reload before saving; your draft is retained.'),409
+            if body.get('evidenceDocumentIds'):
+                cur.execute('''SELECT d.id,d.filename,encode(sha256(convert_to(d.extracted_text,'UTF8')),'hex') AS extraction_hash
+                    FROM mp_documents d JOIN mp_meetings m ON m.id=d.meeting_id
+                    JOIN mp_companies c ON c.id=m.company_id WHERE upper(c.ticker)=%s
+                    AND d.id=ANY(%s) AND length(trim(coalesce(d.extracted_text,'')))>0''',(ticker,body['evidenceDocumentIds']))
+                sources=[dict(r) for r in cur.fetchall()]
+                if len(sources)!=len(body['evidenceDocumentIds']):return jsonify(error='A reviewed source is missing or belongs to another company. Reload sources.'),409
+                if any(body['evidenceHashes'][str(s['id'])]!=s['extraction_hash'] for s in sources):
+                    return jsonify(error='Source text changed after preview. Review it again before saving.'),409
+                body['reviewedSources']=sorted(sources,key=lambda r:r['id'])
             if body['supersedes']:
                 cur.execute("SELECT id,body FROM research_decisions WHERE ticker=%s AND id=%s AND NOT EXISTS(SELECT 1 FROM research_decisions n WHERE n.ticker=%s AND n.body->>'supersedes'=%s)",(ticker,body['supersedes'],ticker,body['supersedes']))
                 previous=cur.fetchone()
