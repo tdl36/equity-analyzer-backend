@@ -21,6 +21,8 @@ export function CaseEvidence({
     [working, setWorking] = React.useState(false),
     [notice, setNotice] = React.useState(''),
     [refresh, setRefresh] = React.useState(0);
+  var [search, setSearch] = React.useState(''),
+    [selectedOnly, setSelectedOnly] = React.useState(false);
   var [debate, setDebate] = React.useState(null),
     [reviews, setReviews] = React.useState({});
   var requestRef = React.useRef(null),
@@ -125,42 +127,104 @@ export function CaseEvidence({
   var effectiveAssumption = targeted || assumptionId,
     effectiveField = selected?.change.field || field;
   var assumption = body.assumptions.find(a => a.id === effectiveAssumption);
-  return /*#__PURE__*/React.createElement("details", {
-    open: true,
-    className: "amendment-card"
-  }, /*#__PURE__*/React.createElement("summary", null, "Evidence, debate and proposed changes"), /*#__PURE__*/React.createElement("p", null, "Choose an existing research change and review its excerpt before adding it to your investment case. A passage match establishes provenance at generation; it does not prove the interpretation or that the source is still current."), /*#__PURE__*/React.createElement(ThesisMonitor, {
-    api: api,
-    ticker: ticker,
-    disabled: disabled || !revision || !body.assumptions.length
-  }), /*#__PURE__*/React.createElement("details", {
-    open: true
-  }, /*#__PURE__*/React.createElement("summary", null, "Generate proposals for this investment case"), /*#__PURE__*/React.createElement("p", null, "Select up to 10 saved originals. Charlie checks new evidence against your assumptions and proposes only material changes. Model usage is incurred when you generate. Oversized source sets fail visibly rather than being silently clipped."), /*#__PURE__*/React.createElement("fieldset", {
-    disabled: disabled || working || activeJob
-  }, /*#__PURE__*/React.createElement("label", null, "Focus or instructions", /*#__PURE__*/React.createElement("textarea", {
-    value: instructions,
-    maxLength: 6000,
-    onChange: e => setInstructions(e.target.value),
-    placeholder: "Challenge the margin recovery assumption; preserve management qualifiers."
-  })), /*#__PURE__*/React.createElement("div", {
-    style: {
-      maxHeight: 240,
-      overflowY: 'auto'
-    }
-  }, documents.map(name => /*#__PURE__*/React.createElement("label", {
-    key: name
+  var visibleDocuments = [...documents].sort((a, b) => b.localeCompare(a)).filter(name => (!selectedOnly || files.includes(name)) && name.toLowerCase().includes(search.toLowerCase().trim()));
+  return /*#__PURE__*/React.createElement("section", {
+    className: "case-evidence",
+    "aria-label": `${ticker} evidence and proposals`
+  }, /*#__PURE__*/React.createElement("header", {
+    className: "case-evidence-heading"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "workspace-eyebrow"
+  }, ticker, " / EVIDENCE & PROPOSALS"), /*#__PURE__*/React.createElement("h2", null, "What does the new evidence change?"), /*#__PURE__*/React.createElement("p", null, "Choose the documents you want Charlie to assess against your saved investment case.")), disabled && /*#__PURE__*/React.createElement("p", {
+    className: "case-evidence-banner"
+  }, "Save your current case edits before generating or accepting changes."), !revision || !body.assumptions.length ? /*#__PURE__*/React.createElement("p", {
+    className: "case-evidence-banner"
+  }, "Start in Current thesis: save a case with at least one assumption, then return here.") : null, activeJob && /*#__PURE__*/React.createElement("p", {
+    className: "case-evidence-banner"
+  }, "A comparison is already in progress or awaiting your review. ", /*#__PURE__*/React.createElement("button", {
+    onClick: () => document.getElementById(`case-review-${ticker}`)?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start'
+    })
+  }, "Go to results below \u2193")), /*#__PURE__*/React.createElement("section", {
+    className: "case-evidence-step"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "case-step-title"
+  }, /*#__PURE__*/React.createElement("span", null, "1"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", null, "Choose your documents"), /*#__PURE__*/React.createElement("p", null, "Select up to 10 originals. Search by broker, topic, or filename."))), /*#__PURE__*/React.createElement("fieldset", {
+    disabled: disabled || working || activeJob || loading || !!error
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "case-source-tools"
+  }, /*#__PURE__*/React.createElement("label", null, "Find documents", /*#__PURE__*/React.createElement("input", {
+    type: "search",
+    value: search,
+    onChange: e => setSearch(e.target.value),
+    placeholder: "Search broker, earnings, transcript\u2026"
+  })), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    "aria-pressed": selectedOnly,
+    onClick: () => setSelectedOnly(!selectedOnly)
+  }, selectedOnly ? 'Show all documents' : 'Show selected only')), /*#__PURE__*/React.createElement("div", {
+    className: "case-source-count"
+  }, /*#__PURE__*/React.createElement("strong", null, files.length, " of 10 selected"), /*#__PURE__*/React.createElement("span", null, visibleDocuments.length, " matching documents"), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    disabled: !files.length,
+    onClick: () => setFiles([])
+  }, "Clear selection")), /*#__PURE__*/React.createElement("div", {
+    className: "case-source-list",
+    role: "group",
+    "aria-label": "Available source documents"
+  }, visibleDocuments.map(name => /*#__PURE__*/React.createElement("label", {
+    className: "case-source-row",
+    key: name,
+    "data-selected": files.includes(name)
   }, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
     checked: files.includes(name),
     disabled: !files.includes(name) && files.length >= 10,
     onChange: e => setFiles(e.target.checked ? [...files, name] : files.filter(x => x !== name))
-  }), name))), !loading && !documents.length && /*#__PURE__*/React.createElement("p", null, "No saved originals found for this company. Import documents into Charlie first."), /*#__PURE__*/React.createElement("button", {
-    disabled: !revision || !body.assumptions.length || !files.length,
+  }), /*#__PURE__*/React.createElement("span", null, name), /*#__PURE__*/React.createElement("small", null, name.split('.').pop().toUpperCase()))), loading && /*#__PURE__*/React.createElement("p", null, "Loading saved documents\u2026"), !loading && !visibleDocuments.length && /*#__PURE__*/React.createElement("p", null, documents.length ? 'No documents match this filter. Try another search or show all documents.' : 'No saved originals for this company. Import documents through your usual collection workflow first.')), !!files.length && /*#__PURE__*/React.createElement("details", {
+    className: "case-selected-list"
+  }, /*#__PURE__*/React.createElement("summary", null, "Review your ", files.length, " selected documents"), files.map(name => /*#__PURE__*/React.createElement("div", {
+    key: name
+  }, /*#__PURE__*/React.createElement("span", null, name, !documents.includes(name) ? ' · No longer in the available list' : ''), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    "aria-label": `Remove ${name}`,
+    onClick: () => setFiles(files.filter(x => x !== name))
+  }, "Remove")))))), /*#__PURE__*/React.createElement("section", {
+    className: "case-evidence-step"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "case-step-title"
+  }, /*#__PURE__*/React.createElement("span", null, "2"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", null, "Set the focus"), /*#__PURE__*/React.createElement("p", null, "Optional. Leave blank for a review across your saved assumptions."))), /*#__PURE__*/React.createElement("fieldset", {
+    disabled: disabled || working || activeJob
+  }, /*#__PURE__*/React.createElement("label", null, "What should Charlie investigate?", /*#__PURE__*/React.createElement("textarea", {
+    rows: 4,
+    value: instructions,
+    maxLength: 6000,
+    onChange: e => setInstructions(e.target.value),
+    placeholder: "For example: Does this change the margin recovery case? Preserve management\u2019s qualifiers and highlight contradictory evidence."
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "case-generate"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "workspace-primary",
+    disabled: loading || !!error || !revision || !body.assumptions.length || !files.length || files.some(n => !documents.includes(n)),
     onClick: generate
-  }, "Generate assumption proposals \xB7 ", files.length, " sources")), /*#__PURE__*/React.createElement("p", {
-    role: "status"
-  }, notice), rows.filter(j => j.target === 'investment_case').map(j => /*#__PURE__*/React.createElement("section", {
-    key: j.id
-  }, /*#__PURE__*/React.createElement("strong", null, j.status.replaceAll('_', ' '), " \xB7 ", new Date(j.created_at).toLocaleString()), j.error && /*#__PURE__*/React.createElement("p", {
+  }, working ? 'Submitting…' : `Assess ${files.length || 'selected'} document${files.length === 1 ? '' : 's'}`), /*#__PURE__*/React.createElement("p", null, "Creates proposed changes for your review. Uses model credits; your saved case is not changed automatically.")))), notice && /*#__PURE__*/React.createElement("p", {
+    role: "status",
+    className: "case-evidence-banner"
+  }, notice), error && /*#__PURE__*/React.createElement("p", {
+    role: "alert"
+  }, error, " ", /*#__PURE__*/React.createElement("button", {
+    onClick: () => setRefresh(x => x + 1)
+  }, "Retry loading documents")), /*#__PURE__*/React.createElement("section", {
+    className: "case-evidence-step",
+    id: `case-review-${ticker}`
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "case-step-title"
+  }, /*#__PURE__*/React.createElement("span", null, "3"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", null, "Review and decide"), /*#__PURE__*/React.createElement("p", null, "Read the supporting passage, debate the interpretation, then accept changes or record why your view stays the same."))), rows.filter(j => j.target === 'investment_case').map(j => /*#__PURE__*/React.createElement("details", {
+    className: "case-result",
+    key: j.id,
+    open: j.status !== 'dismissed'
+  }, /*#__PURE__*/React.createElement("summary", null, j.status.replaceAll('_', ' '), " \xB7 ", new Date(j.created_at).toLocaleString()), j.error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
   }, j.error), j.result?.conditionAssessments?.map(c => /*#__PURE__*/React.createElement("article", {
     className: "workspace-panel",
@@ -174,7 +238,9 @@ export function CaseEvidence({
   }, "Needs review: ", c.after, " \u2014 ", c.reviewIssue || 'Supporting passage did not match.')), j.status === 'failed' && j.result?.checkpoint && /*#__PURE__*/React.createElement("button", {
     disabled: disabled || working,
     onClick: () => mutate('/api/research/amendment/' + j.id + '/resume', {})
-  }, "Resume from saved checkpoint"), j.result?.reviewDecision && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, "My review: ", j.result.reviewDecision.outcome.replaceAll('_', ' ')), " \xB7 ", j.result.reviewDecision.rationale), ['failed', 'awaiting_approval'].includes(j.status) && /*#__PURE__*/React.createElement("fieldset", {
+  }, "Resume from saved checkpoint"), j.result?.reviewDecision && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, "My review: ", j.result.reviewDecision.outcome.replaceAll('_', ' ')), " \xB7 ", j.result.reviewDecision.rationale), ['failed', 'awaiting_approval'].includes(j.status) && /*#__PURE__*/React.createElement("details", {
+    className: "case-close-review"
+  }, /*#__PURE__*/React.createElement("summary", null, "Finish this review \xB7 record your conclusion"), /*#__PURE__*/React.createElement("fieldset", {
     disabled: disabled || working
   }, /*#__PURE__*/React.createElement("label", null, "My conclusion", /*#__PURE__*/React.createElement("select", {
     value: reviews[j.id]?.outcome || 'no_change',
@@ -213,7 +279,7 @@ export function CaseEvidence({
     role: "status"
   }, "Loading source proposals\u2026"), error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
-  }, error), !loading && !error && !options.length && /*#__PURE__*/React.createElement("p", null, "No eligible source proposals yet. Generate a comparison above, or use an existing thesis comparison. Only changes with a matching passage and a passed model review appear here."), !!options.length && /*#__PURE__*/React.createElement("fieldset", {
+  }, error), !loading && !error && !options.length && /*#__PURE__*/React.createElement("p", null, "Your results will appear here after assessment. Start by selecting documents in step 1."), !!options.length && /*#__PURE__*/React.createElement("fieldset", {
     disabled: disabled || working
   }, /*#__PURE__*/React.createElement("label", null, "Reviewed research change", /*#__PURE__*/React.createElement("select", {
     value: chosen,
@@ -281,7 +347,13 @@ export function CaseEvidence({
         field: effectiveField
       }
     })
-  }, "Accept into a new investment case revision")))), !!body.evidenceLinks?.length && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, body.evidenceLinks.length, " accepted evidence links"), body.evidenceLinks.map((link, i) => {
+  }, "Accept into a new investment case revision"))))), /*#__PURE__*/React.createElement("details", {
+    className: "case-automation"
+  }, /*#__PURE__*/React.createElement("summary", null, "Automatic monitoring \xB7 optional settings"), /*#__PURE__*/React.createElement(ThesisMonitor, {
+    api: api,
+    ticker: ticker,
+    disabled: disabled || !revision || !body.assumptions.length
+  })), !!body.evidenceLinks?.length && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, body.evidenceLinks.length, " accepted evidence links"), body.evidenceLinks.map((link, i) => {
     var a = body.assumptions.find(x => x.id === link.assumptionId);
     return /*#__PURE__*/React.createElement("section", {
       key: i
