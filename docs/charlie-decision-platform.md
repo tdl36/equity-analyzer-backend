@@ -235,3 +235,17 @@ financial-model/portfolio propagation, and the broader sequence above.
 - Next: real-source framework comparison, broader generator integration, contextual
   historical retrieval, belief adjudication and repeat-alert suppression. Revisit
   conditions remain recorded instructions, not monitored event triggers.
+
+## T56: framework production styling correction
+
+The initial framework browser fixture supplied generic label/input CSS absent from
+Charlie, masking unstyled production form controls. Added scoped framework styles
+and explicit action/field layout: two columns on desktop, one below 800px,
+full-width theme-aware textareas/selects, labelled spacing, focus outlines and
+44px buttons. No framework content or backend semantics changed.
+
+Validation now uses the actual built production stylesheet and workspace panel.
+Headless Chrome checks and screenshots cover Dusk at 1200/390px and Ink at 1200px;
+six readable themed fields, correct mobile column count and no horizontal overflow.
+Desktop screenshot inspected visually. This corrects the earlier isolated-fixture
+validation gap. Production build completed.

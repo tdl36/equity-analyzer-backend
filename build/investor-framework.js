@@ -119,17 +119,23 @@ export function InvestorFramework({
     }
   };
   var prior = versions.find(v => String(v.revision) === selected);
-  return /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "My investment framework \xB7 ", revision ? `v${revision}` : 'not saved'), /*#__PURE__*/React.createElement("p", {
+  return /*#__PURE__*/React.createElement("details", {
+    className: "investor-framework"
+  }, /*#__PURE__*/React.createElement("summary", null, "My investment framework \xB7 ", revision ? `v${revision}` : 'not saved'), /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
   }, "Your shared research methodology across companies. New research-chat replies, analyst recaps and meeting packs use the saved version. Existing jobs keep their captured version. This does not change every legacy workflow or automatically accept research, monitor events, or trade."), /*#__PURE__*/React.createElement("fieldset", {
     disabled: busy
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "framework-actions"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => edit({
       ...starter
     })
   }, "Use value-investor starter draft"), /*#__PURE__*/React.createElement("button", {
     onClick: () => edit(blank())
-  }, "Clear draft"), sections.map(([key, label]) => /*#__PURE__*/React.createElement("label", {
+  }, "Clear draft")), /*#__PURE__*/React.createElement("div", {
+    className: "framework-fields"
+  }, sections.map(([key, label]) => /*#__PURE__*/React.createElement("label", {
     key: key
   }, label, /*#__PURE__*/React.createElement("textarea", {
     rows: 4,
@@ -139,13 +145,15 @@ export function InvestorFramework({
       ...body,
       [key]: e.target.value
     })
-  }))), /*#__PURE__*/React.createElement("button", {
+  })))), /*#__PURE__*/React.createElement("div", {
+    className: "framework-actions"
+  }, /*#__PURE__*/React.createElement("button", {
     className: "workspace-primary",
     disabled: revision === null || !dirty && revision > 0,
     onClick: () => save()
   }, "Save framework version"), /*#__PURE__*/React.createElement("button", {
     onClick: load
-  }, dirty ? 'Discard draft and reload saved framework' : 'Reload framework')), /*#__PURE__*/React.createElement("p", {
+  }, dirty ? 'Discard draft and reload saved framework' : 'Reload framework'))), /*#__PURE__*/React.createElement("p", {
     role: "status"
   }, busy ? 'Working…' : message), /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"

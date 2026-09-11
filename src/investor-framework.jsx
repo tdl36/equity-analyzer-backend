@@ -15,11 +15,11 @@ export function InvestorFramework({api}) {
   finally{lock.current=false;if(alive.current)setBusy(false);}
  };
  const prior=versions.find(v=>String(v.revision)===selected);
- return <details><summary>My investment framework · {revision?`v${revision}`:'not saved'}</summary>
+ return <details className="investor-framework"><summary>My investment framework · {revision?`v${revision}`:'not saved'}</summary>
   <p className="desk-explainer">Your shared research methodology across companies. New research-chat replies, analyst recaps and meeting packs use the saved version. Existing jobs keep their captured version. This does not change every legacy workflow or automatically accept research, monitor events, or trade.</p>
-  <fieldset disabled={busy}><button onClick={()=>edit({...starter})}>Use value-investor starter draft</button><button onClick={()=>edit(blank())}>Clear draft</button>
+  <fieldset disabled={busy}><div className="framework-actions"><button onClick={()=>edit({...starter})}>Use value-investor starter draft</button><button onClick={()=>edit(blank())}>Clear draft</button></div><div className="framework-fields">
   {sections.map(([key,label])=><label key={key}>{label}<textarea rows={4} maxLength={6000} value={body[key]||''} onChange={e=>edit({...body,[key]:e.target.value})}/></label>)}
-  <button className="workspace-primary" disabled={revision===null||(!dirty&&revision>0)} onClick={()=>save()}>Save framework version</button><button onClick={load}>{dirty?'Discard draft and reload saved framework':'Reload framework'}</button></fieldset>
+  </div><div className="framework-actions"><button className="workspace-primary" disabled={revision===null||(!dirty&&revision>0)} onClick={()=>save()}>Save framework version</button><button onClick={load}>{dirty?'Discard draft and reload saved framework':'Reload framework'}</button></div></fieldset>
   <p role="status">{busy?'Working…':message}</p>
   <p className="desk-explainer">Framework preferences guide reasoning; they cannot override evidence checks, attribution, selected sources, or current assignment instructions. Saving an empty framework clears the active preferences while retaining history.</p>
   <label>Saved versions · latest {versions.length}<select disabled={busy} value={selected} onChange={e=>setSelected(e.target.value)}><option value="">Choose a version to inspect</option>{versions.map(v=><option key={v.revision} value={v.revision}>v{v.revision} · {new Date(v.created_at).toLocaleString()}</option>)}</select></label>

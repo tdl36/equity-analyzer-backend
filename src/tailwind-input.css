@@ -25,3 +25,22 @@
 .source-preferences button {padding:8px 12px;border:1px solid #94a3b866;border-radius:6px;}
 .source-rule {grid-template-columns:repeat(3,minmax(0,1fr));}
 @media(max-width:800px){.source-rule {grid-template-columns:1fr;} .source-rule label:first-child {grid-column:auto;}}
+
+/* Framework editor: explicit form styling across all workspace themes. */
+.investor-framework {margin:24px 0;padding:20px;border:1px solid var(--line,#c6c1b6);border-radius:var(--radius-lg,8px);min-width:0;color:var(--ink,#191714);font:14px/1.6 var(--font-ui,sans-serif);}
+.investor-framework>summary {cursor:pointer;font-size:17px;font-weight:600;padding:4px 0;}
+.investor-framework[open]>summary {margin-bottom:16px;}
+.investor-framework p {margin:12px 0;}
+.investor-framework fieldset {border:0;padding:0;margin:0;min-width:0;}
+.investor-framework .framework-fields {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin:20px 0;}
+.investor-framework label {display:flex;flex-direction:column;gap:8px;min-width:0;font-size:13px;font-weight:600;}
+.investor-framework textarea,.investor-framework select {display:block;box-sizing:border-box;width:100%;max-width:100%;padding:12px;border:1px solid var(--line-strong,#9c907a);border-radius:6px;background:var(--bg,#f4efe4);color:var(--ink,#191714);font:400 14px/1.65 var(--font-ui,sans-serif);}
+.investor-framework textarea {min-height:168px;resize:vertical;}
+.investor-framework .framework-actions {display:flex;flex-wrap:wrap;gap:10px;align-items:center;}
+.investor-framework button {min-height:44px;padding:10px 14px;border:1px solid var(--line-strong,#9c907a);border-radius:6px;background:var(--surface,#fbf7ee);color:var(--ink,#191714);font:500 13px/1.4 var(--font-ui,sans-serif);text-align:left;}
+.investor-framework button.workspace-primary {background:var(--accent,#c6a34b);color:var(--bg,#14110c);font-weight:700;}
+.investor-framework button:disabled {opacity:.5;cursor:not-allowed;}
+.investor-framework :is(button,textarea,select,summary):focus-visible {outline:2px solid var(--accent,#c6a34b);outline-offset:3px;}
+.investor-framework article {margin-top:20px;padding-top:16px;border-top:1px solid var(--line,#c6c1b6);}
+.investor-framework article h4 {font-weight:600;margin:16px 0 6px;}
+@media(max-width:800px){.investor-framework .framework-fields{grid-template-columns:1fr;}.investor-framework{padding:16px;}.investor-framework textarea,.investor-framework select{font-size:16px;}.investor-framework .framework-actions button{flex:1 1 180px;}}
