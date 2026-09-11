@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { ThesisMonitor } from './thesis-monitor';
+import { ProposalReview } from './proposal-review';
 import { ResearchChat } from './research-chat';
 export function CaseEvidence({
   api,
@@ -11,10 +12,7 @@ export function CaseEvidence({
 }) {
   var [rows, setRows] = React.useState([]),
     [error, setError] = React.useState(''),
-    [loading, setLoading] = React.useState(true),
-    [chosen, setChosen] = React.useState(''),
-    [assumptionId, setAssumption] = React.useState(''),
-    [field, setField] = React.useState('support');
+    [loading, setLoading] = React.useState(true);
   var [documents, setDocuments] = React.useState([]),
     [files, setFiles] = React.useState([]),
     [instructions, setInstructions] = React.useState(''),
@@ -117,16 +115,6 @@ export function CaseEvidence({
     mutate('/api/research/investment-case/' + encodeURIComponent(ticker) + '/proposals', requestRef.current.payload);
   };
   var activeJob = rows.some(j => j.target === 'investment_case' && ['queued', 'running', 'awaiting_approval'].includes(j.status));
-  var options = rows.flatMap(job => (job.result?.changes || []).filter(c => ['awaiting_approval', 'applied'].includes(job.status) && c.passageMatched && c.reviewPassed).map(change => ({
-    key: job.id + ':' + change.id,
-    job,
-    change
-  })));
-  var selected = options.find(o => o.key === chosen);
-  var targeted = selected?.change.assumptionId;
-  var effectiveAssumption = targeted || assumptionId,
-    effectiveField = selected?.change.field || field;
-  var assumption = body.assumptions.find(a => a.id === effectiveAssumption);
   var visibleDocuments = [...documents].sort((a, b) => b.localeCompare(a)).filter(name => (!selectedOnly || files.includes(name)) && name.toLowerCase().includes(search.toLowerCase().trim()));
   return /*#__PURE__*/React.createElement("section", {
     className: "case-evidence",
@@ -146,7 +134,10 @@ export function CaseEvidence({
       behavior: 'smooth',
       block: 'start'
     })
-  }, "Go to results below \u2193")), /*#__PURE__*/React.createElement("section", {
+  }, "Go to results below \u2193")), /*#__PURE__*/React.createElement("details", {
+    className: "case-preparation",
+    open: !activeJob
+  }, /*#__PURE__*/React.createElement("summary", null, activeJob ? 'Documents & focus · comparison already submitted' : 'Prepare a comparison'), /*#__PURE__*/React.createElement("section", {
     className: "case-evidence-step"
   }, /*#__PURE__*/React.createElement("div", {
     className: "case-step-title"
@@ -208,7 +199,7 @@ export function CaseEvidence({
     className: "workspace-primary",
     disabled: loading || !!error || !revision || !body.assumptions.length || !files.length || files.some(n => !documents.includes(n)),
     onClick: generate
-  }, working ? 'Submitting…' : `Assess ${files.length || 'selected'} document${files.length === 1 ? '' : 's'}`), /*#__PURE__*/React.createElement("p", null, "Creates proposed changes for your review. Uses model credits; your saved case is not changed automatically.")))), notice && /*#__PURE__*/React.createElement("p", {
+  }, working ? 'Submitting…' : `Assess ${files.length || 'selected'} document${files.length === 1 ? '' : 's'}`), /*#__PURE__*/React.createElement("p", null, "Creates proposed changes for your review. Uses model credits; your saved case is not changed automatically."))))), notice && /*#__PURE__*/React.createElement("p", {
     role: "status",
     className: "case-evidence-banner"
   }, notice), error && /*#__PURE__*/React.createElement("p", {
@@ -228,16 +219,21 @@ export function CaseEvidence({
     role: "alert"
   }, j.error), !!j.result?.conditionWarnings?.length && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, j.result.conditionWarnings.length, " optional underweight suggestions excluded \xB7 thesis review continues"), j.result.conditionWarnings.map((w, i) => /*#__PURE__*/React.createElement("p", {
     key: i
-  }, w))), j.result?.conditionAssessments?.map(c => /*#__PURE__*/React.createElement("article", {
+  }, w))), !!j.result?.conditionAssessments?.length && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Underweight condition assessments \xB7 ", j.result.conditionAssessments.length), j.result?.conditionAssessments?.map(c => /*#__PURE__*/React.createElement("article", {
     className: "workspace-panel",
     key: c.id
   }, /*#__PURE__*/React.createElement("p", {
     className: "workspace-eyebrow"
   }, "UNDERWEIGHT CONDITION \xB7 AI SUGGESTION"), /*#__PURE__*/React.createElement("h4", null, c.workTitle), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, "Condition:"), " ", c.trigger), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, "Suggested assessment:"), " ", c.assessment.replaceAll('_', ' ')), /*#__PURE__*/React.createElement("p", null, c.reason), /*#__PURE__*/React.createElement("p", null, c.passageMatched && c.reviewPassed ? 'Passed excerpt and model checks; your judgment is still required.' : 'Needs further verification · ' + (c.reviewIssue || 'Supporting passage did not match.')), c.evidence?.filter(e => e.status === 'passage_matched').map((e, i) => /*#__PURE__*/React.createElement("blockquote", {
     key: i
-  }, /*#__PURE__*/React.createElement("strong", null, j.result.sources?.find(s => s.id === e.sourceId)?.filename), /*#__PURE__*/React.createElement("p", null, e.excerpt))), /*#__PURE__*/React.createElement("p", null, "Based on work revision ", c.workRevision, " and case R", c.caseRevision, ". Review the current record in Decisions & underweights before recording your own assessment."))), j.status === 'awaiting_approval' && /*#__PURE__*/React.createElement("p", null, j.result?.changes?.length || 0, " proposed changes \xB7 ", (j.result?.changes || []).filter(c => c.reviewPassed && c.passageMatched).length, " passed passage and model checks. Review below, then close this proposal to start another."), (j.result?.changes || []).filter(c => !c.reviewPassed || !c.passageMatched).map(c => /*#__PURE__*/React.createElement("p", {
-    key: c.id
-  }, "Needs review: ", c.after, " \u2014 ", c.reviewIssue || 'Supporting passage did not match.')), j.status === 'failed' && j.result?.checkpoint && /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("strong", null, j.result.sources?.find(s => s.id === e.sourceId)?.filename), /*#__PURE__*/React.createElement("p", null, e.excerpt))), /*#__PURE__*/React.createElement("p", null, "Based on work revision ", c.workRevision, " and case R", c.caseRevision, ". Review the current record in Decisions & underweights before recording your own assessment.")))), ['awaiting_approval', 'applied', 'dismissed'].includes(j.status) && /*#__PURE__*/React.createElement(ProposalReview, {
+    job: j,
+    body: body,
+    revision: revision,
+    disabled: disabled || working,
+    onCommit: onCommit,
+    onDebate: setDebate
+  }), j.status === 'failed' && j.result?.checkpoint && /*#__PURE__*/React.createElement("button", {
     disabled: disabled || working,
     onClick: () => mutate('/api/research/amendment/' + j.id + '/resume', {})
   }, "Resume from saved checkpoint"), j.result?.reviewDecision && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, "My review: ", j.result.reviewDecision.outcome.replaceAll('_', ' ')), " \xB7 ", j.result.reviewDecision.rationale), ['failed', 'awaiting_approval'].includes(j.status) && /*#__PURE__*/React.createElement("details", {
@@ -279,77 +275,7 @@ export function CaseEvidence({
     })
   }, "Record decision and close proposal"))))), loading && /*#__PURE__*/React.createElement("p", {
     role: "status"
-  }, "Loading source proposals\u2026"), error && /*#__PURE__*/React.createElement("p", {
-    role: "alert"
-  }, error), !loading && !error && !options.length && /*#__PURE__*/React.createElement("p", null, "Your results will appear here after assessment. Start by selecting documents in step 1."), !!options.length && /*#__PURE__*/React.createElement("fieldset", {
-    disabled: disabled || working
-  }, /*#__PURE__*/React.createElement("label", null, "Reviewed research change", /*#__PURE__*/React.createElement("select", {
-    value: chosen,
-    onChange: e => setChosen(e.target.value)
-  }, /*#__PURE__*/React.createElement("option", {
-    value: ""
-  }, "Choose a source-supported change"), options.map(o => /*#__PURE__*/React.createElement("option", {
-    key: o.key,
-    value: o.key
-  }, new Date(o.job.created_at).toLocaleDateString(), " \xB7 ", o.change.after.slice(0, 110))))), selected && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h3", null, "Why Charlie proposes a change"), /*#__PURE__*/React.createElement("p", null, selected.change.reason), /*#__PURE__*/React.createElement("div", {
-    className: "lifecycle-tabs"
-  }, [['Challenge this interpretation', 'Challenge this proposed interpretation. Separate what the source actually says from inference. Identify missing evidence and explain whether the current thesis should change.'], ['Make the opposing case', 'Make the strongest evidence-based case against this proposed change. Preserve qualifiers and explain what would resolve the disagreement.'], ['What would change my mind?', 'Identify the observable evidence that would support or invalidate this change and the next questions I should investigate.']].map(([label, prompt]) => /*#__PURE__*/React.createElement("button", {
-    key: label,
-    onClick: () => setDebate({
-      prompt,
-      content: JSON.stringify({
-        caseRevision: revision,
-        investmentCase: body,
-        proposalId: selected.job.id,
-        change: selected.change,
-        sources: selected.job.result.sources
-      })
-    })
-  }, label))), selected.change.evidence.filter(e => e.status === 'passage_matched').map((e, i) => /*#__PURE__*/React.createElement("section", {
-    key: i
-  }, /*#__PURE__*/React.createElement("strong", null, selected.job.result.sources.find(s => s.id === e.sourceId)?.filename || 'Source snapshot'), /*#__PURE__*/React.createElement("blockquote", {
-    style: {
-      whiteSpace: 'pre-wrap'
-    }
-  }, e.excerpt))), /*#__PURE__*/React.createElement("label", null, "Investment assumption", /*#__PURE__*/React.createElement("select", {
-    disabled: !!targeted,
-    value: effectiveAssumption,
-    onChange: e => setAssumption(e.target.value)
-  }, /*#__PURE__*/React.createElement("option", {
-    value: ""
-  }, "Choose an assumption"), body.assumptions.map((a, i) => /*#__PURE__*/React.createElement("option", {
-    key: a.id,
-    value: a.id
-  }, i + 1, ". ", a.claim.slice(0, 120))))), /*#__PURE__*/React.createElement("label", null, "Update which field?", /*#__PURE__*/React.createElement("select", {
-    disabled: !!targeted,
-    value: effectiveField,
-    onChange: e => setField(e.target.value)
-  }, /*#__PURE__*/React.createElement("option", {
-    value: "support"
-  }, "Supporting evidence"), /*#__PURE__*/React.createElement("option", {
-    value: "contrary"
-  }, "Contrary evidence / unresolved"), /*#__PURE__*/React.createElement("option", {
-    value: "nextTest"
-  }, "Next test and timing"))), assumption && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h4", null, "Before"), /*#__PURE__*/React.createElement("p", {
-    style: {
-      whiteSpace: 'pre-wrap'
-    }
-  }, assumption[effectiveField] || 'Not recorded'), /*#__PURE__*/React.createElement("h4", null, "Proposed replacement"), /*#__PURE__*/React.createElement("p", {
-    style: {
-      whiteSpace: 'pre-wrap'
-    }
-  }, selected.change.after), /*#__PURE__*/React.createElement("p", null, "This replaces the selected field. Your assumption and its basis remain unchanged; the original quotation is retained separately."), /*#__PURE__*/React.createElement("button", {
-    disabled: assumption[effectiveField] === selected.change.after,
-    onClick: () => onCommit({
-      mode: 'source_change',
-      sourceChange: {
-        jobId: selected.job.id,
-        changeId: selected.change.id,
-        assumptionId: effectiveAssumption,
-        field: effectiveField
-      }
-    })
-  }, "Accept into a new investment case revision"))))), /*#__PURE__*/React.createElement("details", {
+  }, "Loading source proposals\u2026"), !loading && !error && !rows.length && /*#__PURE__*/React.createElement("p", null, "Your results will appear here after assessment. Start by selecting documents in step 1.")), /*#__PURE__*/React.createElement("details", {
     className: "case-automation"
   }, /*#__PURE__*/React.createElement("summary", null, "Automatic monitoring \xB7 optional settings"), /*#__PURE__*/React.createElement(ThesisMonitor, {
     api: api,

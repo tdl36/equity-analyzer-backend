@@ -455,3 +455,19 @@ condition is attached or applied; valid thesis changes still receive independent
 review. Prompt/checkpoint identity is unchanged so the existing draft can resume
 without paying to regenerate it. Unit and disposable database tests cover mixed
 valid/invalid conditions, retained review checks, and checkpoint resumption.
+
+## T65 — Readable proposal results
+
+Replaced the unbounded concatenation of flagged replacement text and reviewer
+findings with a dedicated change reader. Ready-to-review changes are first;
+flagged drafts are behind a separate filter and cannot be accepted. Each card
+identifies its assumption and destination, and opens a single full-text reader
+with distinct rationale, proposed replacement, current-wording comparison,
+source passages and verification findings. Optional condition assessments and
+review completion remain collapsed. All saved wording and safeguards are retained.
+
+Tested with the actual saved ABT 11-change result (3 ready, 8 flagged), mocked
+callbacks only: desktop/mobile counts, first-ready selection, blocked acceptance,
+contextual discussion, correct acceptance payload and no horizontal page overflow.
+Actual-content screenshots inspected at 1200px and 390px. No research regenerated
+or accepted during this interface repair.
