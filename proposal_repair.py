@@ -32,3 +32,13 @@ def merge_repair(previous, revised, targets):
                 c['repairOutcome']='no_supported_change'
         merged.append(c)
     return merged
+
+
+def compatible_case(body, targets):
+    """Accepted siblings can advance the revision without invalidating untouched targets."""
+    from investment_case import case_context_hash
+    context=case_context_hash(body)
+    assumptions={a['id']:a for a in body.get('assumptions',[])}
+    return bool(targets) and all(c.get('caseContextHash')==context and
+        c.get('assumptionId') in assumptions and
+        assumptions[c['assumptionId']].get(c.get('field'),'')==c.get('before') for c in targets)

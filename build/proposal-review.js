@@ -15,6 +15,24 @@ export function ProposalReview({
   onRepair
 }) {
   var changes = job.result?.changes || [];
+  var [repairBusy, setRepairBusy] = React.useState(false),
+    [repairNotice, setRepairNotice] = React.useState('');
+  var repairLock = React.useRef(false);
+  var requestRepair = async () => {
+    if (repairLock.current) return;
+    repairLock.current = true;
+    setRepairBusy(true);
+    setRepairNotice('Submitting revision request…');
+    try {
+      var result = await onRepair(repairCount);
+      setRepairNotice(result?.ok ? 'Revision queued. Charlie is re-reading the originals; results refresh automatically.' : result?.error || 'The request could not be confirmed. Reload the results before retrying.');
+    } catch (e) {
+      setRepairNotice(e.message || 'Revision request failed. Please retry.');
+    } finally {
+      repairLock.current = false;
+      setRepairBusy(false);
+    }
+  };
   var repairCount = job.result?.repairHistory?.length || 0;
   var needsRepair = changes.filter(c => !ready(c)).length;
   var [filter, setFilter] = React.useState('ready'),
@@ -66,13 +84,18 @@ export function ProposalReview({
     className: "proposal-status"
   }, applied ? 'Already reflected in current case' : ready(selected) ? 'Ready for your review' : 'Draft failed Charlie’s evidence checks')), !ready(selected) && /*#__PURE__*/React.createElement("section", {
     className: "proposal-verification"
-  }, /*#__PURE__*/React.createElement("h4", null, "Charlie needs to fix its draft"), /*#__PURE__*/React.createElement("p", null, selected.repairOutcome === 'no_supported_change' ? 'After re-reading the originals, Charlie could not produce a supported replacement. Your current wording has been retained.' : !selected.passageMatched ? 'Charlie could not locate its quoted passage in the saved original. This draft is not ready for an investment decision.' : 'The quotation matched, but the reviewer found claims it does not adequately support.'), onRepair && job.status === 'awaiting_approval' && repairCount < 2 ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("h4", null, "Charlie needs to fix its draft"), /*#__PURE__*/React.createElement("p", null, selected.repairOutcome === 'no_supported_change' ? 'After re-reading the originals, Charlie could not produce a supported replacement. Your current wording has been retained.' : !selected.passageMatched ? 'Charlie could not locate its quoted passage in the saved original. This draft is not ready for an investment decision.' : 'The quotation matched, but the reviewer found claims it does not adequately support.'), ['queued', 'running'].includes(job.status) ? /*#__PURE__*/React.createElement("p", {
+    role: "status"
+  }, "Charlie is re-reading the originals and checking revised drafts. This view refreshes automatically; your saved case is unchanged.") : onRepair && job.status === 'awaiting_approval' && repairCount < 2 ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
     className: "workspace-primary",
-    disabled: disabled,
-    onClick: () => onRepair(repairCount)
-  }, "Re-read sources & revise ", needsRepair, " draft", needsRepair === 1 ? '' : 's'), /*#__PURE__*/React.createElement("p", {
+    disabled: disabled || repairBusy,
+    onClick: requestRepair
+  }, repairBusy ? 'Submitting…' : `Re-read sources & revise ${needsRepair} draft${needsRepair === 1 ? '' : 's'}`), /*#__PURE__*/React.createElement("p", {
     className: "proposal-footnote"
-  }, "Charlie will shorten unsupported drafts, check quotations and run an independent review. Other proposals are preserved. Uses model credits; nothing is accepted automatically.")) : /*#__PURE__*/React.createElement("p", null, "Close this review with your conclusion below, then assess additional source documents if needed."), repairCount > 0 && /*#__PURE__*/React.createElement("p", null, repairCount, " revision attempt", repairCount === 1 ? '' : 's', " recorded. If evidence is still insufficient, you can leave your thesis unchanged using \u201CFinish this review\u201D below."), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "What failed the checks?"), /*#__PURE__*/React.createElement("p", null, selected.reviewIssue || 'The supporting quotation did not match the saved original.'))), ready(selected) ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h4", null, "What changes and why"), /*#__PURE__*/React.createElement("p", null, selected.reason || 'No rationale recorded.')), /*#__PURE__*/React.createElement("section", {
+  }, "Charlie will shorten unsupported drafts, check quotations and run an independent review. Other proposals are preserved. Uses model credits; nothing is accepted automatically.")) : /*#__PURE__*/React.createElement("p", null, "Close this review with your conclusion below, then assess additional source documents if needed."), repairCount > 0 && /*#__PURE__*/React.createElement("p", null, repairCount, " revision attempt", repairCount === 1 ? '' : 's', " recorded. If evidence is still insufficient, you can leave your thesis unchanged using \u201CFinish this review\u201D below."), repairNotice && /*#__PURE__*/React.createElement("p", {
+    role: "status",
+    "aria-live": "polite"
+  }, repairNotice), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "What failed the checks?"), /*#__PURE__*/React.createElement("p", null, selected.reviewIssue || 'The supporting quotation did not match the saved original.'))), ready(selected) ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h4", null, "What changes and why"), /*#__PURE__*/React.createElement("p", null, selected.reason || 'No rationale recorded.')), /*#__PURE__*/React.createElement("section", {
     className: "proposal-wording"
   }, /*#__PURE__*/React.createElement("h4", null, "Proposed wording for your case"), /*#__PURE__*/React.createElement("p", null, selected.after))) : /*#__PURE__*/React.createElement("details", {
     className: "proposal-wording"

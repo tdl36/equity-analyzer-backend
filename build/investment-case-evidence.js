@@ -91,8 +91,15 @@ export function CaseEvidence({
         setRefresh(x => x + 1);
         requestRef.current = null;
       }
+      return {
+        ok: true
+      };
     } catch (e) {
       if (alive.current) setNotice(e.message + ' Your selections remain here.');
+      return {
+        ok: false,
+        error: e.message
+      };
     } finally {
       mutationLock.current = false;
       if (alive.current) setWorking(false);
@@ -228,11 +235,11 @@ export function CaseEvidence({
     className: "workspace-eyebrow"
   }, "UNDERWEIGHT CONDITION \xB7 AI SUGGESTION"), /*#__PURE__*/React.createElement("h4", null, c.workTitle), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, "Condition:"), " ", c.trigger), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, "Suggested assessment:"), " ", c.assessment.replaceAll('_', ' ')), /*#__PURE__*/React.createElement("p", null, c.reason), /*#__PURE__*/React.createElement("p", null, c.passageMatched && c.reviewPassed ? 'Passed excerpt and model checks; your judgment is still required.' : 'Needs further verification · ' + (c.reviewIssue || 'Supporting passage did not match.')), c.evidence?.filter(e => e.status === 'passage_matched').map((e, i) => /*#__PURE__*/React.createElement("blockquote", {
     key: i
-  }, /*#__PURE__*/React.createElement("strong", null, j.result.sources?.find(s => s.id === e.sourceId)?.filename), /*#__PURE__*/React.createElement("p", null, e.excerpt))), /*#__PURE__*/React.createElement("p", null, "Based on work revision ", c.workRevision, " and case R", c.caseRevision, ". Review the current record in Decisions & underweights before recording your own assessment.")))), ['awaiting_approval', 'applied', 'dismissed'].includes(j.status) && /*#__PURE__*/React.createElement(ProposalReview, {
+  }, /*#__PURE__*/React.createElement("strong", null, j.result.sources?.find(s => s.id === e.sourceId)?.filename), /*#__PURE__*/React.createElement("p", null, e.excerpt))), /*#__PURE__*/React.createElement("p", null, "Based on work revision ", c.workRevision, " and case R", c.caseRevision, ". Review the current record in Decisions & underweights before recording your own assessment.")))), (['awaiting_approval', 'applied', 'dismissed'].includes(j.status) || ['queued', 'running'].includes(j.status) && j.result?.changes?.length > 0) && /*#__PURE__*/React.createElement(ProposalReview, {
     job: j,
     body: body,
     revision: revision,
-    disabled: disabled || working,
+    disabled: disabled || working || ['queued', 'running'].includes(j.status),
     onCommit: onCommit,
     onDebate: setDebate,
     onRepair: attempt => mutate('/api/research/amendment/' + j.id + '/repair', {

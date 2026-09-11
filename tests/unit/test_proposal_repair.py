@@ -31,7 +31,8 @@ class RepairRouteTests(RepairTests):
     def setUp(self):
         super().setUp()
         self.job={'ticker':'ABT','status':'awaiting_approval','input':{'target':'investment_case','baseline':{},'filenames':['source.pdf'],'sourceHashes':{'source.pdf':'hash'}},'result':{'changes':self.changes,'checkpoint':{'draft':{'changes':[]}}}}
-        job=self.job
+        job=self.job;test=self
+        self.latest={'revision':3,'body':{'assumptions':[]}}
         class Cursor:
             def execute(self,sql,args):
                 self.sql=sql
@@ -41,7 +42,9 @@ class RepairRouteTests(RepairTests):
                 if sql.startswith("UPDATE mp_jobs SET status=%s"):
                     job.update(status=args[0],result={**job['result'],**json.loads(args[1])},error=args[2])
             def fetchall(self):return [{'filename':'source.pdf','file_data':'dummy','file_type':'pdf'}]
-            def fetchone(self):return {'locked':True} if 'pg_try' in self.sql else copy.deepcopy(job)
+            def fetchone(self):
+                if 'FROM investment_case_versions' in self.sql:return copy.deepcopy(test.latest)
+                return {'locked':True} if 'pg_try' in self.sql else copy.deepcopy(job)
         @contextmanager
         def db(**kwargs):yield None,Cursor()
         app=Flask(__name__);app.config['TESTING']=True
@@ -78,6 +81,25 @@ class RepairRouteTests(RepairTests):
         c=self.job['result']['changes'][1]
         self.assertEqual(c['id'],'7');self.assertTrue(c['passageMatched']);self.assertTrue(c['reviewPassed'])
         self.assertEqual(c['after'],text)
+
+    def test_accepted_sibling_does_not_block_untouched_draft(self):
+        from investment_case import case_context_hash
+        self.check.return_value=False
+        self.latest={'revision':3,'body':{'assumptions':[{'id':'a','support':'Accepted sibling'},{'id':'b','support':'Unchanged target'}]}}
+        self.changes[1].update(assumptionId='b',field='support',before='Unchanged target',caseContextHash=case_context_hash(self.latest['body']))
+        before=copy.deepcopy(self.latest)
+        self.assertEqual(self.send().status_code,202)
+        self.assertEqual(self.job['input']['baseline']['_investmentCase']['revision'],3)
+        self.assertEqual(self.job['input']['baseline']['_investmentCase']['body'],before['body'])
+        self.assertEqual(self.latest,before)
+        self.assertEqual(self.job['result']['changes'][0],self.changes[0])
+
+    def test_changed_target_blocks_repair(self):
+        from investment_case import case_context_hash
+        self.check.return_value=False
+        self.latest={'revision':3,'body':{'assumptions':[{'id':'b','support':'Manual edit'}]}}
+        self.changes[1].update(assumptionId='b',field='support',before='Unchanged target',caseContextHash=case_context_hash(self.latest['body']))
+        self.assertEqual(self.send().status_code,409);self.thread.assert_not_called()
 
     def test_stale_case_rejected_without_mutation(self):
         self.check.return_value=False;before=copy.deepcopy(self.job)

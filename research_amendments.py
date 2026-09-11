@@ -371,9 +371,17 @@ def create_blueprint(get_db, call_model, get_key, model_identity=lambda: 'defaul
             if data.get('attempt')!=len(result.get('repairHistory',[])):
                 return jsonify(error='This review changed. Reload the results before requesting another revision.'),409
             if len(result.get('repairHistory',[]))>=2:return jsonify(error='Two revisions attempted. The selected sources still do not support these drafts. Close this review with your conclusion and assess additional originals.'),409
-            if not baseline_current(cur,job['ticker'],saved):return jsonify(error='Your saved case has changed. Close this review, then assess the documents against the latest case.'),409
             targets=[c for c in result.get('changes',[]) if not (c.get('passageMatched') and c.get('reviewPassed'))]
             if not targets:return jsonify(error='There are no unsupported drafts to revise.'),409
+            if not baseline_current(cur,job['ticker'],saved):
+                from proposal_repair import compatible_case
+                cur.execute('SELECT revision,body FROM investment_case_versions WHERE ticker=%s ORDER BY revision DESC LIMIT 1',(job['ticker'],));latest=cur.fetchone()
+                if not latest or not compatible_case(latest['body'],targets):
+                    return jsonify(error='The thesis context or a draft’s target field changed. Close this review and assess the sources against your updated case; Charlie will not overwrite those edits.'),409
+                # Rebase only untouched draft targets, preserving accepted siblings and audit history.
+                result.setdefault('repairBaselines',[]).append(saved['baseline'])
+                current_body=dict(latest['body']);current_body.pop('evidenceLinks',None)
+                saved['baseline']={'_investmentCase':{'revision':latest['revision'],'body':current_body}}
             from amendment_ownership import lock_name
             cur.execute('SELECT pg_try_advisory_xact_lock(hashtext(%s)) AS locked',(lock_name(job_id),))
             if not cur.fetchone()['locked']:return jsonify(error='The prior worker is finishing. Try again shortly.'),409
