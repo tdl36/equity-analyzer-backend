@@ -17,6 +17,9 @@ export function ProposalReview({
   var changes = job.result?.changes || [];
   var [repairBusy, setRepairBusy] = React.useState(false),
     [repairNotice, setRepairNotice] = React.useState('');
+  React.useEffect(() => {
+    if (['queued', 'running'].includes(job.status)) setRepairNotice('');
+  }, [job.status]);
   var repairLock = React.useRef(false);
   var requestRepair = async () => {
     if (repairLock.current) return;
@@ -92,7 +95,9 @@ export function ProposalReview({
     onClick: requestRepair
   }, repairBusy ? 'Submitting…' : `Re-read sources & revise ${needsRepair} draft${needsRepair === 1 ? '' : 's'}`), /*#__PURE__*/React.createElement("p", {
     className: "proposal-footnote"
-  }, "Charlie will shorten unsupported drafts, check quotations and run an independent review. Other proposals are preserved. Uses model credits; nothing is accepted automatically.")) : /*#__PURE__*/React.createElement("p", null, "Close this review with your conclusion below, then assess additional source documents if needed."), repairCount > 0 && /*#__PURE__*/React.createElement("p", null, repairCount, " revision attempt", repairCount === 1 ? '' : 's', " recorded. If evidence is still insufficient, you can leave your thesis unchanged using \u201CFinish this review\u201D below."), repairNotice && /*#__PURE__*/React.createElement("p", {
+  }, "Charlie will shorten unsupported drafts, check quotations and run an independent review. Other proposals are preserved. Uses model credits; nothing is accepted automatically.")) : /*#__PURE__*/React.createElement("p", null, "Close this review with your conclusion below, then assess additional source documents if needed."), repairCount > 0 && /*#__PURE__*/React.createElement("p", null, repairCount, " revision attempt", repairCount === 1 ? '' : 's', " recorded. If evidence is still insufficient, you can leave your thesis unchanged using \u201CFinish this review\u201D below."), job.error && /*#__PURE__*/React.createElement("p", {
+    role: "alert"
+  }, "Revision could not complete: ", job.error), repairNotice && !job.error && /*#__PURE__*/React.createElement("p", {
     role: "status",
     "aria-live": "polite"
   }, repairNotice), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "What failed the checks?"), /*#__PURE__*/React.createElement("p", null, selected.reviewIssue || 'The supporting quotation did not match the saved original.'))), ready(selected) ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h4", null, "What changes and why"), /*#__PURE__*/React.createElement("p", null, selected.reason || 'No rationale recorded.')), /*#__PURE__*/React.createElement("section", {
