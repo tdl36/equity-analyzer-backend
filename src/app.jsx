@@ -4,6 +4,7 @@
 // existing `React.createElement`, `React.Fragment`, and `ReactDOM.render`
 // calls inside the main app body continue to work unchanged.
 import * as React from 'react';
+import {createReadScheduler} from './api-read-scheduler.mjs';
 import {SummaryComparison} from './summary-comparison';
 import {MeetingSession} from './meeting-session';
 import {readMeetingPreferences,saveMeetingPreferences,meetingJobTiming} from './meeting-preferences.mjs';
@@ -89,7 +90,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-09-11T66';
+        const BUILD_VERSION = '2026-09-11T67';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -314,6 +315,7 @@ if (typeof window !== 'undefined') {
 
         // Wrap global fetch to inject auth header on API requests
         const _originalFetch = window.fetch;
+        const scheduleApiRead = createReadScheduler(4);
         window.fetch = function(url, options = {}) {
             const urlStr = typeof url === 'string' ? url : url?.url || '';
             // Only inject auth for API calls (relative /api/ or full backend URL)
@@ -324,7 +326,10 @@ if (typeof window !== 'undefined') {
                     options.headers = { ...(options.headers || {}), 'Authorization': 'Bearer ' + token };
                 }
             }
-            return _originalFetch.call(window, url, options).then(res => {
+            const isApiRead = (options.method || url?.method || 'GET').toUpperCase() === 'GET' && (urlStr.includes('/api/') || urlStr.includes('equity-analyzer-backend'));
+            const signal = options.signal || url?.signal || (isApiRead ? AbortSignal.timeout(60000) : undefined);
+            const perform = () => _originalFetch.call(window, url, isApiRead ? {...options, signal} : options);
+            return (isApiRead ? scheduleApiRead(perform, signal) : perform()).then(res => {
                 // Auto sign-out on auth failure (but only if we had a token — avoids loop during initial check)
                 if (res.status === 401 && urlStr.includes('/api/') && getAuthToken() && !urlStr.includes('/api/settings')) {
                     clearAuthToken();

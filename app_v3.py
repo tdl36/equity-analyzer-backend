@@ -2403,13 +2403,13 @@ def _get_pool():
     global _pool
     with _pool_lock:
         if _pool is None or _pool.closed:
-            # Background research jobs share this pool with HTTP handlers.
+            # gunicorn.conf.py runs 16 HTTP threads; retain capacity for background jobs.
             _pool = ThreadedConnectionPool(
-                minconn=2, maxconn=10,
+                minconn=2, maxconn=20,
                 dsn=_get_database_url(),
                 cursor_factory=RealDictCursor
             )
-            print("DB connection pool created (min=2, max=10)")
+            print("DB connection pool created (min=2, max=20)")
         return _pool
 
 def get_db_connection():
