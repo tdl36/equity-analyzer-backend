@@ -43,6 +43,16 @@ class EvidenceRepairTests(unittest.TestCase):
         self.assertEqual(client.messages.stream.call_count,2)
 
 class MeetingProfileGenerationTests(QuestionGenerationTests):
+    def test_quality_policy_reaches_manual_and_managed_prompts_without_extra_call(self):
+        from meeting_command_plan import manual_question_prompt, question_quality_instruction
+        client=self.client()
+        generate('key','ABT','Abbott','Healthcare',{},[],['source.pdf'],client)
+        managed=client.messages.stream.call_args.kwargs['messages'][0]['content']
+        manual=manual_question_prompt('Original source content',{'format':'one_on_one'})
+        for prompt in (managed,manual):
+            self.assertIn(question_quality_instruction(),prompt)
+        self.assertEqual(client.messages.stream.call_count,1)
+
     def test_hosted_profile_reaches_final_model_without_short_pack_instruction(self):
         client=self.client()
         generate('key','ABT','Abbott','Healthcare',{},[],['source.pdf'],client,meeting_profile={'format':'hosted_pm','audience':'generalist'})
