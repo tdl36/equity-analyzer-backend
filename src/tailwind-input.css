@@ -33,6 +33,12 @@
 .investor-framework p {margin:12px 0;}
 .investor-framework fieldset {border:0;padding:0;margin:0;min-width:0;}
 .investor-framework .framework-fields {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin:20px 0;}
+.research-decision-log fieldset {display:grid;gap:14px;min-width:0;margin:16px 0;padding:16px;border:1px solid var(--line-strong,#9c907a);border-radius:8px;}
+.research-decision-log label {display:flex;flex-direction:column;gap:6px;min-width:0;font-size:13px;font-weight:600;}
+.research-decision-log :is(input,textarea,select) {box-sizing:border-box;width:100%;max-width:100%;min-height:44px;padding:10px;border:1px solid var(--line-strong,#9c907a);border-radius:6px;background:var(--bg,#f4efe4);color:var(--ink,#191714);font:400 16px/1.5 var(--font-ui,sans-serif);}
+.research-decision-log details>label {margin-top:12px;}
+.research-decision-log :is(button,summary) {min-height:44px;cursor:pointer;}
+.research-decision-log :is(button,summary,input,textarea,select):focus-visible {outline:2px solid var(--accent,#c6a34b);outline-offset:3px;}
 .investor-framework label {display:flex;flex-direction:column;gap:8px;min-width:0;font-size:13px;font-weight:600;}
 .investor-framework textarea,.investor-framework select {display:block;box-sizing:border-box;width:100%;max-width:100%;padding:12px;border:1px solid var(--line-strong,#9c907a);border-radius:6px;background:var(--bg,#f4efe4);color:var(--ink,#191714);font:400 14px/1.65 var(--font-ui,sans-serif);}
 .investor-framework textarea {min-height:168px;resize:vertical;}

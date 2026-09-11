@@ -87,7 +87,25 @@ try:
     assert client.get(url,query_string={'id':payload['requestId']}).json['decisions'][0]['superseded'] is True
     assert client.get('/api/research/decisions/MDT',query_string={'id':payload['requestId']}).json['decisions']==[]
     assert client.get(url,query_string={'from':'bad'}).status_code==400
-    assert 'older history is omitted' in cm.render(cm.load(db,'ABT'))
+    assert 'other history may be omitted' in cm.render(cm.load(db,'ABT'))
+    with db(True) as (_,c):
+        c.execute("INSERT INTO investment_case_versions(ticker,revision,body) VALUES('ABT',4,%s)",(json.dumps({'thesis':'Cash quality unresolved'}),))
+    recalled=cm.load(db,'ABT')
+    assert payload['requestId'] in recalled['historyRetrieval']['selectedIds']
+    assert replacement['requestId'] in recalled['historyRetrieval']['selectedIds']
+    assert len([e for e in recalled['entries'] if e['kind']=='analyst_decision'])<=32
+    assert meeting_memory.freeze(db,'meeting','ABT','qa')==frozen
+    issue={**payload,'requestId':str(uuid.uuid4()),'revision':64,'issue':'Cash conversion',
+        'disposition':'unresolved','reviewDate':'2026-12-01','issueId':'forged'}
+    assert client.post(url,json=issue).status_code==201
+    row=client.get(url).json['decisions'][0]
+    assert row['body']['issueId']==issue['requestId']
+    next_review={**issue,'requestId':str(uuid.uuid4()),'revision':65,'supersedes':issue['requestId'],'disposition':'unchanged'}
+    assert client.post(url,json=next_review).status_code==201
+    assert client.post(url,json=next_review).json['replayed']
+    assert client.get(url).json['decisions'][0]['body']['issueId']==issue['requestId']
+    assert client.get(url,query_string={'id':issue['requestId']}).json['decisions'][0]['body']['disposition']=='unresolved'
+    print('PASS: older case-relevant history, frozen jobs and immutable issue identity across review/replay.')
     import investor_framework
     framework_app=Flask('framework');framework_app.register_blueprint(investor_framework.create_blueprint(db))
     fc=framework_app.test_client();fu='/api/research/investor-framework'

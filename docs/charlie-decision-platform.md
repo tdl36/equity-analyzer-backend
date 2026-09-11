@@ -1,5 +1,27 @@
 # Decision-platform implementation ledger
 
+## T57: bounded decision recall and issue reviews
+
+- Shared memory supplements the latest 20 decisions with up to 12 older literal
+  matches to the current saved case. SQL ranks across ticker history; returned
+  bodies are bounded. Retrieval terms, selected IDs and omissions are retained in
+  the snapshot. Existing captured jobs remain unchanged. This is not semantic
+  retrieval, full predecessor-chain retrieval or original/meeting-answer retrieval.
+- Decision log supports optional named issues, explicit dispositions and review
+  dates. Server-assigned issue identity persists through superseding reviews;
+  immutable earlier decisions, conflicts and replay checks remain intact. Dates
+  are recorded, not scheduled. Dispositions do not alter cases or suppress alerts.
+- A read-only recall preview in the decision log exposes the current selected
+  decisions and their historical status. New issue controls use theme-aware fields.
+- Validation: 41 focused backend tests, 29 frontend tests, production build and
+  isolated PostgreSQL checks covering old relevant history, issue identity/replay,
+  ticker separation and frozen jobs. Browser fixture at 1200 and 390px verified
+  issue controls and recall preview without overflow; mobile screenshot inspected.
+  No paid research or production research writes were made for validation.
+- Next: query-specific semantic/history retrieval, full issue/evidence identities,
+  actual meeting-answer and original-document retrieval, scoped repeat-alert
+  adjudication, then one source-to-model bridge. See the connected-phase plan.
+
 User authorized the full proposal on September 10, 2026. This is a phased build;
 no entry below certifies complete unattended operation or investment accuracy.
 

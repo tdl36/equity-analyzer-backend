@@ -27,6 +27,21 @@ def validate(data):
         try: prior=str(uuid.UUID(prior))
         except (ValueError,TypeError,AttributeError):raise ValueError('Choose a valid prior decision.')
     body['supersedes']=prior
+    issue=data.get('issue','')
+    if not isinstance(issue,str) or len(issue)>200:raise ValueError('Issue must be at most 200 characters.')
+    if issue.strip():
+        disposition=data.get('disposition','unresolved')
+        if disposition not in ('unchanged','review_needed','accepted_change','unresolved'):
+            raise ValueError('Choose a valid issue disposition.')
+        body['issue']=issue.strip()
+        body['issueId']=rid  # Server identity; a superseding review inherits below.
+        body['disposition']=disposition
+        due=data.get('reviewDate','')
+        if due:
+            try:body['reviewDate']=date.fromisoformat(due).isoformat()
+            except (ValueError,TypeError):raise ValueError('Choose a valid review date.')
+    elif data.get('reviewDate'):
+        raise ValueError('Name the issue before setting a review date.')
     return rid,revision,body
 
 
@@ -55,7 +70,7 @@ def read(cur,ticker,limit=50,options=None):
     options=options or {}
     clauses=['d.ticker=%s'];params=[ticker]
     if options.get('q'):
-        clauses.append("strpos(lower(concat_ws(' ',d.body->>'decision',d.body->>'rationale',d.body->>'revisitWhen')),lower(%s))>0")
+        clauses.append("strpos(lower(concat_ws(' ',d.body->>'decision',d.body->>'rationale',d.body->>'revisitWhen',d.body->>'issue')),lower(%s))>0")
         params.append(options['q'])
     for key,op in [('from','>='),('to','<=')]:
         if options.get(key):
@@ -108,8 +123,14 @@ def create_blueprint(get_db):
             cur.execute('SELECT COALESCE(MAX(revision),0) AS revision FROM research_decisions WHERE ticker=%s',(ticker,));current=cur.fetchone()['revision']
             if revision!=current:return jsonify(error='Decision log changed. Reload before saving; your draft is retained.'),409
             if body['supersedes']:
-                cur.execute("SELECT id FROM research_decisions WHERE ticker=%s AND id=%s AND NOT EXISTS(SELECT 1 FROM research_decisions n WHERE n.ticker=%s AND n.body->>'supersedes'=%s)",(ticker,body['supersedes'],ticker,body['supersedes']))
-                if not cur.fetchone():return jsonify(error='The prior decision is missing or already superseded. Reload the log.'),409
+                cur.execute("SELECT id,body FROM research_decisions WHERE ticker=%s AND id=%s AND NOT EXISTS(SELECT 1 FROM research_decisions n WHERE n.ticker=%s AND n.body->>'supersedes'=%s)",(ticker,body['supersedes'],ticker,body['supersedes']))
+                previous=cur.fetchone()
+                if not previous:return jsonify(error='The prior decision is missing or already superseded. Reload the log.'),409
+                prior_body=previous['body']
+                if isinstance(prior_body,str):prior_body=json.loads(prior_body)
+                if prior_body.get('issueId'):
+                    if not body.get('issue'):return jsonify(error='Keep the issue name when superseding an issue review.'),400
+                    body['issueId']=prior_body['issueId']
             cur.execute('INSERT INTO research_decisions(id,ticker,revision,fingerprint,body) VALUES(%s,%s,%s,%s,%s::jsonb)',(rid,ticker,current+1,fp,json.dumps(body)))
         return jsonify(id=rid,revision=current+1),201
     return bp

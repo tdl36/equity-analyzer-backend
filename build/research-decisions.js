@@ -4,8 +4,17 @@ var blank = () => ({
   rationale: '',
   revisitWhen: '',
   decisionDate: new Date().toLocaleDateString('en-CA'),
-  supersedes: ''
+  supersedes: '',
+  issue: '',
+  disposition: 'unresolved',
+  reviewDate: ''
 });
+var dispositions = {
+  unchanged: 'View unchanged',
+  review_needed: 'Review needed',
+  accepted_change: 'Change agreed in this review',
+  unresolved: 'Unresolved'
+};
 export function ResearchDecisions({
   api,
   ticker
@@ -24,6 +33,23 @@ export function ResearchDecisions({
     [loading, setLoading] = React.useState(false),
     [inspected, setInspected] = React.useState(null),
     [chosen, setChosen] = React.useState(null);
+  var [recall, setRecall] = React.useState(null),
+    [recalling, setRecalling] = React.useState(false);
+  var previewRecall = async () => {
+    setRecalling(true);
+    try {
+      var response = await fetch(`${api}/api/research/company-memory/${encodeURIComponent(ticker)}`, {
+        signal: AbortSignal.timeout(20000)
+      });
+      var data = await response.json();
+      if (!response.ok) throw Error(data.error || 'Recall unavailable');
+      if (alive.current) setRecall(data);
+    } catch (e) {
+      if (alive.current) setMessage(e.message);
+    } finally {
+      if (alive.current) setRecalling(false);
+    }
+  };
   var applied = React.useRef({}),
     cursor = React.useRef(null),
     sequence = React.useRef(0);
@@ -122,7 +148,9 @@ export function ResearchDecisions({
       if (alive.current) setBusy(false);
     }
   };
-  return /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Decision log \xB7 ", rows.length, " loaded records"), /*#__PURE__*/React.createElement("p", {
+  return /*#__PURE__*/React.createElement("details", {
+    className: "research-decision-log"
+  }, /*#__PURE__*/React.createElement("summary", null, "Decision log \xB7 ", rows.length, " loaded records"), /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
   }, "Record your reasoning and what would make you revisit it. Entries are retained; superseding a record preserves its history. These are research decisions, not trade instructions. Revisit conditions are not yet automatically monitored."), /*#__PURE__*/React.createElement("fieldset", {
     disabled: busy || loading
@@ -130,7 +158,24 @@ export function ResearchDecisions({
     type: "date",
     value: draft.decisionDate,
     onChange: e => change('decisionDate', e.target.value)
-  })), [['decision', 'My decision', 2000], ['rationale', 'Why I decided this', 12000], ['revisitWhen', 'Revisit when…', 6000]].map(([key, label, limit]) => /*#__PURE__*/React.createElement("label", {
+  })), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Review a specific research issue \xB7 optional"), /*#__PURE__*/React.createElement("p", {
+    className: "desk-explainer"
+  }, "Name the issue being reviewed. To update the same issue later, select the earlier decision below; its history is preserved. Recording a review does not change a thesis, model or alert rule."), /*#__PURE__*/React.createElement("label", null, "Research issue", /*#__PURE__*/React.createElement("input", {
+    maxLength: 200,
+    value: draft.issue,
+    onChange: e => change('issue', e.target.value),
+    placeholder: "For example: durability of margin recovery"
+  })), /*#__PURE__*/React.createElement("label", null, "Review outcome", /*#__PURE__*/React.createElement("select", {
+    value: draft.disposition,
+    onChange: e => change('disposition', e.target.value)
+  }, Object.entries(dispositions).map(([value, label]) => /*#__PURE__*/React.createElement("option", {
+    key: value,
+    value: value
+  }, label)))), /*#__PURE__*/React.createElement("label", null, "Next review date \xB7 reminder not scheduled", /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: draft.reviewDate,
+    onChange: e => change('reviewDate', e.target.value)
+  }))), [['decision', 'My decision', 2000], ['rationale', 'Why I decided this', 12000], ['revisitWhen', 'Revisit when…', 6000]].map(([key, label, limit]) => /*#__PURE__*/React.createElement("label", {
     key: key
   }, label, /*#__PURE__*/React.createElement("textarea", {
     rows: key === 'decision' ? 2 : 3,
@@ -191,12 +236,23 @@ export function ResearchDecisions({
     }
   }, "Clear filters")), loading && /*#__PURE__*/React.createElement("p", {
     role: "status"
-  }, "Loading decision history\u2026"), inspected && /*#__PURE__*/React.createElement("aside", {
+  }, "Loading decision history\u2026"), /*#__PURE__*/React.createElement("button", {
+    disabled: recalling,
+    onClick: previewRecall
+  }, recalling ? 'Retrieving history…' : "Preview Charlie’s decision recall"), recall && /*#__PURE__*/React.createElement("aside", null, /*#__PURE__*/React.createElement("p", {
+    className: "desk-explainer"
+  }, "Current context preview; existing jobs retain their captured version. ", recall.historyRetrieval?.scope || 'Recent decisions are included; no older matching history was requested.'), recall.historyRetrieval && /*#__PURE__*/React.createElement("p", null, "Search terms: ", recall.historyRetrieval.terms.join(', ') || 'No saved case terms available', recall.historyRetrieval.termsLimited ? ' · Search terms limited to 24' : '', recall.historyRetrieval.additionalMatchesOmitted ? ' · Additional matches omitted' : ''), recall.entries.filter(e => e.kind === 'analyst_decision').map(e => /*#__PURE__*/React.createElement("p", {
+    key: e.id
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => inspect(e.id)
+  }, "#", e.revision, " \xB7 ", e.body.decisionDate, " \xB7 ", e.body.decision), " \xB7 ", e.status === 'superseded' ? 'Historical / superseded' : 'Recorded view, not revalidated', recall.historyRetrieval?.selectedIds.includes(e.id) ? ' · Older matching decision' : '')), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setRecall(null)
+  }, "Close recall preview")), inspected && /*#__PURE__*/React.createElement("aside", {
     style: {
       border: '1px solid var(--border, #bbb)',
       padding: 12
     }
-  }, /*#__PURE__*/React.createElement("strong", null, "Earlier record #", inspected.revision, " \xB7 ", inspected.body.decisionDate, " \xB7 ", inspected.superseded ? 'Superseded' : 'Recorded decision'), /*#__PURE__*/React.createElement("h4", null, inspected.body.decision), /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("strong", null, "Earlier record #", inspected.revision, " \xB7 ", inspected.body.decisionDate, " \xB7 ", inspected.superseded ? 'Superseded' : 'Recorded decision'), /*#__PURE__*/React.createElement("h4", null, inspected.body.decision), inspected.body.issue && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, inspected.body.issue), " \xB7 ", dispositions[inspected.body.disposition] || inspected.body.disposition, inspected.body.reviewDate && ` · Review ${inspected.body.reviewDate}`), /*#__PURE__*/React.createElement("p", {
     style: {
       whiteSpace: 'pre-wrap'
     }
@@ -212,7 +268,7 @@ export function ResearchDecisions({
       borderTop: '1px solid var(--border, #bbb)',
       padding: '12px 0'
     }
-  }, /*#__PURE__*/React.createElement("strong", null, "#", r.revision, " \xB7 ", r.body.decisionDate, " \xB7 ", r.superseded ? 'Superseded' : 'Recorded decision'), /*#__PURE__*/React.createElement("h4", null, r.body.decision), /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("strong", null, "#", r.revision, " \xB7 ", r.body.decisionDate, " \xB7 ", r.superseded ? 'Superseded' : 'Recorded decision'), /*#__PURE__*/React.createElement("h4", null, r.body.decision), r.body.issue && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, r.body.issue), " \xB7 ", dispositions[r.body.disposition] || r.body.disposition, r.body.reviewDate && ` · Review ${r.body.reviewDate}`), /*#__PURE__*/React.createElement("p", {
     style: {
       whiteSpace: 'pre-wrap'
     }
@@ -227,5 +283,5 @@ export function ResearchDecisions({
     onClick: () => load(true)
   }, "Load older matching decisions"), /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
-  }, "History is ordered by when entries were recorded. Date filters use the decision date. Shared AI context still includes only the latest 20 records; searching here does not change an agent\u2019s context."));
+  }, "History is ordered by when entries were recorded. Date filters use the decision date. New shared AI context includes the latest 20 records and up to 12 older matches to the saved investment case. Literal matching may miss relevant history. Searching here does not change an existing job\u2019s snapshot."));
 }

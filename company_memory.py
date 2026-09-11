@@ -6,11 +6,12 @@ Original documents and full decision-history retrieval are separate capabilities
 import hashlib
 import json
 import re
+from datetime import date
 from flask import Blueprint, jsonify
 from research_amendments import editable_fields, obj
 
 
-def assemble(ticker, case=None, legacy=None, decisions=None, decisions_more=False, framework=None):
+def assemble(ticker, case=None, legacy=None, decisions=None, decisions_more=False, framework=None, recall=None):
     entries = []
     if case:
         entries.append({'kind': 'investment_case', 'status': 'saved_analyst_view',
@@ -23,12 +24,13 @@ def assemble(ticker, case=None, legacy=None, decisions=None, decisions_more=Fals
     for record in decisions or []:
         entries.append({'kind':'analyst_decision','status':'superseded' if record['superseded'] else 'recorded_not_revalidated',
             'id':record['id'],'revision':record['revision'],'savedAt':str(record['created_at']),'body':obj(record['body'])})
-    content = {'schemaVersion': 3, 'ticker': ticker, 'entries': entries,
+    content = {'schemaVersion': 4, 'ticker': ticker, 'entries': entries,
         'limitations': ['Original documents have not been retrieved or reverified.',
             'Investment-case and legacy-thesis context includes only the latest case and selected legacy fields.',
-            'Decision context includes at most the latest 20 recorded entries; older history is omitted.' if decisions_more else 'All recorded analyst decisions are included.',
+            ('Decision context includes the latest 20 plus bounded older matches; other history may be omitted.' if recall else 'Decision context includes at most the latest 20 recorded entries; older history is omitted.') if decisions_more else 'All recorded analyst decisions are included.',
             'Prior meetings, full case revision history and portfolio context are not yet retrieved.']}
     content['framework']=framework
+    if recall:content['historyRetrieval']=recall
     content['snapshotHash'] = hashlib.sha256(json.dumps(content, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     return content
 
@@ -50,16 +52,21 @@ def load(get_db, ticker):
         legacy = cur.fetchone()
         cur.execute("SELECT to_regclass('research_decisions') AS name")
         decisions,more=[],False
+        recall=None
         if cur.fetchone()['name']:
             from research_decisions import read
             decisions,more=read(cur,ticker,20)
+            if more:
+                from research_recall import retrieve
+                older,recall=retrieve(cur,ticker,case,decisions,date.today().isoformat())
+                decisions+=older
         cur.execute("SELECT to_regclass('investor_framework_versions') AS name")
         framework=None
         if cur.fetchone()['name']:
             cur.execute('SELECT revision,body,created_at FROM investor_framework_versions ORDER BY revision DESC LIMIT 1')
             row=cur.fetchone()
             if row:framework={'revision':row['revision'],'savedAt':str(row['created_at']),'body':obj(row['body'])}
-    return assemble(ticker, case, legacy,decisions,more,framework)
+    return assemble(ticker, case, legacy,decisions,more,framework,recall)
 
 
 def render(snapshot):
@@ -72,6 +79,11 @@ def render(snapshot):
         'Distinguish management statements, broker estimates, analyst interpretations and accepted edits. '
         'Evidence links record provenance at acceptance, not independent verification or currentness. '
         'Analyst decisions are dated reasoning, not executed trades or management answers. Superseded entries are historical. An unsuperseded record may still be stale; do not infer a current holding or position size. Revisit conditions are not automated monitors. '
+        'Issue dispositions are analyst-recorded judgments, not verified facts or instructions to suppress alerts. '
+        'An accepted_change disposition does not prove any thesis or model was updated. '
+        'Use earlier relevant decisions to explain what was reviewed and what new evidence could reopen the issue. '
+        'A review date schedules no action by itself. Preserve unresolved issues and contrary evidence. '
+        'History retrieval is bounded literal matching, not exhaustive recall; disclose missing or uncertain history. '
         'Do not infer an investment decision from an omitted field. Cite the case revision when discussing it.\n'
         + json.dumps(evidence, sort_keys=True, ensure_ascii=False)+render_framework(snapshot.get('framework')))
 
