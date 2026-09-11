@@ -139,10 +139,13 @@ def create_blueprint(get_db, call_model, get_key, model_identity=lambda: 'defaul
         with _WORKERS, worker_session(get_db,job_id) as acquired:
             if not acquired:return
             owner=str(uuid.uuid4())
+            repair=None
             try:
                 with get_db(commit=True) as (_, cur):
                     cur.execute("UPDATE mp_jobs SET status='running', input=input || %s::jsonb, updated_at=NOW() WHERE id=%s AND stage=%s AND status='queued' RETURNING id",(json.dumps({'workerToken':owner}),job_id,STAGE))
                     if not cur.fetchone(): return
+                    cur.execute('SELECT input,result FROM mp_jobs WHERE id=%s',(job_id,))
+                    state=cur.fetchone();repair=obj(state['input']).get('repair');previous=obj(state['result'])
                     cur.execute('SELECT filename,file_data,file_type FROM document_files WHERE ticker=%s AND filename=ANY(%s) ORDER BY filename',(ticker,filenames))
                     docs=list(cur.fetchall() or [])
                 if len(docs)!=len(filenames): raise ValueError('Some selected documents are no longer available.')
@@ -180,6 +183,11 @@ def create_blueprint(get_db, call_model, get_key, model_identity=lambda: 'defaul
                             'reason: distinguish source statement, interpretation and unresolved issues, source_id: catalog ID, source_excerpt: exact contiguous quotation at least 30 characters}. '
                             'These are advisory assessments requiring analyst review; do not assert that a portfolio decision follows automatically.\nCASE CONTEXT:\n'+
                             json.dumps(baseline['_investmentCase'],sort_keys=True)+'\n'+prompt)
+                if obj(state['input']).get('conciseProposal'):
+                    prompt+='\nWrite concise current wording, normally 2–4 sentences (60–100 words), not a running history or long appended quotation. Keep the rationale to 1–2 sentences. Preserve material qualifications.'
+                if repair:
+                    from proposal_repair import repair_prompt
+                    prompt+=repair_prompt(repair['targets'])
                 from amendment_checkpoints import Checkpoints,identity
                 from command_thesis_bridge import file_hash
                 checkpoints=Checkpoints(get_db,job_id,owner)
@@ -190,7 +198,7 @@ def create_blueprint(get_db, call_model, get_key, model_identity=lambda: 'defaul
                     checkpoints.save(checkpoint_key,'draft',raw)
                 changes=validate_changes(raw,baseline,sources)
                 from condition_assessments import collect as collect_conditions
-                condition_checks,condition_warnings=collect_conditions(raw,baseline,sources)
+                condition_checks,condition_warnings=collect_conditions(raw,baseline,sources) if not repair else ([],[])
                 review_items=changes+condition_checks
                 qc=checkpoints.load(checkpoint_key,'review')
                 if review_items and qc is None:
@@ -203,11 +211,18 @@ def create_blueprint(get_db, call_model, get_key, model_identity=lambda: 'defaul
                     matching=[q for q in checks if isinstance(q,dict) and q.get('id')==c['id']] if isinstance(checks,list) else []
                     c['reviewPassed']=len(matching)==1 and matching[0].get('verdict')=='pass' and not matching[0].get('issue')
                     c['reviewIssue']=str(matching[0].get('issue') or '')[:3000] if len(matching)==1 else 'Independent review did not return a unique verdict.'
-                finish(job_id,'awaiting_approval',{'changes':changes,'conditionAssessments':condition_checks,'conditionWarnings':condition_warnings,'sources':[{k:v for k,v in s.items() if k!='text'} for s in sources]},owner=owner)
-            except ValueError as e: finish(job_id,'failed',error=str(e),owner=owner)
+                source_metadata=[{k:v for k,v in s.items() if k!='text'} for s in sources]
+                if repair:
+                    from proposal_repair import merge_repair
+                    changes=merge_repair(previous.get('changes',[]),changes,repair['targets'])
+                    condition_checks=previous.get('conditionAssessments',[])
+                    condition_warnings=previous.get('conditionWarnings',[])
+                    source_metadata=list({s['id']:s for s in previous.get('sources',[])+source_metadata}.values())
+                finish(job_id,'awaiting_approval',{'changes':changes,'conditionAssessments':condition_checks,'conditionWarnings':condition_warnings,'sources':source_metadata},owner=owner)
+            except ValueError as e: finish(job_id,'awaiting_approval' if repair else 'failed',error=str(e),owner=owner)
             except Exception:
                 logging.getLogger(__name__).exception("Thesis comparison failed for %s", job_id)
-                finish(job_id,'failed',error='Comparison could not complete. Your saved thesis was not changed. Retry or inspect server logs.',owner=owner)
+                finish(job_id,'awaiting_approval' if repair else 'failed',error='Comparison could not complete. Your saved thesis and prior proposals were not changed. Retry or inspect server logs.',owner=owner)
 
     @bp.route('/api/research/commands/<command_id>/thesis-context')
     def command_context(command_id):
@@ -299,7 +314,7 @@ def create_blueprint(get_db, call_model, get_key, model_identity=lambda: 'defaul
                         if actual!=expected:return jsonify(error='Monitored source changed before submission. Review the monitor reservation.'),409
                     source_hashes={r['filename']:file_hash(r) for r in original_rows}
                 except (ValueError,TypeError):return jsonify(error='A selected original could not be verified. Reimport the document before retrying.'),400
-            cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input) VALUES(%s,%s,%s,'queued',%s::jsonb)",(job_id,STAGE,tk,json.dumps({'baseline':baseline,'filenames':names,'instructions':instructions,'commandId':command_id,'commandBridge':bridge,'sourceHashes':source_hashes,'recoverable':True,'target':target})))
+            cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input) VALUES(%s,%s,%s,'queued',%s::jsonb)",(job_id,STAGE,tk,json.dumps({'baseline':baseline,'filenames':names,'instructions':instructions,'commandId':command_id,'commandBridge':bridge,'sourceHashes':source_hashes,'recoverable':True,'target':target,'conciseProposal':True})))
         threading.Thread(target=run,args=(job_id,tk,baseline,names,key,instructions,source_hashes),daemon=True).start()
         return jsonify(jobId=job_id),202
 
@@ -337,6 +352,37 @@ def create_blueprint(get_db, call_model, get_key, model_identity=lambda: 'defaul
                 recovered.append(job['id'])
         for args in pending:threading.Thread(target=run,args=args,daemon=True).start()
         return jsonify(recovered=recovered,failed=failed)
+
+    @bp.post('/api/research/amendment/<job_id>/repair')
+    def repair_proposal(job_id):
+        data=request.get_json(silent=True) or {}
+        if not isinstance(data,dict):return jsonify(error='Expected a repair request'),400
+        key=get_key(data.get('apiKey',''))
+        if not key:return jsonify(error='Add your research API key in Settings before revising.'),400
+        with get_db(commit=True) as (_,cur):
+            cur.execute('SELECT ticker FROM mp_jobs WHERE id=%s AND stage=%s',(job_id,STAGE));found=cur.fetchone()
+            if not found:return jsonify(error='Proposal not found'),404
+            cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',('amendment:'+found['ticker'],))
+            cur.execute('SELECT ticker,status,input,result FROM mp_jobs WHERE id=%s AND stage=%s FOR UPDATE',(job_id,STAGE));job=cur.fetchone()
+            saved=obj(job['input']);result=obj(job['result'])
+            if saved.get('target')!='investment_case':return jsonify(error='Repair is available for investment-case proposals.'),409
+            if job['status'] in ('queued','running') and saved.get('repair'):return jsonify(jobId=job_id),200
+            if job['status']!='awaiting_approval':return jsonify(error='Only an open review can be revised.'),409
+            if data.get('attempt')!=len(result.get('repairHistory',[])):
+                return jsonify(error='This review changed. Reload the results before requesting another revision.'),409
+            if len(result.get('repairHistory',[]))>=2:return jsonify(error='Two revisions attempted. The selected sources still do not support these drafts. Close this review with your conclusion and assess additional originals.'),409
+            if not baseline_current(cur,job['ticker'],saved):return jsonify(error='Your saved case has changed. Close this review, then assess the documents against the latest case.'),409
+            targets=[c for c in result.get('changes',[]) if not (c.get('passageMatched') and c.get('reviewPassed'))]
+            if not targets:return jsonify(error='There are no unsupported drafts to revise.'),409
+            from amendment_ownership import lock_name
+            cur.execute('SELECT pg_try_advisory_xact_lock(hashtext(%s)) AS locked',(lock_name(job_id),))
+            if not cur.fetchone()['locked']:return jsonify(error='The prior worker is finishing. Try again shortly.'),409
+            # Retain original drafts and checkpoints; acceptance remains unavailable while running.
+            result.setdefault('repairHistory',[]).append({'changes':result.get('changes',[]),'checkpoint':result.pop('checkpoint',None)})
+            saved['repair']={'targets':targets};saved['resumeAttempts']=0;saved['autoRecoveryAttempts']=0
+            cur.execute("UPDATE mp_jobs SET status='queued',error=NULL,input=%s::jsonb,result=%s::jsonb,updated_at=NOW() WHERE id=%s",(json.dumps(saved),json.dumps(result),job_id))
+        threading.Thread(target=run,args=(job_id,job['ticker'],saved['baseline'],saved['filenames'],key,saved.get('instructions',''),saved.get('sourceHashes')),daemon=True).start()
+        return jsonify(jobId=job_id),202
 
     @bp.route('/api/research/amendment/<job_id>/resume',methods=['POST'])
     def resume(job_id):

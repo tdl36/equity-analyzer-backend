@@ -11,9 +11,12 @@ export function ProposalReview({
   revision,
   disabled,
   onCommit,
-  onDebate
+  onDebate,
+  onRepair
 }) {
   var changes = job.result?.changes || [];
+  var repairCount = job.result?.repairHistory?.length || 0;
+  var needsRepair = changes.filter(c => !ready(c)).length;
   var [filter, setFilter] = React.useState('ready'),
     [selectedId, setSelectedId] = React.useState(null),
     [assumptionId, setAssumptionId] = React.useState(''),
@@ -30,7 +33,7 @@ export function ProposalReview({
   }, /*#__PURE__*/React.createElement("div", {
     className: "proposal-review-filters",
     "aria-label": "Filter proposed changes"
-  }, [['ready', 'Ready to review', changes.filter(ready).length], ['flagged', 'Needs verification', changes.filter(c => !ready(c)).length]].map(([id, label, count]) => /*#__PURE__*/React.createElement("button", {
+  }, [['ready', 'Ready to review', changes.filter(ready).length], ['flagged', 'Charlie needs to revise', changes.filter(c => !ready(c)).length]].map(([id, label, count]) => /*#__PURE__*/React.createElement("button", {
     key: id,
     "aria-pressed": filter === id,
     onClick: () => {
@@ -39,9 +42,9 @@ export function ProposalReview({
     }
   }, label, /*#__PURE__*/React.createElement("strong", null, count)))), /*#__PURE__*/React.createElement("p", {
     className: "proposal-review-intro"
-  }, filter === 'ready' ? 'These changes passed source-passage and model checks. Read each proposal before accepting it.' : 'These changes are blocked from acceptance. Inspect a card to see the proposed wording and the verification problem.'), !available.length ? /*#__PURE__*/React.createElement("p", {
+  }, filter === 'ready' ? 'These changes passed source-passage and model checks. Read each proposal before accepting it.' : 'Charlie could not substantiate these drafts. You do not need to verify them manually. Ask Charlie to re-read the originals and revise; your saved case stays unchanged.'), !available.length ? /*#__PURE__*/React.createElement("p", {
     className: "case-evidence-banner"
-  }, filter === 'ready' ? 'No changes are ready for acceptance. Open Needs verification to inspect any flagged drafts.' : 'No changes need additional verification.') : /*#__PURE__*/React.createElement("div", {
+  }, filter === 'ready' ? 'No changes are ready for acceptance. Open Charlie needs to revise to request a supported revision.' : 'No drafts need revision.') : /*#__PURE__*/React.createElement("div", {
     className: "proposal-review-layout"
   }, /*#__PURE__*/React.createElement("nav", {
     className: "proposal-change-list",
@@ -54,24 +57,32 @@ export function ProposalReview({
       setAssumptionId('');
       setField('support');
     }
-  }, /*#__PURE__*/React.createElement("small", null, "CHANGE ", changes.indexOf(c) + 1, " \xB7 ", fields[c.field] || 'Research wording'), /*#__PURE__*/React.createElement("span", null, title(c)), /*#__PURE__*/React.createElement("em", null, body.assumptions.some(a => a.id === c.assumptionId && a[c.field] === c.after) ? 'Already reflected in case' : ready(c) ? 'Open for review →' : 'Verification required →')))), selected && /*#__PURE__*/React.createElement("article", {
+  }, /*#__PURE__*/React.createElement("small", null, "CHANGE ", changes.indexOf(c) + 1, " \xB7 ", fields[c.field] || 'Research wording'), /*#__PURE__*/React.createElement("span", null, title(c)), /*#__PURE__*/React.createElement("em", null, body.assumptions.some(a => a.id === c.assumptionId && a[c.field] === c.after) ? 'Already reflected in case' : ready(c) ? 'Open for review →' : 'Unsupported draft →')))), selected && /*#__PURE__*/React.createElement("article", {
     className: "proposal-change-reader",
     "aria-label": "Selected change"
   }, /*#__PURE__*/React.createElement("header", null, /*#__PURE__*/React.createElement("p", {
     className: "workspace-eyebrow"
   }, "CHANGE ", changes.indexOf(selected) + 1, " / ", fields[effectiveField] || 'PROPOSED WORDING'), /*#__PURE__*/React.createElement("h3", null, title(selected)), /*#__PURE__*/React.createElement("span", {
     className: "proposal-status"
-  }, applied ? 'Already reflected in current case' : ready(selected) ? 'Ready for your review' : 'Blocked · needs verification')), /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h4", null, "Why Charlie suggests this"), /*#__PURE__*/React.createElement("p", null, selected.reason || 'No rationale recorded.')), !ready(selected) && /*#__PURE__*/React.createElement("section", {
+  }, applied ? 'Already reflected in current case' : ready(selected) ? 'Ready for your review' : 'Draft failed Charlie’s evidence checks')), !ready(selected) && /*#__PURE__*/React.createElement("section", {
     className: "proposal-verification"
-  }, /*#__PURE__*/React.createElement("h4", null, "What needs verification"), /*#__PURE__*/React.createElement("p", null, !selected.passageMatched ? 'The supporting quotation did not match the saved source. ' : '', selected.reviewIssue || (!selected.reviewPassed ? 'The independent review did not approve this wording.' : ''))), /*#__PURE__*/React.createElement("details", {
-    className: "proposal-before"
-  }, /*#__PURE__*/React.createElement("summary", null, "Compare with current wording"), /*#__PURE__*/React.createElement("p", null, assumption?.[effectiveField] || selected.before || 'Not recorded')), /*#__PURE__*/React.createElement("section", {
+  }, /*#__PURE__*/React.createElement("h4", null, "Charlie needs to fix its draft"), /*#__PURE__*/React.createElement("p", null, selected.repairOutcome === 'no_supported_change' ? 'After re-reading the originals, Charlie could not produce a supported replacement. Your current wording has been retained.' : !selected.passageMatched ? 'Charlie could not locate its quoted passage in the saved original. This draft is not ready for an investment decision.' : 'The quotation matched, but the reviewer found claims it does not adequately support.'), onRepair && job.status === 'awaiting_approval' && repairCount < 2 ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
+    className: "workspace-primary",
+    disabled: disabled,
+    onClick: () => onRepair(repairCount)
+  }, "Re-read sources & revise ", needsRepair, " draft", needsRepair === 1 ? '' : 's'), /*#__PURE__*/React.createElement("p", {
+    className: "proposal-footnote"
+  }, "Charlie will shorten unsupported drafts, check quotations and run an independent review. Other proposals are preserved. Uses model credits; nothing is accepted automatically.")) : /*#__PURE__*/React.createElement("p", null, "Close this review with your conclusion below, then assess additional source documents if needed."), repairCount > 0 && /*#__PURE__*/React.createElement("p", null, repairCount, " revision attempt", repairCount === 1 ? '' : 's', " recorded. If evidence is still insufficient, you can leave your thesis unchanged using \u201CFinish this review\u201D below."), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "What failed the checks?"), /*#__PURE__*/React.createElement("p", null, selected.reviewIssue || 'The supporting quotation did not match the saved original.'))), ready(selected) ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h4", null, "What changes and why"), /*#__PURE__*/React.createElement("p", null, selected.reason || 'No rationale recorded.')), /*#__PURE__*/React.createElement("section", {
     className: "proposal-wording"
-  }, /*#__PURE__*/React.createElement("h4", null, "Proposed replacement"), /*#__PURE__*/React.createElement("p", null, selected.after)), /*#__PURE__*/React.createElement("details", {
+  }, /*#__PURE__*/React.createElement("h4", null, "Proposed wording for your case"), /*#__PURE__*/React.createElement("p", null, selected.after))) : /*#__PURE__*/React.createElement("details", {
+    className: "proposal-wording"
+  }, /*#__PURE__*/React.createElement("summary", null, "Rejected draft \xB7 not applied"), /*#__PURE__*/React.createElement("h4", null, "Charlie\u2019s original rationale \xB7 unverified"), /*#__PURE__*/React.createElement("p", null, selected.reason), /*#__PURE__*/React.createElement("h4", null, "Rejected replacement"), /*#__PURE__*/React.createElement("p", null, selected.after)), /*#__PURE__*/React.createElement("details", {
+    className: "proposal-before"
+  }, /*#__PURE__*/React.createElement("summary", null, "Current wording \xB7 unchanged until you accept"), /*#__PURE__*/React.createElement("p", null, assumption?.[effectiveField] || selected.before || 'Not recorded')), /*#__PURE__*/React.createElement("details", {
     className: "proposal-source"
   }, /*#__PURE__*/React.createElement("summary", null, "Read supporting source passages \xB7 ", selected.evidence?.length || 0), selected.evidence?.map((e, i) => /*#__PURE__*/React.createElement("section", {
     key: i
-  }, /*#__PURE__*/React.createElement("h4", null, job.result.sources?.find(s => s.id === e.sourceId)?.filename || 'Source reference unavailable'), /*#__PURE__*/React.createElement("small", null, e.status === 'passage_matched' ? 'Passage matched at generation' : 'Passage not verified'), /*#__PURE__*/React.createElement("blockquote", null, e.excerpt || 'No excerpt available')))), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("h4", null, job.result.sources?.find(s => s.id === e.sourceId)?.filename || 'Source reference unavailable'), /*#__PURE__*/React.createElement("small", null, e.status === 'passage_matched' ? 'Passage matched at generation' : 'Unmatched quotation — do not rely on this as source text'), /*#__PURE__*/React.createElement("blockquote", null, e.excerpt || 'No excerpt available')))), /*#__PURE__*/React.createElement("div", {
     className: "proposal-actions"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => onDebate({
@@ -110,7 +121,7 @@ export function ProposalReview({
         field: effectiveField
       }
     })
-  }, applied ? 'Already reflected in case' : 'Accept this change') : /*#__PURE__*/React.createElement("p", null, "Acceptance is unavailable until the verification issues are resolved in a new or repaired proposal.")), /*#__PURE__*/React.createElement("p", {
+  }, applied ? 'Already reflected in case' : 'Accept this change') : /*#__PURE__*/React.createElement("p", null, "This draft cannot be accepted. Use the revision action above, or finish this review with no thesis change.")), /*#__PURE__*/React.createElement("p", {
     className: "proposal-footnote"
   }, "Accepting saves a new case revision. Discussion and opening a card do not change your research."))));
 }

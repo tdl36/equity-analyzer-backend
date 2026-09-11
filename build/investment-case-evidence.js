@@ -215,7 +215,9 @@ export function CaseEvidence({
     className: "case-result",
     key: j.id,
     open: j.status !== 'dismissed'
-  }, /*#__PURE__*/React.createElement("summary", null, j.status.replaceAll('_', ' '), " \xB7 ", new Date(j.created_at).toLocaleString()), j.error && /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("summary", null, j.status.replaceAll('_', ' '), " \xB7 ", new Date(j.created_at).toLocaleString()), ['queued', 'running'].includes(j.status) && /*#__PURE__*/React.createElement("p", {
+    role: "status"
+  }, j.result?.repairHistory?.length ? 'Charlie is re-reading your originals and checking revised drafts. Other proposals are retained; results refresh automatically.' : 'Charlie is assessing the selected documents. Results refresh automatically.'), j.error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
   }, j.error), !!j.result?.conditionWarnings?.length && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, j.result.conditionWarnings.length, " optional underweight suggestions excluded \xB7 thesis review continues"), j.result.conditionWarnings.map((w, i) => /*#__PURE__*/React.createElement("p", {
     key: i
@@ -232,7 +234,10 @@ export function CaseEvidence({
     revision: revision,
     disabled: disabled || working,
     onCommit: onCommit,
-    onDebate: setDebate
+    onDebate: setDebate,
+    onRepair: attempt => mutate('/api/research/amendment/' + j.id + '/repair', {
+      attempt
+    })
   }), j.status === 'failed' && j.result?.checkpoint && /*#__PURE__*/React.createElement("button", {
     disabled: disabled || working,
     onClick: () => mutate('/api/research/amendment/' + j.id + '/resume', {})

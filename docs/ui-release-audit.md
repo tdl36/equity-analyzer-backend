@@ -84,3 +84,9 @@ Android browser/keyboard behavior, Windows-specific rendering, actual email and
 file delivery, long-running model generation, OCR, AlphaSense authentication and
 recovery after Mac sleep require separate end-to-end runs. The audit does not
 certify research accuracy or establish that every application state is error-free.
+
+## T68: actionable evidence repair
+
+The user review exposed a workflow gap despite passing layout checks: a rejected draft said “verify” without providing a repair action. Unsupported drafts now explicitly belong to Charlie, their long wording and reviewer findings are collapsed, and a direct re-read/revise action retains supported siblings and the original review history. New comparisons request concise current wording. Repairs reuse original file hashes, check exact passages, and run independent review; they never accept changes. Stale cases and duplicate submissions are guarded; two attempts prevent unbounded regeneration. A failed repair retains the prior proposals.
+
+Validation: 47 safe Python unit tests, including the actual repair worker with synthetic originals/model outputs; 34 frontend tests; actual saved ABT review fixture checked in Chromium at desktop and mobile widths (repair action payload, 3 supported / 8 unsupported drafts, collapsed rejected wording, no unsupported acceptance, no overflow). No live investment case was accepted or edited during testing. Model quality on a fresh live repair still requires inspecting that run’s result; passing these checks does not imply all drafts will become supportable.
