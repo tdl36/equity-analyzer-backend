@@ -11,6 +11,11 @@ class RepairTests(unittest.TestCase):
     def setUp(self):
         self.changes=[{'id':'0','path':'assumptions.a.support','after':'Good','passageMatched':True,'reviewPassed':True},
                       {'id':'7','path':'assumptions.b.support','after':'Bad','passageMatched':False,'reviewPassed':False}]
+    def test_review_comment_is_clarified_not_silently_accepted(self):
+        from proposal_repair import review_needs_clarification
+        self.assertTrue(review_needs_clarification({'checks':[{'verdict':'pass','issue':'Minor concern'}]}))
+        self.assertFalse(review_needs_clarification({'checks':[{'verdict':'pass','issue':''}]}))
+        for value in [None,{}, {'checks':None},{'checks':'bad'}]:self.assertFalse(review_needs_clarification(value))
     def test_preserves_siblings_and_ids(self):
         before=copy.deepcopy(self.changes)
         revised={**self.changes[1],'id':'0','after':'Supported','passageMatched':True,'reviewPassed':True}
@@ -69,12 +74,13 @@ class RepairRouteTests(RepairTests):
         target=self.thread.call_args.kwargs['target'];args=self.thread.call_args.kwargs['args']
         source=source_catalog([{'filename':'source.pdf','file_data':'dummy','extracted_text':text}])[0]
         draft={'changes':[{'path':'assumptions.b.support','after':text,'reason':'Margin update.','source_id':source['id'],'source_excerpt':text}]}
-        review={'checks':[{'id':'0','verdict':'pass','issue':''}]}
+        review={'checks':[{'id':'0','verdict':'pass','issue':'The evidence supports this change.'}]}
+        clarified={'checks':[{'id':'0','verdict':'pass','issue':''}]}
         @contextmanager
         def ownership(*args):yield True
         # Model and DB are synthetic; execute the actual worker and verification pipeline.
         with patch('amendment_ownership.worker_session',ownership),patch('notegen.extract_pdf_text',return_value=text),patch('command_thesis_bridge.file_hash',return_value='hash'),patch('amendment_checkpoints.Checkpoints') as checkpoints:
-            checkpoints.return_value.load.side_effect=[draft,review]
+            checkpoints.return_value.load.side_effect=[draft,review,clarified]
             target(*args)
         self.assertEqual(self.job['status'],'awaiting_approval',self.job.get('error'))
         self.assertEqual(self.job['result']['changes'][0],self.changes[0])

@@ -20,7 +20,7 @@ class Checkpoints:
         if saved and saved.get('key')!=key:raise ValueError('Proposal inputs changed; start a fresh comparison instead of resuming')
         return saved.get(stage)
     def save(self,key,stage,value):
-        if stage not in ('draft','review'):raise ValueError('Unknown proposal checkpoint stage')
+        if stage not in ('draft','review','reviewClarification'):raise ValueError('Unknown proposal checkpoint stage')
         encoded=json.dumps(value)
         if len(encoded)>1_000_000:raise ValueError('Proposal stage output exceeds checkpoint limit')
         with self.get_db(commit=True) as (_,cur):

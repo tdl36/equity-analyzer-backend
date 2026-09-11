@@ -42,3 +42,8 @@ def compatible_case(body, targets):
     return bool(targets) and all(c.get('caseContextHash')==context and
         c.get('assumptionId') in assumptions and
         assumptions[c['assumptionId']].get(c.get('field'),'')==c.get('before') for c in targets)
+
+
+def review_needs_clarification(review):
+    checks=review.get('checks') if isinstance(review,dict) else None
+    return isinstance(checks,list) and any(isinstance(q,dict) and q.get('verdict')=='pass' and q.get('issue') for q in checks)
