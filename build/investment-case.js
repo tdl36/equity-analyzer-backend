@@ -2,6 +2,7 @@ import * as React from 'react';
 import { InvestorFramework } from './investor-framework';
 import { ResearchDecisions } from './research-decisions';
 import { ResearchWorkbench } from './research-workbench';
+import { ThesisEvolution } from './thesis-evolution';
 import { CaseEvidence } from './investment-case-evidence';
 var empty = () => ({
   thesis: '',
@@ -27,6 +28,7 @@ export function InvestmentCase({
     [message, setMessage] = React.useState(''),
     [dirty, setDirty] = React.useState(false),
     [selectedVersion, setSelectedVersion] = React.useState('');
+  var [workspaceTab, setWorkspaceTab] = React.useState('case');
   var pending = React.useRef(null),
     lock = React.useRef(false),
     alive = React.useRef(true);
@@ -144,7 +146,7 @@ export function InvestmentCase({
     "aria-label": "Investment case"
   }, /*#__PURE__*/React.createElement("p", {
     className: "workspace-eyebrow"
-  }, "INVESTMENT CASE / YOUR ASSUMPTIONS"), /*#__PURE__*/React.createElement("h2", null, "Make the investment case explicit."), /*#__PURE__*/React.createElement("p", null, "Record what you believe, the evidence against it, and the next test. These are your working assumptions. Manual source references are unverified; accepted research links retain the original excerpt and its provenance."), /*#__PURE__*/React.createElement(InvestorFramework, {
+  }, "INVESTMENT CASE / YOUR ASSUMPTIONS"), /*#__PURE__*/React.createElement("h2", null, "Investment thesis workspace."), /*#__PURE__*/React.createElement("p", null, "Record what you believe, the evidence against it, and the next test. These are your working assumptions. Manual source references are unverified; accepted research links retain the original excerpt and its provenance."), /*#__PURE__*/React.createElement(InvestorFramework, {
     api: api
   }), /*#__PURE__*/React.createElement("div", {
     className: "desk-filter"
@@ -173,7 +175,16 @@ export function InvestmentCase({
     role: "status"
   }, message), active && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "workspace-section-heading"
-  }, /*#__PURE__*/React.createElement("h3", null, active, " \xB7 ", revision ? `Revision ${revision}` : 'New investment case'), /*#__PURE__*/React.createElement("span", null, dirty ? 'Unsaved changes' : 'Saved working assumptions')), /*#__PURE__*/React.createElement("fieldset", {
+  }, /*#__PURE__*/React.createElement("h3", null, active, " \xB7 ", revision ? `Revision ${revision}` : 'New investment case'), /*#__PURE__*/React.createElement("span", null, dirty ? 'Unsaved changes' : 'Saved working assumptions')), /*#__PURE__*/React.createElement("nav", {
+    className: "lifecycle-tabs",
+    "aria-label": "Investment thesis workspace"
+  }, [['case', 'Current thesis'], ['evidence', 'Evidence & proposals'], ['reviews', 'Decisions & underweights'], ['evolution', 'Evolution']].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
+    key: id,
+    "aria-pressed": workspaceTab === id,
+    onClick: () => setWorkspaceTab(id)
+  }, label))), /*#__PURE__*/React.createElement("div", {
+    hidden: workspaceTab !== 'case'
+  }, /*#__PURE__*/React.createElement("fieldset", {
     disabled: busy,
     className: "desk-form"
   }, fields.map(([key, label]) => /*#__PURE__*/React.createElement("label", {
@@ -268,7 +279,10 @@ export function InvestmentCase({
     }
   }, /*#__PURE__*/React.createElement("h3", null, "Saved scenario sensitivities"), /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Scenario"), /*#__PURE__*/React.createElement("th", null, "Implied price (", body.scenarios.currency, ")"), /*#__PURE__*/React.createElement("th", null, "Price return"))), /*#__PURE__*/React.createElement("tbody", null, Object.entries(bridge).map(([name, v]) => /*#__PURE__*/React.createElement("tr", {
     key: name
-  }, /*#__PURE__*/React.createElement("th", null, name), /*#__PURE__*/React.createElement("td", null, v.impliedPrice), /*#__PURE__*/React.createElement("td", null, v.priceReturnPct, "%")))))), /*#__PURE__*/React.createElement(ResearchWorkbench, {
+  }, /*#__PURE__*/React.createElement("th", null, name), /*#__PURE__*/React.createElement("td", null, v.impliedPrice), /*#__PURE__*/React.createElement("td", null, v.priceReturnPct, "%"))))))), /*#__PURE__*/React.createElement("div", {
+    hidden: workspaceTab !== 'reviews'
+  }, /*#__PURE__*/React.createElement(ResearchWorkbench, {
+    initialKind: "underweight",
     key: active + '-work',
     api: api,
     ticker: active,
@@ -279,7 +293,9 @@ export function InvestmentCase({
     key: active + '-decisions',
     api: api,
     ticker: active
-  }), /*#__PURE__*/React.createElement(CaseEvidence, {
+  })), /*#__PURE__*/React.createElement("div", {
+    hidden: workspaceTab !== 'evidence'
+  }, /*#__PURE__*/React.createElement(CaseEvidence, {
     key: active,
     revision: revision,
     api: api,
@@ -287,6 +303,11 @@ export function InvestmentCase({
     body: body,
     disabled: busy || dirty,
     onCommit: save
+  })), workspaceTab === 'evolution' && /*#__PURE__*/React.createElement(ThesisEvolution, {
+    key: active,
+    api: api,
+    ticker: active,
+    revision: revision
   }), /*#__PURE__*/React.createElement("button", {
     disabled: busy || dirty || !revision,
     onClick: () => {

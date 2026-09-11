@@ -343,3 +343,41 @@ validation gap. Production build completed.
 Library → Summary → Select now exposes Brief and Meeting Summary alongside existing sections for Word/PDF, with All sections, Korean takeaways and audio transcript options. PDF generation uses the same ordered section registry as pooled email. Email selected sends one message containing all saved sections of each selected entry to the Settings recipient; export toggles only affect exports. Selection order is preserved. Missing IDs or invalid section filters fail explicitly rather than creating partial exports. Email has an in-flight click guard and no automatic retry after ambiguous delivery. Existing saved content is unchanged; no generation or SMTP delivery occurs during tests.
 
 Validation: five isolated unit tests cover real DOCX/PDF extraction, ordered ZIP entries, validation, long transcript preservation, escaping, and mocked pooled SMTP. Browser fixture exercised section toggles/email action at desktop and 390px without overflow. Frontend production build passes.
+
+## T61 — Roundtable workflow foundation
+
+- Investment case workspace now separates Current thesis, Evidence & proposals,
+  Decisions & underweights, and Evolution while retaining unsaved editor state.
+- Read-only lifecycle endpoint reconstructs case/work/decision snapshots by actual
+  recorded timestamp and ticker. A timezone-aware cutoff excludes later saves.
+  Each category exposes its 100-row bound. It does not backdate knowledge using a
+  document's publication date or reconstruct historical market data.
+- Evolution displays revision rail, stable-ID assumption matrix, field comparisons,
+  accepted original excerpts, underweight snapshots and dated work/decision history.
+  Revised wording is not labeled as stronger investment conviction. Independent
+  decisions are not falsely attributed as the cause of a nearby case revision.
+- Underweight reviews now preserve typed reconsideration conditions, user-assessed
+  status and supporting interpretation/source reference, plus maintain/investigate/
+  propose-change decisions. Assessed conditions require evidence explanations.
+  Completed structured reviews require a decision; portfolio weights cannot exceed
+  benchmark weight in this workflow. Old records remain readable/editable.
+- A proposed evidence change or saved underweight can open durable research chat
+  with its snapshot and a prefilled challenge. Opening does not submit paid work.
+  Legacy edit controls are hidden for these discussions; accepting a source proposal
+  remains in the source workflow with existing stale-case protection. Chat still
+  receives current shared memory and its last 20 messages, so this is not a
+  historically frozen model replay. Original sources are not fetched by chat.
+- Validation: 31 frontend tests; 3 new lifecycle/condition tests; 10 conversation
+  and 2 case-proposal unit tests; disposable local PostgreSQL lifecycle cutoff,
+  isolation/bounds checks plus existing workbench and source-proposal acceptance.
+  No production data edits, model calls, portfolio actions or outbound email in QA.
+
+Remaining roundtable milestones: source-arrival dispatch into materiality review,
+condition matching against new verified evidence, explicit pillar-strength analyst
+assessments, persistent debate-to-decision links, proposal-level no-change/reject
+rationale, portfolio-wide underweight monitor, and a timed real-source demo replay.
+This increment is not full autonomous event monitoring or a merged lifecycle for
+legacy thesis documents and the structured investment case.
+- Browser fixture passed desktop/390px history selection, field comparisons,
+  condition entry and no page overflow; Dusk rendering inspected. No live investment
+  conclusions were generated solely for testing.

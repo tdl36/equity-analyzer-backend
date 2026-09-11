@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { ResearchChat } from './research-chat';
 export function CaseEvidence({
   api,
   ticker,
@@ -19,6 +20,7 @@ export function CaseEvidence({
     [working, setWorking] = React.useState(false),
     [notice, setNotice] = React.useState(''),
     [refresh, setRefresh] = React.useState(0);
+  var [debate, setDebate] = React.useState(null);
   var requestRef = React.useRef(null),
     mutationLock = React.useRef(false),
     alive = React.useRef(true);
@@ -122,8 +124,9 @@ export function CaseEvidence({
     effectiveField = selected?.change.field || field;
   var assumption = body.assumptions.find(a => a.id === effectiveAssumption);
   return /*#__PURE__*/React.createElement("details", {
+    open: true,
     className: "amendment-card"
-  }, /*#__PURE__*/React.createElement("summary", null, "Connect reviewed research to an assumption"), /*#__PURE__*/React.createElement("p", null, "Choose an existing research change and review its excerpt before adding it to your investment case. A passage match establishes provenance at generation; it does not prove the interpretation or that the source is still current."), /*#__PURE__*/React.createElement("details", {
+  }, /*#__PURE__*/React.createElement("summary", null, "Evidence, debate and proposed changes"), /*#__PURE__*/React.createElement("p", null, "Choose an existing research change and review its excerpt before adding it to your investment case. A passage match establishes provenance at generation; it does not prove the interpretation or that the source is still current."), /*#__PURE__*/React.createElement("details", {
     open: true
   }, /*#__PURE__*/React.createElement("summary", null, "Generate proposals for this investment case"), /*#__PURE__*/React.createElement("p", null, "Select up to 10 saved originals. Charlie checks new evidence against your assumptions and proposes only material changes. Model usage is incurred when you generate. Oversized source sets fail visibly rather than being silently clipped."), /*#__PURE__*/React.createElement("fieldset", {
     disabled: disabled || working || activeJob
@@ -177,7 +180,21 @@ export function CaseEvidence({
   }, "Choose a source-supported change"), options.map(o => /*#__PURE__*/React.createElement("option", {
     key: o.key,
     value: o.key
-  }, new Date(o.job.created_at).toLocaleDateString(), " \xB7 ", o.change.after.slice(0, 110))))), selected && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, selected.change.reason), selected.change.evidence.filter(e => e.status === 'passage_matched').map((e, i) => /*#__PURE__*/React.createElement("section", {
+  }, new Date(o.job.created_at).toLocaleDateString(), " \xB7 ", o.change.after.slice(0, 110))))), selected && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h3", null, "Why Charlie proposes a change"), /*#__PURE__*/React.createElement("p", null, selected.change.reason), /*#__PURE__*/React.createElement("div", {
+    className: "lifecycle-tabs"
+  }, [['Challenge this interpretation', 'Challenge this proposed interpretation. Separate what the source actually says from inference. Identify missing evidence and explain whether the current thesis should change.'], ['Make the opposing case', 'Make the strongest evidence-based case against this proposed change. Preserve qualifiers and explain what would resolve the disagreement.'], ['What would change my mind?', 'Identify the observable evidence that would support or invalidate this change and the next questions I should investigate.']].map(([label, prompt]) => /*#__PURE__*/React.createElement("button", {
+    key: label,
+    onClick: () => setDebate({
+      prompt,
+      content: JSON.stringify({
+        caseRevision: revision,
+        investmentCase: body,
+        proposalId: selected.job.id,
+        change: selected.change,
+        sources: selected.job.result.sources
+      })
+    })
+  }, label))), selected.change.evidence.filter(e => e.status === 'passage_matched').map((e, i) => /*#__PURE__*/React.createElement("section", {
     key: i
   }, /*#__PURE__*/React.createElement("strong", null, selected.job.result.sources.find(s => s.id === e.sourceId)?.filename || 'Source snapshot'), /*#__PURE__*/React.createElement("blockquote", {
     style: {
@@ -232,5 +249,15 @@ export function CaseEvidence({
     }, link.after), link.evidence.map((e, j) => /*#__PURE__*/React.createElement("blockquote", {
       key: j
     }, /*#__PURE__*/React.createElement("strong", null, e.source.filename), /*#__PURE__*/React.createElement("br", null), e.excerpt)));
-  })));
+  })), debate && /*#__PURE__*/React.createElement(ResearchChat, {
+    api: api,
+    context: {
+      ticker,
+      type: 'review',
+      content: debate.content
+    },
+    initialMessage: debate.prompt,
+    allowEdits: false,
+    onClose: () => setDebate(null)
+  }));
 }

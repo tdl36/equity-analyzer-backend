@@ -4,14 +4,16 @@ export function ResearchChat({
   api,
   context,
   onClose,
-  onApplied
+  onApplied,
+  initialMessage = '',
+  allowEdits = true
 }) {
   var [conversation, setConversation] = React.useState(() => crypto.randomUUID());
   var [messages, setMessages] = React.useState([]),
     [history, setHistory] = React.useState([]),
     [analysts, setAnalysts] = React.useState([]);
   var [analyst, setAnalyst] = React.useState(''),
-    [text, setText] = React.useState(''),
+    [text, setText] = React.useState(initialMessage),
     [job, setJob] = React.useState(null);
   var [error, setError] = React.useState(''),
     [busy, setBusy] = React.useState(false),
@@ -241,7 +243,7 @@ export function ResearchChat({
     disabled: busy || active || uncertain,
     onChange: e => setText(e.target.value),
     placeholder: "Ask the analyst to explain, challenge or revise\u2026"
-  })), /*#__PURE__*/React.createElement(ResearchEdits, {
+  })), allowEdits && /*#__PURE__*/React.createElement(ResearchEdits, {
     key: context.ticker,
     api: api,
     ticker: context.ticker,

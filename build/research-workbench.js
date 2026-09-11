@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { ResearchChat } from './research-chat';
 var today = () => new Date().toLocaleDateString('en-CA');
 var inputs = {
   revenueMillions: '',
@@ -39,7 +40,9 @@ var blank = () => ({
   benchmarkPct: '',
   reason: 'valuation',
   valuationAssessment: '',
-  outcome: ''
+  outcome: '',
+  reviewConditions: [],
+  reviewDecision: 'pending'
 });
 async function json(api, path, options = {}) {
   var r = await fetch(api + path, {
@@ -59,18 +62,23 @@ export function ResearchWorkbench({
   ticker,
   caseRevision,
   assumptions = [],
-  disabled = false
+  disabled = false,
+  initialKind = 'model'
 }) {
   var [data, setData] = React.useState({
       records: [],
       sources: [],
       answers: []
     }),
-    [draft, setDraft] = React.useState(blank),
+    [draft, setDraft] = React.useState(() => ({
+      ...blank(),
+      kind: initialKind
+    })),
     [record, setRecord] = React.useState(null),
     [busy, setBusy] = React.useState(false),
     [message, setMessage] = React.useState(''),
     [history, setHistory] = React.useState(null);
+  var [debate, setDebate] = React.useState(null);
   var pending = React.useRef(null),
     lock = React.useRef(false),
     alive = React.useRef(true),
@@ -144,6 +152,7 @@ export function ResearchWorkbench({
     onChange: e => edit(key, e.target.value)
   }));
   return /*#__PURE__*/React.createElement("details", {
+    open: true,
     className: "research-decision-log"
   }, /*#__PURE__*/React.createElement("summary", null, "Research workbench \xB7 ", data.records.length, " records"), /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
@@ -244,7 +253,67 @@ export function ResearchWorkbench({
   }, k.replace('_', ' '))))), /*#__PURE__*/React.createElement("label", null, "Current valuation assessment", /*#__PURE__*/React.createElement("textarea", {
     value: draft.valuationAssessment,
     onChange: e => edit('valuationAssessment', e.target.value)
-  })), /*#__PURE__*/React.createElement("p", null, "User-reported point-in-time inputs. Business improvement alone does not establish investment attractiveness.")), /*#__PURE__*/React.createElement("label", null, "My interpretation and rationale", /*#__PURE__*/React.createElement("textarea", {
+  })), /*#__PURE__*/React.createElement("p", null, "User-reported point-in-time inputs. Business improvement alone does not establish investment attractiveness."), /*#__PURE__*/React.createElement("h3", null, "What would make us reconsider?"), /*#__PURE__*/React.createElement("p", {
+    className: "desk-explainer"
+  }, "Separate business performance, valuation and portfolio constraints. Assessments below are yours; conditions are not automatically monitored yet. Source references are manually recorded."), draft.reviewConditions.map((c, i) => /*#__PURE__*/React.createElement("section", {
+    className: "workspace-panel",
+    key: c.id
+  }, /*#__PURE__*/React.createElement("label", null, "Condition type", /*#__PURE__*/React.createElement("select", {
+    value: c.category,
+    onChange: e => edit('reviewConditions', draft.reviewConditions.map((v, j) => j === i ? {
+      ...v,
+      category: e.target.value
+    } : v))
+  }, ['fundamental', 'valuation', 'constraint', 'research_gap'].map(k => /*#__PURE__*/React.createElement("option", {
+    key: k,
+    value: k
+  }, k.replaceAll('_', ' '))))), /*#__PURE__*/React.createElement("label", null, "Observable condition", /*#__PURE__*/React.createElement("textarea", {
+    value: c.trigger,
+    onChange: e => edit('reviewConditions', draft.reviewConditions.map((v, j) => j === i ? {
+      ...v,
+      trigger: e.target.value
+    } : v))
+  })), /*#__PURE__*/React.createElement("label", null, "My assessment", /*#__PURE__*/React.createElement("select", {
+    value: c.state,
+    onChange: e => edit('reviewConditions', draft.reviewConditions.map((v, j) => j === i ? {
+      ...v,
+      state: e.target.value
+    } : v))
+  }, ['unassessed', 'not_met', 'partly_met', 'met'].map(k => /*#__PURE__*/React.createElement("option", {
+    key: k,
+    value: k
+  }, k.replaceAll('_', ' '))))), [['evidence', 'Evidence and interpretation behind my assessment'], ['sourceReference', 'Source, publication date and passage / page · manual reference']].map(([key, label]) => /*#__PURE__*/React.createElement("label", {
+    key: key
+  }, label, /*#__PURE__*/React.createElement("textarea", {
+    value: c[key],
+    onChange: e => edit('reviewConditions', draft.reviewConditions.map((v, j) => j === i ? {
+      ...v,
+      [key]: e.target.value
+    } : v))
+  }))), /*#__PURE__*/React.createElement("button", {
+    onClick: () => edit('reviewConditions', draft.reviewConditions.filter(v => v.id !== c.id))
+  }, "Remove condition from draft"))), /*#__PURE__*/React.createElement("button", {
+    disabled: draft.reviewConditions.length >= 12,
+    onClick: () => edit('reviewConditions', [...draft.reviewConditions, {
+      id: crypto.randomUUID(),
+      category: 'fundamental',
+      trigger: '',
+      state: 'unassessed',
+      evidence: '',
+      sourceReference: ''
+    }])
+  }, "Add reconsideration condition"), /*#__PURE__*/React.createElement("label", null, "My underweight decision", /*#__PURE__*/React.createElement("select", {
+    value: draft.reviewDecision,
+    onChange: e => edit('reviewDecision', e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "pending"
+  }, "Pending review"), /*#__PURE__*/React.createElement("option", {
+    value: "maintain"
+  }, "Maintain underweight"), /*#__PURE__*/React.createElement("option", {
+    value: "investigate"
+  }, "Investigate further"), /*#__PURE__*/React.createElement("option", {
+    value: "propose_change"
+  }, "Propose portfolio change for consideration")))), /*#__PURE__*/React.createElement("label", null, "My interpretation and rationale", /*#__PURE__*/React.createElement("textarea", {
     value: draft.rationale,
     onChange: e => edit('rationale', e.target.value)
   })), /*#__PURE__*/React.createElement("label", null, "Next action / evidence that would change my view", /*#__PURE__*/React.createElement("textarea", {
@@ -266,10 +335,13 @@ export function ResearchWorkbench({
   })), record && /*#__PURE__*/React.createElement("p", null, "Editing work revision ", record.revision, ". Saving binds it to current case revision ", caseRevision, "; recheck changed assumptions."), /*#__PURE__*/React.createElement("button", {
     className: "workspace-primary",
     onClick: save
-  }, busy ? 'Saving…' : 'Save work and calculate'), /*#__PURE__*/React.createElement("button", {
+  }, busy ? 'Saving…' : draft.kind === 'model' ? 'Save work and calculate' : 'Save review revision'), /*#__PURE__*/React.createElement("button", {
     onClick: () => {
       setRecord(null);
-      setDraft(blank());
+      setDraft({
+        ...blank(),
+        kind: initialKind
+      });
       pending.current = null;
     }
   }, "New work record"), /*#__PURE__*/React.createElement("button", {
@@ -283,7 +355,11 @@ export function ResearchWorkbench({
     className: "desk-explainer"
   }, "Evidence snapshot: ", r.evidenceState.replaceAll('_', ' '), ". Saved text matching does not establish currentness of the original disclosure."), /*#__PURE__*/React.createElement("p", null, r.body.rationale), /*#__PURE__*/React.createElement("p", null, "Next: ", r.body.nextAction), r.body.outcome && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, "Review outcome: "), r.body.outcome), r.body.resolution && /*#__PURE__*/React.createElement("p", null, "Answer resolution \xB7 analyst assessment: ", r.body.resolution), r.body.calculation && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Metric"), /*#__PURE__*/React.createElement("th", null, "Before"), /*#__PURE__*/React.createElement("th", null, "After"))), /*#__PURE__*/React.createElement("tbody", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "EPS"), /*#__PURE__*/React.createElement("td", null, r.body.calculation.beforeEPS), /*#__PURE__*/React.createElement("td", null, r.body.calculation.afterEPS)), /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Implied price \xB7 ", r.body.inputs.currency), /*#__PURE__*/React.createElement("td", null, r.body.calculation.beforeValue ?? 'Not applicable'), /*#__PURE__*/React.createElement("td", null, r.body.calculation.afterValue ?? 'Not applicable')))), /*#__PURE__*/React.createElement("p", null, "Operating profit change: ", r.body.calculation.operatingProfitDeltaMillions, "m \xB7 EPS change: ", r.body.calculation.epsDelta), /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
-  }, r.body.calculation.scope), /*#__PURE__*/React.createElement("blockquote", null, r.body.passage, /*#__PURE__*/React.createElement("cite", null, " \u2014 ", r.body.sourceFilename))), r.body.answerSnapshot && /*#__PURE__*/React.createElement("blockquote", null, r.body.answerSnapshot.response_notes), r.body.kind === 'underweight' && /*#__PURE__*/React.createElement("p", null, "Active weight: ", r.body.activeWeightPct, "% \xB7 ", r.body.mandate, " vs ", r.body.benchmark, " \xB7 as of ", r.body.asOf, (Date.now() - Date.parse(r.body.asOf)) / 86400000 > 30 ? ' · Inputs older than 30 days' : ''), /*#__PURE__*/React.createElement("button", {
+  }, r.body.calculation.scope), /*#__PURE__*/React.createElement("blockquote", null, r.body.passage, /*#__PURE__*/React.createElement("cite", null, " \u2014 ", r.body.sourceFilename))), r.body.answerSnapshot && /*#__PURE__*/React.createElement("blockquote", null, r.body.answerSnapshot.response_notes), r.body.kind === 'underweight' && /*#__PURE__*/React.createElement("p", null, "Active weight: ", r.body.activeWeightPct, "% \xB7 ", r.body.mandate, " vs ", r.body.benchmark, " \xB7 as of ", r.body.asOf, (Date.now() - Date.parse(r.body.asOf)) / 86400000 > 30 ? ' · Inputs older than 30 days' : ''), r.body.kind === 'underweight' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
+    onClick: () => setDebate(r)
+  }, "Challenge my underweight rationale"), /*#__PURE__*/React.createElement("p", null, "Review decision: ", (r.body.reviewDecision || 'pending').replaceAll('_', ' ')), r.body.reviewConditions?.map(c => /*#__PURE__*/React.createElement("p", {
+    key: c.id
+  }, /*#__PURE__*/React.createElement("strong", null, c.category, " \xB7 ", c.state.replaceAll('_', ' ')), ": ", c.trigger, /*#__PURE__*/React.createElement("br", null), c.evidence, /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, c.sourceReference)))), /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: () => {
       setRecord(r);
@@ -332,7 +408,21 @@ export function ResearchWorkbench({
     }
   }, JSON.stringify(v.body, null, 2)))), /*#__PURE__*/React.createElement("button", {
     onClick: () => setHistory(null)
-  }, "Close history")));
+  }, "Close history")), debate && /*#__PURE__*/React.createElement(ResearchChat, {
+    api: api,
+    context: {
+      ticker,
+      type: 'review',
+      content: JSON.stringify({
+        workId: debate.id,
+        workRevision: debate.revision,
+        review: debate.body
+      })
+    },
+    initialMessage: "Challenge my underweight rationale using the recorded assumption and reconsideration conditions. Distinguish fundamental improvement, valuation, constraints and research gaps. Present the strongest opposing case and what additional evidence is needed. Do not claim a condition has been automatically verified or a portfolio change executed.",
+    allowEdits: false,
+    onClose: () => setDebate(null)
+  }));
 }
 export function ResearchDueQueue({
   api,

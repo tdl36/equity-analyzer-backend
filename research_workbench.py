@@ -45,6 +45,41 @@ def validate(data):
             if not n.is_finite() or not 0<=n<=100:raise ValueError('Invalid '+k)
             out[k]=str(n)
         out['activeWeightPct']=str(Decimal(out['holdingPct'])-Decimal(out['benchmarkPct']))
+        if Decimal(out['activeWeightPct']) > 0:
+            raise ValueError('Portfolio weight exceeds benchmark weight. This is not an underweight review.')
+        conditions = b.get('reviewConditions', [])
+        if not isinstance(conditions, list) or len(conditions) > 12:
+            raise ValueError('Use up to 12 reconsideration conditions.')
+        out['reviewConditions'] = []
+        seen = set()
+        for condition in conditions:
+            if not isinstance(condition, dict):
+                raise ValueError('Invalid reconsideration condition.')
+            ident = str(uuid.UUID(condition.get('id', '')))
+            if ident in seen:
+                raise ValueError('Condition IDs must be unique.')
+            seen.add(ident)
+            category = condition.get('category')
+            state = condition.get('state')
+            if category not in ('fundamental', 'valuation', 'constraint', 'research_gap') or state not in ('unassessed', 'not_met', 'partly_met', 'met'):
+                raise ValueError('Choose a valid condition type and assessment.')
+            item = dict(id=ident, category=category, state=state,
+                        trigger=text(condition.get('trigger'), 'reconsideration condition'))
+            for key in ('evidence', 'sourceReference'):
+                value = condition.get(key, '')
+                if not isinstance(value, str) or len(value) > 6000:
+                    raise ValueError('Invalid condition evidence.')
+                item[key] = value.strip()
+            if state != 'unassessed' and not item['evidence']:
+                raise ValueError('Explain the evidence behind each assessed condition.')
+            out['reviewConditions'].append(item)
+        decision = b.get('reviewDecision', 'pending')
+        if decision not in ('pending', 'maintain', 'investigate', 'propose_change'):
+            raise ValueError('Choose a review decision.')
+        if conditions and out['status'] != 'open' and decision == 'pending':
+            raise ValueError('Record your underweight review decision before completing it.')
+        out['reviewDecision'] = decision
+
     return rid,ident,data['revision'],out
 
 def answer_hash(row):
