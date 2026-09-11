@@ -1,0 +1,40 @@
+/* Defensive defaults for every research control, including newly added workflows.
+   Component layouts and explicit utility classes retain their own hierarchy. */
+.charlie-workspace :where(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]),textarea,select) {
+  background-color:var(--bg);color:var(--ink);border:1px solid var(--line-strong);
+  border-radius:6px;padding:10px 12px;max-width:100%;min-width:0;
+  font-family:var(--font-ui);line-height:1.5;
+}
+.charlie-workspace fieldset {min-width:0;}
+.charlie-workspace :where(textarea) {resize:vertical;}
+.charlie-workspace :where(input[type=checkbox],input[type=radio]) {accent-color:var(--accent);flex-shrink:0;}
+[data-theme=dusk], [data-theme=graphite] {color-scheme:dark;}
+[data-theme=ink], [data-theme=oak], [data-theme=bloc], [data-theme=harbor], [data-theme=parchment] {color-scheme:light;}
+.research-desk :where(.workspace-panel) {font:14px/1.65 var(--font-ui);}
+.research-desk :where(.workspace-panel p) {margin-block:10px;overflow-wrap:anywhere;}
+.research-desk :where(.workspace-panel summary) {cursor:pointer;padding:10px 0;font-weight:600;}
+.research-desk :where(.workspace-panel button:not([class])) {padding:10px 12px;border:1px solid var(--line-strong);border-radius:6px;min-height:44px;color:var(--ink);background:var(--surface);}
+.research-desk :where(.workspace-panel label) {display:grid;gap:6px;min-width:0;}
+.research-desk :where(.workspace-panel label:has(input[type=checkbox]),.workspace-panel label:has(input[type=radio])) {display:flex;align-items:flex-start;gap:8px;}
+.research-desk :where(.workspace-panel input[type=checkbox],.workspace-panel input[type=radio]) {width:16px;height:16px;margin-top:3px;}
+.research-desk :where(.workspace-panel pre,.workspace-panel blockquote) {white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.75;}
+.underweight-monitor label {max-width:320px;margin:14px 0;}
+.desk-filter {align-items:end;}
+.research-chat-backdrop {z-index:90;}
+.desk-detail {z-index:85;}
+.workspace-content .fixed.inset-0 {z-index:85;}
+@media(max-width:640px) {
+ .workspace-content :is(.text-xs,[class~="text-[9px]"],[class~="text-[10px]"],[class~="text-[11px]"]) {font-size:12px;line-height:1.5;}
+ .charlie-workspace :where(input:not([type=checkbox]):not([type=radio]),textarea,select) {font-size:16px;}
+ .desk-form input,.desk-form textarea,.desk-form select,.desk-filter input,.desk-filter select,.source-preferences select,.source-preferences input {font-size:16px;}
+ .research-desk .desk-filter > label {flex-basis:100%;}
+ .research-desk .desk-filter > button {min-height:44px;}
+ .research-chat-controls label {min-width:0;flex-basis:100%;}
+ .research-chat header {align-items:flex-start;flex-wrap:wrap;}
+ .desk-detail {padding-bottom:calc(24px + env(safe-area-inset-bottom));}
+ .meeting-question-toolbar,.meeting-question-toolbar > div {flex-wrap:wrap;gap:10px;}
+ .meeting-question-toolbar > h2 {flex-basis:100%;}
+ .meeting-list-heading {flex-wrap:wrap;gap:12px;}
+ .meeting-list-heading > div:first-child {flex-basis:100%;}
+ .meeting-list-heading > button {flex:1;min-height:44px;}
+}

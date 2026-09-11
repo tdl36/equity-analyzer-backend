@@ -19,8 +19,8 @@ function ReportContent({value,renderHtml,depth=0}) {
   const text=typeof value==='object'?JSON.stringify(value,null,2):String(value);
   return renderHtml?<div className="desk-report-prose" dangerouslySetInnerHTML={{__html:renderHtml(text)}}/>:<pre>{text}</pre>;
 }
-export function ResearchDesk({api,analyses,onCompany,onNavigate,renderHtml,renderRecapHtml}) {
- const [workTicker,setWorkTicker]=useState('');
+export function ResearchDesk({api,analyses,onCompany,onNavigate,renderHtml,renderRecapHtml,initialTicker=''}) {
+ const [workTicker,setWorkTicker]=useState(initialTicker);
   const [data,setData]=useState({runs:[],activities:[],failed:[],analysts:[],providers:{},capabilities:{maxConcurrency:1,maxBatchSize:12}});
   const [errors,setErrors]=useState([]),[loading,setLoading]=useState(true),[updated,setUpdated]=useState(null);
   const [section,setSection]=useState(()=>{try{if(sessionStorage.getItem('charlie.openMeetingCommand')){sessionStorage.removeItem('charlie.openMeetingCommand');return 'command';}}catch{}return 'work';}),[days,setDays]=useState(90),[query,setQuery]=useState('');
@@ -66,7 +66,7 @@ export function ResearchDesk({api,analyses,onCompany,onNavigate,renderHtml,rende
     {section==='command'&&<CommandCharlie api={api} onNavigate={onNavigate} onSection={setSection}/>}
     {section==='history'&&<ResearchHistory api={api} onSection={setSection} onNavigate={onNavigate}/>}
     {section==='earnings'&&<EarningsWorkspace api={api} onRefresh={refresh} activities={[...data.activities,...data.failed]} onNavigate={onNavigate} onCompany={onCompany} renderHtml={renderRecapHtml||renderHtml}/>}
-    {section==='evidence'&&<EvidenceWorkspace api={api} analyses={analyses} onCompany={onCompany}/>}
+    {section==='evidence'&&<EvidenceWorkspace initialTicker={workTicker||initialTicker} api={api} analyses={analyses} onCompany={onCompany}/>}
     {section==='overview'&&<>
       <div className="desk-metrics">{[[counts.active,'Active in latest 100 runs','runs'],[pending.length,'Awaiting your review','inbox'],[queue.length,`Theses ${days}+ days old or undated`,'queue'],[data.analysts.length,'Sector analysts','playbooks']].map(([n,label,id])=><button key={label} onClick={()=>setSection(id)}><strong>{n}</strong><span>{label}</span><small>Open →</small></button>)}</div>
       {statusChecks.length>0&&<p className="workspace-notice">{statusChecks.length} run(s) have been marked active for more than two hours. Their status may be stale. <button className="underline" onClick={()=>setSection('runs')}>Inspect runs →</button></p>}

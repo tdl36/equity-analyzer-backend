@@ -12,10 +12,11 @@ var date = value => value ? String(value).slice(0, 10) : 'Undated';
 export function EvidenceWorkspace({
   api,
   analyses,
-  onCompany
+  onCompany,
+  initialTicker = 'DE'
 }) {
-  var [ticker, setTicker] = useState('DE'),
-    [input, setInput] = useState('DE');
+  var [ticker, setTicker] = useState(initialTicker || 'DE'),
+    [input, setInput] = useState(initialTicker || 'DE');
   var [data, setData] = useState(null),
     [error, setError] = useState(''),
     [loading, setLoading] = useState(true);

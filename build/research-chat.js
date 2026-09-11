@@ -156,9 +156,10 @@ export function ResearchChat({
   React.useEffect(() => {
     if (!onClose) return;
     var prior = document.activeElement;
+    panelRef.current?.querySelector('button,select,textarea')?.focus();
     var trap = e => {
       if (e.key !== 'Tab') return;
-      var items = [...panelRef.current.querySelectorAll('button:not(:disabled),select:not(:disabled),textarea:not(:disabled)')];
+      var items = [...panelRef.current.querySelectorAll('button:not(:disabled),select:not(:disabled),textarea:not(:disabled),input:not(:disabled),a[href]')].filter(el => el.getClientRects().length);
       var first = items[0],
         last = items[items.length - 1];
       if (e.shiftKey && document.activeElement === first) {
@@ -183,7 +184,6 @@ export function ResearchChat({
   }, /*#__PURE__*/React.createElement("header", null, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
     className: "workspace-eyebrow"
   }, "RESEARCH CONVERSATION / ", context.ticker), /*#__PURE__*/React.createElement("h3", null, "Work through the investment case.")), onClose && /*#__PURE__*/React.createElement("button", {
-    autoFocus: true,
     "aria-label": "Close analyst conversation",
     onClick: onClose
   }, "Close \xD7")), /*#__PURE__*/React.createElement("p", {

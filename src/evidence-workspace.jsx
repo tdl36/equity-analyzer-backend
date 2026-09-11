@@ -5,8 +5,8 @@ import {SavedResearchContext} from './saved-research-context';
 import * as React from 'react';
 const {useState,useEffect,useRef}=React;
 const date=value=>value?String(value).slice(0,10):'Undated';
-export function EvidenceWorkspace({api,analyses,onCompany}) {
-  const [ticker,setTicker]=useState('DE'),[input,setInput]=useState('DE');
+export function EvidenceWorkspace({api,analyses,onCompany,initialTicker='DE'}) {
+  const [ticker,setTicker]=useState(initialTicker||'DE'),[input,setInput]=useState(initialTicker||'DE');
   const [data,setData]=useState(null),[error,setError]=useState(''),[loading,setLoading]=useState(true);
   const [selected,setSelected]=useState(null),[refresh,setRefresh]=useState(0);
   const inspector=useRef(null);

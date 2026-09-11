@@ -122,11 +122,13 @@ export function SourcePreferences({
     })
   }, /*#__PURE__*/React.createElement("option", {
     value: "auto"
-  }, "Charlie decides \xB7 respect my preferences"), /*#__PURE__*/React.createElement("option", {
+  }, "Automatic \xB7 use my preferences"), /*#__PURE__*/React.createElement("option", {
     value: "preferred"
-  }, "Preferred sources only \xB7 ask before exceptions"), /*#__PURE__*/React.createElement("option", {
+  }, "Preferred sources only"), /*#__PURE__*/React.createElement("option", {
     value: "review"
-  }, "Let me select \xB7 review the document shortlist"))), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Broker preferences & company overrides (", draft.rules.length, ")"), /*#__PURE__*/React.createElement("p", null, "Use the publisher name exactly as shown in AlphaSense. Add alternate spellings as separate rules. Stock rules override subsector rules; within a scope, named analysts override broker-wide rules. Task-specific rules break ties. Author identity must be observed on the report, never inferred from a firm or previous coverage. Reference-only sources stay outside AI analysis."), draft.rules.map((r, i) => /*#__PURE__*/React.createElement("div", {
+  }, "Let me choose documents"))), /*#__PURE__*/React.createElement("p", {
+    className: "desk-explainer"
+  }, draft.mode === 'preferred' ? 'Ask before using sources outside your preferred list.' : draft.mode === 'review' ? 'Review and choose from the document shortlist before analysis.' : 'Charlie selects documents using your saved broker, analyst and company preferences.'), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Broker preferences & company overrides (", draft.rules.length, ")"), /*#__PURE__*/React.createElement("p", null, "Use the publisher name exactly as shown in AlphaSense. Add alternate spellings as separate rules. Stock rules override subsector rules; within a scope, named analysts override broker-wide rules. Task-specific rules break ties. Author identity must be observed on the report, never inferred from a firm or previous coverage. Reference-only sources stay outside AI analysis."), draft.rules.map((r, i) => /*#__PURE__*/React.createElement("div", {
     className: "source-rule",
     key: i
   }, /*#__PURE__*/React.createElement("label", null, "Broker / source", /*#__PURE__*/React.createElement("input", {

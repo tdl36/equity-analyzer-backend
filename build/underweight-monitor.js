@@ -33,8 +33,7 @@ export function UnderweightMonitor({
   }, [api]);
   var rows = (data?.records || []).filter(r => filter === 'all' || r.body.status === 'open');
   return /*#__PURE__*/React.createElement("details", {
-    className: "workspace-panel underweight-monitor",
-    open: true
+    className: "workspace-panel underweight-monitor"
   }, /*#__PURE__*/React.createElement("summary", null, "Underweight monitor \xB7 ", data?.records.length ?? '…', " recorded reviews"), /*#__PURE__*/React.createElement("p", null, "Which nonownership decisions deserve another look? Weights and condition assessments below are analyst-recorded, not live portfolio feeds."), /*#__PURE__*/React.createElement("label", null, "Show", /*#__PURE__*/React.createElement("select", {
     value: filter,
     onChange: e => setFilter(e.target.value)

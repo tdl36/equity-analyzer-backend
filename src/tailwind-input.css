@@ -9,13 +9,14 @@
 @import "./evidence-workspace.css";
 @import "./earnings-workspace.css";
 @import "./research-chat.css";
+@import "./ui-foundations.css";
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 .source-preferences label {display:flex;flex-direction:column;gap:6px;}
-.source-preferences select,.source-preferences input {padding:9px;border:1px solid var(--border-color,#cbd5e1);border-radius:6px;background:var(--bg-secondary,#fff);color:inherit;max-width:100%;}
+.source-preferences select,.source-preferences input {padding:9px;border:1px solid var(--line-strong);border-radius:6px;background:var(--bg);color:var(--ink);max-width:100%;}
 .source-preferences details {margin:16px 0;}
 .source-preferences summary {cursor:pointer;font-weight:600;}
 .source-rule {display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:12px;align-items:end;margin:16px 0;padding-bottom:16px;border-bottom:1px solid #94a3b844;}

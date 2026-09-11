@@ -89,7 +89,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-09-11T65';
+        const BUILD_VERSION = '2026-09-11T66';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -15292,7 +15292,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     {/* MAIN CONTENT AREA */}
                     <div id="workspace-content" tabIndex={-1} className="workspace-content flex-1 flex overflow-hidden">
                         
-                        {activeTab === 'desk' && <ResearchDesk renderRecapHtml={value => sanitizeHtml(/^\s*</.test(value) ? value : renderMarkdown(value))} renderHtml={value => sanitizeHtml(renderMarkdown(value))} api={API_URL} analyses={savedAnalyses} onCompany={openWorkspaceCompany} onNavigate={navigateWorkspace} />}
+                        {activeTab === 'desk' && <ResearchDesk key={workspaceTicker} initialTicker={workspaceTicker} renderRecapHtml={value => sanitizeHtml(/^\s*</.test(value) ? value : renderMarkdown(value))} renderHtml={value => sanitizeHtml(renderMarkdown(value))} api={API_URL} analyses={savedAnalyses} onCompany={openWorkspaceCompany} onNavigate={navigateWorkspace} />}
                         {activeTab === 'today' && <TodayWorkspace analyses={savedAnalyses} overviews={savedOverviews}
                             summaries={savedSummaries} alerts={agentAlerts} meetings={mpMeetings}
                             onNavigate={navigateWorkspace} onSummary={openWorkspaceSummary} onCompany={openWorkspaceCompany} />}
@@ -21619,12 +21619,12 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         {mpDocuments.map(doc => (
                                                             <div key={doc.id} className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
                                                                 <div className="flex items-center gap-2 flex-wrap min-w-0">
-                                                                    <span className="text-sm font-medium truncate">{doc.filename}</span>
+                                                                    <span className="text-sm font-medium break-words min-w-0" style={{overflowWrap:"anywhere"}}>{doc.filename}</span>
                                                                     <span className="px-1.5 py-0.5 rounded text-xs bg-white/10 text-slate-400">{doc.doc_type}</span>
-                                                                    {doc.page_count && <span className="text-xs text-slate-300">{doc.page_count}p</span>}
-                                                                    {doc.token_estimate && <span className="text-xs text-slate-400">~{(doc.token_estimate / 1000).toFixed(1)}K tokens</span>}
+                                                                    {doc.page_count > 0 && <span className="text-xs text-slate-300">{doc.page_count}p</span>}
+                                                                    {doc.token_estimate > 0 && <span className="text-xs text-slate-400">~{(doc.token_estimate / 1000).toFixed(1)}K tokens</span>}
                                                                 </div>
-                                                                <button onClick={() => deleteMpDocument(doc.id)} className="text-slate-400 hover:text-red-400 ml-2 flex-shrink-0">&times;</button>
+                                                                <button onClick={() => deleteMpDocument(doc.id)} className="text-slate-400 hover:text-red-400 ml-2 flex-shrink-0 p-2" aria-label={`Remove ${doc.filename}`}>&times;</button>
                                                             </div>
                                                         ))}
                                                     </div>
@@ -21636,7 +21636,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             {!mpManagedState.blocked&&<div className="workspace-panel"><h2 className="font-semibold mb-3">Meeting brief</h2><fieldset disabled={mpPipelineRunning} className="desk-filter"><label>Meeting format<select value={mpFormat} onChange={e=>{setMpFormat(e.target.value);saveMeetingPreferences(e.target.value,mpAudience);}}><option value="conference">30-minute conference · 12–15 questions</option><option value="one_on_one">60-minute 1×1 · 25–30 questions</option><option value="hosted_pm">Hosted PM discussion · 35–45 questions</option></select></label><label>Audience<select value={mpAudience} onChange={e=>{setMpAudience(e.target.value);saveMeetingPreferences(mpFormat,e.target.value);}}><option value="specialist">Sector specialists</option><option value="generalist">Generalist portfolio managers</option></select></label></fieldset><p className="desk-explainer">Format and audience are remembered on this browser. Uses the documents listed above. Longer formats cover enduring business and investment debates alongside recent events. Counts are targets, subject to available evidence. Changes apply when you generate or regenerate questions; retry keeps the original job settings.</p></div>}
                                             {/* Generate Section */}
                                             <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl border border-white/10 p-4">
-                                                <div className="flex items-center justify-between mb-3">
+                                                <div className="meeting-question-toolbar flex items-center justify-between mb-3">
                                                     <h2 className="font-semibold">Questions</h2>
                                                     <div className="flex items-center gap-2">
                                                         {mpQuestionSet && mpQuestionSet.topics && mpQuestionSet.topics.length > 0 && (<>
@@ -21819,7 +21819,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     /* Meeting List View */
                                     <div className="flex-1 flex flex-col overflow-hidden">
                                         <div className="bg-white/[0.04] backdrop-blur-lg border-b border-white/[0.08] p-4">
-                                            <div className="flex items-center justify-between">
+                                            <div className="meeting-list-heading flex items-center justify-between">
                                                 <div className="flex items-center gap-3">
                                                     <Target className="w-6 h-6 text-amber-400" />
                                                     <h1 className="text-xl font-bold">Meeting Prep</h1>

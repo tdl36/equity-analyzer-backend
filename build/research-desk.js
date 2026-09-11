@@ -63,9 +63,10 @@ export function ResearchDesk({
   onCompany,
   onNavigate,
   renderHtml,
-  renderRecapHtml
+  renderRecapHtml,
+  initialTicker = ''
 }) {
-  var [workTicker, setWorkTicker] = useState('');
+  var [workTicker, setWorkTicker] = useState(initialTicker);
   var [data, setData] = useState({
     runs: [],
     activities: [],
@@ -323,6 +324,7 @@ export function ResearchDesk({
     onCompany: onCompany,
     renderHtml: renderRecapHtml || renderHtml
   }), section === 'evidence' && /*#__PURE__*/React.createElement(EvidenceWorkspace, {
+    initialTicker: workTicker || initialTicker,
     api: api,
     analyses: analyses,
     onCompany: onCompany

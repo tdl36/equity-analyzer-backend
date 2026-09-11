@@ -38,7 +38,7 @@ writeFileSync(`${OUT}/index.html`, html);
 // Respawn the watcher on any .css source change so the import graph is re-read.
 let tw;
 const startTailwind = () => spawn('npx',
-  ['tailwindcss', '-i', 'src/tailwind-input.css', '-o', `${OUT}/tailwind.css`, '--watch'],
+  ['tailwindcss', '-i', 'src/tailwind-input.css', '-o', `${OUT}/tailwind.css`, '--watch=always'],
   { stdio: 'inherit' });
 tw = startTailwind();
 tw.on('error', e => console.log('[tailwind] SPAWN ERROR:', e.message));

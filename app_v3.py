@@ -15,6 +15,7 @@ import queue
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from psycopg2.pool import ThreadedConnectionPool
+from database_pool import acquire_connection, pooled_cursor
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import anthropic
@@ -2386,6 +2387,7 @@ from contextlib import contextmanager
 
 # Connection pool — initialized lazily, one per Gunicorn worker process
 _pool = None
+_pool_lock = threading.Lock()
 
 def _get_database_url():
     database_url = os.environ.get('DATABASE_URL')
@@ -2399,47 +2401,27 @@ def _get_database_url():
 def _get_pool():
     """Get or create the connection pool (thread-safe, lazy init)."""
     global _pool
-    if _pool is None or _pool.closed:
-        # 3 workers × 2 threads = 6 handlers; pool up to 10 per worker
-        _pool = ThreadedConnectionPool(
-            minconn=2, maxconn=10,
-            dsn=_get_database_url(),
-            cursor_factory=RealDictCursor
-        )
-        print(f"DB connection pool created (min=2, max=10)")
-    return _pool
+    with _pool_lock:
+        if _pool is None or _pool.closed:
+            # Background research jobs share this pool with HTTP handlers.
+            _pool = ThreadedConnectionPool(
+                minconn=2, maxconn=10,
+                dsn=_get_database_url(),
+                cursor_factory=RealDictCursor
+            )
+            print("DB connection pool created (min=2, max=10)")
+        return _pool
 
 def get_db_connection():
-    """Get a connection from the pool."""
-    return _get_pool().getconn()
+    """Get a connection, allowing a bounded wait during temporary contention."""
+    return acquire_connection(_get_pool())
 
 @contextmanager
 def get_db(commit=False):
-    """Context manager for pooled database connections. Returns connection to pool on exit."""
-    pool = _get_pool()
-    conn = pool.getconn()
-    cur = conn.cursor()
-    try:
-        yield conn, cur
-        if commit:
-            conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        cur.close()
-        # Roll back any implicit transaction from reads before returning to pool
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        try:
-            if conn.closed:
-                pool.putconn(conn, close=True)
-            else:
-                pool.putconn(conn)
-        except Exception:
-            pass
+    """Return connections even when cursor creation or rollback fails."""
+    with pooled_cursor(_get_pool(), commit=commit) as pair:
+        yield pair
+
 
 def init_db():
     """Initialize database tables"""
