@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { InvestorFramework } from './investor-framework';
 import { ResearchDecisions } from './research-decisions';
+import { ResearchWorkbench } from './research-workbench';
 import { CaseEvidence } from './investment-case-evidence';
 var empty = () => ({
   thesis: '',
@@ -13,9 +14,10 @@ var empty = () => ({
 var fields = [['thesis', 'Investment thesis'], ['variantView', 'Where my view differs'], ['marketBaseline', 'Market expectations · include source and date'], ['changeConditions', 'What would change my mind']];
 export function InvestmentCase({
   api,
-  analyses = []
+  analyses = [],
+  initialTicker = ''
 }) {
-  var [ticker, setTicker] = React.useState(''),
+  var [ticker, setTicker] = React.useState(initialTicker),
     [active, setActive] = React.useState(''),
     [body, setBody] = React.useState(empty),
     [revision, setRevision] = React.useState(0),
@@ -70,6 +72,9 @@ export function InvestmentCase({
       if (alive.current) setBusy(false);
     }
   };
+  React.useEffect(() => {
+    if (initialTicker) load();
+  }, []);
   var edit = next => {
     setBody(next);
     setDirty(true);
@@ -263,7 +268,14 @@ export function InvestmentCase({
     }
   }, /*#__PURE__*/React.createElement("h3", null, "Saved scenario sensitivities"), /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Scenario"), /*#__PURE__*/React.createElement("th", null, "Implied price (", body.scenarios.currency, ")"), /*#__PURE__*/React.createElement("th", null, "Price return"))), /*#__PURE__*/React.createElement("tbody", null, Object.entries(bridge).map(([name, v]) => /*#__PURE__*/React.createElement("tr", {
     key: name
-  }, /*#__PURE__*/React.createElement("th", null, name), /*#__PURE__*/React.createElement("td", null, v.impliedPrice), /*#__PURE__*/React.createElement("td", null, v.priceReturnPct, "%")))))), /*#__PURE__*/React.createElement(ResearchDecisions, {
+  }, /*#__PURE__*/React.createElement("th", null, name), /*#__PURE__*/React.createElement("td", null, v.impliedPrice), /*#__PURE__*/React.createElement("td", null, v.priceReturnPct, "%")))))), /*#__PURE__*/React.createElement(ResearchWorkbench, {
+    key: active + '-work',
+    api: api,
+    ticker: active,
+    caseRevision: revision,
+    assumptions: body.assumptions,
+    disabled: busy || dirty
+  }), /*#__PURE__*/React.createElement(ResearchDecisions, {
     key: active + '-decisions',
     api: api,
     ticker: active

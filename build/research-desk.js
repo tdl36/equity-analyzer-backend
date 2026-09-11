@@ -1,3 +1,4 @@
+import { ResearchDueQueue } from './research-workbench';
 import { MyWork } from './my-work';
 import { CommandCharlie } from './command-charlie';
 import { ResearchHistory } from './research-history';
@@ -64,6 +65,7 @@ export function ResearchDesk({
   renderHtml,
   renderRecapHtml
 }) {
+  var [workTicker, setWorkTicker] = useState('');
   var [data, setData] = useState({
     runs: [],
     activities: [],
@@ -267,7 +269,13 @@ export function ResearchDesk({
   }, loading ? 'Loading…' : 'Refresh', updated && /*#__PURE__*/React.createElement("small", null, "Updated ", updated.toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit'
-  })))), errors.length > 0 && /*#__PURE__*/React.createElement("div", {
+  })))), section === 'work' && /*#__PURE__*/React.createElement(ResearchDueQueue, {
+    api: api,
+    onOpen: ticker => {
+      setWorkTicker(ticker);
+      setSection('priorities');
+    }
+  }), errors.length > 0 && /*#__PURE__*/React.createElement("div", {
     className: "workspace-error",
     role: "alert"
   }, "Some live data could not be refreshed. Previously loaded records may be out of date.", /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Connection details"), errors.map(e => /*#__PURE__*/React.createElement("p", {
@@ -403,7 +411,8 @@ export function ResearchDesk({
     className: "workspace-empty"
   }, "No analyst output is awaiting review.")), section === 'priorities' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(InvestmentCase, {
     api: api,
-    analyses: analyses
+    analyses: analyses,
+    initialTicker: workTicker
   }), /*#__PURE__*/React.createElement(PortfolioPriorities, {
     api: api,
     analyses: analyses,

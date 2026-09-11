@@ -28962,6 +28962,8 @@ app.register_blueprint(company_memory.create_blueprint(get_db))
 import collection_control
 import research_priorities
 app.register_blueprint(research_priorities.create_blueprint(get_db))
+import research_workbench
+app.register_blueprint(research_workbench.create_blueprint(get_db))
 app.register_blueprint(collection_control.create_blueprint(get_db,
     lambda: bool(CHARLIE_API_KEY) and hmac.compare_digest(request.headers.get('Authorization',''), 'ApiKey '+CHARLIE_API_KEY)))
 

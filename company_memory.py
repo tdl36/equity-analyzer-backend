@@ -25,7 +25,7 @@ def assemble(ticker, case=None, legacy=None, decisions=None, decisions_more=Fals
         entries.append({'kind':'analyst_decision','status':'superseded' if record['superseded'] else 'recorded_not_revalidated',
             'id':record['id'],'revision':record['revision'],'savedAt':str(record['created_at']),'body':obj(record['body'])})
     if historical:entries.extend(historical[0])
-    content = {'schemaVersion': 5, 'ticker': ticker, 'entries': entries,
+    content = {'schemaVersion': 6, 'ticker': ticker, 'entries': entries,
         'limitations': ['Original documents have not been retrieved or reverified.',
             'Investment-case and legacy-thesis context includes only the latest case and selected legacy fields.',
             ('Decision context includes the latest 20 plus bounded older matches; other history may be omitted.' if recall else 'Decision context includes at most the latest 20 recorded entries; older history is omitted.') if decisions_more else 'All recorded analyst decisions are included.',
@@ -71,6 +71,18 @@ def load(get_db, ticker, focus='', include_sources=False):
         from research_recall import terms_for
         from company_history_recall import recall as recall_history
         historical=recall_history(cur,ticker,terms_for(case,focus)[0],date.today().isoformat(),include_sources)
+        from company_history_recall import available
+        if available(cur,'research_work_versions'):
+            cur.execute('''SELECT id,revision,body,created_at FROM
+                (SELECT DISTINCT ON(id) * FROM research_work_versions WHERE ticker=%s ORDER BY id,revision DESC) latest
+                ORDER BY created_at DESC LIMIT 11''',(ticker,))
+            work=list(cur.fetchall())
+            historical[1]['workRecordsOmitted']=len(work)>10
+            for row in work[:10]:
+                body=obj(row['body'])
+                historical[0].append({'kind':'analyst_work','status':'recorded_work_not_automatic_case_change',
+                    'id':row['id'],'revision':row['revision'],'savedAt':str(row['created_at']),
+                    'caseBaselineChanged':not case or body.get('caseRevision')!=case['revision'],'body':body})
     return assemble(ticker, case, legacy,decisions,more,framework,recall,historical)
 
 
@@ -95,6 +107,9 @@ def render(snapshot):
         'A priorIssueReviews match means this exact saved extraction was reviewed for the named issue only. '
         'Explain the earlier rationale instead of presenting the identical source as newly discovered. '
         'Reopen assessment for changed evidence, a due review condition, conflicting facts or a new question. Never generalize a dismissal or mute alerts. '
+        'Analyst work records include saved calculations, follow-ups and user-reported portfolio inputs; they do not prove case edits or executed positions. '
+        'Use the recorded before/after calculation with its assumptions and limitations. Flag changed case baselines and stale holdings dates. '
+        'A due follow-up is work to discuss, not permission to send messages or apply edits. Reviewed and closed statuses are user assessments. '
         'Do not infer an investment decision from an omitted field. Cite the case revision when discussing it.\n'
         + json.dumps(evidence, sort_keys=True, ensure_ascii=False)+render_framework(snapshot.get('framework')))
 

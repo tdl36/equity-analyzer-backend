@@ -1,5 +1,42 @@
 # Decision-platform implementation ledger
 
+## T59: connected research workbench and due-work queue
+
+- Company investment cases now include versioned model sensitivities, recorded-answer
+  follow-ups and benchmark/nonownership reviews. Every record identifies a saved
+  assumption, owner, due date, interpretation and next action. Reviewed/closed states
+  require an explicit outcome. Records appear in fresh company memory, with changed
+  case baselines flagged. They do not overwrite cases or execute portfolio changes.
+- Single-driver margin bridge computes operating-profit, after-tax income, EPS and
+  P/E sensitivity using Decimal. It preserves period/currency/basis, baseline inputs,
+  original passage and extraction hash. Negative EPS remains visible while unsuitable
+  P/E valuation is unavailable. It is not a full model, cash-flow forecast or spreadsheet
+  integration. Passage matching does not certify numerical interpretation.
+- Meeting follow-ups preserve the exact selected answer snapshot separately from
+  the analyst's resolution assessment and next action. Only dated actual answer
+  records qualify. Changed answers and source text fail stale-preview acceptance.
+- Underweight reviews retain user-reported mandate/benchmark/weights, as-of date,
+  reason, valuation assessment and reconsideration action. Active weight is calculated;
+  old holdings inputs are visibly flagged. No holdings or benchmark feed is inferred.
+- My work includes a live date-based queue for open work and unsuperseded issue-review
+  dates, with direct company-case navigation. It polls while open; it does not send
+  external reminders or semantically monitor catalyst conditions.
+- Immutable work versions support history inspection, historical drafts and copying
+  a PM/research brief. Request replay, stale revision, company identity and current
+  case checks protect writes. Model/source/answer snapshots remain separate from
+  subsequent evidence. Older decision matching now uses English stemming rather
+  than exact word equality; this is not embedding-based semantic retrieval.
+- Validation: disposable PostgreSQL covers three work types, hand-calculated bridge,
+  source provenance, actual-answer snapshots, replay/conflicts, history, stale cases,
+  queue behavior and fresh-memory inclusion. Safe unit tests and frontend checks
+  plus desktop/mobile fixture exercise follow-up save and underweight form. No paid
+  research, production test writes or outbound messages were used.
+- Still open: automatic numeric model propagation after review, full financial-model
+  mapping, contextual semantic retrieval, event-condition monitoring/notifications,
+  multi-user specialist routing/entitlements, cross-company assumption links and
+  systematic outcome benchmarking. This release advances a connected analyst loop;
+  it does not certify full unattended automation or investment accuracy.
+
 ## T58: recorded answers, source passages and scoped review recognition
 
 - Shared context now retrieves up to eight dated answered/resolved meeting records
