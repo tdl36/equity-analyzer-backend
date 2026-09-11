@@ -23,3 +23,24 @@ def validate(raw,baseline,sources):
                         assessment=state,after=reason.strip(),reason=reason.strip(),evidence=claim['evidence'],
                         passageMatched=claim['status']=='passage_matched',caseRevision=baseline['_investmentCase']['revision']))
     return out
+
+
+def collect(raw, baseline, sources):
+    """Quarantine invalid optional suggestions without discarding thesis edits."""
+    rows = raw.get('condition_assessments', []) if isinstance(raw, dict) else []
+    if not isinstance(rows, list) or len(rows) > 20:
+        return [], ['Underweight suggestions were excluded because their structure was invalid. Thesis changes are reviewed separately.']
+    accepted, warnings, seen = [], [], set()
+    for index, row in enumerate(rows):
+        try:
+            values = validate({'condition_assessments': [row]}, baseline, sources)
+            value = values[0]
+            pair = (value['workId'], value['conditionId'])
+            if pair in seen:
+                raise ValueError('Repeated condition reference.')
+            seen.add(pair)
+            value['id'] = 'condition-' + str(index)
+            accepted.append(value)
+        except (ValueError, TypeError, KeyError, AttributeError):
+            warnings.append(f'Underweight suggestion {index + 1} excluded: it could not be validated against the saved review conditions. No condition was changed.')
+    return accepted, warnings

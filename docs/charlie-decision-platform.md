@@ -442,3 +442,16 @@ Browser fixture with 42 long filenames passed desktop and 390px: search, persist
 selection across filtering, ten-document limit, exact mocked submission, duplicate
 submission guard and no page overflow. Dusk screenshot reviewed. No live paid
 research was generated and no research content was changed by this UI repair.
+
+## T64 — Isolate invalid optional condition suggestions
+
+ABT proposal aefcb51e-6f2c-4bf9-b55b-a3aa1da08c63 failed after saving an
+11-change draft because the model emitted underweight suggestions referencing
+assumption paths and textual signposts, despite no saved underweight work records.
+The strict condition validator correctly rejected those identities, but the error
+incorrectly aborted the entire thesis review. Optional condition suggestions are
+now individually validated and quarantined with visible warnings. No invalid
+condition is attached or applied; valid thesis changes still receive independent
+review. Prompt/checkpoint identity is unchanged so the existing draft can resume
+without paying to regenerate it. Unit and disposable database tests cover mixed
+valid/invalid conditions, retained review checks, and checkpoint resumption.

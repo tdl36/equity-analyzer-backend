@@ -34,7 +34,7 @@ def model(prompt,key,tokens):
  # Read source catalog identity from the actual assembled prompt.
  sources=json.loads(prompt.split('SOURCE DOCUMENTS:\n')[-1])
  assert 'CASE CONTEXT' in prompt
- return {'changes':[{'path':f'assumptions.{aid}.support','after':excerpt,'reason':'Updated guidance','source_id':sources[0]['id'],'source_excerpt':excerpt}], 'condition_assessments':[{'work_id':'w','condition_id':'c','assessment':'partly_met','reason':'Improvement is reported, but sustainability remains unresolved.','source_id':sources[0]['id'],'source_excerpt':excerpt}]}
+ return {'changes':[{'path':f'assumptions.{aid}.support','after':excerpt,'reason':'Updated guidance','source_id':sources[0]['id'],'source_excerpt':excerpt}], 'condition_assessments':[{'work_id':'w','condition_id':'c','assessment':'partly_met','reason':'Improvement is reported, but sustainability remains unresolved.','source_id':sources[0]['id'],'source_excerpt':excerpt},{'work_id':'assumptions.not-a-work-record','condition_id':'A textual signpost','assessment':'met','reason':'Invalid optional model output'}]}
 try:
  with admin.cursor() as c:c.execute(sql.SQL('CREATE SCHEMA {}').format(sql.Identifier(schema)))
  with db(commit=True) as (_,c):
@@ -60,6 +60,7 @@ try:
   assert calls==[12000,5000,5000],calls
   job=client.get(url+'/source-proposals').json['proposals'][0]
   assert job['status']=='awaiting_approval' and job['result']['changes'][0]['assumptionId']==aid
+  assert len(job['result']['conditionWarnings'])==1
   assert job['result']['conditionAssessments'][0]['reviewPassed']
   assert job['result']['conditionAssessments'][0]['workRevision']==1
   assert client.get(url).json['revision']==1

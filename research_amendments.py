@@ -189,8 +189,8 @@ def create_blueprint(get_db, call_model, get_key, model_identity=lambda: 'defaul
                     raw=call_model(prompt,key,12000)
                     checkpoints.save(checkpoint_key,'draft',raw)
                 changes=validate_changes(raw,baseline,sources)
-                from condition_assessments import validate as validate_conditions
-                condition_checks=validate_conditions(raw,baseline,sources)
+                from condition_assessments import collect as collect_conditions
+                condition_checks,condition_warnings=collect_conditions(raw,baseline,sources)
                 review_items=changes+condition_checks
                 qc=checkpoints.load(checkpoint_key,'review')
                 if review_items and qc is None:
@@ -203,7 +203,7 @@ def create_blueprint(get_db, call_model, get_key, model_identity=lambda: 'defaul
                     matching=[q for q in checks if isinstance(q,dict) and q.get('id')==c['id']] if isinstance(checks,list) else []
                     c['reviewPassed']=len(matching)==1 and matching[0].get('verdict')=='pass' and not matching[0].get('issue')
                     c['reviewIssue']=str(matching[0].get('issue') or '')[:3000] if len(matching)==1 else 'Independent review did not return a unique verdict.'
-                finish(job_id,'awaiting_approval',{'changes':changes,'conditionAssessments':condition_checks,'sources':[{k:v for k,v in s.items() if k!='text'} for s in sources]},owner=owner)
+                finish(job_id,'awaiting_approval',{'changes':changes,'conditionAssessments':condition_checks,'conditionWarnings':condition_warnings,'sources':[{k:v for k,v in s.items() if k!='text'} for s in sources]},owner=owner)
             except ValueError as e: finish(job_id,'failed',error=str(e),owner=owner)
             except Exception:
                 logging.getLogger(__name__).exception("Thesis comparison failed for %s", job_id)

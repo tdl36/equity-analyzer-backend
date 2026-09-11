@@ -226,7 +226,9 @@ export function CaseEvidence({
     open: j.status !== 'dismissed'
   }, /*#__PURE__*/React.createElement("summary", null, j.status.replaceAll('_', ' '), " \xB7 ", new Date(j.created_at).toLocaleString()), j.error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
-  }, j.error), j.result?.conditionAssessments?.map(c => /*#__PURE__*/React.createElement("article", {
+  }, j.error), !!j.result?.conditionWarnings?.length && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, j.result.conditionWarnings.length, " optional underweight suggestions excluded \xB7 thesis review continues"), j.result.conditionWarnings.map((w, i) => /*#__PURE__*/React.createElement("p", {
+    key: i
+  }, w))), j.result?.conditionAssessments?.map(c => /*#__PURE__*/React.createElement("article", {
     className: "workspace-panel",
     key: c.id
   }, /*#__PURE__*/React.createElement("p", {

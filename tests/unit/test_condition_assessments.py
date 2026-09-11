@@ -13,3 +13,11 @@ class Tests(unittest.TestCase):
   for rows in [[row,row],[{**row,'work_id':'other'}],[{**row,'assessment':'verified'}]]:
    with self.assertRaises(ValueError):validate({'condition_assessments':rows},baseline,sources)
   self.assertFalse(validate({'condition_assessments':[{**row,'source_excerpt':'invented quotation not contained anywhere in the original document'}]},baseline,sources)[0]['passageMatched'])
+
+ def test_optional_hallucinations_do_not_discard_thesis_work(self):
+  from condition_assessments import collect
+  baseline={'_investmentCase':{'revision':1,'underweightReviews':[]}}
+  raw={'changes':[{'after':'Thesis work retained'}],'condition_assessments':[{'work_id':'assumptions.some-id','condition_id':'invented textual trigger','assessment':'met','reason':'Unsupported identity'}]}
+  values,warnings=collect(raw,baseline,[])
+  self.assertEqual(values,[]);self.assertEqual(len(warnings),1)
+  self.assertEqual(raw['changes'][0]['after'],'Thesis work retained')
