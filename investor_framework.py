@@ -14,6 +14,9 @@ def validate(data):
         value=data.get(key,'')
         if not isinstance(value,str) or len(value)>6000:raise ValueError(f'{key} must contain at most 6,000 characters.')
         body[key]=value.strip()
+    if 'decayRules' in data:
+        from case_signals import decay_rules
+        body['decayRules']=decay_rules(data['decayRules'])
     # Blank is an explicit way to clear the framework, without deleting history.
     return body
 

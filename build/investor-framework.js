@@ -103,6 +103,7 @@ export function InvestorFramework({
         setBody(d.body);
         setDirty(false);
         pending.current = null;
+        window.dispatchEvent(new Event('charlie-framework-saved'));
         setMessage(`Framework v${d.revision} saved. New shared-context research will use this version.`);
         try {
           var fresh = await json();
@@ -125,10 +126,39 @@ export function InvestorFramework({
     className: "desk-explainer"
   }, "Your shared research methodology across companies. New research-chat replies, analyst recaps and meeting packs use the saved version. Existing jobs keep their captured version. This does not change every legacy workflow or automatically accept research, monitor events, or trade."), /*#__PURE__*/React.createElement("fieldset", {
     disabled: busy
-  }, /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Analyst Doctrine \xB7 evidence half-life rules"), /*#__PURE__*/React.createElement("p", null, "How quickly time-sensitive evidence loses relevance in Case signals. Structural evidence remains active until explicitly retired; aging does not resolve contrary evidence. Save the framework to activate changes."), /*#__PURE__*/React.createElement("div", {
+    className: "framework-grid"
+  }, [['event', 'Event half-life · days', 30], ['cyclical', 'Cyclical half-life · days', 180]].map(([key, label, fallback]) => /*#__PURE__*/React.createElement("label", {
+    key: key
+  }, label, /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    min: "1",
+    max: "3650",
+    value: body.decayRules?.[key] ?? fallback,
+    onChange: e => edit({
+      ...body,
+      decayRules: {
+        event: 30,
+        cyclical: 180,
+        ...body.decayRules,
+        [key]: e.target.value === '' ? '' : Number(e.target.value),
+        structural: null
+      }
+    })
+  })))), /*#__PURE__*/React.createElement("button", {
+    onClick: () => edit({
+      ...body,
+      decayRules: {
+        event: 30,
+        cyclical: 180,
+        structural: null
+      }
+    })
+  }, "Use 30 / 180 day defaults")), /*#__PURE__*/React.createElement("div", {
     className: "framework-actions"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => edit({
+      ...body,
       ...starter
     })
   }, "Use value-investor starter draft"), /*#__PURE__*/React.createElement("button", {
@@ -166,7 +196,7 @@ export function InvestorFramework({
   }, "Choose a version to inspect"), versions.map(v => /*#__PURE__*/React.createElement("option", {
     key: v.revision,
     value: v.revision
-  }, "v", v.revision, " \xB7 ", new Date(v.created_at).toLocaleString())))), prior && /*#__PURE__*/React.createElement("article", null, sections.map(([key, label]) => /*#__PURE__*/React.createElement("section", {
+  }, "v", v.revision, " \xB7 ", new Date(v.created_at).toLocaleString())))), prior && /*#__PURE__*/React.createElement("article", null, /*#__PURE__*/React.createElement("h4", null, "Evidence half-life policy"), /*#__PURE__*/React.createElement("p", null, prior.body.decayRules ? `Event: ${prior.body.decayRules.event} days; cyclical: ${prior.body.decayRules.cyclical} days; structural: until retired.` : 'Not configured in this version'), sections.map(([key, label]) => /*#__PURE__*/React.createElement("section", {
     key: key
   }, /*#__PURE__*/React.createElement("h4", null, label), /*#__PURE__*/React.createElement("p", {
     style: {

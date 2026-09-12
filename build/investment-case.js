@@ -4,6 +4,7 @@ import { ResearchDecisions } from './research-decisions';
 import { ResearchWorkbench } from './research-workbench';
 import { UnderweightMonitor } from './underweight-monitor';
 import { ThesisEvolution } from './thesis-evolution';
+import { CaseSignals } from './case-signals';
 import { CaseEvidence } from './investment-case-evidence';
 var empty = () => ({
   thesis: '',
@@ -187,7 +188,7 @@ export function InvestmentCase({
   }, /*#__PURE__*/React.createElement("h3", null, active, " \xB7 ", revision ? `Revision ${revision}` : 'New investment case'), /*#__PURE__*/React.createElement("span", null, dirty ? 'Unsaved changes' : 'Saved working assumptions')), /*#__PURE__*/React.createElement("nav", {
     className: "lifecycle-tabs",
     "aria-label": "Investment thesis workspace"
-  }, [['case', 'Current thesis'], ['evidence', 'Evidence & proposals'], ['reviews', 'Decisions & underweights'], ['evolution', 'Evolution']].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
+  }, [['case', 'Current thesis'], ['evidence', 'Evidence & proposals'], ['reviews', 'Decisions & underweights'], ['signals', 'Case signals'], ['evolution', 'Evolution']].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
     key: id,
     "aria-pressed": workspaceTab === id,
     onClick: () => setWorkspaceTab(id)
@@ -333,7 +334,15 @@ export function InvestmentCase({
     body: body,
     disabled: busy || dirty,
     onCommit: save
-  })), workspaceTab === 'evolution' && /*#__PURE__*/React.createElement(ThesisEvolution, {
+  })), workspaceTab === 'signals' && /*#__PURE__*/React.createElement(CaseSignals, {
+    key: active + '-signals',
+    api: api,
+    body: body,
+    disabled: busy,
+    onChange: edit,
+    onSave: save,
+    message: message
+  }), workspaceTab === 'evolution' && /*#__PURE__*/React.createElement(ThesisEvolution, {
     key: active,
     api: api,
     ticker: active,
@@ -369,13 +378,14 @@ export function InvestmentCase({
       mode: 'restore',
       sourceRevision: snapshot.revision
     })
-  }, "Restore revision ", snapshot.revision, " as a new revision"), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Scenario inputs and evidence metadata"), /*#__PURE__*/React.createElement("pre", {
+  }, "Restore revision ", snapshot.revision, " as a new revision"), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Scenario inputs, case signals and evidence metadata"), /*#__PURE__*/React.createElement("pre", {
     style: {
       whiteSpace: 'pre-wrap',
       overflowWrap: 'anywhere'
     }
   }, JSON.stringify({
     scenarios: snapshot.body.scenarios,
+    signals: snapshot.body.signals || {},
     evidenceLinks: snapshot.body.evidenceLinks || []
   }, null, 2))), fields.map(([key, label]) => /*#__PURE__*/React.createElement("section", {
     key: key

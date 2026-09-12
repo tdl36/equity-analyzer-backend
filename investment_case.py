@@ -77,6 +77,9 @@ def validate(data):
             raise ValueError('Choose a recognized evidence type.')
         item['evidenceType']=kind
         result['assumptions'].append(item)
+    if 'signals' in data:
+        from case_signals import validate as validate_signals
+        result['signals']=validate_signals(data['signals'],seen)
     result['scenarios']=data.get('scenarios',{})
     scenario_bridge(result['scenarios'])
     return result

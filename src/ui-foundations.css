@@ -38,3 +38,28 @@
  .meeting-list-heading > div:first-child {flex-basis:100%;}
  .meeting-list-heading > button {flex:1;min-height:44px;}
 }
+
+/* Case signals: readable diagnostics across the existing theme system. */
+.case-signals { min-width:0; }
+.case-signals header p,.case-signals .signals-section>p { max-width:78ch; line-height:1.65; }
+.signals-section { padding:24px 0; border-top:1px solid var(--line); }
+.signals-section h3 { margin:0 0 12px; }
+.signals-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:18px; }
+.signal-card,.signal-editor { min-width:0; padding:20px; border:1px solid var(--line); border-radius:10px; margin:14px 0; background:var(--bg); overflow-wrap:anywhere; }
+.signal-card h4 { font-family:var(--font-display);font-size:20px;line-height:1.35;margin:0 0 18px; }
+.signal-totals { display:flex; flex-wrap:wrap;gap:24px; }
+.signal-totals strong { display:block;font-size:25px;font-variant-numeric:tabular-nums; }
+.signal-bar { height:8px;border:1px solid var(--line);background:var(--muted);margin:14px 0;border-radius:4px;overflow:hidden; }
+.signal-bar span { display:block;height:100%;background:var(--accent); }
+.case-signals label { display:flex;flex-direction:column;gap:8px;margin:12px 0;min-width:0; }
+.case-signals input,.case-signals select,.case-signals textarea { width:100%;min-width:0;max-width:100%; }
+.case-signals textarea { min-height:110px; }
+.case-signals ul { padding-left:20px;line-height:1.7; }
+.signal-result { padding:14px;border-left:3px solid var(--accent);background:var(--bg); }
+.case-signals details>summary { padding:12px 0;cursor:pointer; }
+.signal-save { border-top:1px solid var(--line);padding:20px 0; }
+@media(max-width:640px) { .signal-card,.signal-editor {padding:15px;} .case-signals button {max-width:100%;white-space:normal;} }
+
+.signals-jump {display:flex;flex-wrap:wrap;gap:10px;margin:20px 0;}
+.signals-jump a {padding:10px 12px;border:1px solid var(--line-strong);border-radius:6px;color:var(--ink);text-decoration:underline;text-underline-offset:4px;}
+.signals-section {scroll-margin-top:100px;}
