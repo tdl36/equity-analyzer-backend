@@ -108,6 +108,14 @@ class SavedEvidenceTests(unittest.TestCase):
         self.assertIn('Saved comparison status: arithmetic checked',text)
         self.assertEqual(ROW['output'].get('claimReview'),None)
 
+class BriefExtractionTests(unittest.TestCase):
+    def test_opening_sentence_without_cutting_decimals(self):
+        row=copy.deepcopy(ROW);row['output']['synthesisMarkdown']='# Results\nRevenue was $1.5 billion. Growth needs validation.\nU.S. growth was 5%. Watch the next quarter.'
+        d=build(row,'brief');text=' '.join(x for s in d['slides'] if s['kind']=='recap' for x in s['items'])
+        self.assertIn('Revenue was $1.5 billion.',text);self.assertIn('U.S. growth was 5%.',text)
+        self.assertNotIn('Growth needs validation.',text)
+        self.assertIn('Growth needs validation.',' '.join(s['notes'] for s in d['slides']))
+
 class HtmlRecapTests(unittest.TestCase):
     def test_one_variant_and_html_headings(self):
         row=copy.deepcopy(ROW);row['output']['synthesisMarkdown']='Unpublished preface <section data-version="pm"><h2>SHORT VERSION</h2><p>Duplicated story</p></section><section data-version="comprehensive"><h2>Company review</h2><h3>Results &amp; outlook</h3><p>Reported revenue: 100.</p><ul><li>Interpretation remains uncertain.</li></ul><script>do_not_export</script></section>'

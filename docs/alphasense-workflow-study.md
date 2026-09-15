@@ -40,7 +40,7 @@ Sources:
 In Research desk → Earnings & evidence, open an event with a completed saved recap and use **Build earnings deck**.
 
 - HTML and Markdown recaps are supported. For multi-format recaps, the comprehensive version is selected and disclosed, avoiding repeated short/PM/full versions.
-- Full recap or section brief. Full mode retains recap text through continuation slides; brief selects the first two paragraphs per section and discloses that selection. Complete original section text remains in notes on the section's first slide.
+- Full recap or section brief. Full mode retains recap text through continuation slides; brief selects the opening sentence of the first two paragraphs per section and discloses that selection. Complete original section text remains in notes on the section's first slide.
 - Three slide styles: Editorial paper, Midnight boardroom and Sage research.
 - A slide outline, readable preview, per-slide wording edits, copy-all, and native editable 16:9 PowerPoint export.
 - Versioned server snapshots containing the recap hash, event identity and recorded source metadata. Regenerating a recap does not silently rewrite an existing presentation.
@@ -76,3 +76,5 @@ Use several real earnings events with different data completeness, plus syntheti
 - Route-mocked browser checks across seven Charlie themes and four viewport widths, covering build, edit, save, export gating and conflict feedback. These use synthetic data and do not prove live model or collection behavior.
 - Synthetic decks rendered through LibreOffice, reviewed visually, then adjusted for explicit left alignment, font fallback, shadows and footer legibility.
 - Production frontend build and existing regression suites run separately; see task completion for final results and deployment state.
+
+Live smoke test: the deployed application saved and exported a real CVS recap as a 58-slide full-coverage deck with native editable shapes and speaker notes. The original brief was too long (38 slides), prompting a change to opening-sentence extraction. This demonstrates formatting/persistence/export, not a real-source factual quality benchmark.

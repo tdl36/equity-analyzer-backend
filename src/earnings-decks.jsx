@@ -2,7 +2,7 @@ import * as React from 'react';
 
 export function EarningsDecks({api,activityId,available}) {
   const [decks,setDecks]=React.useState([]),[deck,setDeck]=React.useState(null),[body,setBody]=React.useState(null);
-  const [mode,setMode]=React.useState('full'),[theme,setTheme]=React.useState('paper'),[slideIndex,setSlideIndex]=React.useState(0);
+  const [mode,setMode]=React.useState('brief'),[theme,setTheme]=React.useState('paper'),[slideIndex,setSlideIndex]=React.useState(0);
   const [busy,setBusy]=React.useState(''),[error,setError]=React.useState(''),[message,setMessage]=React.useState(''),[history,setHistory]=React.useState([]);
   const lock=React.useRef(false),attempt=React.useRef(null),alive=React.useRef(true);
   const dirty=!!deck&&JSON.stringify(body)!==JSON.stringify(deck.body);
@@ -29,7 +29,7 @@ export function EarningsDecks({api,activityId,available}) {
   const edit=(field,value)=>setBody(b=>({...b,slides:b.slides.map((s,i)=>i===slideIndex?{...s,[field]:value}:s)}));
   const slide=body?.slides[slideIndex];
   return <section className="earnings-decks" aria-label="Earnings presentation builder">
-    <header><p className="workspace-eyebrow">RECAP → PRESENTATION</p><h3>Your earnings review, ready to present.</h3><p>Build editable slides from this saved recap. Full coverage keeps every section; the brief uses the first two paragraphs per section. Full section text stays in speaker notes.</p></header>
+    <header><p className="workspace-eyebrow">RECAP → PRESENTATION</p><h3>Your earnings review, ready to present.</h3><p>Build editable slides from this saved recap. Full coverage keeps every section; the brief uses opening sentences from the first two paragraphs per section. Full section text stays in speaker notes.</p></header>
     <div className="ed-controls"><label>Coverage<select value={mode} onChange={e=>setMode(e.target.value)} disabled={!!busy}><option value="full">Full recap</option><option value="brief">Section brief</option></select></label><label>Slide style<select value={theme} onChange={e=>setTheme(e.target.value)} disabled={!!busy}><option value="paper">Editorial paper</option><option value="midnight">Midnight boardroom</option><option value="sage">Sage research</option></select></label><button className="workspace-primary" disabled={!available||!!busy||dirty} onClick={build}>{busy==='Building deck…'?busy:'Build earnings deck'}</button></div>
     {!available&&<p>Available when this event has a completed, saved recap.</p>}
     <p className="ed-scope">Formats existing research; does not run a new source search or approve a thesis change. The source register identifies recap inputs, not verified support for every slide claim.</p>

@@ -7,7 +7,7 @@ export function EarningsDecks({
   var [decks, setDecks] = React.useState([]),
     [deck, setDeck] = React.useState(null),
     [body, setBody] = React.useState(null);
-  var [mode, setMode] = React.useState('full'),
+  var [mode, setMode] = React.useState('brief'),
     [theme, setTheme] = React.useState('paper'),
     [slideIndex, setSlideIndex] = React.useState(0);
   var [busy, setBusy] = React.useState(''),
@@ -149,7 +149,7 @@ export function EarningsDecks({
     "aria-label": "Earnings presentation builder"
   }, /*#__PURE__*/React.createElement("header", null, /*#__PURE__*/React.createElement("p", {
     className: "workspace-eyebrow"
-  }, "RECAP \u2192 PRESENTATION"), /*#__PURE__*/React.createElement("h3", null, "Your earnings review, ready to present."), /*#__PURE__*/React.createElement("p", null, "Build editable slides from this saved recap. Full coverage keeps every section; the brief uses the first two paragraphs per section. Full section text stays in speaker notes.")), /*#__PURE__*/React.createElement("div", {
+  }, "RECAP \u2192 PRESENTATION"), /*#__PURE__*/React.createElement("h3", null, "Your earnings review, ready to present."), /*#__PURE__*/React.createElement("p", null, "Build editable slides from this saved recap. Full coverage keeps every section; the brief uses opening sentences from the first two paragraphs per section. Full section text stays in speaker notes.")), /*#__PURE__*/React.createElement("div", {
     className: "ed-controls"
   }, /*#__PURE__*/React.createElement("label", null, "Coverage", /*#__PURE__*/React.createElement("select", {
     value: mode,

@@ -100,7 +100,7 @@ def build(row, mode='full', theme='paper'):
         title + '\nDraft from a saved research recap. Not a fresh source search or an independent verification.', 'cover')
     content, variant = recap_content(markdown)
     for heading, lines in sections(content):
-        selected = lines[:2] if mode == 'brief' else lines
+        selected = [re.split(r'(?<!U.S.)(?<!U.K.)(?<!Dr.)(?<!Mr.)(?<!Ms.)(?<=[.!?])\s+(?=[A-Z])', line, maxsplit=1)[0] for line in lines[:2]] if mode == 'brief' else lines
         omitted += len(lines) - len(selected)
         fragments = [part for line in selected for part in chunks(line)]
         # Split content into additional slides rather than shrinking typography.
@@ -136,13 +136,13 @@ def build(row, mode='full', theme='paper'):
         add('Source register' + (' · continued' if start else ''),
             [f"[{i+1}] {s['filename']}" for i, s in enumerate(sources[start:start+3], start)],
             'Recap input register, not claim-level citations.\n' + json.dumps(sources[start:start+3], ensure_ascii=False), 'sources')
-    return {'schema': 1, 'ticker': row.get('ticker'), 'title': title, 'mode': mode, 'theme': theme,
+    return {'schema': 1, 'formatterVersion': 2, 'ticker': row.get('ticker'), 'title': title, 'mode': mode, 'theme': theme,
             'createdAt': datetime.now(timezone.utc).isoformat(),
             'activityId': str(row['id']), 'activityStatus': row.get('status'), 'recapVariant': variant,
             'recapHash': hashlib.sha256(markdown.encode()).hexdigest(),
             'sources': sources, 'slides': slides, 'omittedParagraphs': omitted,
             'scope': 'Formatted from a frozen saved recap. Source register is not claim-level verification. No new source search or thesis approval.',
-            'warnings': ([f'Uses the {variant} version from this multi-format recap. Other versions remain in the original event.'] if variant else []) + (['Brief includes the first two paragraphs per section; complete section text is retained in speaker notes.'] if omitted else []) +
+            'warnings': ([f'Uses the {variant} version from this multi-format recap. Other versions remain in the original event.'] if variant else []) + (['Brief uses the opening sentence of the first two paragraphs per section. This is an extractive reading aid, not a fresh analytical synthesis. Complete section text is retained in speaker notes.'] if mode == 'brief' else []) +
                         (['The latest recap attempt failed; this deck uses the retained previous draft.'] if row.get('status') == 'failed' else [])}
 
 def revise(current, edits):
