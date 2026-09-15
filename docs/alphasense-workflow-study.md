@@ -39,6 +39,7 @@ Sources:
 
 In Research desk → Earnings & evidence, open an event with a completed saved recap and use **Build earnings deck**.
 
+- HTML and Markdown recaps are supported. For multi-format recaps, the comprehensive version is selected and disclosed, avoiding repeated short/PM/full versions.
 - Full recap or section brief. Full mode retains recap text through continuation slides; brief selects the first two paragraphs per section and discloses that selection. Complete original section text remains in notes on the section's first slide.
 - Three slide styles: Editorial paper, Midnight boardroom and Sage research.
 - A slide outline, readable preview, per-slide wording edits, copy-all, and native editable 16:9 PowerPoint export.

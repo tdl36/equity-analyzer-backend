@@ -27,7 +27,12 @@ export function EarningsDecks({
         ...options.headers
       }
     });
-    var data = await r.json();
+    var data;
+    try {
+      data = await r.json();
+    } catch {
+      throw Error(`The deck service is unavailable (HTTP ${r.status}). Reload saved decks after the service update finishes.`);
+    }
     if (!r.ok) throw Error(data.error || 'The request failed. Try again.');
     return data;
   }

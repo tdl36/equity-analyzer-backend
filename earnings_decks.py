@@ -4,6 +4,8 @@ No new research calls, invented citations, or changes to the underlying activity
 """
 import copy
 import hashlib
+import html
+from html.parser import HTMLParser
 import io
 import json
 import re
@@ -33,6 +35,30 @@ def plain(s):
 def chunks(s, width=190):
     return textwrap.wrap(s, width=width, break_long_words=True, break_on_hyphens=False) or ['']
 
+def recap_content(markdown):
+    """Choose one presentation variant; normalize HTML structure without running it."""
+    text = html.unescape(markdown)
+    variants = dict(re.findall(r'<section\b[^>]*data-version=[\"\']([^\"\']+)[\"\'][^>]*>(.*?)</section>', text, re.S | re.I))
+    chosen = next((k for k in ('comprehensive', 'summary', 'pm', 'quick') if variants.get(k)), None)
+    if chosen: text = variants[chosen]
+    if re.search(r'<(?:h[1-6]|section|p|li|table)\b', text, re.I):
+        class Blocks(HTMLParser):
+            def __init__(self):super().__init__();self.parts=[];self.hidden=0
+            def handle_starttag(self,tag,attrs):
+                if tag in ('script','style'):self.hidden+=1
+                if self.hidden:return
+                if re.fullmatch('h[1-6]',tag):self.parts.append('\n'+'#'*int(tag[1])+' ')
+                elif tag in ('p','li','div','section','tr','br'):self.parts.append('\n')
+                elif tag in ('td','th'):self.parts.append(' | ')
+            def handle_endtag(self,tag):
+                if tag in ('script','style'):self.hidden=max(0,self.hidden-1)
+                if self.hidden:return
+                if tag in ('p','li','div','section','tr') or re.fullmatch('h[1-6]',tag):self.parts.append('\n')
+            def handle_data(self,data):
+                if not self.hidden:self.parts.append(data)
+        parser=Blocks();parser.feed(text);text=''.join(parser.parts)
+    return text, chosen
+
 def sections(markdown):
     out, title, lines = [], 'Executive overview', []
     for line in markdown.splitlines():
@@ -41,7 +67,8 @@ def sections(markdown):
             if lines: out.append((title, lines))
             title, lines = plain(m[1]), []
         elif line.strip() and not re.fullmatch(r'[\s|:\-]+', line):
-            lines.append(plain(re.sub(r'^\s*(?:[-+•]|\d+[.)])\s+', '', line)))
+            value = plain(re.sub(r'^\s*(?:[-+•]|\d+[.)])\s+', '', line))
+            if value and value not in ('json','html','markdown') and not line.strip().startswith('```'): lines.append(value)
     if lines: out.append((title, lines))
     return out
 
@@ -71,7 +98,8 @@ def build(row, mode='full', theme='paper'):
                        'notes': notes, 'kind': kind, 'edited': False})
     add(f"{row.get('ticker') or 'Company'} · Earnings review", chunks(title)[:3],
         title + '\nDraft from a saved research recap. Not a fresh source search or an independent verification.', 'cover')
-    for heading, lines in sections(markdown):
+    content, variant = recap_content(markdown)
+    for heading, lines in sections(content):
         selected = lines[:2] if mode == 'brief' else lines
         omitted += len(lines) - len(selected)
         fragments = [part for line in selected for part in chunks(line)]
@@ -110,11 +138,11 @@ def build(row, mode='full', theme='paper'):
             'Recap input register, not claim-level citations.\n' + json.dumps(sources[start:start+3], ensure_ascii=False), 'sources')
     return {'schema': 1, 'ticker': row.get('ticker'), 'title': title, 'mode': mode, 'theme': theme,
             'createdAt': datetime.now(timezone.utc).isoformat(),
-            'activityId': str(row['id']), 'activityStatus': row.get('status'),
+            'activityId': str(row['id']), 'activityStatus': row.get('status'), 'recapVariant': variant,
             'recapHash': hashlib.sha256(markdown.encode()).hexdigest(),
             'sources': sources, 'slides': slides, 'omittedParagraphs': omitted,
             'scope': 'Formatted from a frozen saved recap. Source register is not claim-level verification. No new source search or thesis approval.',
-            'warnings': (['Brief includes the first two paragraphs per section; complete section text is retained in speaker notes.'] if omitted else []) +
+            'warnings': ([f'Uses the {variant} version from this multi-format recap. Other versions remain in the original event.'] if variant else []) + (['Brief includes the first two paragraphs per section; complete section text is retained in speaker notes.'] if omitted else []) +
                         (['The latest recap attempt failed; this deck uses the retained previous draft.'] if row.get('status') == 'failed' else [])}
 
 def revise(current, edits):

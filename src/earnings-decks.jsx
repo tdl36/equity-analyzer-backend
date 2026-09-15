@@ -8,7 +8,7 @@ export function EarningsDecks({api,activityId,available}) {
   const dirty=!!deck&&JSON.stringify(body)!==JSON.stringify(deck.body);
   async function json(path,options={}) {
     const r=await fetch(`${api}${path}`,{...options,signal:AbortSignal.timeout(30000),headers:{'Content-Type':'application/json',...options.headers}});
-    const data=await r.json();if(!r.ok)throw Error(data.error||'The request failed. Try again.');return data;
+    let data;try{data=await r.json();}catch{throw Error(`The deck service is unavailable (HTTP ${r.status}). Reload saved decks after the service update finishes.`);}if(!r.ok)throw Error(data.error||'The request failed. Try again.');return data;
   }
   const select=d=>{setDeck(d);setBody(structuredClone(d.body));setSlideIndex(0);setHistory(d.history||[]);};
   const reload=async()=>{const d=await json(`/api/earnings/decks?activityId=${encodeURIComponent(activityId)}`);if(alive.current)setDecks(d.decks.sort((a,b)=>b.body.createdAt.localeCompare(a.body.createdAt)));return d;};

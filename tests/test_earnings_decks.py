@@ -108,4 +108,16 @@ class SavedEvidenceTests(unittest.TestCase):
         self.assertIn('Saved comparison status: arithmetic checked',text)
         self.assertEqual(ROW['output'].get('claimReview'),None)
 
+class HtmlRecapTests(unittest.TestCase):
+    def test_one_variant_and_html_headings(self):
+        row=copy.deepcopy(ROW);row['output']['synthesisMarkdown']='Unpublished preface <section data-version="pm"><h2>SHORT VERSION</h2><p>Duplicated story</p></section><section data-version="comprehensive"><h2>Company review</h2><h3>Results &amp; outlook</h3><p>Reported revenue: 100.</p><ul><li>Interpretation remains uncertain.</li></ul><script>do_not_export</script></section>'
+        deck=build(row);content=' '.join(s['title']+' '+' '.join(s['items']) for s in deck['slides'])
+        self.assertEqual(deck['recapVariant'],'comprehensive');self.assertIn('Results & outlook',content)
+        self.assertNotIn('SHORT VERSION',content);self.assertNotIn('Unpublished preface',content);self.assertNotIn('do_not_export',content)
+        self.assertTrue(deck['warnings']);revise(deck,deck)
+    def test_code_fence_does_not_create_empty_slide_point(self):
+        row=copy.deepcopy(ROW);row['output']['synthesisMarkdown']='```markdown\n# Heading\n- Valid point\n```'
+        deck=build(row);revise(deck,deck)
+        self.assertTrue(all(s['items'] and all(s['items']) for s in deck['slides']))
+
 if __name__=='__main__':unittest.main()
