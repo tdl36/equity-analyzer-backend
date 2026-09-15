@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { EarningsDecks } from './earnings-decks.js';
 import { eventSources } from './event-sources.mjs';
 import { eventResearch } from './earnings-model.mjs';
 export function EarningsWorkspace({
@@ -147,7 +148,11 @@ export function EarningsWorkspace({
   }, /*#__PURE__*/React.createElement("li", null, "Event detected"), /*#__PURE__*/React.createElement("li", null, event.sources.length ? `${event.sources.length} source names recorded` : 'Source record pending'), /*#__PURE__*/React.createElement("li", null, labels[event.state]), /*#__PURE__*/React.createElement("li", null, "Investment review pending")), event.error && /*#__PURE__*/React.createElement("p", {
     className: "workspace-error",
     role: "alert"
-  }, String(event.error)), /*#__PURE__*/React.createElement("section", {
+  }, String(event.error)), /*#__PURE__*/React.createElement(EarningsDecks, {
+    api: api,
+    activityId: event.id,
+    available: event.draft && !['running', 'queued'].includes(event.status)
+  }), /*#__PURE__*/React.createElement("section", {
     className: "earnings-impact"
   }, /*#__PURE__*/React.createElement("h3", null, "Instruct ", event.analystName || 'the covering analyst'), /*#__PURE__*/React.createElement("p", null, "Request a revision to this event\u2019s recap\u2014for example, \u201CReconcile the guidance figures and explain the extra-week effect.\u201D This starts a source-based generation using configured API credits; it does not instantly edit or approve saved research."), /*#__PURE__*/React.createElement("div", {
     role: "log",

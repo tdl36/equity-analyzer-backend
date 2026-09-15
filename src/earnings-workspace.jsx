@@ -1,4 +1,5 @@
 import * as React from 'react';
+import {EarningsDecks} from './earnings-decks.js';
 import {eventSources} from './event-sources.mjs';
 import {eventResearch} from './earnings-model.mjs';
 export function EarningsWorkspace({api,onRefresh,activities,onNavigate,onCompany,renderHtml}) {
@@ -41,6 +42,7 @@ export function EarningsWorkspace({api,onRefresh,activities,onNavigate,onCompany
       {event&&<article className="workspace-panel earnings-detail" key={event.id}><p className="workspace-eyebrow">{event.ticker} / {labels[event.state]}</p><h2>{event.input.topic}</h2>
         <ol className="earnings-stages" aria-label="Evidence processing status"><li>Event detected</li><li>{event.sources.length?`${event.sources.length} source names recorded`:'Source record pending'}</li><li>{labels[event.state]}</li><li>Investment review pending</li></ol>
         {event.error&&<p className="workspace-error" role="alert">{String(event.error)}</p>}
+        <EarningsDecks api={api} activityId={event.id} available={event.draft && !['running','queued'].includes(event.status)} />
         <section className="earnings-impact"><h3>Instruct {event.analystName||'the covering analyst'}</h3><p>Request a revision to this event’s recap—for example, “Reconcile the guidance figures and explain the extra-week effect.” This starts a source-based generation using configured API credits; it does not instantly edit or approve saved research.</p>
           <div role="log" aria-label="Revision instructions">{(event.output?.revisionInstructions||[]).map((m,i)=><p key={i}><strong>You:</strong> {m.content}</p>)}</div>
           <label className="earnings-search">Revision instructions<textarea rows={3} maxLength={6000} value={instruction} onChange={e=>setInstruction(e.target.value)} disabled={sending||event.state==='running'} placeholder="Tell the analyst what to correct, challenge or expand…"/></label>

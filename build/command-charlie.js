@@ -3,6 +3,7 @@ import { AssignmentWorkspace } from './assignment-workspace';
 import { SourcePreferences } from './source-preferences';
 import { MeetingCommand } from './meeting-command';
 import * as React from 'react';
+import { researchRecipes } from './research-recipes.mjs';
 import { ThesisAmendments } from './thesis-amendments';
 var kinds = [['filing', '8-K and reaction'], ['earnings', 'Earnings review'], ['event', 'Event investigation']];
 var today = () => new Intl.DateTimeFormat('en-CA', {
@@ -202,7 +203,19 @@ function ResearchCommand({
     className: "workspace-eyebrow"
   }, "COMMAND CHARLIE"), /*#__PURE__*/React.createElement("h2", null, "Give the team a research assignment."), /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
-  }, "Start with a repeatable workflow or write your own instructions. The ticker, event date and collection window below define the task. Collection starts when the Mac browser worker picks it up; research drafts remain subject to review."), /*#__PURE__*/React.createElement("div", {
+  }, "Start with a repeatable workflow or write your own instructions. The ticker, event date and collection window below define the task. Collection starts when the Mac browser worker picks it up; research drafts remain subject to review."), /*#__PURE__*/React.createElement("details", {
+    className: "research-recipe-library",
+    open: true
+  }, /*#__PURE__*/React.createElement("summary", null, "Research starters \xB7 no prompt to memorize"), /*#__PURE__*/React.createElement("p", null, "Choose a task, then set the ticker and dates below. Review sources and instructions before starting. You can save your changes as a favorite."), /*#__PURE__*/React.createElement("div", {
+    className: "command-favorites"
+  }, researchRecipes.map(r => /*#__PURE__*/React.createElement("button", {
+    key: r.name,
+    disabled: busy || uncertain,
+    onClick: () => {
+      pick(r);
+      setMessage(`${r.name} selected. Set your ticker, date and source window below, then start the task.`);
+    }
+  }, /*#__PURE__*/React.createElement("strong", null, r.name), /*#__PURE__*/React.createElement("small", null, r.description))))), /*#__PURE__*/React.createElement("div", {
     className: "command-favorites"
   }, fav.favorites.map(f => /*#__PURE__*/React.createElement("button", {
     key: f.id,

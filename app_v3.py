@@ -20822,6 +20822,7 @@ def buildinfo():
                 'explain': '/api/explain/depths' in rules,
                 'signposts': '/api/signposts/<ticker>/check' in rules,
                 'thesisRevisions': '/api/thesis/<ticker>/revisions' in rules,
+                'earningsDecks': '/api/earnings/decks' in rules,
             },
             'routeCount': len(rules),
         })
@@ -29029,6 +29030,9 @@ import summary_comparison
 summary_comparison_bp = summary_comparison.create_blueprint(get_db)
 app.register_blueprint(summary_comparison_bp)
 summary_comparison_bp.start_recovery()
+
+import earnings_decks
+app.register_blueprint(earnings_decks.create_blueprint(get_db))
 
 import meeting_workspace
 app.register_blueprint(meeting_workspace.create_blueprint(get_db))
