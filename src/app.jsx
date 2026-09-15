@@ -5,6 +5,7 @@
 // calls inside the main app body continue to work unchanged.
 import * as React from 'react';
 import {createReadScheduler} from './api-read-scheduler.mjs';
+import {SummaryLab} from './summary-lab';
 import {SummaryComparison} from './summary-comparison';
 import {MeetingSession} from './meeting-session';
 import {readMeetingPreferences,saveMeetingPreferences,meetingJobTiming} from './meeting-preferences.mjs';
@@ -18630,6 +18631,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         )}
 
                         {/* SUMMARY TAB */}
+                        {activeTab === 'summarylab' && <SummaryLab api={API_URL} getKey={loadApiKeyFromStorage} renderHtml={sanitizeHtml} pickFromICloud={pickFromICloud}/> }
                         {activeTab === 'summary' && (
                             <div className={`flex-1 flex flex-col overflow-hidden pb-24 md:pb-0 ${currentSummary && summaryViewMode === 'detail' ? 'summary-reading' : ''}`}>
                                 {currentSummary && summaryViewMode === 'detail' && <div className="workspace-reader-bar"><button onClick={backToSummaryList}>← Back to summaries</button><span>Research reader</span></div>}

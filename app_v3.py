@@ -29026,6 +29026,9 @@ manual_meeting_recovery.start(get_db,_resume_manual_meeting,
     lambda:bool(os.environ.get('ANTHROPIC_API_KEY','')))
 
 
+import summary_lab
+app.register_blueprint(summary_lab.create_blueprint(get_db))
+
 import summary_comparison
 summary_comparison_bp = summary_comparison.create_blueprint(get_db)
 app.register_blueprint(summary_comparison_bp)
