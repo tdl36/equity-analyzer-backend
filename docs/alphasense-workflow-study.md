@@ -78,3 +78,5 @@ Use several real earnings events with different data completeness, plus syntheti
 - Production frontend build and existing regression suites run separately; see task completion for final results and deployment state.
 
 Live smoke test: the deployed application saved and exported a real CVS recap as a 58-slide full-coverage deck with native editable shapes and speaker notes. The original brief was too long (38 slides), prompting a change to opening-sentence extraction. This demonstrates formatting/persistence/export, not a real-source factual quality benchmark.
+
+Final formatting checks preserve financial abbreviations such as “adj. EPS” and use glyph-width-aware continuation splits. The corrected CVS brief was 17 slides in the export-derived layout fixture, with complete valuation sentences. Final live verification is recorded in the task response.

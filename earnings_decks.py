@@ -32,8 +32,35 @@ def plain(s):
     s = re.sub(r'<[^>]*>', '', s)
     return re.sub(r'[*`]', '', s).strip()
 
-def chunks(s, width=190):
-    return textwrap.wrap(s, width=width, break_long_words=True, break_on_hyphens=False) or ['']
+def chunks(s, width=240):
+    # Bound both character count and approximate glyph width: long all-caps
+    # filenames must not overflow while normal sentences can stay together.
+    def weight(c):
+        if ord(c)>255:return 1.0
+        if c in 'MW@%':return .95
+        if c in 'ilI.,:;!| ':return .3
+        return .68 if c.isupper() else .55
+    parts=[];remaining=str(s).strip()
+    while remaining:
+        total=0;end=0
+        for c in remaining[:width]:
+            if total+weight(c)>110:break
+            total+=weight(c);end+=1
+        if end<len(remaining):
+            space=remaining.rfind(' ',0,end+1)
+            if space>0:end=space
+        parts.append(remaining[:end].strip());remaining=remaining[end:].lstrip()
+    return parts or ['']
+
+
+def opening_sentence(line):
+    abbreviations={'adj','vs','est','approx','inc','corp','co','dr','mr','ms','mrs','st','no','fig','u.s','u.k','e.g','i.e'}
+    for boundary in re.finditer(r'[.!?]\s+(?=[A-Z])',line):
+        prefix=line[:boundary.start()+1]
+        word=re.search(r'([A-Za-z.]+)\.$',prefix)
+        if word and (word[1].lower() in abbreviations or len(word[1])==1):continue
+        return prefix
+    return line
 
 def recap_content(markdown):
     """Choose one presentation variant; normalize HTML structure without running it."""
@@ -100,7 +127,7 @@ def build(row, mode='full', theme='paper'):
         title + '\nDraft from a saved research recap. Not a fresh source search or an independent verification.', 'cover')
     content, variant = recap_content(markdown)
     for heading, lines in sections(content):
-        selected = [re.split(r'(?<!U.S.)(?<!U.K.)(?<!Dr.)(?<!Mr.)(?<!Ms.)(?<=[.!?])\s+(?=[A-Z])', line, maxsplit=1)[0] for line in lines[:2]] if mode == 'brief' else lines
+        selected = [opening_sentence(line) for line in lines[:2]] if mode == 'brief' else lines
         omitted += len(lines) - len(selected)
         fragments = [part for line in selected for part in chunks(line)]
         # Split content into additional slides rather than shrinking typography.
@@ -136,7 +163,7 @@ def build(row, mode='full', theme='paper'):
         add('Source register' + (' · continued' if start else ''),
             [f"[{i+1}] {s['filename']}" for i, s in enumerate(sources[start:start+3], start)],
             'Recap input register, not claim-level citations.\n' + json.dumps(sources[start:start+3], ensure_ascii=False), 'sources')
-    return {'schema': 1, 'formatterVersion': 2, 'ticker': row.get('ticker'), 'title': title, 'mode': mode, 'theme': theme,
+    return {'schema': 1, 'formatterVersion': 3, 'ticker': row.get('ticker'), 'title': title, 'mode': mode, 'theme': theme,
             'createdAt': datetime.now(timezone.utc).isoformat(),
             'activityId': str(row['id']), 'activityStatus': row.get('status'), 'recapVariant': variant,
             'recapHash': hashlib.sha256(markdown.encode()).hexdigest(),
@@ -187,15 +214,15 @@ def render_pptx(deck):
             for effect in shape._element.xpath('.//a:effectRef'): effect.set('idx', '0')
         tf = shape.text_frame; tf.word_wrap = True
         tf.margin_left = tf.margin_right = Inches(.16 if fill else 0)
-        tf.margin_top = Inches(.12 if fill else 0); tf.margin_bottom = 0
-        tf.vertical_anchor = MSO_ANCHOR.TOP
+        tf.margin_top = tf.margin_bottom = Inches(.08 if fill else 0)
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE if fill else MSO_ANCHOR.TOP
         p = tf.paragraphs[0]; p.text = text; p.alignment = PP_ALIGN.LEFT
         p.font.name = 'Arial'; p.font.size = Pt(size); p.font.color.rgb = rgb(color); p.font.bold = bold
         p.space_after = Pt(0)
     # Render overflow as explicit continuation slides, including source filenames.
     expanded = []
     for slide in deck['slides']:
-        items = [part for item in slide['items'] for part in chunks(item, 190)]
+        items = [part for item in slide['items'] for part in chunks(item, 240)]
         for start in range(0, len(items), 3):
             expanded.append({**slide, 'title': slide['title'] + (' · continued' if start else ''), 'items': items[start:start+3]})
     for i, data in enumerate(expanded):
@@ -209,8 +236,8 @@ def render_pptx(deck):
         if len(title_lines)>2: title = '\n'.join(title_lines[:2]) + '…'
         box(slide, title, .6, .95, 12.1, 1.25, 28, ink, True)
         for j, item in enumerate(data['items']):
-            box(slide, f'{j+1:02}', .6, 2.55+j*1.15, .5, .4, 14, accent, True)
-            box(slide, item, 1.3, 2.35+j*1.15, 11.4, 1.02, 18, ink, fill=card)
+            box(slide, f'{j+1:02}', .6, 2.4+j*1.42, .5, .4, 14, accent, True)
+            box(slide, item, 1.3, 2.2+j*1.42, 11.4, 1.12, 18, ink, fill=card)
         status = 'Analyst edited · review draft' if data.get('edited') else 'Saved recap · review draft'
         box(slide, status+'  |  Source register in appendix', .6, 6.7, 11.1, .3, 12, ink)
         box(slide, f'{i+1} / {len(expanded)}', 11.8, 6.7, .9, .3, 12, ink)

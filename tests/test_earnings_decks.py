@@ -1,7 +1,7 @@
 import copy
 import io
 import unittest
-from earnings_decks import build, revise, render_pptx
+from earnings_decks import build, revise, render_pptx, opening_sentence, chunks
 from pptx import Presentation
 
 ROW={'id':'bd77a316-24d7-41ac-a11c-c354fdbf873a','ticker':'DEMO','status':'completed','input':{'topic':'Illustrative quarterly review'},'output':{'synthesisMarkdown':'# Executive view\n- Revenue was 100 units.\n- Guidance is unchanged.\n- Analyst interpretation remains uncertain.\n## Open questions\nWhat evidence would resolve the margin debate?','sourceFiles':['Illustrative_release.pdf']}}
@@ -109,6 +109,12 @@ class SavedEvidenceTests(unittest.TestCase):
         self.assertEqual(ROW['output'].get('claimReview'),None)
 
 class BriefExtractionTests(unittest.TestCase):
+    def test_financial_abbreviations_keep_the_metric(self):
+        self.assertEqual(opening_sentence('Trading at 11x adj. EPS. The next test is cash flow.'),'Trading at 11x adj. EPS.')
+        self.assertEqual(opening_sentence('Revenue vs. Expectations is the title.'),'Revenue vs. Expectations is the title.')
+        self.assertEqual(''.join(chunks('W'*500)), 'W'*500)
+        self.assertTrue(all(len(x)<=240 for x in chunks('W'*500)))
+
     def test_opening_sentence_without_cutting_decimals(self):
         row=copy.deepcopy(ROW);row['output']['synthesisMarkdown']='# Results\nRevenue was $1.5 billion. Growth needs validation.\nU.S. growth was 5%. Watch the next quarter.'
         d=build(row,'brief');text=' '.join(x for s in d['slides'] if s['kind']=='recap' for x in s['items'])
