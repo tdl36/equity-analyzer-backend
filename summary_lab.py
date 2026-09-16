@@ -30,6 +30,72 @@ SECTIONS = {
 }
 
 
+def provider_failure(exc):
+    """Classify HTTP and in-stream errors without persisting keys or source text."""
+    import anthropic
+    body = getattr(exc, 'body', None)
+    error = body.get('error', body) if isinstance(body, dict) else {}
+    kind = error.get('type', '') if isinstance(error, dict) else ''
+    status = getattr(exc, 'status_code', None)
+    transient = kind in ('overloaded_error', 'api_error', 'rate_limit_error') or status in (408, 409, 429, 500, 502, 503, 504, 529) or isinstance(exc, anthropic.APIConnectionError)
+    if kind == 'overloaded_error' or status == 529:
+        reason = 'The model provider is temporarily overloaded.'
+    elif kind == 'rate_limit_error' or status == 429:
+        reason = 'The model provider rate limit was reached.'
+    elif status == 401 or kind == 'authentication_error':
+        reason = 'The research API key was rejected. Update it in Settings.'
+    elif status == 403 or kind == 'permission_error':
+        reason = 'The research API key does not have permission for this model.'
+    elif status == 404 or kind == 'not_found_error':
+        reason = 'The configured research model is unavailable to this API account.'
+    elif status == 400 or kind == 'invalid_request_error':
+        reason = 'The model provider rejected the request. Check API billing, model access and request settings.'
+    elif isinstance(exc, anthropic.APIConnectionError):
+        reason = 'The connection to the model provider was interrupted.'
+    else:
+        reason = 'The model provider interrupted the response.'
+    safe_kind = kind if kind in ('overloaded_error','api_error','rate_limit_error','authentication_error','permission_error','not_found_error','invalid_request_error') else 'provider_error'
+    return transient, reason, {'type': safe_kind, 'httpStatus': status if isinstance(status, int) else None}
+
+
+def ask_with_recovery(key, model, system, prompt, tokens, state, save, client_factory=None, sleep=None):
+    import anthropic
+    import time
+    client_factory = client_factory or anthropic.Anthropic
+    sleep = sleep or time.sleep
+    progress = state.get('progress', 'Processing source')
+    for attempt in range(3):
+        try:
+            last = time.monotonic()
+            # SDK HTTP retries do not recover errors received after streaming starts.
+            # This bounded loop covers both; incomplete output is never checkpointed.
+            with client_factory(api_key=key, timeout=300, max_retries=0) as client:
+                with client.messages.stream(model=model,max_tokens=tokens,system=system,messages=[{'role':'user','content':prompt}]) as stream:
+                    for event in stream:
+                        if time.monotonic()-last > 15:
+                            save(state); last=time.monotonic()
+                    result = stream.get_final_message()
+            if result.stop_reason != 'end_turn':
+                raise ValueError('Model response was incomplete. Retry resumes saved work.')
+            text = ''.join(b.text for b in result.content if b.type == 'text')
+            if not text.strip():
+                raise ValueError('Empty model response. Retry resumes saved work.')
+            state.pop('providerIssue', None)
+            state['progress'] = progress
+            return text
+        except (anthropic.APIStatusError, anthropic.APIConnectionError) as exc:
+            transient, reason, diagnostic = provider_failure(exc)
+            state['providerIssue'] = dict(diagnostic, attempt=attempt+1)
+            if not transient or attempt == 2:
+                save(state)
+                raise ValueError(reason + ' Source and completed stages are saved. Resume this experiment after resolving the issue.') from exc
+            delay = (10, 30)[attempt]
+            state['progress'] = f'{reason} Retrying this stage in {delay} seconds (attempt {attempt+2} of 3).'
+            save(state)
+            sleep(delay)
+            state['progress'] = progress
+
+
 def parse_json(text):
     text = text.strip()
     if text.startswith('```'):
@@ -182,19 +248,7 @@ def create_blueprint(get_db):
                     with get_db(commit=True) as (_, cur):
                         cur.execute("UPDATE summary_lab_experiments SET state=%s::jsonb,status='running',error=NULL,updated_at=NOW() WHERE id=%s", (json.dumps(value), jid))
                 def ask(system, prompt, tokens):
-                    import anthropic
-                    import time
-                    last = time.monotonic()
-                    with anthropic.Anthropic(api_key=key, timeout=300, max_retries=2) as client:
-                        with client.messages.stream(model=row['model'],max_tokens=tokens,system=system,messages=[{'role':'user','content':prompt}]) as stream:
-                            for event in stream:
-                                if time.monotonic()-last>15:
-                                    save(state); last=time.monotonic()
-                            result=stream.get_final_message()
-                    if result.stop_reason != 'end_turn': raise ValueError('Model response was incomplete. Retry resumes saved work.')
-                    text=''.join(b.text for b in result.content if b.type=='text')
-                    if not text.strip(): raise ValueError('Empty model response. Retry resumes saved work.')
-                    return text
+                    return ask_with_recovery(key, row['model'], system, prompt, tokens, state, save)
                 generate(row['source'], state, ask, save, row['focus'])
                 with get_db(commit=True) as (_, cur):
                     cur.execute("UPDATE summary_lab_experiments SET state=%s::jsonb,status='complete',updated_at=NOW() WHERE id=%s", (json.dumps(state),jid))
