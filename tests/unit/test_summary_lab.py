@@ -22,6 +22,13 @@ class LabTests(unittest.TestCase):
             self.assertGreaterEqual(len(checks),5)
         count=len(self.calls);generate(source,state,self.ask,lambda s:None)
         self.assertEqual(len(self.calls),count)
+    def test_pdf_whitespace_returns_exact_original(self):
+        result=validate_review({'record':'r','passages':['Revenue grew 5 percent.']},'Revenue\n grew 5  percent.')
+        self.assertEqual(result['passages'],['Revenue\n grew 5  percent.'])
+    def test_invalid_passage_is_excluded_not_certified(self):
+        result=validate_review({'record':'r','passages':['Revenue grew 5 percent.','Revenue grew 9 percent.']},'Revenue grew 5 percent.')
+        self.assertEqual(result['passages'],['Revenue grew 5 percent.'])
+        self.assertTrue(result['issues'])
     def test_quote_mismatch_rejected(self):
         with self.assertRaises(ValueError):validate_review({'record':'x','passages':['fiction']},'original')
     def test_interrupted_revision_resumes(self):

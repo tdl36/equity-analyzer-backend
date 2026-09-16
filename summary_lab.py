@@ -30,6 +30,10 @@ SECTIONS = {
 }
 
 
+class ProviderFailure(RuntimeError):
+    """An actionable provider failure, separate from source-format validation."""
+
+
 def provider_failure(exc):
     """Classify HTTP and in-stream errors without persisting keys or source text."""
     import anthropic
@@ -88,7 +92,7 @@ def ask_with_recovery(key, model, system, prompt, tokens, state, save, client_fa
             state['providerIssue'] = dict(diagnostic, attempt=attempt+1)
             if not transient or attempt == 2:
                 save(state)
-                raise ValueError(reason + ' Source and completed stages are saved. Resume this experiment after resolving the issue.') from exc
+                raise ProviderFailure(reason + ' Source and completed stages are saved. Resume this experiment after resolving the issue.') from exc
             delay = (10, 30)[attempt]
             state['progress'] = f'{reason} Retrying this stage in {delay} seconds (attempt {attempt+2} of 3).'
             save(state)
@@ -111,11 +115,33 @@ def validate_review(review, body):
         raise ValueError('Source review omitted its detailed record.')
     if not isinstance(review.get('passages'), list) or not review['passages']:
         raise ValueError('Source review omitted supporting passages.')
-    for passage in review['passages']:
-        if not isinstance(passage, str) or not passage.strip() or passage not in body:
-            raise ValueError('A supporting quotation did not match the original. Retry source review.')
     if not isinstance(review.get('issues', []), list):
         raise ValueError('Source issues must be a list.')
+    import re
+    valid = []
+    rejected = 0
+    for passage in review['passages']:
+        if not isinstance(passage, str) or not passage.strip():
+            rejected += 1
+            continue
+        if passage in body:
+            matched = passage
+        else:
+            # Only whitespace may differ: never fuzzy-match numbers or wording.
+            pattern = r'\s+'.join(re.escape(word) for word in passage.split())
+            match = re.search(pattern, body)
+            matched = match.group(0) if match else None
+        if matched:
+            if matched not in valid:
+                valid.append(matched)
+        else:
+            rejected += 1
+    if not valid:
+        raise ValueError('No supporting quotation matched the original source text.')
+    review = dict(review, passages=valid, issues=list(review.get('issues', [])))
+    if rejected:
+        review['issues'].append(f'{rejected} proposed supporting passage(s) could not be matched and were excluded. The source record is model-generated, not claim-by-claim verified; consult the original and section reviews.')
+
     return review
 
 
@@ -144,13 +170,15 @@ Read before writing. Correct only obvious mechanical errors in the record. Prese
 ambiguous numbers, negations and names; flag for source/audio review. Audio is NOT supplied:
 do not claim to have listened to it or verified OCR against page images. Never silently
 resolve contradictions. Do not invent topics absent from this part. Preserve speaker identity
-only if supported. Passages must be exact nonempty substrings of THIS part.
+only if supported. Passages must be short verbatim excerpts of THIS part (one sentence each). Copy the words exactly; never join nonadjacent phrases, use ellipses, or paraphrase. Preserve punctuation and numbers.
 SOURCE PART P{i+1}:\n{body}'''
         for attempt in range(2):
             try:
                 reviewed = validate_review(parse_json(ask(RULES, prompt, 12000)), body)
                 break
-            except (ValueError, TypeError, KeyError):
+            except (ValueError, TypeError, KeyError) as exc:
+                state['sourceReviewIssue'] = {'part': i+1, 'type': type(exc).__name__, 'attempt': attempt+1}
+                save(state)
                 if attempt:
                     raise ValueError('Source review could not be validated. Saved parts retained for retry.')
                 prompt += '\nRepair your response: valid JSON, complete record, and only exact source passages.'
@@ -253,7 +281,7 @@ def create_blueprint(get_db):
                 with get_db(commit=True) as (_, cur):
                     cur.execute("UPDATE summary_lab_experiments SET state=%s::jsonb,status='complete',updated_at=NOW() WHERE id=%s", (json.dumps(state),jid))
             except Exception as exc:
-                message = str(exc) if isinstance(exc,ValueError) else 'Generation interrupted ('+type(exc).__name__+'). Retry resumes saved checkpoints.'
+                message = str(exc) if isinstance(exc,(ValueError,ProviderFailure)) else 'Generation interrupted ('+type(exc).__name__+'). Retry resumes saved checkpoints.'
                 with get_db(commit=True) as (_,cur):
                     cur.execute("UPDATE summary_lab_experiments SET status='failed',error=%s,updated_at=NOW() WHERE id=%s", (message,jid))
             finally:
