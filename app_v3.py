@@ -6260,6 +6260,28 @@ def email_summary_section():
         </html>
         """
         
+        # Lab documents use a restrained, inline-styled email; legacy templates stay intact.
+        if section == 'summary_lab':
+            from html import escape
+            from bs4 import BeautifulSoup
+            document = BeautifulSoup(content, 'html.parser')
+            allowed = {'div', 'h1', 'h2', 'h3', 'h4', 'p', 'strong', 'em', 'ul', 'ol', 'li', 'blockquote', 'hr', 'code', 'br'}
+            for tag in list(document.find_all(True)):
+                if tag.name not in allowed:
+                    tag.decompose()
+                    continue
+                tag.attrs = {}
+                style = 'font-family:Calibri,Carlito,Arial,sans-serif;font-size:11pt;line-height:1.5;color:#202020;'
+                if tag.name in ('h1', 'h2', 'h3', 'h4'):
+                    style += 'font-weight:700;margin:20px 0 8px;'
+                elif tag.name == 'p':
+                    style += 'margin:0 0 12px;'
+                elif tag.name == 'li':
+                    style += 'margin:6px 0;'
+                tag['style'] = style
+            html_content = '<html><body style="font-family:Calibri,Carlito,Arial,sans-serif;font-size:11pt">' + str(document) + '</body></html>'
+            plain_text = document.get_text(separator='\n', strip=True)
+
         # Create email message
         msg = MIMEMultipart('alternative')
         msg['From'] = from_email

@@ -40,3 +40,12 @@ Validation (safe, no live database fixtures):
 
 Production release T74 includes the iCloud document picker. It uses the shared connected STOCKS/CATALYSTS manifest, fetches selected originals through the existing agent bridge, and extracts each file separately. An unreadable selection prevents the import from replacing the previous source. Audio input uses a previously saved Summary transcript. Backend must include summary_lab registration
 and frontend must include the Summary Lab route together before production use.
+
+T76: Lab sections render as escaped, formatted documents in 11pt Calibri (Carlito/Arial
+fallback). Email all sections opens an editable preview and sends only after the user's
+Send action, to their Settings recipient using existing Gmail credentials. Preview edits
+are temporary and never overwrite saved results. Email excludes private reviewer/source
+records; source labels and caveats in sections remain. Copy includes HTML and plain text.
+The Lab-only email template uses inline typography and an allowlisted HTML vocabulary.
+Prompt v2 reduces formulaic scaffolding and duplicated Q&A for new runs, retaining
+management substance and uncertainty. Saved v1 experiments are not rewritten.
