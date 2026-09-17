@@ -3683,6 +3683,17 @@ Write the complete, updated synthesis report now. ZERO firm names, ALL first per
                 'limitations':['Evidence review could not complete; draft retained for analyst review.']}
         provenance = 'See the source-passage review. Input delivery alone does not prove source usage.'
 
+        # Parallel catalyst-only trial. Original prompts and markdown stay intact.
+        from catalyst_comparison import run_safely as compare_catalyst
+        def comparison_call(prompt, tokens):
+            verify_job_claim(job_id)
+            return _call_recap_llm(recap_provider, recap_model,
+                'Follow the catalyst evidence protocol. Return complete JSON only.', [], prompt,
+                [{'type':'text','text':prompt}], max_tokens=tokens)
+        catalyst_comparison = compare_catalyst(source_parts, steps_detail.get('comparison_baseline', thesis_block), comparison_call,
+            instructions=custom_instructions, cache_namespace=recap_provider + ':' + recap_model,
+            progress=lambda message:update_job_progress(job_id, 'running', message, 86))
+
         update_job_progress(job_id, "running", "Uploading results...", 90)
 
         # Upload result to backend
@@ -3695,6 +3706,7 @@ Write the complete, updated synthesis report now. ZERO firm names, ALL first per
             'sourceProvenance': provenance,
             'evidenceSnapshot': evidence_snapshot,
             'claimReview': claim_review,
+            'catalystComparison': catalyst_comparison,
             'processingRecovery': {'resumedBatches':resumed_batches,'totalBatches':total_batches},
             'coordination': collaboration,
         }

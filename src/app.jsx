@@ -5,6 +5,7 @@
 // calls inside the main app body continue to work unchanged.
 import * as React from 'react';
 import {createReadScheduler} from './api-read-scheduler.mjs';
+import {CatalystComparison} from './catalyst-comparison';
 import {SummaryLab} from './summary-lab';
 import {SummaryComparison} from './summary-comparison';
 import {MeetingSession} from './meeting-session';
@@ -91,7 +92,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-09-15T73';
+        const BUILD_VERSION = '2026-09-17T77';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -28148,6 +28149,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                     </details>
                                                                 )}
 
+                                                                <CatalystComparison value={catalystActiveJob.result?.catalystComparison} jobId={catalystActiveJob.id} ticker={catalystActiveJob.ticker} api={API_URL} renderHtml={sanitizeHtml} />
                                                                 {/* Action Toolbar */}
                                                                 <div className="mt-3 flex items-center gap-1.5 flex-wrap bg-white/[0.03] border border-white/10 rounded-xl p-2">
                                                                     {/* Icon buttons */}
@@ -29213,6 +29215,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                                 const versionLabel = { pm: 'PM Take', quick: 'Quick', summary: 'Summary', comprehensive: 'Comprehensive' };
                                                                                                 const looksHtml = /<\s*(h[1-6]|p|ul|ol|table|section)\b/i.test(currentHtml);
                                                                                                 return (
+                                                                                                    <>
+                                                                                                    <CatalystComparison value={item.output?.catalystComparison} jobId={item.output?.catalystJobId} ticker={item.ticker} api={API_URL} renderHtml={sanitizeHtml} />
                                                                                                     <details className="mt-2">
                                                                                                         <summary className="text-[11px] text-amber-300 cursor-pointer">Show recap</summary>
                                                                                                         <div className="mt-2 bg-black/40 border border-amber-500/20 rounded">
@@ -29264,6 +29268,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                                             >Regenerate</button>
                                                                                                         </div>
                                                                                                     </details>
+                                                                                                    </>
                                                                                                 );
                                                                                             })()}
                                                                                             {!md && isApproved && (
@@ -29491,6 +29496,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                             const versionLabel = { pm: 'PM Take', quick: 'Quick', summary: 'Summary', comprehensive: 'Comprehensive' };
                                                                             const looksHtml = /<\s*(h[1-6]|p|ul|ol|table|section)\b/i.test(currentHtml);
                                                                             return (
+                                                                                <>
+                                                                                <CatalystComparison value={item.output?.catalystComparison} jobId={item.output?.catalystJobId} ticker={item.ticker} api={API_URL} renderHtml={sanitizeHtml} />
                                                                                 <details className="mt-2">
                                                                                     <summary className="text-[11px] text-amber-300 cursor-pointer">Show recap</summary>
                                                                                     <div className="mt-2 bg-black/40 border border-amber-500/20 rounded">
@@ -29543,6 +29550,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                         >Regenerate</button>
                                                                                     </div>
                                                                                 </details>
+                                                                                </>
                                                                             );
                                                                         })()}
                                                                     </li>
@@ -29666,6 +29674,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                     const versionLabel = { pm: 'PM Take', quick: 'Quick', summary: 'Summary', comprehensive: 'Comprehensive' };
                                                                     const looksHtml = /<\s*(h[1-6]|p|ul|ol|table|section)\b/i.test(currentHtml);
                                                                     return (
+                                                                        <>
+                                                                        <CatalystComparison value={item.output?.catalystComparison} jobId={item.output?.catalystJobId} ticker={item.ticker} api={API_URL} renderHtml={sanitizeHtml} />
                                                                         <div className="my-3 bg-black/40 border border-amber-500/20 rounded">
                                                                             <div className="flex items-center justify-between px-3 pt-2 pb-1 flex-wrap gap-2">
                                                                                 <div className="flex items-center gap-1">
@@ -29738,6 +29748,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                 )}
                                                                             </div>
                                                                         </div>
+                                                                        </>
                                                                     );
                                                                 })()}
                                                                 <div className="flex items-center gap-2 flex-wrap">

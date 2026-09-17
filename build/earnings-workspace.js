@@ -1,3 +1,4 @@
+import { CatalystComparison } from './catalyst-comparison';
 import * as React from 'react';
 import { EarningsDecks } from './earnings-decks.js';
 import { eventSources } from './event-sources.mjs';
@@ -181,7 +182,13 @@ export function EarningsWorkspace({
     dangerouslySetInnerHTML: {
       __html: renderHtml(r.synthesisMarkdown || '')
     }
-  }))))), event.output?.claimReview && /*#__PURE__*/React.createElement("section", {
+  }))))), /*#__PURE__*/React.createElement(CatalystComparison, {
+    value: event.output?.catalystComparison,
+    jobId: event.output?.catalystJobId,
+    ticker: event.ticker,
+    api: api,
+    renderHtml: renderHtml
+  }), event.output?.claimReview && /*#__PURE__*/React.createElement("section", {
     className: "earnings-impact"
   }, /*#__PURE__*/React.createElement("h3", null, "What changed \xB7 evidence review"), /*#__PURE__*/React.createElement("p", null, "Source quotations are checked by text matching. A separate model assesses support. These checks cover selected claims and remain subject to your review."), (event.output.claimReview.changes || []).map((c, i) => /*#__PURE__*/React.createElement("div", {
     key: i

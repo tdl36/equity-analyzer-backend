@@ -18845,17 +18845,21 @@ def save_catalyst_to_docs(job_id):
         return jsonify({'error': 'Job not found or not complete'}), 404
 
     result = job['result'] if isinstance(job.get('result'), dict) else json.loads(job['result'] or '{}')
-    markdown = result.get('markdown', '')
+    improved = request.args.get('variant') == 'improved'
+    comparison = result.get('catalystComparison') or {}
+    markdown = comparison.get('shareMarkdown', '') if improved and comparison.get('editorialVersion') else comparison.get('markdown', '') if improved else result.get('markdown', '')
+    if not markdown:
+        return jsonify({'error':'The selected catalyst version is not available yet'}), 409
     ticker = job['ticker']
     detail = job['steps_detail'] if isinstance(job.get('steps_detail'), (dict, list)) else json.loads(job['steps_detail'] or '{}')
     topic = detail.get('topic', 'Catalyst') if isinstance(detail, dict) else 'Catalyst'
 
-    doc_id = f"catalyst-{job_id}"
+    doc_id = f"catalyst-{job_id}" + ("-improved" if improved else "")
     with get_db(commit=True) as (conn, cur):
         cat_id = 'cat-catalyst-synthesis'
         cur.execute("INSERT INTO research_categories (id, name, type) VALUES (%s, 'Catalyst Synthesis', 'topic') ON CONFLICT (id) DO NOTHING", (cat_id,))
 
-        doc_name = f"{ticker} -- {topic}"
+        doc_name = f"{ticker} -- {topic}" + (" — Improved catalyst" if improved else "")
         cur.execute('''
             INSERT INTO research_documents (id, category_id, name, content, doc_type, created_at)
             VALUES (%s, %s, %s, %s, 'catalyst', NOW())
@@ -18899,6 +18903,34 @@ Keep it concise and factual. Use markdown formatting with bullet points. This is
         return f"Source provenance generation failed. {len(source_names)} files were provided: {', '.join(source_names)}"
 
 
+def _catalyst_comparison_baseline(ticker, thesis_block='', activity_id=''):
+    """Freeze accepted prior evidence for the trial only; never alter legacy prompts."""
+    baseline = str(thesis_block or '')
+    try:
+        with get_db() as (_, cur):
+            cur.execute("""
+                SELECT id, output, updated_at FROM analyst_activities
+                WHERE ticker=%s AND status='approved' AND id<>%s
+                  AND output->'catalystComparison'->>'status' IN ('ready','needs_review')
+                  AND EXISTS (SELECT 1 FROM research_documents d
+                              WHERE d.id='catalyst-' || (output->>'catalystJobId') || '-improved')
+                ORDER BY updated_at DESC LIMIT 3
+            """, (ticker, activity_id))
+            rows = cur.fetchall()
+        for row in rows:
+            out = row.get('output') or {}
+            if isinstance(out, str): out = json.loads(out)
+            records = (out.get('catalystComparison') or {}).get('records') or []
+            passages = [{'filename':r.get('filename'), 'page':r.get('page'),
+                         'quote':r.get('quote'), 'speaker':r.get('speaker')}
+                        for r in records if isinstance(r,dict) and r.get('quote')]
+            if passages:
+                baseline += '\nPreviously accepted catalyst source passages (not independent proof of company claims), saved ' + str(row.get('updated_at')) + ':\n' + json.dumps(passages,ensure_ascii=False)
+    except Exception as exc:
+        print('[catalyst comparison] Prior accepted evidence unavailable:', type(exc).__name__)
+    return baseline
+
+
 def _run_catalyst_synthesis_backend(job_id, ticker, detail):
     """Backend-side catalyst synthesis when files are uploaded (no local agent needed)."""
     try:
@@ -18921,7 +18953,10 @@ def _run_catalyst_synthesis_backend(job_id, ticker, detail):
         from recap_evidence import snapshot as recap_snapshot, text_prompt, IMPACT_INSTRUCTION
         parts = [{'name': f.get('name', 'unnamed'), 'type': 'text', 'content': f.get('text') or ''} for f in uploaded_files]
         evidence_snapshot = recap_snapshot(parts, 'backend_text')
-        source_content = text_prompt(parts, '', char_cap=80000)
+        from recap_evidence import text_batches
+        total_chars = sum(len(p['content']) + len(p['name']) + 40 for p in parts)
+        source_batches = text_batches(parts, budget=70000) if total_chars > 79000 else [parts]
+        source_content = text_prompt(source_batches[0], '', char_cap=80000)
 
         update_job('Synthesizing report...', 40)
 
@@ -18944,6 +18979,16 @@ def _run_catalyst_synthesis_backend(job_id, ticker, detail):
         )
 
         markdown = result['text']
+        for batch_index, batch in enumerate(source_batches[1:], 2):
+            update_job(f'Incorporating source batch {batch_index}/{len(source_batches)}...', 55)
+            additional = text_prompt(batch, '', char_cap=80000)
+            merge_prompt = CATALYST_SYNTHESIS_PROMPT.format(
+                length_instruction=length_config['instruction'], ticker=ticker, topic=topic,
+                custom_instructions=custom_block,
+                source_content='Earlier source-based draft (retain material disclosures):\n' + markdown + '\nAdditional original source content:\n' + additional)
+            markdown = call_llm(messages=[{'role':'user','content':merge_prompt + IMPACT_INSTRUCTION}],
+                system='Integrate all source batches into one complete catalyst recap; preserve the original format and material disclosures.',
+                tier='standard',max_tokens=8192)['text']
 
         # Generate source provenance (separate from synthesis)
         update_job('Analyzing source contributions...', 70)
@@ -18959,6 +19004,10 @@ def _run_catalyst_synthesis_backend(job_id, ticker, detail):
                 'limitations':['Evidence review could not complete; draft retained for analyst review.']}
         provenance = 'See the source-passage review. Input delivery alone does not prove source usage.'
 
+        from catalyst_comparison import run_safely as compare_catalyst
+        catalyst_comparison = compare_catalyst(parts, _catalyst_comparison_baseline(ticker, detail.get('thesis_block') or ''), audit_call,
+            instructions=custom_instructions, progress=lambda message:update_job(message, 80))
+
         update_job('Generating Word document...', 85)
 
         docx_b64 = _generate_note_docx(ticker, topic, markdown, [])
@@ -18973,6 +19022,7 @@ def _run_catalyst_synthesis_backend(job_id, ticker, detail):
             'sourceProvenance': provenance,
             'evidenceSnapshot': evidence_snapshot,
             'claimReview': claim_review,
+            'catalystComparison': catalyst_comparison,
         }, status='complete')
 
         print(f"[catalyst-synthesis {job_id}] Complete: {ticker}/{topic}")
@@ -28173,6 +28223,7 @@ def _dispatch_activity_run(activity_id: str, length: str = 'standard', custom_in
         'coordinated': inp.get('coordinated') is True,
         'thesis_block': thesis_block,
         'companyMemory': memory_snapshot,
+        'comparison_baseline': _catalyst_comparison_baseline(ticker, thesis_block, activity_id),
         'model': (model or '').strip(),  # local agent defaults to claude-sonnet-4-6 if blank
         'provider': (provider or 'anthropic').strip().lower(),  # anthropic | openai | google
     }
@@ -28283,6 +28334,7 @@ def analyst_activities_regenerate(activity_id):
                     'completedAt': prev.get('completedAt'),
                     'evidenceSnapshot': prev.get('evidenceSnapshot'),
                     'claimReview': prev.get('claimReview'),
+                    'catalystComparison': prev.get('catalystComparison'),
                     'sourceFiles': prev.get('sourceFiles'),
                     'savedTo': prev.get('savedTo'),
                 })
@@ -28377,6 +28429,7 @@ def _maybe_link_activity_to_job_result(job_id: str, status: str, result):
             out['sourceProvenance'] = result.get('sourceProvenance') or out.get('sourceProvenance')
             out['evidenceSnapshot'] = result.get('evidenceSnapshot')
             out['claimReview'] = result.get('claimReview')
+            out['catalystComparison'] = result.get('catalystComparison')
             out['processingRecovery'] = result.get('processingRecovery')
             out['coordination'] = result.get('coordination')
             out['fileCount'] = result.get('fileCount') or out.get('fileCount')
