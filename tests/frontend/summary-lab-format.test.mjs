@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {labDocument,emailDocument} from '../../src/summary-lab-format.mjs';
+import {labDocument,documentHtml,emailDocument,looksLikeHtmlDocument} from '../../src/summary-lab-format.mjs';
 test('renders source labels, headings and lists without executing source HTML',()=>{
  const html=labDocument('# Topic\n\n**Management:** uncertain [P1]\n\n- Detail\n- Caveat\n\n<script>alert(1)</script>');
  assert.match(html,/<h3>Topic<\/h3>/);assert.match(html,/<strong>Management:<\/strong>/);
@@ -11,4 +11,14 @@ test('email includes all selected sections and escapes title',()=>{
  const html=emailDocument('<img src=x>',[['Brief','First'],['Assessment','Uncertain']]);
  assert.match(html,/font-size:11pt/);assert.match(html,/Calibri/);
  assert.match(html,/Brief/);assert.match(html,/Assessment/);assert(!html.includes('<img'));
+});
+test('uses the page sanitizer for legacy HTML and does not show raw tags',()=>{
+ const source='<h2>Topic</h2><p><strong>Result:</strong> Revenue grew.</p><script>bad()</script>';
+ assert.equal(looksLikeHtmlDocument(source),true);
+ const rendered=documentHtml(source,value=>value.replace(/<script[\s\S]*?<\/script>/gi,''));
+ assert.match(rendered,/<h2>Topic<\/h2>/);assert.match(rendered,/<strong>Result:<\/strong>/);assert(!rendered.includes('<script>'));
+});
+test('HTML without a sanitizer fails closed as visible text',()=>{
+ const rendered=documentHtml('<p>Result</p>');
+ assert.match(rendered,/&lt;p&gt;Result&lt;\/p&gt;/);assert(!rendered.includes('<p>Result</p>'));
 });

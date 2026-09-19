@@ -92,7 +92,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-09-17T77';
+        const BUILD_VERSION = '2026-09-19T78';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -18632,7 +18632,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         )}
 
                         {/* SUMMARY TAB */}
-                        {activeTab === 'summarylab' && <SummaryLab api={API_URL} getKey={loadApiKeyFromStorage} renderHtml={sanitizeHtml} pickFromICloud={pickFromICloud}/> }
+                        {activeTab === 'summarylab' && <SummaryLab api={API_URL} getKey={loadApiKeyFromStorage} getGeminiKey={loadGeminiKeyFromStorage} renderHtml={sanitizeHtml} pickFromICloud={pickFromICloud}/> }
                         {activeTab === 'summary' && (
                             <div className={`flex-1 flex flex-col overflow-hidden pb-24 md:pb-0 ${currentSummary && summaryViewMode === 'detail' ? 'summary-reading' : ''}`}>
                                 {currentSummary && summaryViewMode === 'detail' && <div className="workspace-reader-bar"><button onClick={backToSummaryList}>← Back to summaries</button><span>Research reader</span></div>}

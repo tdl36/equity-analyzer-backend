@@ -1,4 +1,5 @@
 import React from 'react';
+import { documentHtml, emailDocument } from './summary-lab-format.mjs';
 var sections = [['brief', 'Executive brief', 'brief'], ['takeaways', 'Key takeaways', 'summary'], ['record', 'Management record', 'meeting_summary'], ['questions', 'Follow-up questions', 'questions'], ['assessment', 'Investment assessment', 'assessment']];
 export function SummaryComparison({
   summary,
@@ -17,6 +18,13 @@ export function SummaryComparison({
     [saved, setSaved] = React.useState(false);
   var [exportBusy, setExportBusy] = React.useState(''),
     [exportMessage, setExportMessage] = React.useState('');
+  var [expanded, setExpanded] = React.useState({
+    brief: true,
+    takeaways: true,
+    record: false,
+    questions: false,
+    assessment: false
+  });
   var epoch = React.useRef(0);
   var base = `${api}/api/summaries/${encodeURIComponent(summary.id)}/comparisons`;
   React.useEffect(() => {
@@ -26,6 +34,13 @@ export function SummaryComparison({
     setSelected('');
     setView('original');
     setError('');
+    setExpanded({
+      brief: true,
+      takeaways: true,
+      record: false,
+      questions: false,
+      assessment: false
+    });
   }, [summary.id]);
   React.useEffect(() => {
     var alive = true,
@@ -113,7 +128,18 @@ export function SummaryComparison({
     try {
       if (texts.some(([, text]) => !text.trim())) throw Error('The requested section is not available.');
       if (action === 'copy') {
-        await navigator.clipboard.writeText(`${title}\n${label}\n\n` + texts.map(([label, text]) => `${label}\n\n${text}`).join('\n\n---\n\n'));
+        var html = emailDocument(title, texts, renderHtml);
+        var doc = new DOMParser().parseFromString(html, 'text/html');
+        doc.querySelectorAll('p,h1,h2,h3,h4,li,blockquote').forEach(el => el.append('\n'));
+        var plain = doc.body.textContent || '';
+        if (window.ClipboardItem && navigator.clipboard.write) await navigator.clipboard.write([new ClipboardItem({
+          'text/html': new Blob([html], {
+            type: 'text/html'
+          }),
+          'text/plain': new Blob([plain], {
+            type: 'text/plain'
+          })
+        })]);else await navigator.clipboard.writeText(plain);
         setExportMessage('Improved notes copied.');
         return;
       }
@@ -131,7 +157,7 @@ export function SummaryComparison({
           section: 'improved',
           title: escapeHtml(title),
           topic: escapeHtml(summary.topic || 'General'),
-          content: texts.map(([label, text]) => `<h2>${escapeHtml(label)}</h2>` + text.split('\n\n').map(p => `<p>${escapeHtml(p).replace(/\n/g, '<br>')}</p>`).join('')).join(''),
+          content: emailDocument(title, texts, renderHtml),
           smtpConfig: {
             use_gmail: creds.useGmail,
             gmail_user: creds.gmailUser,
@@ -191,7 +217,7 @@ export function SummaryComparison({
     }, exportBusy === `${action}:${key}` ? 'Working…' : label)));
   }
   var status = row?.status === 'complete' ? 'Ready' : row?.status === 'failed' ? 'Needs retry' : running ? 'Generating' : loaded ? 'Not generated' : 'Loading';
-  return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("section", {
+  return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("style", null, `.improved-note-reader{font-family:Calibri,Carlito,Arial,sans-serif;font-size:11pt;line-height:1.55;color:var(--ink,var(--text-primary,#e9e2d3));overflow-wrap:anywhere}.improved-note-reader h1,.improved-note-reader h2,.improved-note-reader h3,.improved-note-reader h4{font:700 11pt/1.45 Calibri,Carlito,Arial,sans-serif;margin:18px 0 7px}.improved-note-reader p{margin:0 0 11px}.improved-note-reader ul,.improved-note-reader ol{padding-left:23px;margin:8px 0 14px}.improved-note-reader li{margin:5px 0}.improved-note-reader blockquote{border-left:3px solid var(--accent,#c9a857);margin:12px 0;padding-left:13px}.improved-note-reader table{display:block;max-width:100%;overflow:auto;border-collapse:collapse}.improved-note-reader th,.improved-note-reader td{border:1px solid var(--line,rgba(255,255,255,.15));padding:7px 9px;text-align:left}.improved-section>summary{list-style:none}.improved-section>summary::-webkit-details-marker{display:none}.improved-section>summary .section-chevron{transition:transform .18s ease}.improved-section[open]>summary .section-chevron{transform:rotate(90deg)}}`), /*#__PURE__*/React.createElement("section", {
     className: "rounded-xl border border-white/15 p-4 my-4",
     "aria-label": "Note versions"
   }, /*#__PURE__*/React.createElement("div", {
@@ -262,23 +288,45 @@ export function SummaryComparison({
     className: "underline mt-2"
   }, busy ? 'Starting…' : 'Retry improved notes')), view === 'compare' && /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-slate-400"
-  }, "Original on the left, improved on the right. The original is the saved snapshot from when this version began. On mobile, each pair is stacked."), sections.map(([key, label, original]) => {
+  }, "Original on the left, improved on the right. The original is the saved snapshot from when this version began. On mobile, each pair is stacked."), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-wrap gap-3 text-xs"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "underline",
+    onClick: () => setExpanded(Object.fromEntries(sections.map(([key]) => [key, true])))
+  }, "Expand all sections"), /*#__PURE__*/React.createElement("button", {
+    className: "underline",
+    onClick: () => setExpanded(Object.fromEntries(sections.map(([key]) => [key, false])))
+  }, "Collapse all sections")), sections.map(([key, label, original]) => {
     var text = key === 'record' ? record : state.sections?.[key];
-    return /*#__PURE__*/React.createElement("section", {
+    return /*#__PURE__*/React.createElement("details", {
       key: key,
-      className: "space-y-3"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "flex flex-wrap justify-between items-center gap-3"
-    }, /*#__PURE__*/React.createElement("h3", {
-      className: "text-lg font-semibold"
-    }, label), controls(key)), /*#__PURE__*/React.createElement("div", {
-      className: `grid gap-4 ${view === 'compare' ? 'xl:grid-cols-2' : 'grid-cols-1'}`
+      className: "improved-section rounded-xl border border-white/15 overflow-hidden",
+      open: !!expanded[key],
+      onToggle: e => setExpanded(current => ({
+        ...current,
+        [key]: e.currentTarget.open
+      }))
+    }, /*#__PURE__*/React.createElement("summary", {
+      className: "cursor-pointer p-4 sm:p-5 flex flex-wrap justify-between items-center gap-3 bg-white/[.025]"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "flex items-center gap-3"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "section-chevron",
+      "aria-hidden": "true"
+    }, "\u203A"), /*#__PURE__*/React.createElement("strong", {
+      className: "text-base"
+    }, label), !text && /*#__PURE__*/React.createElement("span", {
+      className: "text-xs text-slate-400"
+    }, "Waiting\u2026")), /*#__PURE__*/React.createElement("span", {
+      onClick: e => e.stopPropagation()
+    }, controls(key))), /*#__PURE__*/React.createElement("div", {
+      className: `grid gap-4 p-4 sm:p-5 ${view === 'compare' ? 'xl:grid-cols-2' : 'grid-cols-1'}`
     }, view === 'compare' && /*#__PURE__*/React.createElement("article", {
       className: "min-w-0 rounded-xl border border-white/10 p-5"
     }, /*#__PURE__*/React.createElement("h4", {
       className: "text-xs uppercase tracking-wide text-slate-400 mb-4"
     }, "Original"), /*#__PURE__*/React.createElement("div", {
-      className: "prose prose-invert max-w-none text-sm break-words",
+      className: "improved-note-reader",
       dangerouslySetInnerHTML: {
         __html: renderHtml(row.baseline?.[original] || '<p>No original section saved.</p>')
       }
@@ -287,8 +335,11 @@ export function SummaryComparison({
     }, view === 'compare' && /*#__PURE__*/React.createElement("h4", {
       className: "text-xs uppercase tracking-wide text-amber-500 mb-4"
     }, "Improved"), /*#__PURE__*/React.createElement("div", {
-      className: "whitespace-pre-wrap break-words text-sm leading-relaxed"
-    }, text || 'Waiting for this section…'))));
+      className: "improved-note-reader",
+      dangerouslySetInnerHTML: {
+        __html: documentHtml(text || 'Waiting for this section…', renderHtml)
+      }
+    }))));
   }), /*#__PURE__*/React.createElement("details", {
     className: "text-sm text-slate-400"
   }, /*#__PURE__*/React.createElement("summary", {
