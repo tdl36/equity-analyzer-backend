@@ -639,10 +639,13 @@ export function SummaryLab({
       key: key,
       className: "lab-section",
       open: !!expanded[key],
-      onToggle: e => setExpanded(current => ({
-        ...current,
-        [key]: e.currentTarget.open
-      }))
+      onToggle: e => {
+        var open = e.currentTarget.open;
+        setExpanded(current => ({
+          ...current,
+          [key]: open
+        }));
+      }
     }, /*#__PURE__*/React.createElement("summary", null, /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("span", {
       className: "chevron",
       "aria-hidden": "true"

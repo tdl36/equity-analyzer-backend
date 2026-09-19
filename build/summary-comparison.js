@@ -302,10 +302,13 @@ export function SummaryComparison({
       key: key,
       className: "improved-section rounded-xl border border-white/15 overflow-hidden",
       open: !!expanded[key],
-      onToggle: e => setExpanded(current => ({
-        ...current,
-        [key]: e.currentTarget.open
-      }))
+      onToggle: e => {
+        var open = e.currentTarget.open;
+        setExpanded(current => ({
+          ...current,
+          [key]: open
+        }));
+      }
     }, /*#__PURE__*/React.createElement("summary", {
       className: "cursor-pointer p-4 sm:p-5 flex flex-wrap justify-between items-center gap-3 bg-white/[.025]"
     }, /*#__PURE__*/React.createElement("span", {
