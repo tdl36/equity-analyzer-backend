@@ -372,7 +372,9 @@ export function SummaryComparison({
     className: "cursor-pointer"
   }, "Source coverage and method"), /*#__PURE__*/React.createElement("p", {
     className: "mt-2"
-  }, (state.coveredCharacters || 0).toLocaleString(), " / ", (state.sourceCharacters || summary.rawNotes?.length || 0).toLocaleString(), " source characters processed. Full management records are retained. Interpretations are AI analysis, not independent verification or your own views. ", state.hierarchicalSynthesis ? 'Long-source synthesis uses consolidated evidence.' : '')), /*#__PURE__*/React.createElement("label", {
+  }, (state.coveredCharacters || 0).toLocaleString(), " / ", (state.sourceCharacters || summary.rawNotes?.length || 0).toLocaleString(), " source characters processed. Full management records are retained. Interpretations are AI analysis, not independent verification or your own views. ", state.hierarchicalSynthesis ? 'Long-source synthesis uses consolidated evidence.' : ''), Object.keys(state.quoteRepairs || {}).length > 0 && /*#__PURE__*/React.createElement("p", {
+    className: "mt-2"
+  }, "Quoting quota enforced on: ", Object.entries(state.quoteRepairs).map(([k, v]) => `${k}${v.resolved ? '' : ' (still over quota)'}`).join(', '), ". Those sections were redrafted once to reduce quotation without dropping content.")), /*#__PURE__*/React.createElement("label", {
     className: "block text-sm font-medium"
   }, "Your comparison feedback", /*#__PURE__*/React.createElement("textarea", {
     className: "block w-full bg-transparent border border-white/20 rounded-lg p-3 mt-2",

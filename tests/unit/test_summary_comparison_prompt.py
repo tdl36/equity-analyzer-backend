@@ -37,7 +37,13 @@ class PromptDisciplineTests(unittest.TestCase):
     def test_quoting_is_reserved_rather_than_default(self):
         rules = summary_comparison.RULES.lower()
         self.assertIn('reported speech is the default', rules)
-        self.assertIn('one short quoted phrase per point', rules)
+        # "at most one quoted phrase per point" was ignored in 8 of 9 takeaways
+        # on a real note, so the rule is now a stated quota backed by a check.
+        self.assertIn('that quota is a hard limit', rules)
+
+    def test_every_analysis_section_states_its_quota(self):
+        for key in summary_comparison.QUOTE_LIMITS:
+            self.assertIn('QUOTA', summary_comparison.SECTIONS[key], key)
 
     def test_numbered_lists_are_refused(self):
         self.assertIn('Never use numbered lists', summary_comparison.RULES)
@@ -93,3 +99,68 @@ class VersionVisibilityTests(unittest.TestCase):
         # under its own version instead of producing the current one.
         self.assertIn("resumeId:fresh?undefined:row?.id", ui)
         self.assertIn("start(true)", ui)
+
+
+class QuoteEnforcementTests(unittest.TestCase):
+    """The quota failed as an instruction alone, so it is checked in code."""
+
+    def block(self, tag, quotes):
+        body = ' '.join(f'management said "phrase {i} of the answer"' for i in range(quotes))
+        return f'[{tag}] **A claim.** {body} ' + 'Plain reported prose to give the block length. ' * 12
+
+    def test_a_quote_stuffed_takeaway_block_is_named(self):
+        text = self.block('COMPETITIVE POSITIONING', 9) + '\n' + self.block('M&A', 1)
+        finding = summary_comparison.quote_findings('takeaways', text)
+        self.assertIn('tagged takeaway', finding)
+        self.assertIn('worst holding 9', finding)
+
+    def test_restrained_prose_passes(self):
+        text = self.block('GUIDANCE', 1) + '\n' + self.block('M&A', 1)
+        self.assertEqual(summary_comparison.quote_findings('takeaways', text), '')
+
+    def test_the_brief_has_an_absolute_ceiling(self):
+        body = ' '.join(f'management said "committed figure {i}"' for i in range(9))
+        finding = summary_comparison.quote_findings('brief', body + ' plain prose. ' * 200)
+        self.assertIn('limit of 6', finding)
+
+    def test_the_record_sections_are_exempt_because_verbatim_is_their_job(self):
+        stuffed = ' '.join(f'"quoted answer {i}"' for i in range(40))
+        self.assertEqual(summary_comparison.quote_findings('qa', stuffed), '')
+        self.assertEqual(summary_comparison.quote_findings('record', stuffed), '')
+
+
+class RepairPassTests(unittest.TestCase):
+    def run_generate(self, drafts):
+        """drafts: list of section texts returned in order, per section."""
+        calls = []
+        queue = list(drafts)
+
+        def ask(rules, prompt, tokens):
+            calls.append(prompt)
+            if prompt.startswith('SOURCE PART'):
+                return 'Evidence record [Part 1].'
+            return queue.pop(0) if queue else 'clean prose without quotation.'
+
+        state = {}
+        summary_comparison.generate('Body text.', state, ask, lambda _s: None)
+        return state, calls
+
+    def test_a_violating_section_is_redrafted_once_and_the_repair_is_used(self):
+        stuffed = ' '.join(f'"fragment {i}"' for i in range(30))
+        # First section drafted is 'takeaways'; give it a stuffed draft, then a clean one.
+        state, calls = self.run_generate([stuffed, 'clean rewritten takeaways.'])
+        self.assertEqual(state['sections']['takeaways'], 'clean rewritten takeaways.')
+        repair = state['quoteRepairs']['takeaways']
+        self.assertTrue(repair['resolved'])
+        self.assertIn('broke the quoting quota', [c for c in calls if 'broke the quoting quota' in c][0])
+
+    def test_a_clean_section_is_not_redrafted(self):
+        state, calls = self.run_generate([])
+        self.assertEqual(state['quoteRepairs'], {})
+        self.assertFalse(any('broke the quoting quota' in c for c in calls))
+
+    def test_later_sections_are_told_what_earlier_ones_already_said(self):
+        _state, calls = self.run_generate([])
+        section_calls = [c for c in calls if not c.startswith('SOURCE PART')]
+        self.assertNotIn('already written', section_calls[0])
+        self.assertIn('already written', section_calls[-1])
