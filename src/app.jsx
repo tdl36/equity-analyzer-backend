@@ -92,7 +92,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-09-20T82';
+        const BUILD_VERSION = '2026-09-20T83';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -1919,6 +1919,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [catalystLength, setCatalystLength] = useState('standard');
             const [catalystInstructions, setCatalystInstructions] = useState('');
             const [catalystActiveJob, setCatalystActiveJob] = useState(null);
+            // Saving used to end in a blocking alert that named a tab without
+            // going there, so the saved note had to be hunted down by hand.
+            const [catalystSaveNotice, setCatalystSaveNotice] = useState(null);
             // Auto-catalyst: proposals + auto-fire mode toggle
             const [catalystProposals, setCatalystProposals] = useState([]);
             const [catalystAutoMode, setCatalystAutoMode] = useState({enabled: false, expires_at: null});
@@ -1965,7 +1968,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
             useEffect(() => {
                 loadCatalystProposals();
                 const id = setInterval(loadCatalystProposals,
-                                       activeTab === 'agents' ? 30000 : 120000);
+                                       activeTab === 'catalysts' ? 30000 : 120000);
                 return () => clearInterval(id);
             }, [activeTab, agentView]);
 
@@ -7713,6 +7716,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
             // opening the Analysts inbox before ever visiting Agents leaves
             // the provider/model dropdowns showing only anthropic + sonnet 4-6.
             React.useEffect(() => { fetchAgentProviders(); }, []);
+            // Catalyst notes is reached by URL, sidebar and alert actions, so its
+            // history cannot depend on a sub-tab click the way the old pill did.
+            React.useEffect(() => {
+                if (activeTab === 'catalysts') fetchCatalystHistory();
+            }, [activeTab]);
+            // A confirmation about one note must never linger over another.
+            React.useEffect(() => { setCatalystSaveNotice(null); }, [catalystActiveJob?.id]);
             // Agents tab - fetch history (provider list above already covered)
             React.useEffect(() => {
                 if (activeTab === 'agents') {
@@ -27463,24 +27473,31 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 </div>
                             </div>
                         )}
-                        {activeTab === 'agents' && (
+                        {(activeTab === 'agents' || activeTab === 'catalysts') && (
                             <div className="flex-1 flex flex-col bg-white/[0.02] overflow-y-auto pb-24 md:pb-0" onScroll={(e) => { setShowScrollTop(e.target.scrollTop > 300); scrollContainerRef.current = e.target; }}>
                                 <div className="p-4 md:p-6">
                                     <div className="max-w-4xl mx-auto space-y-6">
-                                        {/* Header — stacks on mobile, row on md+; pills wrap so they never overflow */}
+                                        {/* Header — stacks on mobile, row on md+; pills wrap so they never overflow.
+                                            Catalyst synthesis is its own routed destination (Create → Catalyst notes),
+                                            so it arrives without the TradingAgents framing or the sub-tab row. */}
+                                        {activeTab === 'catalysts' ? (
+                                            <div>
+                                                <h1 className="text-xl font-bold">Catalyst notes</h1>
+                                                <p className="text-xs text-slate-400 mt-0.5">Turn catalyst source documents into an investor-facing note</p>
+                                            </div>
+                                        ) : (
                                         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                                             <div>
                                                 <h1 className="text-xl font-bold">TradingAgents</h1>
                                                 <p className="text-xs text-slate-400 mt-0.5">Multi-agent LLM analysis: fundamentals, sentiment, news, risk</p>
                                             </div>
                                             <div className="flex flex-wrap gap-1 shrink-0">
-                                                {[{v: 'catalysts', label: 'Catalysts', badge: catalystProposals.length},
-                                                  {v: 'research', label: 'Research'},
+                                                {[{v: 'research', label: 'Research'},
                                                   {v: 'new', label: 'Agents'},
                                                   {v: 'batch', label: 'Batch'},
                                                   {v: 'dashboard', label: 'Dashboard'},
                                                   {v: 'history', label: 'History'}].map(({v, label, badge}) => (
-                                                    <button key={v} onClick={() => { setAgentView(v); if (v === 'dashboard') fetchAgentDashboard(); if (v === 'catalysts') fetchCatalystHistory(); }}
+                                                    <button key={v} onClick={() => { setAgentView(v); if (v === 'dashboard') fetchAgentDashboard(); }}
                                                         className={`relative px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors ${
                                                             agentView === v ? 'bg-amber-600 text-white' : 'bg-white/[0.06] text-slate-400 hover:text-white'
                                                         }`}>
@@ -27496,8 +27513,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 ))}
                                             </div>
                                         </div>
+                                        )}
 
-                                        {agentView === 'research' && (
+                                        {activeTab === 'agents' && agentView === 'research' && (
                                             <>
                                                 {/* Research form */}
                                                 <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4 space-y-3">
@@ -27804,11 +27822,35 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             </>
                                         )}
 
-                                        {agentView === 'catalysts' && (
+                                        {activeTab === 'catalysts' && (
                                             <>
+                                                {catalystSaveNotice && (
+                                                    <div role="status" className={`rounded-xl border p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${catalystSaveNotice.error ? 'border-red-500/40 bg-red-500/10' : 'border-amber-500/40 bg-amber-500/10'}`}>
+                                                        <p className="text-xs text-slate-200">
+                                                            {catalystSaveNotice.error
+                                                                ? catalystSaveNotice.error
+                                                                : `Saved "${catalystSaveNotice.name}" to Research documents, under Catalyst Synthesis.`}
+                                                        </p>
+                                                        <div className="flex gap-2 shrink-0">
+                                                            {!catalystSaveNotice.error && (
+                                                                <button onClick={() => { setCatalystSaveNotice(null); switchTab('research'); }}
+                                                                    className="px-3 py-1.5 text-[10px] bg-amber-700 hover:bg-amber-600 text-white rounded-lg">
+                                                                    Open in Research documents
+                                                                </button>
+                                                            )}
+                                                            <button onClick={() => setCatalystSaveNotice(null)}
+                                                                className="px-3 py-1.5 text-[10px] bg-white/[0.06] hover:bg-white/[0.12] text-slate-300 rounded-lg">
+                                                                Dismiss
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )}
                                                 {/* Auto-Pilot Toggle + Pending Proposals */}
                                                 <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4 space-y-3 mb-3">
-                                                    <div className="flex items-center justify-between">
+                                                    {/* Stacks on phones: the auto-fire select is wider than the space
+                                                        left beside this paragraph at 375px, so a plain row pushed it
+                                                        over the card edge and across the text. */}
+                                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                                                         <div>
                                                             <h3 className="text-sm font-semibold text-white">Auto-Pilot</h3>
                                                             <p className="text-[10px] text-slate-400">
@@ -27820,7 +27862,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             duration select that was disabled whenever auto-fire was on
                                                             — so changing the duration meant switching off first, and the
                                                             select showed a local default rather than the real setting. */}
-                                                        <div className="flex items-center gap-2 shrink-0">
+                                                        <div className="flex items-center gap-2 sm:shrink-0 w-full sm:w-auto">
                                                             <select
                                                                 value={catalystAutoValue}
                                                                 onChange={e => setCatalystAutoMode_(e.target.value)}
@@ -28180,8 +28222,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                     <button onClick={async () => {
                                                                         try {
                                                                             const res = await fetch(`${API_URL}/api/catalysts/result/${catalystActiveJob.id}/save`, { method: 'POST' });
-                                                                            if (res.ok) { alert('Saved to Research tab'); await loadResearchData(); setSelectedResearchCategory('cat-catalyst-synthesis'); } else { const err = await res.json().catch(() => ({})); alert('Save failed: ' + (err.error || res.status)); }
-                                                                        } catch (e) { alert('Error: ' + e.message); }
+                                                                            if (res.ok) { await loadResearchData(); setSelectedResearchCategory('cat-catalyst-synthesis'); setCatalystSaveNotice({ name: `${catalystActiveJob.ticker} -- ${(catalystActiveJob.detail || {}).topic || 'Catalyst'}` }); } else { const err = await res.json().catch(() => ({})); setCatalystSaveNotice({ error: err.error || `Save failed (HTTP ${res.status})` }); }
+                                                                        } catch (e) { setCatalystSaveNotice({ error: e.message }); }
                                                                     }} className="px-3 py-1.5 text-[10px] bg-amber-700 hover:bg-amber-600 text-white rounded-lg flex items-center gap-1.5">
                                                                         <Save className="w-3.5 h-3.5" /> Save
                                                                     </button>
@@ -28424,7 +28466,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                         )}
 
 
-                                        {agentView === 'new' && (
+                                        {activeTab === 'agents' && agentView === 'new' && (
                                             <>
                                                 {/* Config form */}
                                                 <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4">
@@ -28565,7 +28607,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             </>
                                         )}
 
-                                        {agentView === 'batch' && (
+                                        {activeTab === 'agents' && agentView === 'batch' && (
                                             <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4 space-y-4">
                                                 <h3 className="text-sm font-semibold">Batch Analysis</h3>
                                                 <div className="grid grid-cols-2 gap-3">
@@ -28614,7 +28656,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             </div>
                                         )}
 
-                                        {agentView === 'dashboard' && agentDashboard && (
+                                        {activeTab === 'agents' && agentView === 'dashboard' && agentDashboard && (
                                             <div className="space-y-4">
                                                 {/* Stats cards */}
                                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -28672,7 +28714,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             </div>
                                         )}
 
-                                        {agentView === 'history' && (
+                                        {activeTab === 'agents' && agentView === 'history' && (
                                             <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4">
                                                 <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Past Runs</h2>
                                                 <div className="space-y-1.5">
@@ -28693,7 +28735,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                             </div>
                                         )}
 
-                                        {agentView === 'detail' && agentDetailRun && (
+                                        {activeTab === 'agents' && agentView === 'detail' && agentDetailRun && (
                                             <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4">
                                                 <button onClick={() => setAgentView('history')} className="text-xs text-amber-400 mb-3 block">Back to History</button>
                                                 <div className="flex items-center gap-3 mb-3">
@@ -29834,8 +29876,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                     if (r.ok) {
                                                                                         const j = await r.json();
                                                                                         setCatalystActiveJob(j);
-                                                                                        setActiveTab('agents');
-                                                                                        setAgentView('catalysts');
+                                                                                        switchTab('catalysts');
                                                                                     }
                                                                                 } catch (e) { console.warn('open synth:', e); }
                                                                             }}
@@ -30073,8 +30114,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                                 actionAlert(alert.id);
                                                                                 setCatalystTicker(ticker);
                                                                                 setCatalystTopic(topic);
-                                                                                setAgentView('catalysts');
-                                                                                switchTab('agents');
+                                                                                switchTab('catalysts');
                                                                                 // Attach active job so progress renders
                                                                                 if (jobId) setCatalystActiveJob({id: jobId, ticker, status: 'queued', progress: 0});
                                                                             } catch (e) {

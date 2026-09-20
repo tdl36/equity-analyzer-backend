@@ -1,12 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { GROUPS, VIEWS, readRoute, routeHash, parseTimestamp, companyIndex, selectedProjectSlide } from '../../src/workspace-model.mjs';
+import { GROUPS, VIEWS, readRoute, routeHash, parseTimestamp, companyIndex, selectedProjectSlide, viewLabel, viewGroup } from '../../src/workspace-model.mjs';
 
 test('all existing workflows remain reachable through the shared navigation', () => {
-  const required = ['dashboard','portfolio','overview','chat','summary','research','meetingprep','slides','studio','formats','deepdive','explain','onepager','pipeline','review','agents','feed','analysts','alerts','settings'];
+  const required = ['dashboard','portfolio','overview','chat','summary','research','meetingprep','slides','studio','formats','deepdive','explain','onepager','pipeline','review','agents','feed','analysts','alerts','catalysts','settings'];
   for (const view of required) assert.ok(VIEWS.includes(view), view);
   assert.equal(new Set(VIEWS).size, VIEWS.length);
   assert.ok(GROUPS.some(g => g.items.some(([id]) => id === 'review')));
+});
+test('catalyst synthesis is a named destination in Create, not a hidden sub-tab', () => {
+  // It used to be reachable only through Automations -> Research agents ->
+  // an unrouted "Catalysts" pill, so it had no link and no back button.
+  const create = GROUPS.find(g => g.id === 'create');
+  assert.ok(create.items.some(([id]) => id === 'catalysts'), 'catalysts belongs to Create');
+  assert.equal(viewLabel('catalysts'), 'Catalyst notes');
+  assert.equal(viewGroup('catalysts').id, 'create');
+  assert.deepEqual(readRoute(routeHash('catalysts','MRK')), { view:'catalysts', ticker:'MRK' });
 });
 test('routes preserve company context and reject unknown destinations', () => {
   assert.deepEqual(readRoute(routeHash('review','BRK.B')), { view:'review',ticker:'BRK.B' });
