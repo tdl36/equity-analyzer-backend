@@ -64,6 +64,13 @@ class PromptDisciplineTests(unittest.TestCase):
         self.assertIn('[GUIDANCE]', instruction)
         self.assertIn('[M&A]', instruction)
 
+    def test_the_qa_log_is_built_from_the_source_not_the_records(self):
+        # The evidence records are organised by topic and discard exchanges: on
+        # a real transcript with ~17 question turns they retained 4 question
+        # marks and no Q&A structure, so the section reported them as implied.
+        self.assertIn('SOURCE PART {number} of {total}', summary_comparison.QA_PART)
+        self.assertIn('never describe one as implied', summary_comparison.QA_PART)
+
     def test_the_qa_log_may_not_invent_an_exchange(self):
         instruction = summary_comparison.SECTIONS['qa']
         self.assertIn('do not invent questions', instruction)
@@ -87,8 +94,12 @@ class GenerationCoverageTests(unittest.TestCase):
         summary_comparison.generate('A short transcript body.', state, ask, lambda _s: None)
         self.assertEqual(set(state['sections']), set(summary_comparison.SECTIONS))
         self.assertEqual(state['sections']['qa'], 'drafted')
-        # Each section is drafted from the evidence records, not from scratch.
-        self.assertTrue(all('evidence records' in p for p in asked[1:]))
+        # Record-derived sections are drafted from the evidence records; the
+        # Q&A log is drafted from the raw source parts instead.
+        derived = [p for p in asked
+                   if not p.startswith('SOURCE PART') and not p.startswith('Reproduce every question')]
+        self.assertTrue(derived)
+        self.assertTrue(all('evidence records' in p for p in derived))
 
 
 class VersionVisibilityTests(unittest.TestCase):
@@ -147,6 +158,8 @@ class RepairPassTests(unittest.TestCase):
             calls.append(prompt)
             if prompt.startswith('SOURCE PART'):
                 return 'Evidence record [Part 1].'
+            if prompt.startswith('Reproduce every question'):
+                return 'NO EXCHANGES IN THIS PART'
             return queue.pop(0) if queue else 'clean prose without quotation.'
 
         state = {}
@@ -256,3 +269,50 @@ class AssessmentBloatTests(unittest.TestCase):
         summary_comparison.generate('Body.', state, ask, lambda _s: None)
         self.assertEqual(state['sections']['assessment'], 'Tight assessment.')
         self.assertEqual(state['quoteRepairs']['assessment']['kept'], 'repair')
+
+
+class QaFromSourceTests(unittest.TestCase):
+    SOURCE = ('Speaker 2: Is visibility quarterly?\nSpeaker 1: A little of both.\n'
+              'Speaker 2: And the M&A pace?\nSpeaker 1: Absolutely slower.' + ' ?' * 20)
+
+    def build(self, qa_reply='Q: Is visibility quarterly?\nA: A little of both.\n'
+                             'Q: And the M&A pace?\nA: Absolutely slower.'):
+        seen = []
+
+        def ask(rules, prompt, tokens):
+            seen.append(prompt)
+            if prompt.startswith('Reproduce every question'):
+                return qa_reply
+            if prompt.startswith('SOURCE PART'):
+                return 'Topic record with no exchanges.'
+            return 'Section prose.'
+
+        state = {}
+        summary_comparison.generate(self.SOURCE, state, ask, lambda _s: None)
+        return state, seen
+
+    def test_exchanges_are_read_from_the_raw_source_part(self):
+        state, seen = self.build()
+        qa_prompts = [p for p in seen if p.startswith('Reproduce every question')]
+        self.assertTrue(qa_prompts)
+        # The raw transcript reaches the Q&A pass; the topic records do not.
+        self.assertIn('Speaker 2: Is visibility quarterly?', qa_prompts[0])
+        self.assertEqual(state['sections']['qa'].count('Q:'), 2)
+
+    def test_parts_without_exchanges_are_left_out(self):
+        state, _seen = self.build(qa_reply='NO EXCHANGES IN THIS PART')
+        self.assertEqual(state['sections']['qa'],
+                         'The source contains no question-and-answer exchanges.')
+
+    def test_each_part_is_checkpointed_so_a_retry_does_not_reread_it(self):
+        state, _seen = self.build()
+        self.assertEqual(list(state['qaParts']), ['0'])
+
+    def test_calling_a_present_question_implied_is_flagged(self):
+        finding = summary_comparison.qa_findings(
+            '\n'.join(f'Q: (Implied) question {i}\nA: answer' for i in range(6)), self.SOURCE)
+        self.assertIn('described as implied', finding)
+
+    def test_a_faithful_log_passes(self):
+        log = '\n'.join(f'Q: real question {i}?\nA: answer {i}' for i in range(8))
+        self.assertEqual(summary_comparison.qa_findings(log, self.SOURCE), '')

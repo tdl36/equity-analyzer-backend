@@ -32,8 +32,10 @@ class ComparisonTests(unittest.TestCase):
         self.assertFalse(any(m.startswith('SOURCE PART 1/') for m in resumed))
         self.assertEqual(state['coveredCharacters'],50000)
         self.assertEqual(len(state['sections']),len(SECTIONS))
-        # Two unfinished parts, then one request per section.
-        self.assertEqual(len(resumed),2+len(SECTIONS))
+        # Two unfinished record parts, one Q&A pass per source part, then one
+        # request per section drafted from the records.
+        parts=len(state['parts'])
+        self.assertEqual(len(resumed),2+parts+(len(SECTIONS)-1))
 
     def test_late_answer_reaches_synthesis(self):
         marker='LATE ANSWER: management declined exact percentage.'
