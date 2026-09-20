@@ -4,13 +4,13 @@ Updated: September 20, 2026
 
 ## Start here
 
-Charlie production is currently **T90** at commit **`055df489fac45061013d2b30356531aaab9720f1`** on `main`.
+Charlie production is currently **T91** at commit **`7cec6ce5504ce1b379ba6c5de1357f242b883b32`** on `main`.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T90`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T91`
 - Backend health: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`
 - Branch: `main`
-- Backend health was verified on September 20 and reported the T90 commit above.
+- Backend health was verified on September 20 and reported the T91 commit above.
 - The Mac launch agent `com.charlie.local-agent` was restarted during T82 because `charlie_local_agent.py` changed. T83 is frontend-only and did not require another restart.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files. Do not clean the repository.
@@ -35,6 +35,49 @@ The design standard is institutional: concise hierarchy, readable outputs, defen
 | Production deployment | Push to `main` triggers Render backend deployment. Cloudflare frontend deployment is explicit through Wrangler. |
 
 ## Latest production changes
+
+### T91 — assessment stops transcribing, and dropped figures are caught
+
+Commit: `7cec6ce` — `Stop the assessment restating the record, and catch dropped figures`
+
+`readable-v4` was generated on the real CAH note. Measured against every predecessor:
+
+| | conservative-v1 | readable-v2 | readable-v3 | readable-v4 |
+| --- | --- | --- | --- | --- |
+| Quotes per 1k chars | 4.5 | 3.7 | 0.6 | **1.3** |
+| Total characters | 15,762 | 21,084 | 13,778 | **31,689** |
+| Q&A exchanges | 0 | 9 | 3 | **14** |
+
+v4 is the best note produced so far and resolves the original complaint: 71% fewer quotes
+per 1k than the version first flagged, with 50% more content than v2 and the richest Q&A
+log of any version. The checks behaved as designed — takeaways (4.4/1k, worst block 6),
+assessment (3.5/1k) and questions (2.0/1k) were each repaired once and each *grew*, so the
+shrink guard never had to discard a repair.
+
+Two defects remained, both fixed in `readable-v5`:
+
+- The assessment reached 11,233 characters against 6,767 of takeaways and opened with
+  "MANAGEMENT STATEMENTS", restating the record instead of assessing it — a consequence of
+  T90 removing the cross-section rule with nothing in its place. The instruction now says so
+  explicitly and `assessment_findings()` flags a section disproportionate to the takeaways.
+  The shrink guard is bypassed for that one repair, since a shorter assessment is its point.
+- The 12–14% long-term algorithm was dropped from every section *and* from the management
+  record, while 3.5% was asserted as the long-term target. It was caught only by grepping
+  for that string. `figure_coverage()` now extracts distinctive figures from the evidence
+  records, normalising spacing and dash style, and reports any the note does not carry.
+
+`figure_coverage` **reports, it does not rewrite.** Another automatic edit risks the damage
+v3 caused, and a missing figure is not always an error.
+
+Validation: 587 backend tests, 46 frontend tests, production build, Render revision and
+Cloudflare marker verified. **Unproven:** no note generated under `readable-v5`.
+
+**Stop single-note tuning here.** Five regenerations against one CAH transcript produced two
+regressions caused by generalising from a sample of one (T89 and T90 both document a case).
+Further prompt work should wait for priority 6's frozen real-source packs so a change can be
+scored across several meetings. The machinery to do that now exists: `quote_findings`,
+`qa_findings`, `assessment_findings` and `figure_coverage` are all deterministic and can be
+run over any note without a model call.
 
 ### T90 — the quota must not be met by deleting evidence
 
@@ -470,9 +513,9 @@ Use `py_compile` for every touched Python module. Do not start paid research, se
 
 Current release markers must stay synchronized:
 
-- `worker.js`: `2026-09-20T90`
-- `service-worker.js`: `20260920-90`
-- `src/app.jsx`: `2026-09-20T90`
+- `worker.js`: `2026-09-20T91`
+- `service-worker.js`: `20260920-91`
+- `src/app.jsx`: `2026-09-20T91`
 
 After an application change:
 
@@ -495,7 +538,7 @@ Render may return transient 502 responses while rolling forward. Wait for `/heal
 
 ## Repository state warning
 
-At this handoff, `main` is committed through `055df48`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
+At this handoff, `main` is committed through `7cec6ce`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
 
 - `.claude/settings.local.json`
 - `.omc/**`
@@ -509,7 +552,7 @@ Always inspect `git status --short`, stage an explicit allowlist, and review `gi
 
 ## Suggested first Claude Code instruction
 
-> Continue Charlie from production commit `055df48` and release T90. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
+> Continue Charlie from production commit `7cec6ce` and release T91. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
 
 ## Relevant deeper documentation
 
