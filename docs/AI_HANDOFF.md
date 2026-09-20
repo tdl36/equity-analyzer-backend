@@ -4,13 +4,13 @@ Updated: September 20, 2026
 
 ## Start here
 
-Charlie production is currently **T89** at commit **`1b7ad8152ee571964646f3fe58ff58bfb1e3d04b`** on `main`.
+Charlie production is currently **T90** at commit **`055df489fac45061013d2b30356531aaab9720f1`** on `main`.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T89`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T90`
 - Backend health: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`
 - Branch: `main`
-- Backend health was verified on September 20 and reported the T89 commit above.
+- Backend health was verified on September 20 and reported the T90 commit above.
 - The Mac launch agent `com.charlie.local-agent` was restarted during T82 because `charlie_local_agent.py` changed. T83 is frontend-only and did not require another restart.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files. Do not clean the repository.
@@ -35,6 +35,51 @@ The design standard is institutional: concise hierarchy, readable outputs, defen
 | Production deployment | Push to `main` triggers Render backend deployment. Cloudflare frontend deployment is explicit through Wrangler. |
 
 ## Latest production changes
+
+### T90 — the quota must not be met by deleting evidence
+
+Commit: `055df48` — `Stop the quota from being met by deleting evidence`
+
+`readable-v3` was generated on the real CAH note and measured against its predecessors:
+
+| | conservative-v1 | readable-v2 | readable-v3 |
+| --- | --- | --- | --- |
+| Quotes per 1k chars | 4.5 | 3.7 | **0.6** |
+| Total characters | 15,762 | 21,084 | **13,778** |
+| Q&A exchanges | — | 9 | **3** |
+
+The quoting complaint was solved. The note also lost **35% of its content**, and picked up
+four defects worse than the one it fixed:
+
+- The Q&A log fell to three exchanges and asserted that no others were identifiable, from a
+  source containing dozens of questions. One answer was openly reconstructed from elsewhere.
+- Sections began deferring to each other. The executive brief — the first thing read —
+  contained "As noted in the takeaways", "per the takeaways", "in the assessment section".
+- The FY27 metric regressed from correctly flagged as unstated (v2) to asserted as a 3.5%
+  long-term algorithm alongside a contradictory 12–14% figure in the same section, which is
+  the Original's error.
+
+**The repair pass was not the cause** — it fired on one section only. Both prompt changes
+were. T90 (`readable-v4`) keeps the code enforcement and reverts them:
+
+- The numeric quota is out of the prompt. Stating it made the model aim for zero and reach
+  it by dropping evidence. `quote_findings()` still enforces the ceiling, and the rules now
+  state that converting a quote never means dropping the fact, number, qualification or
+  attribution it carried.
+- Sections are no longer shown each other. Each must stand on its own.
+- A repair returning a materially shorter section is discarded and the original kept.
+- `qa_findings()` flags a Q&A log that collapsed against a question-rich source, and the Q&A
+  instruction forbids reconstructing an answer.
+- The method panel reports what each check found and which draft was kept.
+
+**Lesson worth carrying:** on this pipeline, a prompt instruction that competes with the
+fidelity rules is either ignored or over-complied with by deletion. Both failure modes were
+observed on the same note. Constraints of this kind belong in code, with a guard against the
+model satisfying them destructively.
+
+Validation: 580 backend tests, 46 frontend tests, production build, Render revision and
+Cloudflare marker verified. **Unproven:** no note has been generated under `readable-v4`.
+The open question is whether it restores v2's content at v3's quote discipline.
 
 ### T89 — the quoting quota is enforced, not requested
 
@@ -425,9 +470,9 @@ Use `py_compile` for every touched Python module. Do not start paid research, se
 
 Current release markers must stay synchronized:
 
-- `worker.js`: `2026-09-20T89`
-- `service-worker.js`: `20260920-89`
-- `src/app.jsx`: `2026-09-20T89`
+- `worker.js`: `2026-09-20T90`
+- `service-worker.js`: `20260920-90`
+- `src/app.jsx`: `2026-09-20T90`
 
 After an application change:
 
@@ -450,7 +495,7 @@ Render may return transient 502 responses while rolling forward. Wait for `/heal
 
 ## Repository state warning
 
-At this handoff, `main` is committed through `1b7ad81`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
+At this handoff, `main` is committed through `055df48`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
 
 - `.claude/settings.local.json`
 - `.omc/**`
@@ -464,7 +509,7 @@ Always inspect `git status --short`, stage an explicit allowlist, and review `gi
 
 ## Suggested first Claude Code instruction
 
-> Continue Charlie from production commit `1b7ad81` and release T89. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
+> Continue Charlie from production commit `055df48` and release T90. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
 
 ## Relevant deeper documentation
 
