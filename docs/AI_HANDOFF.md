@@ -4,13 +4,13 @@ Updated: September 20, 2026
 
 ## Start here
 
-Charlie production is currently **T83** at commit **`8ea85ab3d61aa0dd6d281c667497f4649c3a1f98`** on `main`.
+Charlie production is currently **T85** at commit **`3d421571a94c9374f40f93a24a211a71672f9bf7`** on `main`.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T83`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T85`
 - Backend health: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`
 - Branch: `main`
-- Backend health was verified on September 20 and reported the T83 commit above.
+- Backend health was verified on September 20 and reported the T85 commit above.
 - The Mac launch agent `com.charlie.local-agent` was restarted during T82 because `charlie_local_agent.py` changed. T83 is frontend-only and did not require another restart.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files. Do not clean the repository.
@@ -35,6 +35,42 @@ The design standard is institutional: concise hierarchy, readable outputs, defen
 | Production deployment | Push to `main` triggers Render backend deployment. Cloudflare frontend deployment is explicit through Wrangler. |
 
 ## Latest production changes
+
+### T84 / T85 — stop control and duplicate Summary Lab runs
+
+Commits: `4065477` — `Let Summary Lab experiments be stopped, and stop duplicating them`,
+`3d42157` — `Stop experiments a restart left running`
+
+One real YouTube submission produced **three identical `korean_bilingual` experiments**
+over the same 20k-character transcript. Investigated from the live rows, not reproduced.
+
+- Root cause: the pending transcription job lives in `localStorage`, so every tab and
+  every reload resumes monitoring it, and each resumed monitor called `startLab` on
+  completion. The manual enqueue path had no duplicate guard at all, unlike the automatic
+  one, so each POST bought another Opus multi-pass run.
+- A Lab run triggered by a completed transcription now carries that job id, unique
+  server-side, so every monitor converges on the first experiment. A deliberate Generate
+  click sends no job id and still creates its own experiment, which is what
+  `docs/summary-lab.md` specifies.
+- New `POST /api/summary-lab/<id>/stop` and a **Stop this experiment** button. Cancellation
+  is cooperative at the existing checkpoints: `save()` writes `cancelled` instead of
+  `running` when a stop is pending and raises, so a stop cannot be papered over between
+  stages, and a queued experiment never reaches the model.
+- T85: a row left at `running` by a backend restart has no worker to reach a checkpoint,
+  so the stop route tries the experiment's advisory lock. A free lock means nothing is
+  working on it and the row is cancelled immediately.
+
+Validation: 555 backend tests, 46 frontend tests, production build, Render revision and
+Cloudflare marker verified. The duplicate rows were read from production through the
+signed-in app; no experiment was started, cancelled or approved during the investigation.
+
+**Known related design issue, not yet changed.** Summary Lab's YouTube and audio intakes
+post to the shared `/api/youtube-summarize` and `/api/auto-process-audio` endpoints, which
+always write a full original Summary (five sections plus Korean) to `meeting_summaries`
+before Summary Lab starts its own experiment. One Lab submission therefore pays for both
+an original Summary and a Lab run, and the original lands in the Summary tab rather than
+where the user started. That is the current design — Lab compares against that baseline —
+but it surprises the user and deserves an explicit decision.
 
 ### T83 — Catalyst synthesis becomes a named destination
 
@@ -259,9 +295,9 @@ Use `py_compile` for every touched Python module. Do not start paid research, se
 
 Current release markers must stay synchronized:
 
-- `worker.js`: `2026-09-20T83`
-- `service-worker.js`: `20260920-83`
-- `src/app.jsx`: `2026-09-20T83`
+- `worker.js`: `2026-09-20T85`
+- `service-worker.js`: `20260920-85`
+- `src/app.jsx`: `2026-09-20T85`
 
 After an application change:
 
@@ -284,7 +320,7 @@ Render may return transient 502 responses while rolling forward. Wait for `/heal
 
 ## Repository state warning
 
-At this handoff, `main` is committed through `8ea85ab`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
+At this handoff, `main` is committed through `3d42157`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
 
 - `.claude/settings.local.json`
 - `.omc/**`
@@ -298,7 +334,7 @@ Always inspect `git status --short`, stage an explicit allowlist, and review `gi
 
 ## Suggested first Claude Code instruction
 
-> Continue Charlie from production commit `8ea85ab` and release T83. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
+> Continue Charlie from production commit `3d42157` and release T85. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
 
 ## Relevant deeper documentation
 
