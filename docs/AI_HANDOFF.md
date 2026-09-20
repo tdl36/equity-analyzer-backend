@@ -4,13 +4,13 @@ Updated: September 20, 2026
 
 ## Start here
 
-Charlie production is currently **T85** at commit **`3d421571a94c9374f40f93a24a211a71672f9bf7`** on `main`.
+Charlie production is currently **T86** at commit **`942407d`** on `main`.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T85`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T86`
 - Backend health: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`
 - Branch: `main`
-- Backend health was verified on September 20 and reported the T85 commit above.
+- Backend health was verified on September 20 and reported the T86 commit above.
 - The Mac launch agent `com.charlie.local-agent` was restarted during T82 because `charlie_local_agent.py` changed. T83 is frontend-only and did not require another restart.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files. Do not clean the repository.
@@ -35,6 +35,27 @@ The design standard is institutional: concise hierarchy, readable outputs, defen
 | Production deployment | Push to `main` triggers Render backend deployment. Cloudflare frontend deployment is explicit through Wrangler. |
 
 ## Latest production changes
+
+### T86 — Summary Lab gives the page to whichever job is in front
+
+Commit: `942407d` — `Let Summary Lab size itself to the task at hand`
+
+The layout was fixed at `330px / 1fr` whatever the state. Measured at 1600px with no
+experiment open: the composer had 330px (26%) while the empty "Independent source review"
+panel held 962px (74%) and 1460px of height for 120px of placeholder text.
+
+- With no experiment open the page is a single centred 900px column. The composer spans
+  it: five intake buttons in one row, source dropdown 850px instead of 280px, and
+  Experiment name beside Optional emphasis rather than stacked. The placeholder panel is
+  gone; its orientation copy already exists in the page intro.
+- While reading an experiment the two-column split returns, because a long note needs the
+  width, and the composer collapses to a **New experiment** button. It went from 654px to
+  192px, giving the Experiments list 786px.
+- Mobile is unchanged in shape: single column, intake two across, fields stacked.
+
+Verified in the browser against the built bundle by measuring the live DOM in all four
+states — idle at 1600px and 375px, reading at both — including that the composer expands
+on demand and nothing overflows horizontally.
 
 ### T84 / T85 — stop control and duplicate Summary Lab runs
 
@@ -295,9 +316,9 @@ Use `py_compile` for every touched Python module. Do not start paid research, se
 
 Current release markers must stay synchronized:
 
-- `worker.js`: `2026-09-20T85`
-- `service-worker.js`: `20260920-85`
-- `src/app.jsx`: `2026-09-20T85`
+- `worker.js`: `2026-09-20T86`
+- `service-worker.js`: `20260920-86`
+- `src/app.jsx`: `2026-09-20T86`
 
 After an application change:
 
@@ -320,7 +341,7 @@ Render may return transient 502 responses while rolling forward. Wait for `/heal
 
 ## Repository state warning
 
-At this handoff, `main` is committed through `3d42157`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
+At this handoff, `main` is committed through `942407d`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
 
 - `.claude/settings.local.json`
 - `.omc/**`
@@ -334,7 +355,7 @@ Always inspect `git status --short`, stage an explicit allowlist, and review `gi
 
 ## Suggested first Claude Code instruction
 
-> Continue Charlie from production commit `3d42157` and release T85. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
+> Continue Charlie from production commit `942407d` and release T86. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
 
 ## Relevant deeper documentation
 
