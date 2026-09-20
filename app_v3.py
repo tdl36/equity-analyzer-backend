@@ -1652,6 +1652,29 @@ def _should_fan_out_summary_lab(origin):
 # assessment prompts asked for an "UNFILTERED" take, told the model not to
 # hedge, and explicitly requested a credibility rating, which produced an
 # invented "8.5/10" score and psychology read out of a deflecting joke.
+# Managed-care speakers say effective dates as bare digit runs, and
+# transcription renders them without separators. A real note reproduced "71
+# states" (there are 50) and left "101 implementation" uncorrected when the
+# questioner had said "October 1st" aloud in the same exchange.
+def _classified_source_type(summary_html):
+    """The source type the Key Takeaways tier already assigned, if any.
+
+    The two tiers classified independently and disagreed on a real note: the
+    Brief said INVESTOR/PUBLIC while Key Takeaways said MGMT 1:1.
+    """
+    import re as _re
+    match = _re.search(r'Source type:\s*(INVESTOR/PUBLIC|MGMT 1:1|INTERNAL)', str(summary_html or ''))
+    return match.group(1) if match else ''
+
+
+TRANSCRIPT_DATE_RULE = """(d) DATE AND RATE-CYCLE SHORTHAND — a distinct correction class.
+Speakers say effective dates as bare digit runs. In managed care these are month/day rate-cycle or effective dates, not quantities:
+- "11" = 1/1 (January 1), "41" = 4/1, "71" = 7/1, "91" = 9/1, "101" = 10/1 (October 1)
+- A year may follow: "11 27" = 1/1/27, "101 26" = 10/1/26
+- "71 states" means states whose rate cycle begins 7/1, not seventy-one states. "101 implementation" means an October 1 implementation. "the 101 population" is the population affected on 10/1.
+Bucket A when timing, a quarter, a rate cycle, a tax cycle, an effective date, or another speaker saying the date aloud makes the reading unambiguous; Bucket B otherwise. Never reproduce a bare digit run as a count or a percentage when the sentence is about timing, effective dates, rate cycles or affected populations — there are only 50 states, and a rate cycle is a date."""
+
+
 RESEARCH_DOCTRINE = """EVIDENCE DISCIPLINE — how to be candid without inventing.
 - Commit to a view. If an answer was weak, say it was weak; if someone was impressive, say so. Your own vagueness is not caution, it is a wasted note. What you may not do is invent a fact to support the view.
 - Judge the answer, not the interior state. Non-answers, evasions, redirections, rehearsed talking points, internal contradictions and inconsistencies with what the same speaker said earlier are exactly what this section is for — call them out and quote the wording that shows it. What you may not do is claim knowledge of anyone's feelings, anxiety, morale, private belief or motive: a joke, a hedge or a disfluency is not evidence of an interior state.
@@ -8441,6 +8464,8 @@ Use this domain frame to evaluate every proper noun and acronym.
 
 (c) Do not over-correct: do not change merely awkward or colloquial wording; do not promote informal jargon to formal ("bizjet" stays "bizjet"); do not invent context to justify a correction; when numbers conflict between speakers, trust the numerically specific party.
 
+{TRANSCRIPT_DATE_RULE}
+
 STEP 2 — OUTPUT STRUCTURE (exactly this, in this order, as raw HTML — no markdown, no code fences)
 
 <h1>Key Takeaways</h1>
@@ -8474,8 +8499,9 @@ Issues management raised but didn't fully resolve — where the next meeting or 
 Include only items textually evidenced by a direct quote. Legitimate: Management used "hopeful" rather than "confident" on margin durability — "we're hopeful that we deliver a little better than 100%." Illegitimate: vague "optimism" or "caution" with no quoted basis. If nothing meets this bar, write: "No material posture signals beyond hedges already noted in Takeaways."
 
 <h1>Transcript Corrections Log</h1>
-Every Bucket A and Bucket B correction. Format:
+Every Bucket A and Bucket B correction you actually made. Format:
 <p>"transcript term" → CorrectedTerm — [one-sentence rationale grounded in domain context].</p>
+Log ONLY terms whose wording you changed. Never log a term you left as it was; never log a term that does not appear in the source; never write an entry whose left and right sides are the same word. An entry that ends "rendered correctly" is a glossary entry, not a correction — delete it. This section is not a place to define or expand acronyms.
 If zero corrections: <p>No corrections required.</p>
 
 HARD RULES — VIOLATIONS DEGRADE OUTPUT
@@ -8636,7 +8662,11 @@ Organize into 3-6 logical sections (e.g., Business Update, Strategic Priorities,
         # (those live in Key Takeaways), short Drill-Down. Ships the
         # thesis_addendum if present so the Brief stays coherent with the
         # Thesis Check section in the full tier.
-        brief_system_prompt = """ROLE
+        _stype = _classified_source_type(summary_html)
+        source_type_directive = (
+            f'SOURCE TYPE — this transcript was already classified as {_stype} by the Key Takeaways '
+            'tier. Reuse that classification verbatim; do not reclassify it.') if _stype else ''
+        brief_system_prompt = f"""ROLE
 You are an equity analyst's research assistant producing the condensed "Summary" tier of a two-tier meeting note. A separate process produces the exhaustive "Key Takeaways" tier with full verbatim source tags, hedge preservation, and audit infrastructure. Your job is the tightened mirror of that tier — same structure, compressed content, scannable in 3-5 minutes.
 
 The Brief tier is what an analyst reads when revisiting the meeting weeks later, scanning a meeting before the next one, or sharing with a colleague who needs the substance without the audit trail.
@@ -8650,6 +8680,7 @@ OUTPUT STRUCTURE — return raw HTML, no markdown, no code fences
 
 <h1>Brief</h1>
 <p style="font-size:0.85em;color:#888;font-style:italic">Source type: [INVESTOR/PUBLIC | MGMT 1:1 | INTERNAL] — [one-line justification]</p>
+{source_type_directive}
 
 <h2>Takeaways</h2>
 6-8 takeaways as <p> blocks. Each:

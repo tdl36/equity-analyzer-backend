@@ -33,6 +33,13 @@ def constant(name):
     raise AssertionError(f'{name} is not a module-level constant')
 
 
+def constant_function(name):
+    node = next(n for n in TREE.body if isinstance(n, ast.FunctionDef) and n.name == name)
+    namespace = {}
+    exec(compile(ast.Module(body=[node], type_ignores=[]), 'app_v3.py', 'exec'), namespace)
+    return namespace[name]
+
+
 class DoctrineTests(unittest.TestCase):
     def setUp(self):
         self.doctrine = constant('RESEARCH_DOCTRINE')
@@ -130,3 +137,72 @@ class PromptCoverageTests(unittest.TestCase):
                      'PRESERVE CLARIFYING FOLLOW-UPS', 'Transcript Corrections Log',
                      'STEP 0 — AUTO-CLASSIFICATION'):
             self.assertIn(rule, SOURCE, rule)
+
+
+class TranscriptDateRuleTests(unittest.TestCase):
+    """A real note reproduced "71 states" (there are 50) and left "101
+    implementation" uncorrected although the questioner said "October 1st"
+    aloud in the same exchange."""
+
+    def setUp(self):
+        self.rule = constant('TRANSCRIPT_DATE_RULE')
+
+    def test_the_specific_shorthands_are_named(self):
+        for shorthand, meaning in (('"11" = 1/1', 'January 1'),
+                                   ('"71" = 7/1', None),
+                                   ('"101" = 10/1', 'October 1')):
+            self.assertIn(shorthand, self.rule, shorthand)
+            if meaning:
+                self.assertIn(meaning, self.rule, meaning)
+
+    def test_the_two_observed_failures_are_called_out_by_name(self):
+        self.assertIn('"71 states" means states whose rate cycle begins 7/1', self.rule)
+        self.assertIn('"101 implementation" means an October 1 implementation', self.rule)
+
+    def test_a_digit_run_about_timing_may_not_become_a_count(self):
+        self.assertIn('Never reproduce a bare digit run as a count', self.rule)
+        self.assertIn('there are only 50 states', self.rule)
+
+    def test_a_year_may_follow_the_date(self):
+        self.assertIn('"11 27" = 1/1/27', self.rule)
+
+    def test_the_rule_reaches_the_audio_summary_prompt(self):
+        self.assertIn('{TRANSCRIPT_DATE_RULE}', SOURCE)
+
+
+class CorrectionsLogTests(unittest.TestCase):
+    """The log filled with glossary entries such as
+    '"ICHRA" -> ICHRA ... Transcript rendered correctly', including terms that
+    were not in the transcript at all."""
+
+    def test_only_changed_terms_may_be_logged(self):
+        self.assertIn('Log ONLY terms whose wording you changed', SOURCE)
+        self.assertIn('never log a term that does not appear in the source', SOURCE)
+
+    def test_an_identity_entry_is_named_as_the_defect(self):
+        self.assertIn('never write an entry whose left and right sides are the same word', SOURCE)
+        self.assertIn('is a glossary entry, not a correction', SOURCE)
+
+    def test_it_is_not_a_place_to_define_acronyms(self):
+        self.assertIn('not a place to define or expand acronyms', SOURCE)
+
+    def test_the_empty_case_still_has_a_defined_output(self):
+        self.assertIn('If zero corrections: <p>No corrections required.</p>', SOURCE)
+
+
+class SourceTypeConsistencyTests(unittest.TestCase):
+    """The Brief said INVESTOR/PUBLIC while Key Takeaways said MGMT 1:1 for
+    the same meeting, because each tier classified independently."""
+
+    def test_the_brief_is_given_the_classification_already_made(self):
+        self.assertIn('_classified_source_type(summary_html)', SOURCE)
+        self.assertIn('{source_type_directive}', SOURCE)
+        self.assertIn('Reuse that classification verbatim; do not reclassify it.', SOURCE)
+
+    def test_the_helper_reads_either_rendering_of_the_line(self):
+        extract = constant_function('_classified_source_type')
+        self.assertEqual(extract('<p>Source type: MGMT 1:1 — private</p>'), 'MGMT 1:1')
+        self.assertEqual(extract('> Source type: INVESTOR/PUBLIC — conference'), 'INVESTOR/PUBLIC')
+
+    def test_an_unclassified_summary_leaves_the_brief_to_decide(self):
+        self.assertEqual(constant_function('_classified_source_type')('<p>nothing</p>'), '')
