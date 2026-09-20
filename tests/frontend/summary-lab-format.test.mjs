@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {labDocument,documentHtml,emailDocument,labFanoutPlan,labProgressSummary,looksLikeHtmlDocument,youtubeLanguagePayload} from '../../src/summary-lab-format.mjs';
+import {sourceMarkers,labDocument,documentHtml,emailDocument,labFanoutPlan,labProgressSummary,looksLikeHtmlDocument,youtubeLanguagePayload} from '../../src/summary-lab-format.mjs';
 test('renders source labels, headings and lists without executing source HTML',()=>{
  const html=labDocument('# Topic\n\n**Management:** uncertain [P1]\n\n- Detail\n- Caveat\n\n<script>alert(1)</script>');
  assert.match(html,/<h3>Topic<\/h3>/);assert.match(html,/<strong>Management:<\/strong>/);
@@ -63,4 +63,32 @@ test('an experiment still reading the source says so',()=>{
 test('a korean-only experiment counts its single section',()=>{
  const row={status:'complete',state:{parts:{0:{}},totalParts:1,completedSections:['korean']}};
  assert.equal(labProgressSummary(row,1).detail,'1 section verified against 1 source part');
+});
+
+test('source citations render as one switchable superscript without touching markup or exports', () => {
+  const html = labDocument('NAPD grew 5% [P1]. Oncology led [P1][P2][P1]. Policy is unclear [P3].');
+  const marked = sourceMarkers(html);
+  assert.equal((marked.match(/<sup class="src"/g) || []).length, 3);
+  assert.ok(marked.includes('>1,2</sup>'), 'a run of citations collapses to one marker, deduplicated');
+  assert.ok(marked.includes('title="Source parts 1, 2"'));
+  assert.ok(marked.includes('title="Source part 3"'));
+  assert.ok(!marked.includes('[P'), 'no bracketed citation survives in the reader');
+  assert.ok(marked.includes('5%<sup'), 'the marker sits tight against the word it cites');
+  assert.ok(marked.includes('</sup>.'), 'punctuation still follows the citation directly');
+  // The stored text is what Copy, Download and Email use; it must be unchanged.
+  assert.ok(html.includes('[P1]') && html.includes('[P3]'));
+});
+
+test('markers inside tags are left alone so attributes cannot be corrupted', () => {
+  const input = '<a href="/x?q=%5BP1%5D" title="see [P1] note">cited [P2]</a>';
+  const marked = sourceMarkers(input);
+  assert.ok(marked.includes('title="see [P1] note"'), 'attribute text is not rewritten');
+  assert.ok(marked.includes('href="/x?q=%5BP1%5D"'));
+  assert.equal((marked.match(/<sup class="src"/g) || []).length, 1);
+});
+
+test('text without citations is returned unchanged', () => {
+  assert.equal(sourceMarkers('<p>Plain note.</p>'), '<p>Plain note.</p>');
+  assert.equal(sourceMarkers(''), '');
+  assert.equal(sourceMarkers(), '');
 });

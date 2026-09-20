@@ -61,4 +61,17 @@ export function documentHtml(text='',sanitizeHtml){
  return looksLikeHtmlDocument(value)&&typeof sanitizeHtml==='function'?sanitizeHtml(value):labDocument(value);
 }
 
+// Source parts are cited inline as [P1], several in a row where a claim draws
+// on more than one. The citation has to survive -- it is how a reader checks a
+// claim against the transcript -- but a note carrying hundreds of bracketed
+// markers is hard to read. Render each run as one superscript the reader can
+// switch off, and leave the stored text and the emailed note untouched.
+export function sourceMarkers(html='') {
+ return String(html??'').split(/(<[^>]*>)/).map(segment => segment.startsWith('<') ? segment
+  : segment.replace(/[ \t]*(?:\[P\d+\])+/g, run => {
+     const parts=[...new Set([...run.matchAll(/\[P(\d+)\]/g)].map(m=>m[1]))];
+     return `<sup class="src" title="Source part${parts.length>1?'s':''} ${parts.join(', ')}">${parts.join(',')}</sup>`;
+    })).join('');
+}
+
 export function emailDocument(title,sections,sanitizeHtml){return `<div style="font-family:Calibri,Carlito,Arial,sans-serif;font-size:11pt;line-height:1.55;color:#202020"><h1 style="font-size:11pt;font-weight:700;margin:0 0 18px">${escapeHtml(title)}</h1>`+sections.map(([label,text])=>`<section style="margin:0 0 24px"><h2 style="font-size:11pt;font-weight:700;margin:0 0 8px;padding-bottom:4px;border-bottom:1px solid #d9d5cc">${escapeHtml(label)}</h2>${documentHtml(text,sanitizeHtml)}</section>`).join('')+'</div>';}
