@@ -4,7 +4,7 @@ Updated: September 20, 2026
 
 ## Start here
 
-Charlie production is currently **T82** at commit **`RELEASE_COMMIT`** on `main`.
+Charlie production is currently **T82** at commit **`1dfaf726498be5ddde89bac233d7ea712f2fcbe2`** on `main`.
 
 - App: `https://charlie-deployment.tonydlee.workers.dev/?release=T82`
 - Backend health: `https://equity-analyzer-backend.onrender.com/health`
@@ -38,7 +38,7 @@ The design standard is institutional: concise hierarchy, readable outputs, defen
 
 ### T82 — correct the automatic dual Summary fan-out
 
-Commit: `RELEASE_COMMIT` — `Scope SUMMARIES fan-out and harden Summary Lab recovery`
+Commit: `1dfaf72` — `Scope SUMMARIES fan-out and harden Summary Lab recovery`
 
 T81 fanned every `/api/auto-process-audio` job into Summary Lab. That endpoint serves
 two callers, so three real defects shipped with it. T82 fixes all three.
@@ -72,10 +72,14 @@ two callers, so three real defects shipped with it. T82 fixes all three.
   tracks in-flight experiment ids and starts at most one thread each.
 
 Validation completed for T82: 549 backend unittests, 45 frontend tests, the research
-quality self-test, `py_compile` on all three touched Python modules, production build,
-Render health revision, Cloudflare T82 asset, and the launch-agent restart. The two new
-structural regression guards were confirmed to fail against the T81 code and pass now.
-No paid audio run and no model-backed workflow was launched for validation.
+quality self-test, `py_compile` on `app_v3.py`, `summary_lab.py` and
+`charlie_local_agent.py`, and the production build. Render `/health` reported revision
+`1dfaf726498be5ddde89bac233d7ea712f2fcbe2`, the Cloudflare worker reported
+`2026-09-20T82` and served `service-worker.js` at `20260920-82`, and
+`com.charlie.local-agent` restarted to `state = running` with a clean startup log. The
+two new structural regression guards were confirmed to fail against the T81 code and to
+pass now. No paid audio run and no model-backed workflow was launched for validation, so
+the deployed fan-out behavior itself is not yet proven against a real recording.
 
 Not changed in T82: automatic folder fan-out still uses Summary Lab's English mode, and
 historical files under `SUMMARIES/Processed` are still not mass-reprocessed.
@@ -247,7 +251,7 @@ Render may return transient 502 responses while rolling forward. Wait for `/heal
 
 ## Repository state warning
 
-At this handoff, `main` is committed through `RELEASE_COMMIT`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
+At this handoff, `main` is committed through `1dfaf72`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
 
 - `.claude/settings.local.json`
 - `.omc/**`
@@ -261,7 +265,7 @@ Always inspect `git status --short`, stage an explicit allowlist, and review `gi
 
 ## Suggested first Claude Code instruction
 
-> Continue Charlie from production commit `RELEASE_COMMIT` and release T82. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
+> Continue Charlie from production commit `1dfaf72` and release T82. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
 
 ## Relevant deeper documentation
 
