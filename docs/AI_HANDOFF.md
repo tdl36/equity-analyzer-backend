@@ -36,6 +36,41 @@ The design standard is institutional: concise hierarchy, readable outputs, defen
 
 ## Latest production changes
 
+### T105–T106 — per-section actions, and one doctrine for both pipelines
+
+Commits: `498271e` (section actions), `fac7b14` (shared doctrine). Worker
+`2026-09-20T105`; backend `fac7b14`. 682 backend tests, 54 frontend tests.
+
+**T105 — every Summary Lab section now carries the Summaries tab's four actions:**
+Copy, Email, Email w/ options, Save to iCloud. Save reuses the existing Word exporter
+the way `summary_comparison` does — `summary_lab.export_row` projects an experiment's
+sections into the schema `_generate_summary_docx_bytes` already reads, rather than
+teaching the exporter a second shape. Model text is escaped, not interpreted; the
+transcript is never attached to a section export; an unfinished section returns 409
+instead of an empty document. `create_blueprint` now takes the renderer and filename
+helper, and answers 503 rather than failing if a server lacks them.
+
+**T106 — the two pipelines were answering to two copies of the doctrine.** It lived in
+`app_v3.py`, which `summary_lab.py` cannot import without a cycle, so the Lab carried an
+older copy. `research_doctrine.py` now holds it, imports nothing, and both sides read it;
+the Original's `TRANSCRIPT_DATE_RULE` and `RESEARCH_DOCTRINE` are reproduced **byte for
+byte**, so its prompts are unchanged. Four Lab defects close with it:
+
+| Defect | Was | Now |
+| --- | --- | --- |
+| Credibility rating | Lab forbade "numerical credibility scores" — the restriction T94/T95 overruled | Same defined 1–5 scale as the Original; interior-state claims still refused |
+| Date shorthand | T97's `101` = 10/1 rule never reached the Lab | Lab gets the substance via `LAB_DATE_RULE`, without the bucket framework it has no equivalent of |
+| Speaker labels | "Speaker 1/2" printed 13 times in Follow-up Questions, while the reviewer note warned the labels swap mid-P2 | Raw labels forbidden; attribute by role, or say the role is unclear |
+| Section headings | Executive Brief headed itself "Key Takeaways" | Each section must head itself with its own name |
+
+`VERSION` moves to `source-reviewed-lab-v3` so a re-import builds a fresh experiment
+rather than matching the v2 row under the automatic-experiment conflict key.
+
+**Unproven.** The four prompt changes are verified by inspection and tests, not by a paid
+run. The next real SUMMARIES file should be checked for: a `Rating:` on the 1–5 scale in
+the Lab assessment, no bare `Speaker 1/2`, no digit run read as a count, and a Brief that
+heads itself as a Brief.
+
 ### T102–T104 — Summary Lab readability: mobile density, citations, reading layout, archiving
 
 Commits: `4cbd5ce` (scroll button + mobile density), `6258a71` (source markers),
@@ -78,13 +113,7 @@ looked right in one theme. Every colour now resolves through `var(--accent)`,
 renders as a toned chip. The reader's printed-paper surface keeps local `--lab-paper*`
 tokens rather than raw hex.
 
-**Still open in Summary Lab.** The Lab prompt in `summary_lab.py` has diverged from the
-Original's doctrine: line 20 still forbids numerical credibility scores (the T94/T95
-decision reached only `app_v3.py`), and the Lab has no `TRANSCRIPT_DATE_RULE`, so the
-T97 `101`/`71` date fix does not apply to it. `Follow-up Questions` also leaks raw
-"Speaker 1/2" labels 13 times while the other four sections say "management" — and the
-reviewer note itself flags that speaker labels appear to swap mid-P2. The Executive
-Brief titles itself "Key Takeaways", colliding with the section of that name.
+**Everything listed here as open was closed in T106, recorded above.**
 
 ### T98–T101 — the MCK run: fan-out proven, orphan recovery, concurrency, clearer status
 
