@@ -67,6 +67,8 @@ export function SummaryLab({
   var [selected, setSelected] = useState([]),
     [archivedView, setArchivedView] = useState(false);
   var chosen = new Set(selected);
+  var [busyKey, setBusyKey] = useState(''),
+    [emailOptions, setEmailOptions] = useState(null);
   var audioInput = useRef(null),
     monitoring = useRef('');
   // With no experiment open the composer is the whole job, so it gets the page.
@@ -445,6 +447,89 @@ export function SummaryLab({
       setSending(false);
     }
   }
+  function emailCredentials() {
+    var creds = JSON.parse(localStorage.getItem('emailCredentials') || '{}');
+    if (!creds.email) throw Error('Set your recipient email and Gmail credentials in Settings first.');
+    return creds;
+  }
+  function sectionText(key) {
+    return (sharing ? edits[key] : state.sections?.[key]) || '';
+  }
+  function sectionLabel(key) {
+    return visibleSections.find(s => s[0] === key)?.[1] || 'Section';
+  }
+  async function sendSection(key, to, subject) {
+    var text = sectionText(key);
+    if (!text.trim()) throw Error('That section has not finished generating.');
+    var creds = emailCredentials();
+    var response = await fetch(`${api}/api/email-summary-section`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        email: to || creds.email,
+        subject: subject || `${sectionLabel(key)}: ${row.title}`,
+        title: row.title,
+        section: 'summary_lab',
+        content: emailDocument(row.title, [[sectionLabel(key), text]], renderHtml),
+        smtpConfig: {
+          use_gmail: creds.useGmail,
+          gmail_user: creds.gmailUser,
+          gmail_app_password: creds.gmailPassword,
+          from_email: creds.gmailUser
+        }
+      })
+    });
+    var data = await response.json().catch(() => ({}));
+    if (!response.ok || data.error) throw Error(data.error || 'The email could not be sent.');
+  }
+  async function quickEmailSection(key) {
+    setBusyKey(key + ':email');
+    setError('');
+    setNotice('');
+    try {
+      await sendSection(key);
+      setNotice(`${sectionLabel(key)} emailed.`);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusyKey('');
+    }
+  }
+  async function sendSectionWithOptions() {
+    var {
+      key,
+      to,
+      subject
+    } = emailOptions;
+    setBusyKey(key + ':email');
+    setError('');
+    try {
+      await sendSection(key, to.trim(), subject.trim());
+      setEmailOptions(null);
+      setNotice(`${sectionLabel(key)} emailed to ${to.trim()}.`);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusyKey('');
+    }
+  }
+  async function saveSection(key) {
+    setBusyKey(key + ':save');
+    setError('');
+    setNotice('');
+    try {
+      var d = await req(`/${id}/save-to-icloud`, {
+        section: key
+      });
+      setNotice(`Queued for iCloud: ${d.filename}. Your Mac agent saves it within about 15 seconds.`);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusyKey('');
+    }
+  }
   async function archiveSelected(restore = false) {
     if (!selected.length) return;
     setBusy(true);
@@ -511,6 +596,10 @@ export function SummaryLab({
 .summary-lab .commandbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:18px;padding:10px 12px;border:1px solid var(--lab-border);border-radius:12px;background:color-mix(in srgb,var(--lab-accent) 4%,transparent)}
 .summary-lab .commandbar select{flex:1 1 260px;width:auto;min-height:44px}
 .summary-lab .visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.summary-lab .controls.section-actions{margin:0 0 14px;justify-content:flex-end;gap:6px}
+.summary-lab .controls.section-actions button{min-height:36px;padding:7px 11px;font-size:12px}
+.summary-lab .email-options{margin:14px 0;border-color:var(--lab-accent)}
+.summary-lab .email-options .controls{margin-bottom:0}
 .summary-lab .panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
 .summary-lab button.quiet{min-height:36px;padding:6px 10px;font-size:12px;border-color:transparent;opacity:.8}
 .summary-lab button.quiet:hover{opacity:1;border-color:var(--lab-border)}
@@ -529,7 +618,7 @@ export function SummaryLab({
 .summary-lab .chip.off{color:var(--muted,#9b9384)}
 .summary-lab .chip.bad{color:var(--neg,#c4776b)}.summary-lab .reader{font-family:Calibri,Carlito,Arial,sans-serif;font-size:11pt;line-height:1.55;overflow-wrap:anywhere;max-width:94ch;background:var(--lab-paper);color:var(--lab-paper-ink);padding:28px;border:1px solid var(--lab-paper-line);border-radius:4px;margin-left:auto;margin-right:auto}
 .summary-lab sup.src{display:none}
-.summary-lab.show-src sup.src{display:inline;font-size:9px;font-weight:700;letter-spacing:.04em;color:var(--lab-paper-faint);margin-left:1px;vertical-align:super;line-height:0}.summary-lab .reader h1,.summary-lab .reader h2,.summary-lab .reader h3,.summary-lab .reader h4{font:700 11pt/1.5 Calibri,Carlito,Arial,sans-serif;margin:20px 0 8px}.summary-lab .reader p{margin:0 0 12px;line-height:1.55}.summary-lab .reader ul,.summary-lab .reader ol{padding-left:23px;margin:10px 0 16px}.summary-lab .reader li{margin:6px 0}.summary-lab .reader blockquote{border-left:3px solid var(--lab-paper-faint);padding-left:14px;margin:14px 0}.summary-lab .reader table{display:block;max-width:100%;overflow:auto;border-collapse:collapse}.summary-lab .reader th,.summary-lab .reader td{border:1px solid var(--lab-paper-line);padding:7px 9px;text-align:left}.summary-lab .email-editor{font:11pt/1.5 Calibri,Carlito,Arial,sans-serif;min-height:220px}.summary-lab .pair{display:grid;gap:24px;grid-template-columns:repeat(2,minmax(0,1fr))}.summary-lab .status{padding:14px;border-left:3px solid var(--lab-accent);background:color-mix(in srgb,var(--lab-accent) 9%,transparent);margin:16px 0;overflow-wrap:anywhere}.summary-lab details.lab-section{border:1px solid var(--lab-border);border-radius:10px;margin:12px 0;padding:0;overflow:hidden}.summary-lab details.lab-section>summary{list-style:none;cursor:pointer;padding:16px 18px;display:flex;justify-content:space-between;align-items:center;gap:12px;background:rgba(127,115,89,.04)}.summary-lab details.lab-section>summary::-webkit-details-marker{display:none}.summary-lab .section-body{padding:18px}.summary-lab .chevron{display:inline-block;transition:transform .18s ease}.summary-lab details[open] .chevron{transform:rotate(90deg)}.summary-lab details.audit{border-top:1px solid var(--lab-border);padding:16px 0;margin-top:16px}.summary-lab pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.7}.summary-lab .original{overflow-wrap:anywhere;line-height:1.8}.summary-lab .original table{display:block;overflow:auto;max-width:100%}@media(max-width:900px){.summary-lab{padding:18px 18px 112px}.summary-lab .layout,.summary-lab .pair{grid-template-columns:1fr}.summary-lab .layout.idle{max-width:none}.summary-lab .layout.idle .intake-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.summary-lab .layout.idle .field-pair{grid-template-columns:1fr}.summary-lab h1{font-size:30px}.summary-lab .panel{padding:18px}.summary-lab .reader{padding:20px}.summary-lab .intake-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:600px){.summary-lab{padding:10px 8px 112px}.summary-lab .panel{padding:14px 10px}.summary-lab .reader{padding:16px 12px}.summary-lab .section-body{padding:12px 8px}.summary-lab details.lab-section>summary{padding:12px 12px}.summary-lab h1{font-size:26px}.summary-lab .status{padding:12px 10px}.summary-lab details.audit{padding:12px 0}}`), /*#__PURE__*/React.createElement("div", {
+.summary-lab.show-src sup.src{display:inline;font-size:9px;font-weight:700;letter-spacing:.04em;color:var(--lab-paper-faint);margin-left:1px;vertical-align:super;line-height:0}.summary-lab .reader h1,.summary-lab .reader h2,.summary-lab .reader h3,.summary-lab .reader h4{font:700 11pt/1.5 Calibri,Carlito,Arial,sans-serif;margin:20px 0 8px}.summary-lab .reader p{margin:0 0 12px;line-height:1.55}.summary-lab .reader ul,.summary-lab .reader ol{padding-left:23px;margin:10px 0 16px}.summary-lab .reader li{margin:6px 0}.summary-lab .reader blockquote{border-left:3px solid var(--lab-paper-faint);padding-left:14px;margin:14px 0}.summary-lab .reader table{display:block;max-width:100%;overflow:auto;border-collapse:collapse}.summary-lab .reader th,.summary-lab .reader td{border:1px solid var(--lab-paper-line);padding:7px 9px;text-align:left}.summary-lab .email-editor{font:11pt/1.5 Calibri,Carlito,Arial,sans-serif;min-height:220px}.summary-lab .pair{display:grid;gap:24px;grid-template-columns:repeat(2,minmax(0,1fr))}.summary-lab .status{padding:14px;border-left:3px solid var(--lab-accent);background:color-mix(in srgb,var(--lab-accent) 9%,transparent);margin:16px 0;overflow-wrap:anywhere}.summary-lab details.lab-section{border:1px solid var(--lab-border);border-radius:10px;margin:12px 0;padding:0;overflow:hidden}.summary-lab details.lab-section>summary{list-style:none;cursor:pointer;padding:16px 18px;display:flex;justify-content:space-between;align-items:center;gap:12px;background:rgba(127,115,89,.04)}.summary-lab details.lab-section>summary::-webkit-details-marker{display:none}.summary-lab .section-body{padding:18px}.summary-lab .chevron{display:inline-block;transition:transform .18s ease}.summary-lab details[open] .chevron{transform:rotate(90deg)}.summary-lab details.audit{border-top:1px solid var(--lab-border);padding:16px 0;margin-top:16px}.summary-lab pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.7}.summary-lab .original{overflow-wrap:anywhere;line-height:1.8}.summary-lab .original table{display:block;overflow:auto;max-width:100%}@media(max-width:900px){.summary-lab{padding:18px 18px 112px}.summary-lab .layout,.summary-lab .pair{grid-template-columns:1fr}.summary-lab .layout.idle{max-width:none}.summary-lab .layout.idle .intake-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.summary-lab .layout.idle .field-pair{grid-template-columns:1fr}.summary-lab h1{font-size:30px}.summary-lab .panel{padding:18px}.summary-lab .reader{padding:20px}.summary-lab .intake-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:600px){.summary-lab{padding:10px 8px 112px}.summary-lab .panel{padding:14px 10px}.summary-lab .reader{padding:16px 12px}.summary-lab .section-body{padding:12px 8px}.summary-lab details.lab-section>summary{padding:12px 12px}.summary-lab h1{font-size:26px}.summary-lab .status{padding:12px 10px}.summary-lab details.audit{padding:12px 0}.summary-lab .controls.section-actions{justify-content:stretch}.summary-lab .controls.section-actions button{flex:1 1 auto}}`), /*#__PURE__*/React.createElement("div", {
     className: "eyebrow"
   }, "Charlie / Research experiments"), /*#__PURE__*/React.createElement("h1", null, "Summary Lab"), /*#__PURE__*/React.createElement("p", null, "Read thoroughly. Preserve what was said. Separate what it means."), /*#__PURE__*/React.createElement("p", {
     className: "muted"
@@ -835,7 +924,46 @@ export function SummaryLab({
     onClick: openEmail
   }, "Email all sections"), /*#__PURE__*/React.createElement("button", {
     onClick: download
-  }, "Download experiment")), /*#__PURE__*/React.createElement("div", {
+  }, "Download experiment")), emailOptions && /*#__PURE__*/React.createElement("div", {
+    className: "panel email-options",
+    role: "dialog",
+    "aria-label": "Email options"
+  }, /*#__PURE__*/React.createElement("h2", {
+    style: {
+      marginBottom: 12
+    }
+  }, "Email ", sectionLabel(emailOptions.key)), /*#__PURE__*/React.createElement("label", {
+    htmlFor: "lab-email-to"
+  }, "Recipient"), /*#__PURE__*/React.createElement("input", {
+    id: "lab-email-to",
+    type: "email",
+    value: emailOptions.to,
+    onChange: e => setEmailOptions({
+      ...emailOptions,
+      to: e.target.value
+    }),
+    placeholder: "name@example.com"
+  }), /*#__PURE__*/React.createElement("label", {
+    htmlFor: "lab-email-subject"
+  }, "Subject"), /*#__PURE__*/React.createElement("input", {
+    id: "lab-email-subject",
+    value: emailOptions.subject,
+    onChange: e => setEmailOptions({
+      ...emailOptions,
+      subject: e.target.value
+    })
+  }), /*#__PURE__*/React.createElement("p", {
+    className: "muted"
+  }, "This sends only ", sectionLabel(emailOptions.key), ". Source markers stay in the emailed copy."), /*#__PURE__*/React.createElement("div", {
+    className: "controls"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "primary",
+    disabled: !emailOptions.to.trim() || !!busyKey,
+    onClick: sendSectionWithOptions
+  }, busyKey ? 'Sending…' : 'Send'), /*#__PURE__*/React.createElement("button", {
+    className: "quiet",
+    onClick: () => setEmailOptions(null)
+  }, "Cancel"))), /*#__PURE__*/React.createElement("div", {
     className: "controls"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => setExpanded(Object.fromEntries(visibleSections.map(([key]) => [key, true])))
@@ -881,11 +1009,27 @@ export function SummaryLab({
     }, value ? 'Ready' : 'Waiting')), /*#__PURE__*/React.createElement("div", {
       className: "section-body"
     }, /*#__PURE__*/React.createElement("div", {
-      className: "controls"
+      className: "controls section-actions"
     }, /*#__PURE__*/React.createElement("button", {
       disabled: !value,
       onClick: () => copy(false, key)
-    }, "Copy section")), row.status !== 'complete' && value && /*#__PURE__*/React.createElement("p", {
+    }, "Copy"), /*#__PURE__*/React.createElement("button", {
+      disabled: !value || !!busyKey,
+      onClick: () => quickEmailSection(key)
+    }, busyKey === key + ':email' ? 'Sending…' : 'Email'), /*#__PURE__*/React.createElement("button", {
+      disabled: !value || !!busyKey,
+      onClick: () => {
+        setError('');
+        setEmailOptions({
+          key,
+          to: JSON.parse(localStorage.getItem('emailCredentials') || '{}').email || '',
+          subject: `${label}: ${row.title}`
+        });
+      }
+    }, "Email w/ options"), /*#__PURE__*/React.createElement("button", {
+      disabled: !value || !!busyKey,
+      onClick: () => saveSection(key)
+    }, busyKey === key + ':save' ? 'Saving…' : 'Save to iCloud')), row.status !== 'complete' && value && /*#__PURE__*/React.createElement("p", {
       className: "muted"
     }, "Draft in progress. Source checks may still revise this section."), sharing ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", {
       htmlFor: `lab-edit-${key}`

@@ -29144,7 +29144,7 @@ manual_meeting_recovery.start(get_db,_resume_manual_meeting,
 
 
 import summary_lab
-summary_lab_bp = summary_lab.create_blueprint(get_db)
+summary_lab_bp = summary_lab.create_blueprint(get_db, _generate_summary_docx_bytes, _safe_filename)
 app.register_blueprint(summary_lab_bp)
 summary_lab_bp.start_recovery()
 

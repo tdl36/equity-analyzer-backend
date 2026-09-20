@@ -1,4 +1,5 @@
 """Opt-in Summary Lab. Independent experiments; never writes legacy Summary tables."""
+import base64
 import hashlib
 import json
 import os
@@ -275,7 +276,44 @@ DRAFT:\n{state['sections'][section]}\nORIGINAL:\n{body}''', 3500)
     return state
 
 
-def create_blueprint(get_db):
+
+# The Word exporter reads one fixed schema. An experiment keeps its sections in
+# state, under its own keys, so project it the way summary_comparison does
+# rather than teaching the exporter a second shape.
+LAB_EXPORT_LABELS = {'brief': 'Executive Brief', 'takeaways': 'Key Takeaways',
+                     'meeting': 'Meeting Summary', 'questions': 'Follow-up Questions',
+                     'assessment': 'Overall Assessment', 'korean': 'Korean Interpretation',
+                     'all': 'Summary Lab'}
+LAB_EXPORT_COLUMNS = {'brief': 'brief', 'takeaways': 'summary', 'meeting': 'meeting_summary',
+                      'questions': 'questions', 'assessment': 'assessment',
+                      'korean': 'korean_takeaways'}
+
+
+def export_row(row, section='all'):
+    """Project a finished experiment into the existing Word exporter schema."""
+    from html import escape
+    if section != 'all' and section not in LAB_EXPORT_COLUMNS:
+        raise ValueError('Unsupported Summary Lab section.')
+    state = row.get('state') or {}
+    if isinstance(state, str): state = json.loads(state)
+    values = dict(state.get('sections') or {})
+    wanted = list(LAB_EXPORT_COLUMNS) if section == 'all' else [section]
+    if section == 'all':
+        wanted = [key for key in wanted if (values.get(key) or '').strip()]
+        if not wanted: raise ValueError('This experiment has no finished sections yet.')
+    elif not (values.get(section) or '').strip():
+        raise ValueError('That section has not finished generating.')
+    result = {'title': row.get('title') or 'Summary Lab experiment',
+              'created_at': row.get('created_at'), 'raw_notes': '', 'source_type': 'summary-lab'}
+    for key in wanted:
+        # Model text is untrusted; keep it literal instead of interpreting HTML.
+        body = values.get(key) or ''
+        result[LAB_EXPORT_COLUMNS[key]] = ''.join(
+            '<p>' + escape(part).replace('\n', '<br>') + '</p>' for part in body.split('\n\n') if part.strip())
+    return result
+
+
+def create_blueprint(get_db, render_docx=None, safe_filename=None):
     bp = Blueprint('summary_lab', __name__)
     schema_lock = threading.Lock()
     ready = False
@@ -550,6 +588,35 @@ def create_blueprint(get_db):
                     ('Stopped at your request. No run was in progress; completed stages are saved.', jid))
             return jsonify(stopping=True, stopped=True)
         return jsonify(stopping=True, stopped=False)
+
+    @bp.post('/api/summary-lab/<jid>/save-to-icloud')
+    def save_to_icloud(jid):
+        """Queue one section as a Word document for the local agent, exactly as
+        the Summaries tab does. Nothing is written here; the agent collects it."""
+        if not (render_docx and safe_filename):
+            return jsonify(error='Word export is not available on this server.'),503
+        ensure()
+        body=request.get_json(silent=True) or {}
+        section=str(body.get('section') or 'all').lower().strip()
+        with get_db() as (_,cur):
+            cur.execute('SELECT * FROM summary_lab_experiments WHERE id=%s',(jid,))
+            row=cur.fetchone()
+        if not row: return jsonify(error='Experiment not found.'),404
+        try:
+            projected=export_row(dict(row),section)
+        except ValueError as exc:
+            return jsonify(error=str(exc)),409
+        columns=None if section=='all' else [section]
+        data=render_docx(projected,sections=columns)
+        label=LAB_EXPORT_LABELS.get(section,section.title())
+        name=safe_filename(projected['title'],60)
+        filename=f'{name} - {label}.docx' if section!='all' else f'{name} - Summary Lab.docx'
+        task=str(uuid.uuid4())
+        with get_db(commit=True) as (_,cur):
+            cur.execute("""INSERT INTO icloud_export_tasks (id,summary_id,section,filename,file_data_b64,status)
+                VALUES (%s,%s,%s,%s,%s,'queued')""",
+                (task,row.get('summary_id'),section,filename,base64.b64encode(data).decode('utf-8')))
+        return jsonify(taskId=task,filename=filename,fileSize=len(data))
 
     @bp.post('/api/summary-lab/archive')
     def archive():
