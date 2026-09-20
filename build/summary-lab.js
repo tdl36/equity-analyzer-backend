@@ -45,8 +45,13 @@ export function SummaryLab({
     assessment: false,
     korean: true
   });
+  var [composerOpen, setComposerOpen] = useState(false);
   var audioInput = useRef(null),
     monitoring = useRef('');
+  // With no experiment open the composer is the whole job, so it gets the page.
+  // While reading, a 654px form should not compete with the note.
+  var reading = !!(row || id),
+    showComposer = !reading || composerOpen;
   var visibleSections = sectionsForMode(row?.state?.outputMode || 'english');
   async function req(path = '', body) {
     var r = await fetch(`${api}/api/summary-lab${path}`, {
@@ -114,6 +119,7 @@ export function SummaryLab({
     setFeedback(row?.feedback || '');
     setSharing(false);
     setEdits({});
+    setComposerOpen(false);
   }, [row?.id]);
 
   // sourceJobId is set only when a completed transcription triggers this run.
@@ -450,7 +456,7 @@ export function SummaryLab({
   var canGenerate = intake === 'saved' && !!sid || (intake === 'paste' || intake === 'document') && !!source.trim();
   return /*#__PURE__*/React.createElement("main", {
     className: "summary-lab"
-  }, /*#__PURE__*/React.createElement("style", null, `.summary-lab{box-sizing:border-box;--lab-border:rgba(153,142,119,.35);max-width:1500px;margin:0 auto;height:100%;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior-y:contain;padding:32px;color:var(--text-primary,#e9e2d3);width:100%;min-width:0}.summary-lab *{box-sizing:border-box}.summary-lab h1,.summary-lab h2{font-family:Georgia,serif;line-height:1.2}.summary-lab h1{font-size:38px;margin:8px 0 14px}.summary-lab h2{font-size:24px;margin:0 0 18px}.summary-lab p{line-height:1.65}.summary-lab .muted{opacity:.72;font-size:13px}.summary-lab .eyebrow{color:#c9a857;letter-spacing:.13em;text-transform:uppercase;font-size:11px}.summary-lab .layout{display:grid;grid-template-columns:330px minmax(0,1fr);gap:24px;margin-top:28px}.summary-lab .panel{border:1px solid var(--lab-border);border-radius:14px;padding:24px;background:rgba(127,115,89,.045);min-width:0}.summary-lab label{display:block;font-size:13px;margin:16px 0 6px}.summary-lab input,.summary-lab select,.summary-lab textarea{width:100%;padding:11px;border:1px solid var(--lab-border);border-radius:7px;background:var(--bg-secondary,#211e18);color:inherit;font:inherit;min-width:0}.summary-lab .check-row{display:flex;align-items:flex-start;gap:9px;margin:14px 0 0;line-height:1.45;cursor:pointer}.summary-lab .check-row.nested{margin:9px 0 0 26px}.summary-lab .check-row input[type=checkbox]{width:17px;height:17px;min-width:17px;margin:1px 0 0;padding:0;accent-color:#c9a857}.summary-lab select option{background:#211e18;color:#eee}.summary-lab button{padding:10px 14px;min-height:44px;border:1px solid var(--lab-border);border-radius:7px;font:inherit;cursor:pointer;background:transparent;color:inherit}.summary-lab button:focus-visible,.summary-lab input:focus-visible,.summary-lab textarea:focus-visible,.summary-lab select:focus-visible{outline:2px solid #c9a857;outline-offset:3px}.summary-lab button:disabled{opacity:.45;cursor:default}.summary-lab button.primary,.summary-lab button[aria-pressed=true]{background:#c9a857;color:#18150f}.summary-lab .controls{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.summary-lab .intake-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-bottom:16px}.summary-lab .intake-grid button{padding:8px;min-height:38px;font-size:12px}.summary-lab .dropzone{padding:18px;border:1px dashed var(--lab-border);border-radius:10px;text-align:center;background:rgba(201,168,87,.035)}.summary-lab .experiment{display:block;width:100%;text-align:left;margin:10px 0;overflow-wrap:anywhere}.summary-lab .reader{font-family:Calibri,Carlito,Arial,sans-serif;font-size:11pt;line-height:1.55;overflow-wrap:anywhere;max-width:94ch;background:#fff;color:#242424;padding:28px;border:1px solid #dedbd4;border-radius:4px}.summary-lab .reader h1,.summary-lab .reader h2,.summary-lab .reader h3,.summary-lab .reader h4{font:700 11pt/1.5 Calibri,Carlito,Arial,sans-serif;margin:20px 0 8px}.summary-lab .reader p{margin:0 0 12px;line-height:1.55}.summary-lab .reader ul,.summary-lab .reader ol{padding-left:23px;margin:10px 0 16px}.summary-lab .reader li{margin:6px 0}.summary-lab .reader blockquote{border-left:3px solid #b9af94;padding-left:14px;margin:14px 0}.summary-lab .reader table{display:block;max-width:100%;overflow:auto;border-collapse:collapse}.summary-lab .reader th,.summary-lab .reader td{border:1px solid #ddd;padding:7px 9px;text-align:left}.summary-lab .email-editor{font:11pt/1.5 Calibri,Carlito,Arial,sans-serif;min-height:220px}.summary-lab .pair{display:grid;gap:24px;grid-template-columns:repeat(2,minmax(0,1fr))}.summary-lab .status{padding:14px;border-left:3px solid #c9a857;background:rgba(201,168,87,.08);margin:16px 0;overflow-wrap:anywhere}.summary-lab details.lab-section{border:1px solid var(--lab-border);border-radius:10px;margin:12px 0;padding:0;overflow:hidden}.summary-lab details.lab-section>summary{list-style:none;cursor:pointer;padding:16px 18px;display:flex;justify-content:space-between;align-items:center;gap:12px;background:rgba(127,115,89,.04)}.summary-lab details.lab-section>summary::-webkit-details-marker{display:none}.summary-lab .section-body{padding:18px}.summary-lab .chevron{display:inline-block;transition:transform .18s ease}.summary-lab details[open] .chevron{transform:rotate(90deg)}.summary-lab details.audit{border-top:1px solid var(--lab-border);padding:16px 0;margin-top:16px}.summary-lab pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.7}.summary-lab .original{overflow-wrap:anywhere;line-height:1.8}.summary-lab .original table{display:block;overflow:auto;max-width:100%}@media(max-width:900px){.summary-lab{padding:18px 18px 112px}.summary-lab .layout,.summary-lab .pair{grid-template-columns:1fr}.summary-lab h1{font-size:30px}.summary-lab .panel{padding:18px}.summary-lab .reader{padding:20px}.summary-lab .intake-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}`), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("style", null, `.summary-lab{box-sizing:border-box;--lab-border:rgba(153,142,119,.35);max-width:1500px;margin:0 auto;height:100%;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior-y:contain;padding:32px;color:var(--text-primary,#e9e2d3);width:100%;min-width:0}.summary-lab *{box-sizing:border-box}.summary-lab h1,.summary-lab h2{font-family:Georgia,serif;line-height:1.2}.summary-lab h1{font-size:38px;margin:8px 0 14px}.summary-lab h2{font-size:24px;margin:0 0 18px}.summary-lab p{line-height:1.65}.summary-lab .muted{opacity:.72;font-size:13px}.summary-lab .eyebrow{color:#c9a857;letter-spacing:.13em;text-transform:uppercase;font-size:11px}.summary-lab .layout{display:grid;grid-template-columns:330px minmax(0,1fr);gap:24px;margin-top:28px}.summary-lab .layout.idle{grid-template-columns:minmax(0,1fr);max-width:900px;margin-left:auto;margin-right:auto}.summary-lab .layout.idle .intake-grid{grid-template-columns:repeat(5,minmax(0,1fr))}.summary-lab .field-pair{display:grid;gap:0 18px}.summary-lab .layout.idle .field-pair{grid-template-columns:repeat(2,minmax(0,1fr))}.summary-lab .layout.idle .dropzone{padding:26px}.summary-lab .panel{border:1px solid var(--lab-border);border-radius:14px;padding:24px;background:rgba(127,115,89,.045);min-width:0}.summary-lab label{display:block;font-size:13px;margin:16px 0 6px}.summary-lab input,.summary-lab select,.summary-lab textarea{width:100%;padding:11px;border:1px solid var(--lab-border);border-radius:7px;background:var(--bg-secondary,#211e18);color:inherit;font:inherit;min-width:0}.summary-lab .check-row{display:flex;align-items:flex-start;gap:9px;margin:14px 0 0;line-height:1.45;cursor:pointer}.summary-lab .check-row.nested{margin:9px 0 0 26px}.summary-lab .check-row input[type=checkbox]{width:17px;height:17px;min-width:17px;margin:1px 0 0;padding:0;accent-color:#c9a857}.summary-lab select option{background:#211e18;color:#eee}.summary-lab button{padding:10px 14px;min-height:44px;border:1px solid var(--lab-border);border-radius:7px;font:inherit;cursor:pointer;background:transparent;color:inherit}.summary-lab button:focus-visible,.summary-lab input:focus-visible,.summary-lab textarea:focus-visible,.summary-lab select:focus-visible{outline:2px solid #c9a857;outline-offset:3px}.summary-lab button:disabled{opacity:.45;cursor:default}.summary-lab button.primary,.summary-lab button[aria-pressed=true]{background:#c9a857;color:#18150f}.summary-lab .controls{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.summary-lab .intake-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-bottom:16px}.summary-lab .intake-grid button{padding:8px;min-height:38px;font-size:12px}.summary-lab .dropzone{padding:18px;border:1px dashed var(--lab-border);border-radius:10px;text-align:center;background:rgba(201,168,87,.035)}.summary-lab .experiment{display:block;width:100%;text-align:left;margin:10px 0;overflow-wrap:anywhere}.summary-lab .reader{font-family:Calibri,Carlito,Arial,sans-serif;font-size:11pt;line-height:1.55;overflow-wrap:anywhere;max-width:94ch;background:#fff;color:#242424;padding:28px;border:1px solid #dedbd4;border-radius:4px}.summary-lab .reader h1,.summary-lab .reader h2,.summary-lab .reader h3,.summary-lab .reader h4{font:700 11pt/1.5 Calibri,Carlito,Arial,sans-serif;margin:20px 0 8px}.summary-lab .reader p{margin:0 0 12px;line-height:1.55}.summary-lab .reader ul,.summary-lab .reader ol{padding-left:23px;margin:10px 0 16px}.summary-lab .reader li{margin:6px 0}.summary-lab .reader blockquote{border-left:3px solid #b9af94;padding-left:14px;margin:14px 0}.summary-lab .reader table{display:block;max-width:100%;overflow:auto;border-collapse:collapse}.summary-lab .reader th,.summary-lab .reader td{border:1px solid #ddd;padding:7px 9px;text-align:left}.summary-lab .email-editor{font:11pt/1.5 Calibri,Carlito,Arial,sans-serif;min-height:220px}.summary-lab .pair{display:grid;gap:24px;grid-template-columns:repeat(2,minmax(0,1fr))}.summary-lab .status{padding:14px;border-left:3px solid #c9a857;background:rgba(201,168,87,.08);margin:16px 0;overflow-wrap:anywhere}.summary-lab details.lab-section{border:1px solid var(--lab-border);border-radius:10px;margin:12px 0;padding:0;overflow:hidden}.summary-lab details.lab-section>summary{list-style:none;cursor:pointer;padding:16px 18px;display:flex;justify-content:space-between;align-items:center;gap:12px;background:rgba(127,115,89,.04)}.summary-lab details.lab-section>summary::-webkit-details-marker{display:none}.summary-lab .section-body{padding:18px}.summary-lab .chevron{display:inline-block;transition:transform .18s ease}.summary-lab details[open] .chevron{transform:rotate(90deg)}.summary-lab details.audit{border-top:1px solid var(--lab-border);padding:16px 0;margin-top:16px}.summary-lab pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.7}.summary-lab .original{overflow-wrap:anywhere;line-height:1.8}.summary-lab .original table{display:block;overflow:auto;max-width:100%}@media(max-width:900px){.summary-lab{padding:18px 18px 112px}.summary-lab .layout,.summary-lab .pair{grid-template-columns:1fr}.summary-lab .layout.idle{max-width:none}.summary-lab .layout.idle .intake-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.summary-lab .layout.idle .field-pair{grid-template-columns:1fr}.summary-lab h1{font-size:30px}.summary-lab .panel{padding:18px}.summary-lab .reader{padding:20px}.summary-lab .intake-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}`), /*#__PURE__*/React.createElement("div", {
     className: "eyebrow"
   }, "Charlie / Research experiments"), /*#__PURE__*/React.createElement("h1", null, "Summary Lab"), /*#__PURE__*/React.createElement("p", null, "Read thoroughly. Preserve what was said. Separate what it means."), /*#__PURE__*/React.createElement("p", {
     className: "muted"
@@ -466,8 +472,25 @@ export function SummaryLab({
   }, /*#__PURE__*/React.createElement("strong", null, ingest.label), /*#__PURE__*/React.createElement("div", null, ingest.progress || ingest.phase), /*#__PURE__*/React.createElement("p", {
     className: "muted"
   }, "You can leave this page. Charlie keeps the saved job and Summary Lab reconnects when you return.")), /*#__PURE__*/React.createElement("div", {
-    className: "layout"
-  }, /*#__PURE__*/React.createElement("aside", null, /*#__PURE__*/React.createElement("section", {
+    className: reading ? 'layout' : 'layout idle'
+  }, /*#__PURE__*/React.createElement("aside", null, !showComposer && /*#__PURE__*/React.createElement("section", {
+    className: "panel"
+  }, /*#__PURE__*/React.createElement("h2", {
+    style: {
+      marginBottom: 10
+    }
+  }, "Add a source"), /*#__PURE__*/React.createElement("p", {
+    className: "muted",
+    style: {
+      marginTop: 0
+    }
+  }, "Start a second experiment from another source whenever you want to compare."), /*#__PURE__*/React.createElement("button", {
+    className: "primary",
+    style: {
+      marginTop: 14
+    },
+    onClick: () => setComposerOpen(true)
+  }, "New experiment")), showComposer && /*#__PURE__*/React.createElement("section", {
     className: "panel"
   }, /*#__PURE__*/React.createElement("h2", null, "Add a source"), /*#__PURE__*/React.createElement("div", {
     className: "intake-grid",
@@ -583,7 +606,9 @@ export function SummaryLab({
     className: "muted"
   }, "Skip the five English sections and generate only the Korean interpretation."))), /*#__PURE__*/React.createElement("p", {
     className: "muted"
-  }, "Charlie retrieves the available transcript through your connected Mac, saves it, then starts the improved analysis in the selected language.")), /*#__PURE__*/React.createElement("label", {
+  }, "Charlie retrieves the available transcript through your connected Mac, saves it, then starts the improved analysis in the selected language.")), /*#__PURE__*/React.createElement("div", {
+    className: "field-pair"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
     htmlFor: "lab-title"
   }, "Experiment name"), /*#__PURE__*/React.createElement("input", {
     id: "lab-title",
@@ -591,7 +616,7 @@ export function SummaryLab({
     maxLength: 300,
     onChange: e => setTitle(e.target.value),
     placeholder: "MMM conference \xB7 first trial"
-  }), /*#__PURE__*/React.createElement("label", {
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
     htmlFor: "lab-focus"
   }, "Optional emphasis"), /*#__PURE__*/React.createElement("textarea", {
     id: "lab-focus",
@@ -600,7 +625,7 @@ export function SummaryLab({
     value: focus,
     onChange: e => setFocus(e.target.value),
     placeholder: "Preserve the segment detail and management\u2019s margin explanation."
-  }), /*#__PURE__*/React.createElement("p", {
+  }))), /*#__PURE__*/React.createElement("p", {
     className: "muted"
   }, "Thorough review makes several passes over the complete source. Long transcripts take longer and remain saved if you leave."), intake === 'audio' ? /*#__PURE__*/React.createElement("button", {
     className: "primary",
@@ -631,7 +656,7 @@ export function SummaryLab({
     }
   }, r.title, /*#__PURE__*/React.createElement("div", {
     className: "muted"
-  }, r.automatic ? 'Auto from SUMMARIES · ' : '', r.status === 'complete' ? 'Ready to review' : r.status === 'cancelled' ? 'Stopped' : r.status, " \xB7 ", new Date(r.created_at).toLocaleDateString()))))), /*#__PURE__*/React.createElement("section", {
+  }, r.automatic ? 'Auto from SUMMARIES · ' : '', r.status === 'complete' ? 'Ready to review' : r.status === 'cancelled' ? 'Stopped' : r.status, " \xB7 ", new Date(r.created_at).toLocaleDateString()))))), reading && /*#__PURE__*/React.createElement("section", {
     className: "panel"
   }, !row ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "eyebrow"
@@ -639,9 +664,9 @@ export function SummaryLab({
     style: {
       marginTop: 12
     }
-  }, id ? 'Loading experiment…' : 'Your next research note starts here'), /*#__PURE__*/React.createElement("p", null, "Add a saved Summary, document, recording, YouTube link or pasted transcript. Charlie generates Executive Brief, Key Takeaways, Meeting Summary, Follow-up Questions and Overall Assessment."), /*#__PURE__*/React.createElement("p", {
+  }, "Loading experiment\u2026"), /*#__PURE__*/React.createElement("p", {
     className: "muted"
-  }, "Audio and YouTube are transcribed first. Source ambiguities remain visible for review.")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+  }, "Reconnecting to the saved experiment.")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "eyebrow"
   }, row.version, " \xB7 ", row.model), /*#__PURE__*/React.createElement("h2", {
     style: {
