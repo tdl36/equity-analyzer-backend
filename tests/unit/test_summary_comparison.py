@@ -4,7 +4,7 @@ import sys
 import unittest
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
-from summary_comparison import SECTIONS, split_text, generate
+from summary_comparison import DIRECT_SOURCE_LIMIT, SECTIONS, split_text, generate
 
 class ComparisonTests(unittest.TestCase):
     def test_lossless_arbitrary_length_and_unicode(self):
@@ -49,13 +49,24 @@ class ComparisonTests(unittest.TestCase):
         self.assertEqual(state['coveredCharacters'],len(text))
 
     def test_hierarchical_synthesis_retains_all_detailed_parts(self):
+        # Consolidation is the fallback for a source too large to read whole;
+        # below DIRECT_SOURCE_LIMIT the sections read the source instead.
         def ask(s,m,t):
             if m.startswith('SOURCE PART'):return 'Detailed source record. '*1500
             return 'Consolidated evidence'
-        state=generate('Z'*100000,{},ask,lambda s:None)
+        source='Z'*(DIRECT_SOURCE_LIMIT+50000)
+        state=generate(source,{},ask,lambda s:None)
+        self.assertEqual(state['synthesisBasis'],'records')
         self.assertTrue(state['hierarchicalSynthesis'])
-        self.assertEqual(len(state['parts']),5)
+        self.assertEqual(len(state['parts']),len(split_text(source)))
         self.assertTrue(all(len(p['record'])>30000 for p in state['parts'].values()))
+
+    def test_a_source_that_fits_is_read_directly_without_consolidation(self):
+        def ask(s,m,t):
+            return 'Detailed source record.' if m.startswith('SOURCE PART') else 'Section prose'
+        state=generate('Z'*100000,{},ask,lambda s:None)
+        self.assertEqual(state['synthesisBasis'],'source')
+        self.assertFalse(state['hierarchicalSynthesis'])
 
     def test_completed_sections_not_replayed(self):
         state=generate('Meeting text',{},lambda *a:'Result',lambda s:None)

@@ -372,7 +372,7 @@ export function SummaryComparison({
     className: "cursor-pointer"
   }, "Source coverage and method"), /*#__PURE__*/React.createElement("p", {
     className: "mt-2"
-  }, (state.coveredCharacters || 0).toLocaleString(), " / ", (state.sourceCharacters || summary.rawNotes?.length || 0).toLocaleString(), " source characters processed. Full management records are retained. Interpretations are AI analysis, not independent verification or your own views. ", state.hierarchicalSynthesis ? 'Long-source synthesis uses consolidated evidence.' : ''), state.figureCoverage && /*#__PURE__*/React.createElement("p", {
+  }, (state.coveredCharacters || 0).toLocaleString(), " / ", (state.sourceCharacters || summary.rawNotes?.length || 0).toLocaleString(), " source characters processed. Full management records are retained. Interpretations are AI analysis, not independent verification or your own views. ", state.synthesisBasis === 'source' ? 'Every section was written from the complete original source, with the management record alongside it.' : state.synthesisBasis === 'records' ? 'This source is too large to read whole, so the sections were written from consolidated evidence records.' : ''), state.figureCoverage && /*#__PURE__*/React.createElement("p", {
     className: "mt-2"
   }, "Figure coverage: ", state.figureCoverage.checked, " distinct figures found in the source records", state.figureCoverage.missing?.length ? `; ${state.figureCoverage.missing.length} not carried into the note — ${state.figureCoverage.missing.join(', ')}. Check the management record before relying on the summary sections.` : '; all carried into the note.'), Object.keys(state.quoteRepairs || {}).length > 0 && /*#__PURE__*/React.createElement("p", {
     className: "mt-2"

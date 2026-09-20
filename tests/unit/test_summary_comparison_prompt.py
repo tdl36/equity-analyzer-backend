@@ -94,11 +94,12 @@ class GenerationCoverageTests(unittest.TestCase):
         summary_comparison.generate('A short transcript body.', state, ask, lambda _s: None)
         self.assertEqual(set(state['sections']), set(summary_comparison.SECTIONS))
         self.assertEqual(state['sections']['qa'], 'drafted')
-        # Record-derived sections are drafted from the evidence records; the
-        # Q&A log is drafted from the raw source parts instead.
+        # Every section is written from the complete source, with the records
+        # alongside it as a navigation aid.
         derived = [p for p in asked
                    if not p.startswith('SOURCE PART') and not p.startswith('Reproduce every question')]
         self.assertTrue(derived)
+        self.assertTrue(all('COMPLETE ORIGINAL SOURCE' in p for p in derived))
         self.assertTrue(all('evidence records' in p for p in derived))
 
 
@@ -316,3 +317,48 @@ class QaFromSourceTests(unittest.TestCase):
     def test_a_faithful_log_passes(self):
         log = '\n'.join(f'Q: real question {i}?\nA: answer {i}' for i in range(8))
         self.assertEqual(summary_comparison.qa_findings(log, self.SOURCE), '')
+
+
+class SourceFirstTests(unittest.TestCase):
+    """Sections used to be written from a topic-organised summary of the
+    source. That is what cost the Q&A log its exchanges."""
+
+    def sections_prompts(self, source):
+        seen = []
+
+        def ask(rules, prompt, tokens):
+            seen.append(prompt)
+            if prompt.startswith('SOURCE PART'):
+                return 'Topic record.'
+            if prompt.startswith('Reproduce every question'):
+                return 'NO EXCHANGES IN THIS PART'
+            return 'Section prose.'
+
+        state = {}
+        summary_comparison.generate(source, state, ask, lambda _s: None)
+        derived = [p for p in seen
+                   if not p.startswith('SOURCE PART') and not p.startswith('Reproduce every question')]
+        return state, derived
+
+    def test_a_normal_transcript_reaches_every_section_verbatim(self):
+        marker = 'Speaker 2: Is utilization visibility quarterly or month to month?'
+        state, derived = self.sections_prompts('Preamble. ' + marker + ' Speaker 1: A little of both.')
+        self.assertEqual(state['synthesisBasis'], 'source')
+        self.assertTrue(derived)
+        for prompt in derived:
+            self.assertIn(marker, prompt)
+
+    def test_an_oversized_source_falls_back_to_records_and_says_so(self):
+        state, derived = self.sections_prompts('word ' * 90000)
+        self.assertEqual(state['synthesisBasis'], 'records')
+        self.assertTrue(all('too large for direct synthesis' in p for p in derived))
+
+    def test_records_are_not_consolidated_when_the_source_is_read_directly(self):
+        # The reduction pass only exists to shrink records for synthesis.
+        state, _derived = self.sections_prompts('Speaker 1: Short transcript.')
+        self.assertFalse(state['hierarchicalSynthesis'])
+        self.assertEqual(state['reductions'], {})
+
+    def test_the_real_cah_transcript_size_is_read_directly(self):
+        # 37,453 characters; the largest of the last 60 sources was 213,720.
+        self.assertLess(213720, summary_comparison.DIRECT_SOURCE_LIMIT)
