@@ -11,13 +11,20 @@ import re
 import unittest
 from pathlib import Path
 
+import research_doctrine
+
 SOURCE = Path('app_v3.py').read_text()
 TREE = ast.parse(SOURCE)
 
 
 def constant(name):
-    """Evaluate a module-level constant, plus any earlier constant it builds on."""
-    namespace = {}
+    """Evaluate a module-level constant, plus any earlier constant it builds on.
+
+    Doctrine shared with Summary Lab now lives in research_doctrine, so the
+    prompts here are composed from imported names. Seed those, then let a local
+    definition win if app_v3 ever grows one again.
+    """
+    namespace = {n: getattr(research_doctrine, n) for n in dir(research_doctrine) if n.isupper()}
     for node in TREE.body:
         if not isinstance(node, ast.Assign):
             continue
@@ -30,6 +37,8 @@ def constant(name):
             continue
         if name in targets:
             return namespace[name]
+    if name in namespace:
+        return namespace[name]
     raise AssertionError(f'{name} is not a module-level constant')
 
 
