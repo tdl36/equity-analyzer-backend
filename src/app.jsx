@@ -92,7 +92,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-09-20T101';
+        const BUILD_VERSION = '2026-09-20T102';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -7607,19 +7607,20 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 return () => clearInterval(interval);
             }, [!!analysisProgress]);
 
-            // Scroll detection for scroll-to-top button
+            // Scroll detection for scroll-to-top button. Scroll events do not
+            // bubble but they do capture, so one document listener sees every
+            // view. This used to require the scrolling element to carry the
+            // Tailwind class overflow-y-auto, which silently excluded the
+            // workspaces styled with their own CSS -- Summary Lab among them.
             useEffect(() => {
-                const handleGlobalScroll = (e) => {
-                    const target = e.target;
-                    // Check if target is an element with overflow-y-auto class
-                    if (target && target.className && typeof target.className === 'string' && target.className.includes('overflow-y-auto')) {
-                        setShowScrollTop(target.scrollTop > 300);
-                        scrollContainerRef.current = target;
-                    }
+                const onAnyScroll = (e) => {
+                    const el = e.target;
+                    if (!el || el === document || typeof el.scrollTop !== 'number') return;
+                    scrollContainerRef.current = el;
+                    setShowScrollTop(el.scrollTop > 300);
                 };
-                
-                document.addEventListener('scroll', handleGlobalScroll, true);
-                return () => document.removeEventListener('scroll', handleGlobalScroll, true);
+                document.addEventListener('scroll', onAnyScroll, true);
+                return () => document.removeEventListener('scroll', onAnyScroll, true);
             }, []);
 
             // Pipeline polling - smart interval based on active jobs
