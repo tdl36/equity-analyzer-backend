@@ -5,6 +5,7 @@ var KOREAN_SECTION = ['korean', 'Korean Interpretation · 한국어 핵심 정�
 var sectionsForMode = mode => mode === 'korean_only' ? [KOREAN_SECTION] : mode === 'korean_bilingual' ? [...ENGLISH_SECTIONS, KOREAN_SECTION] : ENGLISH_SECTIONS;
 var INTAKES = [['saved', 'Saved Summary'], ['document', 'Document'], ['audio', 'Audio'], ['youtube', 'YouTube'], ['paste', 'Paste text']];
 var PENDING_KEY = 'charlie_summary_lab_pending_intake';
+var statusOf = r => r.status === 'complete' ? ['Ready to review', 'ok'] : r.status === 'cancelled' ? ['Stopped', 'off'] : r.status === 'failed' ? ['Failed', 'bad'] : r.status === 'queued' ? ['Queued', 'live'] : ['Running', 'live'];
 export function SummaryLab({
   api,
   getKey,
@@ -63,6 +64,9 @@ export function SummaryLab({
     return next;
   });
   var [composerOpen, setComposerOpen] = useState(false);
+  var [selected, setSelected] = useState([]),
+    [archivedView, setArchivedView] = useState(false);
+  var chosen = new Set(selected);
   var audioInput = useRef(null),
     monitoring = useRef('');
   // With no experiment open the composer is the whole job, so it gets the page.
@@ -86,7 +90,7 @@ export function SummaryLab({
     return d;
   }
   async function refreshLists() {
-    var [a, b] = await Promise.all([req('/sources'), req()]);
+    var [a, b] = await Promise.all([req('/sources'), req(archivedView ? '?archived=1' : '')]);
     setSources(a.sources);
     setRuns(b.experiments);
   }
@@ -94,7 +98,7 @@ export function SummaryLab({
     var active = true;
     async function load() {
       try {
-        var [a, b] = await Promise.all([req('/sources'), req()]);
+        var [a, b] = await Promise.all([req('/sources'), req(archivedView ? '?archived=1' : '')]);
         if (active) {
           setSources(a.sources);
           setRuns(b.experiments);
@@ -109,7 +113,7 @@ export function SummaryLab({
       active = false;
       clearInterval(t);
     };
-  }, [api]);
+  }, [api, archivedView]);
   useEffect(() => {
     if (!id) {
       setRow(null);
@@ -441,6 +445,33 @@ export function SummaryLab({
       setSending(false);
     }
   }
+  async function archiveSelected(restore = false) {
+    if (!selected.length) return;
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      var d = await req('/archive', {
+        ids: selected,
+        restore
+      });
+      var moved = (restore ? d.restored : d.archived) || [];
+      if (id && moved.includes(id)) {
+        setId('');
+        setRow(null);
+      }
+      setSelected([]);
+      setRuns(current => current.filter(r => !moved.includes(r.id)));
+      setNotice(`${moved.length} experiment${moved.length === 1 ? '' : 's'} ${restore ? 'restored' : 'archived'}. Nothing was deleted.`);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  function toggleChosen(rid) {
+    setSelected(current => current.includes(rid) ? current.filter(x => x !== rid) : [...current, rid]);
+  }
   async function copy(all = false, key = 'brief') {
     try {
       var items = all ? visibleSections.map(([k, l]) => [l, (sharing ? edits[k] : state.sections?.[k]) || '']) : [[visibleSections.find(s => s[0] === key)?.[1] || '', (sharing ? edits[key] : state.sections?.[key]) || '']];
@@ -474,9 +505,31 @@ export function SummaryLab({
   var canGenerate = intake === 'saved' && !!sid || (intake === 'paste' || intake === 'document') && !!source.trim();
   return /*#__PURE__*/React.createElement("main", {
     className: showSrc ? "summary-lab show-src" : "summary-lab"
-  }, /*#__PURE__*/React.createElement("style", null, `.summary-lab{box-sizing:border-box;--lab-border:rgba(153,142,119,.35);max-width:1500px;margin:0 auto;height:100%;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior-y:contain;padding:32px;color:var(--text-primary,#e9e2d3);width:100%;min-width:0}.summary-lab *{box-sizing:border-box}.summary-lab h1,.summary-lab h2{font-family:Georgia,serif;line-height:1.2}.summary-lab h1{font-size:38px;margin:8px 0 14px}.summary-lab h2{font-size:24px;margin:0 0 18px}.summary-lab p{line-height:1.65}.summary-lab .muted{opacity:.72;font-size:13px}.summary-lab .eyebrow{color:#c9a857;letter-spacing:.13em;text-transform:uppercase;font-size:11px}.summary-lab .layout{display:grid;grid-template-columns:330px minmax(0,1fr);gap:24px;margin-top:28px}.summary-lab .layout.idle{grid-template-columns:minmax(0,1fr);max-width:900px;margin-left:auto;margin-right:auto}.summary-lab .layout.idle .intake-grid{grid-template-columns:repeat(5,minmax(0,1fr))}.summary-lab .field-pair{display:grid;gap:0 18px}.summary-lab .layout.idle .field-pair{grid-template-columns:repeat(2,minmax(0,1fr))}.summary-lab .layout.idle .dropzone{padding:26px}.summary-lab .panel{border:1px solid var(--lab-border);border-radius:14px;padding:24px;background:rgba(127,115,89,.045);min-width:0}.summary-lab label{display:block;font-size:13px;margin:16px 0 6px}.summary-lab input,.summary-lab select,.summary-lab textarea{width:100%;padding:11px;border:1px solid var(--lab-border);border-radius:7px;background:var(--bg-secondary,#211e18);color:inherit;font:inherit;min-width:0}.summary-lab .check-row{display:flex;align-items:flex-start;gap:9px;margin:14px 0 0;line-height:1.45;cursor:pointer}.summary-lab .check-row.nested{margin:9px 0 0 26px}.summary-lab .check-row input[type=checkbox]{width:17px;height:17px;min-width:17px;margin:1px 0 0;padding:0;accent-color:#c9a857}.summary-lab select option{background:#211e18;color:#eee}.summary-lab button{padding:10px 14px;min-height:44px;border:1px solid var(--lab-border);border-radius:7px;font:inherit;cursor:pointer;background:transparent;color:inherit}.summary-lab button:focus-visible,.summary-lab input:focus-visible,.summary-lab textarea:focus-visible,.summary-lab select:focus-visible{outline:2px solid #c9a857;outline-offset:3px}.summary-lab button:disabled{opacity:.45;cursor:default}.summary-lab button.primary,.summary-lab button[aria-pressed=true]{background:#c9a857;color:#18150f}.summary-lab .controls{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.summary-lab .intake-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-bottom:16px}.summary-lab .intake-grid button{padding:8px;min-height:38px;font-size:12px}.summary-lab .dropzone{padding:18px;border:1px dashed var(--lab-border);border-radius:10px;text-align:center;background:rgba(201,168,87,.035)}.summary-lab .experiment{display:block;width:100%;text-align:left;margin:10px 0;overflow-wrap:anywhere}.summary-lab .reader{font-family:Calibri,Carlito,Arial,sans-serif;font-size:11pt;line-height:1.55;overflow-wrap:anywhere;max-width:94ch;background:#fff;color:#242424;padding:28px;border:1px solid #dedbd4;border-radius:4px}
+  }, /*#__PURE__*/React.createElement("style", null, `.summary-lab{box-sizing:border-box;--lab-border:var(--line,rgba(153,142,119,.35));--lab-accent:var(--accent,#c9a857);--lab-accent-ink:var(--accent-ink,#18150f);--lab-field:var(--surface,var(--bg-secondary,#211e18));--lab-paper:#fff;--lab-paper-ink:#242424;--lab-paper-line:#dedbd4;--lab-paper-faint:#8a8577;max-width:1500px;margin:0 auto;height:100%;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior-y:contain;padding:32px;color:var(--text-primary,#e9e2d3);width:100%;min-width:0}.summary-lab *{box-sizing:border-box}.summary-lab h1,.summary-lab h2{font-family:Georgia,serif;line-height:1.2}.summary-lab h1{font-size:38px;margin:8px 0 14px}.summary-lab h2{font-size:24px;margin:0 0 18px}.summary-lab p{line-height:1.65}.summary-lab .muted{opacity:.72;font-size:13px}.summary-lab .eyebrow{color:var(--lab-accent);letter-spacing:.13em;text-transform:uppercase;font-size:11px}.summary-lab .layout{display:grid;grid-template-columns:330px minmax(0,1fr);gap:24px;margin-top:28px}.summary-lab .layout.idle{grid-template-columns:minmax(0,1fr);max-width:900px;margin-left:auto;margin-right:auto}.summary-lab .layout.idle .intake-grid{grid-template-columns:repeat(5,minmax(0,1fr))}.summary-lab .field-pair{display:grid;gap:0 18px}.summary-lab .layout.idle .field-pair{grid-template-columns:repeat(2,minmax(0,1fr))}.summary-lab .layout.idle .dropzone{padding:26px}.summary-lab .panel{border:1px solid var(--lab-border);border-radius:14px;padding:24px;background:rgba(127,115,89,.045);min-width:0}.summary-lab label{display:block;font-size:13px;margin:16px 0 6px}.summary-lab input,.summary-lab select,.summary-lab textarea{width:100%;padding:11px;border:1px solid var(--lab-border);border-radius:7px;background:var(--lab-field);color:inherit;font:inherit;min-width:0}.summary-lab .check-row{display:flex;align-items:flex-start;gap:9px;margin:14px 0 0;line-height:1.45;cursor:pointer}.summary-lab .check-row.nested{margin:9px 0 0 26px}.summary-lab .check-row input[type=checkbox]{width:17px;height:17px;min-width:17px;margin:1px 0 0;padding:0;accent-color:var(--lab-accent)}.summary-lab select option{background:var(--lab-field);color:var(--text-primary,#e9e2d3)}.summary-lab button{padding:10px 14px;min-height:44px;border:1px solid var(--lab-border);border-radius:7px;font:inherit;cursor:pointer;background:transparent;color:inherit}.summary-lab button:focus-visible,.summary-lab input:focus-visible,.summary-lab textarea:focus-visible,.summary-lab select:focus-visible{outline:2px solid var(--lab-accent);outline-offset:3px}.summary-lab button:disabled{opacity:.45;cursor:default}.summary-lab button.primary,.summary-lab button[aria-pressed=true]{background:var(--lab-accent);color:var(--lab-accent-ink)}.summary-lab .controls{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.summary-lab .intake-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-bottom:16px}.summary-lab .intake-grid button{padding:8px;min-height:38px;font-size:12px}.summary-lab .dropzone{padding:18px;border:1px dashed var(--lab-border);border-radius:10px;text-align:center;background:color-mix(in srgb,var(--lab-accent) 4%,transparent)}.summary-lab .experiment{display:block;width:100%;text-align:left;margin:10px 0;overflow-wrap:anywhere}
+.summary-lab .layout.reading{grid-template-columns:minmax(0,1fr)}
+.summary-lab .layout.reading>section,.summary-lab .layout.reading>aside{max-width:1120px;margin-left:auto;margin-right:auto;width:100%}
+.summary-lab .commandbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:18px;padding:10px 12px;border:1px solid var(--lab-border);border-radius:12px;background:color-mix(in srgb,var(--lab-accent) 4%,transparent)}
+.summary-lab .commandbar select{flex:1 1 260px;width:auto;min-height:44px}
+.summary-lab .visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.summary-lab .panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.summary-lab button.quiet{min-height:36px;padding:6px 10px;font-size:12px;border-color:transparent;opacity:.8}
+.summary-lab button.quiet:hover{opacity:1;border-color:var(--lab-border)}
+.summary-lab .controls.selection{align-items:center;padding:10px 12px;border:1px solid var(--lab-accent);border-radius:10px;background:color-mix(in srgb,var(--lab-accent) 8%,transparent)}
+.summary-lab ul.experiments{list-style:none;margin:0;padding:0}
+.summary-lab ul.experiments li{display:flex;align-items:center;gap:10px;margin:8px 0;border-radius:10px;padding:2px}
+.summary-lab ul.experiments li.chosen{background:color-mix(in srgb,var(--lab-accent) 10%,transparent)}
+.summary-lab ul.experiments input[type=checkbox]{width:17px;height:17px;min-width:17px;accent-color:var(--lab-accent);margin:0 0 0 6px}
+.summary-lab ul.experiments .experiment{margin:0;display:grid;gap:6px;border-color:transparent}
+.summary-lab ul.experiments .experiment:hover{border-color:var(--lab-border)}
+.summary-lab .experiment-title{line-height:1.4}
+.summary-lab .meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px}
+.summary-lab .chip{font-size:10px;letter-spacing:.09em;text-transform:uppercase;padding:3px 7px;border-radius:999px;border:1px solid currentColor;white-space:nowrap}
+.summary-lab .chip.ok{color:var(--pos,#7fae7a)}
+.summary-lab .chip.live{color:var(--lab-accent)}
+.summary-lab .chip.off{color:var(--muted,#9b9384)}
+.summary-lab .chip.bad{color:var(--neg,#c4776b)}.summary-lab .reader{font-family:Calibri,Carlito,Arial,sans-serif;font-size:11pt;line-height:1.55;overflow-wrap:anywhere;max-width:94ch;background:var(--lab-paper);color:var(--lab-paper-ink);padding:28px;border:1px solid var(--lab-paper-line);border-radius:4px;margin-left:auto;margin-right:auto}
 .summary-lab sup.src{display:none}
-.summary-lab.show-src sup.src{display:inline;font-size:9px;font-weight:700;letter-spacing:.04em;color:#8a8577;margin-left:1px;vertical-align:super;line-height:0}.summary-lab .reader h1,.summary-lab .reader h2,.summary-lab .reader h3,.summary-lab .reader h4{font:700 11pt/1.5 Calibri,Carlito,Arial,sans-serif;margin:20px 0 8px}.summary-lab .reader p{margin:0 0 12px;line-height:1.55}.summary-lab .reader ul,.summary-lab .reader ol{padding-left:23px;margin:10px 0 16px}.summary-lab .reader li{margin:6px 0}.summary-lab .reader blockquote{border-left:3px solid #b9af94;padding-left:14px;margin:14px 0}.summary-lab .reader table{display:block;max-width:100%;overflow:auto;border-collapse:collapse}.summary-lab .reader th,.summary-lab .reader td{border:1px solid #ddd;padding:7px 9px;text-align:left}.summary-lab .email-editor{font:11pt/1.5 Calibri,Carlito,Arial,sans-serif;min-height:220px}.summary-lab .pair{display:grid;gap:24px;grid-template-columns:repeat(2,minmax(0,1fr))}.summary-lab .status{padding:14px;border-left:3px solid #c9a857;background:rgba(201,168,87,.08);margin:16px 0;overflow-wrap:anywhere}.summary-lab details.lab-section{border:1px solid var(--lab-border);border-radius:10px;margin:12px 0;padding:0;overflow:hidden}.summary-lab details.lab-section>summary{list-style:none;cursor:pointer;padding:16px 18px;display:flex;justify-content:space-between;align-items:center;gap:12px;background:rgba(127,115,89,.04)}.summary-lab details.lab-section>summary::-webkit-details-marker{display:none}.summary-lab .section-body{padding:18px}.summary-lab .chevron{display:inline-block;transition:transform .18s ease}.summary-lab details[open] .chevron{transform:rotate(90deg)}.summary-lab details.audit{border-top:1px solid var(--lab-border);padding:16px 0;margin-top:16px}.summary-lab pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.7}.summary-lab .original{overflow-wrap:anywhere;line-height:1.8}.summary-lab .original table{display:block;overflow:auto;max-width:100%}@media(max-width:900px){.summary-lab{padding:18px 18px 112px}.summary-lab .layout,.summary-lab .pair{grid-template-columns:1fr}.summary-lab .layout.idle{max-width:none}.summary-lab .layout.idle .intake-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.summary-lab .layout.idle .field-pair{grid-template-columns:1fr}.summary-lab h1{font-size:30px}.summary-lab .panel{padding:18px}.summary-lab .reader{padding:20px}.summary-lab .intake-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:600px){.summary-lab{padding:10px 8px 112px}.summary-lab .panel{padding:14px 10px}.summary-lab .reader{padding:16px 12px}.summary-lab .section-body{padding:12px 8px}.summary-lab details.lab-section>summary{padding:12px 12px}.summary-lab h1{font-size:26px}.summary-lab .status{padding:12px 10px}.summary-lab details.audit{padding:12px 0}}`), /*#__PURE__*/React.createElement("div", {
+.summary-lab.show-src sup.src{display:inline;font-size:9px;font-weight:700;letter-spacing:.04em;color:var(--lab-paper-faint);margin-left:1px;vertical-align:super;line-height:0}.summary-lab .reader h1,.summary-lab .reader h2,.summary-lab .reader h3,.summary-lab .reader h4{font:700 11pt/1.5 Calibri,Carlito,Arial,sans-serif;margin:20px 0 8px}.summary-lab .reader p{margin:0 0 12px;line-height:1.55}.summary-lab .reader ul,.summary-lab .reader ol{padding-left:23px;margin:10px 0 16px}.summary-lab .reader li{margin:6px 0}.summary-lab .reader blockquote{border-left:3px solid var(--lab-paper-faint);padding-left:14px;margin:14px 0}.summary-lab .reader table{display:block;max-width:100%;overflow:auto;border-collapse:collapse}.summary-lab .reader th,.summary-lab .reader td{border:1px solid var(--lab-paper-line);padding:7px 9px;text-align:left}.summary-lab .email-editor{font:11pt/1.5 Calibri,Carlito,Arial,sans-serif;min-height:220px}.summary-lab .pair{display:grid;gap:24px;grid-template-columns:repeat(2,minmax(0,1fr))}.summary-lab .status{padding:14px;border-left:3px solid var(--lab-accent);background:color-mix(in srgb,var(--lab-accent) 9%,transparent);margin:16px 0;overflow-wrap:anywhere}.summary-lab details.lab-section{border:1px solid var(--lab-border);border-radius:10px;margin:12px 0;padding:0;overflow:hidden}.summary-lab details.lab-section>summary{list-style:none;cursor:pointer;padding:16px 18px;display:flex;justify-content:space-between;align-items:center;gap:12px;background:rgba(127,115,89,.04)}.summary-lab details.lab-section>summary::-webkit-details-marker{display:none}.summary-lab .section-body{padding:18px}.summary-lab .chevron{display:inline-block;transition:transform .18s ease}.summary-lab details[open] .chevron{transform:rotate(90deg)}.summary-lab details.audit{border-top:1px solid var(--lab-border);padding:16px 0;margin-top:16px}.summary-lab pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.7}.summary-lab .original{overflow-wrap:anywhere;line-height:1.8}.summary-lab .original table{display:block;overflow:auto;max-width:100%}@media(max-width:900px){.summary-lab{padding:18px 18px 112px}.summary-lab .layout,.summary-lab .pair{grid-template-columns:1fr}.summary-lab .layout.idle{max-width:none}.summary-lab .layout.idle .intake-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.summary-lab .layout.idle .field-pair{grid-template-columns:1fr}.summary-lab h1{font-size:30px}.summary-lab .panel{padding:18px}.summary-lab .reader{padding:20px}.summary-lab .intake-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:600px){.summary-lab{padding:10px 8px 112px}.summary-lab .panel{padding:14px 10px}.summary-lab .reader{padding:16px 12px}.summary-lab .section-body{padding:12px 8px}.summary-lab details.lab-section>summary{padding:12px 12px}.summary-lab h1{font-size:26px}.summary-lab .status{padding:12px 10px}.summary-lab details.audit{padding:12px 0}}`), /*#__PURE__*/React.createElement("div", {
     className: "eyebrow"
   }, "Charlie / Research experiments"), /*#__PURE__*/React.createElement("h1", null, "Summary Lab"), /*#__PURE__*/React.createElement("p", null, "Read thoroughly. Preserve what was said. Separate what it means."), /*#__PURE__*/React.createElement("p", {
     className: "muted"
@@ -492,24 +545,33 @@ export function SummaryLab({
   }, /*#__PURE__*/React.createElement("strong", null, ingest.label), /*#__PURE__*/React.createElement("div", null, ingest.progress || ingest.phase), /*#__PURE__*/React.createElement("p", {
     className: "muted"
   }, "You can leave this page. Charlie keeps the saved job and Summary Lab reconnects when you return.")), /*#__PURE__*/React.createElement("div", {
-    className: reading ? 'layout' : 'layout idle'
-  }, /*#__PURE__*/React.createElement("aside", null, !showComposer && /*#__PURE__*/React.createElement("section", {
-    className: "panel"
-  }, /*#__PURE__*/React.createElement("h2", {
-    style: {
-      marginBottom: 10
+    className: reading ? 'layout reading' : 'layout idle'
+  }, /*#__PURE__*/React.createElement("aside", null, reading && /*#__PURE__*/React.createElement("div", {
+    className: "commandbar"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setId('');
+      setRow(null);
+      setNotice('');
     }
-  }, "Add a source"), /*#__PURE__*/React.createElement("p", {
-    className: "muted",
-    style: {
-      marginTop: 0
+  }, "\u2190 All experiments"), /*#__PURE__*/React.createElement("label", {
+    className: "visually-hidden",
+    htmlFor: "lab-switch"
+  }, "Open experiment"), /*#__PURE__*/React.createElement("select", {
+    id: "lab-switch",
+    value: id,
+    onChange: e => {
+      setId(e.target.value);
+      setNotice('');
     }
-  }, "Start a second experiment from another source whenever you want to compare."), /*#__PURE__*/React.createElement("button", {
-    className: "primary",
-    style: {
-      marginTop: 14
-    },
-    onClick: () => setComposerOpen(true)
+  }, !runs.some(r => r.id === id) && /*#__PURE__*/React.createElement("option", {
+    value: id
+  }, row?.title || 'This experiment'), runs.map(r => /*#__PURE__*/React.createElement("option", {
+    key: r.id,
+    value: r.id
+  }, r.title, " \u2014 ", statusOf(r)[0]))), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setComposerOpen(open => !open),
+    "aria-pressed": composerOpen
   }, "New experiment")), showComposer && /*#__PURE__*/React.createElement("section", {
     className: "panel"
   }, /*#__PURE__*/React.createElement("h2", null, "Add a source"), /*#__PURE__*/React.createElement("div", {
@@ -659,24 +721,72 @@ export function SummaryLab({
     className: "primary",
     disabled: busy || importing || !canGenerate,
     onClick: start
-  }, busy ? 'Starting…' : 'Generate all five sections')), /*#__PURE__*/React.createElement("section", {
+  }, busy ? 'Starting…' : 'Generate all five sections')), !reading && /*#__PURE__*/React.createElement("section", {
     className: "panel",
     style: {
       marginTop: 20
     }
-  }, /*#__PURE__*/React.createElement("h2", null, "Experiments"), !runs.length && /*#__PURE__*/React.createElement("p", {
-    className: "muted"
-  }, "Your experiments will appear here."), runs.map(r => /*#__PURE__*/React.createElement("button", {
-    className: "experiment",
-    "aria-pressed": id === r.id,
-    key: r.id,
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "panel-head"
+  }, /*#__PURE__*/React.createElement("h2", {
+    style: {
+      margin: 0
+    }
+  }, archivedView ? 'Archived' : 'Experiments'), /*#__PURE__*/React.createElement("button", {
+    className: "quiet",
+    "aria-pressed": archivedView,
     onClick: () => {
-      setId(r.id);
+      setArchivedView(v => !v);
+      setSelected([]);
       setNotice('');
     }
-  }, r.title, /*#__PURE__*/React.createElement("div", {
+  }, archivedView ? 'Show active' : 'Show archived')), !runs.length && /*#__PURE__*/React.createElement("p", {
     className: "muted"
-  }, r.automatic ? 'Auto from SUMMARIES · ' : '', r.status === 'complete' ? 'Ready to review' : r.status === 'cancelled' ? 'Stopped' : r.status, " \xB7 ", new Date(r.created_at).toLocaleDateString()))))), reading && /*#__PURE__*/React.createElement("section", {
+  }, archivedView ? 'Nothing archived.' : 'Your experiments will appear here.'), !!selected.length && /*#__PURE__*/React.createElement("div", {
+    className: "controls selection",
+    role: "status"
+  }, /*#__PURE__*/React.createElement("span", null, selected.length, " selected"), /*#__PURE__*/React.createElement("button", {
+    disabled: busy,
+    onClick: () => archiveSelected(archivedView)
+  }, archivedView ? 'Restore' : 'Archive'), /*#__PURE__*/React.createElement("button", {
+    className: "quiet",
+    onClick: () => setSelected([])
+  }, "Clear")), !!runs.length && /*#__PURE__*/React.createElement("p", {
+    className: "muted",
+    style: {
+      marginTop: 0
+    }
+  }, "Archiving hides an experiment. The saved Summary, its transcript and the iCloud original stay untouched."), /*#__PURE__*/React.createElement("ul", {
+    className: "experiments"
+  }, runs.map(r => {
+    var [label, tone] = statusOf(r);
+    return /*#__PURE__*/React.createElement("li", {
+      key: r.id,
+      className: chosen.has(r.id) ? 'chosen' : ''
+    }, /*#__PURE__*/React.createElement("input", {
+      type: "checkbox",
+      checked: chosen.has(r.id),
+      onChange: () => toggleChosen(r.id),
+      "aria-label": `Select ${r.title}`
+    }), /*#__PURE__*/React.createElement("button", {
+      className: "experiment",
+      "aria-pressed": id === r.id,
+      onClick: () => {
+        setId(r.id);
+        setNotice('');
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "experiment-title"
+    }, r.title), /*#__PURE__*/React.createElement("span", {
+      className: "meta"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: 'chip ' + tone
+    }, label), r.automatic && /*#__PURE__*/React.createElement("span", {
+      className: "muted"
+    }, "Auto from SUMMARIES"), /*#__PURE__*/React.createElement("span", {
+      className: "muted"
+    }, new Date(r.created_at).toLocaleDateString()))));
+  })))), reading && /*#__PURE__*/React.createElement("section", {
     className: "panel"
   }, !row ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "eyebrow"

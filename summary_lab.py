@@ -304,6 +304,7 @@ def create_blueprint(get_db):
                     ON summary_lab_experiments(summary_id,source_hash,version,output_mode)
                     WHERE automatic AND summary_id IS NOT NULL''')
                 cur.execute('ALTER TABLE summary_lab_experiments ADD COLUMN IF NOT EXISTS cancel_requested BOOLEAN NOT NULL DEFAULT FALSE')
+                cur.execute('ALTER TABLE summary_lab_experiments ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ')
                 # One experiment per completed transcription job. The pending job
                 # lives in localStorage, so every tab and every reload resumes the
                 # same job and asked for its own run of identical paid work.
@@ -382,6 +383,7 @@ def create_blueprint(get_db):
         with get_db() as (_,cur):
             cur.execute("""SELECT id FROM summary_lab_experiments
                 WHERE automatic AND recovery_enabled AND status IN ('queued','running')
+                  AND archived_at IS NULL
                   AND updated_at<NOW()-INTERVAL '3 minutes' AND recovery_attempts<3
                 ORDER BY updated_at LIMIT 10""")
             jobs=[row['id'] for row in cur.fetchall()]
@@ -417,8 +419,11 @@ def create_blueprint(get_db):
     def listing():
         ensure()
         with get_db() as (_,cur):
-            cur.execute('SELECT id,title,status,error,version,model,summary_id,output_mode,automatic,created_at,updated_at FROM summary_lab_experiments ORDER BY created_at DESC')
-            return jsonify(experiments=[dict(r) for r in cur.fetchall()])
+            archived = request.args.get('archived') == '1'
+            cur.execute('SELECT id,title,status,error,version,model,summary_id,output_mode,automatic,archived_at,created_at,updated_at'
+                        ' FROM summary_lab_experiments WHERE archived_at IS ' + ('NOT NULL' if archived else 'NULL') +
+                        ' ORDER BY created_at DESC')
+            return jsonify(experiments=[dict(r) for r in cur.fetchall()], archived=archived)
 
     @bp.get('/api/summary-lab/<jid>')
     def detail(jid):
@@ -545,6 +550,35 @@ def create_blueprint(get_db):
                     ('Stopped at your request. No run was in progress; completed stages are saved.', jid))
             return jsonify(stopping=True, stopped=True)
         return jsonify(stopping=True, stopped=False)
+
+    @bp.post('/api/summary-lab/archive')
+    def archive():
+        """Hide experiments from the list, keeping every record recoverable.
+
+        Nothing is deleted: the saved Summary, its transcript and the iCloud
+        original are untouched, and a restore brings the row straight back.
+        """
+        ensure(); body=request.get_json(silent=True) or {}
+        ids=body.get('ids'); restore=bool(body.get('restore'))
+        if not isinstance(ids,list) or not 1<=len(ids)<=100:
+            return jsonify(error='Choose between 1 and 100 experiments.'),400
+        if not all(isinstance(x,str) and x.strip() and len(x)<=100 for x in ids):
+            return jsonify(error='Experiment references must be text.'),400
+        ids=list(dict.fromkeys(ids))
+        if restore:
+            with get_db(commit=True) as (_,cur):
+                cur.execute("""UPDATE summary_lab_experiments SET archived_at=NULL, updated_at=NOW()
+                    WHERE id=ANY(%s) AND archived_at IS NOT NULL RETURNING id""", (ids,))
+                return jsonify(restored=[r['id'] for r in cur.fetchall()])
+        # A live worker keeps writing to its row. Archiving it would hide an
+        # experiment that is still spending money, so it must be stopped first.
+        live=[jid for jid in ids if worker_is_live(jid)]
+        if live:
+            return jsonify(error='Stop the running experiment before archiving it.', running=live),409
+        with get_db(commit=True) as (_,cur):
+            cur.execute("""UPDATE summary_lab_experiments SET archived_at=NOW(), updated_at=NOW()
+                WHERE id=ANY(%s) AND archived_at IS NULL RETURNING id""", (ids,))
+            return jsonify(archived=[r['id'] for r in cur.fetchall()])
 
     @bp.post('/api/summary-lab/<jid>/retry')
     def retry(jid):
