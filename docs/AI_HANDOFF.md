@@ -4,13 +4,13 @@ Updated: September 20, 2026
 
 ## Start here
 
-Charlie production is currently **T91** at commit **`7cec6ce5504ce1b379ba6c5de1357f242b883b32`** on `main`.
+Charlie production is currently **T92** at commit **`c0da9ef5ec500a10ee5ecf1fd6f7b35c63c60ff6`** on `main`.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T91`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T92`
 - Backend health: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`
 - Branch: `main`
-- Backend health was verified on September 20 and reported the T91 commit above.
+- Backend health was verified on September 20 and reported the T92 commit above.
 - The Mac launch agent `com.charlie.local-agent` was restarted during T82 because `charlie_local_agent.py` changed. T83 is frontend-only and did not require another restart.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files. Do not clean the repository.
@@ -35,6 +35,42 @@ The design standard is institutional: concise hierarchy, readable outputs, defen
 | Production deployment | Push to `main` triggers Render backend deployment. Cloudflare frontend deployment is explicit through Wrangler. |
 
 ## Latest production changes
+
+### T92 — the Q&A log is read from the source, not from a summary of it
+
+Commit: `c0da9ef` — `Build the Q&A log from the source, not from a summary of it`
+
+The user compared the Improved Q&A log against the Original's and supplied the full
+transcript. The Original captures essentially every exchange; Improved captured 10, labelled
+most "(Implied)", and stated the source was management commentary rather than a
+question-and-answer transcript. Both claims are false — the questions are verbatim in the
+transcript from Speakers 2 and 3.
+
+**This was a data-flow bug, not a prompt problem.** Every section including the Q&A log was
+drafted from the evidence records, which are organised by topic and discard exchanges.
+Measured on the saved note: the source has roughly 17 question turns, while the 15,265
+characters of records retained **4 question marks and zero `Q:` markers**. The section was
+asked to reproduce exchanges it was never shown, and — correctly forbidden from inventing
+them — reported them as implied.
+
+- The Q&A log is now generated per raw source part, checkpointed like the evidence records
+  and joined in order. Parts containing no exchange are omitted.
+- The instruction forbids describing a present question as implied or claiming the source
+  lacks a Q&A structure.
+- `qa_findings()` flags both a collapsed log and one that disclaims questions in a
+  question-rich source.
+
+Cost: one extra model call per source part, only for the Q&A section.
+
+**Lesson:** a section whose job is fidelity to the source cannot be built from a summary of
+the source. `brief`, `takeaways`, `assessment` and `questions` are syntheses and are
+correctly record-derived; `qa` is a record and is not. Any future section should be
+classified that way before it is wired up.
+
+Validation: 593 backend tests, 46 frontend tests, production build, Render revision and
+Cloudflare marker verified. **Unproven:** no note generated under `qa-from-source-v6`. The
+check is whether the Q&A log reaches roughly the Original's exchange count with no "implied"
+labels.
 
 ### T91 — assessment stops transcribing, and dropped figures are caught
 
@@ -535,9 +571,9 @@ Use `py_compile` for every touched Python module. Do not start paid research, se
 
 Current release markers must stay synchronized:
 
-- `worker.js`: `2026-09-20T91`
-- `service-worker.js`: `20260920-91`
-- `src/app.jsx`: `2026-09-20T91`
+- `worker.js`: `2026-09-20T92`
+- `service-worker.js`: `20260920-92`
+- `src/app.jsx`: `2026-09-20T92`
 
 After an application change:
 
@@ -560,7 +596,7 @@ Render may return transient 502 responses while rolling forward. Wait for `/heal
 
 ## Repository state warning
 
-At this handoff, `main` is committed through `7cec6ce`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
+At this handoff, `main` is committed through `c0da9ef`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
 
 - `.claude/settings.local.json`
 - `.omc/**`
@@ -574,7 +610,7 @@ Always inspect `git status --short`, stage an explicit allowlist, and review `gi
 
 ## Suggested first Claude Code instruction
 
-> Continue Charlie from production commit `7cec6ce` and release T91. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
+> Continue Charlie from production commit `c0da9ef` and release T92. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
 
 ## Relevant deeper documentation
 
