@@ -1644,6 +1644,41 @@ def _should_fan_out_summary_lab(origin):
     return (origin or '').strip().lower() == SUMMARIES_FOLDER_ORIGIN
 
 
+# Ported from the Improved pipeline. The original Summary prompt already
+# carries the stronger fidelity apparatus — source-type classification,
+# transcript-correction buckets, no quantitative tightening, segment
+# attribution, quote discipline, a self-check and a hallucination guard — so
+# only these epistemic rules were worth taking from it. They exist because the
+# assessment prompts asked for an "UNFILTERED" take, told the model not to
+# hedge, and explicitly requested a credibility rating, which produced an
+# invented "8.5/10" score and psychology read out of a deflecting joke.
+RESEARCH_DOCTRINE = """EVIDENCE DISCIPLINE — these rules override any instruction above to be candid, unfiltered or opinionated.
+- Separate what was said from what you conclude. Attribute every claim to its speaker; a statement is not verification. Label your own judgment as judgment, name the statement it rests on, and state its limit.
+- Never infer psychology, motive, private assurance, morale or emotional state. A joke, a deflection, a hedge or a disfluency is not evidence of feeling. Describe posture only by quoting the words actually used.
+- Never assign a numerical credibility, confidence or quality score, and never rate anything out of ten. Say instead what is well supported by the source, what rests on assertion alone, and why.
+- No prior thesis, model or consensus estimate is supplied to you. Do not claim novelty, a change versus expectations, a consensus difference, a beat or a miss, or thesis confirmation — you have no baseline and cannot know these.
+- Missing quantification is not evasion. Record an unanswered question as unanswered without inferring why it went unanswered."""
+
+
+ASSESSMENT_INSTRUCTION = """You are a sharp, experienced advisor giving your candid assessment of this call, meeting, or conversation.
+
+This is NOT a summary — the summary is generated separately. Give your honest read on how it went. Be direct and specific: name the weak answers and the strong ones, and point to the words that make them so.
+
+Cover whichever of these are relevant:
+- **Overall assessment:** How did it go? Productive, a waste of time, or in between?
+- **Quality of answers:** Substantive or vague? Call out specific weak and strong answers.
+- **Evasions, non-answers and contradictions:** Where was a question not answered, answered around, or answered inconsistently with something else said? Quote the wording that shows it.
+- **Flow and dynamics:** Well-structured? Off-track? Who drove the conversation?
+- **What was most effective:** What landed? What was the strongest point made?
+- **What could have been better:** What should have been asked but wasn't?
+- **Evidence quality:** Which claims are well supported by what was actually said, and which rest on assertion alone?
+- **Bottom line:** One sentence on your overall take.
+
+Write as an honest debrief to a colleague. Be direct, and do not manufacture confidence the source does not support.
+
+""" + RESEARCH_DOCTRINE
+
+
 def _queue_summary_lab(summary_id, api_key=None):
     """Fan a saved transcript into the independent Summary Lab workflow."""
     try:
@@ -1704,11 +1739,7 @@ def _run_podcast_fullsummary_job(job_id, episode_id, api_key):
             "Use: <h2>Section Title</h2>, <p><strong>Topic:</strong> Description text here.</p>, <ul><li>Sub-point</li></ul>\n"
             "Organize into 3-6 logical sections."
         )
-        assessment_instruction = (
-            "You are a sharp, experienced advisor giving your CANDID, UNFILTERED assessment of this podcast. "
-            "Cover: overall quality, credibility of claims, red flags, what landed, what was missed, bottom line.\n"
-            "Be conversational and direct. Don't hedge.\n" + html_format
-        )
+        assessment_instruction = ASSESSMENT_INSTRUCTION + "\n\n" + html_format
 
         try:
             summary_result = _call_llm_stream_with_retry(
@@ -6343,23 +6374,7 @@ Return raw HTML only. No markdown. No code fences. Use: <ol><li>Question?</li></
             return jsonify({'error': 'Use the standard webhook for standard mode'}), 400
 
         # Assessment instruction — Claude's candid, opinionated analysis
-        assessment_instruction = f"""You are a sharp, experienced advisor giving your CANDID, UNFILTERED assessment of this call, meeting, or conversation.
-
-This is NOT a summary — the summary is generated separately. Your job is to provide your HONEST OPINION on how things went. Be direct, opinionated, and don't sugarcoat.
-
-Cover whichever of these are relevant:
-- **Overall assessment:** How did the call/meeting/conversation go? Was it productive, a waste of time, or somewhere in between?
-- **Quality of answers:** Were the responses substantive and credible, or vague and evasive? Call out specific weak or strong answers.
-- **Red flags / BS detection:** Did anyone dodge questions, give rehearsed non-answers, contradict themselves, or seem disingenuous? Be specific about what raised your suspicion and why.
-- **Meeting flow and dynamics:** Was it well-structured? Did it go off-track? Was there tension or alignment? Who drove the conversation?
-- **What was most effective:** What landed well? What was the strongest point made?
-- **What could have been better:** What questions should have been asked but weren't? What was left on the table?
-- **Credibility assessment:** Do you believe what was said? Rate the overall credibility of the key claims.
-- **Bottom line:** One sentence on your overall take.
-
-Be conversational and direct — write as if you're giving your honest debrief to a colleague after walking out of the meeting. Don't hedge. If something was weak, say it was weak. If someone was impressive, say so.
-
-{html_format}"""
+        assessment_instruction = ASSESSMENT_INSTRUCTION + "\n\n" + html_format
 
         # Meeting Summary instruction — narrative topic-grouped summary (distinct from Key Takeaways)
         meeting_summary_instruction = f"""Generate a clear, well-structured narrative summary of the following notes/transcript.
@@ -6460,23 +6475,7 @@ Use EXACTLY this HTML structure:
 - Separate paragraphs with <p> tags. Do NOT use <br> tags.
 - Do NOT wrap in code blocks. Start directly with HTML tags."""
 
-        assessment_instruction = f"""You are a sharp, experienced advisor giving your CANDID, UNFILTERED assessment of this call, meeting, or conversation.
-
-This is NOT a summary — the summary is generated separately. Your job is to provide your HONEST OPINION on how things went. Be direct, opinionated, and don't sugarcoat.
-
-Cover whichever of these are relevant:
-- **Overall assessment:** How did the call/meeting/conversation go? Was it productive, a waste of time, or somewhere in between?
-- **Quality of answers:** Were the responses substantive and credible, or vague and evasive? Call out specific weak or strong answers.
-- **Red flags / BS detection:** Did anyone dodge questions, give rehearsed non-answers, contradict themselves, or seem disingenuous? Be specific about what raised your suspicion and why.
-- **Meeting flow and dynamics:** Was it well-structured? Did it go off-track? Was there tension or alignment? Who drove the conversation?
-- **What was most effective:** What landed well? What was the strongest point made?
-- **What could have been better:** What questions should have been asked but weren't? What was left on the table?
-- **Credibility assessment:** Do you believe what was said? Rate the overall credibility of the key claims.
-- **Bottom line:** One sentence on your overall take.
-
-Be conversational and direct — write as if you're giving your honest debrief to a colleague after walking out of the meeting. Don't hedge. If something was weak, say it was weak. If someone was impressive, say so.
-
-{html_format}"""
+        assessment_instruction = ASSESSMENT_INSTRUCTION + "\n\n" + html_format
 
         def call_llm(system, user_text):
             if keys.get('gemini'):
@@ -7927,6 +7926,8 @@ NEVER write "(verbatim: ...)", "(source: ...)", "(quote: ...)" or any meta tag e
 HALLUCINATION GUARD RAIL
 Before returning, scan output for every named entity (person, product, drug, ticker, peer, geography) and every number. Each must trace to the source. If not, either remove or silently drop — do not flag unverified items with brackets or notes that expose AI processing.
 
+{RESEARCH_DOCTRINE}
+
 OUTPUT FORMAT: raw HTML only. No markdown. No code fences.{thesis_addendum}"""
 
         summary_html = ''
@@ -8059,10 +8060,7 @@ Organize into 3-6 logical sections (e.g., Business Update, Strategic Priorities,
                 questions_html = ''
 
         # Assessment — candid advisor take (same as audio path)
-        assessment_instruction = """You are a sharp, experienced advisor giving your CANDID, UNFILTERED assessment of this document.
-This is NOT a summary — the summaries are generated separately. Provide your HONEST OPINION on the substance, posture, and what stands out.
-Cover: overall assessment, quality of analysis/answers, red flags / BS detection, what was most effective, what's missing or unanswered, credibility, bottom line.
-Be conversational and direct. Don't hedge.
+        assessment_instruction = ASSESSMENT_INSTRUCTION + """
 
 OUTPUT FORMAT — Return raw HTML. No markdown. No code fences.
 Use: <h2>Section Title</h2>, <p><strong>Topic:</strong> Description.</p>, <ul><li>Sub-point</li></ul>"""
@@ -8548,7 +8546,9 @@ After drafting your output but BEFORE returning, run this verification pass:
 The quotation discipline above is your built-in self-check: if you wrote a
 numeric claim and can't anchor it in the source's exact wording (either via
 quotation marks or by reusing the source phrase naturally), the claim
-doesn't belong.{thesis_addendum}"""
+doesn't belong.
+
+{RESEARCH_DOCTRINE}{thesis_addendum}"""
 
         # User-facing instruction is now minimal — the system prompt does
         # all the heavy lifting per Tony's full spec.
@@ -8564,23 +8564,7 @@ Organize into 3-6 logical sections (e.g., Business Update, Strategic Priorities,
 """
 
         # Assessment — candid advisor take
-        assessment_instruction = f"""You are a sharp, experienced advisor giving your CANDID, UNFILTERED assessment of this call/meeting.
-
-This is NOT a summary — the summaries are generated separately. Provide your HONEST OPINION on how things went.
-
-Cover whichever of these are relevant:
-- **Overall assessment:** Productive, waste of time, or in between?
-- **Quality of answers:** Substantive and credible, or vague and evasive?
-- **Red flags / BS detection:** Anyone dodge questions, give non-answers, contradict themselves?
-- **Meeting flow and dynamics:** Well-structured? On-track? Tension or alignment?
-- **What was most effective:** What landed well?
-- **What could have been better:** What questions should have been asked?
-- **Credibility assessment:** Rate overall credibility of key claims.
-- **Bottom line:** One sentence on your overall take.
-
-Be conversational and direct. Don't hedge.
-
-{html_format}"""
+        assessment_instruction = ASSESSMENT_INSTRUCTION + "\n\n" + html_format
 
         keys = _get_api_keys(anthropic_api_key=anthropic_api_key, gemini_api_key=gemini_api_key)
         # Use the retry helper for transient-error resilience. Pass api_key
