@@ -4,7 +4,7 @@ import sys
 import unittest
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
-from summary_comparison import split_text, generate
+from summary_comparison import SECTIONS, split_text, generate
 
 class ComparisonTests(unittest.TestCase):
     def test_lossless_arbitrary_length_and_unicode(self):
@@ -31,8 +31,9 @@ class ComparisonTests(unittest.TestCase):
         self.assertEqual(state['parts']['0']['record'],completed)
         self.assertFalse(any(m.startswith('SOURCE PART 1/') for m in resumed))
         self.assertEqual(state['coveredCharacters'],50000)
-        self.assertEqual(len(state['sections']),4)
-        self.assertEqual(len(resumed),6) # Two unfinished parts, four sections.
+        self.assertEqual(len(state['sections']),len(SECTIONS))
+        # Two unfinished parts, then one request per section.
+        self.assertEqual(len(resumed),2+len(SECTIONS))
 
     def test_late_answer_reaches_synthesis(self):
         marker='LATE ANSWER: management declined exact percentage.'

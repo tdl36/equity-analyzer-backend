@@ -1,6 +1,6 @@
 import React from 'react';
 import { documentHtml, emailDocument } from './summary-lab-format.mjs';
-var sections = [['brief', 'Executive brief', 'brief'], ['takeaways', 'Key takeaways', 'summary'], ['record', 'Management record', 'meeting_summary'], ['questions', 'Follow-up questions', 'questions'], ['assessment', 'Investment assessment', 'assessment']];
+var sections = [['brief', 'Executive brief', 'brief'], ['takeaways', 'Key takeaways', 'summary'], ['qa', 'Q&A log', 'summary'], ['record', 'Management record', 'meeting_summary'], ['questions', 'Follow-up questions', 'questions'], ['assessment', 'Investment assessment', 'assessment']];
 export function SummaryComparison({
   summary,
   api,
@@ -21,6 +21,7 @@ export function SummaryComparison({
   var [expanded, setExpanded] = React.useState({
     brief: true,
     takeaways: true,
+    qa: false,
     record: false,
     questions: false,
     assessment: false
@@ -37,6 +38,7 @@ export function SummaryComparison({
     setExpanded({
       brief: true,
       takeaways: true,
+      qa: false,
       record: false,
       questions: false,
       assessment: false
@@ -298,6 +300,9 @@ export function SummaryComparison({
     onClick: () => setExpanded(Object.fromEntries(sections.map(([key]) => [key, false])))
   }, "Collapse all sections")), sections.map(([key, label, original]) => {
     var text = key === 'record' ? record : state.sections?.[key];
+    // A finished note that lacks a section was produced by an earlier prompt
+    // version and will never gain it, so "Waiting..." would be a lie.
+    var absent = !text && row.status === 'complete';
     return /*#__PURE__*/React.createElement("details", {
       key: key,
       className: "improved-section rounded-xl border border-white/15 overflow-hidden",
@@ -320,7 +325,7 @@ export function SummaryComparison({
       className: "text-base"
     }, label), !text && /*#__PURE__*/React.createElement("span", {
       className: "text-xs text-slate-400"
-    }, "Waiting\u2026")), /*#__PURE__*/React.createElement("span", {
+    }, absent ? 'Not in this version' : 'Waiting…')), /*#__PURE__*/React.createElement("span", {
       onClick: e => e.stopPropagation()
     }, controls(key))), /*#__PURE__*/React.createElement("div", {
       className: `grid gap-4 p-4 sm:p-5 ${view === 'compare' ? 'xl:grid-cols-2' : 'grid-cols-1'}`
@@ -340,7 +345,7 @@ export function SummaryComparison({
     }, "Improved"), /*#__PURE__*/React.createElement("div", {
       className: "improved-note-reader",
       dangerouslySetInnerHTML: {
-        __html: documentHtml(text || 'Waiting for this section…', renderHtml)
+        __html: documentHtml(text || (absent ? 'This section was not part of the prompt version that produced these notes. Generate a new improved note to include it.' : 'Waiting for this section…'), renderHtml)
       }
     }))));
   }), /*#__PURE__*/React.createElement("details", {
