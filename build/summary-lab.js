@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { documentHtml, emailDocument, labFanoutPlan, youtubeLanguagePayload } from './summary-lab-format.mjs';
+import { documentHtml, emailDocument, labFanoutPlan, labProgressSummary, youtubeLanguagePayload } from './summary-lab-format.mjs';
 var ENGLISH_SECTIONS = [['brief', 'Executive Brief', 'brief'], ['takeaways', 'Key Takeaways', 'summary'], ['meeting', 'Meeting Summary', 'meeting_summary'], ['questions', 'Follow-up Questions', 'questions'], ['assessment', 'Overall Assessment', 'assessment']];
 var KOREAN_SECTION = ['korean', 'Korean Interpretation · 한국어 핵심 정리', 'korean_takeaways'];
 var sectionsForMode = mode => mode === 'korean_only' ? [KOREAN_SECTION] : mode === 'korean_bilingual' ? [...ENGLISH_SECTIONS, KOREAN_SECTION] : ENGLISH_SECTIONS;
@@ -380,6 +380,7 @@ export function SummaryLab({
     }
   }
   var state = row?.state || {};
+  var progress = labProgressSummary(row || {}, visibleSections.length);
   function openEmail() {
     setEdits({
       ...state.sections
@@ -677,7 +678,12 @@ export function SummaryLab({
     role: "status"
   }, row.error || state.progress || 'Queued', /*#__PURE__*/React.createElement("div", {
     className: "muted"
-  }, Object.keys(state.parts || {}).length, " / ", state.totalParts || '—', " source parts reviewed \xB7 ", row.status)), (row.status === 'failed' || row.status === 'cancelled' || row.status !== 'complete' && Date.now() - new Date(row.updated_at).getTime() > 180000) && /*#__PURE__*/React.createElement("button", {
+  }, progress.detail, " \xB7 ", row.status === 'complete' ? 'ready to review' : row.status), progress.blocked && /*#__PURE__*/React.createElement("p", {
+    className: "muted",
+    style: {
+      marginBottom: 0
+    }
+  }, progress.blocked)), (row.status === 'failed' || row.status === 'cancelled' || row.status !== 'complete' && Date.now() - new Date(row.updated_at).getTime() > 180000) && /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: retry
   }, "Resume saved experiment"), (row.status === 'queued' || row.status === 'running') && !row.cancel_requested && /*#__PURE__*/React.createElement("button", {

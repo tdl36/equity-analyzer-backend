@@ -1,5 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {documentHtml,emailDocument,labFanoutPlan,youtubeLanguagePayload} from './summary-lab-format.mjs';
+import {documentHtml,emailDocument,labFanoutPlan,labProgressSummary,youtubeLanguagePayload} from './summary-lab-format.mjs';
 
 const ENGLISH_SECTIONS=[['brief','Executive Brief','brief'],['takeaways','Key Takeaways','summary'],['meeting','Meeting Summary','meeting_summary'],['questions','Follow-up Questions','questions'],['assessment','Overall Assessment','assessment']];
 const KOREAN_SECTION=['korean','Korean Interpretation · 한국어 핵심 정리','korean_takeaways'];
@@ -115,6 +115,7 @@ export function SummaryLab({api,getKey,getGeminiKey,renderHtml,pickFromICloud}){
  }
 
  const state=row?.state||{};
+ const progress=labProgressSummary(row||{},visibleSections.length);
  function openEmail(){setEdits({...state.sections});setSharing(true);setCompare(false);setExpanded(Object.fromEntries(visibleSections.map(([key])=>[key,true])));setNotice('Review and edit each section before sending. Edits affect this email only.');}
  async function sendEmail(){setSending(true);setError('');try{
   const creds=JSON.parse(localStorage.getItem('emailCredentials')||'{}');if(!creds.email)throw Error('Set your recipient email and Gmail credentials in Settings first.');
@@ -149,7 +150,7 @@ export function SummaryLab({api,getKey,getGeminiKey,renderHtml,pickFromICloud}){
  {intake==='audio'?<button className="primary" disabled={busy||!audioFile||!getGeminiKey?.()} onClick={processAudio}>{busy?'Starting…':'Transcribe and analyze'}</button>:intake==='youtube'?<button className="primary" disabled={busy||!youtubeUrl.trim()} onClick={processYoutube}>{busy?'Starting…':'Fetch transcript and analyze'}</button>:<button className="primary" disabled={busy||importing||!canGenerate} onClick={start}>{busy?'Starting…':'Generate all five sections'}</button>}</section>}
  <section className="panel" style={{marginTop:20}}><h2>Experiments</h2>{!runs.length&&<p className="muted">Your experiments will appear here.</p>}{runs.map(r=><button className="experiment" aria-pressed={id===r.id} key={r.id} onClick={()=>{setId(r.id);setNotice('');}}>{r.title}<div className="muted">{r.automatic?'Auto from SUMMARIES · ':''}{r.status==='complete'?'Ready to review':r.status==='cancelled'?'Stopped':r.status} · {new Date(r.created_at).toLocaleDateString()}</div></button>)}</section></aside>
  {reading&&<section className="panel">{!row?<><div className="eyebrow">Independent source review</div><h2 style={{marginTop:12}}>Loading experiment…</h2><p className="muted">Reconnecting to the saved experiment.</p></>:<>
- <div className="eyebrow">{row.version} · {row.model}</div><h2 style={{marginTop:12}}>{row.title}</h2><div className="status" role="status">{row.error||state.progress||'Queued'}<div className="muted">{Object.keys(state.parts||{}).length} / {state.totalParts||'—'} source parts reviewed · {row.status}</div></div>
+ <div className="eyebrow">{row.version} · {row.model}</div><h2 style={{marginTop:12}}>{row.title}</h2><div className="status" role="status">{row.error||state.progress||'Queued'}<div className="muted">{progress.detail} · {row.status==='complete'?'ready to review':row.status}</div>{progress.blocked&&<p className="muted" style={{marginBottom:0}}>{progress.blocked}</p>}</div>
  {(row.status==='failed'||row.status==='cancelled'||(row.status!=='complete'&&Date.now()-new Date(row.updated_at).getTime()>180000))&&<button disabled={busy} onClick={retry}>Resume saved experiment</button>}
  {(row.status==='queued'||row.status==='running')&&!row.cancel_requested&&<button disabled={busy} onClick={stopRun}>Stop this experiment</button>}
  {row.cancel_requested&&row.status!=='cancelled'&&<p className="muted" role="status">Stopping at the next checkpoint…</p>}

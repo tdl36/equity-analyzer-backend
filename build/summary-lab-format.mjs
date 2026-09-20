@@ -17,6 +17,26 @@ export function labFanoutPlan(job={}){
  return{adoptId,start:!adoptId,error:'',summaryId};
 }
 
+// The status line used to read "3 / 3 source parts reviewed · running", which
+// looks finished while four of five sections are still unverified. A section is
+// drafted, checked against every source part, then revised — so the text on
+// screen is a draft until its section appears in completedSections, and a
+// cross-section review runs after the last one.
+export function labProgressSummary(row={},sectionCount=5){
+ const state=row?.state||{};
+ const parts=Object.keys(state.parts||{}).length;
+ const totalParts=state.totalParts||0;
+ const verified=(state.completedSections||[]).length;
+ if(row?.status==='complete')return{detail:`${sectionCount} section${sectionCount===1?'':'s'} verified against ${totalParts||parts} source part${(totalParts||parts)===1?'':'s'}`,blocked:''};
+ const phase=(!totalParts||parts<totalParts)?'reading the source'
+  :verified<sectionCount?'verifying drafts against the source'
+  :'final cross-section review';
+ return{
+  detail:`${parts} of ${totalParts||'—'} source parts reviewed · ${verified} of ${sectionCount} sections verified · ${phase}`,
+  blocked:'Each section stays a draft until it has been checked against every source part and revised, so Email all and Copy all unlock when the experiment finishes. Copy section works on any section already verified.'
+ };
+}
+
 export function labDocument(text='') {
  const lines=text.replace(/\r\n/g,'\n').split('\n'); let html='',paragraph=[],list='';
  const flush=()=>{if(paragraph.length){html+='<p>'+inline(paragraph.join(' '))+'</p>';paragraph=[];}};

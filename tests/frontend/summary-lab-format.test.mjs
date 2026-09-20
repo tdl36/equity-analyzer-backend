@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {labDocument,documentHtml,emailDocument,labFanoutPlan,looksLikeHtmlDocument,youtubeLanguagePayload} from '../../src/summary-lab-format.mjs';
+import {labDocument,documentHtml,emailDocument,labFanoutPlan,labProgressSummary,looksLikeHtmlDocument,youtubeLanguagePayload} from '../../src/summary-lab-format.mjs';
 test('renders source labels, headings and lists without executing source HTML',()=>{
  const html=labDocument('# Topic\n\n**Management:** uncertain [P1]\n\n- Detail\n- Caveat\n\n<script>alert(1)</script>');
  assert.match(html,/<h3>Topic<\/h3>/);assert.match(html,/<strong>Management:<\/strong>/);
@@ -34,4 +34,33 @@ test('a completed transcription adopts its automatic experiment instead of runni
 test('a transcription without a saved Summary reports the failure and starts nothing',()=>{
  const plan=labFanoutPlan({status:'complete'});
  assert.equal(plan.start,false);assert.equal(plan.adoptId,'');assert.match(plan.error,/no saved Summary/);
+});
+test('progress reports verified sections, not just source parts',()=>{
+ // The real MCK experiment: all five drafts on screen, four verified.
+ const row={status:'running',state:{parts:{0:{},1:{},2:{}},totalParts:3,
+  sections:{brief:'x',takeaways:'x',meeting:'x',questions:'x',assessment:'x'},
+  completedSections:['brief','takeaways','meeting','questions']}};
+ const {detail,blocked}=labProgressSummary(row,5);
+ assert.match(detail,/3 of 3 source parts reviewed/);
+ assert.match(detail,/4 of 5 sections verified/);
+ assert.match(detail,/verifying drafts against the source/);
+ assert.match(blocked,/Email all and Copy all unlock/);
+});
+test('the final cross-section review is named rather than looking idle',()=>{
+ const row={status:'running',state:{parts:{0:{},1:{}},totalParts:2,completedSections:['a','b','c','d','e']}};
+ assert.match(labProgressSummary(row,5).detail,/final cross-section review/);
+});
+test('a finished experiment states what was verified and blocks nothing',()=>{
+ const row={status:'complete',state:{parts:{0:{},1:{},2:{}},totalParts:3,completedSections:['a','b','c','d','e']}};
+ const {detail,blocked}=labProgressSummary(row,5);
+ assert.equal(detail,'5 sections verified against 3 source parts');
+ assert.equal(blocked,'');
+});
+test('an experiment still reading the source says so',()=>{
+ const row={status:'running',state:{parts:{0:{}},totalParts:4,completedSections:[]}};
+ assert.match(labProgressSummary(row,5).detail,/1 of 4 source parts reviewed .* reading the source/);
+});
+test('a korean-only experiment counts its single section',()=>{
+ const row={status:'complete',state:{parts:{0:{}},totalParts:1,completedSections:['korean']}};
+ assert.equal(labProgressSummary(row,1).detail,'1 section verified against 1 source part');
 });
