@@ -289,9 +289,17 @@ def create_blueprint(get_db):
                     version TEXT NOT NULL, model TEXT NOT NULL, state JSONB NOT NULL DEFAULT '{}',
                     status TEXT NOT NULL DEFAULT 'queued', error TEXT, feedback TEXT NOT NULL DEFAULT '',
                     created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW())''')
+                cur.execute('ALTER TABLE summary_lab_experiments ADD COLUMN IF NOT EXISTS summary_id TEXT')
+                cur.execute("ALTER TABLE summary_lab_experiments ADD COLUMN IF NOT EXISTS output_mode TEXT NOT NULL DEFAULT 'english'")
+                cur.execute('ALTER TABLE summary_lab_experiments ADD COLUMN IF NOT EXISTS automatic BOOLEAN NOT NULL DEFAULT FALSE')
+                cur.execute('ALTER TABLE summary_lab_experiments ADD COLUMN IF NOT EXISTS recovery_enabled BOOLEAN NOT NULL DEFAULT FALSE')
+                cur.execute('ALTER TABLE summary_lab_experiments ADD COLUMN IF NOT EXISTS recovery_attempts INTEGER NOT NULL DEFAULT 0')
+                cur.execute('''CREATE UNIQUE INDEX IF NOT EXISTS summary_lab_automatic_source_uq
+                    ON summary_lab_experiments(summary_id,source_hash,version,output_mode)
+                    WHERE automatic AND summary_id IS NOT NULL''')
             ready = True
 
-    def run(jid, key):
+    def run(jid, key, recovery=False):
         with slots, get_db() as (conn, lockcur):
             lockcur.execute('SELECT pg_try_advisory_lock(hashtext(%s)) AS ok', ('summary-lab:'+jid,))
             acquired = lockcur.fetchone()['ok']; conn.commit()
@@ -302,6 +310,9 @@ def create_blueprint(get_db):
                     row = cur.fetchone()
                 if not row or row['status'] == 'complete': return
                 if row['version'] != VERSION: raise ValueError('This experiment uses an older prompt. Start a new experiment.')
+                if recovery:
+                    with get_db(commit=True) as (_, cur):
+                        cur.execute("UPDATE summary_lab_experiments SET recovery_attempts=recovery_attempts+1,updated_at=NOW() WHERE id=%s", (jid,))
                 state = row['state'] or {}
                 def save(value):
                     with get_db(commit=True) as (_, cur):
@@ -311,15 +322,44 @@ def create_blueprint(get_db):
                 generate(row['source'], state, ask, save, row['focus'])
                 with get_db(commit=True) as (_, cur):
                     cur.execute("UPDATE summary_lab_experiments SET state=%s::jsonb,status='complete',updated_at=NOW() WHERE id=%s", (json.dumps(state),jid))
+                    if row.get('automatic'):
+                        cur.execute("INSERT INTO agent_alerts (id,alert_type,ticker,title,detail,status,created_at) VALUES (%s,'summary_lab_ready','',%s,%s,'new',NOW())",
+                            (str(uuid.uuid4()), 'Summary Lab ready: '+row['title'], json.dumps({'summaryId': row.get('summary_id'), 'summaryLabId': jid, 'outputMode': row.get('output_mode') or 'english'})))
             except Exception as exc:
                 message = str(exc) if isinstance(exc,(ValueError,ProviderFailure)) else 'Generation interrupted ('+type(exc).__name__+'). Retry resumes saved checkpoints.'
                 with get_db(commit=True) as (_,cur):
                     cur.execute("UPDATE summary_lab_experiments SET status='failed',error=%s,updated_at=NOW() WHERE id=%s", (message,jid))
+                    if locals().get('row') and row.get('automatic'):
+                        cur.execute("INSERT INTO agent_alerts (id,alert_type,ticker,title,detail,status,created_at) VALUES (%s,'summary_lab_error','',%s,%s,'new',NOW())",
+                            (str(uuid.uuid4()), 'Summary Lab failed: '+row['title'], json.dumps({'summaryId': row.get('summary_id'), 'summaryLabId': jid, 'error': message, 'action': 'Open Summary Lab and resume the saved experiment.'})))
             finally:
                 try:
                     lockcur.execute('SELECT pg_advisory_unlock(hashtext(%s))', ('summary-lab:'+jid,)); conn.commit()
                 except Exception:
                     conn.close()
+
+    def recover_once():
+        """Resume automatic folder jobs interrupted by a backend restart."""
+        key=os.environ.get('ANTHROPIC_API_KEY','').strip()
+        if not key: return
+        ensure()
+        with get_db() as (_,cur):
+            cur.execute("""SELECT id FROM summary_lab_experiments
+                WHERE automatic AND recovery_enabled AND status IN ('queued','running')
+                  AND updated_at<NOW()-INTERVAL '3 minutes' AND recovery_attempts<3
+                ORDER BY updated_at LIMIT 10""")
+            jobs=[row['id'] for row in cur.fetchall()]
+        for jid in jobs:
+            threading.Thread(target=run,args=(jid,key,True),daemon=True,name='summary-lab-recovery-'+jid[:8]).start()
+
+    def start_recovery():
+        def loop():
+            stop=threading.Event(); stop.wait(90)
+            while True:
+                try: recover_once()
+                except Exception as exc: print('[Summary Lab recovery]',type(exc).__name__)
+                stop.wait(30)
+        threading.Thread(target=loop,daemon=True,name='summary-lab-recovery').start()
 
     @bp.get('/api/summary-lab/sources')
     def sources():
@@ -331,7 +371,7 @@ def create_blueprint(get_db):
     def listing():
         ensure()
         with get_db() as (_,cur):
-            cur.execute('SELECT id,title,status,error,version,model,created_at,updated_at FROM summary_lab_experiments ORDER BY created_at DESC')
+            cur.execute('SELECT id,title,status,error,version,model,summary_id,output_mode,automatic,created_at,updated_at FROM summary_lab_experiments ORDER BY created_at DESC')
             return jsonify(experiments=[dict(r) for r in cur.fetchall()])
 
     @bp.get('/api/summary-lab/<jid>')
@@ -342,29 +382,68 @@ def create_blueprint(get_db):
             row=cur.fetchone()
         return (jsonify(dict(row)) if row else (jsonify(error='Experiment not found'),404))
 
+    def enqueue(summary_id, api_key=None, output_mode='english', automatic=False, title='Untitled experiment', focus=''):
+        """Create one durable Lab branch. Automatic branches are idempotent per saved source."""
+        ensure()
+        key=api_key or os.environ.get('ANTHROPIC_API_KEY')
+        if not isinstance(key,str) or not key.strip(): raise ValueError('Add a research API key in Settings.')
+        if output_mode not in OUTPUT_MODES: raise ValueError('Choose English, English + Korean, or Korean only.')
+        if not all(isinstance(x,str) for x in (summary_id,title,focus)): raise ValueError('Summary, title and emphasis must be text.')
+        if len(focus)>4000 or len(title)>300: raise ValueError('Shorten the title or emphasis.')
+        with get_db(commit=True) as (_,cur):
+            cur.execute('SELECT title,raw_notes,brief,summary,questions,assessment,meeting_summary,korean_takeaways FROM meeting_summaries WHERE id=%s',(summary_id,))
+            row=cur.fetchone()
+            if not row: raise LookupError('Saved Summary not found.')
+            baseline=dict(row); source=baseline.pop('raw_notes') or ''
+            if not source.strip(): raise ValueError('No saved transcript/source text is available.')
+            title=title if title!='Untitled experiment' else baseline['title']
+            jid=str(uuid.uuid4())
+            initial_state={'outputMode': output_mode}
+            digest=hashlib.sha256(source.encode()).hexdigest()
+            if automatic:
+                cur.execute('''INSERT INTO summary_lab_experiments
+                    (id,title,source,source_hash,baseline,focus,version,model,state,summary_id,output_mode,automatic,recovery_enabled)
+                    VALUES (%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s::jsonb,%s,%s,TRUE,TRUE)
+                    ON CONFLICT (summary_id,source_hash,version,output_mode) WHERE automatic AND summary_id IS NOT NULL DO NOTHING''',
+                    (jid,title,source,digest,json.dumps(baseline),focus,VERSION,MODEL,json.dumps(initial_state),summary_id,output_mode))
+                inserted=cur.rowcount==1
+                cur.execute('''SELECT id,status FROM summary_lab_experiments
+                    WHERE automatic AND summary_id=%s AND source_hash=%s AND version=%s AND output_mode=%s''',
+                    (summary_id,digest,VERSION,output_mode))
+                existing=cur.fetchone(); jid=existing['id']
+                if not inserted:
+                    if existing['status'] == 'failed':
+                        cur.execute("UPDATE summary_lab_experiments SET status='queued',error=NULL,updated_at=NOW() WHERE id=%s", (jid,))
+                    else:
+                        return jid
+            else:
+                cur.execute('''INSERT INTO summary_lab_experiments
+                    (id,title,source,source_hash,baseline,focus,version,model,state,summary_id,output_mode)
+                    VALUES (%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s::jsonb,%s,%s)''',
+                    (jid,title,source,digest,json.dumps(baseline),focus,VERSION,MODEL,json.dumps(initial_state),summary_id,output_mode))
+        threading.Thread(target=run,args=(jid,key),daemon=True,name='summary-lab-'+jid[:8]).start()
+        return jid
+
     @bp.post('/api/summary-lab')
     def start():
         ensure(); body=request.get_json(silent=True) or {}
         key=body.get('apiKey') or os.environ.get('ANTHROPIC_API_KEY')
-        if not isinstance(key,str) or not key.strip(): return jsonify(error='Add a research API key in Settings.'),400
         focus=body.get('focus',''); source=body.get('source',''); title=body.get('title','Untitled experiment')
         output_mode=body.get('outputMode','english')
         if not all(isinstance(x,str) for x in (focus,source,title)): return jsonify(error='Source, title and emphasis must be text.'),400
         if output_mode not in OUTPUT_MODES: return jsonify(error='Choose English, English + Korean, or Korean only.'),400
         if len(focus)>4000 or len(title)>300: return jsonify(error='Shorten the title or emphasis.'),400
-        baseline={}
+        if body.get('summaryId'):
+            try: return jsonify(id=enqueue(body['summaryId'],key,output_mode,False,title,focus)),202
+            except LookupError as exc: return jsonify(error=str(exc)),404
+            except ValueError as exc: return jsonify(error=str(exc)),400
+        if not isinstance(key,str) or not key.strip(): return jsonify(error='Add a research API key in Settings.'),400
+        if not source.strip(): return jsonify(error='Choose a saved source or paste source text.'),400
+        jid=str(uuid.uuid4()); initial_state={'outputMode': output_mode}
         with get_db(commit=True) as (_,cur):
-            if body.get('summaryId'):
-                cur.execute('SELECT title,raw_notes,brief,summary,questions,assessment,meeting_summary,korean_takeaways FROM meeting_summaries WHERE id=%s',(body['summaryId'],))
-                row=cur.fetchone()
-                if not row: return jsonify(error='Saved Summary not found.'),404
-                baseline=dict(row); source=baseline.pop('raw_notes') or ''; title=title if title!='Untitled experiment' else baseline['title']
-            if not source.strip(): return jsonify(error='Choose a saved source or paste source text.'),400
-            jid=str(uuid.uuid4())
-            initial_state={'outputMode': output_mode}
-            cur.execute('''INSERT INTO summary_lab_experiments (id,title,source,source_hash,baseline,focus,version,model,state)
-                VALUES (%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s::jsonb)''',(jid,title,source,hashlib.sha256(source.encode()).hexdigest(),json.dumps(baseline),focus,VERSION,MODEL,json.dumps(initial_state)))
-        threading.Thread(target=run,args=(jid,key),daemon=True).start()
+            cur.execute('''INSERT INTO summary_lab_experiments (id,title,source,source_hash,baseline,focus,version,model,state,output_mode)
+                VALUES (%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s::jsonb,%s)''',(jid,title,source,hashlib.sha256(source.encode()).hexdigest(),json.dumps({}),focus,VERSION,MODEL,json.dumps(initial_state),output_mode))
+        threading.Thread(target=run,args=(jid,key),daemon=True,name='summary-lab-'+jid[:8]).start()
         return jsonify(id=jid),202
 
     @bp.post('/api/summary-lab/<jid>/retry')
@@ -385,4 +464,7 @@ def create_blueprint(get_db):
             cur.execute('UPDATE summary_lab_experiments SET feedback=%s WHERE id=%s RETURNING id',(value,jid))
             if not cur.fetchone(): return jsonify(error='Experiment not found.'),404
         return jsonify(saved=True)
+    bp.enqueue = enqueue
+    bp.recover_once = recover_once
+    bp.start_recovery = start_recovery
     return bp

@@ -605,7 +605,7 @@ export function SummaryLab({
     }
   }, r.title, /*#__PURE__*/React.createElement("div", {
     className: "muted"
-  }, r.status === 'complete' ? 'Ready to review' : r.status, " \xB7 ", new Date(r.created_at).toLocaleDateString()))))), /*#__PURE__*/React.createElement("section", {
+  }, r.automatic ? 'Auto from SUMMARIES · ' : '', r.status === 'complete' ? 'Ready to review' : r.status, " \xB7 ", new Date(r.created_at).toLocaleDateString()))))), /*#__PURE__*/React.createElement("section", {
     className: "panel"
   }, !row ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "eyebrow"

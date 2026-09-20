@@ -2663,6 +2663,7 @@ def _wait_for_audio_job_and_move(fname: str, fpath: Path, job_id: str) -> None:
                 js = r.json()
                 status = (js.get('status') or '').lower()
                 if status == 'complete' or js.get('summaryId'):
+                    summary_lab_id = js.get('summaryLabId')
                     try:
                         if fpath.exists():
                             fpath.rename(processed_dir / fname)
@@ -2674,7 +2675,10 @@ def _wait_for_audio_job_and_move(fname: str, fpath: Path, job_id: str) -> None:
                     # Notify Telegram on completion (mirrors the earnings recap
                     # start/complete pattern). Visible in user's chat as soon as
                     # the summary lands in the DB.
-                    notify(f"*Audio summary ready:* {fname}")
+                    if summary_lab_id:
+                        notify(f"*Audio summary ready:* {fname}\nSummary Lab experiment also started automatically.")
+                    else:
+                        notify(f"*Audio summary ready:* {fname}\nSummary Lab did not start; check Charlie alerts for the retry action.")
                     # Also remove from known-files so a re-dropped version
                     # next time will fire a fresh job
                     try:

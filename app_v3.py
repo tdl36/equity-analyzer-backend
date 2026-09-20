@@ -1630,6 +1630,21 @@ def _queue_improved_summary(summary_id, api_key=None):
             pass
 
 
+def _queue_summary_lab(summary_id, api_key=None):
+    """Fan a saved transcript into the independent Summary Lab workflow."""
+    try:
+        return summary_lab_bp.enqueue(summary_id, api_key, output_mode='english', automatic=True)
+    except Exception as exc:
+        print(f"[summary-lab] Queue failed for {summary_id}: {type(exc).__name__}")
+        try:
+            with get_db(commit=True) as (_, cur):
+                cur.execute("INSERT INTO agent_alerts (id,alert_type,ticker,title,detail,status,created_at) VALUES (%s,'summary_lab_error','','Summary Lab could not start',%s,'new',NOW())",
+                    (str(uuid.uuid4()), json.dumps({'summaryId': summary_id, 'error': str(exc)[:500], 'action': 'Open Summary Lab and retry from the saved Summary transcript.'})))
+        except Exception:
+            pass
+        return None
+
+
 def _run_podcast_fullsummary_job(job_id, episode_id, api_key):
     """Generate 4-section Meeting Summary from an episode transcript.
     Inserts a row into meeting_summaries, marks mp_jobs done with {summaryId}.
@@ -3566,6 +3581,7 @@ def init_db():
                     completed_at TIMESTAMP
                 )
             ''')
+            cur.execute('ALTER TABLE transcription_jobs ADD COLUMN IF NOT EXISTS summary_lab_id VARCHAR(100)')
             cur.execute('CREATE INDEX IF NOT EXISTS idx_transcription_jobs_status ON transcription_jobs(status, created_at DESC)')
 
             # Phase 3d: earnings calendar + per-ticker IR/PR/transcript config.
@@ -6714,22 +6730,24 @@ def _mirror_transcription_state(job_id: str) -> None:
     error = str(job.get('error') or '')[:2000] if job.get('error') else None
     filename = str(job.get('filename') or '')[:500]
     summary_id = job.get('summaryId') or job.get('summary_id')
+    summary_lab_id = job.get('summaryLabId') or job.get('summary_lab_id')
     auto_process = bool(job.get('autoProcess'))
     completed = status in ('complete', 'error', 'failed')
     try:
         with get_db(commit=True) as (_c, cur):
             cur.execute('''
                 INSERT INTO transcription_jobs
-                    (id, filename, status, progress, error, summary_id, auto_process, completed_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, CASE WHEN %s THEN NOW() ELSE NULL END, NOW())
+                    (id, filename, status, progress, error, summary_id, summary_lab_id, auto_process, completed_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, CASE WHEN %s THEN NOW() ELSE NULL END, NOW())
                 ON CONFLICT (id) DO UPDATE SET
                     status = EXCLUDED.status,
                     progress = EXCLUDED.progress,
                     error = COALESCE(EXCLUDED.error, transcription_jobs.error),
                     summary_id = COALESCE(EXCLUDED.summary_id, transcription_jobs.summary_id),
+                    summary_lab_id = COALESCE(EXCLUDED.summary_lab_id, transcription_jobs.summary_lab_id),
                     completed_at = COALESCE(EXCLUDED.completed_at, transcription_jobs.completed_at),
                     updated_at = NOW()
-            ''', (job_id, filename, status, progress, error, summary_id, auto_process, completed))
+            ''', (job_id, filename, status, progress, error, summary_id, summary_lab_id, auto_process, completed))
     except Exception as e:
         # Don't crash the transcription thread if DB mirror fails; dict is
         # still authoritative at runtime.
@@ -8718,8 +8736,11 @@ OUTPUT FORMAT: raw HTML only. No markdown. No code fences."""
 
         _transcription_jobs[job_id]['status'] = 'complete'
         _transcription_jobs[job_id]['summaryId'] = summary_id
-        _mirror_transcription_state(job_id)
         _queue_improved_summary(summary_id, anthropic_api_key)
+        summary_lab_id = _queue_summary_lab(summary_id, anthropic_api_key)
+        if summary_lab_id:
+            _transcription_jobs[job_id]['summaryLabId'] = summary_lab_id
+        _mirror_transcription_state(job_id)
         print(f"[auto-audio {job_id}] Complete: {title} saved as {summary_id}")
 
     except Exception as e:
@@ -8760,6 +8781,7 @@ def transcribe_audio_status(job_id):
                     'error': row.get('error') or '',
                     'filename': row.get('filename') or '',
                     'summaryId': row.get('summary_id'),
+                    'summaryLabId': row.get('summary_lab_id'),
                     'persisted': True,
                 })
         except Exception as e:
@@ -29001,7 +29023,9 @@ manual_meeting_recovery.start(get_db,_resume_manual_meeting,
 
 
 import summary_lab
-app.register_blueprint(summary_lab.create_blueprint(get_db))
+summary_lab_bp = summary_lab.create_blueprint(get_db)
+app.register_blueprint(summary_lab_bp)
+summary_lab_bp.start_recovery()
 
 import summary_comparison
 summary_comparison_bp = summary_comparison.create_blueprint(get_db)
