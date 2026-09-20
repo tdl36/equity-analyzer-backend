@@ -2,6 +2,10 @@
 export const escapeHtml = value => String(value ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const inline = value => escapeHtml(value).replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/__([^_]+)__/g,'<strong>$1</strong>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*([^*\n]+)\*/g,'<em>$1</em>');
 export const looksLikeHtmlDocument = value => /<\/?(?:p|h[1-6]|ul|ol|li|blockquote|table|thead|tbody|tr|th|td|strong|em|br|hr)\b/i.test(String(value ?? ''));
+export function youtubeLanguagePayload(generateKorean=false,koreanOnly=false){
+ const enabled=Boolean(generateKorean);
+ return {generateKorean:enabled,koreanOnly:enabled&&Boolean(koreanOnly),outputMode:enabled?(koreanOnly?'korean_only':'korean_bilingual'):'english'};
+}
 export function labDocument(text='') {
  const lines=text.replace(/\r\n/g,'\n').split('\n'); let html='',paragraph=[],list='';
  const flush=()=>{if(paragraph.length){html+='<p>'+inline(paragraph.join(' '))+'</p>';paragraph=[];}};

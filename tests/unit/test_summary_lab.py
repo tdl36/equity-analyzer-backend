@@ -40,5 +40,10 @@ class LabTests(unittest.TestCase):
         self.assertNotIn('brief',state['completedSections'])
         generate('Management: uncertain.',state,self.ask,lambda s:None)
         self.assertEqual(len(state['completedSections']),5)
+    def test_korean_only_generates_only_korean_interpretation(self):
+        state={'outputMode':'korean_only'}
+        generate('Management: timing is uncertain.',state,self.ask,lambda s:None)
+        self.assertEqual(set(state['sections']),{'korean'})
+        self.assertEqual(state['completedSections'],['korean'])
 
 if __name__=='__main__':unittest.main()

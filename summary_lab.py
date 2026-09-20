@@ -37,6 +37,25 @@ SECTIONS = {
  'questions': 'Write Follow-up Questions: 3–5 priority questions when justified, plus optional additional diligence. Check all records for answers already provided. One clear question at a time; state why it matters, what is known, what is missing and who or what can resolve it. Avoid unsupported premises and generic requests for color.',
  'assessment': 'Write Overall Assessment: overall judgment; evidence strongest and weakest; potential relevance to model assumptions (not invented numerical changes); strongest reasonable counterinterpretation; what would change the assessment. Separate business substance from communication. For each material judgment give supporting observation, interpretation and limitation. Be direct but calibrate confidence.'
 }
+KOREAN_SECTION = '''Write a polished Korean Interpretation for a professional portfolio manager.
+Use natural institutional-investor Korean rather than a literal translation. Begin with 핵심 요약,
+then organize the most decision-relevant insights by importance, followed by PM 시사점, 확인할 질문,
+and 종합 평가. Preserve every material number, period, comparison base, hedge, qualification and
+speaker attribution from the reviewed records. Clearly distinguish what the source said from your
+interpretation. Do not add market facts, consensus claims, investment ratings or trade recommendations.
+Use concise Markdown headings and restrained bullets. Preserve source IDs [P1], [P2], etc. for material
+claims. Korean prose may retain company names, financial terms and abbreviations in English where that
+is clearer. Do not narrate the generation process.'''
+OUTPUT_MODES = {'english', 'korean_bilingual', 'korean_only'}
+
+
+def sections_for_mode(mode):
+    """Return the visible experiment sections for a validated output mode."""
+    selected = mode if mode in OUTPUT_MODES else 'english'
+    sections = {} if selected == 'korean_only' else dict(SECTIONS)
+    if selected in ('korean_bilingual', 'korean_only'):
+        sections['korean'] = KOREAN_SECTION
+    return sections
 
 
 class ProviderFailure(RuntimeError):
@@ -212,7 +231,10 @@ SOURCE PART P{i+1}:\n{body}'''
         context = new
         level += 1
     state['hierarchicalSynthesis'] = level > 0
-    for section, instruction in SECTIONS.items():
+    output_mode = state.get('outputMode', 'english')
+    section_plan = sections_for_mode(output_mode)
+    state['outputMode'] = output_mode if output_mode in OUTPUT_MODES else 'english'
+    for section, instruction in section_plan.items():
         if section in state.setdefault('completedSections', []):
             continue
         checkpoint('Drafting '+section)
@@ -243,7 +265,7 @@ DRAFT:\n{state['sections'][section]}\nORIGINAL:\n{body}''', 3500)
         save(state)
     if not state.get('finalReview'):
         checkpoint('Checking consistency across all five sections')
-        state['finalReview'] = ask(RULES, 'Review cross-section consistency and unresolved source issues. Identify material disagreements, overstatement, follow-ups already answered and limitations. Do not assert external verification or perfect completeness. Return a concise reviewer note for the user.\n'+json.dumps(state['sections'])+'\nSOURCE RECORDS:\n'+context, 5000)
+        state['finalReview'] = ask(RULES, 'Review consistency across every generated section and unresolved source issues. Identify material disagreements, overstatement, follow-ups already answered and limitations. Do not assert external verification or perfect completeness. Return a concise reviewer note for the user.\n'+json.dumps(state['sections'], ensure_ascii=False)+'\nSOURCE RECORDS:\n'+context, 5000)
         save(state)
     checkpoint('Ready for comparison · review source issues and reviewer notes')
     return state
@@ -326,19 +348,22 @@ def create_blueprint(get_db):
         key=body.get('apiKey') or os.environ.get('ANTHROPIC_API_KEY')
         if not isinstance(key,str) or not key.strip(): return jsonify(error='Add a research API key in Settings.'),400
         focus=body.get('focus',''); source=body.get('source',''); title=body.get('title','Untitled experiment')
+        output_mode=body.get('outputMode','english')
         if not all(isinstance(x,str) for x in (focus,source,title)): return jsonify(error='Source, title and emphasis must be text.'),400
+        if output_mode not in OUTPUT_MODES: return jsonify(error='Choose English, English + Korean, or Korean only.'),400
         if len(focus)>4000 or len(title)>300: return jsonify(error='Shorten the title or emphasis.'),400
         baseline={}
         with get_db(commit=True) as (_,cur):
             if body.get('summaryId'):
-                cur.execute('SELECT title,raw_notes,brief,summary,questions,assessment,meeting_summary FROM meeting_summaries WHERE id=%s',(body['summaryId'],))
+                cur.execute('SELECT title,raw_notes,brief,summary,questions,assessment,meeting_summary,korean_takeaways FROM meeting_summaries WHERE id=%s',(body['summaryId'],))
                 row=cur.fetchone()
                 if not row: return jsonify(error='Saved Summary not found.'),404
                 baseline=dict(row); source=baseline.pop('raw_notes') or ''; title=title if title!='Untitled experiment' else baseline['title']
             if not source.strip(): return jsonify(error='Choose a saved source or paste source text.'),400
             jid=str(uuid.uuid4())
-            cur.execute('''INSERT INTO summary_lab_experiments (id,title,source,source_hash,baseline,focus,version,model)
-                VALUES (%s,%s,%s,%s,%s::jsonb,%s,%s,%s)''',(jid,title,source,hashlib.sha256(source.encode()).hexdigest(),json.dumps(baseline),focus,VERSION,MODEL))
+            initial_state={'outputMode': output_mode}
+            cur.execute('''INSERT INTO summary_lab_experiments (id,title,source,source_hash,baseline,focus,version,model,state)
+                VALUES (%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s::jsonb)''',(jid,title,source,hashlib.sha256(source.encode()).hexdigest(),json.dumps(baseline),focus,VERSION,MODEL,json.dumps(initial_state)))
         threading.Thread(target=run,args=(jid,key),daemon=True).start()
         return jsonify(id=jid),202
 

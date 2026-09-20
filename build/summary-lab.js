@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { documentHtml, emailDocument } from './summary-lab-format.mjs';
-var SECTIONS = [['brief', 'Executive Brief', 'brief'], ['takeaways', 'Key Takeaways', 'summary'], ['meeting', 'Meeting Summary', 'meeting_summary'], ['questions', 'Follow-up Questions', 'questions'], ['assessment', 'Overall Assessment', 'assessment']];
+import { documentHtml, emailDocument, youtubeLanguagePayload } from './summary-lab-format.mjs';
+var ENGLISH_SECTIONS = [['brief', 'Executive Brief', 'brief'], ['takeaways', 'Key Takeaways', 'summary'], ['meeting', 'Meeting Summary', 'meeting_summary'], ['questions', 'Follow-up Questions', 'questions'], ['assessment', 'Overall Assessment', 'assessment']];
+var KOREAN_SECTION = ['korean', 'Korean Interpretation · 한국어 핵심 정리', 'korean_takeaways'];
+var sectionsForMode = mode => mode === 'korean_only' ? [KOREAN_SECTION] : mode === 'korean_bilingual' ? [...ENGLISH_SECTIONS, KOREAN_SECTION] : ENGLISH_SECTIONS;
 var INTAKES = [['saved', 'Saved Summary'], ['document', 'Document'], ['audio', 'Audio'], ['youtube', 'YouTube'], ['paste', 'Paste text']];
 var PENDING_KEY = 'charlie_summary_lab_pending_intake';
 export function SummaryLab({
@@ -32,16 +34,20 @@ export function SummaryLab({
     [audioFile, setAudioFile] = useState(null),
     [youtubeUrl, setYoutubeUrl] = useState(''),
     [youtubeTicker, setYoutubeTicker] = useState(''),
+    [youtubeKorean, setYoutubeKorean] = useState(false),
+    [youtubeKoreanOnly, setYoutubeKoreanOnly] = useState(false),
     [ingest, setIngest] = useState(null);
   var [expanded, setExpanded] = useState({
     brief: true,
     takeaways: true,
     meeting: false,
     questions: false,
-    assessment: false
+    assessment: false,
+    korean: true
   });
   var audioInput = useRef(null),
     monitoring = useRef('');
+  var visibleSections = sectionsForMode(row?.state?.outputMode || 'english');
   async function req(path = '', body) {
     var r = await fetch(`${api}/api/summary-lab${path}`, {
       ...(body ? {
@@ -109,12 +115,13 @@ export function SummaryLab({
     setSharing(false);
     setEdits({});
   }, [row?.id]);
-  async function startLab(summaryId, labTitle) {
+  async function startLab(summaryId, labTitle, outputMode = 'english', labFocus = focus) {
     var d = await req('', {
       summaryId: summaryId || undefined,
       source: summaryId ? undefined : source,
       title: (labTitle || title).trim() || 'Untitled experiment',
-      focus,
+      focus: labFocus,
+      outputMode,
       apiKey: getKey()
     });
     setId(d.id);
@@ -126,7 +133,7 @@ export function SummaryLab({
     setError('');
     setNotice('');
     try {
-      await startLab(sid || undefined, title);
+      await startLab(sid || undefined, title, 'english', focus);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -189,7 +196,7 @@ export function SummaryLab({
       setError(e.message);
     }
   }
-  async function monitorJob(jobId, label, jobTitle = title, jobFocus = focus) {
+  async function monitorJob(jobId, label, jobTitle = title, jobFocus = focus, outputMode = 'english') {
     if (!jobId || monitoring.current === jobId) return;
     monitoring.current = jobId;
     try {
@@ -210,14 +217,15 @@ export function SummaryLab({
           jobId,
           label,
           title: jobTitle,
-          focus: jobFocus
+          focus: jobFocus,
+          outputMode
         }));
         if (['complete', 'done'].includes(phase)) {
           if (!data.summaryId) throw Error('The transcript finished but no saved Summary was returned.');
           localStorage.removeItem(PENDING_KEY);
           setNotice(`${label} was transcribed and saved. Improved analysis is now running.`);
           setBusy(true);
-          await startLab(data.summaryId, jobTitle || label);
+          await startLab(data.summaryId, jobTitle || label, outputMode, jobFocus);
           setIngest(null);
           setBusy(false);
           return;
@@ -248,7 +256,7 @@ export function SummaryLab({
           phase: 'checking',
           progress: 'Reconnecting to saved job…'
         });
-        monitorJob(pending.jobId, pending.label || 'Source', pending.title || '', pending.focus || '');
+        monitorJob(pending.jobId, pending.label || 'Source', pending.title || '', pending.focus || '', pending.outputMode || 'english');
       }
     } catch {}
   }, [api]);
@@ -276,10 +284,11 @@ export function SummaryLab({
         jobId: data.jobId,
         label,
         title: jobTitle,
-        focus
+        focus,
+        outputMode: 'english'
       }));
       setBusy(false);
-      await monitorJob(data.jobId, label, jobTitle, focus);
+      await monitorJob(data.jobId, label, jobTitle, focus, 'english');
     } catch (e) {
       setError(e.message);
       setBusy(false);
@@ -290,6 +299,7 @@ export function SummaryLab({
     setError('');
     setNotice('');
     try {
+      var language = youtubeLanguagePayload(youtubeKorean, youtubeKoreanOnly);
       var response = await fetch(`${api}/api/youtube-summarize`, {
         method: 'POST',
         headers: {
@@ -298,6 +308,8 @@ export function SummaryLab({
         body: JSON.stringify({
           url: youtubeUrl.trim(),
           ticker: youtubeTicker.trim().toUpperCase(),
+          generateKorean: language.generateKorean,
+          koreanOnly: language.koreanOnly,
           apiKey: getKey()
         }),
         signal: AbortSignal.timeout(30000)
@@ -311,10 +323,11 @@ export function SummaryLab({
         jobId: data.jobId,
         label,
         title: jobTitle,
-        focus
+        focus,
+        outputMode: language.outputMode
       }));
       setBusy(false);
-      await monitorJob(data.jobId, label, jobTitle, focus);
+      await monitorJob(data.jobId, label, jobTitle, focus, language.outputMode);
     } catch (e) {
       setError(e.message);
       setBusy(false);
@@ -341,7 +354,7 @@ export function SummaryLab({
     });
     setSharing(true);
     setCompare(false);
-    setExpanded(Object.fromEntries(SECTIONS.map(([key]) => [key, true])));
+    setExpanded(Object.fromEntries(visibleSections.map(([key]) => [key, true])));
     setNotice('Review and edit each section before sending. Edits affect this email only.');
   }
   async function sendEmail() {
@@ -360,7 +373,7 @@ export function SummaryLab({
           subject: `Summary Lab: ${row.title}`,
           title: row.title,
           section: 'summary_lab',
-          content: emailDocument(row.title, SECTIONS.map(([k, l]) => [l, edits[k] || '']), renderHtml),
+          content: emailDocument(row.title, visibleSections.map(([k, l]) => [l, edits[k] || '']), renderHtml),
           smtpConfig: {
             use_gmail: creds.useGmail,
             gmail_user: creds.gmailUser,
@@ -371,7 +384,7 @@ export function SummaryLab({
       });
       var data = await response.json().catch(() => ({}));
       if (!response.ok) throw Error(data.error || 'Email delivery could not be confirmed. Check your inbox before retrying.');
-      setNotice(`All five sections emailed to ${creds.email}.`);
+      setNotice(`${visibleSections.length === 1 ? 'The section' : `All ${visibleSections.length} sections`} emailed to ${creds.email}.`);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -380,7 +393,7 @@ export function SummaryLab({
   }
   async function copy(all = false, key = 'brief') {
     try {
-      var items = all ? SECTIONS.map(([k, l]) => [l, (sharing ? edits[k] : state.sections?.[k]) || '']) : [[SECTIONS.find(s => s[0] === key)?.[1] || '', (sharing ? edits[key] : state.sections?.[key]) || '']];
+      var items = all ? visibleSections.map(([k, l]) => [l, (sharing ? edits[k] : state.sections?.[k]) || '']) : [[visibleSections.find(s => s[0] === key)?.[1] || '', (sharing ? edits[key] : state.sections?.[key]) || '']];
       var html = emailDocument(row.title, items, renderHtml);
       var doc = new DOMParser().parseFromString(html, 'text/html');
       doc.querySelectorAll('p,h1,h2,h3,li,blockquote').forEach(el => el.append('\n'));
@@ -411,11 +424,11 @@ export function SummaryLab({
   var canGenerate = intake === 'saved' && !!sid || (intake === 'paste' || intake === 'document') && !!source.trim();
   return /*#__PURE__*/React.createElement("main", {
     className: "summary-lab"
-  }, /*#__PURE__*/React.createElement("style", null, `.summary-lab{box-sizing:border-box;--lab-border:rgba(153,142,119,.35);max-width:1500px;margin:0 auto;height:100%;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior-y:contain;padding:32px;color:var(--text-primary,#e9e2d3);width:100%;min-width:0}.summary-lab *{box-sizing:border-box}.summary-lab h1,.summary-lab h2{font-family:Georgia,serif;line-height:1.2}.summary-lab h1{font-size:38px;margin:8px 0 14px}.summary-lab h2{font-size:24px;margin:0 0 18px}.summary-lab p{line-height:1.65}.summary-lab .muted{opacity:.72;font-size:13px}.summary-lab .eyebrow{color:#c9a857;letter-spacing:.13em;text-transform:uppercase;font-size:11px}.summary-lab .layout{display:grid;grid-template-columns:330px minmax(0,1fr);gap:24px;margin-top:28px}.summary-lab .panel{border:1px solid var(--lab-border);border-radius:14px;padding:24px;background:rgba(127,115,89,.045);min-width:0}.summary-lab label{display:block;font-size:13px;margin:16px 0 6px}.summary-lab input,.summary-lab select,.summary-lab textarea{width:100%;padding:11px;border:1px solid var(--lab-border);border-radius:7px;background:var(--bg-secondary,#211e18);color:inherit;font:inherit;min-width:0}.summary-lab select option{background:#211e18;color:#eee}.summary-lab button{padding:10px 14px;min-height:44px;border:1px solid var(--lab-border);border-radius:7px;font:inherit;cursor:pointer;background:transparent;color:inherit}.summary-lab button:focus-visible,.summary-lab input:focus-visible,.summary-lab textarea:focus-visible,.summary-lab select:focus-visible{outline:2px solid #c9a857;outline-offset:3px}.summary-lab button:disabled{opacity:.45;cursor:default}.summary-lab button.primary,.summary-lab button[aria-pressed=true]{background:#c9a857;color:#18150f}.summary-lab .controls{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.summary-lab .intake-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-bottom:16px}.summary-lab .intake-grid button{padding:8px;min-height:38px;font-size:12px}.summary-lab .dropzone{padding:18px;border:1px dashed var(--lab-border);border-radius:10px;text-align:center;background:rgba(201,168,87,.035)}.summary-lab .experiment{display:block;width:100%;text-align:left;margin:10px 0;overflow-wrap:anywhere}.summary-lab .reader{font-family:Calibri,Carlito,Arial,sans-serif;font-size:11pt;line-height:1.55;overflow-wrap:anywhere;max-width:94ch;background:#fff;color:#242424;padding:28px;border:1px solid #dedbd4;border-radius:4px}.summary-lab .reader h1,.summary-lab .reader h2,.summary-lab .reader h3,.summary-lab .reader h4{font:700 11pt/1.5 Calibri,Carlito,Arial,sans-serif;margin:20px 0 8px}.summary-lab .reader p{margin:0 0 12px;line-height:1.55}.summary-lab .reader ul,.summary-lab .reader ol{padding-left:23px;margin:10px 0 16px}.summary-lab .reader li{margin:6px 0}.summary-lab .reader blockquote{border-left:3px solid #b9af94;padding-left:14px;margin:14px 0}.summary-lab .reader table{display:block;max-width:100%;overflow:auto;border-collapse:collapse}.summary-lab .reader th,.summary-lab .reader td{border:1px solid #ddd;padding:7px 9px;text-align:left}.summary-lab .email-editor{font:11pt/1.5 Calibri,Carlito,Arial,sans-serif;min-height:220px}.summary-lab .pair{display:grid;gap:24px;grid-template-columns:repeat(2,minmax(0,1fr))}.summary-lab .status{padding:14px;border-left:3px solid #c9a857;background:rgba(201,168,87,.08);margin:16px 0;overflow-wrap:anywhere}.summary-lab details.lab-section{border:1px solid var(--lab-border);border-radius:10px;margin:12px 0;padding:0;overflow:hidden}.summary-lab details.lab-section>summary{list-style:none;cursor:pointer;padding:16px 18px;display:flex;justify-content:space-between;align-items:center;gap:12px;background:rgba(127,115,89,.04)}.summary-lab details.lab-section>summary::-webkit-details-marker{display:none}.summary-lab .section-body{padding:18px}.summary-lab .chevron{display:inline-block;transition:transform .18s ease}.summary-lab details[open] .chevron{transform:rotate(90deg)}.summary-lab details.audit{border-top:1px solid var(--lab-border);padding:16px 0;margin-top:16px}.summary-lab pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.7}.summary-lab .original{overflow-wrap:anywhere;line-height:1.8}.summary-lab .original table{display:block;overflow:auto;max-width:100%}@media(max-width:900px){.summary-lab{padding:18px 18px 112px}.summary-lab .layout,.summary-lab .pair{grid-template-columns:1fr}.summary-lab h1{font-size:30px}.summary-lab .panel{padding:18px}.summary-lab .reader{padding:20px}.summary-lab .intake-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}`), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("style", null, `.summary-lab{box-sizing:border-box;--lab-border:rgba(153,142,119,.35);max-width:1500px;margin:0 auto;height:100%;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior-y:contain;padding:32px;color:var(--text-primary,#e9e2d3);width:100%;min-width:0}.summary-lab *{box-sizing:border-box}.summary-lab h1,.summary-lab h2{font-family:Georgia,serif;line-height:1.2}.summary-lab h1{font-size:38px;margin:8px 0 14px}.summary-lab h2{font-size:24px;margin:0 0 18px}.summary-lab p{line-height:1.65}.summary-lab .muted{opacity:.72;font-size:13px}.summary-lab .eyebrow{color:#c9a857;letter-spacing:.13em;text-transform:uppercase;font-size:11px}.summary-lab .layout{display:grid;grid-template-columns:330px minmax(0,1fr);gap:24px;margin-top:28px}.summary-lab .panel{border:1px solid var(--lab-border);border-radius:14px;padding:24px;background:rgba(127,115,89,.045);min-width:0}.summary-lab label{display:block;font-size:13px;margin:16px 0 6px}.summary-lab input,.summary-lab select,.summary-lab textarea{width:100%;padding:11px;border:1px solid var(--lab-border);border-radius:7px;background:var(--bg-secondary,#211e18);color:inherit;font:inherit;min-width:0}.summary-lab .check-row{display:flex;align-items:flex-start;gap:9px;margin:14px 0 0;line-height:1.45;cursor:pointer}.summary-lab .check-row.nested{margin:9px 0 0 26px}.summary-lab .check-row input[type=checkbox]{width:17px;height:17px;min-width:17px;margin:1px 0 0;padding:0;accent-color:#c9a857}.summary-lab select option{background:#211e18;color:#eee}.summary-lab button{padding:10px 14px;min-height:44px;border:1px solid var(--lab-border);border-radius:7px;font:inherit;cursor:pointer;background:transparent;color:inherit}.summary-lab button:focus-visible,.summary-lab input:focus-visible,.summary-lab textarea:focus-visible,.summary-lab select:focus-visible{outline:2px solid #c9a857;outline-offset:3px}.summary-lab button:disabled{opacity:.45;cursor:default}.summary-lab button.primary,.summary-lab button[aria-pressed=true]{background:#c9a857;color:#18150f}.summary-lab .controls{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.summary-lab .intake-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-bottom:16px}.summary-lab .intake-grid button{padding:8px;min-height:38px;font-size:12px}.summary-lab .dropzone{padding:18px;border:1px dashed var(--lab-border);border-radius:10px;text-align:center;background:rgba(201,168,87,.035)}.summary-lab .experiment{display:block;width:100%;text-align:left;margin:10px 0;overflow-wrap:anywhere}.summary-lab .reader{font-family:Calibri,Carlito,Arial,sans-serif;font-size:11pt;line-height:1.55;overflow-wrap:anywhere;max-width:94ch;background:#fff;color:#242424;padding:28px;border:1px solid #dedbd4;border-radius:4px}.summary-lab .reader h1,.summary-lab .reader h2,.summary-lab .reader h3,.summary-lab .reader h4{font:700 11pt/1.5 Calibri,Carlito,Arial,sans-serif;margin:20px 0 8px}.summary-lab .reader p{margin:0 0 12px;line-height:1.55}.summary-lab .reader ul,.summary-lab .reader ol{padding-left:23px;margin:10px 0 16px}.summary-lab .reader li{margin:6px 0}.summary-lab .reader blockquote{border-left:3px solid #b9af94;padding-left:14px;margin:14px 0}.summary-lab .reader table{display:block;max-width:100%;overflow:auto;border-collapse:collapse}.summary-lab .reader th,.summary-lab .reader td{border:1px solid #ddd;padding:7px 9px;text-align:left}.summary-lab .email-editor{font:11pt/1.5 Calibri,Carlito,Arial,sans-serif;min-height:220px}.summary-lab .pair{display:grid;gap:24px;grid-template-columns:repeat(2,minmax(0,1fr))}.summary-lab .status{padding:14px;border-left:3px solid #c9a857;background:rgba(201,168,87,.08);margin:16px 0;overflow-wrap:anywhere}.summary-lab details.lab-section{border:1px solid var(--lab-border);border-radius:10px;margin:12px 0;padding:0;overflow:hidden}.summary-lab details.lab-section>summary{list-style:none;cursor:pointer;padding:16px 18px;display:flex;justify-content:space-between;align-items:center;gap:12px;background:rgba(127,115,89,.04)}.summary-lab details.lab-section>summary::-webkit-details-marker{display:none}.summary-lab .section-body{padding:18px}.summary-lab .chevron{display:inline-block;transition:transform .18s ease}.summary-lab details[open] .chevron{transform:rotate(90deg)}.summary-lab details.audit{border-top:1px solid var(--lab-border);padding:16px 0;margin-top:16px}.summary-lab pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.7}.summary-lab .original{overflow-wrap:anywhere;line-height:1.8}.summary-lab .original table{display:block;overflow:auto;max-width:100%}@media(max-width:900px){.summary-lab{padding:18px 18px 112px}.summary-lab .layout,.summary-lab .pair{grid-template-columns:1fr}.summary-lab h1{font-size:30px}.summary-lab .panel{padding:18px}.summary-lab .reader{padding:20px}.summary-lab .intake-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}`), /*#__PURE__*/React.createElement("div", {
     className: "eyebrow"
   }, "Charlie / Research experiments"), /*#__PURE__*/React.createElement("h1", null, "Summary Lab"), /*#__PURE__*/React.createElement("p", null, "Read thoroughly. Preserve what was said. Separate what it means."), /*#__PURE__*/React.createElement("p", {
     className: "muted"
-  }, "An independent trial with five familiar sections. Original summaries and automatic workflows remain unchanged."), error && /*#__PURE__*/React.createElement("div", {
+  }, "An independent trial with five familiar sections and optional Korean interpretation. Original summaries and automatic workflows remain unchanged."), error && /*#__PURE__*/React.createElement("div", {
     role: "alert",
     className: "status"
   }, error, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("button", {
@@ -523,9 +536,28 @@ export function SummaryLab({
     maxLength: 8,
     onChange: e => setYoutubeTicker(e.target.value.toUpperCase()),
     placeholder: "ABT"
-  }), /*#__PURE__*/React.createElement("p", {
+  }), /*#__PURE__*/React.createElement("label", {
+    className: "check-row"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: youtubeKorean,
+    onChange: e => {
+      setYoutubeKorean(e.target.checked);
+      if (!e.target.checked) setYoutubeKoreanOnly(false);
+    }
+  }), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("strong", null, "\uD55C\uAD6D\uC5B4 \uD575\uC2EC \uC815\uB9AC\uB3C4 \uD568\uAED8 \uC0DD\uC131"), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("span", {
     className: "muted"
-  }, "Charlie retrieves the available transcript through your connected Mac, saves it, then starts the improved analysis.")), /*#__PURE__*/React.createElement("label", {
+  }, "English analysis plus a source-reviewed Korean interpretation."))), youtubeKorean && /*#__PURE__*/React.createElement("label", {
+    className: "check-row nested"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: youtubeKoreanOnly,
+    onChange: e => setYoutubeKoreanOnly(e.target.checked)
+  }), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("strong", null, "\uD55C\uAD6D\uC5B4\uB9CC \uC0DD\uC131"), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("span", {
+    className: "muted"
+  }, "Skip the five English sections and generate only the Korean interpretation."))), /*#__PURE__*/React.createElement("p", {
+    className: "muted"
+  }, "Charlie retrieves the available transcript through your connected Mac, saves it, then starts the improved analysis in the selected language.")), /*#__PURE__*/React.createElement("label", {
     htmlFor: "lab-title"
   }, "Experiment name"), /*#__PURE__*/React.createElement("input", {
     id: "lab-title",
@@ -614,14 +646,14 @@ export function SummaryLab({
   }, "Download experiment")), /*#__PURE__*/React.createElement("div", {
     className: "controls"
   }, /*#__PURE__*/React.createElement("button", {
-    onClick: () => setExpanded(Object.fromEntries(SECTIONS.map(([key]) => [key, true])))
+    onClick: () => setExpanded(Object.fromEntries(visibleSections.map(([key]) => [key, true])))
   }, "Expand all"), /*#__PURE__*/React.createElement("button", {
-    onClick: () => setExpanded(Object.fromEntries(SECTIONS.map(([key]) => [key, false])))
+    onClick: () => setExpanded(Object.fromEntries(visibleSections.map(([key]) => [key, false])))
   }, "Collapse all")), notice && /*#__PURE__*/React.createElement("p", {
     role: "status"
   }, notice), sharing && /*#__PURE__*/React.createElement("section", {
     className: "status"
-  }, /*#__PURE__*/React.createElement("strong", null, "Email preview \xB7 all five sections"), /*#__PURE__*/React.createElement("p", null, "Review any section below before sending. Edits affect this email only; audit notes and the full transcript are excluded."), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("strong", null, "Email preview \xB7 ", visibleSections.length === 1 ? 'Korean interpretation' : `all ${visibleSections.length} sections`), /*#__PURE__*/React.createElement("p", null, "Review any section below before sending. Edits affect this email only; audit notes and the full transcript are excluded."), /*#__PURE__*/React.createElement("div", {
     className: "controls"
   }, /*#__PURE__*/React.createElement("button", {
     className: "primary",
@@ -633,7 +665,7 @@ export function SummaryLab({
       setSharing(false);
       setNotice('');
     }
-  }, "Close email preview"))), SECTIONS.map(([key, label, baseline]) => {
+  }, "Close email preview"))), visibleSections.map(([key, label, baseline]) => {
     var value = (sharing ? edits[key] : state.sections?.[key]) || '';
     return /*#__PURE__*/React.createElement("details", {
       key: key,
@@ -680,7 +712,7 @@ export function SummaryLab({
     }, compare && /*#__PURE__*/React.createElement("article", null, /*#__PURE__*/React.createElement("h3", null, "Original \xB7 frozen at experiment start"), /*#__PURE__*/React.createElement("div", {
       className: "original",
       dangerouslySetInnerHTML: {
-        __html: renderHtml(row.baseline?.[baseline] || '<p>No original section saved.</p>')
+        __html: documentHtml(row.baseline?.[baseline] || 'No original section saved.', renderHtml)
       }
     })), /*#__PURE__*/React.createElement("article", null, compare && /*#__PURE__*/React.createElement("h3", null, "Improved"), /*#__PURE__*/React.createElement("div", {
       className: "reader",

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {labDocument,documentHtml,emailDocument,looksLikeHtmlDocument} from '../../src/summary-lab-format.mjs';
+import {labDocument,documentHtml,emailDocument,looksLikeHtmlDocument,youtubeLanguagePayload} from '../../src/summary-lab-format.mjs';
 test('renders source labels, headings and lists without executing source HTML',()=>{
  const html=labDocument('# Topic\n\n**Management:** uncertain [P1]\n\n- Detail\n- Caveat\n\n<script>alert(1)</script>');
  assert.match(html,/<h3>Topic<\/h3>/);assert.match(html,/<strong>Management:<\/strong>/);
@@ -21,4 +21,9 @@ test('uses the page sanitizer for legacy HTML and does not show raw tags',()=>{
 test('HTML without a sanitizer fails closed as visible text',()=>{
  const rendered=documentHtml('<p>Result</p>');
  assert.match(rendered,/&lt;p&gt;Result&lt;\/p&gt;/);assert(!rendered.includes('<p>Result</p>'));
+});
+test('YouTube language options mirror Summary and never allow Korean-only without Korean',()=>{
+ assert.deepEqual(youtubeLanguagePayload(false,true),{generateKorean:false,koreanOnly:false,outputMode:'english'});
+ assert.deepEqual(youtubeLanguagePayload(true,false),{generateKorean:true,koreanOnly:false,outputMode:'korean_bilingual'});
+ assert.deepEqual(youtubeLanguagePayload(true,true),{generateKorean:true,koreanOnly:true,outputMode:'korean_only'});
 });

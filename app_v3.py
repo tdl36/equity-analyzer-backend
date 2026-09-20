@@ -6146,19 +6146,29 @@ def email_summary_section():
         if use_gmail and (not gmail_user or not gmail_password):
             return jsonify({'error': 'Gmail credentials required. Please set them in Settings.'}), 400
         
-        # Format the section label + gradient. Decipher content arrives as
-        # markdown (frontend buildFullMarkdown), so convert it before the
-        # template injects it raw.
+        # Decipher and Korean content arrive as Markdown. Convert those before
+        # applying the same restrained document treatment used by every
+        # Summary email.
         if section == 'bulk_all':
-            section_label, header_color, gradient_to = 'Selected Summaries', '#0d9488', '#0891b2'
+            section_label = 'Selected Summaries'
         elif section == 'improved':
-            section_label, header_color, gradient_to = 'Improved Notes', '#0d9488', '#0891b2'
+            section_label = 'Improved Notes'
         elif section == 'takeaways':
-            section_label, header_color, gradient_to = "Key Takeaways", "#0d9488", "#0891b2"
+            section_label = "Key Takeaways"
+        elif section == 'brief':
+            section_label = "Executive Brief"
+        elif section == 'meeting':
+            section_label = "Meeting Summary"
+        elif section == 'questions':
+            section_label = "Follow-up Questions"
+        elif section == 'assessment':
+            section_label = "Overall Assessment"
+        elif section == 'transcript':
+            section_label = "Full Transcript"
         elif section == 'earnings_recap':
-            section_label, header_color, gradient_to = "Earnings Recap", "#0369a1", "#0284c7"
+            section_label = "Earnings Recap"
         elif section == 'decipher':
-            section_label, header_color, gradient_to = "Decipher", "#d97706", "#b45309"
+            section_label = "Decipher"
             try:
                 import markdown as _md
                 content = _md.markdown(content, extensions=['extra', 'sane_lists', 'nl2br'])
@@ -6166,121 +6176,53 @@ def email_summary_section():
                 print(f'email-summary-section: markdown conversion failed: {_e}')
                 # leave content as-is; the plain-text alternative below is still readable
         elif section == 'korean':
-            section_label, header_color, gradient_to = "핵심 정리 (Korean Key Takeaways)", "#6366f1", "#4338ca"
+            section_label = "핵심 정리 (Korean Key Takeaways)"
             try:
                 import markdown as _md
                 content = _md.markdown(content, extensions=['extra', 'sane_lists', 'nl2br'])
             except Exception as _e:
                 print(f'email-summary-section: korean markdown conversion failed: {_e}')
         else:
-            section_label, header_color, gradient_to = "Follow-up Questions", "#d97706", "#ea580c"
+            section_label = "Follow-up Questions"
 
-        # Convert HTML to plain text (after any markdown→HTML above so the
-        # plain alternative reflects the same final content).
-        plain_text = re.sub(r'<[^>]+>', '', content)
-        plain_text = plain_text.replace('&nbsp;', ' ').replace('&amp;', '&')
-        
-        # Build HTML email
-        html_content = f"""
-        <html>
-        <head>
-            <style>
-                body {{
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                    line-height: 1.6;
-                    color: #333;
-                    max-width: 800px;
-                    margin: 0 auto;
-                    padding: 20px;
-                }}
-                h1 {{
-                    color: {header_color};
-                    border-bottom: 2px solid {header_color};
-                    padding-bottom: 10px;
-                }}
-                h2 {{
-                    color: #374151;
-                    margin-top: 24px;
-                }}
-                h3 {{
-                    color: #4b5563;
-                }}
-                ul, ol {{
-                    padding-left: 24px;
-                }}
-                li {{
-                    margin-bottom: 8px;
-                }}
-                strong {{
-                    color: #111;
-                }}
-                .header {{
-                    background: linear-gradient(135deg, {header_color} 0%, {gradient_to} 100%);
-                    color: white;
-                    padding: 20px;
-                    border-radius: 8px;
-                    margin-bottom: 24px;
-                }}
-                .topic-badge {{
-                    display: inline-block;
-                    background: rgba(255,255,255,0.2);
-                    padding: 4px 12px;
-                    border-radius: 12px;
-                    font-size: 12px;
-                    margin-top: 8px;
-                }}
-                .content {{
-                    background: #f9fafb;
-                    padding: 24px;
-                    border-radius: 8px;
-                    border: 1px solid #e5e7eb;
-                }}
-                .footer {{
-                    margin-top: 24px;
-                    padding-top: 16px;
-                    border-top: 1px solid #e5e7eb;
-                    font-size: 12px;
-                    color: #6b7280;
-                }}
-            </style>
-        </head>
-        <body>
-            <div class="header">
-                <h1 style="color: white; border: none; margin: 0;">{section_label}</h1>
-                <p style="margin: 8px 0 0 0; opacity: 0.9;">{title}</p>
-                <span class="topic-badge">{topic}</span>
-            </div>
-            <div class="content">
-                {content}
-            </div>
-            <div class="footer">
-                Generated by TDL Equity Analyzer
-            </div>
-        </body>
-        </html>
-        """
-        
-        # Lab documents use a restrained, inline-styled email; legacy templates stay intact.
-        if section == 'summary_lab':
-            from html import escape
-            from bs4 import BeautifulSoup
-            document = BeautifulSoup(content, 'html.parser')
-            allowed = {'div', 'h1', 'h2', 'h3', 'h4', 'p', 'strong', 'em', 'ul', 'ol', 'li', 'blockquote', 'hr', 'code', 'br'}
-            for tag in list(document.find_all(True)):
-                if tag.name not in allowed:
-                    tag.decompose()
-                    continue
-                tag.attrs = {}
-                style = 'font-family:Calibri,Carlito,Arial,sans-serif;font-size:11pt;line-height:1.5;color:#202020;'
-                if tag.name in ('h1', 'h2', 'h3', 'h4'):
-                    style += 'font-weight:700;margin:20px 0 8px;'
-                elif tag.name == 'p':
-                    style += 'margin:0 0 12px;'
-                elif tag.name == 'li':
-                    style += 'margin:6px 0;'
-                tag['style'] = style
-            html_content = '<html><body style="font-family:Calibri,Carlito,Arial,sans-serif;font-size:11pt">' + str(document) + '</body></html>'
-            plain_text = document.get_text(separator='\n', strip=True)
+        from html import escape
+        from bs4 import BeautifulSoup
+        # Summary Lab and pooled exports already contain their own document
+        # title/section hierarchy. Other section emails need a simple heading.
+        if section not in ('summary_lab', 'bulk_all'):
+            content = f'<h1>{escape(str(title))}</h1><h2>{escape(section_label)}</h2>' + content
+        document = BeautifulSoup(content, 'html.parser')
+        allowed = {'article', 'section', 'div', 'h1', 'h2', 'h3', 'h4', 'p', 'strong', 'b', 'em', 'i',
+                   'ul', 'ol', 'li', 'blockquote', 'hr', 'code', 'pre', 'br', 'table', 'thead', 'tbody',
+                   'tr', 'th', 'td'}
+        dangerous = {'script', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'button', 'link', 'meta'}
+        for tag in list(document.find_all(True)):
+            if tag.name in dangerous:
+                tag.decompose()
+                continue
+            if tag.name not in allowed:
+                tag.unwrap()
+                continue
+            tag.attrs = {}
+            style = 'font-family:Calibri,Carlito,Arial,sans-serif;font-size:11pt;line-height:1.5;color:#000000;'
+            if tag.name in ('h1', 'h2', 'h3', 'h4', 'strong', 'b', 'th'):
+                style += 'font-weight:700;'
+            if tag.name in ('h1', 'h2', 'h3', 'h4'):
+                style += 'margin:18px 0 8px;'
+            elif tag.name == 'p':
+                style += 'margin:0 0 11px;'
+            elif tag.name == 'li':
+                style += 'margin:5px 0;'
+            elif tag.name == 'table':
+                style += 'border-collapse:collapse;width:100%;margin:12px 0;'
+            elif tag.name in ('th', 'td'):
+                style += 'border:1px solid #b8b8b8;padding:6px 8px;text-align:left;'
+            elif tag.name == 'hr':
+                style += 'border:0;border-top:1px solid #b8b8b8;margin:22px 0;'
+            tag['style'] = style
+        body_style = 'font-family:Calibri,Carlito,Arial,sans-serif;font-size:11pt;line-height:1.5;color:#000000;margin:0;padding:0;'
+        html_content = f'<html><body style="{body_style}">{document}</body></html>'
+        plain_text = document.get_text(separator='\n', strip=True)
 
         # Create email message
         msg = MIMEMultipart('alternative')
@@ -19525,81 +19467,38 @@ def email_research():
                     heading = chart.get('label') or f"{chart.get('type', 'chart').title()} Breakdown"
                     label = f'{ticker} {heading}' if ticker else heading
                     cid = f'chart_{idx}'
-                    charts_html += f'<p style="margin:16px 0 4px 0;font-weight:bold;font-size:11pt;color:#1e293b;">{label}</p>'
+                    charts_html += f'<p style="margin:16px 0 4px 0;font-weight:bold;font-size:11pt;color:#000000;">{label}</p>'
                     charts_html += f'<img src="cid:{cid}" style="width:100%;max-width:500px;margin:0 0 16px 0;" />'
                     chart_attachments.append((cid, chart['data']))
 
-        if minimal:
-            # Clean email — just content with basic styling, no header/footer
-            html_body = f"""
+        # Apply the same clean document treatment to every research-note email,
+        # including Catalyst sharing. No branded banner or product footer.
+        from html import escape as _escape_email
+        html_body = f"""
         <html>
         <head>
             <style>
-                body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; }}
-                h1, h2, h3 {{ color: #1a1a2e; margin-top: 1.5em; margin-bottom: 0.5em; }}
-                ul {{ margin: 10px 0; padding-left: 25px; }}
-                li {{ margin-bottom: 8px; line-height: 1.5; }}
-                ul ul {{ margin-top: 8px; }}
-                p {{ margin: 0.8em 0; }}
-                strong {{ color: #1e293b; }}
-                hr {{ border: none; border-top: 1px solid #e2e8f0; margin: 1.5em 0; }}
+                body, p, li, div, span, table, th, td, blockquote, code, pre {{ font-family: Calibri, Carlito, Arial, sans-serif; font-size: 11pt; line-height: 1.5; color: #000000; }}
+                body {{ margin: 0; padding: 0; }}
+                h1, h2, h3, h4 {{ font-family: Calibri, Carlito, Arial, sans-serif; font-size: 11pt; line-height: 1.5; color: #000000; font-weight: 700; margin: 18px 0 8px; }}
+                p {{ margin: 0 0 11px; }}
+                ul, ol {{ margin: 8px 0 14px; padding-left: 24px; }}
+                li {{ margin: 5px 0; }}
+                table {{ border-collapse: collapse; width: 100%; margin: 12px 0; }}
+                th, td {{ border: 1px solid #b8b8b8; padding: 6px 8px; text-align: left; }}
+                th {{ font-weight: 700; background: #f2f2f2; }}
+                hr {{ border: 0; border-top: 1px solid #b8b8b8; margin: 22px 0; }}
                 img {{ max-width: 100%; height: auto; }}
-                table {{ border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 13px; }}
-                th {{ border: 1px solid #999; background-color: #e8e8e8; padding: 6px 8px; font-weight: bold; text-align: left; }}
-                td {{ border: 1px solid #ccc; padding: 6px 8px; }}
             </style>
         </head>
         <body>
+            <h1>{_escape_email(str(subject))}</h1>
             {content_html}
             {charts_html}
         </body>
         </html>
-            """
-        else:
-            # Full decorated email with header/footer
-            header_info = []
-            if ticker:
-                header_info.append(f"<strong>Ticker:</strong> {ticker}")
-            if topic:
-                header_info.append(f"<strong>Topic:</strong> {topic}")
-            if prompt_name:
-                header_info.append(f"<strong>Framework:</strong> {prompt_name}")
-            header_html = " | ".join(header_info) if header_info else ""
+        """
 
-            html_body = f"""
-        <html>
-        <head>
-            <style>
-                body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; }}
-                h1, h2, h3 {{ color: #1a1a2e; margin-top: 1.5em; margin-bottom: 0.5em; }}
-                .header {{ background: linear-gradient(135deg, #0f172a, #1e293b); color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; }}
-                .header h1 {{ margin: 0 0 10px 0; color: white; }}
-                .header-meta {{ font-size: 14px; opacity: 0.9; }}
-                .content {{ background: #f8fafc; padding: 20px; border-radius: 10px; border: 1px solid #e2e8f0; }}
-                ul {{ margin: 10px 0; padding-left: 25px; }}
-                li {{ margin-bottom: 8px; line-height: 1.5; }}
-                ul ul {{ margin-top: 8px; }}
-                table {{ border-collapse: collapse; width: 100%; margin: 15px 0; }}
-                th, td {{ border: 1px solid #e2e8f0; padding: 10px; text-align: left; }}
-                th {{ background: #f1f5f9; }}
-                code {{ background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 14px; }}
-                pre {{ background: #1e293b; color: #e2e8f0; padding: 15px; border-radius: 8px; overflow-x: auto; }}
-                p {{ margin: 0.8em 0; }}
-                strong {{ color: #1e293b; }}
-            </style>
-        </head>
-        <body>
-            <div class="header">
-                <h1>Research Analysis</h1>
-                <div class="header-meta">{header_html}</div>
-            </div>
-            <div class="content">
-                {content_html}
-            </div>
-        </body>
-        </html>
-            """
-        
         # Send email
         if chart_attachments:
             from email.mime.image import MIMEImage
