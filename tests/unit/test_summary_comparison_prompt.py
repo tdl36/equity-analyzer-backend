@@ -197,3 +197,62 @@ class QaFloorTests(unittest.TestCase):
 
     def test_a_source_without_questions_is_not_flagged(self):
         self.assertEqual(summary_comparison.qa_findings('No exchanges here.', 'A document with no questions.'), '')
+
+
+class FigureCoverageTests(unittest.TestCase):
+    """A note silently dropped the 12-14% long-term algorithm and it was only
+    caught by grepping for that one string."""
+
+    def test_figures_normalise_across_spacing_and_dash_style(self):
+        found = summary_comparison.figures('12 – 14 %, $5 billion, 99.8%, 80-90 percent')
+        self.assertIn('12-14%', found)
+        self.assertIn('$5billion', found)
+        self.assertIn('99.8%', found)
+        self.assertIn('80-90%', found)
+
+    def test_a_figure_in_the_records_but_not_the_note_is_reported(self):
+        coverage = summary_comparison.figure_coverage(
+            'The note keeps 99.8% on-time.',
+            'Records carry 12-14%, $5 billion and 99.8%.')
+        self.assertEqual(coverage['missing'], ['$5billion', '12-14%'])
+        self.assertEqual(coverage['checked'], 3)
+
+    def test_a_note_carrying_every_figure_reports_nothing_missing(self):
+        records = 'Records carry 12-14% and $5 billion.'
+        self.assertEqual(summary_comparison.figure_coverage(records, records)['missing'], [])
+
+    def test_generate_records_coverage_for_the_finished_note(self):
+        def ask(rules, prompt, tokens):
+            return 'Record mentions 12-14% growth.' if prompt.startswith('SOURCE PART') else 'Note prose.'
+        state = {}
+        summary_comparison.generate('Body.', state, ask, lambda _s: None)
+        self.assertIn('12-14%', state['figureCoverage']['missing'])
+
+
+class AssessmentBloatTests(unittest.TestCase):
+    def test_an_assessment_longer_than_the_takeaways_is_flagged(self):
+        # The real v4 note: 11,233 characters of assessment against 6,767 of
+        # takeaways, opening with "MANAGEMENT STATEMENTS".
+        finding = summary_comparison.assessment_findings('x' * 11233, 'y' * 6767)
+        self.assertIn('1.7 times', finding)
+        self.assertIn('restating the management record', finding)
+
+    def test_a_proportionate_assessment_passes(self):
+        self.assertEqual(summary_comparison.assessment_findings('x' * 3198, 'y' * 6088), '')
+
+    def test_the_shrink_guard_does_not_veto_a_deliberate_trim(self):
+        calls = []
+
+        def ask(rules, prompt, tokens):
+            calls.append(prompt)
+            if prompt.startswith('SOURCE PART'):
+                return 'Evidence record.'
+            if prompt.startswith('Do not restate'):
+                # First the bloated draft, then the intended shorter rewrite.
+                return 'A' * 9000 if len([c for c in calls if c.startswith('Do not restate')]) == 1 else 'Tight assessment.'
+            return 'B' * 4000
+
+        state = {}
+        summary_comparison.generate('Body.', state, ask, lambda _s: None)
+        self.assertEqual(state['sections']['assessment'], 'Tight assessment.')
+        self.assertEqual(state['quoteRepairs']['assessment']['kept'], 'repair')
