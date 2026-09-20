@@ -4,13 +4,13 @@ Updated: September 20, 2026
 
 ## Start here
 
-Charlie production is currently **T88** at commit **`15fa32b780a15cac8691a246a54c47e087645fcc`** on `main`.
+Charlie production is currently **T89** at commit **`1b7ad8152ee571964646f3fe58ff58bfb1e3d04b`** on `main`.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T88`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T89`
 - Backend health: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`
 - Branch: `main`
-- Backend health was verified on September 20 and reported the T88 commit above.
+- Backend health was verified on September 20 and reported the T89 commit above.
 - The Mac launch agent `com.charlie.local-agent` was restarted during T82 because `charlie_local_agent.py` changed. T83 is frontend-only and did not require another restart.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files. Do not clean the repository.
@@ -35,6 +35,47 @@ The design standard is institutional: concise hierarchy, readable outputs, defen
 | Production deployment | Push to `main` triggers Render backend deployment. Cloudflare frontend deployment is explicit through Wrangler. |
 
 ## Latest production changes
+
+### T89 — the quoting quota is enforced, not requested
+
+Commit: `1b7ad81` — `Enforce the quoting quota instead of asking for it`
+
+The user regenerated the CAH note under `readable-v2` and still saw heavy quotation.
+Measured on the two saved notes rather than judged by impression:
+
+| Section | conservative-v1 | readable-v2 |
+| --- | --- | --- |
+| Key takeaways | 6.3 quotes/1k chars | 4.6 |
+| Executive brief | 4.2 | 3.6 |
+| Follow-up questions | 3.4 | 1.2 |
+| Investment assessment | 3.2 | 1.9 |
+| Q&A log | — | 5.5 (new) |
+| Overall | 4.5 | 3.7 |
+
+`readable-v2` did work: density fell in every comparable section and broken numbered lists
+went 21 to 0. But the note is 34% longer, so absolute quotes rose 71 to 79, and the rule
+"at most one short quoted phrase per point" was ignored in **8 of 9 tagged takeaways**, one
+carrying nine quoted fragments. The phrasing was ambiguous and a style preference loses to
+the fidelity rules above it in the same prompt.
+
+T89 (`readable-v3`) stops asking:
+
+- Quoting is governed per section. The Q&A log and the per-part management records are
+  exempt because verbatim is their job. The four analysis sections carry a stated quota.
+- `quote_findings()` checks each draft in code and names the breach; a section over quota is
+  redrafted once, instructed to keep every fact, number, qualification and attribution while
+  converting the least informative quotes to reported speech.
+- Sections already written are passed to later ones so caveats are referred to, not restated.
+- The method panel reports which sections were redrafted.
+
+Calibrated against the real note: brief (9 quotes, 3.55/1k) and takeaways (4.6/1k, worst
+block 9) breach and would be repaired; assessment (1.88/1k) and questions (1.16/1k) already
+comply, so no model call is wasted.
+
+Validation: 575 backend tests including the enforcement and repair-pass tests, 46 frontend
+tests, production build, Render revision and Cloudflare marker verified. **Unproven:** no
+note has yet been generated under `readable-v3`. Whether the repair pass produces readable
+prose without losing content is the next real-source check, and it is a paid run.
 
 ### T88 — regenerate an older Improved note in the current format
 
@@ -346,7 +387,7 @@ Do not invent observed URLs, counts, downloads, or completion. Never pass provid
 
 1. **Run a real dual-summary audio comparison.** Add one new representative audio file to the root `SUMMARIES` folder and confirm that original Summary and `Auto from SUMMARIES` Lab outputs both complete, are readable, and can be emailed/saved. This incurs real model usage and should be user-driven, not launched merely for QA. T82 changed the code paths this exercises, so it is still the live end-to-end proof: confirm exactly one Lab experiment per recording, that the Telegram message reports the correct Lab state, and that the file moves to `SUMMARIES/Processed` once.
 2. **Evaluate Summary Lab quality across several source types.** Compare earnings calls, investor meetings, noisy audio, long YouTube transcripts, and non-earnings documents. Capture which sections are materially better or worse than original Summary.
-3. **Decide the convergence plan.** After real testing, selectively promote proven Lab prompt/format improvements into original Summary or retain both permanently.
+3. **Decide the convergence plan.** After real testing, selectively promote proven Lab prompt/format improvements into original Summary or retain both permanently. T87–T89 moved the Improved pipeline toward the Original's strengths (topic tags, a Q&A log, enforced quoting quotas) while leaving the original Summary prompts untouched. Two defects found in the Original during that work are still unfixed and argue against promoting it as-is: it reported an invented "8.5/10" credibility score, and it asserted an EPS unit for FY27 guidance that the transcript does not support while dropping the 12–14% figure that contradicts it.
 4. **Validate catalyst synthesis on more real folders.** Include single transcript, transcript plus presentation, and multi-broker event folders; score concision, factual attribution, analyst voice, unresolved issues, and PM usefulness.
 5. **Prove a complete managed AlphaSense assignment.** Demonstrate browser discovery, source restrictions, original download, iCloud handoff, recap, thesis proposal, and recovery for a real user-selected ticker without overstating unattended coverage.
 6. **Improve real-source quality benchmarks.** Current automated checks are useful regressions, not expert certification. Add frozen real-source packs and investor-scored outputs without committing licensed source bodies.
@@ -384,9 +425,9 @@ Use `py_compile` for every touched Python module. Do not start paid research, se
 
 Current release markers must stay synchronized:
 
-- `worker.js`: `2026-09-20T88`
-- `service-worker.js`: `20260920-88`
-- `src/app.jsx`: `2026-09-20T88`
+- `worker.js`: `2026-09-20T89`
+- `service-worker.js`: `20260920-89`
+- `src/app.jsx`: `2026-09-20T89`
 
 After an application change:
 
@@ -409,7 +450,7 @@ Render may return transient 502 responses while rolling forward. Wait for `/heal
 
 ## Repository state warning
 
-At this handoff, `main` is committed through `15fa32b`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
+At this handoff, `main` is committed through `1b7ad81`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
 
 - `.claude/settings.local.json`
 - `.omc/**`
@@ -423,7 +464,7 @@ Always inspect `git status --short`, stage an explicit allowlist, and review `gi
 
 ## Suggested first Claude Code instruction
 
-> Continue Charlie from production commit `15fa32b` and release T88. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
+> Continue Charlie from production commit `1b7ad81` and release T89. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
 
 ## Relevant deeper documentation
 
