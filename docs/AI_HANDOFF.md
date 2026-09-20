@@ -4,14 +4,14 @@ Updated: September 20, 2026
 
 ## Start here
 
-Charlie production is currently **T82** at commit **`1dfaf726498be5ddde89bac233d7ea712f2fcbe2`** on `main`.
+Charlie production is currently **T83** at commit **`8ea85ab3d61aa0dd6d281c667497f4649c3a1f98`** on `main`.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T82`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T83`
 - Backend health: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`
 - Branch: `main`
-- Backend health was verified on September 20 and reported the T82 commit above.
-- The Mac launch agent `com.charlie.local-agent` was restarted after T82 because `charlie_local_agent.py` changed.
+- Backend health was verified on September 20 and reported the T83 commit above.
+- The Mac launch agent `com.charlie.local-agent` was restarted during T82 because `charlie_local_agent.py` changed. T83 is frontend-only and did not require another restart.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files. Do not clean the repository.
 
@@ -35,6 +35,39 @@ The design standard is institutional: concise hierarchy, readable outputs, defen
 | Production deployment | Push to `main` triggers Render backend deployment. Cloudflare frontend deployment is explicit through Wrangler. |
 
 ## Latest production changes
+
+### T83 — Catalyst synthesis becomes a named destination
+
+Commit: `8ea85ab` — `Promote Catalyst notes to a top-level destination`
+
+Catalyst synthesis was reachable only through Automations → Research agents → an
+unrouted `Catalysts` pill, under a page heading that read `TradingAgents`. Three names
+for one path, and the workspace had no URL at all.
+
+- **Create → Catalyst notes** is now a top-level destination at `#view=catalysts`. It is
+  linkable, bookmarkable and restored by the back button; `agentView` was local state, so
+  none of that was previously possible.
+- Arriving there shows a `Catalyst notes` heading and no TradingAgents framing or sub-tab
+  row. The `Catalysts` pill was removed from the Research agents tab, leaving one path in.
+- The agents sub-views (`research`, `new`, `batch`, `dashboard`, `history`) are now scoped
+  to `activeTab === 'agents'`, so the last-opened agents panel cannot bleed into the
+  routed Catalyst destination.
+- Catalyst history is fetched on arrival. It used to depend on the pill's click handler,
+  which a URL, a sidebar click or an alert action never invoked.
+- Saving a synthesis previously ended in a blocking `alert('Saved to Research tab')` that
+  named a destination without going there. It now shows an in-page confirmation naming the
+  saved document, with a button that opens Library → Research documents.
+- Fixed a pre-existing mobile defect on that screen: at 375px the Auto-Pilot `Auto-fire`
+  select overflowed the card and overlapped the paragraph. The row now stacks below `sm`.
+
+Validation completed for T83: 46 frontend tests (two new: `catalysts` in `VIEWS`, its
+Create-group membership, its label, and `readRoute`/`routeHash` round-trip with ticker),
+549 backend tests, production build, and a browser pass against the built bundle at
+desktop and 375px. Verified in the browser: the sidebar entry and breadcrumb, the routed
+heading, back-button restore, the Research agents tab still intact with no Catalysts pill
+and no sub-view leakage, catalyst history loading on arrival, and the Auto-Pilot row
+measured as non-overflowing at both widths. No synthesis was run, no proposal approved,
+no note saved and no email sent during verification.
 
 ### T82 — correct the automatic dual Summary fan-out
 
@@ -192,7 +225,7 @@ Do not invent observed URLs, counts, downloads, or completion. Never pass provid
 4. **Validate catalyst synthesis on more real folders.** Include single transcript, transcript plus presentation, and multi-broker event folders; score concision, factual attribution, analyst voice, unresolved issues, and PM usefulness.
 5. **Prove a complete managed AlphaSense assignment.** Demonstrate browser discovery, source restrictions, original download, iCloud handoff, recap, thesis proposal, and recovery for a real user-selected ticker without overstating unattended coverage.
 6. **Improve real-source quality benchmarks.** Current automated checks are useful regressions, not expert certification. Add frozen real-source packs and investor-scored outputs without committing licensed source bodies.
-7. **Continue UI simplification.** Navigation and complex evidence workflows have improved but remain dense. Any redesign must be inspected at desktop and mobile widths with real long content.
+7. **Continue UI simplification.** Navigation and complex evidence workflows have improved but remain dense. Any redesign must be inspected at desktop and mobile widths with real long content. T83 did this for Catalyst synthesis. The same pattern is worth auditing elsewhere: sub-views held in unrouted local state have no URL, no back-button behavior and no way for an alert or sidebar entry to link into them. `agentView`'s remaining panels and the Research agents heading are the obvious next candidates.
 8. **Broaden recovery cautiously.** Long-running Summary Lab and several research jobs have bounded recovery; audit remaining model-backed jobs for durable identity, checkpointing, ownership fencing, duplicate prevention, and visible failure. T82 fixed the Summary Lab recovery sweep and the audio completion mirror. Two known gaps remain and are unproven in production: a restart between the saved Summary and the fan-out leaves no Lab experiment to recover, because recovery only resumes rows that already exist; and `recover_once` reads `ANTHROPIC_API_KEY` from the environment, so recovery is silently inactive if only a Settings-supplied key is present.
 
 ## Safe commands
@@ -226,9 +259,9 @@ Use `py_compile` for every touched Python module. Do not start paid research, se
 
 Current release markers must stay synchronized:
 
-- `worker.js`: `2026-09-20T82`
-- `service-worker.js`: `20260920-82`
-- `src/app.jsx`: `2026-09-20T82`
+- `worker.js`: `2026-09-20T83`
+- `service-worker.js`: `20260920-83`
+- `src/app.jsx`: `2026-09-20T83`
 
 After an application change:
 
@@ -251,7 +284,7 @@ Render may return transient 502 responses while rolling forward. Wait for `/heal
 
 ## Repository state warning
 
-At this handoff, `main` is committed through `1dfaf72`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
+At this handoff, `main` is committed through `8ea85ab`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
 
 - `.claude/settings.local.json`
 - `.omc/**`
@@ -265,7 +298,7 @@ Always inspect `git status --short`, stage an explicit allowlist, and review `gi
 
 ## Suggested first Claude Code instruction
 
-> Continue Charlie from production commit `1dfaf72` and release T82. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
+> Continue Charlie from production commit `8ea85ab` and release T83. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
 
 ## Relevant deeper documentation
 
