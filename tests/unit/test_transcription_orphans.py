@@ -45,30 +45,37 @@ class OrphanSweepTests(unittest.TestCase):
         def get_db(**_kwargs):
             yield None, cursor
 
-        fn = load('_fail_orphaned_transcription_jobs', {'get_db': get_db, 'print': lambda *a: None})
+        fn = load('_cleanup_orphaned_transcription_jobs', {'get_db': get_db, 'print': lambda *a: None})
         return fn(), cursor
 
     def test_stranded_jobs_are_failed_so_the_agent_retries(self):
-        count, cursor = self.sweep_with([{'id': 'e19d64bd', 'filename': 'MCK Mgmt Meeting.m4a'}])
+        count, cursor = self.sweep_with([{'id': 'e19d64bd'}])
         self.assertEqual(count, 1)
-        self.assertIn("SET status = 'error'", cursor.sql)
-        self.assertIn("status IN ('starting', 'transcribing', 'summarizing')", cursor.sql)
+        self.assertIn("SET status='failed'", cursor.sql)
+        self.assertIn("status NOT IN ('complete', 'error', 'failed')", cursor.sql)
 
-    def test_the_error_tells_the_user_the_audio_is_not_lost(self):
+    def test_staleness_is_measured_on_progress_not_on_age(self):
+        # created_at would fail a legitimately long transcription once the
+        # sweep runs on a timer rather than only at startup.
         _count, cursor = self.sweep_with([])
-        message = cursor.args[0]
-        self.assertIn('interrupted by a backend restart', message)
-        self.assertIn('picked up again automatically', message)
+        self.assertIn('updated_at < NOW() - make_interval', cursor.sql)
+        self.assertNotIn('created_at <', cursor.sql)
+        self.assertEqual(cursor.args, (25,))
 
-    def test_a_rolling_deploy_cannot_fail_a_job_still_running(self):
-        # Render can run the outgoing process while the new one starts.
-        _count, cursor = self.sweep_with([])
-        self.assertIn("updated_at < NOW() - INTERVAL '10 minutes'", cursor.sql)
+    def test_the_window_is_configurable_for_the_periodic_caller(self):
+        cursor = Cursor([])
 
-    def test_completed_and_failed_jobs_are_untouched(self):
+        @contextmanager
+        def get_db(**_kwargs):
+            yield None, cursor
+
+        fn = load('_cleanup_orphaned_transcription_jobs', {'get_db': get_db, 'print': lambda *a: None})
+        fn(stale_minutes=60)
+        self.assertEqual(cursor.args, (60,))
+
+    def test_finished_jobs_are_untouched(self):
         _count, cursor = self.sweep_with([])
-        for status in ("'complete'", "'done'", "'error'"):
-            self.assertNotIn(f'status IN ({status})', cursor.sql)
+        self.assertIn("NOT IN ('complete', 'error', 'failed')", cursor.sql)
 
     def test_a_database_failure_does_not_stop_startup(self):
         @contextmanager
@@ -76,7 +83,7 @@ class OrphanSweepTests(unittest.TestCase):
             raise RuntimeError('no database')
             yield
 
-        fn = load('_fail_orphaned_transcription_jobs', {'get_db': broken, 'print': lambda *a: None})
+        fn = load('_cleanup_orphaned_transcription_jobs', {'get_db': broken, 'print': lambda *a: None})
         self.assertEqual(fn(), 0)
 
 
@@ -92,4 +99,4 @@ class ProgressFreshnessTests(unittest.TestCase):
                                 'progress updates must refresh updated_at or a live job looks abandoned')
 
     def test_the_sweep_runs_at_startup(self):
-        self.assertIn('_fail_orphaned_transcription_jobs()', SOURCE)
+        self.assertIn('_cleanup_orphaned_transcription_jobs()', SOURCE)

@@ -1633,43 +1633,6 @@ def _queue_improved_summary(summary_id, api_key=None):
 SUMMARIES_FOLDER_ORIGIN = 'summaries-folder'
 
 
-def _fail_orphaned_transcription_jobs():
-    """Mark transcription jobs a backend restart abandoned.
-
-    gunicorn runs a single worker, so anything still recorded as running when
-    a new process starts belongs to a process that no longer exists. Those
-    rows used to sit at 'transcribing' forever: the Mac agent cannot tell a
-    dead job from a slow one, so it waits out its 90-minute poll and then
-    deliberately keeps the file out of the scanner to avoid a duplicate
-    upload. The file is never processed and nothing reports a failure.
-
-    The agent already treats a failed job as retryable, so failing these
-    turns a silent hang into an automatic re-upload. The age guard keeps a
-    rolling deploy from failing a job the outgoing process is still running;
-    _run_transcription mirrors its progress, so a live job stays young.
-    """
-    try:
-        with get_db(commit=True) as (_c, cur):
-            cur.execute("""
-                UPDATE transcription_jobs
-                   SET status = 'error',
-                       error = %s,
-                       completed_at = NOW(),
-                       updated_at = NOW()
-                 WHERE status IN ('starting', 'transcribing', 'summarizing')
-                   AND updated_at < NOW() - INTERVAL '10 minutes'
-             RETURNING id, filename
-            """, ('Transcription was interrupted by a backend restart before it finished. '
-                  'The audio was left in place and will be picked up again automatically.',))
-            stranded = cur.fetchall()
-        for row in stranded:
-            print(f"[startup] Failed orphaned transcription job {row['id']} ({row.get('filename') or 'unknown'})")
-        return len(stranded)
-    except Exception as e:
-        print(f'[startup] Could not sweep orphaned transcription jobs: {e}')
-        return 0
-
-
 def _should_fan_out_summary_lab(origin):
     """Only audio detected in the iCloud SUMMARIES folder fans out to Summary Lab.
 
@@ -6831,10 +6794,21 @@ def _mirror_transcription_state(job_id: str) -> None:
         print(f'_mirror_transcription_state({job_id}): {e}')
 
 
-def _cleanup_orphaned_transcription_jobs() -> int:
-    """On backend startup, any row still marked as in-flight is orphaned
-    (the Python process that owned it is gone). Mark them failed so the
-    local agent can retry. Returns the count of rows flipped."""
+def _cleanup_orphaned_transcription_jobs(stale_minutes: int = 25) -> int:
+    """Fail transcription jobs whose owning process is gone.
+
+    gunicorn runs a single worker, so a row still marked in-flight belongs to
+    a process that no longer exists. The Mac agent cannot tell a dead job from
+    a slow one: it polls for 90 minutes and then deliberately keeps the file
+    out of the scanner to avoid a duplicate upload, so the audio is silently
+    never processed. Failing the row is what makes the agent retry.
+
+    Staleness is measured on updated_at, not created_at: a long transcription
+    legitimately has an old created_at, and this runs periodically rather than
+    only at startup. A job orphaned by one deploy used to wait for the *next*
+    deploy to be cleaned up, and a real file sat stranded for half an hour
+    because no further deploy happened to come along.
+    """
     try:
         with get_db(commit=True) as (_c, cur):
             cur.execute('''
@@ -6844,9 +6818,9 @@ def _cleanup_orphaned_transcription_jobs() -> int:
                        completed_at=NOW(),
                        updated_at=NOW()
                  WHERE status NOT IN ('complete', 'error', 'failed')
-                   AND created_at < NOW() - INTERVAL '10 minutes'
+                   AND updated_at < NOW() - make_interval(mins => %s)
                 RETURNING id
-            ''')
+            ''', (stale_minutes,))
             rows = cur.fetchall() or []
         if rows:
             print(f'[startup] Flipped {len(rows)} orphaned transcription jobs to failed')
@@ -6856,11 +6830,30 @@ def _cleanup_orphaned_transcription_jobs() -> int:
         return 0
 
 
-# Run once at import — right after init_db creates the table.
+# At import, right after init_db creates the table, then on a timer: a job
+# orphaned by one deploy must not wait for the next deploy to be released.
 try:
     _cleanup_orphaned_transcription_jobs()
 except Exception:
     pass
+
+
+def _start_transcription_orphan_sweep(interval_seconds: int = 300):
+    def loop():
+        stop = threading.Event()
+        stop.wait(interval_seconds)
+        while True:
+            try:
+                freed = _cleanup_orphaned_transcription_jobs()
+                if freed:
+                    print(f'[transcription sweep] released {freed} orphaned job(s) for retry')
+            except Exception as exc:
+                print('[transcription sweep]', type(exc).__name__)
+            stop.wait(interval_seconds)
+    threading.Thread(target=loop, daemon=True, name='transcription-orphan-sweep').start()
+
+
+_start_transcription_orphan_sweep()
 
 # In-memory store for async infographic generation jobs
 _infographic_jobs = {}
@@ -8651,6 +8644,8 @@ Organize into 3-6 logical sections (e.g., Business Update, Strategic Priorities,
             # tags on every numeric claim. Output is much longer than the old
             # bullet summary, so retain the 24K output budget. Send the complete
             # transcript to every Summary section; never silently slice its tail.
+            _transcription_jobs[job_id]['progress'] = 'Generating Key Takeaways'
+            _mirror_transcription_state(job_id)
             summary_result = _call_llm_stream_with_retry(
                 messages=[{"role": "user", "content": f"{summary_instruction}\n\nTRANSCRIPT:\n{transcript}"}],
                 system=summary_system_prompt,
@@ -8662,6 +8657,8 @@ Organize into 3-6 logical sections (e.g., Business Update, Strategic Priorities,
         summary_html = summary_result.get('text', '') or ''
 
         try:
+            _transcription_jobs[job_id]['progress'] = 'Generating Follow-up Questions'
+            _mirror_transcription_state(job_id)
             questions_result = _call_llm_stream_with_retry(
                 messages=[{"role": "user", "content": f"Based on this transcript, generate 3-5 key follow-up questions.\nReturn raw HTML: <ol><li>Question?</li></ol>\n\nTRANSCRIPT:\n{transcript}"}],
                 system="Generate insightful follow-up questions.",
@@ -8674,6 +8671,8 @@ Organize into 3-6 logical sections (e.g., Business Update, Strategic Priorities,
             questions_html = ''
 
         try:
+            _transcription_jobs[job_id]['progress'] = 'Generating Assessment'
+            _mirror_transcription_state(job_id)
             assessment_result = _call_llm_stream_with_retry(
                 messages=[{"role": "user", "content": f"{assessment_instruction}\n\nTRANSCRIPT:\n{transcript}"}],
                 system="You are a sharp advisor giving candid meeting assessments.",
@@ -8686,6 +8685,8 @@ Organize into 3-6 logical sections (e.g., Business Update, Strategic Priorities,
             assessment_html = ''
 
         try:
+            _transcription_jobs[job_id]['progress'] = 'Generating Meeting Summary'
+            _mirror_transcription_state(job_id)
             meeting_summary_result = _call_llm_stream_with_retry(
                 messages=[{"role": "user", "content": f"{meeting_summary_instruction}\n\nTRANSCRIPT:\n{transcript}"}],
                 system="You are a meeting notes analyst. Generate narrative topic-grouped HTML summaries.",
@@ -8781,6 +8782,8 @@ SELF-CHECK BEFORE RETURNING
 OUTPUT FORMAT: raw HTML only. No markdown. No code fences."""
 
         try:
+            _transcription_jobs[job_id]['progress'] = 'Generating Brief'
+            _mirror_transcription_state(job_id)
             brief_result = _call_llm_stream_with_retry(
                 messages=[{"role": "user", "content": f"Process the transcript per your instructions. Return only the Brief HTML.\n\nTRANSCRIPT:\n{transcript}"}],
                 system=brief_system_prompt,
@@ -29123,7 +29126,6 @@ import summary_lab
 summary_lab_bp = summary_lab.create_blueprint(get_db)
 app.register_blueprint(summary_lab_bp)
 summary_lab_bp.start_recovery()
-_fail_orphaned_transcription_jobs()
 
 import summary_comparison
 summary_comparison_bp = summary_comparison.create_blueprint(get_db)
