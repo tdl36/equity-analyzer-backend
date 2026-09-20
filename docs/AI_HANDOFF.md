@@ -4,13 +4,13 @@ Updated: September 20, 2026
 
 ## Start here
 
-Charlie production is currently **T96** at commit **`2f80943c5044012250ecefb3465170a85e41b864`** on `main`.
+Charlie production is currently **T97** at commit **`0cb42303dfc448af56e99e87f38e32ca4bdf4546`** on `main`.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T96`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T97`
 - Backend health: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`
 - Branch: `main`
-- Backend health was verified on September 20 and reported the T96 commit above.
+- Backend health was verified on September 20 and reported the T97 commit above.
 - The Mac launch agent `com.charlie.local-agent` was restarted during T82 because `charlie_local_agent.py` changed. T83 is frontend-only and did not require another restart.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files. Do not clean the repository.
@@ -35,6 +35,44 @@ The design standard is institutional: concise hierarchy, readable outputs, defen
 | Production deployment | Push to `main` triggers Render backend deployment. Cloudflare frontend deployment is explicit through Wrangler. |
 
 ## Latest production changes
+
+### T97 — spoken rate-cycle dates, the corrections log, and tier agreement
+
+Commit: `0cb4230` — `Read spoken rate-cycle dates, and stop the corrections log becoming a glossary`
+
+Three defects found in the real CNC management-meeting note. None were caused by T94/T95;
+all pre-dated them in the original Summary prompt.
+
+**Spoken dates survived as nonsense quantities.** Managed-care speakers say effective dates
+as bare digit runs, and transcription renders them without separators. The note reproduced
+**"71 states"** — there are 50 — and left **"101 implementation"** uncorrected although the
+questioner said "October 1st" aloud in the same exchange. The user supplied the domain
+reading: `11` = 1/1, `71` = 7/1, `101` = 10/1, and `"71 states"` means states whose rate
+cycle begins 7/1. `TRANSCRIPT_DATE_RULE` adds this as a named correction class in STEP 1,
+including the year-suffixed form (`"11 27"` = 1/1/27) and a prohibition on rendering a bare
+digit run as a count when the sentence is about timing.
+
+**The Transcript Corrections Log became a glossary.** It listed eighteen entries shaped like
+`"ICHRA" → ICHRA … Transcript rendered correctly`, including NDR and RADV, which do not
+appear in the transcript at all. The section now logs only terms whose wording actually
+changed, and names the identity entry and the acronym definition as the defects they are.
+
+**The two tiers disagreed on source type.** The Brief classified the meeting
+INVESTOR/PUBLIC while Key Takeaways classified it MGMT 1:1. Each tier classified
+independently, and nothing reconciled them. The Brief is generated after Key Takeaways, so
+`_classified_source_type()` now extracts the classification already made and the Brief is
+told to reuse it verbatim.
+
+**What did work:** the T95 doctrine produced exactly the intended assessment — *"Rating: 4 —
+mostly supported, with minor unsupported assertions"* on the defined scale, with drivers
+named and unsupported claims separated out, while staying candid ("notable squishiness",
+"investors hoping for an early read got shut down"). No score out of ten, no interior-state
+inference.
+
+Validation: 629 backend tests, 46 frontend tests, production build, Render revision and
+Cloudflare marker verified. **Unproven:** no summary generated under T97. The checks are
+whether "71 states" becomes 7/1 states, whether the corrections log returns to real
+corrections or "No corrections required", and whether both tiers agree on source type.
 
 ### T96 — the SUMMARIES fan-out was silently dead; job state no longer discarded
 
@@ -742,9 +780,9 @@ Use `py_compile` for every touched Python module. Do not start paid research, se
 
 Current release markers must stay synchronized:
 
-- `worker.js`: `2026-09-20T96`
-- `service-worker.js`: `20260920-96`
-- `src/app.jsx`: `2026-09-20T96`
+- `worker.js`: `2026-09-20T97`
+- `service-worker.js`: `20260920-97`
+- `src/app.jsx`: `2026-09-20T97`
 
 After an application change:
 
@@ -767,7 +805,7 @@ Render may return transient 502 responses while rolling forward. Wait for `/heal
 
 ## Repository state warning
 
-At this handoff, `main` is committed through `2f80943`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
+At this handoff, `main` is committed through `0cb4230`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
 
 - `.claude/settings.local.json`
 - `.omc/**`
@@ -781,7 +819,7 @@ Always inspect `git status --short`, stage an explicit allowlist, and review `gi
 
 ## Suggested first Claude Code instruction
 
-> Continue Charlie from production commit `2f80943` and release T96. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
+> Continue Charlie from production commit `0cb4230` and release T97. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
 
 ## Relevant deeper documentation
 
