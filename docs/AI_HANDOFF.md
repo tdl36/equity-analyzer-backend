@@ -4,13 +4,13 @@ Updated: September 20, 2026
 
 ## Start here
 
-Charlie production is currently **T95** at commit **`d64e4db62e5cdf1f0d1c393b8a2137dd99c69815`** on `main`.
+Charlie production is currently **T96** at commit **`2f80943c5044012250ecefb3465170a85e41b864`** on `main`.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T95`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T96`
 - Backend health: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`
 - Branch: `main`
-- Backend health was verified on September 20 and reported the T95 commit above.
+- Backend health was verified on September 20 and reported the T96 commit above.
 - The Mac launch agent `com.charlie.local-agent` was restarted during T82 because `charlie_local_agent.py` changed. T83 is frontend-only and did not require another restart.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files. Do not clean the repository.
@@ -35,6 +35,41 @@ The design standard is institutional: concise hierarchy, readable outputs, defen
 | Production deployment | Push to `main` triggers Render backend deployment. Cloudflare frontend deployment is explicit through Wrangler. |
 
 ## Latest production changes
+
+### T96 — the SUMMARIES fan-out was silently dead; job state no longer discarded
+
+Commit: `2f80943` — `Stop transcription discarding the fields the caller set on a job`
+
+A real folder-dropped file (`CNC CEO CFO Small Group - 091626.m4a`) transcribed and
+summarised correctly but produced **no Summary Lab experiment**. The job reported
+`summaryLabState: "not_requested"`.
+
+T82 stored the upload's `origin` on the in-memory job dict. When transcription finishes,
+`_run_transcription` **replaced that dict wholesale** with five keys of its own, so `origin`
+was gone before the fan-out check ran — and the check correctly concluded that no fan-out
+had been requested. The same replacement discarded `autoProcess`, which
+`_mirror_transcription_state` reads when persisting the job.
+
+The Mac agent was never at fault: it detected the file, sent `origin=summaries-folder`, and
+its process was started after the T82 edit. The loss was entirely server-side.
+
+- `origin` now travels as an argument through `_run_auto_process_audio_path` into
+  `_run_auto_process_audio`, where no dict lifecycle can lose it.
+- `_run_transcription` merges into the job dict instead of replacing it, on the success path
+  and on all three error paths.
+- A test walks the AST of `_run_transcription` and fails on any wholesale assignment to
+  `_transcription_jobs[job_id]`. It caught a fourth site during this change.
+
+**Lesson:** state set by a caller and read later by a different worker must travel as an
+argument or in the database, not on a shared mutable dict that an intermediate stage owns.
+The failure was silent because the fan-out check behaved correctly on the input it was given.
+
+**Blast radius:** T82 shipped at 11:02 today and CNC was the first folder-dropped audio
+after it, so one file is affected. Generating its Lab experiment now requires starting one
+from the saved Summary in Summary Lab, which is a paid run and the user's call.
+
+Validation: 617 backend tests, 46 frontend tests, production build, Render revision and
+Cloudflare marker verified. **Unproven:** no folder-dropped audio has run under T96.
 
 ### T95 — the assessment stays candid; the thesis contradiction is fixed
 
@@ -707,9 +742,9 @@ Use `py_compile` for every touched Python module. Do not start paid research, se
 
 Current release markers must stay synchronized:
 
-- `worker.js`: `2026-09-20T95`
-- `service-worker.js`: `20260920-95`
-- `src/app.jsx`: `2026-09-20T95`
+- `worker.js`: `2026-09-20T96`
+- `service-worker.js`: `20260920-96`
+- `src/app.jsx`: `2026-09-20T96`
 
 After an application change:
 
@@ -732,7 +767,7 @@ Render may return transient 502 responses while rolling forward. Wait for `/heal
 
 ## Repository state warning
 
-At this handoff, `main` is committed through `d64e4db`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
+At this handoff, `main` is committed through `2f80943`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
 
 - `.claude/settings.local.json`
 - `.omc/**`
@@ -746,7 +781,7 @@ Always inspect `git status --short`, stage an explicit allowlist, and review `gi
 
 ## Suggested first Claude Code instruction
 
-> Continue Charlie from production commit `d64e4db` and release T95. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
+> Continue Charlie from production commit `2f80943` and release T96. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
 
 ## Relevant deeper documentation
 
