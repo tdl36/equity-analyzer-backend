@@ -4,13 +4,13 @@ Updated: September 20, 2026
 
 ## Start here
 
-Charlie production is currently **T92** at commit **`c0da9ef5ec500a10ee5ecf1fd6f7b35c63c60ff6`** on `main`.
+Charlie production is currently **T93** at commit **`e4907ae93e28391153d02ef7b955902d57408fbe`** on `main`.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T92`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T93`
 - Backend health: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`
 - Branch: `main`
-- Backend health was verified on September 20 and reported the T92 commit above.
+- Backend health was verified on September 20 and reported the T93 commit above.
 - The Mac launch agent `com.charlie.local-agent` was restarted during T82 because `charlie_local_agent.py` changed. T83 is frontend-only and did not require another restart.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files. Do not clean the repository.
@@ -35,6 +35,50 @@ The design standard is institutional: concise hierarchy, readable outputs, defen
 | Production deployment | Push to `main` triggers Render backend deployment. Cloudflare frontend deployment is explicit through Wrangler. |
 
 ## Latest production changes
+
+### T93 — every Improved section is written from the source
+
+Commit: `e4907ae` — `Write every Improved section from the source, not a summary of it`
+
+T92 fixed the Q&A log by reading it from the source. The user pointed out the obvious
+consequence: **every** section should be, because the goal is for Improved to replace the
+original Summary. They were right, and the architecture was worse than it looked.
+
+Improved split the source into 24,000-character parts, summarised each into a
+topic-organised record, and wrote every section from those records. The source never reached
+the sections at all. The original Summary, by contrast, passes the full transcript to each
+section prompt — so Improved was structurally **less faithful than the thing it is meant to
+replace**.
+
+The map-reduce exists for sources too large for one prompt. Measured against the last 60
+real sources, that case does not occur:
+
+| | |
+| --- | --- |
+| CAH transcript | 37,453 characters |
+| Median source | 39,618 |
+| Largest of the last 60 | 213,720 (~53k tokens) |
+| Sources above 300,000 characters | 0 |
+| Model context | ~200k tokens (~800k characters) |
+
+- Below `DIRECT_SOURCE_LIMIT` (400,000 characters) every section is written from the
+  complete original source, marked authoritative, with the evidence records alongside as a
+  navigation aid that is explicitly not a substitute.
+- Above it the pipeline falls back to records and says so in both the prompt and the
+  workspace, so a degraded basis is visible rather than silent.
+- Record consolidation is skipped when the source is read directly; it only ever existed to
+  shrink records for synthesis.
+- `state.synthesisBasis` records which path ran and the method panel reports it.
+
+Cost: each section prompt now carries the full source, roughly 9k extra input tokens per
+section on a median transcript.
+
+**Lesson:** the map-reduce was carried over from a context budget that no longer binds, and
+it silently degraded every section. Before summarising a source for a model, check whether
+the source fits — on this workload it always does.
+
+Validation: 598 backend tests, 46 frontend tests, production build, Render revision and
+Cloudflare marker verified. **Unproven:** no note generated under `source-first-v7`.
 
 ### T92 — the Q&A log is read from the source, not from a summary of it
 
@@ -533,7 +577,7 @@ Do not invent observed URLs, counts, downloads, or completion. Never pass provid
 
 1. **Run a real dual-summary audio comparison.** Add one new representative audio file to the root `SUMMARIES` folder and confirm that original Summary and `Auto from SUMMARIES` Lab outputs both complete, are readable, and can be emailed/saved. This incurs real model usage and should be user-driven, not launched merely for QA. T82 changed the code paths this exercises, so it is still the live end-to-end proof: confirm exactly one Lab experiment per recording, that the Telegram message reports the correct Lab state, and that the file moves to `SUMMARIES/Processed` once.
 2. **Evaluate Summary Lab quality across several source types.** Compare earnings calls, investor meetings, noisy audio, long YouTube transcripts, and non-earnings documents. Capture which sections are materially better or worse than original Summary.
-3. **Decide the convergence plan.** After real testing, selectively promote proven Lab prompt/format improvements into original Summary or retain both permanently. T87–T89 moved the Improved pipeline toward the Original's strengths (topic tags, a Q&A log, enforced quoting quotas) while leaving the original Summary prompts untouched. Two defects found in the Original during that work are still unfixed and argue against promoting it as-is: it reported an invented "8.5/10" credibility score, and it asserted an EPS unit for FY27 guidance that the transcript does not support while dropping the 12–14% figure that contradicts it.
+3. **Decide the convergence plan.** The user's stated goal is that Improved eventually replaces the original Summary, so Improved must be written from the original source in every section — as of T93 it is.  After real testing, selectively promote proven Lab prompt/format improvements into original Summary or retain both permanently. T87–T89 moved the Improved pipeline toward the Original's strengths (topic tags, a Q&A log, enforced quoting quotas) while leaving the original Summary prompts untouched. Two defects found in the Original during that work are still unfixed and argue against promoting it as-is: it reported an invented "8.5/10" credibility score, and it asserted an EPS unit for FY27 guidance that the transcript does not support while dropping the 12–14% figure that contradicts it.
 4. **Validate catalyst synthesis on more real folders.** Include single transcript, transcript plus presentation, and multi-broker event folders; score concision, factual attribution, analyst voice, unresolved issues, and PM usefulness.
 5. **Prove a complete managed AlphaSense assignment.** Demonstrate browser discovery, source restrictions, original download, iCloud handoff, recap, thesis proposal, and recovery for a real user-selected ticker without overstating unattended coverage.
 6. **Improve real-source quality benchmarks.** Current automated checks are useful regressions, not expert certification. Add frozen real-source packs and investor-scored outputs without committing licensed source bodies.
@@ -571,9 +615,9 @@ Use `py_compile` for every touched Python module. Do not start paid research, se
 
 Current release markers must stay synchronized:
 
-- `worker.js`: `2026-09-20T92`
-- `service-worker.js`: `20260920-92`
-- `src/app.jsx`: `2026-09-20T92`
+- `worker.js`: `2026-09-20T93`
+- `service-worker.js`: `20260920-93`
+- `src/app.jsx`: `2026-09-20T93`
 
 After an application change:
 
@@ -596,7 +640,7 @@ Render may return transient 502 responses while rolling forward. Wait for `/heal
 
 ## Repository state warning
 
-At this handoff, `main` is committed through `c0da9ef`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
+At this handoff, `main` is committed through `e4907ae`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
 
 - `.claude/settings.local.json`
 - `.omc/**`
@@ -610,7 +654,7 @@ Always inspect `git status --short`, stage an explicit allowlist, and review `gi
 
 ## Suggested first Claude Code instruction
 
-> Continue Charlie from production commit `c0da9ef` and release T92. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
+> Continue Charlie from production commit `e4907ae` and release T93. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
 
 ## Relevant deeper documentation
 
