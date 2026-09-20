@@ -316,3 +316,42 @@ class StopRouteTests(unittest.TestCase):
     def test_an_unknown_experiment_is_a_404(self):
         client, _cursor = self.client_for(None)
         self.assertEqual(client.post('/api/summary-lab/nope/stop', json={}).status_code, 404)
+
+
+class JobDictLifetimeTests(unittest.TestCase):
+    """The SUMMARIES fan-out silently stopped for a real file because the
+    transcription worker replaced the whole job dict and discarded the
+    'origin' set at upload time."""
+
+    def transcription_body(self):
+        return next(n for n in TREE.body
+                    if isinstance(n, ast.FunctionDef) and n.name == '_run_transcription')
+
+    def test_transcription_never_replaces_the_job_dict(self):
+        for node in ast.walk(self.transcription_body()):
+            if not isinstance(node, ast.Assign):
+                continue
+            for target in node.targets:
+                if (isinstance(target, ast.Subscript)
+                        and getattr(target.value, 'id', '') == '_transcription_jobs'):
+                    self.fail('_run_transcription assigns _transcription_jobs[job_id] wholesale; '
+                              'fields the caller set, such as origin and autoProcess, are lost')
+
+    def test_the_fan_out_reads_origin_from_its_argument(self):
+        body = next(n for n in TREE.body
+                    if isinstance(n, ast.FunctionDef) and n.name == '_run_auto_process_audio')
+        self.assertIn('origin', [a.arg for a in body.args.args],
+                      '_run_auto_process_audio must take origin as an argument')
+        call = next(n for n in ast.walk(body)
+                    if isinstance(n, ast.Call) and getattr(n.func, 'id', '') == '_should_fan_out_summary_lab')
+        self.assertEqual(getattr(call.args[0], 'id', None), 'origin',
+                         'origin must come from the argument, not the mutable job dict')
+
+    def test_the_endpoint_passes_origin_through_to_the_worker(self):
+        endpoint = next(n for n in ast.walk(TREE)
+                        if isinstance(n, ast.FunctionDef) and n.name == 'auto_process_audio')
+        names = {getattr(x, 'id', '') for x in ast.walk(endpoint) if isinstance(x, ast.Name)}
+        self.assertIn('origin', names)
+        wrapper = next(n for n in TREE.body
+                       if isinstance(n, ast.FunctionDef) and n.name == '_run_auto_process_audio_path')
+        self.assertIn('origin', [a.arg for a in wrapper.args.args])

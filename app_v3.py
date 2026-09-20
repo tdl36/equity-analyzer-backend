@@ -7053,7 +7053,7 @@ def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key
             try:
                 transcript_text = _transcribe_audio_content(client, audio_content, job_id)
             except Exception as e:
-                _transcription_jobs[job_id] = {'status': 'error', 'error': str(e)}
+                _transcription_jobs.setdefault(job_id, {}).update({'status': 'error', 'error': str(e)})
                 return
             finally:
                 if uploaded_file:
@@ -7063,10 +7063,10 @@ def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key
                         pass
 
         if not transcript_text or not transcript_text.strip():
-            _transcription_jobs[job_id] = {
+            _transcription_jobs.setdefault(job_id, {}).update({
                 'status': 'error',
                 'error': 'Gemini could not transcribe this audio. Try converting to MP3 or a shorter clip.'
-            }
+            })
             return
 
         print(f"[Job {job_id}] Transcription complete: {len(transcript_text)} chars")
@@ -7134,18 +7134,20 @@ def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key
             except Exception as cleanup_err:
                 print(f"[Job {job_id}] Transcript cleanup failed (keeping original): {cleanup_err}")
 
-        _transcription_jobs[job_id] = {
+        # Merge, never replace: the caller owns fields like autoProcess and
+        # origin, and replacing the dict silently dropped them.
+        _transcription_jobs.setdefault(job_id, {}).update({
             'status': 'done',
             'text': transcript_text,
             'filename': filename,
             'fileSizeMb': round(file_size_mb, 1),
             'charCount': len(transcript_text),
-        }
+        })
     except Exception as e:
         import traceback
         traceback.print_exc()
         print(f"[Job {job_id}] Transcription failed: {e}")
-        _transcription_jobs[job_id] = {'status': 'error', 'error': str(e)}
+        _transcription_jobs.setdefault(job_id, {}).update({'status': 'error', 'error': str(e)})
     finally:
         # Clean up temp directory
         if tmp_dir and os.path.exists(tmp_dir):
@@ -7279,7 +7281,7 @@ def auto_process_audio():
 
         thread = threading.Thread(
             target=_run_auto_process_audio_path,
-            args=(job_id, upload_path, filename, mime_type, gemini_api_key, anthropic_api_key, detail_level),
+            args=(job_id, upload_path, filename, mime_type, gemini_api_key, anthropic_api_key, detail_level, origin),
             daemon=True,
             name=f'auto-audio-{job_id}',
         )
@@ -7296,7 +7298,7 @@ def auto_process_audio():
         return jsonify({'error': str(e)}), 500
 
 
-def _run_auto_process_audio_path(job_id, upload_path, filename, mime_type, gemini_api_key, anthropic_api_key, detail_level):
+def _run_auto_process_audio_path(job_id, upload_path, filename, mime_type, gemini_api_key, anthropic_api_key, detail_level, origin=''):
     """Wrapper: acquires the audio concurrency semaphore (so we never run
     more than N audio pipelines at once on this Render dyno), reads the
     streamed-to-disk upload back into memory, then delegates to the
@@ -7309,7 +7311,7 @@ def _run_auto_process_audio_path(job_id, upload_path, filename, mime_type, gemin
         try:
             with open(upload_path, 'rb') as f:
                 file_content = f.read()
-            _run_auto_process_audio(job_id, file_content, filename, mime_type, gemini_api_key, anthropic_api_key, detail_level)
+            _run_auto_process_audio(job_id, file_content, filename, mime_type, gemini_api_key, anthropic_api_key, detail_level, origin)
         finally:
             try: os.unlink(upload_path)
             except Exception: pass
@@ -8263,7 +8265,7 @@ OUTPUT FORMAT: markdown만. HTML 금지. ```fence 금지.
         _mirror_transcription_state(job_id)
 
 
-def _run_auto_process_audio(job_id, file_content, filename, mime_type, gemini_api_key, anthropic_api_key, detail_level):
+def _run_auto_process_audio(job_id, file_content, filename, mime_type, gemini_api_key, anthropic_api_key, detail_level, origin=''):
     """Background: transcribe audio, generate summary, save to DB, create alert."""
     try:
         # Step 1: Transcribe (reuse existing function)
@@ -8739,7 +8741,9 @@ OUTPUT FORMAT: raw HTML only. No markdown. No code fences."""
             ''', (alert_id, f'Summary generated: {title}',
                   json.dumps({'filename': filename, 'summaryId': summary_id, 'detailLevel': detail_level, 'transcriptLength': len(transcript)})))
 
-        fan_out_lab = _should_fan_out_summary_lab(_transcription_jobs.get(job_id, {}).get('origin'))
+        # From the argument, not the job dict: the dict is rewritten during
+        # transcription and anything stored on it at upload time can vanish.
+        fan_out_lab = _should_fan_out_summary_lab(origin)
         _transcription_jobs[job_id]['status'] = 'complete'
         _transcription_jobs[job_id]['summaryId'] = summary_id
         # 'pending' keeps the folder watcher from reporting that Summary Lab
