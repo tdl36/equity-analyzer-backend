@@ -37,19 +37,27 @@ class PromptDisciplineTests(unittest.TestCase):
     def test_quoting_is_reserved_rather_than_default(self):
         rules = summary_comparison.RULES.lower()
         self.assertIn('reported speech is the default', rules)
-        # "at most one quoted phrase per point" was ignored in 8 of 9 takeaways
-        # on a real note, so the rule is now a stated quota backed by a check.
-        self.assertIn('that quota is a hard limit', rules)
+        # Neither wording of the rule held on a real note: "one quoted phrase
+        # per point" was ignored, and a stated numeric quota was over-complied
+        # with by deleting evidence. The ceiling is enforced in code instead.
+        self.assertIn('should be reported instead', rules)
 
-    def test_every_analysis_section_states_its_quota(self):
+    def test_the_limit_is_not_stated_in_the_prompt(self):
+        # Stating a numeric quota made the model comply by deleting evidence:
+        # takeaways came back at 0.2 quotes per 1k against a limit of 3.0 and
+        # the note lost 35% of its content. The ceiling lives in code instead.
         for key in summary_comparison.QUOTE_LIMITS:
-            self.assertIn('QUOTA', summary_comparison.SECTIONS[key], key)
+            self.assertNotIn('QUOTA', summary_comparison.SECTIONS[key], key)
+
+    def test_converting_a_quote_may_not_drop_its_content(self):
+        self.assertIn('never means dropping the fact', summary_comparison.RULES)
+
+    def test_sections_may_not_defer_to_each_other(self):
+        self.assertIn('must stand on its own', summary_comparison.RULES)
+        self.assertNotIn('refer to them in a short clause', summary_comparison.RULES)
 
     def test_numbered_lists_are_refused(self):
         self.assertIn('Never use numbered lists', summary_comparison.RULES)
-
-    def test_facts_are_stated_once(self):
-        self.assertIn('State each fact once', summary_comparison.RULES)
 
     def test_takeaways_carry_scannable_topic_tags(self):
         instruction = summary_comparison.SECTIONS['takeaways']
@@ -147,20 +155,45 @@ class RepairPassTests(unittest.TestCase):
 
     def test_a_violating_section_is_redrafted_once_and_the_repair_is_used(self):
         stuffed = ' '.join(f'"fragment {i}"' for i in range(30))
-        # First section drafted is 'takeaways'; give it a stuffed draft, then a clean one.
-        state, calls = self.run_generate([stuffed, 'clean rewritten takeaways.'])
-        self.assertEqual(state['sections']['takeaways'], 'clean rewritten takeaways.')
+        clean = 'Clean rewritten takeaways carrying the same content. ' * 20
+        state, calls = self.run_generate([stuffed, clean])
+        self.assertEqual(state['sections']['takeaways'], clean)
         repair = state['quoteRepairs']['takeaways']
+        self.assertEqual(repair['kept'], 'repair')
         self.assertTrue(repair['resolved'])
-        self.assertIn('broke the quoting quota', [c for c in calls if 'broke the quoting quota' in c][0])
+        self.assertTrue(any('has a defect' in c for c in calls))
+
+    def test_a_repair_that_shrinks_the_section_is_discarded(self):
+        stuffed = ('Management said ' + ' '.join(f'"fragment {i}"' for i in range(30))
+                   + ' plus substantial reported detail. ' * 30)
+        state, _calls = self.run_generate([stuffed, 'Terse rewrite.'])
+        # The repair traded content for form, which is worse than the defect.
+        self.assertEqual(state['sections']['takeaways'], stuffed)
+        self.assertEqual(state['quoteRepairs']['takeaways']['kept'], 'original')
+        self.assertFalse(state['quoteRepairs']['takeaways']['resolved'])
 
     def test_a_clean_section_is_not_redrafted(self):
         state, calls = self.run_generate([])
         self.assertEqual(state['quoteRepairs'], {})
-        self.assertFalse(any('broke the quoting quota' in c for c in calls))
+        self.assertFalse(any('has a defect' in c for c in calls))
 
-    def test_later_sections_are_told_what_earlier_ones_already_said(self):
+    def test_no_section_is_shown_the_others(self):
+        # Supplying earlier sections made later ones defer to them instead of
+        # standing alone, and cost the Q&A log two thirds of its exchanges.
         _state, calls = self.run_generate([])
-        section_calls = [c for c in calls if not c.startswith('SOURCE PART')]
-        self.assertNotIn('already written', section_calls[0])
-        self.assertIn('already written', section_calls[-1])
+        self.assertFalse(any('already written' in c for c in calls))
+
+
+class QaFloorTests(unittest.TestCase):
+    def test_a_collapsed_qa_log_is_flagged_against_a_question_rich_source(self):
+        source = 'Why is that? ' * 20
+        finding = summary_comparison.qa_findings('Q: one\nA: answer', source)
+        self.assertIn('only 1 exchange', finding)
+
+    def test_a_full_qa_log_passes(self):
+        source = 'Why is that? ' * 20
+        log = '\n'.join(f'Q: question {i}\nA: answer {i}' for i in range(6))
+        self.assertEqual(summary_comparison.qa_findings(log, source), '')
+
+    def test_a_source_without_questions_is_not_flagged(self):
+        self.assertEqual(summary_comparison.qa_findings('No exchanges here.', 'A document with no questions.'), '')
