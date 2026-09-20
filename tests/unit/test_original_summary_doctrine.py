@@ -37,28 +37,45 @@ class DoctrineTests(unittest.TestCase):
     def setUp(self):
         self.doctrine = constant('RESEARCH_DOCTRINE')
 
-    def test_it_outranks_the_instruction_to_be_unfiltered(self):
-        self.assertIn('override any instruction above', self.doctrine)
+    def test_the_model_must_still_commit_to_a_view(self):
+        # "Don't hedge" existed to stop mushy notes, not to invite invention.
+        self.assertIn('If an answer was weak, say it was weak', self.doctrine)
+        self.assertIn('Your own vagueness is not caution', self.doctrine)
+        self.assertIn('may not do is invent a fact', self.doctrine)
 
-    def test_numerical_credibility_scores_are_forbidden(self):
-        self.assertIn('never rate anything out of ten', self.doctrine)
-        self.assertIn('Never assign a numerical credibility', self.doctrine)
+    def test_calling_out_evasion_is_required_not_forbidden(self):
+        for behaviour in ('Non-answers', 'evasions', 'redirections',
+                          'rehearsed talking points', 'internal contradictions'):
+            self.assertIn(behaviour, self.doctrine, behaviour)
+        self.assertIn('quote the wording that shows it', self.doctrine)
 
-    def test_inferred_psychology_is_forbidden(self):
-        self.assertIn('Never infer psychology, motive', self.doctrine)
-        # The specific failure: a joke read as evidence of concern.
-        self.assertIn('A joke, a deflection, a hedge or a disfluency is not evidence of feeling',
+    def test_only_claims_about_interior_state_are_forbidden(self):
+        self.assertIn("anyone's feelings, anxiety, morale, private belief or motive", self.doctrine)
+        # The observed failure: a deflecting joke read as evidence of concern.
+        self.assertIn('a joke, a hedge or a disfluency is not evidence of an interior state',
                       self.doctrine)
 
-    def test_no_baseline_means_no_novelty_or_consensus_claims(self):
-        self.assertIn('no baseline', self.doctrine)
-        self.assertIn('consensus difference', self.doctrine)
+    def test_credibility_is_rated_on_a_defined_scale(self):
+        self.assertIn('Rate the credibility of the key claims on this scale', self.doctrine)
+        for anchor in ('5 —', '4 —', '3 —', '2 —', '1 —'):
+            self.assertIn(anchor, self.doctrine, anchor)
+        self.assertIn('name the two or three things driving the rating', self.doctrine)
 
-    def test_judgment_must_name_its_support_and_its_limit(self):
-        self.assertIn('name the statement it rests on, and state its limit', self.doctrine)
+    def test_an_arbitrary_finer_scale_is_refused(self):
+        self.assertIn('Do not invent decimals, a ten-point range', self.doctrine)
+        self.assertIn('cannot be compared across notes', self.doctrine)
 
-    def test_an_unanswered_question_is_not_treated_as_evasion(self):
-        self.assertIn('Missing quantification is not evasion', self.doctrine)
+    def test_a_supplied_baseline_must_be_compared_against(self):
+        # thesis_addendum injects the user's registered thesis and asks for
+        # per-pillar CONFIRMED / WEAKENED verdicts; the doctrine must not
+        # contradict it.
+        self.assertIn('Where a thesis, prior statement or estimate appears in this prompt',
+                      self.doctrine)
+        self.assertIn('compare against it explicitly', self.doctrine)
+
+    def test_an_absent_baseline_may_not_be_invented(self):
+        self.assertIn('Where none is supplied', self.doctrine)
+        self.assertIn('inventing the comparison rather than making it', self.doctrine)
 
 
 class AssessmentPromptTests(unittest.TestCase):
@@ -68,23 +85,17 @@ class AssessmentPromptTests(unittest.TestCase):
     def test_the_assessment_carries_the_doctrine(self):
         self.assertIn(constant('RESEARCH_DOCTRINE'), self.instruction)
 
-    def test_it_no_longer_asks_for_a_credibility_rating(self):
-        self.assertNotIn('Rate overall credibility', self.instruction)
-        self.assertNotIn('Rate the overall credibility', self.instruction)
-        self.assertIn('Evidence quality', self.instruction)
+    def test_bs_detection_survives(self):
+        self.assertIn('Red flags / BS detection', self.instruction)
+        self.assertIn('rehearsed non-answer', self.instruction)
 
-    def test_it_no_longer_asks_whether_anyone_seemed_disingenuous(self):
-        # That invited mind-reading; evasion is now evidenced by wording.
-        self.assertNotIn('disingenuous', self.instruction)
-        self.assertIn('Quote the wording that shows it', self.instruction)
+    def test_it_still_asks_for_a_credibility_rating(self):
+        self.assertIn('Credibility of key claims', self.instruction)
+        self.assertIn('1-5 scale', self.instruction)
 
-    def test_it_stays_candid_and_specific(self):
-        self.assertIn('candid assessment', self.instruction)
-        self.assertIn('name the weak answers and the strong ones', self.instruction)
-
-    def test_it_does_not_tell_the_model_to_stop_hedging(self):
-        self.assertNotIn("Don't hedge", self.instruction)
-        self.assertIn('do not manufacture confidence the source does not support', self.instruction)
+    def test_it_stays_direct_and_opinionated(self):
+        self.assertIn("don't sugarcoat", self.instruction)
+        self.assertIn('Be direct and opinionated', self.instruction)
 
 
 class PromptCoverageTests(unittest.TestCase):
@@ -96,10 +107,19 @@ class PromptCoverageTests(unittest.TestCase):
         for value in assignments:
             self.assertTrue(value.startswith('ASSESSMENT_INSTRUCTION'), value[:80])
 
-    def test_no_prompt_still_requests_a_credibility_rating(self):
-        for phrase in ('Rate overall credibility', 'Rate the overall credibility',
+    def test_no_prompt_requests_an_unanchored_credibility_rating(self):
+        # Rating is wanted; an arbitrary decimal out of ten is not.
+        for phrase in ('Rate overall credibility of key claims',
+                       'Rate the overall credibility of the key claims',
                        'UNFILTERED assessment'):
             self.assertNotIn(phrase, SOURCE, phrase)
+
+    def test_the_doctrine_does_not_contradict_the_thesis_check(self):
+        # thesis_addendum is appended straight after RESEARCH_DOCTRINE in the
+        # audio prompt and demands per-pillar CONFIRMED / WEAKENED verdicts.
+        self.assertIn('{RESEARCH_DOCTRINE}{thesis_addendum}', SOURCE)
+        self.assertNotIn('No prior thesis, model or consensus estimate is supplied', SOURCE)
+        self.assertIn('CONFIRMED / WEAKENED / NO MENTION', SOURCE)
 
     def test_both_summary_prompts_carry_the_doctrine(self):
         # The audio and document paths have separate prompts; both must have it.
