@@ -4,13 +4,13 @@ Updated: September 20, 2026
 
 ## Start here
 
-Charlie production is currently **T97** at commit **`0cb42303dfc448af56e99e87f38e32ca4bdf4546`** on `main`.
+Charlie production is currently **T101** at commit **`b8661c92f6911c84471412fcc8b8b887922704f6`** on `main`.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T97`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T101`
 - Backend health: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`
 - Branch: `main`
-- Backend health was verified on September 20 and reported the T97 commit above.
+- Backend health was verified on September 20 and reported the T101 commit above.
 - The Mac launch agent `com.charlie.local-agent` was restarted during T82 because `charlie_local_agent.py` changed. T83 is frontend-only and did not require another restart.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files. Do not clean the repository.
@@ -35,6 +35,53 @@ The design standard is institutional: concise hierarchy, readable outputs, defen
 | Production deployment | Push to `main` triggers Render backend deployment. Cloudflare frontend deployment is explicit through Wrangler. |
 
 ## Latest production changes
+
+### T98–T101 — the MCK run: fan-out proven, orphan recovery, concurrency, clearer status
+
+Commits: `08a3e11`, `5d9bc63` (orphan sweep), `73a0d3a` (section concurrency),
+`b8661c9` (status line).
+
+A real folder-dropped file, `MCK Mgmt Meeting @ DB - 091626.m4a`, finally proved the
+recent work end to end — after two failed attempts that were **caused by deploying while
+it was running**.
+
+**Everything verified on the real note:**
+
+| Check | Result |
+| --- | --- |
+| T96 — SUMMARIES fan-out | Lab experiment `e6edd9bc`, `automatic: true` |
+| T97 — tiers agree on source type | Both `MGMT 1:1` |
+| T97 — corrections log | 357 chars of real corrections; 0 identity entries, 0 "rendered correctly" (was 18 glossary entries) |
+| T97 — date shorthand | Note carries `7/1`; no bare "71 states" |
+| T95 — credibility | `Rating: [1-5]`, no score out of ten |
+| T82/T85 — Lab recovery | `recovery_attempts: 1` — a deploy killed it mid-run and the sweep resumed it from checkpoints to completion |
+
+**Operational hazard, learned the hard way.** Every push to `main` redeploys Render and
+kills in-flight audio transcription. Two MCK attempts died this way, one of them to a
+*documentation-only* commit. `AGENTS.md` says doc commits need no deployment; it does not
+say pushing one causes a deployment regardless. **Do not push to `main` while audio is
+processing.** Summary Lab jobs recover; transcription jobs restart from zero.
+
+**T98/T99 — orphan recovery.** `_cleanup_orphaned_transcription_jobs` already existed but
+ran only at import, so a job orphaned by one deploy waited for the *next* deploy to be
+released; MCK sat stranded for half an hour. It now also runs every five minutes, keys
+staleness on `updated_at` rather than `created_at` (a long transcription legitimately has
+an old `created_at`), and both transcription and summarisation mirror their progress so a
+live job stays outside the window. T98 briefly added a duplicate function; T99 removed it.
+
+**T100 — section concurrency.** Measured: transcription ~4 minutes, five sections ~16,
+run serially. The sections do not read each other. Key Takeaways, Questions, Assessment
+and Meeting Summary now run concurrently; the Brief still follows Key Takeaways because
+since T97 it reuses that tier's source-type classification. Results are keyed by section
+name, never positional, so completion order cannot decide what is stored where — a test
+makes them finish in reverse order and asserts it. Fatal/non-fatal semantics, tiers and
+token budgets are unchanged. **Unproven:** no file has run under T100; expected ~16
+minutes down to 8–10.
+
+**T101 — status line.** It read "3 / 3 source parts reviewed · running" while four of five
+sections were unverified, with Email all disabled and unexplained. It now reports sections
+verified and names the phase, including the final cross-section review that used to look
+idle because every other counter had topped out.
 
 ### T97 — spoken rate-cycle dates, the corrections log, and tier agreement
 
@@ -780,9 +827,9 @@ Use `py_compile` for every touched Python module. Do not start paid research, se
 
 Current release markers must stay synchronized:
 
-- `worker.js`: `2026-09-20T97`
-- `service-worker.js`: `20260920-97`
-- `src/app.jsx`: `2026-09-20T97`
+- `worker.js`: `2026-09-20T101`
+- `service-worker.js`: `20260920-101`
+- `src/app.jsx`: `2026-09-20T101`
 
 After an application change:
 
@@ -805,7 +852,7 @@ Render may return transient 502 responses while rolling forward. Wait for `/heal
 
 ## Repository state warning
 
-At this handoff, `main` is committed through `0cb4230`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
+At this handoff, `main` is committed through `b8661c9`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
 
 - `.claude/settings.local.json`
 - `.omc/**`
@@ -819,7 +866,7 @@ Always inspect `git status --short`, stage an explicit allowlist, and review `gi
 
 ## Suggested first Claude Code instruction
 
-> Continue Charlie from production commit `0cb4230` and release T97. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
+> Continue Charlie from production commit `b8661c9` and release T101. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
 
 ## Relevant deeper documentation
 
