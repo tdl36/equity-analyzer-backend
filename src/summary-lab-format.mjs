@@ -6,6 +6,17 @@ export function youtubeLanguagePayload(generateKorean=false,koreanOnly=false){
  const enabled=Boolean(generateKorean);
  return {generateKorean:enabled,koreanOnly:enabled&&Boolean(koreanOnly),outputMode:enabled?(koreanOnly?'korean_only':'korean_bilingual'):'english'};
 }
+// A completed transcription may already carry the automatic Summary Lab
+// experiment Charlie starts for SUMMARIES-folder audio. Adopt that experiment
+// instead of starting a second one: both run the same paid multi-pass review
+// over the same transcript.
+export function labFanoutPlan(job={}){
+ const summaryId=job?.summaryId||'';
+ if(!summaryId)return{adoptId:'',start:false,error:'The transcript finished but no saved Summary was returned.'};
+ const adoptId=job?.summaryLabId||'';
+ return{adoptId,start:!adoptId,error:'',summaryId};
+}
+
 export function labDocument(text='') {
  const lines=text.replace(/\r\n/g,'\n').split('\n'); let html='',paragraph=[],list='';
  const flush=()=>{if(paragraph.length){html+='<p>'+inline(paragraph.join(' '))+'</p>';paragraph=[];}};

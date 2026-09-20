@@ -9,6 +9,16 @@ in summary_lab_experiments with source SHA-256, prompt version, model, focus, st
 results and feedback. No write touches meeting_summaries or summary_comparisons.
 Existing automatic triggers, original prompts and companion generation are unchanged.
 
+Automatic fan-out (T81, scoped in T82): new audio at the root of the iCloud `SUMMARIES`
+folder runs the original Summary workflow and also starts one Summary Lab experiment from
+the saved transcript, marked `Auto from SUMMARIES`. Only the folder watcher requests this;
+it sends `origin=summaries-folder` to `/api/auto-process-audio`. Summary Lab's own Audio
+intake posts to the same endpoint and starts its own experiment, so it does not fan out,
+and it adopts an automatic experiment when the completed job already reports one. Automatic
+experiments are idempotent by saved Summary, source hash, prompt version and output mode,
+use English mode, and are resumed by a bounded recovery sweep that starts at most one
+thread per experiment. That sweep reads `ANTHROPIC_API_KEY` from the environment only.
+
 Pipeline: lossless source partitions → detailed source review with exact-substring
 passage checks → all-record synthesis (hierarchical for large records) → five independent
 sections → original-part model checks → targeted revision → cross-section reviewer note.

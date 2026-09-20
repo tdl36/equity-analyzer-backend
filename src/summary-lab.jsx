@@ -1,5 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {documentHtml,emailDocument,youtubeLanguagePayload} from './summary-lab-format.mjs';
+import {documentHtml,emailDocument,labFanoutPlan,youtubeLanguagePayload} from './summary-lab-format.mjs';
 
 const ENGLISH_SECTIONS=[['brief','Executive Brief','brief'],['takeaways','Key Takeaways','summary'],['meeting','Meeting Summary','meeting_summary'],['questions','Follow-up Questions','questions'],['assessment','Overall Assessment','assessment']];
 const KOREAN_SECTION=['korean','Korean Interpretation · 한국어 핵심 정리','korean_takeaways'];
@@ -60,9 +60,17 @@ export function SummaryLab({api,getKey,getGeminiKey,renderHtml,pickFromICloud}){
     const phase=data.status||'processing';setIngest({jobId,label,phase,progress:data.progress||''});
     localStorage.setItem(PENDING_KEY,JSON.stringify({jobId,label,title:jobTitle,focus:jobFocus,outputMode}));
     if(['complete','done'].includes(phase)){
-     if(!data.summaryId)throw Error('The transcript finished but no saved Summary was returned.');
-     localStorage.removeItem(PENDING_KEY);setNotice(`${label} was transcribed and saved. Improved analysis is now running.`);setBusy(true);
-     await startLab(data.summaryId,jobTitle||label,outputMode,jobFocus);setIngest(null);setBusy(false);return;
+     const plan=labFanoutPlan(data);
+     if(plan.error)throw Error(plan.error);
+     localStorage.removeItem(PENDING_KEY);setBusy(true);
+     if(plan.adoptId){
+      setId(plan.adoptId);await refreshLists();
+      setNotice(`${label} was transcribed and saved. Charlie already started its Summary Lab experiment for this recording, so it is shown here instead of starting a second run.`);
+     }else{
+      setNotice(`${label} was transcribed and saved. Improved analysis is now running.`);
+      await startLab(plan.summaryId,jobTitle||label,outputMode,jobFocus);
+     }
+     setIngest(null);setBusy(false);return;
     }
     if(['failed','error'].includes(phase)){
      localStorage.removeItem(PENDING_KEY);setIngest(null);
@@ -79,7 +87,7 @@ export function SummaryLab({api,getKey,getGeminiKey,renderHtml,pickFromICloud}){
  async function processAudio(){
   if(!audioFile)return;setBusy(true);setError('');setNotice('');
   try{
-   const form=new FormData();form.append('file',audioFile);form.append('detailLevel','standard');form.append('apiKey',getKey()||'');form.append('geminiApiKey',getGeminiKey?.()||'');
+   const form=new FormData();form.append('file',audioFile);form.append('detailLevel','standard');form.append('apiKey',getKey()||'');form.append('geminiApiKey',getGeminiKey?.()||'');form.append('origin','summary-lab');
    const response=await fetch(`${api}/api/auto-process-audio`,{method:'POST',body:form,signal:AbortSignal.timeout(30*60*1000)});const data=await response.json();if(!response.ok)throw Error(data.error||'Audio upload failed.');
    const label=audioFile.name,jobTitle=title||label;localStorage.setItem(PENDING_KEY,JSON.stringify({jobId:data.jobId,label,title:jobTitle,focus,outputMode:'english'}));setBusy(false);await monitorJob(data.jobId,label,jobTitle,focus,'english');
   }catch(e){setError(e.message);setBusy(false);}

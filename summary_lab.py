@@ -276,6 +276,8 @@ def create_blueprint(get_db):
     schema_lock = threading.Lock()
     ready = False
     slots = threading.BoundedSemaphore(2)
+    recovering = set()
+    recovering_lock = threading.Lock()
 
     def ensure():
         nonlocal ready
@@ -338,6 +340,11 @@ def create_blueprint(get_db):
                 except Exception:
                     conn.close()
 
+    def _recover_one(jid,key):
+        try: run(jid,key,True)
+        finally:
+            with recovering_lock: recovering.discard(jid)
+
     def recover_once():
         """Resume automatic folder jobs interrupted by a backend restart."""
         key=os.environ.get('ANTHROPIC_API_KEY','').strip()
@@ -350,7 +357,17 @@ def create_blueprint(get_db):
                 ORDER BY updated_at LIMIT 10""")
             jobs=[row['id'] for row in cur.fetchall()]
         for jid in jobs:
-            threading.Thread(target=run,args=(jid,key,True),daemon=True,name='summary-lab-recovery-'+jid[:8]).start()
+            # Only two experiments run at a time, so a recovery thread can sit
+            # on the semaphore for a long while. Without this guard every 30s
+            # sweep queued another blocked thread for the same experiment.
+            with recovering_lock:
+                if jid in recovering: continue
+                recovering.add(jid)
+            try:
+                threading.Thread(target=_recover_one,args=(jid,key),daemon=True,name='summary-lab-recovery-'+jid[:8]).start()
+            except Exception:
+                with recovering_lock: recovering.discard(jid)
+                raise
 
     def start_recovery():
         def loop():
@@ -466,5 +483,6 @@ def create_blueprint(get_db):
         return jsonify(saved=True)
     bp.enqueue = enqueue
     bp.recover_once = recover_once
+    bp.recovering = recovering
     bp.start_recovery = start_recovery
     return bp

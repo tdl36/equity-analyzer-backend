@@ -1630,6 +1630,20 @@ def _queue_improved_summary(summary_id, api_key=None):
             pass
 
 
+SUMMARIES_FOLDER_ORIGIN = 'summaries-folder'
+
+
+def _should_fan_out_summary_lab(origin):
+    """Only audio detected in the iCloud SUMMARIES folder fans out to Summary Lab.
+
+    Summary Lab's own audio intake posts to the same endpoint and then starts
+    an experiment itself with the user's title, emphasis and output language.
+    Fanning out for that caller would run the identical paid multi-pass source
+    review twice over one transcript, so unidentified callers do not fan out.
+    """
+    return (origin or '').strip().lower() == SUMMARIES_FOLDER_ORIGIN
+
+
 def _queue_summary_lab(summary_id, api_key=None):
     """Fan a saved transcript into the independent Summary Lab workflow."""
     try:
@@ -7235,6 +7249,9 @@ def auto_process_audio():
         filename = file.filename
         detail_level = request.form.get('detailLevel', 'standard')
         anthropic_api_key = request.form.get('apiKey', '') or os.environ.get('ANTHROPIC_API_KEY', '')
+        # The folder watcher identifies itself so only SUMMARIES-folder audio
+        # fans out into Summary Lab. See _should_fan_out_summary_lab.
+        origin = (request.form.get('origin') or '').strip().lower()
 
         mime_map = {'.mp3': 'audio/mpeg', '.mp4': 'audio/mp4', '.m4a': 'audio/mp4', '.wav': 'audio/wav', '.webm': 'audio/webm', '.ogg': 'audio/ogg', '.flac': 'audio/flac'}
         file_ext = '.' + filename.lower().rsplit('.', 1)[-1]
@@ -7254,7 +7271,7 @@ def auto_process_audio():
             raise
 
         job_id = str(uuid.uuid4())[:8]
-        _transcription_jobs[job_id] = {'status': 'starting', 'filename': filename, 'autoProcess': True}
+        _transcription_jobs[job_id] = {'status': 'starting', 'filename': filename, 'autoProcess': True, 'origin': origin}
         _mirror_transcription_state(job_id)
 
         thread = threading.Thread(
@@ -8734,13 +8751,24 @@ OUTPUT FORMAT: raw HTML only. No markdown. No code fences."""
             ''', (alert_id, f'Summary generated: {title}',
                   json.dumps({'filename': filename, 'summaryId': summary_id, 'detailLevel': detail_level, 'transcriptLength': len(transcript)})))
 
+        fan_out_lab = _should_fan_out_summary_lab(_transcription_jobs.get(job_id, {}).get('origin'))
         _transcription_jobs[job_id]['status'] = 'complete'
         _transcription_jobs[job_id]['summaryId'] = summary_id
-        _queue_improved_summary(summary_id, anthropic_api_key)
-        summary_lab_id = _queue_summary_lab(summary_id, anthropic_api_key)
-        if summary_lab_id:
-            _transcription_jobs[job_id]['summaryLabId'] = summary_lab_id
+        # 'pending' keeps the folder watcher from reporting that Summary Lab
+        # did not start while the fan-out below is still running.
+        _transcription_jobs[job_id]['summaryLabState'] = 'pending' if fan_out_lab else 'not_requested'
+        # Persist completion BEFORE the follow-on queues. A restart between the
+        # two would otherwise leave the mirror at 'summarizing', the watcher
+        # would leave the file in the SUMMARIES root, and the next tick would
+        # re-transcribe and re-summarize audio that is already saved.
         _mirror_transcription_state(job_id)
+        _queue_improved_summary(summary_id, anthropic_api_key)
+        if fan_out_lab:
+            summary_lab_id = _queue_summary_lab(summary_id, anthropic_api_key)
+            if summary_lab_id:
+                _transcription_jobs[job_id]['summaryLabId'] = summary_lab_id
+            _transcription_jobs[job_id]['summaryLabState'] = 'started' if summary_lab_id else 'failed'
+            _mirror_transcription_state(job_id)
         print(f"[auto-audio {job_id}] Complete: {title} saved as {summary_id}")
 
     except Exception as e:
@@ -8782,6 +8810,9 @@ def transcribe_audio_status(job_id):
                     'filename': row.get('filename') or '',
                     'summaryId': row.get('summary_id'),
                     'summaryLabId': row.get('summary_lab_id'),
+                    # The owning process is gone: only a recorded Lab id proves
+                    # the fan-out started. Never report 'pending' from here.
+                    'summaryLabState': 'started' if row.get('summary_lab_id') else 'unknown',
                     'persisted': True,
                 })
         except Exception as e:

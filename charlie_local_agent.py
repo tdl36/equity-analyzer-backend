@@ -2644,6 +2644,7 @@ def _wait_for_audio_job_and_move(fname: str, fpath: Path, job_id: str) -> None:
         # during normal long-form processing and triggered a re-upload loop
         # because we were also discarding from _known_audio_files below.
         max_iters = 540  # 540 * 10s = 90 min max
+        lab_waits = 0
         for i in range(max_iters):
             _time.sleep(10)
             try:
@@ -2664,6 +2665,13 @@ def _wait_for_audio_job_and_move(fname: str, fpath: Path, job_id: str) -> None:
                 status = (js.get('status') or '').lower()
                 if status == 'complete' or js.get('summaryId'):
                     summary_lab_id = js.get('summaryLabId')
+                    lab_state = (js.get('summaryLabState') or '').lower()
+                    # The Summary is saved a moment before the Summary Lab
+                    # fan-out returns an id. Wait out that window instead of
+                    # reporting a failure that did not happen.
+                    if lab_state == 'pending' and not summary_lab_id and lab_waits < 6:
+                        lab_waits += 1
+                        continue
                     try:
                         if fpath.exists():
                             fpath.rename(processed_dir / fname)
@@ -2677,8 +2685,10 @@ def _wait_for_audio_job_and_move(fname: str, fpath: Path, job_id: str) -> None:
                     # the summary lands in the DB.
                     if summary_lab_id:
                         notify(f"*Audio summary ready:* {fname}\nSummary Lab experiment also started automatically.")
+                    elif lab_state == 'not_requested':
+                        notify(f"*Audio summary ready:* {fname}")
                     else:
-                        notify(f"*Audio summary ready:* {fname}\nSummary Lab did not start; check Charlie alerts for the retry action.")
+                        notify(f"*Audio summary ready:* {fname}\nSummary Lab did not start. Open Summary Lab and run it from the saved Summary; check Charlie alerts for details.")
                     # Also remove from known-files so a re-dropped version
                     # next time will fire a fresh job
                     try:
@@ -2850,7 +2860,10 @@ def check_for_new_audio():
                             'timeout': (60, 1800),
                         }
                         if not is_text:
-                            post_kwargs['data'] = {'detailLevel': 'standard'}
+                            # 'origin' tells the backend this audio came from the
+                            # SUMMARIES folder, which is the only source that fans
+                            # out into a second Summary Lab experiment.
+                            post_kwargs['data'] = {'detailLevel': 'standard', 'origin': 'summaries-folder'}
                         res = requests.post(f"{CHARLIE_API}{endpoint}", **post_kwargs)
                         if res.ok:
                             data = res.json()

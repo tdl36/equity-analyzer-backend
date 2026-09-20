@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { documentHtml, emailDocument, youtubeLanguagePayload } from './summary-lab-format.mjs';
+import { documentHtml, emailDocument, labFanoutPlan, youtubeLanguagePayload } from './summary-lab-format.mjs';
 var ENGLISH_SECTIONS = [['brief', 'Executive Brief', 'brief'], ['takeaways', 'Key Takeaways', 'summary'], ['meeting', 'Meeting Summary', 'meeting_summary'], ['questions', 'Follow-up Questions', 'questions'], ['assessment', 'Overall Assessment', 'assessment']];
 var KOREAN_SECTION = ['korean', 'Korean Interpretation · 한국어 핵심 정리', 'korean_takeaways'];
 var sectionsForMode = mode => mode === 'korean_only' ? [KOREAN_SECTION] : mode === 'korean_bilingual' ? [...ENGLISH_SECTIONS, KOREAN_SECTION] : ENGLISH_SECTIONS;
@@ -221,11 +221,18 @@ export function SummaryLab({
           outputMode
         }));
         if (['complete', 'done'].includes(phase)) {
-          if (!data.summaryId) throw Error('The transcript finished but no saved Summary was returned.');
+          var plan = labFanoutPlan(data);
+          if (plan.error) throw Error(plan.error);
           localStorage.removeItem(PENDING_KEY);
-          setNotice(`${label} was transcribed and saved. Improved analysis is now running.`);
           setBusy(true);
-          await startLab(data.summaryId, jobTitle || label, outputMode, jobFocus);
+          if (plan.adoptId) {
+            setId(plan.adoptId);
+            await refreshLists();
+            setNotice(`${label} was transcribed and saved. Charlie already started its Summary Lab experiment for this recording, so it is shown here instead of starting a second run.`);
+          } else {
+            setNotice(`${label} was transcribed and saved. Improved analysis is now running.`);
+            await startLab(plan.summaryId, jobTitle || label, outputMode, jobFocus);
+          }
           setIngest(null);
           setBusy(false);
           return;
@@ -271,6 +278,7 @@ export function SummaryLab({
       form.append('detailLevel', 'standard');
       form.append('apiKey', getKey() || '');
       form.append('geminiApiKey', getGeminiKey?.() || '');
+      form.append('origin', 'summary-lab');
       var response = await fetch(`${api}/api/auto-process-audio`, {
         method: 'POST',
         body: form,

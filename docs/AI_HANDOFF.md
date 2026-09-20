@@ -4,14 +4,14 @@ Updated: September 20, 2026
 
 ## Start here
 
-Charlie production is currently **T81** at commit **`d8c608d0af50eaaa1da5e7954e891abb68a5da08`** on `main`.
+Charlie production is currently **T82** at commit **`RELEASE_COMMIT`** on `main`.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T81`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T82`
 - Backend health: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`
 - Branch: `main`
-- Backend health was verified on September 19/20 and reported the T81 commit above.
-- The Mac launch agent `com.charlie.local-agent` was restarted after T81 and was running.
+- Backend health was verified on September 20 and reported the T82 commit above.
+- The Mac launch agent `com.charlie.local-agent` was restarted after T82 because `charlie_local_agent.py` changed.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files. Do not clean the repository.
 
@@ -36,6 +36,50 @@ The design standard is institutional: concise hierarchy, readable outputs, defen
 
 ## Latest production changes
 
+### T82 — correct the automatic dual Summary fan-out
+
+Commit: `RELEASE_COMMIT` — `Scope SUMMARIES fan-out and harden Summary Lab recovery`
+
+T81 fanned every `/api/auto-process-audio` job into Summary Lab. That endpoint serves
+two callers, so three real defects shipped with it. T82 fixes all three.
+
+- **Duplicate paid Summary Lab runs.** Summary Lab's own Audio intake posts to the same
+  endpoint and then starts its own experiment from the saved Summary. Since T81 each
+  such upload produced two experiments over the identical transcript — two complete
+  Opus multi-pass source reviews. Audio uploads now carry an `origin` marker, and only
+  `origin=summaries-folder` (sent by `charlie_local_agent.py`) fans out. Unidentified
+  callers do not fan out, so every failure mode is a missing experiment rather than
+  silent duplicate model spend.
+- **Summary Lab now adopts an automatic experiment instead of starting a second one.**
+  If a completed transcription already carries `summaryLabId`, the workspace opens that
+  experiment and says so. This holds even if a stale frontend bundle or an un-restarted
+  agent disagrees about the origin marker.
+- **Restart durability regression.** T81 moved `_mirror_transcription_state` after the
+  two follow-on queue calls. A backend restart in that window left the mirror at
+  `summarizing`, so the folder watcher kept the file in the `SUMMARIES` root and the
+  next tick re-uploaded and re-transcribed audio that was already saved. Completion is
+  now mirrored before the queues run, and the Summary Lab id is mirrored after.
+- **False "Summary Lab did not start" alerts.** The watcher polls every 10 seconds and
+  decided Lab state from the same response that first reported completion, before the
+  fan-out had returned an id. The status route now reports an explicit
+  `summaryLabState` (`pending`, `started`, `failed`, `not_requested`, `unknown`), the
+  watcher waits out a bounded 60-second `pending` window, and it stays silent about Lab
+  for uploads that never requested a fan-out. The database fallback never reports
+  `pending`, because after a restart only a recorded Lab id proves the fan-out started.
+- **Summary Lab recovery thread pile-up.** Only two experiments run at once, so a
+  recovery thread can block on the semaphore for a long time. The 30-second sweep
+  queued another blocked thread for the same experiment on every pass. Recovery now
+  tracks in-flight experiment ids and starts at most one thread each.
+
+Validation completed for T82: 549 backend unittests, 45 frontend tests, the research
+quality self-test, `py_compile` on all three touched Python modules, production build,
+Render health revision, Cloudflare T82 asset, and the launch-agent restart. The two new
+structural regression guards were confirmed to fail against the T81 code and pass now.
+No paid audio run and no model-backed workflow was launched for validation.
+
+Not changed in T82: automatic folder fan-out still uses Summary Lab's English mode, and
+historical files under `SUMMARIES/Processed` are still not mass-reprocessed.
+
 ### T81 — automatic dual Summary processing
 
 Commit: `d8c608d` — `Fan out SUMMARIES audio into Summary Lab`
@@ -54,6 +98,7 @@ New audio placed at the root of the iCloud `SUMMARIES` folder now follows the es
 - Automatic folder jobs currently use Summary Lab's English mode.
 - Historical files already under `SUMMARIES/Processed` were intentionally not mass-reprocessed because that would create large unrequested model usage.
 - At deployment time the `SUMMARIES` root contained no waiting audio, so the first real new file remains the live end-to-end proof.
+- T82 corrected this release's fan-out scope, restart durability, watcher notification and recovery sweep. Read the T82 section above first.
 
 Validation completed for T81: 43 frontend tests, 18 focused backend tests, Python compilation, production build, Render health revision, Cloudflare T81 asset, and launch-agent restart. No paid audio run was launched solely for validation.
 
@@ -107,6 +152,11 @@ The established Summary workflow is still active and remains the comparison base
 
 Summary Lab performs a more rigorous, checkpointed full-source review and produces the same recognizable backbone in a separate workspace. It supports saved Summary sources, connected documents, audio, YouTube, output-language modes, collapsible HTML sections, copy/save/email controls, and automatic dual routing from the `SUMMARIES` folder.
 
+Automatic fan-out is scoped to the folder watcher only. Audio uploaded inside Summary Lab
+starts exactly one experiment, using the title, emphasis and language the user chose. If a
+recording was already fanned out automatically, the workspace opens that experiment rather
+than paying for a second review of the same transcript.
+
 Open question: after several real comparisons, decide which Lab prompt/format improvements should migrate into original Summary. Preserve the original until the user explicitly makes that decision.
 
 ### Catalyst synthesis
@@ -132,14 +182,14 @@ Do not invent observed URLs, counts, downloads, or completion. Never pass provid
 
 ## Known proof gaps and next priorities
 
-1. **Run a real dual-summary audio comparison.** Add one new representative audio file to the root `SUMMARIES` folder and confirm that original Summary and `Auto from SUMMARIES` Lab outputs both complete, are readable, and can be emailed/saved. This incurs real model usage and should be user-driven, not launched merely for QA.
+1. **Run a real dual-summary audio comparison.** Add one new representative audio file to the root `SUMMARIES` folder and confirm that original Summary and `Auto from SUMMARIES` Lab outputs both complete, are readable, and can be emailed/saved. This incurs real model usage and should be user-driven, not launched merely for QA. T82 changed the code paths this exercises, so it is still the live end-to-end proof: confirm exactly one Lab experiment per recording, that the Telegram message reports the correct Lab state, and that the file moves to `SUMMARIES/Processed` once.
 2. **Evaluate Summary Lab quality across several source types.** Compare earnings calls, investor meetings, noisy audio, long YouTube transcripts, and non-earnings documents. Capture which sections are materially better or worse than original Summary.
 3. **Decide the convergence plan.** After real testing, selectively promote proven Lab prompt/format improvements into original Summary or retain both permanently.
 4. **Validate catalyst synthesis on more real folders.** Include single transcript, transcript plus presentation, and multi-broker event folders; score concision, factual attribution, analyst voice, unresolved issues, and PM usefulness.
 5. **Prove a complete managed AlphaSense assignment.** Demonstrate browser discovery, source restrictions, original download, iCloud handoff, recap, thesis proposal, and recovery for a real user-selected ticker without overstating unattended coverage.
 6. **Improve real-source quality benchmarks.** Current automated checks are useful regressions, not expert certification. Add frozen real-source packs and investor-scored outputs without committing licensed source bodies.
 7. **Continue UI simplification.** Navigation and complex evidence workflows have improved but remain dense. Any redesign must be inspected at desktop and mobile widths with real long content.
-8. **Broaden recovery cautiously.** Long-running Summary Lab and several research jobs have bounded recovery; audit remaining model-backed jobs for durable identity, checkpointing, ownership fencing, duplicate prevention, and visible failure.
+8. **Broaden recovery cautiously.** Long-running Summary Lab and several research jobs have bounded recovery; audit remaining model-backed jobs for durable identity, checkpointing, ownership fencing, duplicate prevention, and visible failure. T82 fixed the Summary Lab recovery sweep and the audio completion mirror. Two known gaps remain and are unproven in production: a restart between the saved Summary and the fan-out leaves no Lab experiment to recover, because recovery only resumes rows that already exist; and `recover_once` reads `ANTHROPIC_API_KEY` from the environment, so recovery is silently inactive if only a Settings-supplied key is present.
 
 ## Safe commands
 
@@ -160,7 +210,9 @@ For focused Summary Lab work, the most recent safe subset was:
   tests.unit.test_summary_lab_recovery \
   tests.unit.test_summary_lab_enqueue \
   tests.unit.test_summary_lab_email \
+  tests.unit.test_summary_lab_fanout \
   tests.unit.test_summary_bulk \
+  tests.unit.test_summary_job_status \
   tests.unit.test_research_email_format
 ```
 
@@ -170,9 +222,9 @@ Use `py_compile` for every touched Python module. Do not start paid research, se
 
 Current release markers must stay synchronized:
 
-- `worker.js`: `2026-09-19T81`
-- `service-worker.js`: `20260919-81`
-- `src/app.jsx`: `2026-09-19T81`
+- `worker.js`: `2026-09-20T82`
+- `service-worker.js`: `20260920-82`
+- `src/app.jsx`: `2026-09-20T82`
 
 After an application change:
 
@@ -195,7 +247,7 @@ Render may return transient 502 responses while rolling forward. Wait for `/heal
 
 ## Repository state warning
 
-At this handoff, `main` is committed through `d8c608d`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
+At this handoff, `main` is committed through `RELEASE_COMMIT`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
 
 - `.claude/settings.local.json`
 - `.omc/**`
@@ -209,7 +261,7 @@ Always inspect `git status --short`, stage an explicit allowlist, and review `gi
 
 ## Suggested first Claude Code instruction
 
-> Continue Charlie from production commit `d8c608d` and release T81. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
+> Continue Charlie from production commit `RELEASE_COMMIT` and release T82. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
 
 ## Relevant deeper documentation
 

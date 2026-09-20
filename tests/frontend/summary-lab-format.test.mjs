@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {labDocument,documentHtml,emailDocument,looksLikeHtmlDocument,youtubeLanguagePayload} from '../../src/summary-lab-format.mjs';
+import {labDocument,documentHtml,emailDocument,labFanoutPlan,looksLikeHtmlDocument,youtubeLanguagePayload} from '../../src/summary-lab-format.mjs';
 test('renders source labels, headings and lists without executing source HTML',()=>{
  const html=labDocument('# Topic\n\n**Management:** uncertain [P1]\n\n- Detail\n- Caveat\n\n<script>alert(1)</script>');
  assert.match(html,/<h3>Topic<\/h3>/);assert.match(html,/<strong>Management:<\/strong>/);
@@ -26,4 +26,12 @@ test('YouTube language options mirror Summary and never allow Korean-only withou
  assert.deepEqual(youtubeLanguagePayload(false,true),{generateKorean:false,koreanOnly:false,outputMode:'english'});
  assert.deepEqual(youtubeLanguagePayload(true,false),{generateKorean:true,koreanOnly:false,outputMode:'korean_bilingual'});
  assert.deepEqual(youtubeLanguagePayload(true,true),{generateKorean:true,koreanOnly:true,outputMode:'korean_only'});
+});
+test('a completed transcription adopts its automatic experiment instead of running a second',()=>{
+ assert.deepEqual(labFanoutPlan({status:'complete',summaryId:'s1',summaryLabId:'lab-1'}),{adoptId:'lab-1',start:false,error:'',summaryId:'s1'});
+ assert.deepEqual(labFanoutPlan({status:'complete',summaryId:'s1'}),{adoptId:'',start:true,error:'',summaryId:'s1'});
+});
+test('a transcription without a saved Summary reports the failure and starts nothing',()=>{
+ const plan=labFanoutPlan({status:'complete'});
+ assert.equal(plan.start,false);assert.equal(plan.adoptId,'');assert.match(plan.error,/no saved Summary/);
 });
