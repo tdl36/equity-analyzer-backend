@@ -75,3 +75,21 @@ class GenerationCoverageTests(unittest.TestCase):
         self.assertEqual(state['sections']['qa'], 'drafted')
         # Each section is drafted from the evidence records, not from scratch.
         self.assertTrue(all('evidence records' in p for p in asked[1:]))
+
+
+class VersionVisibilityTests(unittest.TestCase):
+    """Without the current version the workspace cannot tell an older note
+    apart from a current one, and cannot offer to produce the current one."""
+
+    def test_the_listing_route_reports_the_pipeline_version(self):
+        source = Path('summary_comparison.py').read_text()
+        listing = source[source.index("def get(sid):"):source.index("def enqueue(")]
+        self.assertIn('currentVersion=VERSION', listing)
+
+    def test_the_workspace_offers_a_fresh_run_when_every_note_is_older(self):
+        ui = Path('src/summary-comparison.jsx').read_text()
+        self.assertIn("!rows.some(r=>r.version===currentVersion)", ui)
+        # A fresh run must not pass resumeId, which would resume the old row
+        # under its own version instead of producing the current one.
+        self.assertIn("resumeId:fresh?undefined:row?.id", ui)
+        self.assertIn("start(true)", ui)

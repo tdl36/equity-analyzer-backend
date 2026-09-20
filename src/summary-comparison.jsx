@@ -5,7 +5,7 @@ const sections=[['brief','Executive brief','brief'],['takeaways','Key takeaways'
 
 export function SummaryComparison({summary,api,getKey,renderHtml,children}) {
  const [view,setView]=React.useState('original');
- const [rows,setRows]=React.useState([]),[loaded,setLoaded]=React.useState(false),[selected,setSelected]=React.useState('');
+ const [rows,setRows]=React.useState([]),[loaded,setLoaded]=React.useState(false),[selected,setSelected]=React.useState(''),[currentVersion,setCurrentVersion]=React.useState('');
  const [busy,setBusy]=React.useState(false),[error,setError]=React.useState(''),[feedback,setFeedback]=React.useState(''),[saved,setSaved]=React.useState(false);
  const [exportBusy,setExportBusy]=React.useState(''),[exportMessage,setExportMessage]=React.useState('');
  const [expanded,setExpanded]=React.useState({brief:true,takeaways:true,qa:false,record:false,questions:false,assessment:false});
@@ -13,17 +13,20 @@ export function SummaryComparison({summary,api,getKey,renderHtml,children}) {
  const base=`${api}/api/summaries/${encodeURIComponent(summary.id)}/comparisons`;
  React.useEffect(()=>{epoch.current++;setRows([]);setLoaded(false);setSelected('');setView('original');setError('');setExpanded({brief:true,takeaways:true,qa:false,record:false,questions:false,assessment:false});},[summary.id]);
  React.useEffect(()=>{let alive=true,timer;
-  async function poll(){try{const r=await fetch(base,{signal:AbortSignal.timeout(20000)});const d=await r.json();if(!r.ok)throw Error(d.error||'Improved notes could not be loaded.');if(alive){setRows(d.comparisons);setLoaded(true);setError('');}}catch(e){if(alive)setError(e.message);}finally{if(alive)timer=setTimeout(poll,8000);}}
+  async function poll(){try{const r=await fetch(base,{signal:AbortSignal.timeout(20000)});const d=await r.json();if(!r.ok)throw Error(d.error||'Improved notes could not be loaded.');if(alive){setRows(d.comparisons);setCurrentVersion(d.currentVersion||'');setLoaded(true);setError('');}}catch(e){if(alive)setError(e.message);}finally{if(alive)timer=setTimeout(poll,8000);}}
   poll();return()=>{alive=false;clearTimeout(timer);};
  },[base]);
  const row=rows.find(r=>r.id===selected)||rows[0],state=row?.state||{};
  React.useEffect(()=>{setFeedback(row?.feedback||'');setSaved(false);},[row?.id]);
  const running=row&&['queued','running'].includes(row.status);
+ // Every saved note predates the current prompt, so no amount of resuming
+ // will produce the sections added since; only a fresh run will.
+ const outdated=!!(row&&currentVersion&&rows.length&&!rows.some(r=>r.version===currentVersion));
  const stale=running&&Date.now()-new Date(row.updated_at).getTime()>10*60*1000;
- async function start(){const token=epoch.current;setBusy(true);setError('');try{
-  const r=await fetch(base,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:getKey(),resumeId:row?.id}),signal:AbortSignal.timeout(25000)});
+ async function start(fresh=false){const token=epoch.current;setBusy(true);setError('');try{
+  const r=await fetch(base,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:getKey(),resumeId:fresh?undefined:row?.id}),signal:AbortSignal.timeout(25000)});
   const d=await r.json();if(!r.ok)throw Error(d.error||'Could not start improved notes.');if(token!==epoch.current)return;setSelected(d.id);
-  const fresh=await fetch(base,{signal:AbortSignal.timeout(20000)});if(!fresh.ok)throw Error('Could not refresh note status.');const data=await fresh.json();if(token===epoch.current)setRows(data.comparisons);
+  const refreshed=await fetch(base,{signal:AbortSignal.timeout(20000)});if(!refreshed.ok)throw Error('Could not refresh note status.');const data=await refreshed.json();if(token===epoch.current){setRows(data.comparisons);setCurrentVersion(data.currentVersion||'');}
  }catch(e){if(token===epoch.current)setError(e.message);}finally{if(token===epoch.current)setBusy(false);}}
  const record=Object.keys(state.parts||{}).sort((a,b)=>Number(a)-Number(b)).map(k=>state.parts[k].record).join('\n\n');
  const escapeHtml=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -81,12 +84,13 @@ export function SummaryComparison({summary,api,getKey,renderHtml,children}) {
   {view==='original'?children:<section className="space-y-5" aria-label={view==='compare'?'Side-by-side notes':'Improved notes'}>
    {error&&<p role="alert" className="text-red-400">{error}</p>}
    {!loaded&&!error&&<p role="status">Loading improved notes…</p>}
-   {loaded&&!row&&<div className="rounded-xl border border-white/15 p-5"><h3 className="font-semibold">Generate the improved version for this saved note</h3><p className="text-sm text-slate-400 my-3">Older notes need one initial run. Charlie uses the saved transcript; no audio upload is needed. This uses your research API credits.</p><button disabled={busy||!summary.rawNotes?.trim()} onClick={start} className="bg-amber-600 text-white rounded-lg px-4 py-2 disabled:opacity-50">{busy?'Starting…':'Generate improved notes'}</button>{!summary.rawNotes?.trim()&&<p className="mt-2 text-sm">No saved source text is available.</p>}</div>}
+   {loaded&&!row&&<div className="rounded-xl border border-white/15 p-5"><h3 className="font-semibold">Generate the improved version for this saved note</h3><p className="text-sm text-slate-400 my-3">Older notes need one initial run. Charlie uses the saved transcript; no audio upload is needed. This uses your research API credits.</p><button disabled={busy||!summary.rawNotes?.trim()} onClick={()=>start(true)} className="bg-amber-600 text-white rounded-lg px-4 py-2 disabled:opacity-50">{busy?'Starting…':'Generate improved notes'}</button>{!summary.rawNotes?.trim()&&<p className="mt-2 text-sm">No saved source text is available.</p>}</div>}
    {row&&<>
     <div className="rounded-xl border border-amber-500/30 p-4 space-y-3"><strong className="text-sm">Improved notes · All sections</strong>{controls()}<p role="status" className="text-sm text-slate-400">{exportMessage||(row.status==='complete'?'Exports use this saved improved version and leave original notes intact.':'Export controls become available when generation finishes.')}</p></div>
-    {rows.length>1&&<label className="block text-sm">Saved version <select className="bg-transparent border border-white/20 p-2 rounded" value={row.id} onChange={e=>setSelected(e.target.value)}>{rows.map(r=><option key={r.id} value={r.id}>{new Date(r.created_at).toLocaleString()} · {r.status}</option>)}</select></label>}
+    {outdated&&<div className="rounded-xl border border-amber-500/30 p-4"><strong className="text-sm">A newer notes format is available</strong><p className="text-sm text-slate-400 my-2">These notes were produced by an earlier prompt version ({row.version}), so sections added since — including the Q&amp;A log — are missing. Generating the current version ({currentVersion}) reads the saved transcript again and uses your research API credits. Your existing notes are kept.</p><button disabled={busy} onClick={()=>start(true)} className="bg-amber-600 text-white rounded-lg px-4 py-2 disabled:opacity-50">{busy?'Starting…':'Generate current version'}</button></div>}
+    {rows.length>1&&<label className="block text-sm">Saved version <select className="bg-transparent border border-white/20 p-2 rounded" value={row.id} onChange={e=>setSelected(e.target.value)}>{rows.map(r=><option key={r.id} value={r.id}>{new Date(r.created_at).toLocaleString()} · {r.status}{r.version&&currentVersion&&r.version!==currentVersion?' · older format':''}</option>)}</select></label>}
     {running&&<div role="status" className="rounded-xl border border-amber-500/30 p-4"><strong>{state.progress||'Queued for generation'}</strong><p className="text-sm text-slate-400 mt-1">You can leave this page. Completed sections appear below as they are saved.</p>{row.recovery_enabled&&<p className="text-sm text-slate-400">Interrupted work can resume automatically with the server research key. Recovery attempts: {row.recovery_attempts||0} of 2. Provider failures still require review.</p>}</div>}
-    {(row.status==='failed'||stale)&&<div role="alert" className="rounded-xl border border-amber-500/30 p-4"><p>{row.error||'No recent progress. Resume from the last saved checkpoint.'}</p><button disabled={busy} onClick={start} className="underline mt-2">{busy?'Starting…':'Retry improved notes'}</button></div>}
+    {(row.status==='failed'||stale)&&<div role="alert" className="rounded-xl border border-amber-500/30 p-4"><p>{row.error||'No recent progress. Resume from the last saved checkpoint.'}</p><button disabled={busy} onClick={()=>start(false)} className="underline mt-2">{busy?'Starting…':'Retry improved notes'}</button></div>}
     {view==='compare'&&<p className="text-xs text-slate-400">Original on the left, improved on the right. The original is the saved snapshot from when this version began. On mobile, each pair is stacked.</p>}
     <div className="flex flex-wrap gap-3 text-xs"><button className="underline" onClick={()=>setExpanded(Object.fromEntries(sections.map(([key])=>[key,true])))}>Expand all sections</button><button className="underline" onClick={()=>setExpanded(Object.fromEntries(sections.map(([key])=>[key,false])))}>Collapse all sections</button></div>
     {sections.map(([key,label,original])=>{const text=key==='record'?record:state.sections?.[key];

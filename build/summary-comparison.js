@@ -11,7 +11,8 @@ export function SummaryComparison({
   var [view, setView] = React.useState('original');
   var [rows, setRows] = React.useState([]),
     [loaded, setLoaded] = React.useState(false),
-    [selected, setSelected] = React.useState('');
+    [selected, setSelected] = React.useState(''),
+    [currentVersion, setCurrentVersion] = React.useState('');
   var [busy, setBusy] = React.useState(false),
     [error, setError] = React.useState(''),
     [feedback, setFeedback] = React.useState(''),
@@ -56,6 +57,7 @@ export function SummaryComparison({
         if (!r.ok) throw Error(d.error || 'Improved notes could not be loaded.');
         if (alive) {
           setRows(d.comparisons);
+          setCurrentVersion(d.currentVersion || '');
           setLoaded(true);
           setError('');
         }
@@ -78,8 +80,11 @@ export function SummaryComparison({
     setSaved(false);
   }, [row?.id]);
   var running = row && ['queued', 'running'].includes(row.status);
+  // Every saved note predates the current prompt, so no amount of resuming
+  // will produce the sections added since; only a fresh run will.
+  var outdated = !!(row && currentVersion && rows.length && !rows.some(r => r.version === currentVersion));
   var stale = running && Date.now() - new Date(row.updated_at).getTime() > 10 * 60 * 1000;
-  async function start() {
+  async function start(fresh = false) {
     var token = epoch.current;
     setBusy(true);
     setError('');
@@ -91,7 +96,7 @@ export function SummaryComparison({
         },
         body: JSON.stringify({
           apiKey: getKey(),
-          resumeId: row?.id
+          resumeId: fresh ? undefined : row?.id
         }),
         signal: AbortSignal.timeout(25000)
       });
@@ -99,12 +104,15 @@ export function SummaryComparison({
       if (!r.ok) throw Error(d.error || 'Could not start improved notes.');
       if (token !== epoch.current) return;
       setSelected(d.id);
-      var fresh = await fetch(base, {
+      var refreshed = await fetch(base, {
         signal: AbortSignal.timeout(20000)
       });
-      if (!fresh.ok) throw Error('Could not refresh note status.');
-      var data = await fresh.json();
-      if (token === epoch.current) setRows(data.comparisons);
+      if (!refreshed.ok) throw Error('Could not refresh note status.');
+      var data = await refreshed.json();
+      if (token === epoch.current) {
+        setRows(data.comparisons);
+        setCurrentVersion(data.currentVersion || '');
+      }
     } catch (e) {
       if (token === epoch.current) setError(e.message);
     } finally {
@@ -254,7 +262,7 @@ export function SummaryComparison({
     className: "text-sm text-slate-400 my-3"
   }, "Older notes need one initial run. Charlie uses the saved transcript; no audio upload is needed. This uses your research API credits."), /*#__PURE__*/React.createElement("button", {
     disabled: busy || !summary.rawNotes?.trim(),
-    onClick: start,
+    onClick: () => start(true),
     className: "bg-amber-600 text-white rounded-lg px-4 py-2 disabled:opacity-50"
   }, busy ? 'Starting…' : 'Generate improved notes'), !summary.rawNotes?.trim() && /*#__PURE__*/React.createElement("p", {
     className: "mt-2 text-sm"
@@ -265,7 +273,17 @@ export function SummaryComparison({
   }, "Improved notes \xB7 All sections"), controls(), /*#__PURE__*/React.createElement("p", {
     role: "status",
     className: "text-sm text-slate-400"
-  }, exportMessage || (row.status === 'complete' ? 'Exports use this saved improved version and leave original notes intact.' : 'Export controls become available when generation finishes.'))), rows.length > 1 && /*#__PURE__*/React.createElement("label", {
+  }, exportMessage || (row.status === 'complete' ? 'Exports use this saved improved version and leave original notes intact.' : 'Export controls become available when generation finishes.'))), outdated && /*#__PURE__*/React.createElement("div", {
+    className: "rounded-xl border border-amber-500/30 p-4"
+  }, /*#__PURE__*/React.createElement("strong", {
+    className: "text-sm"
+  }, "A newer notes format is available"), /*#__PURE__*/React.createElement("p", {
+    className: "text-sm text-slate-400 my-2"
+  }, "These notes were produced by an earlier prompt version (", row.version, "), so sections added since \u2014 including the Q&A log \u2014 are missing. Generating the current version (", currentVersion, ") reads the saved transcript again and uses your research API credits. Your existing notes are kept."), /*#__PURE__*/React.createElement("button", {
+    disabled: busy,
+    onClick: () => start(true),
+    className: "bg-amber-600 text-white rounded-lg px-4 py-2 disabled:opacity-50"
+  }, busy ? 'Starting…' : 'Generate current version')), rows.length > 1 && /*#__PURE__*/React.createElement("label", {
     className: "block text-sm"
   }, "Saved version ", /*#__PURE__*/React.createElement("select", {
     className: "bg-transparent border border-white/20 p-2 rounded",
@@ -274,7 +292,7 @@ export function SummaryComparison({
   }, rows.map(r => /*#__PURE__*/React.createElement("option", {
     key: r.id,
     value: r.id
-  }, new Date(r.created_at).toLocaleString(), " \xB7 ", r.status)))), running && /*#__PURE__*/React.createElement("div", {
+  }, new Date(r.created_at).toLocaleString(), " \xB7 ", r.status, r.version && currentVersion && r.version !== currentVersion ? ' · older format' : '')))), running && /*#__PURE__*/React.createElement("div", {
     role: "status",
     className: "rounded-xl border border-amber-500/30 p-4"
   }, /*#__PURE__*/React.createElement("strong", null, state.progress || 'Queued for generation'), /*#__PURE__*/React.createElement("p", {
@@ -286,7 +304,7 @@ export function SummaryComparison({
     className: "rounded-xl border border-amber-500/30 p-4"
   }, /*#__PURE__*/React.createElement("p", null, row.error || 'No recent progress. Resume from the last saved checkpoint.'), /*#__PURE__*/React.createElement("button", {
     disabled: busy,
-    onClick: start,
+    onClick: () => start(false),
     className: "underline mt-2"
   }, busy ? 'Starting…' : 'Retry improved notes')), view === 'compare' && /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-slate-400"

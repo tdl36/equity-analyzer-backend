@@ -250,7 +250,10 @@ def create_blueprint(get_db):
         for r in rows:
             for k in ('created_at','updated_at'):
                 r[k] = r[k].isoformat()+'Z'
-        return jsonify(comparisons=rows)
+        # The workspace needs this to tell a note produced by the current
+        # prompt from one produced by an earlier version, and to offer the
+        # current version when only older notes exist.
+        return jsonify(comparisons=rows, currentVersion=VERSION)
 
     def enqueue(sid, api_key=None, resume_id=None, automatic=False):
         ensure()
