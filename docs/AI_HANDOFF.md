@@ -4,13 +4,13 @@ Updated: September 20, 2026
 
 ## Start here
 
-Charlie production is currently **T87** at commit **`5cbd098`** on `main`.
+Charlie production is currently **T88** at commit **`15fa32b780a15cac8691a246a54c47e087645fcc`** on `main`.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T87`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T88`
 - Backend health: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`
 - Branch: `main`
-- Backend health was verified on September 20 and reported the T87 commit above.
+- Backend health was verified on September 20 and reported the T88 commit above.
 - The Mac launch agent `com.charlie.local-agent` was restarted during T82 because `charlie_local_agent.py` changed. T83 is frontend-only and did not require another restart.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files. Do not clean the repository.
@@ -35,6 +35,31 @@ The design standard is institutional: concise hierarchy, readable outputs, defen
 | Production deployment | Push to `main` triggers Render backend deployment. Cloudflare frontend deployment is explicit through Wrangler. |
 
 ## Latest production changes
+
+### T88 — regenerate an older Improved note in the current format
+
+Commit: `15fa32b` — `Let an older Improved note be regenerated in the current format`
+
+T87 added the Q&A log but left no way to obtain it. Existing notes carry their own prompt
+version, and the workspace could only report **Not in this version**. The listing never
+returned the pipeline version, the Generate button appeared only when no note existed at
+all, and `start()` always passed `resumeId`, which resumes the old row under its own
+version.
+
+- The comparisons listing now returns `currentVersion`.
+- When every saved note predates it, the workspace offers to generate the current version,
+  naming both versions, stating that it re-reads the saved transcript and uses research API
+  credits, and that existing notes are kept.
+- That run omits `resumeId`, so it creates a note in the current version. Retry still
+  resumes in place.
+- The saved-version picker marks older notes as "older format".
+
+Nothing is regenerated automatically: upgrading an existing summary is a paid run and stays
+user-initiated. New summaries get the current format on their own.
+
+Validation: 567 backend tests, 46 frontend tests, production build, Render revision and
+Cloudflare marker verified, and the panel confirmed in the browser against the real
+`conservative-v1` CAH note. The generate button was not pressed.
 
 ### T87 — Improved notes: readable prose, topic tags, and a Q&A log
 
@@ -359,9 +384,9 @@ Use `py_compile` for every touched Python module. Do not start paid research, se
 
 Current release markers must stay synchronized:
 
-- `worker.js`: `2026-09-20T87`
-- `service-worker.js`: `20260920-87`
-- `src/app.jsx`: `2026-09-20T87`
+- `worker.js`: `2026-09-20T88`
+- `service-worker.js`: `20260920-88`
+- `src/app.jsx`: `2026-09-20T88`
 
 After an application change:
 
@@ -384,7 +409,7 @@ Render may return transient 502 responses while rolling forward. Wait for `/heal
 
 ## Repository state warning
 
-At this handoff, `main` is committed through `5cbd098`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
+At this handoff, `main` is committed through `15fa32b`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
 
 - `.claude/settings.local.json`
 - `.omc/**`
@@ -398,7 +423,7 @@ Always inspect `git status --short`, stage an explicit allowlist, and review `gi
 
 ## Suggested first Claude Code instruction
 
-> Continue Charlie from production commit `5cbd098` and release T87. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
+> Continue Charlie from production commit `15fa32b` and release T88. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
 
 ## Relevant deeper documentation
 
