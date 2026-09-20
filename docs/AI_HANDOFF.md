@@ -4,13 +4,13 @@ Updated: September 20, 2026
 
 ## Start here
 
-Charlie production is currently **T86** at commit **`942407d`** on `main`.
+Charlie production is currently **T87** at commit **`5cbd098`** on `main`.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T86`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T87`
 - Backend health: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`
 - Branch: `main`
-- Backend health was verified on September 20 and reported the T86 commit above.
+- Backend health was verified on September 20 and reported the T87 commit above.
 - The Mac launch agent `com.charlie.local-agent` was restarted during T82 because `charlie_local_agent.py` changed. T83 is frontend-only and did not require another restart.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files. Do not clean the repository.
@@ -35,6 +35,49 @@ The design standard is institutional: concise hierarchy, readable outputs, defen
 | Production deployment | Push to `main` triggers Render backend deployment. Cloudflare frontend deployment is explicit through Wrangler. |
 
 ## Latest production changes
+
+### T87 — Improved notes: readable prose, topic tags, and a Q&A log
+
+Commit: `5cbd098` — `Give Improved notes the readability the Original had`
+
+Prompted by a real side-by-side review of a CAH management meeting. Findings from that
+comparison, recorded because they bear on priority 3:
+
+- The **Original** asserted "FY27 guidance of 3.5–4% EPS growth exceeds the long-term 3.5%
+  target". The transcript never says EPS and never states a 3.5% long-term target; it
+  contains Speaker 3's "3.5 to four is above 3.5" and, separately, Speaker 2's "12 to 14%
+  long-term growth algorithm". The Original supplied the unit and dropped the conflicting
+  12–14% figure. The Improved version flagged the ambiguity and preserved both figures.
+- The **Original** also reported "High credibility (8.5/10)" — an invented numerical score
+  the Improved rules already forbid — and inferred psychology, reading the CEO's joke "I
+  lose lots of sleep for lots of reasons" as evidence of concern about the CVS renewal.
+- The **Improved** version was materially less readable: quote-stuffed (eight quoted
+  fragments in one CVS paragraph), repeated the same guidance caveat six times across
+  sections, rendered broken numbered lists, and carried a far thinner Q&A log.
+
+Neither version is objectively better overall, and no benchmark exists that could settle
+it. T87 changes only the Improved pipeline, leaving the original Summary prompts untouched:
+
+- `summary_comparison.py` RULES now make reported speech the default and reserve quotation
+  marks for wording that is itself the evidence, at most one short phrase per point. It
+  bans numbered lists, and requires each fact to be stated once rather than restated in
+  every later section.
+- Key takeaways open with a scannable bracketed topic tag, adopted from the Original.
+- A new **Q&A log** section reproduces the substantive exchanges in order, preserving
+  numbers, hedges, refusals and non-answers, and must say so rather than invent an exchange
+  when the source has no real Q&A structure.
+- `VERSION` moves to `readable-v2`. `summary_comparisons` is unique on
+  (summary_id, source_hash, version), so existing notes are preserved and readable rather
+  than mixed with output from a different prompt. Older complete notes now label a missing
+  section **Not in this version** instead of a permanent "Waiting…".
+
+Validation: 565 backend tests including a new cross-file contract test that every generated
+section is rendered by the workspace, 46 frontend tests, production build, and the section
+list verified in the browser against the real `conservative-v1` CAH note.
+
+**No output-quality claim is being made.** The prompt now forbids the specific defects
+observed; whether the result reads better on real sources is priority 2/3 work and needs
+the user's own comparison on a new run.
 
 ### T86 — Summary Lab gives the page to whichever job is in front
 
@@ -316,9 +359,9 @@ Use `py_compile` for every touched Python module. Do not start paid research, se
 
 Current release markers must stay synchronized:
 
-- `worker.js`: `2026-09-20T86`
-- `service-worker.js`: `20260920-86`
-- `src/app.jsx`: `2026-09-20T86`
+- `worker.js`: `2026-09-20T87`
+- `service-worker.js`: `20260920-87`
+- `src/app.jsx`: `2026-09-20T87`
 
 After an application change:
 
@@ -341,7 +384,7 @@ Render may return transient 502 responses while rolling forward. Wait for `/heal
 
 ## Repository state warning
 
-At this handoff, `main` is committed through `942407d`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
+At this handoff, `main` is committed through `5cbd098`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
 
 - `.claude/settings.local.json`
 - `.omc/**`
@@ -355,7 +398,7 @@ Always inspect `git status --short`, stage an explicit allowlist, and review `gi
 
 ## Suggested first Claude Code instruction
 
-> Continue Charlie from production commit `942407d` and release T86. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
+> Continue Charlie from production commit `5cbd098` and release T87. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
 
 ## Relevant deeper documentation
 
