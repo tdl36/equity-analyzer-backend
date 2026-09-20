@@ -4,13 +4,13 @@ Updated: September 20, 2026
 
 ## Start here
 
-Charlie production is currently **T94** at commit **`26c8c37d330eaeda27b090b846452f2c67d67cea`** on `main`.
+Charlie production is currently **T95** at commit **`d64e4db62e5cdf1f0d1c393b8a2137dd99c69815`** on `main`.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T94`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T95`
 - Backend health: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`
 - Branch: `main`
-- Backend health was verified on September 20 and reported the T94 commit above.
+- Backend health was verified on September 20 and reported the T95 commit above.
 - The Mac launch agent `com.charlie.local-agent` was restarted during T82 because `charlie_local_agent.py` changed. T83 is frontend-only and did not require another restart.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files. Do not clean the repository.
@@ -35,6 +35,47 @@ The design standard is institutional: concise hierarchy, readable outputs, defen
 | Production deployment | Push to `main` triggers Render backend deployment. Cloudflare frontend deployment is explicit through Wrangler. |
 
 ## Latest production changes
+
+### T95 — the assessment stays candid; the thesis contradiction is fixed
+
+Commit: `d64e4db` — `Keep the assessment candid, and fix the thesis contradiction it caused`
+
+T94 over-corrected. Three of its rules removed capability the original prompt had
+deliberately, and one of them broke a live feature. The user caught all three.
+
+- **"Don't hedge" had a purpose.** It existed to stop mushy notes, not to license
+  invention. The doctrine now requires committing to a view — if an answer was weak, say so
+  — and forbids only inventing a fact to support it.
+- **BS detection was deliberate.** Calling out non-answers, evasions, redirections,
+  rehearsed talking points and self-contradiction is the job of an assessment. Restored and
+  required, with the wording quoted as evidence. The line is drawn at **interior state**:
+  feelings, anxiety, morale, private belief and motive stay out, because a joke or a hedge
+  is not evidence of them. That still prevents the observed failure, which was reading "I
+  lose lots of sleep for lots of reasons" as concern about the CVS renewal.
+- **Rating credibility is legitimate.** An unanchored "8.5 out of 10" is not: it implies
+  precision that does not exist and cannot be compared between notes. The rating is restored
+  on a defined 1–5 scale with stated anchors, and must name what drives it.
+- **The baseline rule was wrong, not merely strict.** When a ticker has a registered thesis,
+  `thesis_addendum` injects it and asks for per-pillar CONFIRMED / WEAKENED / NO MENTION
+  verdicts — and T94 placed "no prior thesis is supplied, do not claim thesis confirmation"
+  immediately before that block in the same prompt. The rule is now conditional: compare
+  against a baseline where one is supplied, invent one where it is not.
+
+**Lesson:** a rule written to prevent an observed failure removed three capabilities that
+were not causing it. Before constraining a prompt, check what each instruction was for — the
+"UNFILTERED" framing, the disingenuousness question and the credibility rating were all
+deliberate, and only the unanchored scale and the interior-state inference were defects.
+
+**Where the user wants this to go.** The stated goal is that over time the model judges what
+is new, what contradicts a previous statement or thesis, and what differs from consensus.
+The thesis half already exists via `thesis_addendum`. The missing half is prior-meeting
+context: `company_history_recall.py`, `company_memory.py` and `thesis_history.py` hold the
+material, but no summary prompt is given the last N notes for the ticker. Supplying them
+would let the assessment say "this contradicts June" without inventing the comparison. That
+is the natural next step for this workstream.
+
+Validation: 614 backend tests, 46 frontend tests, production build, Render revision and
+Cloudflare marker verified. **Unproven:** no summary generated under the revised doctrine.
 
 ### T94 — convergence decided: improve the original, retire Improved
 
@@ -666,9 +707,9 @@ Use `py_compile` for every touched Python module. Do not start paid research, se
 
 Current release markers must stay synchronized:
 
-- `worker.js`: `2026-09-20T94`
-- `service-worker.js`: `20260920-94`
-- `src/app.jsx`: `2026-09-20T94`
+- `worker.js`: `2026-09-20T95`
+- `service-worker.js`: `20260920-95`
+- `src/app.jsx`: `2026-09-20T95`
 
 After an application change:
 
@@ -691,7 +732,7 @@ Render may return transient 502 responses while rolling forward. Wait for `/heal
 
 ## Repository state warning
 
-At this handoff, `main` is committed through `26c8c37`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
+At this handoff, `main` is committed through `d64e4db`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
 
 - `.claude/settings.local.json`
 - `.omc/**`
@@ -705,7 +746,7 @@ Always inspect `git status --short`, stage an explicit allowlist, and review `gi
 
 ## Suggested first Claude Code instruction
 
-> Continue Charlie from production commit `26c8c37` and release T94. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
+> Continue Charlie from production commit `d64e4db` and release T95. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
 
 ## Relevant deeper documentation
 
