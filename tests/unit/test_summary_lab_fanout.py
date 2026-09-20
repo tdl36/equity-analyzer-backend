@@ -245,10 +245,12 @@ class SourceJobDedupeTests(unittest.TestCase):
 
 
 class StopCursor:
-    def __init__(self, status):
+    def __init__(self, status, worker_live=True):
         self.status = status
+        self.worker_live = worker_live
         self.one = None
         self.stopped = False
+        self.marked_cancelled = False
 
     def execute(self, sql, args=()):
         compact = ' '.join(sql.split()).lower()
@@ -259,17 +261,25 @@ class StopCursor:
                 self.one = {'id': args[0]}
         elif compact.startswith('select status from summary_lab_experiments'):
             self.one = {'status': self.status} if self.status else None
+        elif 'pg_try_advisory_lock' in compact:
+            # A live worker already holds the lock, so it cannot be acquired.
+            self.one = {'ok': not self.worker_live}
+        elif "set status='cancelled'" in compact:
+            self.marked_cancelled = True
 
     def fetchone(self): return self.one
     def fetchall(self): return []
 
 
 class StopRouteTests(unittest.TestCase):
-    def client_for(self, status):
-        cursor = StopCursor(status)
+    def client_for(self, status, worker_live=True):
+        cursor = StopCursor(status, worker_live)
+
+        class Conn:
+            def commit(self): pass
 
         @contextmanager
-        def get_db(**_kwargs): yield None, cursor
+        def get_db(**_kwargs): yield Conn(), cursor
 
         app = Flask(__name__)
         with patch.object(summary_lab, 'create_blueprint', summary_lab.create_blueprint):
@@ -283,7 +293,18 @@ class StopRouteTests(unittest.TestCase):
         response = client.post('/api/summary-lab/lab-1/stop', json={})
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json['stopping'])
+        self.assertFalse(response.json['stopped'])
         self.assertTrue(cursor.stopped)
+        self.assertFalse(cursor.marked_cancelled)
+
+    def test_a_row_left_running_by_a_restart_is_cancelled_immediately(self):
+        # No worker holds the advisory lock, so nothing will ever reach a
+        # checkpoint to honour the request.
+        client, cursor = self.client_for('running', worker_live=False)
+        response = client.post('/api/summary-lab/lab-1/stop', json={})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json['stopped'])
+        self.assertTrue(cursor.marked_cancelled)
 
     def test_a_finished_experiment_is_not_stopped_and_says_why(self):
         client, cursor = self.client_for('complete')

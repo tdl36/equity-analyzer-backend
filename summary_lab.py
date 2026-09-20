@@ -507,6 +507,19 @@ def create_blueprint(get_db):
         threading.Thread(target=run,args=(jid,key),daemon=True,name='summary-lab-'+jid[:8]).start()
         return jsonify(id=jid),202
 
+    def worker_is_live(jid):
+        """A worker holds this experiment's advisory lock for its whole run.
+
+        Acquiring it means no process is working on the experiment, which is
+        the normal state for a row left at 'running' by a backend restart.
+        """
+        with get_db() as (conn,cur):
+            cur.execute('SELECT pg_try_advisory_lock(hashtext(%s)) AS ok', ('summary-lab:'+jid,))
+            free = cur.fetchone()['ok']; conn.commit()
+            if free:
+                cur.execute('SELECT pg_advisory_unlock(hashtext(%s))', ('summary-lab:'+jid,)); conn.commit()
+        return not free
+
     @bp.post('/api/summary-lab/<jid>/stop')
     def stop(jid):
         """Ask a queued or running experiment to stop at its next checkpoint."""
@@ -514,11 +527,24 @@ def create_blueprint(get_db):
         with get_db(commit=True) as (_,cur):
             cur.execute("""UPDATE summary_lab_experiments SET cancel_requested=TRUE, updated_at=NOW()
                 WHERE id=%s AND status IN ('queued','running') RETURNING id""", (jid,))
-            if cur.fetchone(): return jsonify(stopping=True)
-            cur.execute('SELECT status FROM summary_lab_experiments WHERE id=%s',(jid,))
-            row=cur.fetchone()
-        if not row: return jsonify(error='Experiment not found.'),404
-        return jsonify(error='This experiment is already '+row['status']+'.'),409
+            claimed = cur.fetchone() is not None
+            if not claimed:
+                cur.execute('SELECT status FROM summary_lab_experiments WHERE id=%s',(jid,))
+                row=cur.fetchone()
+        if not claimed:
+            if not row: return jsonify(error='Experiment not found.'),404
+            return jsonify(error='This experiment is already '+row['status']+'.'),409
+        # No live worker means nothing will ever reach a checkpoint to notice
+        # the request, so the row would sit at 'running' forever. cancel_requested
+        # stays set, so a worker starting in this instant still stops itself.
+        if not worker_is_live(jid):
+            with get_db(commit=True) as (_,cur):
+                cur.execute("""UPDATE summary_lab_experiments
+                    SET status='cancelled', error=%s, updated_at=NOW()
+                    WHERE id=%s AND status IN ('queued','running')""",
+                    ('Stopped at your request. No run was in progress; completed stages are saved.', jid))
+            return jsonify(stopping=True, stopped=True)
+        return jsonify(stopping=True, stopped=False)
 
     @bp.post('/api/summary-lab/<jid>/retry')
     def retry(jid):
