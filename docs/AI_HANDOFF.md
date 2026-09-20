@@ -70,7 +70,29 @@ Two defects remained, both fixed in `readable-v5`:
 v3 caused, and a missing figure is not always an error.
 
 Validation: 587 backend tests, 46 frontend tests, production build, Render revision and
-Cloudflare marker verified. **Unproven:** no note generated under `readable-v5`.
+Cloudflare marker verified.
+
+**`readable-v5` was then generated on the real CAH note and both defects are fixed:**
+
+| | v1 | v2 | v3 | v4 | v5 |
+| --- | --- | --- | --- | --- | --- |
+| Quotes per 1k chars | 4.5 | 3.7 | 0.6 | 1.3 | 1.7 |
+| Total characters | 15,762 | 21,084 | 13,778 | 31,689 | 26,459 |
+| Q&A exchanges | 0 | 9 | 3 | 14 | 10 |
+| Assessment ÷ takeaways | 0.67 | 0.53 | 0.39 | 1.66 | 0.68 |
+| 12–14% figure present | yes | yes | yes | **no** | yes |
+
+The assessment fell from 11,233 to 5,257 characters and its ratio from 1.66 to 0.68, in line
+with v1 and v2. `assessment_findings()` did not fire — the instruction alone was sufficient,
+and the check stands as an unused backstop. `figure_coverage` reported 12 distinct figures in
+the records with none missing from the note. Against the note originally complained about:
+62% fewer quotes per 1k, 68% more content, and a Q&A log where there was none.
+
+Open judgment call for the user, not a defect: v5's Q&A log labels most questions "(Implied)"
+and closes with a note that the source is management commentary with moderator prompts rather
+than a formal Q&A transcript. That is the anti-fabrication rule working, and it is why v5 has
+10 exchanges where v4 asserted 14. Whether the hedging helps or reads as noise is a product
+preference.
 
 **Stop single-note tuning here.** Five regenerations against one CAH transcript produced two
 regressions caused by generalising from a sample of one (T89 and T90 both document a case).
