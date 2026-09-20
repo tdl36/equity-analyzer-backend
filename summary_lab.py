@@ -62,6 +62,10 @@ class ProviderFailure(RuntimeError):
     """An actionable provider failure, separate from source-format validation."""
 
 
+class Cancelled(RuntimeError):
+    """The user stopped this experiment. Not a failure; checkpoints are kept."""
+
+
 def provider_failure(exc):
     """Classify HTTP and in-stream errors without persisting keys or source text."""
     import anthropic
@@ -299,6 +303,14 @@ def create_blueprint(get_db):
                 cur.execute('''CREATE UNIQUE INDEX IF NOT EXISTS summary_lab_automatic_source_uq
                     ON summary_lab_experiments(summary_id,source_hash,version,output_mode)
                     WHERE automatic AND summary_id IS NOT NULL''')
+                cur.execute('ALTER TABLE summary_lab_experiments ADD COLUMN IF NOT EXISTS cancel_requested BOOLEAN NOT NULL DEFAULT FALSE')
+                # One experiment per completed transcription job. The pending job
+                # lives in localStorage, so every tab and every reload resumes the
+                # same job and asked for its own run of identical paid work.
+                # A deliberate Generate click sends no job id and stays unlimited.
+                cur.execute('ALTER TABLE summary_lab_experiments ADD COLUMN IF NOT EXISTS source_job_id TEXT')
+                cur.execute('''CREATE UNIQUE INDEX IF NOT EXISTS summary_lab_source_job_uq
+                    ON summary_lab_experiments(source_job_id) WHERE source_job_id IS NOT NULL''')
             ready = True
 
     def run(jid, key, recovery=False):
@@ -311,14 +323,27 @@ def create_blueprint(get_db):
                     cur.execute('SELECT * FROM summary_lab_experiments WHERE id=%s', (jid,))
                     row = cur.fetchone()
                 if not row or row['status'] == 'complete': return
+                # A queued experiment stopped before a slot freed must never
+                # reach the model.
+                if row.get('cancel_requested'): raise Cancelled()
                 if row['version'] != VERSION: raise ValueError('This experiment uses an older prompt. Start a new experiment.')
                 if recovery:
                     with get_db(commit=True) as (_, cur):
                         cur.execute("UPDATE summary_lab_experiments SET recovery_attempts=recovery_attempts+1,updated_at=NOW() WHERE id=%s", (jid,))
                 state = row['state'] or {}
                 def save(value):
+                    # Checkpointing is also the cancellation point: writing
+                    # status='running' unconditionally would paper over a stop
+                    # request between stages.
                     with get_db(commit=True) as (_, cur):
-                        cur.execute("UPDATE summary_lab_experiments SET state=%s::jsonb,status='running',error=NULL,updated_at=NOW() WHERE id=%s", (json.dumps(value), jid))
+                        cur.execute("""UPDATE summary_lab_experiments
+                            SET state=%s::jsonb,
+                                status=CASE WHEN cancel_requested THEN 'cancelled' ELSE 'running' END,
+                                error=CASE WHEN cancel_requested THEN 'Stopped at your request. Completed stages are saved.' ELSE NULL END,
+                                updated_at=NOW()
+                            WHERE id=%s RETURNING cancel_requested""", (json.dumps(value), jid))
+                        stopped = cur.fetchone()
+                    if stopped and stopped['cancel_requested']: raise Cancelled()
                 def ask(system, prompt, tokens):
                     return ask_with_recovery(key, row['model'], system, prompt, tokens, state, save)
                 generate(row['source'], state, ask, save, row['focus'])
@@ -327,6 +352,10 @@ def create_blueprint(get_db):
                     if row.get('automatic'):
                         cur.execute("INSERT INTO agent_alerts (id,alert_type,ticker,title,detail,status,created_at) VALUES (%s,'summary_lab_ready','',%s,%s,'new',NOW())",
                             (str(uuid.uuid4()), 'Summary Lab ready: '+row['title'], json.dumps({'summaryId': row.get('summary_id'), 'summaryLabId': jid, 'outputMode': row.get('output_mode') or 'english'})))
+            except Cancelled:
+                with get_db(commit=True) as (_,cur):
+                    cur.execute("UPDATE summary_lab_experiments SET status='cancelled',error=%s,updated_at=NOW() WHERE id=%s",
+                        ('Stopped at your request. Completed stages are saved; resume to continue.', jid))
             except Exception as exc:
                 message = str(exc) if isinstance(exc,(ValueError,ProviderFailure)) else 'Generation interrupted ('+type(exc).__name__+'). Retry resumes saved checkpoints.'
                 with get_db(commit=True) as (_,cur):
@@ -399,7 +428,7 @@ def create_blueprint(get_db):
             row=cur.fetchone()
         return (jsonify(dict(row)) if row else (jsonify(error='Experiment not found'),404))
 
-    def enqueue(summary_id, api_key=None, output_mode='english', automatic=False, title='Untitled experiment', focus=''):
+    def enqueue(summary_id, api_key=None, output_mode='english', automatic=False, title='Untitled experiment', focus='', source_job_id=None):
         """Create one durable Lab branch. Automatic branches are idempotent per saved source."""
         ensure()
         key=api_key or os.environ.get('ANTHROPIC_API_KEY')
@@ -407,6 +436,8 @@ def create_blueprint(get_db):
         if output_mode not in OUTPUT_MODES: raise ValueError('Choose English, English + Korean, or Korean only.')
         if not all(isinstance(x,str) for x in (summary_id,title,focus)): raise ValueError('Summary, title and emphasis must be text.')
         if len(focus)>4000 or len(title)>300: raise ValueError('Shorten the title or emphasis.')
+        if source_job_id is not None and (not isinstance(source_job_id,str) or not source_job_id.strip() or len(source_job_id)>100):
+            raise ValueError('The source job reference is not valid.')
         with get_db(commit=True) as (_,cur):
             cur.execute('SELECT title,raw_notes,brief,summary,questions,assessment,meeting_summary,korean_takeaways FROM meeting_summaries WHERE id=%s',(summary_id,))
             row=cur.fetchone()
@@ -433,6 +464,18 @@ def create_blueprint(get_db):
                         cur.execute("UPDATE summary_lab_experiments SET status='queued',error=NULL,updated_at=NOW() WHERE id=%s", (jid,))
                     else:
                         return jid
+            elif source_job_id:
+                # Every tab resuming this transcription job asks to start the
+                # Lab. They converge on the first experiment instead of each
+                # paying for its own identical run.
+                cur.execute('''INSERT INTO summary_lab_experiments
+                    (id,title,source,source_hash,baseline,focus,version,model,state,summary_id,output_mode,source_job_id)
+                    VALUES (%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s::jsonb,%s,%s,%s)
+                    ON CONFLICT (source_job_id) WHERE source_job_id IS NOT NULL DO NOTHING''',
+                    (jid,title,source,digest,json.dumps(baseline),focus,VERSION,MODEL,json.dumps(initial_state),summary_id,output_mode,source_job_id))
+                if cur.rowcount != 1:
+                    cur.execute('SELECT id FROM summary_lab_experiments WHERE source_job_id=%s',(source_job_id,))
+                    return cur.fetchone()['id']
             else:
                 cur.execute('''INSERT INTO summary_lab_experiments
                     (id,title,source,source_hash,baseline,focus,version,model,state,summary_id,output_mode)
@@ -450,8 +493,9 @@ def create_blueprint(get_db):
         if not all(isinstance(x,str) for x in (focus,source,title)): return jsonify(error='Source, title and emphasis must be text.'),400
         if output_mode not in OUTPUT_MODES: return jsonify(error='Choose English, English + Korean, or Korean only.'),400
         if len(focus)>4000 or len(title)>300: return jsonify(error='Shorten the title or emphasis.'),400
+        source_job_id=body.get('sourceJobId') or None
         if body.get('summaryId'):
-            try: return jsonify(id=enqueue(body['summaryId'],key,output_mode,False,title,focus)),202
+            try: return jsonify(id=enqueue(body['summaryId'],key,output_mode,False,title,focus,source_job_id)),202
             except LookupError as exc: return jsonify(error=str(exc)),404
             except ValueError as exc: return jsonify(error=str(exc)),400
         if not isinstance(key,str) or not key.strip(): return jsonify(error='Add a research API key in Settings.'),400
@@ -463,12 +507,25 @@ def create_blueprint(get_db):
         threading.Thread(target=run,args=(jid,key),daemon=True,name='summary-lab-'+jid[:8]).start()
         return jsonify(id=jid),202
 
+    @bp.post('/api/summary-lab/<jid>/stop')
+    def stop(jid):
+        """Ask a queued or running experiment to stop at its next checkpoint."""
+        ensure()
+        with get_db(commit=True) as (_,cur):
+            cur.execute("""UPDATE summary_lab_experiments SET cancel_requested=TRUE, updated_at=NOW()
+                WHERE id=%s AND status IN ('queued','running') RETURNING id""", (jid,))
+            if cur.fetchone(): return jsonify(stopping=True)
+            cur.execute('SELECT status FROM summary_lab_experiments WHERE id=%s',(jid,))
+            row=cur.fetchone()
+        if not row: return jsonify(error='Experiment not found.'),404
+        return jsonify(error='This experiment is already '+row['status']+'.'),409
+
     @bp.post('/api/summary-lab/<jid>/retry')
     def retry(jid):
         ensure(); body=request.get_json(silent=True) or {}; key=body.get('apiKey') or os.environ.get('ANTHROPIC_API_KEY')
         if not isinstance(key,str) or not key.strip(): return jsonify(error='Add a research API key in Settings.'),400
-        with get_db() as (_,cur):
-            cur.execute('SELECT id FROM summary_lab_experiments WHERE id=%s',(jid,))
+        with get_db(commit=True) as (_,cur):
+            cur.execute('UPDATE summary_lab_experiments SET cancel_requested=FALSE WHERE id=%s RETURNING id',(jid,))
             if not cur.fetchone(): return jsonify(error='Experiment not found.'),404
         threading.Thread(target=run,args=(jid,key),daemon=True).start()
         return jsonify(id=jid),202

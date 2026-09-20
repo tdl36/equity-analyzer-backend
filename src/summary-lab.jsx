@@ -21,8 +21,11 @@ export function SummaryLab({api,getKey,getGeminiKey,renderHtml,pickFromICloud}){
  useEffect(()=>{if(!id){setRow(null);return;}let active=true;setRow(null);async function load(){try{const d=await req('/'+id);if(active)setRow(d);}catch(e){if(active)setError(e.message);}}load();const t=setInterval(load,6000);return()=>{active=false;clearInterval(t);};},[id,api]);
  useEffect(()=>{setFeedback(row?.feedback||'');setSharing(false);setEdits({});},[row?.id]);
 
- async function startLab(summaryId,labTitle,outputMode='english',labFocus=focus){
-  const d=await req('',{summaryId:summaryId||undefined,source:summaryId?undefined:source,title:(labTitle||title).trim()||'Untitled experiment',focus:labFocus,outputMode,apiKey:getKey()});
+ // sourceJobId is set only when a completed transcription triggers this run.
+ // The pending job lives in localStorage, so every tab and every reload
+ // resumes it; without the reference each one starts its own paid experiment.
+ async function startLab(summaryId,labTitle,outputMode='english',labFocus=focus,sourceJobId){
+  const d=await req('',{summaryId:summaryId||undefined,source:summaryId?undefined:source,title:(labTitle||title).trim()||'Untitled experiment',focus:labFocus,outputMode,sourceJobId,apiKey:getKey()});
   setId(d.id);await refreshLists();return d;
  }
  async function start(){setBusy(true);setError('');setNotice('');try{await startLab(sid||undefined,title,'english',focus);}catch(e){setError(e.message);}finally{setBusy(false);}}
@@ -68,7 +71,7 @@ export function SummaryLab({api,getKey,getGeminiKey,renderHtml,pickFromICloud}){
       setNotice(`${label} was transcribed and saved. Charlie already started its Summary Lab experiment for this recording, so it is shown here instead of starting a second run.`);
      }else{
       setNotice(`${label} was transcribed and saved. Improved analysis is now running.`);
-      await startLab(plan.summaryId,jobTitle||label,outputMode,jobFocus);
+      await startLab(plan.summaryId,jobTitle||label,outputMode,jobFocus,jobId);
      }
      setIngest(null);setBusy(false);return;
     }
@@ -101,6 +104,11 @@ export function SummaryLab({api,getKey,getGeminiKey,renderHtml,pickFromICloud}){
   }catch(e){setError(e.message);setBusy(false);}
  }
  async function retry(){setBusy(true);setError('');try{await req('/'+id+'/retry',{apiKey:getKey()});setRow(await req('/'+id));}catch(e){setError(e.message);}finally{setBusy(false);}}
+ async function stopRun(){
+  setBusy(true);setError('');
+  try{await req('/'+id+'/stop',{});setNotice('Stopping at the next checkpoint. Completed stages stay saved and you can resume later.');setRow(await req('/'+id));}
+  catch(e){setError(e.message);}finally{setBusy(false);}
+ }
 
  const state=row?.state||{};
  function openEmail(){setEdits({...state.sections});setSharing(true);setCompare(false);setExpanded(Object.fromEntries(visibleSections.map(([key])=>[key,true])));setNotice('Review and edit each section before sending. Edits affect this email only.');}
@@ -131,10 +139,12 @@ export function SummaryLab({api,getKey,getGeminiKey,renderHtml,pickFromICloud}){
  <label htmlFor="lab-focus">Optional emphasis</label><textarea id="lab-focus" rows={3} maxLength={4000} value={focus} onChange={e=>setFocus(e.target.value)} placeholder="Preserve the segment detail and management’s margin explanation."/>
  <p className="muted">Thorough review makes several passes over the complete source. Long transcripts take longer and remain saved if you leave.</p>
  {intake==='audio'?<button className="primary" disabled={busy||!audioFile||!getGeminiKey?.()} onClick={processAudio}>{busy?'Starting…':'Transcribe and analyze'}</button>:intake==='youtube'?<button className="primary" disabled={busy||!youtubeUrl.trim()} onClick={processYoutube}>{busy?'Starting…':'Fetch transcript and analyze'}</button>:<button className="primary" disabled={busy||importing||!canGenerate} onClick={start}>{busy?'Starting…':'Generate all five sections'}</button>}</section>
- <section className="panel" style={{marginTop:20}}><h2>Experiments</h2>{!runs.length&&<p className="muted">Your experiments will appear here.</p>}{runs.map(r=><button className="experiment" aria-pressed={id===r.id} key={r.id} onClick={()=>{setId(r.id);setNotice('');}}>{r.title}<div className="muted">{r.automatic?'Auto from SUMMARIES · ':''}{r.status==='complete'?'Ready to review':r.status} · {new Date(r.created_at).toLocaleDateString()}</div></button>)}</section></aside>
+ <section className="panel" style={{marginTop:20}}><h2>Experiments</h2>{!runs.length&&<p className="muted">Your experiments will appear here.</p>}{runs.map(r=><button className="experiment" aria-pressed={id===r.id} key={r.id} onClick={()=>{setId(r.id);setNotice('');}}>{r.title}<div className="muted">{r.automatic?'Auto from SUMMARIES · ':''}{r.status==='complete'?'Ready to review':r.status==='cancelled'?'Stopped':r.status} · {new Date(r.created_at).toLocaleDateString()}</div></button>)}</section></aside>
  <section className="panel">{!row?<><div className="eyebrow">Independent source review</div><h2 style={{marginTop:12}}>{id?'Loading experiment…':'Your next research note starts here'}</h2><p>Add a saved Summary, document, recording, YouTube link or pasted transcript. Charlie generates Executive Brief, Key Takeaways, Meeting Summary, Follow-up Questions and Overall Assessment.</p><p className="muted">Audio and YouTube are transcribed first. Source ambiguities remain visible for review.</p></>:<>
  <div className="eyebrow">{row.version} · {row.model}</div><h2 style={{marginTop:12}}>{row.title}</h2><div className="status" role="status">{row.error||state.progress||'Queued'}<div className="muted">{Object.keys(state.parts||{}).length} / {state.totalParts||'—'} source parts reviewed · {row.status}</div></div>
- {(row.status==='failed'||(row.status!=='complete'&&Date.now()-new Date(row.updated_at).getTime()>180000))&&<button disabled={busy} onClick={retry}>Resume saved experiment</button>}
+ {(row.status==='failed'||row.status==='cancelled'||(row.status!=='complete'&&Date.now()-new Date(row.updated_at).getTime()>180000))&&<button disabled={busy} onClick={retry}>Resume saved experiment</button>}
+ {(row.status==='queued'||row.status==='running')&&!row.cancel_requested&&<button disabled={busy} onClick={stopRun}>Stop this experiment</button>}
+ {row.cancel_requested&&row.status!=='cancelled'&&<p className="muted" role="status">Stopping at the next checkpoint…</p>}
  <div className="controls"><button disabled={!Object.keys(row.baseline||{}).length} aria-pressed={compare} onClick={()=>setCompare(!compare)}>Compare with original</button><button disabled={row.status!=='complete'} onClick={()=>copy(true)}>Copy all</button><button disabled={row.status!=='complete'||sending} onClick={openEmail}>Email all sections</button><button onClick={download}>Download experiment</button></div>
  <div className="controls"><button onClick={()=>setExpanded(Object.fromEntries(visibleSections.map(([key])=>[key,true])))}>Expand all</button><button onClick={()=>setExpanded(Object.fromEntries(visibleSections.map(([key])=>[key,false])))}>Collapse all</button></div>{notice&&<p role="status">{notice}</p>}
  {sharing&&<section className="status"><strong>Email preview · {visibleSections.length===1?'Korean interpretation':`all ${visibleSections.length} sections`}</strong><p>Review any section below before sending. Edits affect this email only; audit notes and the full transcript are excluded.</p><div className="controls"><button className="primary" disabled={sending} onClick={sendEmail}>{sending?'Sending…':'Send all sections to myself'}</button><button disabled={sending} onClick={()=>{setSharing(false);setNotice('');}}>Close email preview</button></div></section>}

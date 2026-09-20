@@ -115,13 +115,18 @@ export function SummaryLab({
     setSharing(false);
     setEdits({});
   }, [row?.id]);
-  async function startLab(summaryId, labTitle, outputMode = 'english', labFocus = focus) {
+
+  // sourceJobId is set only when a completed transcription triggers this run.
+  // The pending job lives in localStorage, so every tab and every reload
+  // resumes it; without the reference each one starts its own paid experiment.
+  async function startLab(summaryId, labTitle, outputMode = 'english', labFocus = focus, sourceJobId) {
     var d = await req('', {
       summaryId: summaryId || undefined,
       source: summaryId ? undefined : source,
       title: (labTitle || title).trim() || 'Untitled experiment',
       focus: labFocus,
       outputMode,
+      sourceJobId,
       apiKey: getKey()
     });
     setId(d.id);
@@ -231,7 +236,7 @@ export function SummaryLab({
             setNotice(`${label} was transcribed and saved. Charlie already started its Summary Lab experiment for this recording, so it is shown here instead of starting a second run.`);
           } else {
             setNotice(`${label} was transcribed and saved. Improved analysis is now running.`);
-            await startLab(plan.summaryId, jobTitle || label, outputMode, jobFocus);
+            await startLab(plan.summaryId, jobTitle || label, outputMode, jobFocus, jobId);
           }
           setIngest(null);
           setBusy(false);
@@ -348,6 +353,19 @@ export function SummaryLab({
       await req('/' + id + '/retry', {
         apiKey: getKey()
       });
+      setRow(await req('/' + id));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function stopRun() {
+    setBusy(true);
+    setError('');
+    try {
+      await req('/' + id + '/stop', {});
+      setNotice('Stopping at the next checkpoint. Completed stages stay saved and you can resume later.');
       setRow(await req('/' + id));
     } catch (e) {
       setError(e.message);
@@ -613,7 +631,7 @@ export function SummaryLab({
     }
   }, r.title, /*#__PURE__*/React.createElement("div", {
     className: "muted"
-  }, r.automatic ? 'Auto from SUMMARIES · ' : '', r.status === 'complete' ? 'Ready to review' : r.status, " \xB7 ", new Date(r.created_at).toLocaleDateString()))))), /*#__PURE__*/React.createElement("section", {
+  }, r.automatic ? 'Auto from SUMMARIES · ' : '', r.status === 'complete' ? 'Ready to review' : r.status === 'cancelled' ? 'Stopped' : r.status, " \xB7 ", new Date(r.created_at).toLocaleDateString()))))), /*#__PURE__*/React.createElement("section", {
     className: "panel"
   }, !row ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "eyebrow"
@@ -634,10 +652,16 @@ export function SummaryLab({
     role: "status"
   }, row.error || state.progress || 'Queued', /*#__PURE__*/React.createElement("div", {
     className: "muted"
-  }, Object.keys(state.parts || {}).length, " / ", state.totalParts || '—', " source parts reviewed \xB7 ", row.status)), (row.status === 'failed' || row.status !== 'complete' && Date.now() - new Date(row.updated_at).getTime() > 180000) && /*#__PURE__*/React.createElement("button", {
+  }, Object.keys(state.parts || {}).length, " / ", state.totalParts || '—', " source parts reviewed \xB7 ", row.status)), (row.status === 'failed' || row.status === 'cancelled' || row.status !== 'complete' && Date.now() - new Date(row.updated_at).getTime() > 180000) && /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: retry
-  }, "Resume saved experiment"), /*#__PURE__*/React.createElement("div", {
+  }, "Resume saved experiment"), (row.status === 'queued' || row.status === 'running') && !row.cancel_requested && /*#__PURE__*/React.createElement("button", {
+    disabled: busy,
+    onClick: stopRun
+  }, "Stop this experiment"), row.cancel_requested && row.status !== 'cancelled' && /*#__PURE__*/React.createElement("p", {
+    className: "muted",
+    role: "status"
+  }, "Stopping at the next checkpoint\u2026"), /*#__PURE__*/React.createElement("div", {
     className: "controls"
   }, /*#__PURE__*/React.createElement("button", {
     disabled: !Object.keys(row.baseline || {}).length,

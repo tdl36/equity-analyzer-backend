@@ -167,3 +167,131 @@ class RecoverySweepTests(unittest.TestCase):
         # second blocked thread for an experiment already being recovered.
         self.assertEqual(FakeThread.started, ['lab-1'])
         self.assertIn('lab-1', bp.recovering)
+
+
+class SourceJobCursor:
+    """Enough of psycopg2 to exercise the source-job conflict path."""
+
+    def __init__(self, store):
+        self.store = store
+        self.rowcount = 0
+        self.one = None
+
+    def execute(self, sql, args=()):
+        compact = ' '.join(sql.split()).lower()
+        self.rowcount = 0
+        self.one = None
+        if 'select title,raw_notes' in compact:
+            self.one = {
+                'title': 'Rates video', 'raw_notes': 'Full transcript text.',
+                'brief': '', 'summary': '', 'questions': '', 'assessment': '',
+                'meeting_summary': '', 'korean_takeaways': '',
+            }
+        elif compact.startswith('insert into summary_lab_experiments') and 'on conflict (source_job_id)' in compact:
+            job = args[11]
+            if job not in self.store:
+                self.store[job] = args[0]
+                self.rowcount = 1
+        elif 'select id from summary_lab_experiments where source_job_id' in compact:
+            self.one = {'id': self.store[args[0]]}
+
+    def fetchone(self): return self.one
+    def fetchall(self): return []
+
+
+class SourceJobDedupeTests(unittest.TestCase):
+    def test_every_tab_resuming_one_job_converges_on_one_experiment(self):
+        store = {}
+
+        @contextmanager
+        def get_db(**_kwargs): yield None, SourceJobCursor(store)
+
+        FakeThread.started = []
+        started = []
+
+        class Thread:
+            def __init__(self, target=None, args=(), **_k): self.args = args
+            def start(self): started.append(self.args[0])
+
+        with patch('summary_lab.threading.Thread', Thread):
+            bp = summary_lab.create_blueprint(get_db)
+            first = bp.enqueue('summary-1', 'k', 'korean_bilingual', False, 'Rates video', '', 'job-abc')
+            second = bp.enqueue('summary-1', 'k', 'korean_bilingual', False, 'Rates video', '', 'job-abc')
+            third = bp.enqueue('summary-1', 'k', 'korean_bilingual', False, 'Rates video', '', 'job-abc')
+        self.assertEqual(first, second)
+        self.assertEqual(first, third)
+        # Only the experiment that won the insert may consume model time.
+        self.assertEqual(started, [first])
+
+    def test_a_deliberate_rerun_without_a_job_reference_still_creates_its_own(self):
+        # docs/summary-lab.md: "a user-requested rerun is a new experiment".
+        store = {}
+
+        @contextmanager
+        def get_db(**_kwargs): yield None, SourceJobCursor(store)
+
+        started = []
+
+        class Thread:
+            def __init__(self, target=None, args=(), **_k): self.args = args
+            def start(self): started.append(self.args[0])
+
+        with patch('summary_lab.threading.Thread', Thread):
+            bp = summary_lab.create_blueprint(get_db)
+            first = bp.enqueue('summary-1', 'k', 'english')
+            second = bp.enqueue('summary-1', 'k', 'english')
+        self.assertNotEqual(first, second)
+        self.assertEqual(started, [first, second])
+
+
+class StopCursor:
+    def __init__(self, status):
+        self.status = status
+        self.one = None
+        self.stopped = False
+
+    def execute(self, sql, args=()):
+        compact = ' '.join(sql.split()).lower()
+        self.one = None
+        if compact.startswith('update summary_lab_experiments set cancel_requested=true'):
+            if self.status in ('queued', 'running'):
+                self.stopped = True
+                self.one = {'id': args[0]}
+        elif compact.startswith('select status from summary_lab_experiments'):
+            self.one = {'status': self.status} if self.status else None
+
+    def fetchone(self): return self.one
+    def fetchall(self): return []
+
+
+class StopRouteTests(unittest.TestCase):
+    def client_for(self, status):
+        cursor = StopCursor(status)
+
+        @contextmanager
+        def get_db(**_kwargs): yield None, cursor
+
+        app = Flask(__name__)
+        with patch.object(summary_lab, 'create_blueprint', summary_lab.create_blueprint):
+            bp = summary_lab.create_blueprint(get_db)
+        bp._ready_for_test = True
+        app.register_blueprint(bp)
+        return app.test_client(), cursor
+
+    def test_a_running_experiment_is_asked_to_stop(self):
+        client, cursor = self.client_for('running')
+        response = client.post('/api/summary-lab/lab-1/stop', json={})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json['stopping'])
+        self.assertTrue(cursor.stopped)
+
+    def test_a_finished_experiment_is_not_stopped_and_says_why(self):
+        client, cursor = self.client_for('complete')
+        response = client.post('/api/summary-lab/lab-1/stop', json={})
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('already complete', response.json['error'])
+        self.assertFalse(cursor.stopped)
+
+    def test_an_unknown_experiment_is_a_404(self):
+        client, _cursor = self.client_for(None)
+        self.assertEqual(client.post('/api/summary-lab/nope/stop', json={}).status_code, 404)
