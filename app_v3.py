@@ -1633,6 +1633,56 @@ def _queue_improved_summary(summary_id, api_key=None):
 SUMMARIES_FOLDER_ORIGIN = 'summaries-folder'
 
 
+def _generate_sections_concurrently(job_id, specs, label_prefix='', max_workers=4):
+    """Run independent summary sections at the same time.
+
+    Measured on a real meeting, transcription took about four minutes and the
+    five sections took about sixteen, run one after another. The sections do
+    not read each other, so the wait was pure serialisation.
+
+    `specs` is a list of (key, fatal, call_kwargs). Results come back keyed by
+    section name, never positionally, so the order in which they finish cannot
+    reorder anything. A fatal section's exception propagates unchanged; a
+    non-fatal one is logged and yields ''. Progress is updated only on this
+    thread, as futures are collected, so the job dict stays single-writer.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    results = {key: '' for key, _fatal, _kwargs in specs}
+    failures = {}
+    done = 0
+    total = len(specs)
+
+    def run(spec):
+        key, fatal, kwargs = spec
+        try:
+            return key, fatal, (_call_llm_stream_with_retry(**kwargs).get('text', '') or ''), None
+        except Exception as exc:
+            return key, fatal, '', exc
+
+    with ThreadPoolExecutor(max_workers=min(max_workers, total) or 1) as pool:
+        futures = [pool.submit(run, spec) for spec in specs]
+        for future in futures:
+            key, fatal, text, error = future.result()
+            done += 1
+            if error is not None:
+                failures[key] = error
+                print(f'[{label_prefix}{job_id}] {key} step failed'
+                      f'{" (fatal)" if fatal else " (non-fatal)"}: {error}')
+            else:
+                results[key] = text
+            try:
+                _transcription_jobs[job_id]['progress'] = f'Generated {done} of {total} sections'
+                _mirror_transcription_state(job_id)
+            except Exception:
+                pass
+
+    for key, fatal, _kwargs in specs:
+        if fatal and key in failures:
+            raise Exception(f'{key} LLM failed: {failures[key]}') from failures[key]
+    return results
+
+
 def _should_fan_out_summary_lab(origin):
     """Only audio detected in the iCloud SUMMARIES folder fans out to Summary Lab.
 
@@ -8635,68 +8685,39 @@ Organize into 3-6 logical sections (e.g., Business Update, Strategic Priorities,
         assessment_instruction = ASSESSMENT_INSTRUCTION + "\n\n" + html_format
 
         keys = _get_api_keys(anthropic_api_key=anthropic_api_key, gemini_api_key=gemini_api_key)
-        # Use the retry helper for transient-error resilience. Pass api_key
-        # explicitly so Anthropic is actually callable (prior version created
-        # `keys` but never passed them, falling back to env vars only).
-        try:
-            # New spec produces 4 sections (Key Takeaways + Q&A Log of every
-            # exchange + Critical Drill-Down + Corrections Log) with verbatim
-            # tags on every numeric claim. Output is much longer than the old
-            # bullet summary, so retain the 24K output budget. Send the complete
-            # transcript to every Summary section; never silently slice its tail.
-            _transcription_jobs[job_id]['progress'] = 'Generating Key Takeaways'
-            _mirror_transcription_state(job_id)
-            summary_result = _call_llm_stream_with_retry(
+        # The four sections below read only the transcript, never each other,
+        # so they run concurrently. The Brief is deliberately left out: since
+        # T97 it reuses the source-type classification the Key Takeaways tier
+        # makes, so it must follow. Results are keyed by section name, so the
+        # order they finish in cannot affect what is stored where.
+        _transcription_jobs[job_id]['progress'] = 'Generating sections'
+        _mirror_transcription_state(job_id)
+        sections = _generate_sections_concurrently(job_id, [
+            ('summary', True, dict(
                 messages=[{"role": "user", "content": f"{summary_instruction}\n\nTRANSCRIPT:\n{transcript}"}],
                 system=summary_system_prompt,
                 tier="standard", max_tokens=24576, api_key=anthropic_api_key,
-                label=f"audio summary ({filename})",
-            )
-        except Exception as e:
-            raise Exception(f"summary LLM failed: {e}") from e
-        summary_html = summary_result.get('text', '') or ''
-
-        try:
-            _transcription_jobs[job_id]['progress'] = 'Generating Follow-up Questions'
-            _mirror_transcription_state(job_id)
-            questions_result = _call_llm_stream_with_retry(
+                label=f"audio summary ({filename})")),
+            ('questions', False, dict(
                 messages=[{"role": "user", "content": f"Based on this transcript, generate 3-5 key follow-up questions.\nReturn raw HTML: <ol><li>Question?</li></ol>\n\nTRANSCRIPT:\n{transcript}"}],
                 system="Generate insightful follow-up questions.",
                 tier="fast", max_tokens=2048, api_key=anthropic_api_key,
-                label=f"audio questions ({filename})",
-            )
-            questions_html = questions_result.get('text', '') or ''
-        except Exception as e:
-            print(f"[auto-audio {job_id}] questions step failed (non-fatal): {e}")
-            questions_html = ''
-
-        try:
-            _transcription_jobs[job_id]['progress'] = 'Generating Assessment'
-            _mirror_transcription_state(job_id)
-            assessment_result = _call_llm_stream_with_retry(
+                label=f"audio questions ({filename})")),
+            ('assessment', False, dict(
                 messages=[{"role": "user", "content": f"{assessment_instruction}\n\nTRANSCRIPT:\n{transcript}"}],
                 system="You are a sharp advisor giving candid meeting assessments.",
                 tier="standard", max_tokens=4096, api_key=anthropic_api_key,
-                label=f"audio assessment ({filename})",
-            )
-            assessment_html = assessment_result.get('text', '') or ''
-        except Exception as e:
-            print(f"[auto-audio {job_id}] assessment step failed (non-fatal): {e}")
-            assessment_html = ''
-
-        try:
-            _transcription_jobs[job_id]['progress'] = 'Generating Meeting Summary'
-            _mirror_transcription_state(job_id)
-            meeting_summary_result = _call_llm_stream_with_retry(
+                label=f"audio assessment ({filename})")),
+            ('meeting_summary', False, dict(
                 messages=[{"role": "user", "content": f"{meeting_summary_instruction}\n\nTRANSCRIPT:\n{transcript}"}],
                 system="You are a meeting notes analyst. Generate narrative topic-grouped HTML summaries.",
                 tier="standard", max_tokens=8192, api_key=anthropic_api_key,
-                label=f"audio meeting_summary ({filename})",
-            )
-            meeting_summary_html = meeting_summary_result.get('text', '') or ''
-        except Exception as e:
-            print(f"[auto-audio {job_id}] meeting_summary step failed (non-fatal): {e}")
-            meeting_summary_html = ''
+                label=f"audio meeting_summary ({filename})")),
+        ], label_prefix='auto-audio ')
+        summary_html = sections['summary']
+        questions_html = sections['questions']
+        assessment_html = sections['assessment']
+        meeting_summary_html = sections['meeting_summary']
 
         # === BRIEF (condensed Summary tier — sits ABOVE Key Takeaways in UI) ===
         # Tightened mirror of the Key Takeaways tier: same Source-type
