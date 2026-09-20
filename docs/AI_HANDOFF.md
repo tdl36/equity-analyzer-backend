@@ -36,6 +36,56 @@ The design standard is institutional: concise hierarchy, readable outputs, defen
 
 ## Latest production changes
 
+### T102–T104 — Summary Lab readability: mobile density, citations, reading layout, archiving
+
+Commits: `4cbd5ce` (scroll button + mobile density), `6258a71` (source markers),
+`39bd3dc` (reading layout, archiving, design tokens). Production: worker
+`2026-09-20T104`, backend `39bd3dc`. 661 backend tests, 54 frontend tests.
+
+**T102 — the scroll-to-top button never appeared in Summary Lab.** A document-level
+listener already existed, but it only acted when the scrolling element's `className`
+contained the Tailwind string `overflow-y-auto`. Every workspace styled with its own CSS
+was silently excluded. The listener no longer gates on a styling class, so the button
+follows any element that scrolls, including views added later. Same release: Summary Lab
+on a 375px screen nested page + panel + reader padding and left ~263px for text (70% of
+the screen); narrow-screen rules bring that to 339px (90%). The 600px block must sit
+**after** the 900px block — equal specificity means the later one wins.
+
+**T103 — 327 bracketed `[P1]` citations made the MCK note hard to read.** Each run now
+renders as one deduplicated superscript, hidden by default, with a toggle that remembers
+the choice. The transform runs on the rendered HTML outside tags, so it applies to every
+saved experiment with no regeneration, and the stored text is untouched — Copy, Download
+and Email still carry the literal markers.
+
+**T104 — the reading layout wasted the window.** Opening an experiment kept a 330px rail
+of source and list controls beside the document. It collapses into one command bar above
+the reader; the reader is centred at its 94ch measure (766px with equal 227px margins at
+1440px) instead of pinned left with 390px dead to one side.
+
+**T104 — experiments can be archived, not deleted.** `archived_at` plus
+`POST /api/summary-lab/archive` with `{ids, restore}`. Nothing is destroyed: the saved
+Summary, its transcript and the iCloud original are untouched, and Restore returns the
+row. Two guards matter — a **live worker refuses to be archived** (409, checked through
+the same advisory lock `stop` uses) so paid work cannot be hidden mid-run, and the
+**recovery sweep skips archived rows** so an archived stale `running` row cannot quietly
+resume and spend money. Verified on production against the two dead Korean rows:
+6 active → 4, restore returned one (4 → 5), re-archived → 4.
+
+**T104 — Summary Lab ignored the house design system.** It hardcoded fifteen colour
+literals, including `#c9a857`, a hand-matched copy of Dusk's brass, so it only ever
+looked right in one theme. Every colour now resolves through `var(--accent)`,
+`var(--line)`, `var(--surface)` with a fallback, matching the rest of the app, and status
+renders as a toned chip. The reader's printed-paper surface keeps local `--lab-paper*`
+tokens rather than raw hex.
+
+**Still open in Summary Lab.** The Lab prompt in `summary_lab.py` has diverged from the
+Original's doctrine: line 20 still forbids numerical credibility scores (the T94/T95
+decision reached only `app_v3.py`), and the Lab has no `TRANSCRIPT_DATE_RULE`, so the
+T97 `101`/`71` date fix does not apply to it. `Follow-up Questions` also leaks raw
+"Speaker 1/2" labels 13 times while the other four sections say "management" — and the
+reviewer note itself flags that speaker labels appear to swap mid-P2. The Executive
+Brief titles itself "Key Takeaways", colliding with the section of that name.
+
 ### T98–T101 — the MCK run: fan-out proven, orphan recovery, concurrency, clearer status
 
 Commits: `08a3e11`, `5d9bc63` (orphan sweep), `73a0d3a` (section concurrency),
