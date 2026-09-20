@@ -4,13 +4,13 @@ Updated: September 20, 2026
 
 ## Start here
 
-Charlie production is currently **T93** at commit **`e4907ae93e28391153d02ef7b955902d57408fbe`** on `main`.
+Charlie production is currently **T94** at commit **`26c8c37d330eaeda27b090b846452f2c67d67cea`** on `main`.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T93`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T94`
 - Backend health: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`
 - Branch: `main`
-- Backend health was verified on September 20 and reported the T93 commit above.
+- Backend health was verified on September 20 and reported the T94 commit above.
 - The Mac launch agent `com.charlie.local-agent` was restarted during T82 because `charlie_local_agent.py` changed. T83 is frontend-only and did not require another restart.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files. Do not clean the repository.
@@ -35,6 +35,57 @@ The design standard is institutional: concise hierarchy, readable outputs, defen
 | Production deployment | Push to `main` triggers Render backend deployment. Cloudflare frontend deployment is explicit through Wrangler. |
 
 ## Latest production changes
+
+### T94 — convergence decided: improve the original, retire Improved
+
+Commit: `26c8c37` — `Port the Improved pipeline's evidence discipline into the original Summary`
+
+**This settles priority 3.** Direct comparison of the two prompts showed the original already
+carries the stronger fidelity apparatus, and Improved carries almost none of it:
+
+| Mechanism | Original | Improved |
+| --- | --- | --- |
+| Source-type auto-classification with distinct lenses | yes | no |
+| Transcript-correction confidence taxonomy + corrections log | yes | no |
+| No quantitative tightening ("teens" ≠ "low teens") | yes | no |
+| Segment attribution discipline | yes | no |
+| Clarifying follow-ups kept as separate Q&A entries | yes | no |
+| Quarterly vs all-time scope discipline | yes | no |
+| Quote-length rules, never paraphrase inside quotes | yes | no |
+| Nine-point silent self-check | yes | no |
+| Named-entity hallucination guard pass | yes | no |
+| Known Unknowns with deflection phrase and next check | yes | no |
+
+What Improved had was restraint in the **assessment** step. The original's assessment prompt
+asked for a "CANDID, UNFILTERED" take, told the model not to hedge, asked whether anyone
+"seemed disingenuous", and requested "Rate overall credibility of key claims" — which is
+where the invented "8.5/10" and the psychology read of a deflecting joke came from. The
+original's *summary* prompt was never the problem.
+
+So the cheaper path to the user's goal was the reverse of the previous eight releases: port
+Improved's four epistemic rules into the original rather than rebuild a dozen fidelity
+mechanisms inside Improved.
+
+- `RESEARCH_DOCTRINE`: separate statement from judgment and name the support and the limit;
+  never infer psychology or motive; never assign a numerical credibility score; claim no
+  novelty, consensus difference or thesis confirmation without a supplied baseline. It
+  explicitly outranks the instruction to be candid.
+- `ASSESSMENT_INSTRUCTION` replaces **five** near-identical assessment prompts that had
+  drifted apart across the audio, document, podcast, meeting and manual paths. It stays
+  candid and specific but evidences evasion by quoting wording rather than inferring intent.
+- Both summary prompts carry the doctrine; their fidelity apparatus is untouched.
+
+**The earlier instruction not to rewrite the original Summary's prompts no longer applies.**
+It existed to protect the comparison baseline; the user has now decided the comparison's
+outcome and directed this change.
+
+**Improved is deliberately still running.** Retire it only after the user confirms the
+improved original on a real source. Retirement means removing the `summary_comparison`
+workflow, its UI and its automatic fan-out — not deleting saved notes.
+
+Validation: 613 backend tests including a new doctrine suite, 46 frontend tests, production
+build, Render revision and Cloudflare marker verified. **Unproven:** no summary has been
+generated under the new doctrine.
 
 ### T93 — every Improved section is written from the source
 
@@ -539,7 +590,7 @@ Catalyst synthesis now distinguishes source shapes:
 
 ### Original Summary
 
-The established Summary workflow is still active and remains the comparison baseline. It supports saved documents/audio/YouTube, Brief, Key Takeaways, Meeting Summary, Follow-up Questions, Assessment, transcript access, saving/export, and email. Earlier character clipping was removed. Do not casually rewrite its prompts while Summary Lab testing is underway.
+The established Summary workflow is still active and remains the comparison baseline. It supports saved documents/audio/YouTube, Brief, Key Takeaways, Meeting Summary, Follow-up Questions, Assessment, transcript access, saving/export, and email. Earlier character clipping was removed. Its prompts were deliberately changed in T94: see that entry. The earlier instruction not to touch them has been superseded by the user's convergence decision.
 
 ### Summary Lab
 
@@ -577,7 +628,7 @@ Do not invent observed URLs, counts, downloads, or completion. Never pass provid
 
 1. **Run a real dual-summary audio comparison.** Add one new representative audio file to the root `SUMMARIES` folder and confirm that original Summary and `Auto from SUMMARIES` Lab outputs both complete, are readable, and can be emailed/saved. This incurs real model usage and should be user-driven, not launched merely for QA. T82 changed the code paths this exercises, so it is still the live end-to-end proof: confirm exactly one Lab experiment per recording, that the Telegram message reports the correct Lab state, and that the file moves to `SUMMARIES/Processed` once.
 2. **Evaluate Summary Lab quality across several source types.** Compare earnings calls, investor meetings, noisy audio, long YouTube transcripts, and non-earnings documents. Capture which sections are materially better or worse than original Summary.
-3. **Decide the convergence plan.** The user's stated goal is that Improved eventually replaces the original Summary, so Improved must be written from the original source in every section — as of T93 it is.  After real testing, selectively promote proven Lab prompt/format improvements into original Summary or retain both permanently. T87–T89 moved the Improved pipeline toward the Original's strengths (topic tags, a Q&A log, enforced quoting quotas) while leaving the original Summary prompts untouched. Two defects found in the Original during that work are still unfixed and argue against promoting it as-is: it reported an invented "8.5/10" credibility score, and it asserted an EPS unit for FY27 guidance that the transcript does not support while dropping the 12–14% figure that contradicts it.
+3. **Confirm the improved original, then retire Improved.** Decided in T94: the original Summary keeps its fidelity apparatus and has gained Improved's evidence discipline. Generate a summary on a real source, confirm the assessment no longer scores credibility or infers psychology and that nothing else regressed, then remove the `summary_comparison` workflow, its UI and its automatic fan-out. Saved notes stay. Superseded note: The user's stated goal is that Improved eventually replaces the original Summary, so Improved must be written from the original source in every section — as of T93 it is.  After real testing, selectively promote proven Lab prompt/format improvements into original Summary or retain both permanently. T87–T89 moved the Improved pipeline toward the Original's strengths (topic tags, a Q&A log, enforced quoting quotas) while leaving the original Summary prompts untouched. Two defects found in the Original during that work are still unfixed and argue against promoting it as-is: it reported an invented "8.5/10" credibility score, and it asserted an EPS unit for FY27 guidance that the transcript does not support while dropping the 12–14% figure that contradicts it.
 4. **Validate catalyst synthesis on more real folders.** Include single transcript, transcript plus presentation, and multi-broker event folders; score concision, factual attribution, analyst voice, unresolved issues, and PM usefulness.
 5. **Prove a complete managed AlphaSense assignment.** Demonstrate browser discovery, source restrictions, original download, iCloud handoff, recap, thesis proposal, and recovery for a real user-selected ticker without overstating unattended coverage.
 6. **Improve real-source quality benchmarks.** Current automated checks are useful regressions, not expert certification. Add frozen real-source packs and investor-scored outputs without committing licensed source bodies.
@@ -615,9 +666,9 @@ Use `py_compile` for every touched Python module. Do not start paid research, se
 
 Current release markers must stay synchronized:
 
-- `worker.js`: `2026-09-20T93`
-- `service-worker.js`: `20260920-93`
-- `src/app.jsx`: `2026-09-20T93`
+- `worker.js`: `2026-09-20T94`
+- `service-worker.js`: `20260920-94`
+- `src/app.jsx`: `2026-09-20T94`
 
 After an application change:
 
@@ -640,7 +691,7 @@ Render may return transient 502 responses while rolling forward. Wait for `/heal
 
 ## Repository state warning
 
-At this handoff, `main` is committed through `e4907ae`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
+At this handoff, `main` is committed through `26c8c37`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
 
 - `.claude/settings.local.json`
 - `.omc/**`
@@ -654,7 +705,7 @@ Always inspect `git status --short`, stage an explicit allowlist, and review `gi
 
 ## Suggested first Claude Code instruction
 
-> Continue Charlie from production commit `e4907ae` and release T93. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
+> Continue Charlie from production commit `26c8c37` and release T94. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
 
 ## Relevant deeper documentation
 
