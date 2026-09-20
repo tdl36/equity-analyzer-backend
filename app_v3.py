@@ -1633,6 +1633,43 @@ def _queue_improved_summary(summary_id, api_key=None):
 SUMMARIES_FOLDER_ORIGIN = 'summaries-folder'
 
 
+def _fail_orphaned_transcription_jobs():
+    """Mark transcription jobs a backend restart abandoned.
+
+    gunicorn runs a single worker, so anything still recorded as running when
+    a new process starts belongs to a process that no longer exists. Those
+    rows used to sit at 'transcribing' forever: the Mac agent cannot tell a
+    dead job from a slow one, so it waits out its 90-minute poll and then
+    deliberately keeps the file out of the scanner to avoid a duplicate
+    upload. The file is never processed and nothing reports a failure.
+
+    The agent already treats a failed job as retryable, so failing these
+    turns a silent hang into an automatic re-upload. The age guard keeps a
+    rolling deploy from failing a job the outgoing process is still running;
+    _run_transcription mirrors its progress, so a live job stays young.
+    """
+    try:
+        with get_db(commit=True) as (_c, cur):
+            cur.execute("""
+                UPDATE transcription_jobs
+                   SET status = 'error',
+                       error = %s,
+                       completed_at = NOW(),
+                       updated_at = NOW()
+                 WHERE status IN ('starting', 'transcribing', 'summarizing')
+                   AND updated_at < NOW() - INTERVAL '10 minutes'
+             RETURNING id, filename
+            """, ('Transcription was interrupted by a backend restart before it finished. '
+                  'The audio was left in place and will be picked up again automatically.',))
+            stranded = cur.fetchall()
+        for row in stranded:
+            print(f"[startup] Failed orphaned transcription job {row['id']} ({row.get('filename') or 'unknown'})")
+        return len(stranded)
+    except Exception as e:
+        print(f'[startup] Could not sweep orphaned transcription jobs: {e}')
+        return 0
+
+
 def _should_fan_out_summary_lab(origin):
     """Only audio detected in the iCloud SUMMARIES folder fans out to Summary Lab.
 
@@ -6975,6 +7012,7 @@ def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key
         if needs_chunking:
             # === CHUNKED TRANSCRIPTION (disk-based, low memory) ===
             _transcription_jobs[job_id]['progress'] = 'Splitting audio...'
+            _mirror_transcription_state(job_id)
             chunks = _split_audio_ffmpeg(input_path, CHUNK_MINUTES * 60, OVERLAP_SECONDS, tmp_dir)
 
             if not chunks:
@@ -6993,6 +7031,9 @@ def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key
                 for idx, (chunk_path, start_sec, end_sec) in enumerate(chunks):
                     chunk_label = f"Chunk {idx + 1}/{len(chunks)}: "
                     _transcription_jobs[job_id]['progress'] = f"Chunk {idx + 1}/{len(chunks)} ({int(start_sec/60)}-{int(end_sec/60)} min)"
+                    # Refreshes updated_at: the startup sweep uses row age to
+                    # tell a running job from one a restart abandoned.
+                    _mirror_transcription_state(job_id)
 
                     # Read chunk from disk (small — ~15min of mp3 ≈ 15MB)
                     with open(chunk_path, 'rb') as cf:
@@ -7054,6 +7095,7 @@ def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key
                     print(f"[Job {job_id}] Uploaded to Gemini: {uploaded_file.name}, state: {uploaded_file.state}")
                     # Wait for file to be processed and ready
                     _transcription_jobs[job_id]['progress'] = 'Waiting for Gemini to process file...'
+                    _mirror_transcription_state(job_id)
                     wait_start = time.time()
                     while hasattr(uploaded_file, 'state') and str(uploaded_file.state) not in ('ACTIVE', 'State.ACTIVE', '2'):
                         if time.time() - wait_start > 300:
@@ -7100,6 +7142,7 @@ def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key
             try:
                 import anthropic as _anthropic_mod
                 _transcription_jobs[job_id]['progress'] = 'Cleaning up transcript...'
+                _mirror_transcription_state(job_id)
 
                 topic_context = ''
                 if topic:
@@ -29080,6 +29123,7 @@ import summary_lab
 summary_lab_bp = summary_lab.create_blueprint(get_db)
 app.register_blueprint(summary_lab_bp)
 summary_lab_bp.start_recovery()
+_fail_orphaned_transcription_jobs()
 
 import summary_comparison
 summary_comparison_bp = summary_comparison.create_blueprint(get_db)
