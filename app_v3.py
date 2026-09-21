@@ -6910,6 +6910,8 @@ OVERLAP_SECONDS = 30  # 30-second overlap between chunks to avoid missed content
 
 
 OPENAI_TRANSCRIBE_MODEL = 'gpt-4o-transcribe-diarize'
+# Plain transcription, available on every SDK version this project allows.
+OPENAI_TRANSCRIBE_FALLBACK_MODEL = 'gpt-4o-transcribe'
 OPENAI_TRANSCRIBE_MAX_BYTES = 25 * 1024 * 1024  # OpenAI's documented per-file cap
 
 
@@ -6932,10 +6934,25 @@ def _transcribe_with_openai(audio_path, job_id, label=''):
             f'Audio is {size / 1e6:.1f}MB; the transcription fallback accepts 25MB.')
     client = openai.OpenAI(api_key=key, timeout=900)
     print(f"[Job {job_id}] {label}Falling back to {OPENAI_TRANSCRIBE_MODEL}...")
-    with open(audio_path, 'rb') as handle:
-        result = client.audio.transcriptions.create(
-            model=OPENAI_TRANSCRIBE_MODEL, file=handle,
-            response_format='diarized_json', chunking_strategy='auto')
+    # Speaker labels need response_format=diarized_json, which the pinned 1.x
+    # SDK rejects client-side before the request is ever sent. Resilience is
+    # the job here, so an old SDK costs the labels, not the transcript.
+    attempts = [
+        dict(model=OPENAI_TRANSCRIBE_MODEL, response_format='diarized_json', chunking_strategy='auto'),
+        dict(model=OPENAI_TRANSCRIBE_FALLBACK_MODEL, response_format='json'),
+    ]
+    result, failure = None, None
+    for options in attempts:
+        try:
+            with open(audio_path, 'rb') as handle:
+                result = client.audio.transcriptions.create(file=handle, **options)
+            break
+        except Exception as exc:
+            failure = exc
+            print(f"[Job {job_id}] {label}{options['model']} "
+                  f"({options['response_format']}) unavailable: {type(exc).__name__}: {exc}")
+    if result is None:
+        raise RuntimeError(f'The transcription fallback failed: {failure}')
     segments = getattr(result, 'segments', None) or []
     if not segments:
         text = (getattr(result, 'text', '') or '').strip()

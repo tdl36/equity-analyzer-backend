@@ -23,11 +23,19 @@ class FallbackTests(unittest.TestCase):
         self.audio.write_bytes(b'x' * 1024)
         self.addCleanup(lambda: self.audio.exists() and self.audio.unlink())
 
-    def transcribe(self, result, size_override=None):
+    def transcribe(self, result, size_override=None, reject=()):
         created = {}
 
+        def create(**kw):
+            # The pinned 1.x SDK rejects diarized_json client-side, before any
+            # request is sent. Simulate that rather than assuming it works.
+            if kw.get('response_format') in reject:
+                raise TypeError(f"Unexpected audio response format: {kw['response_format']}")
+            created.update(kw)
+            return result
+
         class Audio:
-            transcriptions = SimpleNamespace(create=lambda **kw: (created.update(kw), result)[1])
+            transcriptions = SimpleNamespace(create=create)
 
         with patch.dict('os.environ', {'OPENAI_API_KEY': 'k'}), \
              patch.object(app_v3.openai, 'OpenAI', lambda **kw: SimpleNamespace(audio=Audio())), \
@@ -102,3 +110,25 @@ class WiringTests(unittest.TestCase):
         tail = body[body.index('_transcribe_with_openai'):body.index('All models failed') + 40]
         self.assertIn('except Exception', tail)
         self.assertIn('raise Exception', tail)
+
+
+class SdkCompatibilityTests(FallbackTests):
+    """requirements.txt pins openai<2, which does not know diarized_json. The
+    fallback exists for resilience, so an old SDK must cost the speaker labels,
+    not the transcript."""
+
+    def test_an_sdk_without_diarization_still_returns_a_transcript(self):
+        plain = SimpleNamespace(segments=[], text='A plain transcript.', usage=None)
+        text, created = self.transcribe(plain, reject=('diarized_json',))
+        self.assertEqual(text, 'A plain transcript.')
+        self.assertEqual(created['response_format'], 'json')
+        self.assertEqual(created['model'], app_v3.OPENAI_TRANSCRIBE_FALLBACK_MODEL)
+
+    def test_diarization_is_preferred_when_the_sdk_supports_it(self):
+        _, created = self.transcribe(segments(('A', 'Hello.')))
+        self.assertEqual(created['response_format'], 'diarized_json')
+        self.assertEqual(created['model'], app_v3.OPENAI_TRANSCRIBE_MODEL)
+
+    def test_both_attempts_failing_raises_rather_than_returning_nothing(self):
+        with self.assertRaises(RuntimeError):
+            self.transcribe(segments(('A', 'Hello.')), reject=('diarized_json', 'json'))
