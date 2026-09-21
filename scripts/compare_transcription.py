@@ -70,12 +70,17 @@ def proper_nouns(text):
 
 
 def retention(baseline, candidate):
-    """Which named entities in the baseline survive into the candidate."""
+    """Which named entities in the baseline survive into the candidate.
+
+    Searches the candidate's whole text, not just its capitalised words: a
+    transcriber that writes "optum" still heard the name, and scoring that as
+    a loss would measure capitalisation instead of fidelity.
+    """
     before = proper_nouns(baseline)
     if not before:
         return None, []
-    after = {w.lower() for w in proper_nouns(candidate)}
-    lost = sorted(w for w in before if w.lower() not in after)
+    body = (candidate or '').lower()
+    lost = sorted(w for w in before if not re.search(rf'\b{re.escape(w.lower())}\b', body))
     return round(100 * (len(before) - len(lost)) / len(before), 1), lost
 
 
