@@ -6912,7 +6912,12 @@ OVERLAP_SECONDS = 30  # 30-second overlap between chunks to avoid missed content
 def _transcribe_audio_content(client, audio_content, job_id, label=""):
     """Transcribe a single audio content (chunk or full file). Returns text or raises."""
     import time
-    models_to_try = ['gemini-2.5-flash', 'gemini-2.0-flash']
+    # Both entries are non-thinking models of the same generation, so the
+    # fallback fails the way the primary does. Gemini 3.x Flash defaults to
+    # thinking, and transcription wants verbatim capture, not reasoning about
+    # what was said: a tidied transcript is silently wrong everywhere
+    # downstream, where a failed call is at least visible.
+    models_to_try = ['gemini-2.5-flash', 'gemini-2.5-flash-lite']
     last_error = None
 
     for model_name in models_to_try:
@@ -6942,6 +6947,16 @@ def _transcribe_audio_content(client, audio_content, job_id, label=""):
                     else:
                         last_error = text_err
                         break
+                try:
+                    meta = getattr(response, 'usage_metadata', None)
+                    if meta:
+                        record_llm_usage('transcription', {
+                            'provider': 'gemini', 'model': model_name,
+                            'usage': {'input_tokens': getattr(meta, 'prompt_token_count', 0) or 0,
+                                      'output_tokens': getattr(meta, 'candidates_token_count', 0) or 0},
+                        }, attempt=attempt + 1, detail={'audio_input': True, 'label': label.strip() or 'audio'})
+                except Exception:
+                    pass
                 if text and text.strip():
                     print(f"[Job {job_id}] {label}Success with {model_name}: {len(text)} chars")
                     return text
@@ -12932,19 +12947,34 @@ LLM_PRICES = {
     'claude-sonnet-4-6':          (3.0, 15.0),
     'claude-sonnet-4-5-20250929': (3.0, 15.0),
     'claude-haiku-4-5-20251001':  (1.0, 5.0),
+    'gemini-3.8-flash':           (0.75, 3.75),
+    'gemini-2.5-flash':           (0.30, 2.50),
+    'gemini-2.5-flash-lite':      (0.10, 0.40),
     'gemini-pro-latest':          (1.25, 10.0),
     'gemini-3.1-pro-preview':     (1.25, 10.0),
     'gemini-2.5-pro':             (1.25, 10.0),
-    'gemini-3.8-flash':           (0.30, 2.50),
     'gpt-4.1':                    (2.0, 8.0),
     'gpt-4.1-mini':               (0.40, 1.60),
     'gpt-4o':                     (2.50, 10.0),
 }
 
 
-def llm_cost_usd(model, input_tokens, output_tokens):
+# Gemini charges audio input at its own rate, several times the text rate, and
+# gemini-2.5-flash serves both here: it transcribes audio and answers text
+# prompts. One flat pair cannot price both, so audio carries its own table and
+# the caller says which kind of input it sent.
+LLM_AUDIO_INPUT_PRICES = {
+    'gemini-2.5-flash': 1.00,
+    'gemini-2.5-flash-lite': 0.30,
+    'gemini-3.1-flash-lite': 0.50,
+}
+
+
+def llm_cost_usd(model, input_tokens, output_tokens, audio_input=False):
     """Dollars for one call. 0 for a model we have no price for."""
     pin, pout = LLM_PRICES.get(model or '', (0.0, 0.0))
+    if audio_input:
+        pin = LLM_AUDIO_INPUT_PRICES.get(model or '', pin)
     return round((input_tokens or 0) / 1e6 * pin + (output_tokens or 0) / 1e6 * pout, 4)
 
 
@@ -13048,7 +13078,8 @@ def record_llm_usage(feature, result, ticker='', attempt=1, detail=None):
                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                         (feature[:60], (ticker or '')[:20],
                          (result or {}).get('provider', ''), model[:60],
-                         tin, tout, llm_cost_usd(model, tin, tout), attempt,
+                         tin, tout, llm_cost_usd(model, tin, tout,
+                                                 bool((detail or {}).get('audio_input'))), attempt,
                          json.dumps(detail or {})))
     except Exception as e:
         print(f'[usage] could not record {feature}: {type(e).__name__}: {e}')

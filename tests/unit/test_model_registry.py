@@ -6,6 +6,7 @@ The existing guard only caught a *missing* model (priced at 0); nothing caught
 a wrong one. Rates verified against platform.claude.com on 2026-09-20.
 """
 import ast
+import re
 import unittest
 from pathlib import Path
 
@@ -35,6 +36,8 @@ PUBLISHED = {
     'claude-sonnet-5': (2.0, 10.0),
     'claude-sonnet-4-6': (3.0, 15.0),
     'claude-haiku-4-5-20251001': (1.0, 5.0),
+    'gemini-2.5-flash': (0.30, 2.50),
+    'gemini-3.8-flash': (0.75, 3.75),
 }
 
 
@@ -77,3 +80,31 @@ class PickerTests(unittest.TestCase):
         # agentic work, not as the expressive option.
         fable = next(m for m in PICKER if m['key'] == 'fable-5-1')
         self.assertNotIn('expressive', fable['note'].lower())
+
+
+class AudioPricingTests(unittest.TestCase):
+    """Transcription is the one stage that bills audio tokens, and the model
+    doing it was missing from the table entirely, so it recorded as free."""
+
+    def audio(self):
+        return constant('LLM_AUDIO_INPUT_PRICES')
+
+    def test_the_transcription_model_has_a_price(self):
+        self.assertIn('gemini-2.5-flash', PRICES)
+
+    def test_audio_input_is_dearer_than_text_on_the_same_model(self):
+        for model, audio_rate in self.audio().items():
+            text_rate = PRICES.get(model, (0.0, 0.0))[0]
+            self.assertGreater(audio_rate, text_rate, model)
+
+    def test_the_transcription_fallback_is_not_a_stale_generation(self):
+        source = Path('app_v3.py').read_text()
+        chain = re.search(r"models_to_try = \[([^\]]*)\]", source).group(1)
+        self.assertNotIn('gemini-2.0-flash', chain)
+        for model in re.findall(r"'([^']+)'", chain):
+            self.assertIn(model, PRICES, f'{model} transcribes but has no price')
+
+    def test_transcription_reports_its_usage_as_audio(self):
+        source = Path('app_v3.py').read_text()
+        self.assertIn("record_llm_usage('transcription'", source)
+        self.assertIn("'audio_input': True", source)
