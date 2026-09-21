@@ -37,6 +37,11 @@ import sys
 
 MODEL = 'gpt-4o-transcribe-diarize'
 MAX_BYTES = 25 * 1024 * 1024           # OpenAI's documented per-file cap
+# Undocumented in the speech-to-text guide, returned as a 400 by the API:
+# 'audio duration ... is longer than 1400 seconds which is the maximum for
+# this model'. It binds long before the size cap does, and it is the reason
+# a 39-minute meeting cannot be diarized in one request.
+MAX_SECONDS = 1400
 PRICE_PER_MINUTE = 0.006               # published rate, 2026-09-21
 
 TURN = re.compile(r'^\s*([A-Za-z0-9 _-]{1,24}?)\s*:\s*(.*)$')
@@ -116,14 +121,23 @@ def duration_minutes(path):
 
 def transcribe(audio_path, out_path):
     import openai
-    key = os.environ.get('OPENAI_API_KEY', '').strip()
-    if not key:
-        sys.exit('OPENAI_API_KEY is not set.')
+    # Validate the file before asking for credentials: both limits are local
+    # facts, and finding out after a key prompt wastes the caller's time.
     size = os.path.getsize(audio_path)
     if size > MAX_BYTES:
         sys.exit(f'{size / 1e6:.1f}MB exceeds the {MAX_BYTES / 1e6:.0f}MB cap. '
-                 'Transcode to mono at a lower bitrate first, so the whole meeting '
-                 'goes in ONE request -- speaker ids are only consistent within a request.')
+                 'Transcode to mono at a lower bitrate first.')
+    seconds = (duration_minutes(audio_path) or 0) * 60
+    if seconds > MAX_SECONDS:
+        sys.exit(
+            f'{seconds / 60:.1f} minutes exceeds this model\'s {MAX_SECONDS / 60:.1f}-minute limit, '
+            'and the API rejects it with a 400 before transcribing.\n'
+            f'  ffmpeg -i "{audio_path}" -t {MAX_SECONDS - 20} -c copy excerpt.mp3\n'
+            'Note what this means: a meeting longer than 23 minutes cannot be diarized '
+            'in one request, and speaker ids are only consistent within a request.')
+    key = os.environ.get('OPENAI_API_KEY', '').strip()
+    if not key:
+        sys.exit('OPENAI_API_KEY is not set.')
     client = openai.OpenAI(api_key=key, timeout=1800)
     print(f'Transcribing {os.path.basename(audio_path)} ({size / 1e6:.1f}MB) with {MODEL}...')
     with open(audio_path, 'rb') as handle:
