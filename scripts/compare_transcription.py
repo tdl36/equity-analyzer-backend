@@ -26,7 +26,7 @@ Usage:
   # free: score an existing transcript
   python scripts/compare_transcription.py --baseline mck.txt
 
-  # paid: transcribe the audio too, then compare (~$0.36 for a 45-minute file)
+  # paid: transcribe the audio too, then compare (about $0.006 a minute)
   python scripts/compare_transcription.py --baseline mck.txt \
       --audio "~/.../MCK Mgmt Meeting @ DB - 091626.m4a" --out mck-openai.txt --run
 """
@@ -96,6 +96,22 @@ def score(text, label):
         'fragment_turns': sum(1 for _, s in turns if len(s) < 15),
         'per_speaker': per_speaker,
     }
+
+
+def duration_minutes(path):
+    """Minutes of audio, or None when ffprobe is unavailable. Cost is quoted
+    from the real length rather than a guess."""
+    import shutil
+    import subprocess
+    probe = shutil.which('ffprobe') or '/opt/homebrew/bin/ffprobe'
+    if not os.path.exists(probe):
+        return None
+    try:
+        out = subprocess.run([probe, '-v', 'error', '-show_entries', 'format=duration',
+                              '-of', 'csv=p=0', path], capture_output=True, text=True, timeout=60)
+        return float(out.stdout.strip()) / 60
+    except (ValueError, OSError, subprocess.SubprocessError):
+        return None
 
 
 def transcribe(audio_path, out_path):
@@ -171,8 +187,11 @@ def main():
             rows.append(score(transcribe(audio, args.out and os.path.expanduser(args.out)), MODEL))
         else:
             size = os.path.getsize(audio) / 1e6
-            print(f'DRY RUN. {os.path.basename(audio)} is {size:.1f}MB; '
-                  f'a 45-minute file costs about ${45 * PRICE_PER_MINUTE:.2f}. Pass --run to spend it.')
+            minutes = duration_minutes(audio)
+            cost = (f'about ${minutes * PRICE_PER_MINUTE:.2f} for {minutes:.0f} minutes'
+                    if minutes else f'about ${45 * PRICE_PER_MINUTE:.2f} for a 45-minute file')
+            print(f'DRY RUN. {os.path.basename(audio)} is {size:.1f}MB; {cost}. '
+                  'Pass --run to spend it.')
     report(rows)
 
 
