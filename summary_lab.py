@@ -9,7 +9,7 @@ from flask import Blueprint, jsonify, request
 import research_doctrine
 from summary_comparison import split_text
 
-VERSION = 'source-reviewed-lab-v3'
+VERSION = 'source-reviewed-lab-v4'
 MODEL = os.environ.get('CHARLIE_SUMMARY_LAB_MODEL', 'claude-opus-4-6')
 
 # max_tokens is a hard limit on thinking plus response text, and every model
@@ -39,7 +39,14 @@ the interviewer - and where the role is genuinely unclear say so plainly instead
 Record contradictions, do not smooth them away. Distinguish communication quality from
 business evidence. Judge what was said, never anyone's interior state.
 Use source IDs [P1], [P2], etc. for material statements. Quotation marks mean exact source
-wording, never a paraphrase or corrected transcription. Write readable plain text with
+wording, never a paraphrase or corrected transcription.
+Quote only where the wording is itself the evidence: a commitment or a refusal, a hedge or a
+non-answer, a figure with the qualifier attached to it, or a characterisation whose force a
+paraphrase would lose. Everywhere else, say what was meant in your own words - that is the
+work, and preserving the meaning is what fidelity requires, not reproducing the wording. A
+quoted fragment of three words or fewer almost never earns its marks: "a mixed bag", "the
+call", "pole position" say no more quoted than plain. Do not quote a phrase merely because it
+came from the source; when in doubt, state it plainly and keep the source ID. Write readable plain text with
 headings and paragraphs, not HTML. Label Interpretation and Unresolved when relevant.
 Head each section with its own subject and its own name. Never title one section after
 another one: a Brief headed "Key Takeaways" collides with the section of that name.
@@ -56,7 +63,7 @@ DATES AND RATE CYCLES.
 ''' + research_doctrine.LAB_DATE_RULE
 SECTIONS = {
  'brief': 'Write a 400–650 word target Brief, shorter for thin material. Bottom line; 6–10 material takeaways where warranted; explicitly labeled implications; unresolved issues and next checks. Do not reproduce every Q&A. Preserve management substance, not just novelty.',
- 'takeaways': 'Write authoritative detailed Key Takeaways. Flexible thematic count; cover every substantive topic. For each: management statement, supporting detail and caveats; interpretation only where useful; unresolved issue. Integrate substantive Q&A, clarifications and non-answers into the relevant themes without repeating the same material in a second Q&A transcript. Preserve management examples and explanations. Do not omit content to hit a count.',
+ 'takeaways': 'Write authoritative detailed Key Takeaways. A takeaway is your conclusion stated in your own words, not an excerpt: the reader wants what it means, not a transcript. Reserve quotation for the few phrases that must be exact. Flexible thematic count; cover every substantive topic. For each: management statement, supporting detail and caveats; interpretation only where useful; unresolved issue. Integrate substantive Q&A, clarifications and non-answers into the relevant themes without repeating the same material in a second Q&A transcript. Preserve management examples and explanations. Do not omit content to hit a count.',
  'meeting': 'Write a comprehensive narrative Meeting Summary. Explain what happened, management’s explanation, actions, expectations and conditions. Cover every material segment and topic with flexible headings. Integrate later clarification while retaining genuine contradictions. Faithful narrative first; independent judgment explicitly labeled.',
  'questions': 'Write Follow-up Questions: 3–5 priority questions when justified, plus optional additional diligence. Check all records for answers already provided. One clear question at a time; state why it matters, what is known, what is missing and who or what can resolve it. Avoid unsupported premises and generic requests for color.',
  'assessment': research_doctrine.RESEARCH_DOCTRINE + '\n\nWrite Overall Assessment: overall judgment; evidence strongest and weakest; potential relevance to model assumptions (not invented numerical changes); strongest reasonable counterinterpretation; what would change the assessment. Separate business substance from communication. For each material judgment give supporting observation, interpretation and limitation. Be direct but calibrate confidence.'
