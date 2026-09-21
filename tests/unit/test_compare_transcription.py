@@ -74,3 +74,34 @@ class ParsingTests(unittest.TestCase):
         self.assertNotIn('UPDATE', source)
         # The only write is the transcript the caller names with --out.
         self.assertEqual(source.count("open(out_path, 'w')"), 1)
+
+
+class NamedEntityTests(unittest.TestCase):
+    """The metrics passed a transcript that had turned "no new material
+    information" into "no team internal plans or mission". Counting words
+    cannot see a name replaced by another name, so measure the names."""
+
+    BASE = 'Speaker 1: We think ClarusOne and Keytruda help, and Optum agrees.'
+
+    def test_a_dropped_name_is_reported(self):
+        kept, lost = compare.retention(self.BASE, 'A: We think it helps, and they agree.')
+        self.assertIn('ClarusOne', lost)
+        self.assertIn('Keytruda', lost)
+        self.assertLess(kept, 50)
+
+    def test_a_faithful_transcript_keeps_its_names(self):
+        kept, lost = compare.retention(self.BASE, 'A: We think ClarusOne and Keytruda help, Optum agrees.')
+        self.assertEqual(lost, [])
+        self.assertEqual(kept, 100.0)
+
+    def test_case_differences_do_not_count_as_loss(self):
+        _, lost = compare.retention(self.BASE, 'A: we think clarusone and keytruda help, optum agrees.')
+        self.assertEqual(lost, [])
+
+    def test_speaker_labels_are_not_mistaken_for_names(self):
+        kept, lost = compare.retention('Speaker 1: Hello there.', 'A: Hello there.')
+        self.assertNotIn('Speaker', lost or [])
+
+    def test_a_baseline_without_names_reports_nothing_rather_than_zero(self):
+        kept, lost = compare.retention('a: all lowercase here, no names at all.', 'b: same again.')
+        self.assertIsNone(kept)

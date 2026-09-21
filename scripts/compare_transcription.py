@@ -54,6 +54,31 @@ DIGIT_DATE = re.compile(r'\b(11|41|71|91|101)\b')
 FIGURE = re.compile(r'\b\d+(?:\.\d+)?\s*(?:%|percent|bps|basis points|billion|million)\b', re.I)
 
 
+# Tickers, drug names, competitors, people. These are exactly what a transcriber
+# guesses at, and losing one is invisible in a word count: the MCK excerpt kept
+# its character count while turning "no new material information" into "no team
+# internal plans or mission" and "that Kirk mentioned" into "like direct to meta".
+PROPER_NOUN = re.compile(r'(?<![.!?]\s)(?<!^)\b([A-Z][A-Za-z]{3,}(?:One)?)\b', re.M)
+STOPWORDS = {'Speaker', 'Unknown', 'And', 'But', 'The', 'That', 'This', 'There', 'They',
+             'What', 'When', 'Where', 'Which', 'While', 'With', 'You', 'Your', 'Yeah',
+             'Okay', 'Well', 'Just', 'Like', 'Right', 'Sure', 'Look', 'Think', 'Know'}
+
+
+def proper_nouns(text):
+    """Distinct mid-sentence capitalised words -- a proxy for named entities."""
+    return {w for w in PROPER_NOUN.findall(text or '') if w not in STOPWORDS}
+
+
+def retention(baseline, candidate):
+    """Which named entities in the baseline survive into the candidate."""
+    before = proper_nouns(baseline)
+    if not before:
+        return None, []
+    after = {w.lower() for w in proper_nouns(candidate)}
+    lost = sorted(w for w in before if w.lower() not in after)
+    return round(100 * (len(before) - len(lost)) / len(before), 1), lost
+
+
 def parse_turns(text):
     """Split a transcript into (speaker, utterance). Unlabelled text is one turn."""
     turns, speaker, buffer = [], None, []
@@ -180,6 +205,13 @@ def report(rows):
         for who, entry in sorted(row['per_speaker'].items(), key=lambda kv: -kv[1]['chars'])[:5]:
             print(f'      {who:<12} {entry["chars"]:>7} chars   '
                   f'{entry["management"]:>2} management   {entry["questions"]:>2} questions')
+    if len(rows) > 1 and rows[1].get('retained_pct') is not None:
+        kept, lost = rows[1]['retained_pct'], rows[1]['lost_terms']
+        print(f'\nNamed entities from the baseline kept by {rows[1]["label"]}: {kept}%')
+        if lost:
+            print('  lost: ' + ', '.join(lost[:25]) + (' …' if len(lost) > 25 else ''))
+        print('  A name the transcriber guessed wrong is invisible in a word count,')
+        print('  and it is what the corrections pass and the date rule exist to catch.')
     print('\nRead these together: fewer role collisions is the gain, and disfluencies,')
     print('bare digit dates and figures must not drop — those are fidelity, not noise.')
 
@@ -198,7 +230,10 @@ def main():
     if args.audio:
         audio = os.path.expanduser(args.audio)
         if args.run:
-            rows.append(score(transcribe(audio, args.out and os.path.expanduser(args.out)), MODEL))
+            candidate = transcribe(audio, args.out and os.path.expanduser(args.out))
+            row = score(candidate, MODEL)
+            row['retained_pct'], row['lost_terms'] = retention(baseline, candidate)
+            rows.append(row)
         else:
             size = os.path.getsize(audio) / 1e6
             minutes = duration_minutes(audio)
