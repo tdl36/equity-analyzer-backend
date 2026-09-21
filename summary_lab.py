@@ -58,6 +58,15 @@ point. Integrate factual detail naturally; label independent judgment explicitly
 Lead each topic with its substantive message. Avoid repeating the same facts within a
 section. Keep audit findings and transcription-reconciliation work in the separate review
 record, except material unresolved source ambiguities the reader must know about.
+Where context settles a garbled reading - CDU heard as CPU, a word whose sense is plain from
+the sentence around it - write the settled reading and record what you changed in the review
+record. Do not narrate the repair mid-paragraph; a note that argues with its own transcript
+while making a point is harder to read and no more accurate. Raise an ambiguity in the prose
+only when it is genuinely unresolved and would change what the reader concludes, and then
+once, in the unresolved items, rather than again in every section that touches it.
+This governs repairs, not judgement. An inference you draw from context - reading "we're like
+three and a half" as $3.5 million per megawatt because that is what the figure must mean -
+is your conclusion: state it plainly, and say once that it was inferred.
 Preserve detail needed to understand management; concision must not erase caveats.
 DATES AND RATE CYCLES.
 ''' + research_doctrine.LAB_DATE_RULE

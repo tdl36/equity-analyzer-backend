@@ -39,3 +39,28 @@ class QuotingRuleTests(unittest.TestCase):
 
     def test_the_version_moves_so_a_reimport_does_not_match_an_old_row(self):
         self.assertEqual(summary_lab.VERSION, 'source-reviewed-lab-v4')
+
+
+class TranscriptRepairTests(unittest.TestCase):
+    """The ETN note flagged transcription artefacts in four separate sections
+    and again in the unresolved list, so it read as if it were arguing with its
+    own transcript while making a point."""
+
+    def test_a_reading_settled_by_context_is_written_settled(self):
+        self.assertIn('write the settled reading', summary_lab.RULES)
+        self.assertIn('record what you changed in the review', summary_lab.RULES)
+
+    def test_the_repair_is_not_narrated_in_the_prose(self):
+        self.assertIn('Do not narrate the repair mid-paragraph', summary_lab.RULES)
+
+    def test_a_genuine_ambiguity_is_raised_once_not_in_every_section(self):
+        self.assertIn('would change what the reader concludes', summary_lab.RULES)
+        self.assertIn('rather than again in every section that touches it', summary_lab.RULES)
+
+    def test_domain_inference_is_protected_rather_than_suppressed(self):
+        # Reading "three and a half" as $3.5m/MW is the conclusion the reader
+        # wants. The rule must not turn restraint about repairs into timidity
+        # about judgement.
+        self.assertIn('This governs repairs, not judgement', summary_lab.RULES)
+        self.assertIn('is your conclusion: state it plainly', summary_lab.RULES)
+        self.assertIn('say once that it was inferred', summary_lab.RULES)
