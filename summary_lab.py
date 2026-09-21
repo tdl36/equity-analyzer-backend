@@ -151,6 +151,17 @@ def ask_with_recovery(key, model, system, prompt, tokens, state, save, client_fa
                         if time.monotonic()-last > 15:
                             save(state); last=time.monotonic()
                     result = stream.get_final_message()
+            # Record before judging the response. A call that overran its limit
+            # or came back incomplete still burned every token it used, and
+            # recording only successes makes the ledger understate real spend --
+            # exactly when a run is misbehaving and the number matters most.
+            if on_usage:
+                usage = getattr(result, 'usage', None)
+                on_usage({'provider': 'anthropic',
+                          'model': getattr(result, 'model', model),
+                          'usage': {'input_tokens': getattr(usage, 'input_tokens', 0) or 0,
+                                    'output_tokens': getattr(usage, 'output_tokens', 0) or 0}},
+                         attempt + 1)
             if result.stop_reason == 'max_tokens':
                 raise ValueError(
                     f'The model reached its {tokens:,}-token limit for this step before finishing. '
@@ -163,13 +174,6 @@ def ask_with_recovery(key, model, system, prompt, tokens, state, save, client_fa
                 raise ValueError('Empty model response. Retry resumes saved work.')
             state.pop('providerIssue', None)
             state['progress'] = progress
-            if on_usage:
-                usage = getattr(result, 'usage', None)
-                on_usage({'provider': 'anthropic',
-                          'model': getattr(result, 'model', model),
-                          'usage': {'input_tokens': getattr(usage, 'input_tokens', 0) or 0,
-                                    'output_tokens': getattr(usage, 'output_tokens', 0) or 0}},
-                         attempt + 1)
             return text
         except (anthropic.APIStatusError, anthropic.APIConnectionError) as exc:
             transient, reason, diagnostic = provider_failure(exc)

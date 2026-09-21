@@ -116,3 +116,51 @@ class UsageRecordingTests(unittest.TestCase):
 
     def test_a_run_without_a_recorder_still_returns_its_text(self):
         self.assertEqual(self.run_one_call(), 'Some output.')
+
+
+class FailedCallAccountingTests(UsageRecordingTests):
+    """A call that overran its budget still spent its tokens. Recording only
+    successes hid the cost of the two Opus 5 experiments that failed."""
+
+    def failing_call(self, stop_reason):
+        from types import SimpleNamespace
+        message = SimpleNamespace(
+            stop_reason=stop_reason, model='claude-opus-5',
+            content=[SimpleNamespace(type='text', text='partial')],
+            usage=SimpleNamespace(input_tokens=30000, output_tokens=3500))
+
+        class Stream:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def __iter__(self): return iter(())
+            def get_final_message(self): return message
+
+        class Client:
+            messages = SimpleNamespace(stream=lambda **kw: Stream())
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+
+        import summary_lab
+        try:
+            summary_lab.ask_with_recovery(
+                'k', 'claude-opus-5', 'sys', 'p', 3500, {}, lambda st: None,
+                client_factory=lambda **kw: Client(), sleep=lambda s: None,
+                on_usage=lambda r, a: self.recorded.append((r, a)))
+        except Exception:
+            pass
+
+    def test_a_call_that_hit_its_limit_still_reports_its_tokens(self):
+        self.failing_call('max_tokens')
+        self.assertTrue(self.recorded, 'tokens were spent and never recorded')
+        self.assertEqual(self.recorded[0][0]['usage']['input_tokens'], 30000)
+
+    def test_overrunning_the_budget_does_not_retry_and_bill_again(self):
+        self.failing_call('max_tokens')
+        # The retry loop catches provider errors, not a bad stop_reason, so an
+        # overrun fails once rather than paying for the same prompt three times.
+        self.assertEqual(len(self.recorded), 1)
+        self.assertEqual(self.recorded[0][1], 1)
+
+    def test_an_incomplete_response_is_recorded_too(self):
+        self.failing_call('refusal')
+        self.assertTrue(self.recorded)
