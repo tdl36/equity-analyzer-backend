@@ -6909,7 +6909,71 @@ CHUNK_MINUTES = 15  # Transcribe in 15-minute segments for accuracy
 OVERLAP_SECONDS = 30  # 30-second overlap between chunks to avoid missed content
 
 
-def _transcribe_audio_content(client, audio_content, job_id, label=""):
+OPENAI_TRANSCRIBE_MODEL = 'gpt-4o-transcribe-diarize'
+OPENAI_TRANSCRIBE_MAX_BYTES = 25 * 1024 * 1024  # OpenAI's documented per-file cap
+
+
+def _transcribe_with_openai(audio_path, job_id, label=''):
+    """Last-resort transcription on a different provider.
+
+    Reached only when every Gemini attempt has failed, so a provider outage
+    does not stop a meeting being transcribed at all. This model also returns
+    speaker-labelled segments, which the Gemini path does not, so a transcript
+    produced here carries real turn attribution rather than none.
+    """
+    key = os.environ.get('OPENAI_API_KEY', '').strip()
+    if not key:
+        raise RuntimeError('No OpenAI key configured for the transcription fallback.')
+    if not (audio_path and os.path.exists(audio_path)):
+        raise RuntimeError('The audio is no longer on disk for the transcription fallback.')
+    size = os.path.getsize(audio_path)
+    if size > OPENAI_TRANSCRIBE_MAX_BYTES:
+        raise RuntimeError(
+            f'Audio is {size / 1e6:.1f}MB; the transcription fallback accepts 25MB.')
+    client = openai.OpenAI(api_key=key, timeout=900)
+    print(f"[Job {job_id}] {label}Falling back to {OPENAI_TRANSCRIBE_MODEL}...")
+    with open(audio_path, 'rb') as handle:
+        result = client.audio.transcriptions.create(
+            model=OPENAI_TRANSCRIBE_MODEL, file=handle,
+            response_format='diarized_json', chunking_strategy='auto')
+    segments = getattr(result, 'segments', None) or []
+    if not segments:
+        text = (getattr(result, 'text', '') or '').strip()
+        if not text:
+            raise RuntimeError('The transcription fallback returned nothing.')
+        return text
+    # Collapse consecutive turns by the same speaker so the transcript reads as
+    # speech rather than as a timestamped table.
+    lines, speaker, buffer = [], None, []
+    for segment in segments:
+        who = (getattr(segment, 'speaker', '') or '').strip() or 'Unknown'
+        said = (getattr(segment, 'text', '') or '').strip()
+        if not said:
+            continue
+        if who != speaker and buffer:
+            lines.append(f'{speaker}: ' + ' '.join(buffer))
+            buffer = []
+        speaker = who
+        buffer.append(said)
+    if buffer:
+        lines.append(f'{speaker}: ' + ' '.join(buffer))
+    joined = '\n\n'.join(lines).strip()
+    if not joined:
+        raise RuntimeError('The transcription fallback returned no speech.')
+    try:
+        usage = getattr(result, 'usage', None)
+        if usage:
+            record_llm_usage('transcription', {
+                'provider': 'openai', 'model': OPENAI_TRANSCRIBE_MODEL,
+                'usage': {'input_tokens': getattr(usage, 'input_tokens', 0) or 0,
+                          'output_tokens': getattr(usage, 'output_tokens', 0) or 0}},
+                detail={'audio_input': True, 'label': label.strip() or 'audio', 'fallback': True})
+    except Exception:
+        pass
+    return joined
+
+
+def _transcribe_audio_content(client, audio_content, job_id, label="", audio_path=None):
     """Transcribe a single audio content (chunk or full file). Returns text or raises."""
     import time
     # Both entries are non-thinking models of the same generation, so the
@@ -6971,6 +7035,13 @@ def _transcribe_audio_content(client, audio_content, job_id, label=""):
                         break
                 else:
                     break
+    # Every Gemini attempt is spent. Try the other provider before giving up on
+    # a recording the user has already waited for.
+    if audio_path:
+        try:
+            return _transcribe_with_openai(audio_path, job_id, label=label)
+        except Exception as fallback_err:
+            print(f"[Job {job_id}] {label}Transcription fallback failed: {fallback_err}")
     raise Exception(f"All models failed. Last error: {last_error}")
 
 
@@ -7078,7 +7149,8 @@ def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key
                     # Read chunk from disk (small — ~15min of mp3 ≈ 15MB)
                     with open(chunk_path, 'rb') as cf:
                         chunk_bytes = cf.read()
-                    os.remove(chunk_path)  # Free disk immediately
+                    # The file stays until this chunk is transcribed: the
+                    # fallback re-reads it rather than holding 15MB in memory.
 
                     chunk_size_mb = len(chunk_bytes) / (1024 * 1024)
                     uploaded = None
@@ -7101,7 +7173,7 @@ def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key
                         del chunk_bytes
 
                     try:
-                        text = _transcribe_audio_content(client, audio_content, job_id, label=chunk_label)
+                        text = _transcribe_audio_content(client, audio_content, job_id, label=chunk_label, audio_path=chunk_path)
                         all_texts.append(text)
                     finally:
                         if uploaded:
@@ -7109,6 +7181,10 @@ def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key
                                 client.files.delete(name=uploaded.name)
                             except Exception:
                                 pass
+                        try:
+                            os.remove(chunk_path)
+                        except OSError:
+                            pass
 
                     if idx < len(chunks) - 1:
                         time.sleep(2)
@@ -7156,7 +7232,7 @@ def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key
                 del audio_bytes
 
             try:
-                transcript_text = _transcribe_audio_content(client, audio_content, job_id)
+                transcript_text = _transcribe_audio_content(client, audio_content, job_id, audio_path=input_path)
             except Exception as e:
                 _transcription_jobs.setdefault(job_id, {}).update({'status': 'error', 'error': str(e)})
                 return
