@@ -25,6 +25,9 @@ export function SummaryLab({api,getKey,getGeminiKey,renderHtml,pickFromICloud}){
  const [selected,setSelected]=useState([]),[archivedView,setArchivedView]=useState(false);
  const chosen=new Set(selected);
  const [busyKey,setBusyKey]=useState(''),[emailOptions,setEmailOptions]=useState(null);
+ const markerMode=showSrc?'inline':'strip';
+ const [labModels,setLabModels]=useState([]),[model,setModel]=useState('');
+ const [defaultModelId,setDefaultModelId]=useState('');
  const audioInput=useRef(null),monitoring=useRef('');
  // With no experiment open the composer is the whole job, so it gets the page.
  // While reading, a 654px form should not compete with the note.
@@ -32,8 +35,8 @@ export function SummaryLab({api,getKey,getGeminiKey,renderHtml,pickFromICloud}){
  const visibleSections=sectionsForMode(row?.state?.outputMode||'english');
 
  async function req(path='',body){const r=await fetch(`${api}/api/summary-lab${path}`,{...(body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(30000)});const d=await r.json();if(!r.ok)throw Error(d.error||'Request failed');return d;}
- async function refreshLists(){const [a,b]=await Promise.all([req('/sources'),req(archivedView?'?archived=1':'')]);setSources(a.sources);setRuns(b.experiments);}
- useEffect(()=>{let active=true;async function load(){try{const [a,b]=await Promise.all([req('/sources'),req(archivedView?'?archived=1':'')]);if(active){setSources(a.sources);setRuns(b.experiments);}}catch(e){if(active)setError(e.message);}}load();const t=setInterval(load,12000);return()=>{active=false;clearInterval(t);};},[api,archivedView]);
+ async function refreshLists(){const [a,b]=await Promise.all([req('/sources'),req(archivedView?'?archived=1':'')]);setSources(a.sources);setLabModels(a.models||[]);setDefaultModelId(a.defaultModel||'');setRuns(b.experiments);}
+ useEffect(()=>{let active=true;async function load(){try{const [a,b]=await Promise.all([req('/sources'),req(archivedView?'?archived=1':'')]);if(active){setSources(a.sources);setLabModels(a.models||[]);setDefaultModelId(a.defaultModel||'');setRuns(b.experiments);}}catch(e){if(active)setError(e.message);}}load();const t=setInterval(load,12000);return()=>{active=false;clearInterval(t);};},[api,archivedView]);
  useEffect(()=>{if(!id){setRow(null);return;}let active=true;setRow(null);async function load(){try{const d=await req('/'+id);if(active)setRow(d);}catch(e){if(active)setError(e.message);}}load();const t=setInterval(load,6000);return()=>{active=false;clearInterval(t);};},[id,api]);
  useEffect(()=>{setFeedback(row?.feedback||'');setSharing(false);setEdits({});setComposerOpen(false);},[row?.id]);
 
@@ -41,7 +44,7 @@ export function SummaryLab({api,getKey,getGeminiKey,renderHtml,pickFromICloud}){
  // The pending job lives in localStorage, so every tab and every reload
  // resumes it; without the reference each one starts its own paid experiment.
  async function startLab(summaryId,labTitle,outputMode='english',labFocus=focus,sourceJobId){
-  const d=await req('',{summaryId:summaryId||undefined,source:summaryId?undefined:source,title:(labTitle||title).trim()||'Untitled experiment',focus:labFocus,outputMode,sourceJobId,apiKey:getKey()});
+  const d=await req('',{summaryId:summaryId||undefined,source:summaryId?undefined:source,title:(labTitle||title).trim()||'Untitled experiment',focus:labFocus,outputMode,sourceJobId,model:model||undefined,apiKey:getKey()});
   setId(d.id);await refreshLists();return d;
  }
  async function start(){setBusy(true);setError('');setNotice('');try{await startLab(sid||undefined,title,'english',focus);}catch(e){setError(e.message);}finally{setBusy(false);}}
@@ -131,7 +134,7 @@ export function SummaryLab({api,getKey,getGeminiKey,renderHtml,pickFromICloud}){
  function openEmail(){setEdits({...state.sections});setSharing(true);setCompare(false);setExpanded(Object.fromEntries(visibleSections.map(([key])=>[key,true])));setNotice('Review and edit each section before sending. Edits affect this email only.');}
  async function sendEmail(){setSending(true);setError('');try{
   const creds=JSON.parse(localStorage.getItem('emailCredentials')||'{}');if(!creds.email)throw Error('Set your recipient email and Gmail credentials in Settings first.');
-  const response=await fetch(`${api}/api/email-summary-section`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:creds.email,subject:`Summary Lab: ${row.title}`,title:row.title,section:'summary_lab',content:emailDocument(row.title,visibleSections.map(([k,l])=>[l,edits[k]||'']),renderHtml),smtpConfig:{use_gmail:creds.useGmail,gmail_user:creds.gmailUser,gmail_app_password:creds.gmailPassword,from_email:creds.gmailUser}})});const data=await response.json().catch(()=>({}));if(!response.ok)throw Error(data.error||'Email delivery could not be confirmed. Check your inbox before retrying.');setNotice(`${visibleSections.length===1?'The section':`All ${visibleSections.length} sections`} emailed to ${creds.email}.`);
+  const response=await fetch(`${api}/api/email-summary-section`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:creds.email,subject:`Summary Lab: ${row.title}`,title:row.title,section:'summary_lab',content:emailDocument(row.title,visibleSections.map(([k,l])=>[l,edits[k]||'']),renderHtml,markerMode),smtpConfig:{use_gmail:creds.useGmail,gmail_user:creds.gmailUser,gmail_app_password:creds.gmailPassword,from_email:creds.gmailUser}})});const data=await response.json().catch(()=>({}));if(!response.ok)throw Error(data.error||'Email delivery could not be confirmed. Check your inbox before retrying.');setNotice(`${visibleSections.length===1?'The section':`All ${visibleSections.length} sections`} emailed to ${creds.email}.`);
  }catch(e){setError(e.message);}finally{setSending(false);}}
  function emailCredentials(){
   const creds=JSON.parse(localStorage.getItem('emailCredentials')||'{}');
@@ -146,7 +149,7 @@ export function SummaryLab({api,getKey,getGeminiKey,renderHtml,pickFromICloud}){
   const creds=emailCredentials();
   const response=await fetch(`${api}/api/email-summary-section`,{method:'POST',headers:{'Content-Type':'application/json'},
    body:JSON.stringify({email:to||creds.email,subject:subject||`${sectionLabel(key)}: ${row.title}`,title:row.title,section:'summary_lab',
-    content:emailDocument(row.title,[[sectionLabel(key),text]],renderHtml),
+    content:emailDocument(row.title,[[sectionLabel(key),text]],renderHtml,markerMode),
     smtpConfig:{use_gmail:creds.useGmail,gmail_user:creds.gmailUser,gmail_app_password:creds.gmailPassword,from_email:creds.gmailUser}})});
   const data=await response.json().catch(()=>({}));
   if(!response.ok||data.error) throw Error(data.error||'The email could not be sent.');
@@ -183,7 +186,7 @@ export function SummaryLab({api,getKey,getGeminiKey,renderHtml,pickFromICloud}){
  function toggleChosen(rid){setSelected(current=>current.includes(rid)?current.filter(x=>x!==rid):[...current,rid]);}
  async function copy(all=false,key='brief'){try{
   const items=all?visibleSections.map(([k,l])=>[l,(sharing?edits[k]:state.sections?.[k])||'']):[[visibleSections.find(s=>s[0]===key)?.[1]||'',(sharing?edits[key]:state.sections?.[key])||'']];
-  const html=emailDocument(row.title,items,renderHtml);const doc=new DOMParser().parseFromString(html,'text/html');doc.querySelectorAll('p,h1,h2,h3,li,blockquote').forEach(el=>el.append('\n'));const plain=doc.body.textContent||'';
+  const html=emailDocument(row.title,items,renderHtml,markerMode);const doc=new DOMParser().parseFromString(html,'text/html');doc.querySelectorAll('p,h1,h2,h3,li,blockquote').forEach(el=>el.append('\n'));const plain=doc.body.textContent||'';
   if(window.ClipboardItem&&navigator.clipboard.write)await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([html],{type:'text/html'}),'text/plain':new Blob([plain],{type:'text/plain'})})]);else await navigator.clipboard.writeText(plain);setNotice('Formatted notes copied.');
  }catch{setError('Clipboard unavailable. Select the note text to copy.');}}
  function download(){const url=URL.createObjectURL(new Blob([JSON.stringify(row,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=`Summary-Lab-${id}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
@@ -238,6 +241,12 @@ export function SummaryLab({api,getKey,getGeminiKey,renderHtml,pickFromICloud}){
  {intake==='paste'&&<><label htmlFor="lab-text">Complete source text</label><textarea id="lab-text" rows={9} value={source} onChange={e=>setSource(e.target.value)} placeholder="Paste a transcript or document text…"/><p className="muted">{source.length.toLocaleString()} characters · no silent cutoff</p></>}
  {intake==='audio'&&<><input ref={audioInput} type="file" hidden accept=".mp3,.mp4,.mpeg,.mpga,.m4a,.wav,.webm,.ogg,.flac" onChange={e=>{const file=e.target.files?.[0];if(file){setAudioFile(file);if(!title.trim())setTitle(file.name.replace(/\.[^.]+$/,'').slice(0,300));}}}/><div className="dropzone"><strong>{audioFile?.name||'Audio recording'}</strong><p className="muted">MP3, M4A, WAV, MP4, MPEG, WebM, OGG or FLAC. The full transcript is saved before improved analysis begins.</p><div className="controls"><button onClick={()=>audioInput.current?.click()}>Choose file</button><button onClick={chooseAudioFromCloud}>Browse iCloud</button></div>{audioFile&&<p className="muted">{(audioFile.size/1024/1024).toFixed(1)} MB</p>}</div>{!getGeminiKey?.()&&<p className="muted">Audio transcription requires the Gemini key configured in Settings.</p>}</>}
  {intake==='youtube'&&<><label htmlFor="lab-youtube">YouTube link</label><input id="lab-youtube" type="url" value={youtubeUrl} onChange={e=>setYoutubeUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=…"/><label htmlFor="lab-youtube-ticker">Ticker · optional</label><input id="lab-youtube-ticker" value={youtubeTicker} maxLength={8} onChange={e=>setYoutubeTicker(e.target.value.toUpperCase())} placeholder="ABT"/><label className="check-row"><input type="checkbox" checked={youtubeKorean} onChange={e=>{setYoutubeKorean(e.target.checked);if(!e.target.checked)setYoutubeKoreanOnly(false);}}/><span><strong>한국어 핵심 정리도 함께 생성</strong><br/><span className="muted">English analysis plus a source-reviewed Korean interpretation.</span></span></label>{youtubeKorean&&<label className="check-row nested"><input type="checkbox" checked={youtubeKoreanOnly} onChange={e=>setYoutubeKoreanOnly(e.target.checked)}/><span><strong>한국어만 생성</strong><br/><span className="muted">Skip the five English sections and generate only the Korean interpretation.</span></span></label>}<p className="muted">Charlie retrieves the available transcript through your connected Mac, saves it, then starts the improved analysis in the selected language.</p></>}
+ {labModels.length>1&&<><label htmlFor="lab-model">Model</label>
+ <select id="lab-model" value={model} onChange={e=>setModel(e.target.value)}>
+  <option value="">Default ({labModels.find(m=>m.model===defaultModelId)?.label||'server default'})</option>
+  {labModels.map(m=><option key={m.model} value={m.model}>{m.label}{m.note?` — ${m.note}`:''}</option>)}
+ </select>
+ <p className="muted" style={{marginTop:6}}>Applies to this experiment only. The default is unchanged.</p></>}
  <div className="field-pair">
  <div><label htmlFor="lab-title">Experiment name</label><input id="lab-title" value={title} maxLength={300} onChange={e=>setTitle(e.target.value)} placeholder="MMM conference · first trial"/></div>
  <div><label htmlFor="lab-focus">Optional emphasis</label><textarea id="lab-focus" rows={3} maxLength={4000} value={focus} onChange={e=>setFocus(e.target.value)} placeholder="Preserve the segment detail and management’s margin explanation."/></div>

@@ -104,7 +104,7 @@ def provider_failure(exc):
     return transient, reason, {'type': safe_kind, 'httpStatus': status if isinstance(status, int) else None}
 
 
-def ask_with_recovery(key, model, system, prompt, tokens, state, save, client_factory=None, sleep=None):
+def ask_with_recovery(key, model, system, prompt, tokens, state, save, client_factory=None, sleep=None, on_usage=None):
     import anthropic
     import time
     client_factory = client_factory or anthropic.Anthropic
@@ -128,6 +128,13 @@ def ask_with_recovery(key, model, system, prompt, tokens, state, save, client_fa
                 raise ValueError('Empty model response. Retry resumes saved work.')
             state.pop('providerIssue', None)
             state['progress'] = progress
+            if on_usage:
+                usage = getattr(result, 'usage', None)
+                on_usage({'provider': 'anthropic',
+                          'model': getattr(result, 'model', model),
+                          'usage': {'input_tokens': getattr(usage, 'input_tokens', 0) or 0,
+                                    'output_tokens': getattr(usage, 'output_tokens', 0) or 0}},
+                         attempt + 1)
             return text
         except (anthropic.APIStatusError, anthropic.APIConnectionError) as exc:
             transient, reason, diagnostic = provider_failure(exc)
@@ -322,7 +329,7 @@ def export_row(row, section='all'):
     return result
 
 
-def create_blueprint(get_db, render_docx=None, safe_filename=None):
+def create_blueprint(get_db, render_docx=None, safe_filename=None, record_usage=None, models=None):
     bp = Blueprint('summary_lab', __name__)
     schema_lock = threading.Lock()
     ready = False
@@ -392,8 +399,15 @@ def create_blueprint(get_db, render_docx=None, safe_filename=None):
                             WHERE id=%s RETURNING cancel_requested""", (json.dumps(value), jid))
                         stopped = cur.fetchone()
                     if stopped and stopped['cancel_requested']: raise Cancelled()
+                def on_usage(result, attempt):
+                    # Every Lab call is paid and none of them were ever recorded,
+                    # so no experiment had a cost. Never let this fail the run.
+                    if record_usage:
+                        record_usage('summary_lab', result, attempt=attempt,
+                                     detail={'experiment': jid, 'title': row.get('title', '')[:120]})
                 def ask(system, prompt, tokens):
-                    return ask_with_recovery(key, row['model'], system, prompt, tokens, state, save)
+                    return ask_with_recovery(key, row['model'], system, prompt, tokens, state, save,
+                                             on_usage=on_usage)
                 generate(row['source'], state, ask, save, row['focus'])
                 with get_db(commit=True) as (_, cur):
                     cur.execute("UPDATE summary_lab_experiments SET state=%s::jsonb,status='complete',updated_at=NOW() WHERE id=%s", (json.dumps(state),jid))
@@ -456,11 +470,27 @@ def create_blueprint(get_db, render_docx=None, safe_filename=None):
                 stop.wait(30)
         threading.Thread(target=loop,daemon=True,name='summary-lab-recovery').start()
 
+    def allowed_models():
+        """Model ids the Lab will accept, newest first. The default is always
+        offered even when the host supplies no list."""
+        offered = [m for m in (models or []) if isinstance(m, dict) and m.get('model')]
+        if not any(m['model'] == MODEL for m in offered):
+            offered = offered + [{'model': MODEL, 'label': MODEL, 'key': MODEL}]
+        return offered
+
+    def resolve_model(value):
+        if value in (None, ''): return MODEL
+        if not isinstance(value, str): raise ValueError('The model must be text.')
+        if value not in {m['model'] for m in allowed_models()}:
+            raise ValueError('That model is not offered. Choose one from the list.')
+        return value
+
     @bp.get('/api/summary-lab/sources')
     def sources():
         with get_db() as (_,cur):
             cur.execute("SELECT id,title,created_at FROM meeting_summaries WHERE COALESCE(raw_notes,'')<>'' ORDER BY created_at DESC")
-            return jsonify(sources=[dict(r) for r in cur.fetchall()])
+            return jsonify(sources=[dict(r) for r in cur.fetchall()],
+                           models=allowed_models(), defaultModel=MODEL)
 
     @bp.get('/api/summary-lab')
     def listing():
@@ -480,7 +510,7 @@ def create_blueprint(get_db, render_docx=None, safe_filename=None):
             row=cur.fetchone()
         return (jsonify(dict(row)) if row else (jsonify(error='Experiment not found'),404))
 
-    def enqueue(summary_id, api_key=None, output_mode='english', automatic=False, title='Untitled experiment', focus='', source_job_id=None):
+    def enqueue(summary_id, api_key=None, output_mode='english', automatic=False, title='Untitled experiment', focus='', source_job_id=None, model=None):
         """Create one durable Lab branch. Automatic branches are idempotent per saved source."""
         ensure()
         key=api_key or os.environ.get('ANTHROPIC_API_KEY')
@@ -505,7 +535,7 @@ def create_blueprint(get_db, render_docx=None, safe_filename=None):
                     (id,title,source,source_hash,baseline,focus,version,model,state,summary_id,output_mode,automatic,recovery_enabled)
                     VALUES (%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s::jsonb,%s,%s,TRUE,TRUE)
                     ON CONFLICT (summary_id,source_hash,version,output_mode) WHERE automatic AND summary_id IS NOT NULL DO NOTHING''',
-                    (jid,title,source,digest,json.dumps(baseline),focus,VERSION,MODEL,json.dumps(initial_state),summary_id,output_mode))
+                    (jid,title,source,digest,json.dumps(baseline),focus,VERSION,(model or MODEL),json.dumps(initial_state),summary_id,output_mode))
                 inserted=cur.rowcount==1
                 cur.execute('''SELECT id,status FROM summary_lab_experiments
                     WHERE automatic AND summary_id=%s AND source_hash=%s AND version=%s AND output_mode=%s''',
@@ -524,7 +554,7 @@ def create_blueprint(get_db, render_docx=None, safe_filename=None):
                     (id,title,source,source_hash,baseline,focus,version,model,state,summary_id,output_mode,source_job_id)
                     VALUES (%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s::jsonb,%s,%s,%s)
                     ON CONFLICT (source_job_id) WHERE source_job_id IS NOT NULL DO NOTHING''',
-                    (jid,title,source,digest,json.dumps(baseline),focus,VERSION,MODEL,json.dumps(initial_state),summary_id,output_mode,source_job_id))
+                    (jid,title,source,digest,json.dumps(baseline),focus,VERSION,(model or MODEL),json.dumps(initial_state),summary_id,output_mode,source_job_id))
                 if cur.rowcount != 1:
                     cur.execute('SELECT id FROM summary_lab_experiments WHERE source_job_id=%s',(source_job_id,))
                     return cur.fetchone()['id']
@@ -532,7 +562,7 @@ def create_blueprint(get_db, render_docx=None, safe_filename=None):
                 cur.execute('''INSERT INTO summary_lab_experiments
                     (id,title,source,source_hash,baseline,focus,version,model,state,summary_id,output_mode)
                     VALUES (%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s::jsonb,%s,%s)''',
-                    (jid,title,source,digest,json.dumps(baseline),focus,VERSION,MODEL,json.dumps(initial_state),summary_id,output_mode))
+                    (jid,title,source,digest,json.dumps(baseline),focus,VERSION,(model or MODEL),json.dumps(initial_state),summary_id,output_mode))
         threading.Thread(target=run,args=(jid,key),daemon=True,name='summary-lab-'+jid[:8]).start()
         return jid
 
@@ -542,12 +572,14 @@ def create_blueprint(get_db, render_docx=None, safe_filename=None):
         key=body.get('apiKey') or os.environ.get('ANTHROPIC_API_KEY')
         focus=body.get('focus',''); source=body.get('source',''); title=body.get('title','Untitled experiment')
         output_mode=body.get('outputMode','english')
+        try: chosen_model=resolve_model(body.get('model'))
+        except ValueError as exc: return jsonify(error=str(exc)),400
         if not all(isinstance(x,str) for x in (focus,source,title)): return jsonify(error='Source, title and emphasis must be text.'),400
         if output_mode not in OUTPUT_MODES: return jsonify(error='Choose English, English + Korean, or Korean only.'),400
         if len(focus)>4000 or len(title)>300: return jsonify(error='Shorten the title or emphasis.'),400
         source_job_id=body.get('sourceJobId') or None
         if body.get('summaryId'):
-            try: return jsonify(id=enqueue(body['summaryId'],key,output_mode,False,title,focus,source_job_id)),202
+            try: return jsonify(id=enqueue(body['summaryId'],key,output_mode,False,title,focus,source_job_id,chosen_model)),202
             except LookupError as exc: return jsonify(error=str(exc)),404
             except ValueError as exc: return jsonify(error=str(exc)),400
         if not isinstance(key,str) or not key.strip(): return jsonify(error='Add a research API key in Settings.'),400
@@ -555,7 +587,7 @@ def create_blueprint(get_db, render_docx=None, safe_filename=None):
         jid=str(uuid.uuid4()); initial_state={'outputMode': output_mode}
         with get_db(commit=True) as (_,cur):
             cur.execute('''INSERT INTO summary_lab_experiments (id,title,source,source_hash,baseline,focus,version,model,state,output_mode)
-                VALUES (%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s::jsonb,%s)''',(jid,title,source,hashlib.sha256(source.encode()).hexdigest(),json.dumps({}),focus,VERSION,MODEL,json.dumps(initial_state),output_mode))
+                VALUES (%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s::jsonb,%s)''',(jid,title,source,hashlib.sha256(source.encode()).hexdigest(),json.dumps({}),focus,VERSION,chosen_model,json.dumps(initial_state),output_mode))
         threading.Thread(target=run,args=(jid,key),daemon=True,name='summary-lab-'+jid[:8]).start()
         return jsonify(id=jid),202
 

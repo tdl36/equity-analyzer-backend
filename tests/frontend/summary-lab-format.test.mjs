@@ -92,3 +92,22 @@ test('text without citations is returned unchanged', () => {
   assert.equal(sourceMarkers(''), '');
   assert.equal(sourceMarkers(), '');
 });
+
+test('an emailed copy follows what the reader chose to see', () => {
+  const body = [['Executive Brief', 'Growth was 5% [P1]. Oncology led [P1][P2].']];
+  const hidden = emailDocument('MCK', body, null);
+  assert.ok(!/\[P\d+\]/.test(hidden), 'hidden markers must not survive into the email');
+  assert.ok(!hidden.includes('<sup'), 'nothing is left behind where the citation was');
+  assert.ok(hidden.includes('Growth was 5%.'), 'the sentence still reads correctly');
+
+  const shown = emailDocument('MCK', body, null, 'inline');
+  assert.ok(!/\[P\d+\]/.test(shown), 'brackets are never emailed either way');
+  // Email clients do not load the page stylesheet.
+  assert.ok(shown.includes('<sup style='), 'a shown citation carries its own styling');
+  assert.ok(shown.includes('>1,2</sup>'), 'runs still collapse');
+});
+
+test('stripping a citation does not swallow the space between words', () => {
+  const stripped = sourceMarkers('<p>One [P1] two [P2] three.</p>', 'strip');
+  assert.equal(stripped, '<p>One two three.</p>');
+});

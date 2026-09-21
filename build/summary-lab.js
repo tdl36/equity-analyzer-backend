@@ -69,6 +69,10 @@ export function SummaryLab({
   var chosen = new Set(selected);
   var [busyKey, setBusyKey] = useState(''),
     [emailOptions, setEmailOptions] = useState(null);
+  var markerMode = showSrc ? 'inline' : 'strip';
+  var [labModels, setLabModels] = useState([]),
+    [model, setModel] = useState('');
+  var [defaultModelId, setDefaultModelId] = useState('');
   var audioInput = useRef(null),
     monitoring = useRef('');
   // With no experiment open the composer is the whole job, so it gets the page.
@@ -94,6 +98,8 @@ export function SummaryLab({
   async function refreshLists() {
     var [a, b] = await Promise.all([req('/sources'), req(archivedView ? '?archived=1' : '')]);
     setSources(a.sources);
+    setLabModels(a.models || []);
+    setDefaultModelId(a.defaultModel || '');
     setRuns(b.experiments);
   }
   useEffect(() => {
@@ -103,6 +109,8 @@ export function SummaryLab({
         var [a, b] = await Promise.all([req('/sources'), req(archivedView ? '?archived=1' : '')]);
         if (active) {
           setSources(a.sources);
+          setLabModels(a.models || []);
+          setDefaultModelId(a.defaultModel || '');
           setRuns(b.experiments);
         }
       } catch (e) {
@@ -156,6 +164,7 @@ export function SummaryLab({
       focus: labFocus,
       outputMode,
       sourceJobId,
+      model: model || undefined,
       apiKey: getKey()
     });
     setId(d.id);
@@ -429,7 +438,7 @@ export function SummaryLab({
           subject: `Summary Lab: ${row.title}`,
           title: row.title,
           section: 'summary_lab',
-          content: emailDocument(row.title, visibleSections.map(([k, l]) => [l, edits[k] || '']), renderHtml),
+          content: emailDocument(row.title, visibleSections.map(([k, l]) => [l, edits[k] || '']), renderHtml, markerMode),
           smtpConfig: {
             use_gmail: creds.useGmail,
             gmail_user: creds.gmailUser,
@@ -472,7 +481,7 @@ export function SummaryLab({
         subject: subject || `${sectionLabel(key)}: ${row.title}`,
         title: row.title,
         section: 'summary_lab',
-        content: emailDocument(row.title, [[sectionLabel(key), text]], renderHtml),
+        content: emailDocument(row.title, [[sectionLabel(key), text]], renderHtml, markerMode),
         smtpConfig: {
           use_gmail: creds.useGmail,
           gmail_user: creds.gmailUser,
@@ -560,7 +569,7 @@ export function SummaryLab({
   async function copy(all = false, key = 'brief') {
     try {
       var items = all ? visibleSections.map(([k, l]) => [l, (sharing ? edits[k] : state.sections?.[k]) || '']) : [[visibleSections.find(s => s[0] === key)?.[1] || '', (sharing ? edits[key] : state.sections?.[key]) || '']];
-      var html = emailDocument(row.title, items, renderHtml);
+      var html = emailDocument(row.title, items, renderHtml, markerMode);
       var doc = new DOMParser().parseFromString(html, 'text/html');
       doc.querySelectorAll('p,h1,h2,h3,li,blockquote').forEach(el => el.append('\n'));
       var plain = doc.body.textContent || '';
@@ -777,7 +786,23 @@ export function SummaryLab({
     className: "muted"
   }, "Skip the five English sections and generate only the Korean interpretation."))), /*#__PURE__*/React.createElement("p", {
     className: "muted"
-  }, "Charlie retrieves the available transcript through your connected Mac, saves it, then starts the improved analysis in the selected language.")), /*#__PURE__*/React.createElement("div", {
+  }, "Charlie retrieves the available transcript through your connected Mac, saves it, then starts the improved analysis in the selected language.")), labModels.length > 1 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", {
+    htmlFor: "lab-model"
+  }, "Model"), /*#__PURE__*/React.createElement("select", {
+    id: "lab-model",
+    value: model,
+    onChange: e => setModel(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "Default (", labModels.find(m => m.model === defaultModelId)?.label || 'server default', ")"), labModels.map(m => /*#__PURE__*/React.createElement("option", {
+    key: m.model,
+    value: m.model
+  }, m.label, m.note ? ` — ${m.note}` : ''))), /*#__PURE__*/React.createElement("p", {
+    className: "muted",
+    style: {
+      marginTop: 6
+    }
+  }, "Applies to this experiment only. The default is unchanged.")), /*#__PURE__*/React.createElement("div", {
     className: "field-pair"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
     htmlFor: "lab-title"
