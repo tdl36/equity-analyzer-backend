@@ -12835,11 +12835,13 @@ def _onepager_research(ticker, anthropic_key='', gemini_key=''):
 # claude-sonnet-4-20250514 was retired.
 PICKER_MODELS = [
     # Anthropic
-    {'key': 'opus-4-6',  'provider': 'anthropic', 'label': 'Opus 4.6',  'model': 'claude-opus-4-6',           'note': 'Current default'},
-    {'key': 'opus-4-7',  'provider': 'anthropic', 'label': 'Opus 4.7',  'model': 'claude-opus-4-7',           'note': 'Deeper reasoning'},
     {'key': 'opus-5',    'provider': 'anthropic', 'label': 'Opus 5',    'model': 'claude-opus-5',             'note': 'Latest Opus'},
+    {'key': 'fable-5-1', 'provider': 'anthropic', 'label': 'Fable 5.1', 'model': 'claude-fable-5-1',          'note': 'Demanding reasoning, 2x the price'},
+    {'key': 'opus-4-8',  'provider': 'anthropic', 'label': 'Opus 4.8',  'model': 'claude-opus-4-8',           'note': 'Legacy Opus'},
+    {'key': 'opus-4-7',  'provider': 'anthropic', 'label': 'Opus 4.7',  'model': 'claude-opus-4-7',           'note': 'Legacy Opus'},
+    {'key': 'opus-4-6',  'provider': 'anthropic', 'label': 'Opus 4.6',  'model': 'claude-opus-4-6',           'note': 'Current default'},
     {'key': 'sonnet-5',  'provider': 'anthropic', 'label': 'Sonnet 5',  'model': 'claude-sonnet-5',           'note': 'Faster, cheaper'},
-    {'key': 'fable-5',   'provider': 'anthropic', 'label': 'Fable 5',   'model': 'claude-fable-5',            'note': 'Most expressive'},
+    {'key': 'fable-5',   'provider': 'anthropic', 'label': 'Fable 5',   'model': 'claude-fable-5',            'note': 'Superseded by Fable 5.1'},
     {'key': 'haiku-4-5', 'provider': 'anthropic', 'label': 'Haiku 4.5', 'model': 'claude-haiku-4-5-20251001', 'note': 'Fastest'},
     # Google. gemini-pro-latest is an alias the provider repoints, so it does
     # not go stale the way a pinned dated id does.
@@ -12917,14 +12919,19 @@ def resolve_picker_model(model_key, default_key=PICKER_DEFAULT_MODEL):
 # change is one edit, and deliberately explicit: an unknown model prices at 0
 # rather than guessing, which shows up as a gap rather than a wrong number.
 LLM_PRICES = {
-    'claude-opus-4-6':            (15.0, 75.0),
-    'claude-opus-4-7':            (15.0, 75.0),
-    'claude-opus-5':              (15.0, 75.0),
-    'claude-sonnet-5':            (3.0, 15.0),
+    # Anthropic rates verified against platform.claude.com/docs/en/about-claude/pricing
+    # on 2026-09-20. The Opus rows previously carried (15, 75), which is the
+    # retired Opus 4/4.1 tier, so every Opus cost Charlie reported was 3x high.
+    'claude-opus-5':              (5.0, 25.0),
+    'claude-opus-4-8':            (5.0, 25.0),
+    'claude-opus-4-7':            (5.0, 25.0),
+    'claude-opus-4-6':            (5.0, 25.0),
+    'claude-fable-5-1':           (10.0, 50.0),
+    'claude-fable-5':             (10.0, 50.0),
+    'claude-sonnet-5':            (2.0, 10.0),
     'claude-sonnet-4-6':          (3.0, 15.0),
     'claude-sonnet-4-5-20250929': (3.0, 15.0),
-    'claude-fable-5':             (3.0, 15.0),
-    'claude-haiku-4-5-20251001':  (0.80, 4.0),
+    'claude-haiku-4-5-20251001':  (1.0, 5.0),
     'gemini-pro-latest':          (1.25, 10.0),
     'gemini-3.1-pro-preview':     (1.25, 10.0),
     'gemini-2.5-pro':             (1.25, 10.0),
