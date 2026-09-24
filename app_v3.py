@@ -1683,15 +1683,38 @@ def _generate_sections_concurrently(job_id, specs, label_prefix='', max_workers=
     return results
 
 
-def _should_fan_out_summary_lab(origin):
-    """Only audio detected in the iCloud SUMMARIES folder fans out to Summary Lab.
+SUMMARY_LAB_FANOUT_MARKER = '**'
 
-    Summary Lab's own audio intake posts to the same endpoint and then starts
-    an experiment itself with the user's title, emphasis and output language.
-    Fanning out for that caller would run the identical paid multi-pass source
-    review twice over one transcript, so unidentified callers do not fan out.
+
+def _lab_fanout_marker(filename):
+    """Split a leading ** off a filename: (was it there, name without it).
+
+    The marker is routing, not part of the note's name, so it is stripped
+    before the title and the ticker are read. That matters concretely: the
+    ticker pattern accepts a leading space, dash or underscore but not an
+    asterisk, so a kept marker would silently disable thesis injection.
     """
-    return (origin or '').strip().lower() == SUMMARIES_FOLDER_ORIGIN
+    name = (filename or '').lstrip()
+    if name.startswith(SUMMARY_LAB_FANOUT_MARKER):
+        return True, name[len(SUMMARY_LAB_FANOUT_MARKER):].lstrip()
+    return False, filename or ''
+
+
+def _should_fan_out_summary_lab(origin, marked=False):
+    """Fan out only for a SUMMARIES recording whose name opts in with **.
+
+    Two separate reasons to decline. Summary Lab's own audio intake posts to
+    this endpoint and then starts an experiment itself, so fanning out for that
+    caller would run the identical paid multi-pass review twice over one
+    transcript; unidentified callers never fan out.
+
+    And the Lab costs roughly seven times the original note per meeting, which
+    is worth it when a recording deserves the second read and wasteful when it
+    does not. Fanning out every file made that choice for the user on every
+    file. The marker gives the choice back at the point where it is obvious --
+    naming the recording.
+    """
+    return bool(marked) and (origin or '').strip().lower() == SUMMARIES_FOLDER_ORIGIN
 
 
 # Ported from the Improved pipeline. The original Summary prompt already
@@ -8372,6 +8395,10 @@ OUTPUT FORMAT: markdown만. HTML 금지. ```fence 금지.
 
 
 def _run_auto_process_audio(job_id, file_content, filename, mime_type, gemini_api_key, anthropic_api_key, detail_level, origin=''):
+    # Routing, not a name: the fan-out decision is read from the marker here
+    # and the filename continues without it, so the title and the ticker are
+    # unaffected by opting a recording in.
+    lab_requested, filename = _lab_fanout_marker(filename)
     """Background: transcribe audio, generate summary, save to DB, create alert."""
     try:
         # Step 1: Transcribe (reuse existing function)
@@ -8838,7 +8865,7 @@ OUTPUT FORMAT: raw HTML only. No markdown. No code fences."""
 
         # From the argument, not the job dict: the dict is rewritten during
         # transcription and anything stored on it at upload time can vanish.
-        fan_out_lab = _should_fan_out_summary_lab(origin)
+        fan_out_lab = _should_fan_out_summary_lab(origin, lab_requested)
         _transcription_jobs[job_id]['status'] = 'complete'
         _transcription_jobs[job_id]['summaryId'] = summary_id
         # 'pending' keeps the folder watcher from reporting that Summary Lab

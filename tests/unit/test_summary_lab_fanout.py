@@ -1,6 +1,7 @@
 """Guard the SUMMARIES audio fan-out against duplicate and lost paid work."""
 import ast
 import os
+import re
 import time
 import unittest
 from contextlib import contextmanager
@@ -33,7 +34,8 @@ def constant(name):
 
 class FanOutOriginTests(unittest.TestCase):
     def setUp(self):
-        self.namespace = {'SUMMARIES_FOLDER_ORIGIN': constant('SUMMARIES_FOLDER_ORIGIN')}
+        self.namespace = {'SUMMARIES_FOLDER_ORIGIN': constant('SUMMARIES_FOLDER_ORIGIN'),
+                          'SUMMARY_LAB_FANOUT_MARKER': constant('SUMMARY_LAB_FANOUT_MARKER')}
         self.should_fan_out = load('_should_fan_out_summary_lab', self.namespace)
 
     def test_the_folder_watcher_sends_the_marker_the_backend_expects(self):
@@ -41,15 +43,22 @@ class FanOutOriginTests(unittest.TestCase):
         agent = Path('charlie_local_agent.py').read_text()
         self.assertIn(f"'origin': '{marker}'", agent)
 
-    def test_only_summaries_folder_audio_fans_out(self):
-        self.assertTrue(self.should_fan_out('summaries-folder'))
-        self.assertTrue(self.should_fan_out('  SUMMARIES-Folder '))
+    def test_a_marked_summaries_recording_fans_out(self):
+        self.assertTrue(self.should_fan_out('summaries-folder', True))
+        self.assertTrue(self.should_fan_out('  SUMMARIES-Folder ', True))
+
+    def test_an_unmarked_recording_does_not(self):
+        # The Lab costs about seven times the original note. Fanning out every
+        # file made that choice for the user on every file.
+        self.assertFalse(self.should_fan_out('summaries-folder', False))
+        self.assertFalse(self.should_fan_out('summaries-folder'))
 
     def test_summary_lab_and_unidentified_uploads_do_not_fan_out(self):
         # Summary Lab's own audio intake starts an experiment itself; fanning
-        # out here would run the same multi-pass review twice.
+        # out here would run the same multi-pass review twice. A marker cannot
+        # override that -- both conditions must hold.
         for origin in ('summary-lab', '', None, 'unknown-caller'):
-            self.assertFalse(self.should_fan_out(origin), origin)
+            self.assertFalse(self.should_fan_out(origin, True), origin)
 
 
 class CompletionOrderTests(unittest.TestCase):
@@ -355,3 +364,42 @@ class JobDictLifetimeTests(unittest.TestCase):
         wrapper = next(n for n in TREE.body
                        if isinstance(n, ast.FunctionDef) and n.name == '_run_auto_process_audio_path')
         self.assertIn('origin', [a.arg for a in wrapper.args.args])
+
+
+class MarkerTests(unittest.TestCase):
+    """** opts a recording into the Lab. It is routing, not part of the name."""
+
+    def setUp(self):
+        namespace = {'SUMMARY_LAB_FANOUT_MARKER': constant('SUMMARY_LAB_FANOUT_MARKER')}
+        self.marker = load('_lab_fanout_marker', namespace)
+
+    def test_a_marked_name_is_recognised_and_the_marker_removed(self):
+        self.assertEqual(self.marker('**MCK Mgmt Meeting - 091626.m4a'),
+                         (True, 'MCK Mgmt Meeting - 091626.m4a'))
+
+    def test_the_ticker_survives_the_marker(self):
+        # The ticker pattern allows a leading space, dash or underscore but not
+        # an asterisk, so a kept marker would silently disable thesis injection.
+        _, cleaned = self.marker('**MCK Mgmt Meeting.m4a')
+        self.assertTrue(re.match(r'^[\s\-_]*([A-Z]{2,5})\b', cleaned))
+
+    def test_leading_and_trailing_space_around_the_marker_is_tolerated(self):
+        self.assertEqual(self.marker('  **Graham convo.m4a'), (True, 'Graham convo.m4a'))
+        self.assertEqual(self.marker('** Don chat.m4a'), (True, 'Don chat.m4a'))
+
+    def test_an_unmarked_name_is_returned_untouched(self):
+        self.assertEqual(self.marker('MCK Mgmt Meeting.m4a'), (False, 'MCK Mgmt Meeting.m4a'))
+
+    def test_one_asterisk_is_not_the_marker(self):
+        self.assertEqual(self.marker('*single star.m4a'), (False, '*single star.m4a'))
+
+    def test_empty_and_missing_names_do_not_raise(self):
+        self.assertEqual(self.marker(''), (False, ''))
+        self.assertEqual(self.marker(None), (False, ''))
+
+    def test_the_audio_path_strips_before_reading_the_title(self):
+        # The title comes from the filename, so the marker has to be gone by then.
+        body = SOURCE[SOURCE.index('def _run_auto_process_audio('):]
+        body = body[:body.index('fan_out_lab')]
+        self.assertLess(body.index('_lab_fanout_marker(filename)'),
+                        body.index("title = os.path.splitext(filename)[0]"))
