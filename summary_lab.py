@@ -11,6 +11,12 @@ from summary_comparison import split_text
 
 VERSION = 'source-reviewed-lab-v4'
 MODEL = os.environ.get('CHARLIE_SUMMARY_LAB_MODEL', 'claude-opus-4-6')
+# Checking a draft against one source part is verification, not composition: it
+# reads a section and a passage and reports discrepancies, and its findings feed
+# a revision rather than reaching the reader. Those calls are 47% of a run, so
+# they go to a cheaper model. Deliberately a non-thinking one -- these budgets
+# were sized for a model that answers rather than deliberates.
+CHECK_MODEL = os.environ.get('CHARLIE_SUMMARY_LAB_CHECK_MODEL', 'claude-sonnet-4-5-20250929')
 
 # max_tokens is a hard limit on thinking plus response text, and every model
 # from Opus 4.7 on thinks adaptively at the default high effort. These budgets
@@ -233,8 +239,9 @@ def validate_review(review, body):
     return review
 
 
-def generate(source, state, ask, save, focus=''):
+def generate(source, state, ask, save, focus='', check=None):
     """Checkpoint every part, reduction, draft and check. No total-source cutoff."""
+    check = check or ask
     parts = split_text(source, 20000)
     state.setdefault('parts', {})
     state.setdefault('sections', {})
@@ -308,7 +315,7 @@ SOURCE PART P{i+1}:\n{body}'''
             state.setdefault('partChecks', {})
             if checkkey not in state['partChecks']:
                 checkpoint(f'Checking {section} against original · {i+1} of {len(parts)}')
-                state['partChecks'][checkkey] = ask(RULES, f'''Review the draft against ORIGINAL part P{i+1}.
+                state['partChecks'][checkkey] = check(RULES, f'''Review the draft against ORIGINAL part P{i+1}.
 Check numbers, periods, attribution, quotation accuracy and unsupported interpretation.
 For takeaways/meeting also flag material omissions. A claim absent here may be supported by
 another part: label it not assessable here, not false. Do not demand exhaustive coverage in Brief.
@@ -438,16 +445,23 @@ def create_blueprint(get_db, render_docx=None, safe_filename=None, record_usage=
                             WHERE id=%s RETURNING cancel_requested""", (json.dumps(value), jid))
                         stopped = cur.fetchone()
                     if stopped and stopped['cancel_requested']: raise Cancelled()
-                def on_usage(result, attempt):
+                def usage_for(step):
                     # Every Lab call is paid and none of them were ever recorded,
-                    # so no experiment had a cost. Never let this fail the run.
-                    if record_usage:
-                        record_usage('summary_lab', result, attempt=attempt,
-                                     detail={'experiment': jid, 'title': row.get('title', '')[:120]})
+                    # so no experiment had a cost. The step label turns the ledger
+                    # into a breakdown: which stage of a run spends the money.
+                    def record(result, attempt):
+                        if record_usage:
+                            record_usage('summary_lab', result, attempt=attempt,
+                                         detail={'experiment': jid, 'step': step,
+                                                 'title': row.get('title', '')[:120]})
+                    return record
                 def ask(system, prompt, tokens):
                     return ask_with_recovery(key, row['model'], system, prompt, tokens, state, save,
-                                             on_usage=on_usage)
-                generate(row['source'], state, ask, save, row['focus'])
+                                             on_usage=usage_for('generate'))
+                def check(system, prompt, tokens):
+                    return ask_with_recovery(key, CHECK_MODEL, system, prompt, tokens, state, save,
+                                             on_usage=usage_for('check'))
+                generate(row['source'], state, ask, save, row['focus'], check=check)
                 with get_db(commit=True) as (_, cur):
                     cur.execute("UPDATE summary_lab_experiments SET state=%s::jsonb,status='complete',updated_at=NOW() WHERE id=%s", (json.dumps(state),jid))
                     if row.get('automatic'):
