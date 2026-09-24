@@ -24,3 +24,17 @@ class IdentityTests(unittest.TestCase):
         self.assertFalse(clinical_context('Phase II drilling results'))
         self.assertFalse(clinical_context('Phase 3 positive results'))
         self.assertTrue(clinical_context('Phase 3 study met primary endpoint'))
+
+    def test_phase_2b_3_trial_name_and_new_asset_suffix_deduplicate(self):
+        a=self.signal('Merck announces positive Phase 2b/3 BRUNELLO study results for intismeran',ticker='MRK')
+        b=self.signal('BRUNELLO Phase 2b/3 trial of intismeran met its primary endpoint',ticker='MRK')
+        row={'id':'first','input':a}
+        self.assertEqual(possible_duplicate(b,[row]),row)
+
+    def test_similar_nonclinical_headlines_only_match_same_day_and_category(self):
+        a=dict(title='ABBV cuts full-year earnings guidance to $10.50 after quarterly results',ticker='ABBV',publishedAt=1789041600,category='guidance')
+        b=dict(title='Quarterly results: ABBV lowers annual earnings guidance to $10.50',ticker='ABBV',publishedAt=1789042600,category='guidance')
+        row={'id':'first','input':a}
+        self.assertEqual(possible_duplicate(b,[row]),row)
+        self.assertIsNone(possible_duplicate({**b,'category':'legal'},[row]))
+        self.assertIsNone(possible_duplicate({**b,'publishedAt':1789128000},[row]))

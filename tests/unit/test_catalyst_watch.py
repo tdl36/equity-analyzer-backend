@@ -13,9 +13,30 @@ class CatalystWatchTests(unittest.TestCase):
     def test_syndication_deduplicates_by_ticker_headline_and_day(self):
         a=candidate('ABBV',self.a,900,1100);b=candidate('ABBV',{**self.a,'url':'https://another.com/same','datetime':1010},900,1100)
         self.assertEqual(a['id'],b['id'])
-    def test_guidance_regulatory_and_merger_signals(self):
-        for headline,kind in [('AbbVie raises guidance','guidance'),('AbbVie receives FDA approval','regulatory'),('AbbVie signs definitive agreement','corporate')]:
+    def test_financial_clinical_regulatory_and_merger_signals(self):
+        for headline,kind in [('AbbVie raises full-year earnings guidance','guidance'),('AbbVie receives FDA approval','regulatory'),('AbbVie signs definitive agreement','corporate')]:
             self.assertEqual(candidate('ABBV',{**self.a,'headline':headline},900,1100)['category'],kind)
+
+    def test_broader_material_event_taxonomy(self):
+        cases=[
+            ('ABBV authorizes $5 billion share repurchase','capital_allocation',False),
+            ('ABBV appoints new Chief Financial Officer','leadership',False),
+            ('ABBV settles lawsuit claims for $2 billion','legal',False),
+            ('ABBV launches new oncology product','commercial',True),
+            ('ABBV reports ransomware data breach','operational',False),
+            ('ABBV announces workforce reduction','workforce',True),
+            ('Activist investor files 13D in ABBV','ownership',True),
+        ]
+        for headline,kind,review in cases:
+            with self.subTest(headline=headline):
+                result=candidate('ABBV',{**self.a,'headline':headline},900,1100)
+                self.assertEqual(result['category'],kind)
+                self.assertEqual(result['requiresReview'],review)
+
+    def test_routine_calendar_and_plain_dividend_news_are_not_triggers(self):
+        for headline in ('ABBV announces earnings date','ABBV will present at healthcare conference','ABBV declares quarterly dividend'):
+            with self.subTest(headline=headline):
+                self.assertIsNone(candidate('ABBV',{**self.a,'headline':headline},900,1100))
 
 class WatchDispatchTests(unittest.TestCase):
     def setUp(self):
@@ -80,6 +101,26 @@ class WatchDispatchTests(unittest.TestCase):
         self.assertEqual(len(held),1)
         self.assertTrue(held[0]['result']['commandId'])
         self.assertEqual(self.state['used'],1)
+
+    def test_phase_2b_3_brunello_headlines_hold_second_dispatch(self):
+        self.state['dailyLimit']=10
+        first='Merck announces positive Phase 2b/3 BRUNELLO study results for intismeran'
+        second='BRUNELLO Phase 2b/3 trial of intismeran met its primary endpoint, Merck says'
+        self.tick([{**self.article,'headline':first,'related':'ABBV'}])
+        self.state['lastCheck']=0
+        self.tick([{**self.article,'headline':second,'related':'ABBV','datetime':self.now-2}])
+        self.assertEqual(len([j for j in self.jobs.values() if j['stage']=='collection_control']),1)
+        self.assertEqual(len([j for j in self.jobs.values() if j.get('result',{}).get('duplicateReview')]),1)
+
+    def test_differently_worded_guidance_headlines_hold_second_dispatch(self):
+        self.state['dailyLimit']=10
+        first='ABBV cuts full-year earnings guidance to $10.50 after quarterly results'
+        second='Quarterly results: ABBV lowers annual earnings guidance to $10.50'
+        self.tick([{**self.article,'headline':first}])
+        self.state['lastCheck']=0
+        self.tick([{**self.article,'headline':second,'datetime':self.now-2}])
+        self.assertEqual(len([j for j in self.jobs.values() if j['stage']=='collection_control']),1)
+        self.assertEqual(len([j for j in self.jobs.values() if j.get('result',{}).get('duplicateReview')]),1)
 
     def test_mining_results_do_not_create_clinical_assignment(self):
         self.tick([{**self.article,'headline':'Myriad Uranium Announces Further Phase II Drill Results from Copper Mountain'}])

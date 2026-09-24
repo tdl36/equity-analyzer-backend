@@ -1,17 +1,25 @@
 # Charlie AI engineering handoff
 
-Updated: September 20, 2026
+Updated: September 24, 2026
 
 ## Start here
 
-Charlie production is currently **T101** at commit **`b8661c92f6911c84471412fcc8b8b887922704f6`** on `main`.
+Charlie is releasing **T107** (`2026-09-24T107`) with the broader catalyst-watch
+taxonomy and duplicate protection described below. Use `git log -1` for the exact release
+commit after deployment.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T101`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T107`
 - Backend health: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`
 - Branch: `main`
-- Backend health was verified on September 20 and reported the T101 commit above.
-- The Mac launch agent `com.charlie.local-agent` was restarted during T82 because `charlie_local_agent.py` changed. T83 is frontend-only and did not require another restart.
+- Before T107, backend health reported `d7ddb20873d3b2e13ed38203789aa1292bca1c3d`
+  and the hosted `/version` endpoint reported `2026-09-20T106`. Verify both after deploy.
+- The Mac launch agent `com.charlie.local-agent` was last known to have been restarted after its most recent code change. None of the post-T106 commits changed `charlie_local_agent.py`.
+
+This handoff was rechecked for the Claude Code transition on September 24. Claude Code
+`2.1.220` is installed on this Mac. No repository export or copy is needed: Claude Code
+should open this exact checkout so it sees the Git history, current source, local handoff,
+and protected runtime state together.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files. Do not clean the repository.
 
@@ -35,6 +43,76 @@ The design standard is institutional: concise hierarchy, readable outputs, defen
 | Production deployment | Push to `main` triggers Render backend deployment. Cloudflare frontend deployment is explicit through Wrangler. |
 
 ## Latest production changes
+
+### T107 — broader catalyst discovery and safer duplicate handling
+
+`catalyst_watch.py` now detects eleven bounded event families instead of four: clinical,
+regulatory, financial results/guidance, M&A and strategic transactions, capital allocation,
+leadership, legal, commercial, operational, workforce, and activist/ownership developments.
+Routine earnings-date notices, conference appearances, ordinary dividends, previews and
+rumours remain excluded. Lower-confidence commercial, workforce and ownership matches are
+visible but wait for review rather than launching collection automatically.
+
+Clinical identity now understands combined phases such as `2b/3`, recognizes a broader but
+bounded set of asset suffixes, and can anchor on trial names wherever they appear. This
+specifically prevents the two differently worded MRK BRUNELLO headlines observed in
+production from launching two managed research requests. Non-clinical headlines also get
+a conservative same-company, same-day, same-category similarity check. A match pauses the
+second request for review; it never silently merges evidence or declares the events equal.
+
+Validation: 762 backend unit tests and 56 frontend tests passed; touched Python compiled;
+the production frontend build completed. The backend suite still prints the already-known
+mock Summary Lab advisory-lock thread exceptions after those tests release their fake DB;
+the suite passed. No paid research was launched for validation.
+
+### Post-T106 — Summary Lab quality, cost accounting, and transcription evaluation
+
+Commits: `7d321c4` through `d7ddb20`. These are in GitHub `main`; the backend is live at
+`d7ddb20`. The frontend remains T106 because the only frontend-bearing commit in this
+series (`e76115d`) shipped with the T106 markers and every later change is backend,
+prompt, benchmark, or test code.
+
+**Summary Lab model choice and cost visibility.** The composer can select from the
+host-approved Anthropic models, while the existing default remains unchanged. Every Lab
+model call now records provider, model and token use. Usage is recorded as soon as a
+response returns, including responses that later fail validation or exceed the step's
+budget; a failed paid call is therefore no longer missing from the ledger. Source markers
+follow the reader's display preference when emailed: hidden markers are removed, shown
+markers become restrained superscripts rather than raw `[P1]` text.
+
+**Opus 5 token budgets.** Adaptive thinking counts against `max_tokens`. Two real Opus 5
+runs spent their allowance thinking and returned no usable section. Each Lab step now has
+a named budget with sufficient headroom, and an incomplete response reports the specific
+limit. This changes the ceiling, not the default model, and does not itself make a run use
+the full allowance.
+
+**Analyst voice and quotation discipline.** Lab v4 treats a takeaway as a conclusion,
+not an excerpt. Direct quotation is reserved for wording that is itself evidence: a
+commitment, refusal, hedge, non-answer, qualified figure, or characterization that loses
+meaning when paraphrased. Transcript repairs that context can settle are made silently
+and logged in the review record instead of repeatedly narrated in the note. Genuine
+ambiguity appears once where it changes the conclusion. This restraint does not suppress
+analysis: a material inference is stated clearly and labeled as an inference.
+
+**Transcription is measured before it is changed.** `scripts/compare_transcription.py`
+is a read-only-by-default harness that compares role separation and fidelity, including
+figures, date-like digit runs, disfluencies, and named-entity retention. The tested
+`gpt-4o-transcribe-diarize` candidate lost material entities and meaning on the MCK excerpt
+and rejects audio longer than roughly 23 minutes in one request. The temporary OpenAI
+fallback was therefore removed. Production remains on the Gemini chain:
+`gemini-2.5-flash`, then `gemini-2.5-flash-lite`. Audio usage is now priced and recorded.
+Do not treat the comparison harness as a production transcription path.
+
+**Proof boundary.** Prompt behavior is covered by focused tests but Lab v4 has not yet
+been accepted on a paid real-source experiment. Do not launch one merely for engineering
+QA. The next user-driven experiment should check quotation density, transcript-repair
+noise, analyst judgment, entity preservation, section completeness, and the cost ledger.
+
+Validation on September 22: 60 focused backend tests passed, 56 frontend tests passed,
+and `app_v3.py`, `summary_lab.py`, and `scripts/compare_transcription.py` compiled. Two
+mocked Summary Lab worker threads printed advisory-lock `fetchone()` exceptions after
+their tests released mocked database state; the unittest process still passed. Treat that
+test-fixture noise as worth cleaning up, not as proof of a production worker failure.
 
 ### T105–T106 — per-section actions, and one doctrine for both pipelines
 
@@ -868,7 +946,14 @@ Do not invent observed URLs, counts, downloads, or completion. Never pass provid
 
 1. **Run a real dual-summary audio comparison.** Add one new representative audio file to the root `SUMMARIES` folder and confirm that original Summary and `Auto from SUMMARIES` Lab outputs both complete, are readable, and can be emailed/saved. This incurs real model usage and should be user-driven, not launched merely for QA. T82 changed the code paths this exercises, so it is still the live end-to-end proof: confirm exactly one Lab experiment per recording, that the Telegram message reports the correct Lab state, and that the file moves to `SUMMARIES/Processed` once.
 2. **Evaluate Summary Lab quality across several source types.** Compare earnings calls, investor meetings, noisy audio, long YouTube transcripts, and non-earnings documents. Capture which sections are materially better or worse than original Summary.
-3. **Confirm the improved original, then retire Improved.** Decided in T94: the original Summary keeps its fidelity apparatus and has gained Improved's evidence discipline. Generate a summary on a real source, confirm the assessment no longer scores credibility or infers psychology and that nothing else regressed, then remove the `summary_comparison` workflow, its UI and its automatic fan-out. Saved notes stay. Superseded note: The user's stated goal is that Improved eventually replaces the original Summary, so Improved must be written from the original source in every section — as of T93 it is.  After real testing, selectively promote proven Lab prompt/format improvements into original Summary or retain both permanently. T87–T89 moved the Improved pipeline toward the Original's strengths (topic tags, a Q&A log, enforced quoting quotas) while leaving the original Summary prompts untouched. Two defects found in the Original during that work are still unfixed and argue against promoting it as-is: it reported an invented "8.5/10" credibility score, and it asserted an EPS unit for FY27 guidance that the transcript does not support while dropping the 12–14% figure that contradicts it.
+3. **Validate Lab v4 and decide the long-term pipeline shape.** The original and Lab now
+share one research doctrine, including the anchored 1–5 credibility scale and the ban on
+unsupported interior-state claims. Lab v4 adds the newer quotation and transcript-repair
+discipline. On the next user-driven real source, compare Original and Lab for factual
+coverage, useful judgment, quotation density, transcript-repair noise, speaker attribution,
+date handling, and PM readability. Then decide whether to promote specific proven Lab
+rules into Original, retain both pipelines, or retire the older `summary_comparison`
+workflow. Do not remove saved notes or merge workflows before the user makes that choice.
 4. **Validate catalyst synthesis on more real folders.** Include single transcript, transcript plus presentation, and multi-broker event folders; score concision, factual attribution, analyst voice, unresolved issues, and PM usefulness.
 5. **Prove a complete managed AlphaSense assignment.** Demonstrate browser discovery, source restrictions, original download, iCloud handoff, recap, thesis proposal, and recovery for a real user-selected ticker without overstating unattended coverage.
 6. **Improve real-source quality benchmarks.** Current automated checks are useful regressions, not expert certification. Add frozen real-source packs and investor-scored outputs without committing licensed source bodies.
@@ -906,9 +991,9 @@ Use `py_compile` for every touched Python module. Do not start paid research, se
 
 Current release markers must stay synchronized:
 
-- `worker.js`: `2026-09-20T101`
-- `service-worker.js`: `20260920-101`
-- `src/app.jsx`: `2026-09-20T101`
+- `worker.js`: `2026-09-24T107`
+- `service-worker.js`: `20260924-107`
+- `src/app.jsx`: `2026-09-24T107`
 
 After an application change:
 
@@ -931,7 +1016,9 @@ Render may return transient 502 responses while rolling forward. Wait for `/heal
 
 ## Repository state warning
 
-At this handoff, `main` is committed through `b8661c9`, but the checkout contains unrelated local/runtime state. Preserve it. In particular, do not blanket-stage or delete:
+At this handoff, T107 is the intended release. The checkout also contains unrelated
+local/runtime state. Preserve it. In particular, do not blanket-stage, stash, restore,
+or delete:
 
 - `.claude/settings.local.json`
 - `.omc/**`
@@ -945,7 +1032,7 @@ Always inspect `git status --short`, stage an explicit allowlist, and review `gi
 
 ## Suggested first Claude Code instruction
 
-> Continue Charlie from production commit `b8661c9` and release T101. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, or broadly stage the repository. First audit the latest dual Summary/Summary Lab implementation and report any correctness gaps without launching paid processing. Then continue the highest-priority assigned item, run only the documented safe tests, commit only intended files, update `docs/AI_HANDOFF.md`, and deploy only when the change is complete and verified.
+> Continue Charlie from release T107. Read `AGENTS.md`, `CLAUDE.md`, and `docs/AI_HANDOFF.md` before acting, and use `git log -1` for the exact release commit. Preserve every unrelated dirty or untracked file; do not reset, clean, stash, restore broadly, or stage by directory. T107 broadens catalyst discovery to eleven event families and holds likely duplicate headlines for review. The post-T106 backend changes cover Summary Lab model/cost tracking, Opus 5 token headroom, quotation and transcript-repair discipline, transcription benchmarking, and failed-call usage accounting. Do not replace Gemini transcription with the rejected OpenAI diarization candidate. First inspect `git status --short` and recent history without changing anything, then tell me what you believe is live, what remains unproven, and the exact next item you recommend. Do not launch a paid model run, send email, approve research, modify iCloud originals, or deploy merely for validation. Once we agree on the task, implement it end to end, use only the safe test commands in `AGENTS.md`, stage an explicit file allowlist, update this handoff, and deploy only when the change is complete and no audio job is active.
 
 ## Relevant deeper documentation
 

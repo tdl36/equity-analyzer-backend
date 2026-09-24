@@ -13,11 +13,24 @@ from catalyst_identity import clinical_context, possible_duplicate
 
 KEY='catalyst_watch_v1'
 STAGE='catalyst_signal'
-RULES={
- 'clinical':r'\b(phase [123i]+|clinical trial|primary endpoint|topline|top-line|readout|read-out)\b',
- 'regulatory':r'\b(fda approv|fda reject|complete response letter|clinical hold|recall)',
- 'guidance':r'\b(raises? guidance|cuts? guidance|lowers? guidance|withdraws? guidance|earnings results|quarterly results)\b',
- 'corporate':r'\b(acquires?|acquisition|merger agreement|definitive agreement|divestiture)\b'}
+# Ordered from the most specific signal to the broadest. These are discovery
+# rules, not materiality conclusions: every hit still has to be verified against
+# original sources by the managed collection workflow.
+RULES=(
+ ('clinical', r'\b(phase\s+(?:[123]|i{1,3})(?:[ab])?(?:\s*[/\-]\s*(?:[123]|i{1,3})(?:[ab])?)?|clinical trial|primary endpoint|topline|top-line|readout|read-out)\b'),
+ ('regulatory', r'\b(fda\s+(?:approv(?:al|e[ds]?)?|reject(?:ion|s|ed)?|clear(?:ance|s|ed)?|accept(?:ance|s|ed)?)|complete response letter|clinical hold|regulatory approval|marketing authori[sz]ation|priority review|breakthrough therapy|recall)\b'),
+ ('guidance', r'\b(raises?|increases?|cuts?|lowers?|reduces?|withdraws?|suspends?)\s+(?:full[- ]year\s+|annual\s+)?(?:earnings\s+|revenue\s+|profit\s+)?guidance\b|\b(earnings results|quarterly results|preliminary results|preannounces?|profit warning)\b'),
+ ('corporate', r'\b(acquires?|acquisition|merger agreement|definitive agreement|takeover offer|divestiture|spin[- ]?off|split[- ]?off|strategic alternatives|strategic review|goes private|bankruptcy filing)\b'),
+ ('capital_allocation', r'\b(share repurchase|stock repurchase|buyback authori[sz]ation|special dividend|dividend (?:increase|cut|reduction|suspension)|debt tender|debt refinancing|capital return)\b'),
+ ('leadership', r'\b(appoints?|names?|hires?)\s+(?:new\s+)?(?:chief executive officer|chief financial officer|ceo|cfo)\b|\b(?:chief executive officer|chief financial officer|ceo|cfo)\s+(?:resigns?|retires?|steps down|departure|terminated|dies)\b'),
+ ('legal', r'\b(agrees? to (?:pay|settle)|settlement agreement|settles? (?:lawsuit|litigation|claims)|indictment|subpoena|doj investigation|antitrust (?:ruling|lawsuit|challenge)|court (?:rules|blocks|approves)|patent (?:ruling|decision|loss|win))\b'),
+ ('commercial', r'\b(launches?|commercial launch|contract award|wins? (?:a )?(?:major |multi[- ]year |\$[\d.]+)|reimbursement|coverage decision|strategic partnership|licen[cs]ing agreement)\b'),
+ ('operational', r'\b(cyberattack|cyber attack|data breach|ransomware|plant (?:closure|shutdown)|factory (?:closure|shutdown)|production halt|supply disruption|manufacturing disruption|fatal accident|product shortage)\b'),
+ ('workforce', r'\b(layoffs?|job cuts?|workforce reduction|restructuring charge|restructuring plan|reduces? workforce)\b'),
+ ('ownership', r'\b(activist stake|activist investor|schedule 13d|files? 13d|proxy fight|board nominations?|stake of (?:more than|over|at least) \d+(?:\.\d+)?%)\b'),
+)
+
+REVIEW_CATEGORIES={'commercial','ownership','workforce'}
 
 
 def candidate(ticker,article,after,now):
@@ -27,8 +40,8 @@ def candidate(ticker,article,after,now):
     parsed=urlparse(url)
     if parsed.scheme!='https' or not parsed.hostname or parsed.username or parsed.password:return None
     # Scheduled presentations/rumours alone are not result announcements.
-    if re.search(r'\b(will present|to present|will announce|to announce|preview|rumou?r|could acquire|may acquire)\b',title,re.I):return None
-    category=next((k for k,p in RULES.items() if re.search(p,title,re.I)),None)
+    if re.search(r'\b(will present|to present|will announce|to announce|preview|rumou?r|could acquire|may acquire|conference participation|fireside chat|earnings date)\b',title,re.I):return None
+    category=next((k for k,p in RULES if re.search(p,title,re.I)),None)
     if not category:return None
     if category=='clinical' and not clinical_context(title):return None
     if category=='clinical' and not re.search(r'\b(results?|met|meets|failed|fails|positive|negative|readout|read-out|topline|top-line)\b',title,re.I):return None
@@ -38,8 +51,15 @@ def candidate(ticker,article,after,now):
     identity=hashlib.sha256((ticker+'|'+datetime.fromtimestamp(ts,timezone.utc).date().isoformat()+'|'+re.sub(r'\W+',' ',title.lower()).strip()).encode()).hexdigest()
     third_party_purchase=category=='corporate' and bool(re.search(r'\b(acquires?|purchases?|buys?)\b.*\b(gpus?|compute cluster|servers?|hardware|equipment)\b',title,re.I))
     issuer_explicit=bool(re.match(r'^'+re.escape(ticker)+r'\b',title.strip(),re.I))
-    requires_review=third_party_purchase or (category=='corporate' and not issuer_explicit)
-    triage='Hardware purchase may be a customer event, not a material issuer transaction.' if third_party_purchase else 'Verify the transaction parties and issuer relevance before automatic collection.' if requires_review else 'Potential catalyst; original-source verification still required.'
+    requires_review=third_party_purchase or (category=='corporate' and not issuer_explicit) or category in REVIEW_CATEGORIES
+    if third_party_purchase:
+        triage='Hardware purchase may be a customer event, not a material issuer transaction.'
+    elif category in REVIEW_CATEGORIES:
+        triage='The headline may be relevant but does not establish scale or investment significance. Verify issuer relevance and materiality before collection.'
+    elif requires_review:
+        triage='Verify the transaction parties and issuer relevance before automatic collection.'
+    else:
+        triage='Potential catalyst; original-source verification still required.'
     return {'id':identity,'ticker':ticker,'title':title[:500],'url':url[:2000],'publishedAt':ts,'category':category,'requiresReview':requires_review,'triageReason':triage,
             'reason':f'Potential {category} catalyst: {title[:500]}. Rule-based news signal; confirm company, event and materiality in primary sources.'}
 
@@ -89,7 +109,7 @@ class CatalystWatch:
                 self.save(cur,state)
             cur.execute('SELECT id,ticker,status,input,result,created_at FROM mp_jobs WHERE stage=%s ORDER BY created_at DESC LIMIT 50',(STAGE,));events=[dict(r) for r in cur.fetchall()]
             cur.execute("SELECT value FROM app_settings WHERE key='finnhub_api_key'");key=cur.fetchone()
-        response=jsonify(config=state,events=events,hasNewsKey=bool(key and key['value']),scope='One company-news lookup per minute while the Mac agent is connected; a full sweep takes roughly one minute per ticker. New signals only after enabling. Keyword detection is incomplete and can misclassify materiality. Automatic event runs create recap drafts; thesis changes require review.')
+        response=jsonify(config=state,events=events,hasNewsKey=bool(key and key['value']),scope='One company-news lookup per minute while the Mac agent is connected; a full sweep takes roughly one minute per ticker. Detection covers clinical, regulatory, financial guidance/results, M&A, capital allocation, leadership, legal, commercial, operational, workforce and activist/ownership developments. It remains headline-based and can miss or misclassify events. Ambiguous categories pause for review. Automatic event runs create recap drafts; thesis changes require review.')
         response.headers['Cache-Control']='no-store';return response
 
     def tick(self):
@@ -129,7 +149,7 @@ class CatalystWatch:
                 status='detected';result={}
                 duplicate=possible_duplicate(signal,prior)
                 if duplicate:
-                    status='needs_review';result={'reason':'Possible duplicate clinical event: same issuer, publication day, phase, named asset/trial and outcome. Review the existing event before requesting another collection. Headlines alone do not prove identical indications or endpoints.', 'relatedSignalId':duplicate['id'], 'commandId':duplicate['result'].get('commandId'), 'duplicateReview':True}
+                    status='needs_review';result={'reason':'Possible duplicate event: the same issuer, publication day and event identity appear in a differently worded headline. Review the existing event before requesting another collection; headlines alone do not prove the underlying developments are identical.', 'relatedSignalId':duplicate['id'], 'commandId':duplicate['result'].get('commandId'), 'duplicateReview':True}
                 elif not signal.get('requiresReview') and state['automatic'] and policy and analyst and state['used']<state['dailyLimit']:
                     cfg={**policy,'createFolder':True,'workflow':'recap','topic':f"{ticker} {now.date().isoformat()} {signal['category']} {signal['id'][:8]}",'lookbackDays':7,'kinds':['press-release','broker-report','transcript'],'instructions':signal['reason']+' Source URL: '+signal['url']}
                     cid=str(uuid.uuid5(uuid.NAMESPACE_URL,'charlie-event-refresh:'+signal['id']))

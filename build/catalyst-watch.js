@@ -88,7 +88,7 @@ export function CatalystWatch({
   };
   return /*#__PURE__*/React.createElement("details", {
     className: "workspace-panel"
-  }, /*#__PURE__*/React.createElement("summary", null, "Event-driven research \xB7 catalyst watch"), /*#__PURE__*/React.createElement("h3", null, "Investigate new developments as they appear."), /*#__PURE__*/React.createElement("p", null, "Company-news headlines are screened for clinical results, regulatory decisions, guidance and corporate transactions. Matches are potential catalysts, not verified investment conclusions. Primary-source confirmation happens in the subsequent research."), error && /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("summary", null, "Event-driven research \xB7 catalyst watch"), /*#__PURE__*/React.createElement("h3", null, "Investigate new developments as they appear."), /*#__PURE__*/React.createElement("p", null, "Company-news headlines are screened for clinical and regulatory events, financial results or guidance, transactions, capital allocation, leadership, legal, commercial, operational, workforce and activist developments. Matches are potential catalysts, not verified investment conclusions. Ambiguous signals wait for review; primary-source confirmation happens in the subsequent research."), error && /*#__PURE__*/React.createElement("p", {
     className: "workspace-error",
     role: "alert"
   }, error), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, data.scope), !data.hasNewsKey && /*#__PURE__*/React.createElement("p", {
