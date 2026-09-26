@@ -13,6 +13,87 @@ _HISTORY = {}
 _LOCK = threading.Lock()
 
 
+# Public issuer holdings are transparent proxies, not official index constituent feeds.
+UNIVERSES = {
+    'spx': ('SPX — S&P 500', 'IVV', '239726/ishares-core-sp-500-etf'),
+    'nasdaq': ('Nasdaq — Nasdaq-100', 'IQQ', '351653/ishares-nasdaq-100-etf'),
+    'rlv': ('RLV — Russell 1000 Value', 'IWD', '239708/ishares-russell-1000-value-etf'),
+    'rlg': ('RLG — Russell 1000 Growth', 'IWF', '239706/ishares-russell-1000-growth-etf'),
+}
+_UNIVERSE_CACHE = {}
+_UNIVERSE_LOCK = threading.Lock()
+
+
+def parse_index_holdings(text):
+    """Read dated issuer CSV; keep small equity positions even if weight rounds to zero."""
+    import csv
+    import io
+    records = list(csv.reader(io.StringIO(text.lstrip('\ufeff'))))
+    as_of = None
+    header_at = None
+    for i, row in enumerate(records):
+        if row and row[0] == 'Fund Holdings as of' and len(row) > 1:
+            as_of = datetime.strptime(row[1], '%b %d, %Y').date()
+        if {'Ticker', 'Name', 'Sector', 'Asset Class', 'Weight (%)', 'Market Value'}.issubset(row):
+            header_at = i
+            break
+    if not as_of or as_of > date.today() or header_at is None:
+        raise ValueError('Issuer did not provide a valid dated holdings file.')
+    header = records[header_at]
+    parsed, total_value, excluded = [], 0., 0
+    for values in records[header_at + 1:]:
+        if len(values) != len(header):
+            continue
+        row = dict(zip(header, values))
+        try:
+            value = float(row['Market Value'].replace(',', ''))
+        except (ValueError, TypeError):
+            continue
+        if not math.isfinite(value):
+            continue
+        total_value += value
+        if row['Asset Class'] != 'Equity':
+            continue
+        ticker = re.sub(r'[ .]', '-', row['Ticker'].strip().upper())
+        if not re.fullmatch(r'[A-Z0-9][A-Z0-9-]{0,19}', ticker) or value <= 0:
+            excluded += 1
+            continue
+        parsed.append({'ticker': ticker, 'company': row['Name'], 'sector': row['Sector'] or 'Unclassified', 'value': value})
+    if total_value <= 0 or len(parsed) < 50 or len(parsed) > 1500:
+        raise ValueError('Issuer holdings file is incomplete or has an unexpected format.')
+    merged = {}
+    for row in parsed:
+        value = row.pop('value')
+        if row['ticker'] in merged:
+            merged[row['ticker']]['weight'] += value / total_value * 100
+        else:
+            merged[row['ticker']] = dict(row, weight=value / total_value * 100)
+    return {'asOf': as_of.isoformat(), 'holdings': sorted(merged.values(), key=lambda r: -r['weight']),
+            'excludedEquities': excluded}
+
+
+def index_holdings(code):
+    import requests
+    if code not in UNIVERSES:
+        raise ValueError('Choose SPX, Nasdaq, RLV or RLG.')
+    # Serialize cache fills to avoid repeated downloads across simultaneous viewers.
+    with _UNIVERSE_LOCK:
+        cached = _UNIVERSE_CACHE.get(code)
+        if cached and time.time() - cached[0] < 21600:
+            return cached[1]
+        name, proxy, path = UNIVERSES[code]
+        source = 'https://www.ishares.com/us/products/' + path
+        response = requests.get(source + '/latest-holdings.csv', timeout=(5, 20))
+        response.raise_for_status()
+        if len(response.content) > 3_000_000:
+            raise ValueError('Issuer holdings file exceeds the supported size.')
+        body = dict(parse_index_holdings(response.text), name=name, proxy=proxy, sourceUrl=source,
+                    universe=code, basis='ETF equity holdings proxy; cash and derivatives excluded. Weights may differ from the official index.')
+        body['stale'] = (date.today() - date.fromisoformat(body['asOf'])).days > 7
+        _UNIVERSE_CACHE[code] = (time.time(), body)
+        return body
+
+
 def validate(data):
     if not isinstance(data, dict):
         raise ValueError('A holdings snapshot is required.')
@@ -91,7 +172,7 @@ def market_returns(tickers, period):
                            group_by='ticker', threads=4, progress=False, timeout=12)
         if data is not None and not data.empty:
             with _LOCK:
-                if len(_HISTORY) >= 16:
+                if len(_HISTORY) >= 64:
                     _HISTORY.pop(next(iter(_HISTORY)))
                 _HISTORY[history_key] = (now, data)
     quotes = {}
@@ -152,6 +233,15 @@ def create_blueprint(get_db):
             if not row:
                 return jsonify(error='Holdings changed in another session. Reload before saving.'), 409
         return jsonify(body=body, revision=row['revision'])
+
+    @bp.route('/api/portfolio/heatmap/universe/<code>', methods=['GET'])
+    def universe(code):
+        if code not in UNIVERSES:
+            return jsonify(error='Choose SPX, Nasdaq, RLV or RLG.'), 400
+        try:
+            return jsonify(body=index_holdings(code))
+        except Exception:
+            return jsonify(error='Index holdings are temporarily unavailable from the issuer. Retry loading this market.'), 503
 
     @bp.route('/api/portfolio/heatmap/returns', methods=['POST'])
     def returns():

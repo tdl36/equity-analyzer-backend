@@ -4,16 +4,40 @@ Updated: September 26, 2026
 
 ## Start here
 
-Charlie is releasing **T108** (`2026-09-26T108`), the portfolio heat map. Use
+Charlie is releasing **T109** (`2026-09-26T109`), index universes for the heat map. Use
 `git log -1` and backend `/health` to verify the exact deployed revision.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T108#view=heatmap`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T109#view=heatmap`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`, branch `main`.
-- Previous release: T107 / `e7d5e53`.
+- Previous release: T108 / `864601c`.
 - Local agent is unchanged by this release.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
+
+### T109 — heat map universe choices
+
+The Universe dropdown now includes My portfolio, SPX (S&P 500), Nasdaq (Nasdaq-100,
+confirmed by the user), RLV (Russell 1000 Value), and RLG (Russell 1000 Growth).
+Index views use explicitly labeled iShares ETF equity holdings proxies: IVV, IQQ,
+IWD, and IWF. These are not official index constituent feeds. Public issuer CSVs
+provide dates, companies, sectors, and market values; weights are derived from
+market values to retain small positions rounded to 0.00% in published weights.
+Cash/derivatives are excluded. Holdings older than seven days display a warning.
+Issuer files are cached for six hours; errors provide retry and never replace
+saved portfolio holdings. Index holdings cannot be saved over the user's portfolio.
+
+Prices load progressively in 40-stock batches using the existing authenticated
+returns endpoint. Switching universe or period aborts old work; partial price
+failures are visible with retry. No 100-stock truncation is applied to index views.
+Published source dates and ETF proxy explanations remain visible.
+
+Validation: 772 safe backend tests and 61 frontend tests passed. Production build
+and compilation passed. Desktop (1440px) and mobile (390px) browser checks used
+real public holdings with synthetic quotes, covering all four choices, full tile
+counts, issuer failure/retry, partial-price retry, and portfolio preservation.
+Live issuer checks returned 504 IVV, 101 IQQ, 870 IWD, and 371 IWF equity rows dated
+September 24. No portfolio writes or paid research were performed for QA.
 
 ### T108 — portfolio heat map
 
@@ -1010,9 +1034,9 @@ Use `py_compile` for every touched Python module. Do not start paid research, se
 
 Current release markers must stay synchronized:
 
-- `worker.js`: `2026-09-26T108`
-- `service-worker.js`: `20260926-108`
-- `src/app.jsx`: `2026-09-26T108`
+- `worker.js`: `2026-09-26T109`
+- `service-worker.js`: `20260926-109`
+- `src/app.jsx`: `2026-09-26T109`
 
 After an application change:
 

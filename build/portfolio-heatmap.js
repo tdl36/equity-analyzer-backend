@@ -12,7 +12,7 @@ var number = v => Number(v).toLocaleString(undefined, {
 async function apiCall(url, options = {}) {
   var r = await fetch(url, {
     ...options,
-    signal: options.signal || AbortSignal.timeout(60000)
+    signal: options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(60000)]) : AbortSignal.timeout(60000)
   });
   var d = await r.json();
   if (!r.ok) throw Error(d.error || 'Request failed. Please retry.');
@@ -51,6 +51,13 @@ export function PortfolioHeatmap({
     [view, setView] = React.useState(() => window.innerWidth < 700 ? 'list' : 'map'),
     [selected, setSelected] = React.useState(null),
     [paste, setPaste] = React.useState('');
+  var [universe, setUniverse] = React.useState('portfolio'),
+    [index, setIndex] = React.useState(null),
+    [indexLoading, setIndexLoading] = React.useState(false),
+    [indexError, setIndexError] = React.useState(''),
+    [indexRetry, setIndexRetry] = React.useState(0),
+    [progress, setProgress] = React.useState(0);
+  var active = universe === 'portfolio' ? saved : index?.universe === universe ? index : null;
   var [width, setWidth] = React.useState(1000);
   var mapRef = React.useRef(null);
   var load = async () => {
@@ -74,40 +81,88 @@ export function PortfolioHeatmap({
     var o = new ResizeObserver(entries => setWidth(Math.max(280, entries[0].contentRect.width)));
     o.observe(mapRef.current);
     return () => o.disconnect();
-  }, [view, saved]);
+  }, [view, active]);
+  React.useEffect(() => {
+    setIndex(null);
+    setIndexError('');
+    setSector('All sectors');
+    setFilter('');
+    setSelected(null);
+    if (universe === 'portfolio') {
+      setIndexLoading(false);
+      return;
+    }
+    var controller = new AbortController();
+    setIndexLoading(true);
+    apiCall(api + '/api/portfolio/heatmap/universe/' + universe, {
+      signal: controller.signal
+    }).then(d => {
+      if (!controller.signal.aborted) setIndex(d.body);
+    }).catch(e => {
+      if (!controller.signal.aborted) setIndexError(e.message);
+    }).finally(() => {
+      if (!controller.signal.aborted) setIndexLoading(false);
+    });
+    return () => controller.abort();
+  }, [api, universe, indexRetry]);
   React.useEffect(() => {
     setMarket(null);
     setSelected(null);
-    if (!saved?.holdings.length) return;
+    setProgress(0);
+    setLoading(false);
+    if (!active?.holdings.length) return;
     var controller = new AbortController();
     setLoading(true);
     setError('');
-    apiCall(api + '/api/portfolio/heatmap/returns', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        tickers: saved.holdings.map(r => r.ticker),
-        period
-      }),
-      signal: controller.signal
-    }).then(setMarket).catch(e => {
-      if (!controller.signal.aborted) setError(e.message);
-    }).finally(() => {
-      clearTimeout(timer);
-      if (!controller.signal.aborted) setLoading(false);
-    });
-    var timer = setTimeout(() => {
-      controller.abort();
-      setLoading(false);
-      setError('Market data timed out. Use Refresh prices to retry.');
-    }, 65000);
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-  }, [api, saved, period, refresh]);
+    (async () => {
+      var failed = 0;
+      var _loop = async function () {
+          if (controller.signal.aborted) return {
+            v: void 0
+          };
+          var batch = active.holdings.slice(start, start + 40);
+          try {
+            var d = await apiCall(api + '/api/portfolio/heatmap/returns', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                tickers: batch.map(r => r.ticker),
+                period
+              }),
+              signal: controller.signal
+            });
+            if (controller.signal.aborted) return {
+              v: void 0
+            };
+            setMarket(previous => ({
+              ...d,
+              quotes: {
+                ...previous?.quotes,
+                ...d.quotes
+              }
+            }));
+          } catch (e) {
+            if (controller.signal.aborted) return {
+              v: void 0
+            };
+            failed += batch.length;
+          }
+          setProgress(Math.min(start + batch.length, active.holdings.length));
+        },
+        _ret;
+      for (var start = 0; start < active.holdings.length; start += 40) {
+        _ret = await _loop();
+        if (_ret) return _ret.v;
+      }
+      if (!controller.signal.aborted) {
+        setLoading(false);
+        if (failed) setError(`Price requests failed for ${failed} holdings. Available returns are shown; use Refresh prices to retry.`);
+      }
+    })();
+    return () => controller.abort();
+  }, [api, active, period, refresh]);
   var save = async () => {
     setError('');
     setSaving(true);
@@ -146,7 +201,7 @@ export function PortfolioHeatmap({
       setError(e.message);
     }
   };
-  var rows = (saved?.holdings || []).map(r => ({
+  var rows = (active?.holdings || []).map(r => ({
     ...r,
     ...(market?.quotes?.[r.ticker] || {})
   }));
@@ -168,9 +223,26 @@ export function PortfolioHeatmap({
     className: "ph-heading"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
     className: "ph-eyebrow"
-  }, "PORTFOLIO / MARKET PULSE"), /*#__PURE__*/React.createElement("h1", null, saved?.name || 'Portfolio heat map'), /*#__PURE__*/React.createElement("p", null, "Your positions, sized by exposure. See where the movement is concentrated.")), /*#__PURE__*/React.createElement("div", {
+  }, "PORTFOLIO / MARKET PULSE"), /*#__PURE__*/React.createElement("h1", null, active?.name || (universe === 'portfolio' ? 'Portfolio heat map' : 'Market heat map')), /*#__PURE__*/React.createElement("p", null, universe === 'portfolio' ? 'Your positions, sized by exposure. See where the movement is concentrated.' : 'Explore stock returns, sized by dated ETF holdings weights.')), /*#__PURE__*/React.createElement("div", {
     className: "ph-actions"
-  }, /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("label", null, "Universe", /*#__PURE__*/React.createElement("select", {
+    "aria-label": "Heat map universe",
+    value: universe,
+    onChange: e => {
+      setUniverse(e.target.value);
+      setNotice('');
+    }
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "portfolio"
+  }, "My portfolio"), /*#__PURE__*/React.createElement("option", {
+    value: "spx"
+  }, "SPX \u2014 S&P 500"), /*#__PURE__*/React.createElement("option", {
+    value: "nasdaq"
+  }, "Nasdaq \u2014 Nasdaq-100"), /*#__PURE__*/React.createElement("option", {
+    value: "rlv"
+  }, "RLV \u2014 Russell 1000 Value"), /*#__PURE__*/React.createElement("option", {
+    value: "rlg"
+  }, "RLG \u2014 Russell 1000 Growth"))), universe === 'portfolio' && /*#__PURE__*/React.createElement("button", {
     onClick: () => {
       setEditing(!editing);
       setDraft(saved || blank());
@@ -187,7 +259,7 @@ export function PortfolioHeatmap({
     onClick: load
   }, "Retry loading holdings")), notice && /*#__PURE__*/React.createElement("p", {
     role: "status"
-  }, notice), editing && /*#__PURE__*/React.createElement("section", {
+  }, notice), universe === 'portfolio' && editing && /*#__PURE__*/React.createElement("section", {
     className: "ph-editor"
   }, /*#__PURE__*/React.createElement("h2", null, "Define your portfolio"), /*#__PURE__*/React.createElement("p", null, "Enter actual position weights: 5 means 5%. Negative weights represent shorts. Use market-data tickers (for example BRK-B). Research coverage is not automatically treated as holdings."), /*#__PURE__*/React.createElement("fieldset", {
     disabled: saving
@@ -273,11 +345,26 @@ export function PortfolioHeatmap({
     onClick: save
   }, saving ? 'Saving…' : 'Save holdings'), /*#__PURE__*/React.createElement("button", {
     onClick: load
-  }, "Reload saved snapshot")))), !rows.length ? /*#__PURE__*/React.createElement("section", {
+  }, "Reload saved snapshot")))), indexLoading && /*#__PURE__*/React.createElement("p", {
+    role: "status"
+  }, "Loading index holdings\u2026"), indexError && /*#__PURE__*/React.createElement("div", {
+    className: "ph-error",
+    role: "alert"
+  }, indexError, " ", /*#__PURE__*/React.createElement("button", {
+    onClick: () => setIndexRetry(r => r + 1)
+  }, "Retry loading market")), universe !== 'portfolio' && active && /*#__PURE__*/React.createElement("div", {
+    className: "ph-source"
+  }, /*#__PURE__*/React.createElement("strong", null, active.proxy, " holdings proxy \xB7 ", active.asOf), /*#__PURE__*/React.createElement("p", null, active.basis, " ", /*#__PURE__*/React.createElement("a", {
+    href: active.sourceUrl,
+    target: "_blank",
+    rel: "noreferrer"
+  }, "Issuer holdings"), active.excludedEquities > 0 ? ` · ${active.excludedEquities} equity rows could not be mapped.` : ''), active.stale && /*#__PURE__*/React.createElement("p", {
+    className: "ph-warning"
+  }, "The issuer holdings date is over a week old.")), !rows.length ? universe === 'portfolio' ? /*#__PURE__*/React.createElement("section", {
     className: "ph-empty"
-  }, /*#__PURE__*/React.createElement("h2", null, "A map of what you actually own"), /*#__PURE__*/React.createElement("p", null, "Add your tickers and portfolio weights above to create your heat map. Holdings are stored in Charlie and shared across desktop and mobile.")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("h2", null, "A map of what you actually own"), /*#__PURE__*/React.createElement("p", null, "Add your tickers and portfolio weights above to create your heat map. Holdings are stored in Charlie and shared across desktop and mobile.")) : null : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "ph-stats"
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, "POSITIONS"), /*#__PURE__*/React.createElement("strong", null, rows.length)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, "GROSS EXPOSURE"), /*#__PURE__*/React.createElement("strong", null, number(gross), "%")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, "RETURN COVERAGE"), /*#__PURE__*/React.createElement("strong", null, loading ? '…' : number(gross ? covered / gross * 100 : 0) + '%')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, "HOLDINGS AS OF"), /*#__PURE__*/React.createElement("strong", null, saved.asOf))), Math.floor((Date.now() - new Date(saved.asOf + 'T12:00:00').getTime()) / 86400000) > 30 && /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, "POSITIONS"), /*#__PURE__*/React.createElement("strong", null, rows.length)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, universe === 'portfolio' ? 'GROSS EXPOSURE' : 'ETF EQUITY WEIGHT'), /*#__PURE__*/React.createElement("strong", null, number(gross), "%")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, "RETURN COVERAGE"), /*#__PURE__*/React.createElement("strong", null, loading ? '…' : number(gross ? covered / gross * 100 : 0) + '%')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, "HOLDINGS AS OF"), /*#__PURE__*/React.createElement("strong", null, active.asOf))), universe === 'portfolio' && Math.floor((Date.now() - new Date(active.asOf + 'T12:00:00').getTime()) / 86400000) > 30 && /*#__PURE__*/React.createElement("p", {
     className: "ph-warning"
   }, "This holdings snapshot is over 30 days old. Update weights to keep tile sizes representative."), /*#__PURE__*/React.createElement("div", {
     className: "ph-toolbar"
@@ -323,7 +410,7 @@ export function PortfolioHeatmap({
   }), " Blue / orange colors"), /*#__PURE__*/React.createElement("span", null, "Tile area = absolute weight \xB7 color = stock return")), /*#__PURE__*/React.createElement("div", {
     "aria-live": "polite",
     className: "ph-status"
-  }, loading ? 'Fetching daily market prices…' : market ? `${market.provider} · fetched ${new Date(market.fetchedAt).toLocaleString()}` : 'Prices not loaded.'), chosen && /*#__PURE__*/React.createElement("aside", {
+  }, loading ? `Loading daily prices · ${progress} / ${rows.length} holdings checked…` : market ? `${market.provider} · fetched ${new Date(market.fetchedAt).toLocaleString()}` : 'Prices not loaded.'), chosen && /*#__PURE__*/React.createElement("aside", {
     className: "ph-selected"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", null, chosen.ticker, " \xB7 ", chosen.company), /*#__PURE__*/React.createElement("p", null, number(chosen.weight), "% weight", chosen.weight < 0 ? ' · Short position' : '', " \xB7 ", chosen.sector)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", null, formatReturn(chosen.changePct)), /*#__PURE__*/React.createElement("p", null, chosen.baselineDate ? `${chosen.baselineDate} → ${chosen.asOf}` : chosen.issue || 'Waiting for prices', chosen.stale ? ' · Stale quote' : '')), /*#__PURE__*/React.createElement("button", {
     onClick: () => onOpen(chosen.ticker)
@@ -395,9 +482,9 @@ export function PortfolioHeatmap({
       background: tileColor(null)
     }
   }, "No data")), /*#__PURE__*/React.createElement("p", null, "Daily dividend- and split-adjusted returns, potentially delayed and cached for up to 15 minutes; no extended-hours feed. 1 day compares the latest two available daily observations. Longer periods use the last observation on or before the calendar boundary (1 month = 30 days). Open a tile for its exact dates."), /*#__PURE__*/React.createElement("p", null, "Areas are proportional to the displayed holdings\u2019 absolute weights. Cash or unlisted exposure is not inferred. Colors show the stock\u2019s return even for shorts. This is a holdings snapshot, not portfolio P&L or performance attribution."), /*#__PURE__*/React.createElement("button", {
-    onClick: () => download('charlie-portfolio-heatmap.csv', [['ticker', 'weight', 'sector', 'company', 'return_pct', 'baseline_date', 'price_date'], ...visible.map(r => [r.ticker, r.weight, r.sector, r.company, r.changePct ?? '', r.baselineDate || '', r.asOf || ''])].map(r => r.map(csvCell).join(',')).join('\n'))
+    onClick: () => download(`charlie-${universe}-heatmap.csv`, [['ticker', 'weight', 'sector', 'company', 'return_pct', 'baseline_date', 'price_date'], ...visible.map(r => [r.ticker, r.weight, r.sector, r.company, r.changePct ?? '', r.baselineDate || '', r.asOf || ''])].map(r => r.map(csvCell).join(',')).join('\n'))
   }, "Export displayed holdings & returns"))));
 }
 var styles = `
-.portfolio-map{flex:1;min-height:0;height:100%;overflow:auto;padding:28px clamp(16px,3vw,42px) 90px;color:var(--ink);font-family:var(--font-body);min-width:0}.portfolio-map *{box-sizing:border-box}.portfolio-map h1{font-family:var(--font-display);font-size:32px;line-height:1.15;margin:7px 0 10px}.portfolio-map h2{font-size:21px;margin-bottom:12px}.portfolio-map p{line-height:1.55;margin:8px 0;color:var(--muted)}.ph-eyebrow{font:10px var(--font-mono);letter-spacing:.18em}.ph-heading,.ph-actions,.ph-options,.ph-toolbar,.ph-selected{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.ph-heading{justify-content:space-between;margin-bottom:24px}.portfolio-map button,.portfolio-map select,.portfolio-map input,.portfolio-map textarea{font:inherit;border:1px solid var(--line);border-radius:5px;padding:9px 12px;background:var(--surface);color:var(--ink);max-width:100%}.portfolio-map button{cursor:pointer;min-height:40px}.portfolio-map button:disabled{opacity:.5;cursor:wait}.portfolio-map button:focus-visible{outline:3px solid var(--accent);outline-offset:2px;z-index:3}.portfolio-map label{display:flex;flex-direction:column;gap:5px;font-size:12px}.portfolio-map textarea{width:100%;min-height:100px}.portfolio-map .ph-primary{background:var(--accent);color:var(--on-accent)}.ph-editor{border:1px solid var(--line);padding:22px;border-radius:8px;background:var(--surface);margin-bottom:24px}.ph-editor details{margin:20px 0}.ph-editor summary{cursor:pointer;font-weight:600;margin:12px 0}.ph-edit-row{display:grid;grid-template-columns:1fr .8fr 1.4fr 1.6fr auto;gap:10px;align-items:end;margin:12px 0}.ph-edit-row input{width:100%}.ph-stats{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin:20px 0}.ph-stats>div{padding:18px 12px;border-right:1px solid var(--line)}.ph-stats span{font:10px var(--font-mono);color:var(--muted);letter-spacing:.1em;display:block}.ph-stats strong{font-size:25px;font-weight:500;display:block;margin-top:8px}.ph-toolbar{justify-content:space-between;align-items:end}.ph-periods{display:flex;gap:3px;flex-wrap:wrap}.ph-periods button{font-size:12px}.ph-periods button[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}.ph-options{margin:18px 0;font-size:12px;color:var(--muted)}.ph-options label{flex-direction:row;align-items:center}.ph-options input{width:16px;height:16px}.ph-status{font-size:11px;color:var(--muted);margin:12px 0}.ph-map{position:relative;background:#11161c;border:2px solid #11161c;border-radius:6px;overflow:hidden;width:100%}.portfolio-map .ph-tile{position:absolute;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:#fff;border:1px solid #11161c;border-radius:0;min-height:0;padding:1px;overflow:hidden;line-height:1.12;font-family:Arial,sans-serif}.ph-tile:hover{box-shadow:inset 0 0 0 2px #fff;z-index:2}.ph-tile small{font-size:11px;opacity:.85;margin-top:8px}.ph-sector{position:absolute;color:#e1e8ed;background:#11161c;font:600 12px Arial,sans-serif;padding:5px 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ph-selected{border:1px solid var(--accent);background:var(--surface);padding:14px;margin:12px 0;border-radius:6px;justify-content:space-between}.ph-selected p{font-size:12px}.ph-legend{display:flex;flex-wrap:wrap;margin:16px 0;gap:2px}.ph-legend span{color:white;font:11px Arial,sans-serif;padding:7px 12px}.ph-footer p{font-size:12px;max-width:1000px}.ph-empty{padding:42px 18px;border:1px dashed var(--line);margin:20px 0}.ph-error,.ph-warning{padding:14px;border:1px solid var(--accent);margin:14px 0}.ph-table-wrap{overflow:auto}.portfolio-map table{width:100%;border-collapse:collapse;font-size:13px}.portfolio-map td,.portfolio-map th{padding:12px 8px;border-bottom:1px solid var(--line);text-align:left}.portfolio-map td small{display:block;color:var(--muted);margin-top:4px}.ph-return{display:inline-block;color:white;padding:7px 9px;border-radius:4px;white-space:nowrap}@media(max-width:700px){.portfolio-map{padding:18px 12px 80px}.ph-heading h1{font-size:27px}.ph-stats{grid-template-columns:repeat(2,1fr)}.ph-stats strong{font-size:22px}.ph-edit-row{grid-template-columns:1fr 1fr;border-bottom:1px solid var(--line);padding-bottom:15px}.ph-editor{padding:14px}.ph-toolbar,.ph-toolbar .ph-actions{width:100%}.ph-search{width:100%}.ph-stats>div{padding:12px}.portfolio-map td,.portfolio-map th{padding:10px 5px;font-size:12px}.portfolio-map th:last-child,.portfolio-map td:last-child{display:none}.ph-options{align-items:flex-start}.ph-selected{position:static}.ph-legend span{padding:7px 8px}}
+.portfolio-map{flex:1;min-height:0;height:100%;overflow:auto;padding:28px clamp(16px,3vw,42px) 90px;color:var(--ink);font-family:var(--font-body);min-width:0}.portfolio-map *{box-sizing:border-box}.portfolio-map h1{font-family:var(--font-display);font-size:32px;line-height:1.15;margin:7px 0 10px}.portfolio-map h2{font-size:21px;margin-bottom:12px}.portfolio-map p{line-height:1.55;margin:8px 0;color:var(--muted)}.ph-eyebrow{font:10px var(--font-mono);letter-spacing:.18em}.ph-heading,.ph-actions,.ph-options,.ph-toolbar,.ph-selected{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.ph-heading{justify-content:space-between;margin-bottom:24px}.portfolio-map button,.portfolio-map select,.portfolio-map input,.portfolio-map textarea{font:inherit;border:1px solid var(--line);border-radius:5px;padding:9px 12px;background:var(--surface);color:var(--ink);max-width:100%}.portfolio-map button{cursor:pointer;min-height:40px}.portfolio-map button:disabled{opacity:.5;cursor:wait}.portfolio-map button:focus-visible{outline:3px solid var(--accent);outline-offset:2px;z-index:3}.portfolio-map label{display:flex;flex-direction:column;gap:5px;font-size:12px}.portfolio-map textarea{width:100%;min-height:100px}.portfolio-map .ph-primary{background:var(--accent);color:var(--on-accent)}.ph-source{border:1px solid var(--line);border-radius:6px;padding:14px;margin-bottom:20px}.ph-source p{font-size:12px}.ph-source a{color:var(--accent)}.ph-editor{border:1px solid var(--line);padding:22px;border-radius:8px;background:var(--surface);margin-bottom:24px}.ph-editor details{margin:20px 0}.ph-editor summary{cursor:pointer;font-weight:600;margin:12px 0}.ph-edit-row{display:grid;grid-template-columns:1fr .8fr 1.4fr 1.6fr auto;gap:10px;align-items:end;margin:12px 0}.ph-edit-row input{width:100%}.ph-stats{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin:20px 0}.ph-stats>div{padding:18px 12px;border-right:1px solid var(--line)}.ph-stats span{font:10px var(--font-mono);color:var(--muted);letter-spacing:.1em;display:block}.ph-stats strong{font-size:25px;font-weight:500;display:block;margin-top:8px}.ph-toolbar{justify-content:space-between;align-items:end}.ph-periods{display:flex;gap:3px;flex-wrap:wrap}.ph-periods button{font-size:12px}.ph-periods button[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}.ph-options{margin:18px 0;font-size:12px;color:var(--muted)}.ph-options label{flex-direction:row;align-items:center}.ph-options input{width:16px;height:16px}.ph-status{font-size:11px;color:var(--muted);margin:12px 0}.ph-map{position:relative;background:#11161c;border:2px solid #11161c;border-radius:6px;overflow:hidden;width:100%}.portfolio-map .ph-tile{position:absolute;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:#fff;border:1px solid #11161c;border-radius:0;min-height:0;padding:1px;overflow:hidden;line-height:1.12;font-family:Arial,sans-serif}.ph-tile:hover{box-shadow:inset 0 0 0 2px #fff;z-index:2}.ph-tile small{font-size:11px;opacity:.85;margin-top:8px}.ph-sector{position:absolute;color:#e1e8ed;background:#11161c;font:600 12px Arial,sans-serif;padding:5px 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ph-selected{border:1px solid var(--accent);background:var(--surface);padding:14px;margin:12px 0;border-radius:6px;justify-content:space-between}.ph-selected p{font-size:12px}.ph-legend{display:flex;flex-wrap:wrap;margin:16px 0;gap:2px}.ph-legend span{color:white;font:11px Arial,sans-serif;padding:7px 12px}.ph-footer p{font-size:12px;max-width:1000px}.ph-empty{padding:42px 18px;border:1px dashed var(--line);margin:20px 0}.ph-error,.ph-warning{padding:14px;border:1px solid var(--accent);margin:14px 0}.ph-table-wrap{overflow:auto}.portfolio-map table{width:100%;border-collapse:collapse;font-size:13px}.portfolio-map td,.portfolio-map th{padding:12px 8px;border-bottom:1px solid var(--line);text-align:left}.portfolio-map td small{display:block;color:var(--muted);margin-top:4px}.ph-return{display:inline-block;color:white;padding:7px 9px;border-radius:4px;white-space:nowrap}@media(max-width:700px){.portfolio-map{padding:18px 12px 80px}.ph-heading h1{font-size:27px}.ph-stats{grid-template-columns:repeat(2,1fr)}.ph-stats strong{font-size:22px}.ph-edit-row{grid-template-columns:1fr 1fr;border-bottom:1px solid var(--line);padding-bottom:15px}.ph-editor{padding:14px}.ph-toolbar,.ph-toolbar .ph-actions{width:100%}.ph-search{width:100%}.ph-stats>div{padding:12px}.portfolio-map td,.portfolio-map th{padding:10px 5px;font-size:12px}.portfolio-map th:last-child,.portfolio-map td:last-child{display:none}.ph-options{align-items:flex-start}.ph-selected{position:static}.ph-legend span{padding:7px 8px}}
 `;
