@@ -86,4 +86,35 @@ class IndexUniverseTests(unittest.TestCase):
             self.assertEqual(client.get('/api/portfolio/heatmap/universe/spx').status_code,200)
             load.assert_called_once_with('spx')
 
+class PriceCacheTests(unittest.TestCase):
+    def test_overlapping_batches_reuse_stock_history_and_short_daily_fetch(self):
+        import pandas as pd
+        from portfolio_heatmap import market_returns, _HISTORY
+        _HISTORY.clear()
+        frame=pd.DataFrame({'Close':[100.,101.]},index=pd.to_datetime(['2026-09-24','2026-09-25']))
+        with patch('yfinance.Ticker') as ticker:
+            ticker.return_value.history.return_value=frame
+            first=market_returns(['ABT','JNJ'],'1d')
+            self.assertEqual(ticker.call_count,2)
+            self.assertEqual(ticker.return_value.history.call_args.kwargs['period'],'5d')
+            market_returns(['JNJ','MRK'],'1d')
+            self.assertEqual(ticker.call_count,3)
+            market_returns(['JNJ'],'1m')
+            self.assertEqual(ticker.call_count,4)
+            self.assertEqual(ticker.return_value.history.call_args.kwargs['period'],'2y')
+            market_returns(['JNJ'],'1d')
+            self.assertEqual(ticker.call_count,4)
+            self.assertAlmostEqual(first['quotes']['ABT']['changePct'],1.)
+        _HISTORY.clear()
+
+    def test_provider_failure_is_missing_and_retryable(self):
+        from portfolio_heatmap import market_returns, _HISTORY
+        _HISTORY.clear()
+        with patch('yfinance.Ticker') as ticker:
+            ticker.return_value.history.side_effect=RuntimeError('unavailable')
+            self.assertIsNone(market_returns(['ABT'],'1d')['quotes']['ABT']['changePct'])
+            market_returns(['ABT'],'1d')
+            self.assertEqual(ticker.call_count,2)
+        _HISTORY.clear()
+
 if __name__=='__main__':unittest.main()

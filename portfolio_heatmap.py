@@ -8,7 +8,6 @@ from datetime import date, datetime, timedelta, timezone
 from flask import Blueprint, jsonify, request
 
 PERIODS = {'1d', '1w', '1m', '3m', '6m', 'ytd', '1y'}
-_CACHE = {}
 _HISTORY = {}
 _LOCK = threading.Lock()
 
@@ -152,45 +151,52 @@ def period_return(points, period):
             'stale': (date.today() - end).days > 4}
 
 
-def market_returns(tickers, period):
-    key = (tuple(sorted(tickers)), period)
-    now = time.time()
-    with _LOCK:
-        cached = _CACHE.get(key)
-        if cached and now - cached[0] < 900:
-            return cached[1]
+# Bound provider concurrency across all heat-map requests; reuse overlapping stocks.
+from concurrent.futures import ThreadPoolExecutor
+_PRICE_POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix='heatmap-price')
+_TICKER_LOCKS = {}
+
+
+def _ticker_history(ticker, long_history):
     import yfinance as yf
-    history_key = tuple(sorted(tickers))
     with _LOCK:
-        history = _HISTORY.get(history_key)
-    if history and now - history[0] < 900:
-        data = history[1]
-        fetched_at = history[0]
-    else:
-        fetched_at = now
-        data = yf.download(tickers, period='2y', interval='1d', auto_adjust=True,
-                           group_by='ticker', threads=4, progress=False, timeout=12)
-        if data is not None and not data.empty:
-            with _LOCK:
-                if len(_HISTORY) >= 64:
-                    _HISTORY.pop(next(iter(_HISTORY)))
-                _HISTORY[history_key] = (now, data)
-    quotes = {}
-    for ticker in tickers:
-        try:
-            frame = data[ticker] if getattr(data.columns, 'nlevels', 1) > 1 else data
-            series = frame['Close'].dropna()
-            quotes[ticker] = period_return([(idx.date(), v) for idx, v in series.items()], period)
-        except (KeyError, TypeError, AttributeError, ValueError):
-            quotes[ticker] = {'changePct': None, 'issue': 'Market data unavailable'}
-    result = {'quotes': quotes, 'period': period, 'fetchedAt': datetime.fromtimestamp(fetched_at, timezone.utc).isoformat(),
-              'provider': 'Yahoo Finance via yfinance', 'basis': 'Dividend- and split-adjusted daily prices; may be delayed. No extended-hours feed.'}
-    if any(q.get('changePct') is not None for q in quotes.values()):
+        lock = _TICKER_LOCKS.setdefault(ticker, threading.Lock())
+    with lock:
+        now = time.time()
         with _LOCK:
-            if len(_CACHE) >= 64:
-                _CACHE.pop(next(iter(_CACHE)))
-            _CACHE[key] = (now, result)
-    return result
+            cached = _HISTORY.get(ticker)
+        if cached and now - cached['fetched'] < 900 and (cached['long'] or not long_history):
+            return cached
+        # Daily tiles need two observations, not two years of downloaded history.
+        frame = yf.Ticker(ticker).history(period='2y' if long_history else '5d',
+                                         interval='1d', auto_adjust=True, timeout=12)
+        series = frame['Close'].dropna()
+        points = [(idx.date(), float(v)) for idx, v in series.items()]
+        result = {'points': points, 'fetched': time.time(), 'long': long_history}
+        if points:
+            with _LOCK:
+                if len(_HISTORY) >= 3000:
+                    _HISTORY.pop(next(iter(_HISTORY)))
+                _HISTORY[ticker] = result
+        return result
+
+
+def market_returns(tickers, period):
+    def quote(ticker):
+        try:
+            history = _ticker_history(ticker, period != '1d')
+            result = period_return(history['points'], period)
+            result['fetchedAt'] = datetime.fromtimestamp(history['fetched'], timezone.utc).isoformat()
+            return result
+        except Exception:
+            return {'changePct': None, 'issue': 'Market data unavailable'}
+    futures = {t: _PRICE_POOL.submit(quote, t) for t in sorted(set(tickers))}
+    quotes = {t: f.result() for t, f in futures.items()}
+    dates = [q['fetchedAt'] for q in quotes.values() if q.get('fetchedAt')]
+    return {'quotes': quotes, 'period': period,
+            'fetchedAt': min(dates) if dates else datetime.now(timezone.utc).isoformat(),
+            'provider': 'Yahoo Finance via yfinance',
+            'basis': 'Dividend- and split-adjusted daily prices; may be delayed. No extended-hours feed.'}
 
 
 def create_blueprint(get_db):

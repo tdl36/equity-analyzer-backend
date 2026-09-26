@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { loadHeatmapPrices } from './heatmap-price-loader.mjs';
 import { groupedLayout, formatReturn, tileColor, parseHoldings } from './portfolio-heatmap-model.mjs';
 var periods = [['1d', '1 day'], ['1w', '1 week'], ['1m', '1 month'], ['3m', '3 months'], ['6m', '6 months'], ['ytd', 'YTD'], ['1y', '1 year']];
 var blank = () => ({
@@ -114,53 +115,35 @@ export function PortfolioHeatmap({
     var controller = new AbortController();
     setLoading(true);
     setError('');
-    (async () => {
-      var failed = 0;
-      var _loop = async function () {
-          if (controller.signal.aborted) return {
-            v: void 0
+    loadHeatmapPrices({
+      api,
+      tickers: active.holdings.map(r => r.ticker),
+      period,
+      signal: controller.signal,
+      request: apiCall,
+      onUpdate: d => {
+        if (!controller.signal.aborted) setMarket(previous => {
+          var quotes = {
+            ...previous?.quotes,
+            ...d.quotes
           };
-          var batch = active.holdings.slice(start, start + 40);
-          try {
-            var d = await apiCall(api + '/api/portfolio/heatmap/returns', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                tickers: batch.map(r => r.ticker),
-                period
-              }),
-              signal: controller.signal
-            });
-            if (controller.signal.aborted) return {
-              v: void 0
-            };
-            setMarket(previous => ({
-              ...d,
-              quotes: {
-                ...previous?.quotes,
-                ...d.quotes
-              }
-            }));
-          } catch (e) {
-            if (controller.signal.aborted) return {
-              v: void 0
-            };
-            failed += batch.length;
-          }
-          setProgress(Math.min(start + batch.length, active.holdings.length));
-        },
-        _ret;
-      for (var start = 0; start < active.holdings.length; start += 40) {
-        _ret = await _loop();
-        if (_ret) return _ret.v;
+          var dates = Object.values(quotes).map(q => q.fetchedAt).filter(Boolean).sort();
+          return {
+            ...d,
+            quotes,
+            fetchedAt: dates[0] || d.fetchedAt
+          };
+        });
+      },
+      onProgress: n => {
+        if (!controller.signal.aborted) setProgress(n);
       }
+    }).then(failed => {
       if (!controller.signal.aborted) {
         setLoading(false);
         if (failed) setError(`Price requests failed for ${failed} holdings. Available returns are shown; use Refresh prices to retry.`);
       }
-    })();
+    });
     return () => controller.abort();
   }, [api, active, period, refresh]);
   var save = async () => {

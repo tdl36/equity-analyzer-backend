@@ -4,16 +4,34 @@ Updated: September 26, 2026
 
 ## Start here
 
-Charlie is releasing **T109** (`2026-09-26T109`), index universes for the heat map. Use
+Charlie is releasing **T110** (`2026-09-26T110`), faster heat-map price loading. Use
 `git log -1` and backend `/health` to verify the exact deployed revision.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T109#view=heatmap`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T110#view=heatmap`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`, branch `main`.
-- Previous release: T108 / `864601c`.
+- Previous release: T109 / `c333be7`.
 - Local agent is unchanged by this release.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
+
+### T110 — faster heat-map prices
+
+Supersedes T109's serial 40-stock downloads. The browser now uses three parallel
+20-stock requests and a 15-minute session-only market-price cache, keyed by API,
+period and ticker. The backend shares histories by ticker across overlapping
+portfolios/indexes, coalesces simultaneous same-ticker downloads, and caps provider
+concurrency at eight workers across requests. One-day tiles fetch five days of
+history instead of two years; longer periods fetch/reuse two years. Missing prices
+are not cached as successful results and failed batches remain retryable. Abort
+checks prevent old views updating the current map. Per-quote fetch dates preserve
+cache freshness. This still uses daily adjusted prices, not real-time streaming.
+
+Validation: 774 safe backend tests, 63 frontend tests, compilation and production
+build. Desktop/mobile synthetic browser checks cover all universes and failures.
+A live local eight-stock sample loaded in 0.71 seconds; three overlapping stocks
+then reused the server cache in under 0.01 seconds. This is not a full-index or
+production latency guarantee. No private portfolio data or research was changed.
 
 ### T109 — heat map universe choices
 
@@ -1034,9 +1052,9 @@ Use `py_compile` for every touched Python module. Do not start paid research, se
 
 Current release markers must stay synchronized:
 
-- `worker.js`: `2026-09-26T109`
-- `service-worker.js`: `20260926-109`
-- `src/app.jsx`: `2026-09-26T109`
+- `worker.js`: `2026-09-26T110`
+- `service-worker.js`: `20260926-110`
+- `src/app.jsx`: `2026-09-26T110`
 
 After an application change:
 

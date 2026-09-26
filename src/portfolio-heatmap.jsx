@@ -1,4 +1,5 @@
 import * as React from 'react';
+import {loadHeatmapPrices} from './heatmap-price-loader.mjs';
 import {groupedLayout,formatReturn,tileColor,parseHoldings} from './portfolio-heatmap-model.mjs';
 const periods=[['1d','1 day'],['1w','1 week'],['1m','1 month'],['3m','3 months'],['6m','6 months'],['ytd','YTD'],['1y','1 year']];
 const blank=()=>({name:'My portfolio',asOf:new Date().toLocaleDateString('en-CA'),holdings:[]});
@@ -28,20 +29,11 @@ export function PortfolioHeatmap({api,onOpen}) {
   setMarket(null);setSelected(null);setProgress(0);setLoading(false);
   if(!active?.holdings.length)return;
   const controller=new AbortController();setLoading(true);setError('');
-  (async()=>{
-   let failed=0;
-   for(let start=0;start<active.holdings.length;start+=40){
-    if(controller.signal.aborted)return;
-    const batch=active.holdings.slice(start,start+40);
-    try{
-     const d=await apiCall(api+'/api/portfolio/heatmap/returns',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tickers:batch.map(r=>r.ticker),period}),signal:controller.signal});
-     if(controller.signal.aborted)return;
-     setMarket(previous=>({...d,quotes:{...previous?.quotes,...d.quotes}}));
-    }catch(e){if(controller.signal.aborted)return;failed+=batch.length;}
-    setProgress(Math.min(start+batch.length,active.holdings.length));
-   }
-   if(!controller.signal.aborted){setLoading(false);if(failed)setError(`Price requests failed for ${failed} holdings. Available returns are shown; use Refresh prices to retry.`);}
-  })();
+  loadHeatmapPrices({api,tickers:active.holdings.map(r=>r.ticker),period,signal:controller.signal,request:apiCall,
+   onUpdate:d=>{if(!controller.signal.aborted)setMarket(previous=>{const quotes={...previous?.quotes,...d.quotes};const dates=Object.values(quotes).map(q=>q.fetchedAt).filter(Boolean).sort();return {...d,quotes,fetchedAt:dates[0]||d.fetchedAt};});},
+   onProgress:n=>{if(!controller.signal.aborted)setProgress(n);}
+  }).then(failed=>{if(!controller.signal.aborted){setLoading(false);if(failed)setError(`Price requests failed for ${failed} holdings. Available returns are shown; use Refresh prices to retry.`);}});
+
   return()=>controller.abort();
  },[api,active,period,refresh]);
  const save=async()=>{setError('');setSaving(true);try{const d=await apiCall(api+'/api/portfolio/heatmap/holdings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({...draft,revision})});setSaved(d.body);setDraft(d.body);setRevision(d.revision);setEditing(false);setNotice('Holdings saved across your Charlie devices.');}catch(e){setError(e.message);}finally{setSaving(false);}};
