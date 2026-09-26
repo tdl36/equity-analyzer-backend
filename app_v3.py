@@ -29212,6 +29212,9 @@ app.register_blueprint(meeting_workspace.create_blueprint(get_db))
 import investment_case
 app.register_blueprint(investment_case.create_blueprint(get_db))
 
+import portfolio_heatmap
+app.register_blueprint(portfolio_heatmap.create_blueprint(get_db))
+
 import research_history
 app.register_blueprint(research_history.create_blueprint(get_db))
 

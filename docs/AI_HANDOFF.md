@@ -1,27 +1,46 @@
 # Charlie AI engineering handoff
 
-Updated: September 24, 2026
+Updated: September 26, 2026
 
 ## Start here
 
-Charlie is releasing **T107** (`2026-09-24T107`) with the broader catalyst-watch
-taxonomy and duplicate protection described below. Use `git log -1` for the exact release
-commit after deployment.
+Charlie is releasing **T108** (`2026-09-26T108`), the portfolio heat map. Use
+`git log -1` and backend `/health` to verify the exact deployed revision.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T107`
-- Backend health: `https://equity-analyzer-backend.onrender.com/health`
-- Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`
-- Branch: `main`
-- Before T107, backend health reported `d7ddb20873d3b2e13ed38203789aa1292bca1c3d`
-  and the hosted `/version` endpoint reported `2026-09-20T106`. Verify both after deploy.
-- The Mac launch agent `com.charlie.local-agent` was last known to have been restarted after its most recent code change. None of the post-T106 commits changed `charlie_local_agent.py`.
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T108#view=heatmap`
+- Backend: `https://equity-analyzer-backend.onrender.com/health`
+- Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`, branch `main`.
+- Previous release: T107 / `e7d5e53`.
+- Local agent is unchanged by this release.
 
-This handoff was rechecked for the Claude Code transition on September 24. Claude Code
-`2.1.220` is installed on this Mac. No repository export or copy is needed: Claude Code
-should open this exact checkout so it sees the Git history, current source, local handoff,
-and protected runtime state together.
+Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
 
-Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files. Do not clean the repository.
+### T108 — portfolio heat map
+
+Today → Portfolio heat map (`#view=heatmap`) is a separate holdings workspace. The
+investor enters a dated portfolio name and percentage weights, or imports CSV/TSV.
+Research coverage is never silently promoted to holdings. One shared snapshot persists
+in PostgreSQL (`portfolio_heatmap_snapshot`); optimistic revision checks prevent one
+device from overwriting newer edits. No real holdings were entered during QA.
+
+Tiles use absolute position weights, grouped by editable sector, and signed adjusted
+stock returns for color. Shorts retain negative weights; colors still show the underlying
+stock return, not short P&L. Seven daily-data periods, search, sector filtering, a mobile
+list, accessible blue/orange colors, per-tile dates, company navigation, and CSV export
+are included. No portfolio-return or attribution claims are made from snapshot weights.
+
+Market data uses the existing yfinance dependency through a bounded authenticated API.
+Dividend/split-adjusted daily prices are cached for 15 minutes, with history reused across
+period switches. Missing prices remain unknown; insufficient full-period history is not
+substituted with an IPO-to-date return. Returns expose exact observation/baseline dates.
+1m/3m/6m/1y use 30/91/182/365-day boundaries, YTD uses previous year-end, and 1d uses the
+latest two daily observations. This is not an extended-hours or streaming feed.
+
+Validation: 767 safe backend tests and 61 frontend tests passed; Python compilation and production build passed. Full-app browser
+checks at 1440px and 390px used synthetic API fixtures and verified layout, tile selection,
+period changes and saving without JavaScript errors. One live read-only ABT quote check
+returned Sep 25 versus Sep 24 observations. No production holdings or research were changed.
+
 
 ## Product intent
 
@@ -991,9 +1010,9 @@ Use `py_compile` for every touched Python module. Do not start paid research, se
 
 Current release markers must stay synchronized:
 
-- `worker.js`: `2026-09-24T107`
-- `service-worker.js`: `20260924-107`
-- `src/app.jsx`: `2026-09-24T107`
+- `worker.js`: `2026-09-26T108`
+- `service-worker.js`: `20260926-108`
+- `src/app.jsx`: `2026-09-26T108`
 
 After an application change:
 

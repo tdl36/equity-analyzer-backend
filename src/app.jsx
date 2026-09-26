@@ -6,6 +6,7 @@
 import * as React from 'react';
 import {createReadScheduler} from './api-read-scheduler.mjs';
 import {CatalystComparison} from './catalyst-comparison';
+import {PortfolioHeatmap} from './portfolio-heatmap';
 import {SummaryLab} from './summary-lab';
 import {SummaryComparison} from './summary-comparison';
 import {MeetingSession} from './meeting-session';
@@ -92,7 +93,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-09-24T107';
+        const BUILD_VERSION = '2026-09-26T108';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -18643,6 +18644,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         )}
 
                         {/* SUMMARY TAB */}
+                        {activeTab === 'heatmap' && <PortfolioHeatmap api={API_URL} onOpen={ticker=>openWorkspaceCompany(ticker,'overview')}/>}
                         {activeTab === 'summarylab' && <SummaryLab api={API_URL} getKey={loadApiKeyFromStorage} getGeminiKey={loadGeminiKeyFromStorage} renderHtml={sanitizeHtml} pickFromICloud={pickFromICloud}/> }
                         {activeTab === 'summary' && (
                             <div className={`flex-1 flex flex-col overflow-hidden pb-24 md:pb-0 ${currentSummary && summaryViewMode === 'detail' ? 'summary-reading' : ''}`}>
