@@ -1761,9 +1761,11 @@ Cover whichever of these are relevant:
 """ + RESEARCH_DOCTRINE
 
 
-def _queue_summary_lab(summary_id, api_key=None):
+def _queue_summary_lab(summary_id, api_key=None, prepared_id=None):
     """Fan a saved transcript into the independent Summary Lab workflow."""
     try:
+        if prepared_id:
+            return summary_lab_bp.start_prepared(prepared_id, api_key)
         return summary_lab_bp.enqueue(summary_id, api_key, output_mode='english', automatic=True)
     except Exception as exc:
         print(f"[summary-lab] Queue failed for {summary_id}: {type(exc).__name__}")
@@ -8845,29 +8847,39 @@ OUTPUT FORMAT: raw HTML only. No markdown. No code fences."""
         # which Summary tab filters would miss).
         title = os.path.splitext(filename)[0].replace('_', ' ').replace('-', ' ')
         summary_id = str(uuid.uuid4())
+        fan_out_lab = _should_fan_out_summary_lab(origin, lab_requested)
+        prepared_lab_id = None
+        if fan_out_lab:
+            summary_lab_bp.ensure()
         with get_db(commit=True) as (conn, cur):
             cur.execute('''
                 INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, assessment, meeting_summary, brief, source_type, doc_type, created_at)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'audio', 'audio', NOW())
             ''', (summary_id, title, transcript, summary_html, questions_html, assessment_html, meeting_summary_html, brief_html))
+            if fan_out_lab:
+                prepared_lab_id = summary_lab.prepare_audio_branch(
+                    cur, summary_id, job_id, title, transcript,
+                    {'title': title, 'brief': brief_html, 'summary': summary_html,
+                     'questions': questions_html, 'assessment': assessment_html,
+                     'meeting_summary': meeting_summary_html, 'korean_takeaways': None})
+            # A crash must leave either all saved results or none. The watcher
+            # can now find the completed original and the recoverable Lab row.
+            cur.execute('''INSERT INTO transcription_jobs
+                (id,filename,status,summary_id,summary_lab_id,auto_process,completed_at,updated_at)
+                VALUES (%s,%s,'complete',%s,%s,TRUE,NOW(),NOW())
+                ON CONFLICT (id) DO UPDATE SET status='complete',summary_id=EXCLUDED.summary_id,
+                    summary_lab_id=EXCLUDED.summary_lab_id,error=NULL,completed_at=NOW(),updated_at=NOW()''',
+                (job_id, filename, summary_id, prepared_lab_id))
         # Invalidate cache so the new entry shows up immediately in /api/summaries
         try: cache.invalidate('summaries')
         except Exception: pass
 
-        # Step 4: Create success alert
-        with get_db(commit=True) as (conn, cur):
-            alert_id = str(uuid.uuid4())
-            cur.execute('''
-                INSERT INTO agent_alerts (id, alert_type, ticker, title, detail, status, created_at)
-                VALUES (%s, 'audio_summary', '', %s, %s, 'new', NOW())
-            ''', (alert_id, f'Summary generated: {title}',
-                  json.dumps({'filename': filename, 'summaryId': summary_id, 'detailLevel': detail_level, 'transcriptLength': len(transcript)})))
-
         # From the argument, not the job dict: the dict is rewritten during
         # transcription and anything stored on it at upload time can vanish.
-        fan_out_lab = _should_fan_out_summary_lab(origin, lab_requested)
         _transcription_jobs[job_id]['status'] = 'complete'
         _transcription_jobs[job_id]['summaryId'] = summary_id
+        if prepared_lab_id:
+            _transcription_jobs[job_id]['summaryLabId'] = prepared_lab_id
         # 'pending' keeps the folder watcher from reporting that Summary Lab
         # did not start while the fan-out below is still running.
         _transcription_jobs[job_id]['summaryLabState'] = 'pending' if fan_out_lab else 'not_requested'
@@ -8878,11 +8890,23 @@ OUTPUT FORMAT: raw HTML only. No markdown. No code fences."""
         _mirror_transcription_state(job_id)
         _queue_improved_summary(summary_id, anthropic_api_key)
         if fan_out_lab:
-            summary_lab_id = _queue_summary_lab(summary_id, anthropic_api_key)
+            summary_lab_id = _queue_summary_lab(summary_id, anthropic_api_key, prepared_id=prepared_lab_id)
             if summary_lab_id:
                 _transcription_jobs[job_id]['summaryLabId'] = summary_lab_id
             _transcription_jobs[job_id]['summaryLabState'] = 'started' if summary_lab_id else 'failed'
             _mirror_transcription_state(job_id)
+        # Notification failure must not turn a durably saved note into an audio
+        # failure or stop its Lab branch from starting.
+        try:
+            with get_db(commit=True) as (conn, cur):
+                cur.execute('''INSERT INTO agent_alerts
+                    (id,alert_type,ticker,title,detail,status,created_at)
+                    VALUES (%s,'audio_summary','',%s,%s,'new',NOW())''',
+                    (str(uuid.uuid4()), f'Summary generated: {title}',
+                     json.dumps({'filename': filename, 'summaryId': summary_id,
+                                 'detailLevel': detail_level, 'transcriptLength': len(transcript)})))
+        except Exception as alert_err:
+            print(f"[auto-audio {job_id}] Saved; success alert unavailable: {type(alert_err).__name__}")
         print(f"[auto-audio {job_id}] Complete: {title} saved as {summary_id}")
 
     except Exception as e:

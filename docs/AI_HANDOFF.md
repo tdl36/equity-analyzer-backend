@@ -4,16 +4,52 @@ Updated: September 26, 2026
 
 ## Start here
 
-Charlie is releasing **T110** (`2026-09-26T110`), faster heat-map price loading. Use
+Charlie is releasing **T111** (`2026-09-26T111`), durable audio-to-Lab creation and collection pause fencing. Use
 `git log -1` and backend `/health` to verify the exact deployed revision.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T110#view=heatmap`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T111#view=heatmap`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`, branch `main`.
-- Previous release: T109 / `c333be7`.
+- Previous release: T110 / `4d63eb4`.
 - Local agent is unchanged by this release.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
+
+### T111 — durable audio branch and collection safeguards
+
+Opted-in SUMMARIES recordings now save the original Summary, completed audio-job
+record, and queued automatic Lab experiment in one database transaction. The Lab
+uses a stable audio-job identity, captures its source/baseline and prompt version,
+and starts only after commit. Existing bounded recovery can find it after a
+restart. A success-alert failure no longer stops the Lab branch or marks the saved
+note as failed. Original and Lab prompts, output settings, and the current `**`
+filename opt-in rule are unchanged. No historical recordings are backfilled.
+Recovery after restart still requires the server environment API key; client-only
+Settings keys cannot be recovered after process loss. No keys are persisted here.
+
+AlphaSense workers now have a read-only `preflight --request ID --owner TOKEN`
+check for live ownership, request state and enabled ticker policy. Lease renewal
+and completion enforce those checks; completion checks again before reserving
+paid dispatch and recording success. Explicit manual refreshes remain allowed
+when the recurring policy is paused. A pause cannot undo an already sent request;
+dispatch reservations still require inspection instead of blind retry. The worker
+runbook distinguishes unavailable browser control from an actual signed-out/MFA
+screen, and directs workers to check the supported native Chrome app surface.
+
+Operational check September 26: native Chrome was controllable and AlphaSense
+signed in. The existing ABBV regulatory request's September 20–26 press-release,
+broker and transcript searches were reviewed. No matching approval-event source
+was selected; unrelated results and pre-approval background were recorded as
+exclusions. Request remains attention pending primary-event confirmation, with
+zero downloads and no synthesis dispatched. Four existing LLY/BMY/MRK/JNJ requests
+paused solely for unavailable native Chrome control were requeued after confirming
+access. This is resumed work, not proof that downloads or analysis completed.
+
+Validation: 783 safe backend tests and 63 frontend tests passed; Python compilation and production build checked. New synthetic
+transaction tests cover rollback, committed recoverable rows, stable identity,
+version preservation, and no automatic retry of failed experiments. No paid
+research, email or thesis acceptance was used for validation. A future user-driven
+opted-in recording remains the live proof of the new atomic-save path.
 
 ### T110 — faster heat-map prices
 
@@ -992,7 +1028,7 @@ Charlie can store cases, compare new evidence, propose source-backed revisions, 
 
 ### AlphaSense automation
 
-The scheduled collection worker is active, but a saved policy or queued request is not proof of completed downloads. The last repeated scheduled checks returned no due managed request. Full unattended coverage across all tickers has not been proven end to end.
+The scheduled collection worker is active, but a saved policy or queued request is not proof of completed downloads. The September 26 inspection found queued work and several requests paused for browser control; see the T111 operational notes. Full unattended coverage across all tickers has not been proven end to end.
 
 Collection requires:
 
@@ -1019,7 +1055,7 @@ workflow. Do not remove saved notes or merge workflows before the user makes tha
 5. **Prove a complete managed AlphaSense assignment.** Demonstrate browser discovery, source restrictions, original download, iCloud handoff, recap, thesis proposal, and recovery for a real user-selected ticker without overstating unattended coverage.
 6. **Improve real-source quality benchmarks.** Current automated checks are useful regressions, not expert certification. Add frozen real-source packs and investor-scored outputs without committing licensed source bodies.
 7. **Continue UI simplification.** Navigation and complex evidence workflows have improved but remain dense. Any redesign must be inspected at desktop and mobile widths with real long content. T83 did this for Catalyst synthesis. The same pattern is worth auditing elsewhere: sub-views held in unrouted local state have no URL, no back-button behavior and no way for an alert or sidebar entry to link into them. `agentView`'s remaining panels and the Research agents heading are the obvious next candidates.
-8. **Broaden recovery cautiously.** Long-running Summary Lab and several research jobs have bounded recovery; audit remaining model-backed jobs for durable identity, checkpointing, ownership fencing, duplicate prevention, and visible failure. T82 fixed the Summary Lab recovery sweep and the audio completion mirror. Two known gaps remain and are unproven in production: a restart between the saved Summary and the fan-out leaves no Lab experiment to recover, because recovery only resumes rows that already exist; and `recover_once` reads `ANTHROPIC_API_KEY` from the environment, so recovery is silently inactive if only a Settings-supplied key is present.
+8. **Broaden recovery cautiously.** Long-running Summary Lab and several research jobs have bounded recovery; audit remaining model-backed jobs for durable identity, checkpointing, ownership fencing, duplicate prevention, and visible failure. T82 fixed the Summary Lab recovery sweep and the audio completion mirror. T111 closes the saved-Summary-to-Lab creation gap with an atomic save for new opted-in recordings; the live restart scenario remains unproven. `recover_once` still reads `ANTHROPIC_API_KEY` from the environment, so recovery is inactive if only a Settings-supplied key is present.
 
 ## Safe commands
 
@@ -1052,9 +1088,9 @@ Use `py_compile` for every touched Python module. Do not start paid research, se
 
 Current release markers must stay synchronized:
 
-- `worker.js`: `2026-09-26T110`
-- `service-worker.js`: `20260926-110`
-- `src/app.jsx`: `2026-09-26T110`
+- `worker.js`: `2026-09-26T111`
+- `service-worker.js`: `20260926-111`
+- `src/app.jsx`: `2026-09-26T111`
 
 After an application change:
 

@@ -252,11 +252,36 @@ class RefreshManager:
         if status not in ('collecting','needs_auth','attention','queued'):
             raise ValueError('Invalid worker status')
         with self.c.lock():
+            if status == 'collecting':
+                self._require_active(request_id, owner)
             row = self.db.execute('SELECT * FROM refresh_requests WHERE id=? AND owner=? AND lease_until>?', (request_id,owner,self.clock())).fetchone()
             if not row:
                 raise ValueError('Worker lease expired or belongs to another worker')
             self.db.execute('UPDATE refresh_requests SET status=?,issue=?,lease_until=? WHERE id=?',
                             (status,str(issue)[:1500] or None,self.clock()+1800 if status=='collecting' else None,request_id))
+
+    def _require_active(self, request_id, owner):
+        """Fence worker actions against cancellation, lease loss and policy pause."""
+        row = self.db.execute("""SELECT q.*, p.config AS policy_config
+            FROM refresh_requests q LEFT JOIN refresh_policies p ON p.ticker=q.ticker
+            WHERE q.id=? AND q.owner=? AND q.lease_until>?
+              AND q.status IN ('collecting','verifying')""",
+            (request_id, owner, self.clock())).fetchone()
+        if not row:
+            raise ValueError('Active worker lease required; request may be cancelled or reassigned')
+        cfg = json.loads(row['config'])
+        policy = json.loads(row['policy_config']) if row['policy_config'] else {}
+        if not cfg.get('manual') and not policy.get('enabled', False):
+            raise ValueError('Ticker refresh is paused; release this request as queued without dispatching research')
+        return row
+
+    def preflight(self, request_id, owner):
+        """Read-only authorization check before a browser export or iCloud handoff."""
+        with self.c.lock():
+            row = self._require_active(request_id, owner)
+            return {'requestId': request_id, 'ticker': row['ticker'],
+                    'status': row['status'], 'leaseUntil': row['lease_until'],
+                    'allowed': True}
 
     def cancel(self, request_id):
         with self.c.lock():return self._cancel(request_id)
@@ -279,9 +304,8 @@ class RefreshManager:
         self.db.execute("UPDATE refresh_requests SET status='queued',lease_until=NULL,owner=NULL,issue=NULL WHERE id=?", (request_id,))
 
     def complete(self, request_id, owner, fetcher=None):
-        row = self.db.execute('SELECT * FROM refresh_requests WHERE id=? AND owner=? AND lease_until>?', (request_id,owner,self.clock())).fetchone()
-        if not row:
-            raise ValueError('Active worker lease required')
+        with self.c.lock():
+            row = self._require_active(request_id, owner)
         collection = self.c.status(row['run'])
         if any(t['status'] not in ('complete','complete_with_exceptions','no_results') for t in collection['tasks']):
             raise ValueError('All requested searches must be reviewed before completing a refresh')
@@ -310,6 +334,7 @@ class RefreshManager:
         if (delivered or public_count) and cfg['workflow'] in ('note','recap'):
             # Reserve dispatch before the network call. Uncertain POSTs are never replayed blindly.
             with self.c.lock():
+                self._require_active(request_id, owner)
                 reserved = self.db.execute('UPDATE refresh_requests SET result=? WHERE id=? AND owner=? AND lease_until>? AND result IS NULL',
                     (json.dumps({'research':'dispatch reserved'}),request_id,owner,self.clock()))
                 if not reserved.rowcount:
@@ -320,6 +345,7 @@ class RefreshManager:
                 self.mark(request_id, owner, 'attention', 'Research dispatch needs inspection before retry: ' + type(exc).__name__)
                 raise ValueError('Research dispatch did not confirm completion; inspect existing research jobs before retrying') from exc
         with self.c.lock():
+            self._require_active(request_id, owner)
             updated = self.db.execute("UPDATE refresh_requests SET status='complete',lease_until=NULL,result=?,issue=NULL WHERE id=? AND owner=? AND lease_until>?", (json.dumps(result),request_id,owner,self.clock()))
             if not updated.rowcount:
                 raise ValueError('Refresh was cancelled or reassigned during verification')
@@ -377,7 +403,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--state',type=Path,default=DEFAULT_STATE)
     parser.add_argument('--stocks',type=Path,default=DEFAULT_STOCKS)
-    parser.add_argument('command',choices=['status','due','claim','trigger','mark','complete','retry','cancel'])
+    parser.add_argument('command',choices=['status','due','claim','preflight','trigger','mark','complete','retry','cancel'])
     parser.add_argument('--ticker');parser.add_argument('--request');parser.add_argument('--owner')
     parser.add_argument('--status');parser.add_argument('--issue',default='')
     args=parser.parse_args();c=Collector(args.state,args.stocks);m=RefreshManager(c)
@@ -385,6 +411,7 @@ def main():
         if args.command=='trigger':result=m.trigger(args.ticker)
         elif args.command=='mark':result=m.mark(args.request,args.owner,args.status,args.issue)
         elif args.command=='complete':result=m.complete(args.request,args.owner)
+        elif args.command=='preflight':result=m.preflight(args.request,args.owner)
         elif args.command=='retry':result=m.retry(args.request)
         elif args.command=='cancel':result=m.cancel(args.request)
         else:result=getattr(m,args.command)()

@@ -375,6 +375,26 @@ def export_row(row, section='all'):
     return result
 
 
+def prepare_audio_branch(cur, summary_id, job_id, title, source, baseline):
+    """Persist the opted-in experiment inside the original Summary transaction.
+
+    Caller ensures the schema before opening that transaction. No model work or
+    credentials are involved; queued rows are recoverable after process loss.
+    """
+    jid = str(uuid.uuid5(uuid.NAMESPACE_URL, 'charlie:audio-lab:' + job_id))
+    cur.execute('''INSERT INTO summary_lab_experiments
+        (id,title,source,source_hash,baseline,focus,version,model,state,summary_id,
+         output_mode,automatic,recovery_enabled,source_job_id)
+        VALUES (%s,%s,%s,%s,%s::jsonb,'',%s,%s,%s::jsonb,%s,'english',TRUE,TRUE,%s)
+        ON CONFLICT (source_job_id) WHERE source_job_id IS NOT NULL DO NOTHING''',
+        (jid, title, source, hashlib.sha256(source.encode()).hexdigest(),
+         json.dumps(baseline), VERSION, MODEL, json.dumps({'outputMode': 'english'}),
+         summary_id, 'automatic-audio:' + job_id))
+    cur.execute('SELECT id FROM summary_lab_experiments WHERE source_job_id=%s',
+                ('automatic-audio:' + job_id,))
+    return cur.fetchone()['id']
+
+
 def create_blueprint(get_db, render_docx=None, safe_filename=None, record_usage=None, models=None):
     bp = Blueprint('summary_lab', __name__)
     schema_lock = threading.Lock()
@@ -414,7 +434,7 @@ def create_blueprint(get_db, render_docx=None, safe_filename=None, record_usage=
                     ON summary_lab_experiments(source_job_id) WHERE source_job_id IS NOT NULL''')
             ready = True
 
-    def run(jid, key, recovery=False):
+    def run(jid, key, recovery=False, prepared_only=False):
         with slots, get_db() as (conn, lockcur):
             lockcur.execute('SELECT pg_try_advisory_lock(hashtext(%s)) AS ok', ('summary-lab:'+jid,))
             acquired = lockcur.fetchone()['ok']; conn.commit()
@@ -424,6 +444,10 @@ def create_blueprint(get_db, render_docx=None, safe_filename=None, record_usage=
                     cur.execute('SELECT * FROM summary_lab_experiments WHERE id=%s', (jid,))
                     row = cur.fetchone()
                 if not row or row['status'] == 'complete': return
+                # Dispatching the committed audio intent is not permission to
+                # retry a failed/cancelled experiment or reopen an archive.
+                if prepared_only and (row['status'] != 'queued' or row.get('archived_at')):
+                    return
                 # A queued experiment stopped before a slot freed must never
                 # reach the model.
                 if row.get('cancel_requested'): raise Cancelled()
@@ -522,6 +546,15 @@ def create_blueprint(get_db, render_docx=None, safe_filename=None, record_usage=
                 except Exception as exc: print('[Summary Lab recovery]',type(exc).__name__)
                 stop.wait(30)
         threading.Thread(target=loop,daemon=True,name='summary-lab-recovery').start()
+
+    def start_prepared(jid, api_key=None):
+        """Start a committed experiment; existing run() ownership guards still apply."""
+        key = api_key or os.environ.get('ANTHROPIC_API_KEY')
+        if not isinstance(key, str) or not key.strip():
+            raise ValueError('Saved Summary Lab experiment is waiting for a research API key.')
+        threading.Thread(target=run, args=(jid,key,False,True), daemon=True,
+                         name='summary-lab-'+jid[:8]).start()
+        return jid
 
     def allowed_models():
         """Model ids the Lab will accept, newest first. The default is always
@@ -760,6 +793,8 @@ def create_blueprint(get_db, render_docx=None, safe_filename=None, record_usage=
             if not cur.fetchone(): return jsonify(error='Experiment not found.'),404
         return jsonify(saved=True)
     bp.enqueue = enqueue
+    bp.ensure = ensure
+    bp.start_prepared = start_prepared
     bp.recover_once = recover_once
     bp.recovering = recovering
     bp.start_recovery = start_recovery

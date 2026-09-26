@@ -15,6 +15,74 @@ class RefreshTests(unittest.TestCase):
         self.clock=1788796800.;self.m=RefreshManager(self.c,lambda:self.clock)
         self.cfg={'ticker':'MDT','hours':24,'lookbackDays':7,'kinds':['transcript']}
 
+    def scheduled_claim(self):
+        self.m.save(self.cfg)
+        self.clock += 25 * 3600
+        return self.m.claim()
+
+    def test_preflight_rejects_paused_policy_but_preserves_explicit_manual_refresh(self):
+        claim = self.scheduled_claim()
+        self.assertTrue(self.m.preflight(claim['id'], claim['owner'])['allowed'])
+        self.m.save({**self.cfg, 'enabled': False})
+        with self.assertRaisesRegex(ValueError, 'paused'):
+            self.m.preflight(claim['id'], claim['owner'])
+        with self.assertRaisesRegex(ValueError, 'paused'):
+            self.m.mark(claim['id'], claim['owner'], 'collecting')
+        self.m.mark(claim['id'], claim['owner'], 'queued')
+        self.assertIsNone(self.m.claim())
+        self.m.cancel(claim['id'])
+        self.m.trigger('MDT')
+        manual = self.m.claim()
+        self.assertTrue(self.m.preflight(manual['id'], manual['owner'])['allowed'])
+
+    def test_cancelled_or_expired_worker_cannot_preflight(self):
+        claim = self.scheduled_claim()
+        with self.assertRaisesRegex(ValueError, 'lease'):
+            self.m.preflight(claim['id'], 'another-worker')
+        self.clock += 1801
+        with self.assertRaisesRegex(ValueError, 'lease'):
+            self.m.preflight(claim['id'], claim['owner'])
+        claim = self.m.claim()
+        self.m.cancel(claim['id'])
+        with self.assertRaisesRegex(ValueError, 'lease'):
+            self.m.preflight(claim['id'], claim['owner'])
+
+    def test_pause_during_verification_cannot_complete_or_advance_cursor(self):
+        from unittest.mock import patch
+        claim = self.scheduled_claim()
+        self.c.observe(claim['run'], 'MDT', 'transcript', 'https://research.alpha-sense.com/search', 0, 'Verified empty search')
+        self.c.finish(claim['run'], 'MDT', 'transcript', 0)
+        def pause(*args, **kwargs):
+            self.m.save({**self.cfg, 'enabled': False})
+            return {'verifications': []}
+        with patch.object(self.c, 'verify', side_effect=pause):
+            with self.assertRaisesRegex(ValueError, 'paused'):
+                self.m.complete(claim['id'], claim['owner'])
+        state = self.m.status()
+        self.assertEqual(state['requests'][0]['status'], 'collecting')
+        self.assertIsNone(state['policies'][0]['lastSuccess'])
+
+    def test_pause_during_verification_prevents_paid_dispatch(self):
+        from unittest.mock import patch
+        self.cfg = {**self.cfg, 'workflow': 'note'}
+        claim = self.scheduled_claim()
+        collection = {'tasks': [{'status': 'complete'}], 'until_date': '2026-09-07',
+                      'documents': [{'usage': 'research', 'status': 'handed_off'}]}
+        def pause(*args, **kwargs):
+            self.m.save({**self.cfg, 'enabled': False})
+            return {'verifications': []}
+        with patch.object(self.c, 'status', return_value=collection), \
+                patch.object(self.c, 'verify', side_effect=pause), \
+                patch.object(self.m, 'dispatch') as dispatch:
+            with self.assertRaisesRegex(ValueError, 'paused'):
+                self.m.complete(claim['id'], claim['owner'])
+            dispatch.assert_not_called()
+        row = self.db_row(claim['id'])
+        self.assertIsNone(row['result'])
+
+    def db_row(self, request_id):
+        return self.c.db.execute('SELECT * FROM refresh_requests WHERE id=?', (request_id,)).fetchone()
+
     def test_snapshot_distinguishes_saved_sources_from_restricted_staging(self):
         from tests.unit.test_charlie_collector import pdf
         self.m.save(self.cfg); self.m.trigger('MDT'); claim=self.m.claim()
