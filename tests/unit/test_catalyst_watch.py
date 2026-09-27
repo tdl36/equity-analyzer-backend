@@ -91,6 +91,27 @@ class WatchDispatchTests(unittest.TestCase):
         self.state['automatic']=False;self.tick([self.article])
         self.assertEqual(len(self.jobs),1);self.assertEqual(next(iter(self.jobs.values()))['status'],'detected')
 
+    def test_commentary_stays_visible_without_automatic_collection_or_quota_use(self):
+        headlines = [
+            'Industry benchmarking: breakthrough therapy shifts across drugmakers',
+            'Assessing AbbVie valuation after fresh FDA approval',
+            'Is AbbVie undervalued after positive Phase 3 clinical trial results?',
+            'What FDA approval means for investors in AbbVie',
+        ]
+        self.state['dailyLimit']=10
+        self.tick([{**self.article,'headline':title} for title in headlines])
+        self.assertEqual(len(self.jobs),len(headlines))
+        self.assertTrue(all(j['status']=='needs_review' for j in self.jobs.values()))
+        self.assertTrue(all('distinct new issuer event' in j['result']['reason'] for j in self.jobs.values()))
+        self.assertEqual(self.state['used'],0)
+
+    def test_actual_approval_still_queues_after_commentary(self):
+        self.tick([{**self.article,'headline':'Assessing AbbVie valuation after FDA approval'}])
+        self.state['lastCheck']=0
+        self.tick([{**self.article,'headline':'AbbVie receives FDA approval for new indication'}])
+        self.assertEqual(len([j for j in self.jobs.values() if j['stage']=='collection_control']),1)
+        self.assertEqual(self.state['used'],1)
+
     def test_different_luna_headlines_hold_second_dispatch_across_scans(self):
         self.state['dailyLimit']=10
         self.tick([{**self.article,'headline':'AbbVie Extends Migraine Leadership with Positive Phase 3 Atogepant Results in Menstrual Migraine'}])

@@ -4,16 +4,36 @@ Updated: September 26, 2026
 
 ## Start here
 
-Charlie is releasing **T111** (`2026-09-26T111`), durable audio-to-Lab creation and collection pause fencing. Use
+Charlie is releasing **T112** (`2026-09-26T112`), commentary screening before automatic catalyst collection. Use
 `git log -1` and backend `/health` to verify the exact deployed revision.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T111#view=heatmap`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T112#view=heatmap`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`, branch `main`.
-- Previous release: T110 / `4d63eb4`.
+- Previous release: T111 / `9b355f1`.
 - Local agent is unchanged by this release.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
+
+### T112 — commentary screening before automatic collection
+
+Catalyst discovery retains valuation commentary and industry/peer comparisons as
+reviewable signals instead of automatically launching AlphaSense assignments.
+These signals consume no automatic event quota. This is a bounded headline
+heuristic, not entity resolution or proof of novelty; genuinely new event
+announcements remain eligible under the existing rules. Existing requests are
+not cancelled or rewritten.
+
+Operational ledger inspection: LLY, BMY and MRK event collections are complete;
+ABBV and BSX remain attention pending primary-event confirmation. JNJ remains
+attention for inconsistent AlphaSense filters and a restricted broker source.
+Other MRK requests have been held as possible duplicates. Collection completion
+does not establish recap completion or accepted thesis changes.
+
+Validation: 785 safe backend tests and 63 frontend tests passed; Python
+compilation and production build passed. Focused catalyst tests cover review
+visibility, no collection or quota use for commentary, and a subsequent genuine
+approval still being queued. No paid research or email was used for QA.
 
 ### T111 — durable audio branch and collection safeguards
 

@@ -32,6 +32,15 @@ RULES=(
 
 REVIEW_CATEGORIES={'commercial','ownership','workforce'}
 
+# Feed association is not proof of a new issuer event. Keep commentary discoverable
+# without spending a browser assignment (or the daily automatic quota) on it.
+COMMENTARY_HEADLINE = re.compile(
+    r'\b(?:industry benchmarking|industry comparison|peer comparison|'
+    r'competitive landscape|valuation (?:check|analysis|assessment|review)|'
+    r'assessing .{0,100}valuation|reassessing .{0,100}valuation|'
+    r'is .{0,100}(?:undervalued|overvalued)|'
+    r'what .{0,100}means for (?:the )?(?:stock|investors|valuation))\b', re.I)
+
 
 def candidate(ticker,article,after,now):
     if not isinstance(article,dict):return None
@@ -51,8 +60,11 @@ def candidate(ticker,article,after,now):
     identity=hashlib.sha256((ticker+'|'+datetime.fromtimestamp(ts,timezone.utc).date().isoformat()+'|'+re.sub(r'\W+',' ',title.lower()).strip()).encode()).hexdigest()
     third_party_purchase=category=='corporate' and bool(re.search(r'\b(acquires?|purchases?|buys?)\b.*\b(gpus?|compute cluster|servers?|hardware|equipment)\b',title,re.I))
     issuer_explicit=bool(re.match(r'^'+re.escape(ticker)+r'\b',title.strip(),re.I))
-    requires_review=third_party_purchase or (category=='corporate' and not issuer_explicit) or category in REVIEW_CATEGORIES
-    if third_party_purchase:
+    commentary=bool(COMMENTARY_HEADLINE.search(title))
+    requires_review=commentary or third_party_purchase or (category=='corporate' and not issuer_explicit) or category in REVIEW_CATEGORIES
+    if commentary:
+        triage='This headline appears to be commentary or an industry comparison. Verify a distinct new issuer event and check existing coverage before collection.'
+    elif third_party_purchase:
         triage='Hardware purchase may be a customer event, not a material issuer transaction.'
     elif category in REVIEW_CATEGORIES:
         triage='The headline may be relevant but does not establish scale or investment significance. Verify issuer relevance and materiality before collection.'
