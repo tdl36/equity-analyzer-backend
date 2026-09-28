@@ -161,7 +161,7 @@ class CatalystWatch:
                 status='detected';result={}
                 duplicate=possible_duplicate(signal,prior)
                 if duplicate:
-                    status='needs_review';result={'reason':'Possible duplicate event: the same issuer, publication day and event identity appear in a differently worded headline. Review the existing event before requesting another collection; headlines alone do not prove the underlying developments are identical.', 'relatedSignalId':duplicate['id'], 'commandId':duplicate['result'].get('commandId'), 'duplicateReview':True}
+                    status='needs_review';result={'reason':'Possible duplicate event: a matching recent headline or same-day event signature was already detected for this issuer. Review the existing event before requesting another collection; headlines alone do not prove the underlying developments are identical.', 'relatedSignalId':duplicate['id'], 'commandId':duplicate['result'].get('commandId'), 'duplicateReview':True}
                 elif not signal.get('requiresReview') and state['automatic'] and policy and analyst and state['used']<state['dailyLimit']:
                     cfg={**policy,'createFolder':True,'workflow':'recap','topic':f"{ticker} {now.date().isoformat()} {signal['category']} {signal['id'][:8]}",'lookbackDays':7,'kinds':['press-release','broker-report','transcript'],'instructions':signal['reason']+' Source URL: '+signal['url']}
                     cid=str(uuid.uuid5(uuid.NAMESPACE_URL,'charlie-event-refresh:'+signal['id']))

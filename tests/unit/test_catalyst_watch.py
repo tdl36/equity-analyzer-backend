@@ -146,3 +146,17 @@ class WatchDispatchTests(unittest.TestCase):
     def test_mining_results_do_not_create_clinical_assignment(self):
         self.tick([{**self.article,'headline':'Myriad Uranium Announces Further Phase II Drill Results from Copper Mountain'}])
         self.assertEqual(self.jobs,{})
+
+    def test_next_day_republication_retained_without_second_collection(self):
+        title='ABBV announces $10 billion share repurchase authorization'
+        self.state['dailyLimit']=10
+        self.jobs['earlier']={'id':'earlier','stage':'catalyst_signal','status':'collection_queued',
+            'input':{'title':title,'ticker':'ABBV','category':'capital_allocation',
+                     'publishedAt':self.now-86400},'result':{'commandId':'original-command'}}
+        self.tick([{**self.article,'headline':title}])
+        self.assertFalse(any(j['stage']=='collection_control' for j in self.jobs.values()))
+        held=[j for j in self.jobs.values() if j.get('status')=='needs_review']
+        self.assertEqual(len(held),1)
+        self.assertEqual(held[0]['result']['relatedSignalId'],'earlier')
+        self.assertEqual(held[0]['result']['commandId'],'original-command')
+        self.assertEqual(self.state['used'],0)

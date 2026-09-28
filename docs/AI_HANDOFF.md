@@ -1,19 +1,36 @@
 # Charlie AI engineering handoff
 
-Updated: September 26, 2026
+Updated: September 28, 2026
 
 ## Start here
 
-Charlie is releasing **T112** (`2026-09-26T112`), commentary screening before automatic catalyst collection. Use
+Charlie is releasing **T113** (`2026-09-28T113`), bounded repeat-headline screening before collection. Use
 `git log -1` and backend `/health` to verify the exact deployed revision.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T112#view=heatmap`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T113#view=heatmap`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`, branch `main`.
-- Previous release: T111 / `9b355f1`.
+- Previous release: T112 / `bcbbcec`.
 - Local agent is unchanged by this release.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
+
+### T113 — repeat-headline collection guard
+
+Exact normalized headlines for the same ticker/category within three days now
+remain visible for duplicate review rather than automatically collecting again.
+Generic clinical headlines still require a named clinical signature. This does
+not establish event identity across differently worded follow-up articles.
+Same-day nonclinical similarity no longer suppresses a new headline when its
+numeric anchors differ, protecting changed guidance/authorization amounts.
+Existing assignments and saved research are untouched. No collection is launched
+by this release. Review-only signals cannot trigger the new cross-day hold.
+
+Validation: 789 safe backend tests and 63 frontend tests passed; Python compilation
+and production frontend build passed. Synthetic identity and dispatcher tests cover next-day republication,
+review visibility, linkage to the original command, no quota use, changed amounts,
+issuer separation and the bounded window. Live unattended end-to-end collection
+and synthesis still require the proof described below.
 
 ### T112 — commentary screening before automatic collection
 

@@ -72,6 +72,19 @@ def event_signature(signal):
 
 
 def possible_duplicate(signal, prior):
+    # Exact headline republication across nearby days is a review cue. Do not
+    # use a commentary/review-only signal to suppress a later actionable event.
+    normalized = re.sub(r'\W+', ' ', signal.get('title', '').lower()).strip()
+    for row in prior:
+        earlier = row.get('input') or {}
+        if earlier.get('requiresReview') or signal.get('requiresReview'):
+            continue
+        if (normalized and (signal.get('category') != 'clinical' or clinical_signature(signal))
+                and signal.get('ticker') == earlier.get('ticker')
+                and signal.get('category') == earlier.get('category')
+                and abs(signal.get('publishedAt', 0) - earlier.get('publishedAt', 0)) <= 3 * 86400
+                and normalized == re.sub(r'\W+', ' ', earlier.get('title', '').lower()).strip()):
+            return row
     current = clinical_signature(signal)
     if current:
         for row in prior:
@@ -85,6 +98,9 @@ def possible_duplicate(signal, prior):
         for row in prior:
             other=event_signature(row.get('input') or {})
             if not other or current[:3]!=other[:3]:
+                continue
+            # A changed amount or percentage may be the new information itself.
+            if current[4] and other[4] and current[4] != other[4]:
                 continue
             shared=current[3] & other[3]
             union=current[3] | other[3]

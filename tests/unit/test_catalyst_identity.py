@@ -38,3 +38,22 @@ class IdentityTests(unittest.TestCase):
         self.assertEqual(possible_duplicate(b,[row]),row)
         self.assertIsNone(possible_duplicate({**b,'category':'legal'},[row]))
         self.assertIsNone(possible_duplicate({**b,'publishedAt':1789128000},[row]))
+
+    def test_exact_republication_next_day_is_reviewed_but_not_indefinitely(self):
+        a=dict(title='Example announces $150 billion share repurchase authorization',
+               ticker='XYZ',category='capital_allocation',publishedAt=1789041600)
+        row={'id':'first','input':a}
+        self.assertEqual(possible_duplicate({**a,'publishedAt':a['publishedAt']+86400},[row]),row)
+        self.assertIsNone(possible_duplicate({**a,'publishedAt':a['publishedAt']+4*86400},[row]))
+        self.assertIsNone(possible_duplicate({**a,'ticker':'OTHER'},[row]))
+
+    def test_changed_amount_is_not_suppressed_by_wording_overlap(self):
+        a=dict(title='XYZ raises annual earnings guidance to $10.50 after results',
+               ticker='XYZ',category='guidance',publishedAt=1789041600)
+        self.assertIsNone(possible_duplicate({**a,'title':a['title'].replace('10.50','11.50')},[{'input':a}]))
+
+    def test_review_only_exact_headline_does_not_block_new_actionable_signal(self):
+        a=dict(title='XYZ announces regulatory approval for new indication',
+               ticker='XYZ',category='regulatory',publishedAt=1789041600)
+        self.assertIsNone(possible_duplicate({**a,'publishedAt':a['publishedAt']+86400},
+                                            [{'input':{**a,'requiresReview':True}}]))
