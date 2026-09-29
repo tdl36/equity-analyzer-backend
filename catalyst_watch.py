@@ -39,7 +39,8 @@ COMMENTARY_HEADLINE = re.compile(
     r'competitive landscape|valuation (?:check|analysis|assessment|review)|'
     r'assessing .{0,100}valuation|reassessing .{0,100}valuation|'
     r'is .{0,100}(?:undervalued|overvalued)|'
-    r'what .{0,100}means for (?:the )?(?:stock|investors|valuation))\b', re.I)
+    r'(?:undervaluation|overvaluation) .{0,40}(?:compelling|justified)|'
+    r'what .{0,160}means? for (?:the )?(?:stock|investors|valuation))\b', re.I)
 
 
 def candidate(ticker,article,after,now):
@@ -60,12 +61,18 @@ def candidate(ticker,article,after,now):
     identity=hashlib.sha256((ticker+'|'+datetime.fromtimestamp(ts,timezone.utc).date().isoformat()+'|'+re.sub(r'\W+',' ',title.lower()).strip()).encode()).hexdigest()
     third_party_purchase=category=='corporate' and bool(re.search(r'\b(acquires?|purchases?|buys?)\b.*\b(gpus?|compute cluster|servers?|hardware|equipment)\b',title,re.I))
     issuer_explicit=bool(re.match(r'^'+re.escape(ticker)+r'\b',title.strip(),re.I))
+    # A feed's `related` list is association, not identification of the employer.
+    # Until company-name resolution is available, ambiguous leadership headlines
+    # stay reviewable; never infer the issuer from a destination employer mention.
+    leadership_review=category=='leadership' and not issuer_explicit
     commentary=bool(COMMENTARY_HEADLINE.search(title))
-    requires_review=commentary or third_party_purchase or (category=='corporate' and not issuer_explicit) or category in REVIEW_CATEGORIES
+    requires_review=commentary or leadership_review or third_party_purchase or (category=='corporate' and not issuer_explicit) or category in REVIEW_CATEGORIES
     if commentary:
         triage='This headline appears to be commentary or an industry comparison. Verify a distinct new issuer event and check existing coverage before collection.'
     elif third_party_purchase:
         triage='Hardware purchase may be a customer event, not a material issuer transaction.'
+    elif leadership_review:
+        triage='Confirm which company the leadership change belongs to. A related-company feed or a mentioned destination employer does not establish an event for this ticker.'
     elif category in REVIEW_CATEGORIES:
         triage='The headline may be relevant but does not establish scale or investment significance. Verify issuer relevance and materiality before collection.'
     elif requires_review:

@@ -112,6 +112,26 @@ class WatchDispatchTests(unittest.TestCase):
         self.assertEqual(len([j for j in self.jobs.values() if j['stage']=='collection_control']),1)
         self.assertEqual(self.state['used'],1)
 
+    def test_ambiguous_leadership_stays_visible_without_spending_quota(self):
+        self.tick([{**self.article,'headline':'OtherCo CEO departure to pursue role at AbbVie'}])
+        self.assertEqual(len(self.jobs),1)
+        row=next(iter(self.jobs.values()))
+        self.assertEqual(row['status'],'needs_review')
+        self.assertIn('which company',row['result']['reason'])
+        self.assertEqual(self.state['used'],0)
+        self.state['lastCheck']=0
+        self.tick([{**self.article,'headline':'ABBV appoints new CFO'}])
+        self.assertEqual(len([j for j in self.jobs.values() if j['stage']=='collection_control']),1)
+
+    def test_question_and_valuation_followups_do_not_trigger_collection(self):
+        for title in ('What Do the Recall and CEO Departure Mean For Investors?',
+                      'ABBV Faces a Recall, Is 28% Undervaluation Still Compelling?'):
+            self.state['lastCheck']=0
+            self.tick([{**self.article,'headline':title}])
+        self.assertEqual(len(self.jobs),2)
+        self.assertTrue(all(j['status']=='needs_review' for j in self.jobs.values()))
+        self.assertEqual(self.state['used'],0)
+
     def test_different_luna_headlines_hold_second_dispatch_across_scans(self):
         self.state['dailyLimit']=10
         self.tick([{**self.article,'headline':'AbbVie Extends Migraine Leadership with Positive Phase 3 Atogepant Results in Menstrual Migraine'}])

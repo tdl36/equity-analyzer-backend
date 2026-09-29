@@ -1,19 +1,41 @@
 # Charlie AI engineering handoff
 
-Updated: September 28, 2026
+Updated: September 29, 2026
 
 ## Start here
 
-Charlie is releasing **T113** (`2026-09-28T113`), bounded repeat-headline screening before collection. Use
+Charlie is releasing **T114** (`2026-09-29T114`), ambiguous leadership and follow-up commentary screening before collection. Use
 `git log -1` and backend `/health` to verify the exact deployed revision.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T113#view=heatmap`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T114#view=heatmap`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`, branch `main`.
-- Previous release: T112 / `bcbbcec`.
+- Previous release: T113 / `881dc74`.
 - Local agent is unchanged by this release.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
+
+### T114 — issuer ambiguity and follow-up screening
+
+Leadership headlines without an explicit leading ticker now require review before
+collection. A related-company feed does not establish which employer changed its
+leadership. This deliberately also holds company-name-only leadership headlines;
+full issuer-name resolution is still outstanding. Explicit ticker-led leadership
+announcements retain the existing automatic path. Plural question headlines and
+undervaluation/overvaluation follow-up questions are held as commentary. Held
+signals remain visible and consume no automatic collection quota. No existing
+research or pending requests are rewritten by these guards.
+
+Operational inspection September 29: the latest 50 requests initially included
+25 queued, 17 attention, seven completed and one collecting. AMAT's two saved
+originals were confirmed under STOCKS/AMAT despite an incorrect status-message
+abbreviation. AMAT's failed export and Agilent's now-current date-window request
+were resumed with partial progress retained. This is queue resumption, not proof
+of collection or analysis completion. Duplicate and issuer-mismatch holds remain.
+
+Validation: 791 safe backend tests and 63 frontend tests passed; focused tests
+exercise review visibility, quota preservation and subsequent valid dispatch.
+No paid model runs, email or research acceptance were used for QA.
 
 ### T113 — repeat-headline collection guard
 
