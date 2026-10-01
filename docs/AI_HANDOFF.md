@@ -4,16 +4,58 @@ Updated: October 1, 2026
 
 ## Start here
 
-Charlie is running **T119** (`2026-10-01T119`), versioned operating scenarios alongside Deep Research. Use
+Charlie is releasing **T120** (`2026-10-01T120`), research-linked revenue observations and a ticker-to-case workflow guide. Use
 `git log -1` and backend `/health` to verify the exact deployed revision.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T119#view=desk`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T120#view=desk`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`, branch `main`.
 - Previous frontend: T115 / `27f4088`; backend was held at T114 by dependency resolution.
 - Local agent is unchanged by this release.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
+
+### T120 — revenue observation → operating model → case revision
+
+Operating scenarios can select a printed number from a completed same-ticker
+Deep Research run's supported reported-fact passage. `financial_observations.py`
+rechecks exact passage identity and original content/permission, preserves the
+printed token, converts units/thousands/millions/billions to millions, and requires
+explicit analyst confirmation of issuer, consolidated annual revenue, fiscal
+year, currency, accounting basis and original page/section. This is not automatic
+financial-statement extraction, accounting reconciliation or an independent
+verification of metric meaning. Guidance/estimates/unresolved claims are excluded.
+
+The revenue amount, year and currency populate an unsaved model. A server-derived
+receipt retains research/claim/source identities, excerpt, original/extraction
+hashes and the specific checks. Preview and save recheck source permission/hash
+and reject mismatched model revenue/year/currency. New case saves recompute the
+receipt; forged client provenance is discarded. Exact retry receipts replay
+without duplication. Historical restoration retains historical evidence without
+claiming current source availability. Unlink is explicit and keeps the number
+as a manual input. Existing models without this optional field remain compatible.
+
+The in-app **Ticker-to-case workflow & test guide** explains all nine steps,
+expected states, paid actions, recovery and current limitations, and downloads a
+black Calibri HTML guide. Its isolated synthetic calculator check uses only the
+nonpersistent preview endpoint, checks known outputs and zero-share rejection,
+and never saves company data or calls a model. The same guide is checked in at
+`docs/charlie-ticker-workflow.html`. Revision history now exposes operating-model
+metadata alongside existing scenario/signal/evidence data.
+
+Validation: 816 safe backend tests, 75 frontend tests, Python compilation and
+synthetic browser flow. Browser checks cover source selection, exact token/unit
+conversion, receipt rendering, valid arithmetic, stale-link rejection and the
+isolated guide check; no overflow at 1440/390/320px and no console errors. Tests
+cover changed/restricted/missing originals, unsupported claims, wrong ticker,
+forged receipts, duplicate saves, unit/period mismatch and historical restoration.
+No real research/observations/cases were created or accepted for QA. Production
+build and deployment verification are recorded after release.
+
+Next: richer typed metrics and accounting reconciliation, sector templates,
+then bounded committee review against frozen research/case/model references.
+Full paid research quality still needs legitimate investor-directed research;
+synthetic checks are not real-source validation.
 
 ### T119 — empty operating-model workspace
 

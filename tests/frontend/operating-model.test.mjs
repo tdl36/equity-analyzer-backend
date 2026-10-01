@@ -32,3 +32,10 @@ test('model workspace renders empty, newly added and removed drafts', async()=>{
  assert.match(render({operatingModel:newOperatingModel()},true),/Calculate draft/);
  assert.match(render({},true),/Add EV\/EBITDA model/);
 });
+
+test('source receipt export preserves provenance and explicitly limits verification',async()=>{
+ const {revenueEvidenceHtml}=await import('../../src/operating-model-view.mjs');
+ const html=revenueEvidenceHtml({token:'1.0',unit:'billions',currency:'USD',valueMillions:'1000',fiscalYear:2025,filename:'<original>',excerpt:'<script>not executable</script>',researchRunId:'run',originalHash:'original-hash',extractionHash:'text-hash',locator:'p.2',basis:'GAAP'});
+ for(const value of ['analyst','not independently verified','historical','original-hash','text-hash','&lt;script&gt;','1.0 billions'])assert.ok(html.includes(value),value);
+ assert.ok(!html.includes('<script>'));
+});

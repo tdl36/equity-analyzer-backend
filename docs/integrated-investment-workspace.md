@@ -308,3 +308,15 @@ Decimal on preview and again on save. Snapshot, comparisons and exports retain
 the selected case's model version. Reverse valuation is conditional and
 sensitivities are assumptions, not probabilities. This does not implement
 automatic financial-fact extraction, source verification or sector-wide models.
+
+## T120 implementation record — October 1
+
+The first typed source observation connects a reviewed reported-revenue passage
+to the base revenue of the operating model. Exact number/passages and conversions
+are checked mechanically; issuer, period, currency and accounting meaning are
+analyst-confirmed. Permission/hash checks repeat on new calculations and saves.
+The receipt is server-derived, travels with immutable case revisions and exports,
+and remains explicitly historical on restore. This is a bounded manual review
+bridge, not general automated financial-fact extraction or reconciliation.
+An in-app/downloadable ticker-to-case guide and isolated free calculator check
+make the delivered journey testable without paid research or production writes.

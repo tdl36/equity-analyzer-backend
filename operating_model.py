@@ -67,6 +67,9 @@ def evaluate(data):
                   priceReference=text(data.get('priceReference'), 'reference-price source'),
                   ebitdaBasis=text(data.get('ebitdaBasis'), 'EBITDA definition / adjustments'),
                   scenarios={}, results={})
+    if data.get('baseRevenueObservation') is not None:
+        from financial_observations import validate_model_link
+        result['baseRevenueObservation'] = validate_model_link({**result, 'baseRevenueObservation': data['baseRevenueObservation']})
     with localcontext() as ctx:
         ctx.prec = 60
         for name in NAMES:

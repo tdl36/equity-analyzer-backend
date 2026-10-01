@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { RevenueObservation } from './revenue-observation';
 var names = ['bear', 'base', 'bull'];
 var numeric = [['growthPct', 'Revenue CAGR (%)'], ['marginPct', 'Target EBITDA margin (%)'], ['multiple', 'Target EV / EBITDA (×)'], ['netDebt', 'Target net debt (millions; negative = net cash)'], ['otherClaims', 'Other senior claims (millions)'], ['nonOperatingAssets', 'Nonoperating assets (millions)'], ['shares', 'Target diluted shares (millions)']];
 export var newOperatingModel = () => ({
@@ -28,7 +29,8 @@ export function OperatingModel({
   busy,
   dirty,
   onChange,
-  onSave
+  onSave,
+  onResearch
 }) {
   var model = body.operatingModel,
     signature = JSON.stringify(model);
@@ -73,7 +75,10 @@ export function OperatingModel({
         headers: {
           'Content-Type': 'application/json'
         },
-        body: captured,
+        body: JSON.stringify({
+          ...model,
+          ticker
+        }),
         signal: AbortSignal.timeout(20000)
       });
       var d = await r.json();
@@ -115,7 +120,13 @@ export function OperatingModel({
     value: model[key],
     maxLength: 1800,
     onChange: e => set(key, e.target.value)
-  }))), /*#__PURE__*/React.createElement("div", {
+  }))), /*#__PURE__*/React.createElement(RevenueObservation, {
+    api: api,
+    ticker: ticker,
+    model: model,
+    onChange: edit,
+    onResearch: onResearch
+  }), /*#__PURE__*/React.createElement("div", {
     className: "operating-model-grid"
   }, names.map(name => /*#__PURE__*/React.createElement("article", {
     key: name

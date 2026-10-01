@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { InvestmentWorkflowGuide } from './investment-workflow-guide';
 import { InvestorFramework } from './investor-framework';
 import { ResearchDecisions } from './research-decisions';
 import { ResearchWorkbench } from './research-workbench';
@@ -159,7 +160,11 @@ export function InvestmentCase({
     "aria-label": "Investment case"
   }, /*#__PURE__*/React.createElement("p", {
     className: "workspace-eyebrow"
-  }, "INVESTMENT CASE / YOUR ASSUMPTIONS"), /*#__PURE__*/React.createElement("h2", null, "Investment thesis workspace."), /*#__PURE__*/React.createElement("p", null, "Record what you believe, the evidence against it, and the next test. These are your working assumptions. Manual source references are unverified; accepted research links retain the original excerpt and its provenance."), /*#__PURE__*/React.createElement(InvestorFramework, {
+  }, "INVESTMENT CASE / YOUR ASSUMPTIONS"), /*#__PURE__*/React.createElement("h2", null, "Investment thesis workspace."), /*#__PURE__*/React.createElement("p", null, "Record what you believe, the evidence against it, and the next test. These are your working assumptions. Manual source references are unverified; accepted research links retain the original excerpt and its provenance."), /*#__PURE__*/React.createElement(InvestmentWorkflowGuide, {
+    api: api,
+    active: active,
+    onNavigate: setWorkspaceTab
+  }), /*#__PURE__*/React.createElement(InvestorFramework, {
     api: api
   }), /*#__PURE__*/React.createElement(UnderweightMonitor, {
     api: api,
@@ -211,7 +216,8 @@ export function InvestmentCase({
     busy: busy,
     dirty: dirty,
     onChange: edit,
-    onSave: save
+    onSave: save,
+    onResearch: () => setWorkspaceTab('research')
   }), workspaceTab === 'research' && /*#__PURE__*/React.createElement(CompanyResearch, {
     key: active,
     api: api,
@@ -432,6 +438,7 @@ export function InvestmentCase({
     }
   }, JSON.stringify({
     scenarios: snapshot.body.scenarios,
+    operatingModel: snapshot.body.operatingModel || null,
     signals: snapshot.body.signals || {},
     evidenceLinks: snapshot.body.evidenceLinks || []
   }, null, 2))), fields.map(([key, label]) => /*#__PURE__*/React.createElement("section", {

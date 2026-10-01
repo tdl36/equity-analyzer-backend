@@ -124,11 +124,37 @@ def create_blueprint(get_db):
     def model_preview():
         from operating_model import evaluate
         try:
-            response=jsonify(model=evaluate(request.get_json(silent=True)))
+            data=request.get_json(silent=True)
+            model=evaluate(data)
+            if model.get('baseRevenueObservation'):
+                from financial_observations import resolve
+                ticker=data.get('ticker','')
+                if not isinstance(ticker,str) or not re.fullmatch(r'[A-Z0-9][A-Z0-9.-]{0,19}',ticker):
+                    raise ValueError('Choose the company for this source-linked preview.')
+                with get_db() as (_,cur):
+                    model['baseRevenueObservation']=resolve(model['baseRevenueObservation'],ticker,cur)
+            response=jsonify(model=model)
             response.headers['Cache-Control']='no-store'
             return response
-        except (ValueError,TypeError) as exc:
+        except (ValueError,TypeError,AttributeError) as exc:
             return jsonify(error=str(exc)),400
+
+    @bp.route('/api/research/operating-model/<ticker>/revenue-observation',methods=['GET','POST'])
+    def revenue_observation(ticker):
+        from financial_observations import candidates, resolve
+        if not re.fullmatch(r'[A-Z0-9][A-Z0-9.-]{0,19}',ticker):return jsonify(error='Invalid ticker'),400
+        try:
+            with get_db() as (_,cur):
+                if request.method=='POST':
+                    result={'observation':resolve(request.get_json(silent=True),ticker,cur)}
+                else:
+                    ident=str(uuid.UUID(request.args.get('runId','')))
+                    cur.execute("SELECT to_regclass('company_research_runs') AS name")
+                    if not cur.fetchone()['name']:raise ValueError('No completed research is available.')
+                    cur.execute('SELECT * FROM company_research_runs WHERE id=%s',(ident,))
+                    result={'candidates':candidates(cur.fetchone(),ticker)}
+            response=jsonify(**result);response.headers['Cache-Control']='no-store';return response
+        except (ValueError,TypeError,AttributeError) as exc:return jsonify(error=str(exc)),400
 
     def ensure():
         nonlocal ready
@@ -213,6 +239,10 @@ def create_blueprint(get_db):
                 return jsonify(error='A newer investment case was saved. Your unsaved edits are retained; reload and reconcile them before saving.'),409
             if mode=='save':
                 body=operation['body']
+                if body.get('operatingModel',{}).get('baseRevenueObservation'):
+                    from financial_observations import resolve
+                    try:body['operatingModel']['baseRevenueObservation']=resolve(body['operatingModel']['baseRevenueObservation'],ticker,cur)
+                    except (ValueError,TypeError,AttributeError) as exc:return jsonify(error=str(exc)),409
                 # Evidence metadata can only originate in a server-reviewed operation.
                 body['evidenceLinks']=(current['body'].get('evidenceLinks',[]) if current else [])
             elif mode=='restore':

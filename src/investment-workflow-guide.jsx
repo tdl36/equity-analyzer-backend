@@ -1,0 +1,20 @@
+import * as React from 'react';
+import {workflowSteps,workflowGuideHtml,syntheticOperatingModel,syntheticExpected} from './investment-workflow-guide.mjs';
+
+export function InvestmentWorkflowGuide({api,active,onNavigate}) {
+ const [busy,setBusy]=React.useState(false),[result,setResult]=React.useState('');
+ const guide=React.useRef(null);
+ const alive=React.useRef(true);React.useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
+ const check=async()=>{setBusy(true);setResult('Checking isolated synthetic inputs…');try{
+  const send=model=>fetch(api+'/api/research/operating-model/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(model),signal:AbortSignal.timeout(20000)});
+  const response=await send(syntheticOperatingModel());const d=await response.json();if(!response.ok)throw Error(d.error||'Calculator unavailable');
+  for(const [key,value] of Object.entries(syntheticExpected))if(d.model?.results?.base?.[key]!==value)throw Error('Unexpected synthetic result for '+key+'. No case was saved.');
+  const invalid=syntheticOperatingModel();invalid.scenarios.base.shares='0';const rejected=await send(invalid);if(rejected.status!==400)throw Error('Zero shares were not rejected as expected.');
+  if(alive.current)setResult('Passed: revenue 1,210.00m → EBITDA 242.00m → EV 2,420.00m → equity 2,195.00m → 21.95 USD/share; price return 9.75%; reverse EBITDA 222.50m. Zero shares correctly rejected. No case saved or paid research launched.');
+ }catch(e){if(alive.current)setResult('Check failed: '+e.message);}finally{if(alive.current)setBusy(false);}};
+ const download=()=>{const url=URL.createObjectURL(new Blob([workflowGuideHtml()],{type:'text/html;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='Charlie-ticker-to-case-workflow-T120.html';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+ return <details ref={guide} className="investment-workflow-guide"><style>{`.investment-workflow-guide{font-family:Calibri,sans-serif;color:#000;background:#f8fafb;padding:20px;margin:20px 0;border:1px solid #bac5cc;border-radius:8px}.investment-workflow-guide *{color:#000!important;overflow-wrap:anywhere}.investment-workflow-guide summary{font-size:20px;font-weight:700;cursor:pointer}.investment-workflow-guide article{border-top:1px solid #ccd4d9;padding:18px 0}.investment-workflow-guide h3{font-size:22px;margin:10px 0}.investment-workflow-guide p{margin:12px 0;max-width:90ch}.investment-workflow-guide button{background:#fff!important;border:1px solid #8796a2;border-radius:5px;padding:10px 14px;margin:8px 8px 8px 0}.investment-workflow-guide button:disabled{opacity:.5}`}</style><summary>Ticker-to-case workflow & test guide</summary><p>Start with a ticker, build research from permitted originals, review the case, and calculate explicit scenarios. Opening saved content is free of model charges. Research and evidence assessment are separate paid actions.</p><button onClick={download}>Download the complete workflow guide</button>
+ <article><h3>Start with a free calculator check</h3><p>This isolated synthetic example checks arithmetic and invalid-input handling. It saves no company data and does not test research quality, collection or model-provider access.</p><p>Base revenue 1,000m; FY2025 → FY2027; CAGR 10%; margin 20%; multiple 10×; net debt 200m; claims 50m; nonoperating assets 25m; diluted shares 100m; reference price 20 USD. All three scenarios use the same inputs for this check.</p><button disabled={busy} onClick={check}>{busy?'Checking…':'Run isolated calculator check'}</button><p role="status">{result}</p></article>
+ {workflowSteps.map((s,i)=><article key={s.title}><h3>{i+1}. {s.title}</h3><p>{s.action}</p><p><strong>Expected:</strong> {s.check}</p><p><strong>If blocked / limits:</strong> {s.stop}</p>{active&&<button onClick={()=>{if(guide.current)guide.current.open=false;onNavigate(s.tab);}}>Open {s.tab==='model'?'Operating scenarios':s.tab==='case'?'Current thesis':s.tab==='research'?'Deep Research':s.tab==='signals'?'Case signals':'Snapshot'} for {active}</button>}</article>)}
+ </details>;
+}
