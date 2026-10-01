@@ -11,6 +11,8 @@ from flask import Blueprint, jsonify, request
 
 def case_context_hash(body):
     context={k:body.get(k,'') for k in ('thesis','variantView','marketBaseline','changeConditions','scenarios')}
+    if body.get('operatingModel'):
+        context['operatingModel']=body['operatingModel']
     context['assumptions']=[{k:a.get(k,'') for k in ('id','claim','evidenceType')} for a in body.get('assumptions',[])]
     return hashlib.sha256(json.dumps(context,sort_keys=True).encode()).hexdigest()
 
@@ -82,6 +84,9 @@ def validate(data):
         result['signals']=validate_signals(data['signals'],seen)
     result['scenarios']=data.get('scenarios',{})
     scenario_bridge(result['scenarios'])
+    if data.get('operatingModel') is not None:
+        from operating_model import evaluate
+        result['operatingModel']=evaluate(data['operatingModel'])
     return result
 
 
@@ -115,6 +120,16 @@ def scenario_bridge(data):
 def create_blueprint(get_db):
     bp=Blueprint('investment_case',__name__)
     schema_lock=threading.Lock();ready=False
+    @bp.post('/api/research/operating-model/preview')
+    def model_preview():
+        from operating_model import evaluate
+        try:
+            response=jsonify(model=evaluate(request.get_json(silent=True)))
+            response.headers['Cache-Control']='no-store'
+            return response
+        except (ValueError,TypeError) as exc:
+            return jsonify(error=str(exc)),400
+
     def ensure():
         nonlocal ready
         with schema_lock:

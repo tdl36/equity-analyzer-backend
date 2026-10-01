@@ -6,7 +6,8 @@ export function CompanySnapshot({
   revision,
   disabled,
   onEdit,
-  onUpdate
+  onUpdate,
+  onModel
 }) {
   var [selected, setSelected] = React.useState(''),
     [baseline, setBaseline] = React.useState('');
@@ -74,7 +75,22 @@ export function CompanySnapshot({
       whiteSpace: 'pre-wrap',
       overflowWrap: 'anywhere'
     }
-  }, text || 'Not recorded')))), /*#__PURE__*/React.createElement("h4", null, "Assumptions \u2192 evidence \u2192 next test"), /*#__PURE__*/React.createElement("p", null, "Classification is investor recorded. Saved excerpts establish provenance, not truth or currentness."), snapshot.assumptions.map(a => /*#__PURE__*/React.createElement("article", {
+  }, text || 'Not recorded')))), snapshot.operatingModel?.results && /*#__PURE__*/React.createElement("section", {
+    className: "workspace-panel"
+  }, /*#__PURE__*/React.createElement("h4", null, "Operating scenarios \xB7 saved with R", snapshot.revision), /*#__PURE__*/React.createElement("p", null, snapshot.operatingModel.version, " \xB7 FY", snapshot.operatingModel.targetYear, " \xB7 analyst-entered inputs, not a forecast or verified consensus."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      overflowX: 'auto'
+    }
+  }, /*#__PURE__*/React.createElement("table", {
+    style: {
+      width: '100%'
+    }
+  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Scenario"), /*#__PURE__*/React.createElement("th", null, "Implied price (", snapshot.operatingModel.currency, ")"), /*#__PURE__*/React.createElement("th", null, "Price return"))), /*#__PURE__*/React.createElement("tbody", null, Object.entries(snapshot.operatingModel.results).map(([name, result]) => /*#__PURE__*/React.createElement("tr", {
+    key: name
+  }, /*#__PURE__*/React.createElement("th", null, name), /*#__PURE__*/React.createElement("td", null, result.impliedPrice), /*#__PURE__*/React.createElement("td", null, result.priceReturnPct, "%")))))), /*#__PURE__*/React.createElement("p", null, "Inputs, formulas and limitations travel with this revision\u2019s investment-map export."), /*#__PURE__*/React.createElement("button", {
+    disabled: disabled,
+    onClick: onModel
+  }, "Open current operating model")), /*#__PURE__*/React.createElement("h4", null, "Assumptions \u2192 evidence \u2192 next test"), /*#__PURE__*/React.createElement("p", null, "Classification is investor recorded. Saved excerpts establish provenance, not truth or currentness."), snapshot.assumptions.map(a => /*#__PURE__*/React.createElement("article", {
     className: "workspace-panel",
     key: a.id
   }, /*#__PURE__*/React.createElement("h4", null, a.claim), /*#__PURE__*/React.createElement("p", null, String(a.evidenceType || 'interpretation').replaceAll('_', ' ')), /*#__PURE__*/React.createElement("dl", null, [['Supports', a.support], ['Challenges', a.contrary], ['Next test', a.nextTest], ['Manual source reference · unverified', a.sourceReference]].map(([label, text]) => /*#__PURE__*/React.createElement(React.Fragment, {
@@ -103,7 +119,7 @@ export function CompanySnapshot({
   }, "Choose a baseline"), versions.filter(v => v.revision < snapshot.revision).map(v => /*#__PURE__*/React.createElement("option", {
     key: v.revision,
     value: v.revision
-  }, "Revision ", v.revision)))), earlier && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "Revision ", earlier.revision, " \u2192 ", snapshot.revision, ". Wording changes only; this does not infer why the investment case changed."), !changes.length && /*#__PURE__*/React.createElement("p", null, "No thesis or assumption wording changed."), changes.map((c, i) => /*#__PURE__*/React.createElement("article", {
+  }, "Revision ", v.revision)))), earlier && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "Revision ", earlier.revision, " \u2192 ", snapshot.revision, ". Saved wording and model changes; this does not infer why the investment case changed."), !changes.length && /*#__PURE__*/React.createElement("p", null, "No tracked thesis, assumption or operating-model changes."), changes.map((c, i) => /*#__PURE__*/React.createElement("article", {
     key: i
   }, /*#__PURE__*/React.createElement("h5", null, c.label), /*#__PURE__*/React.createElement("p", {
     style: {

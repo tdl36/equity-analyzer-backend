@@ -1,5 +1,5 @@
 const BACKEND_URL = 'https://equity-analyzer-backend.onrender.com';
-const BUILD_VERSION = '2026-10-01T117';
+const BUILD_VERSION = '2026-10-01T118';
 
 // Origin allowlist. Wildcard CORS was leaking the API behind any origin and
 // blocking any future cookie-auth migration. Echo back the request Origin only

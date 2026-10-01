@@ -5,7 +5,8 @@ Status: saved Snapshots and durable Deep Research implemented (T115–T116);
 Release 1 remains incomplete pending issuer resolution and authorized real-source
 validation. Source inventories, frozen research revisions, claim review, explicit
 initiation drafts and baseline-checked Update Thesis handoff are implemented.
-Typed financial observations and deterministic operating scenarios are next.
+The first deterministic operating scenario template is implemented in T118.
+Source-extracted typed financial observations and sector-specific templates remain next.
 No paid validation has been performed.
 
 ## Scope and source material
@@ -297,3 +298,13 @@ its exact sources and baseline to the existing proposal workflow, and initiation
 creates only an unsaved draft. This is not a web-search or exhaustive-coverage
 claim. Next priority is typed financial facts and deterministic scenarios before
 committee opinions or probabilistic simulation. No paid model validation was run.
+
+## T118 implementation record — October 1
+
+A versioned EV/EBITDA operating template is attached to the accepted case rather
+than kept in a parallel store. Analyst-entered inputs, references, shared units
+and fiscal periods are validated and deterministic outputs are computed with
+Decimal on preview and again on save. Snapshot, comparisons and exports retain
+the selected case's model version. Reverse valuation is conditional and
+sensitivities are assumptions, not probabilities. This does not implement
+automatic financial-fact extraction, source verification or sector-wide models.

@@ -4,16 +4,51 @@ Updated: October 1, 2026
 
 ## Start here
 
-Charlie is releasing **T117** (`2026-10-01T117`), durable source-backed Deep Research. Use
+Charlie is releasing **T118** (`2026-10-01T118`), versioned operating scenarios alongside Deep Research. Use
 `git log -1` and backend `/health` to verify the exact deployed revision.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T117#view=desk`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T118#view=desk`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`, branch `main`.
 - Previous frontend: T115 / `27f4088`; backend was held at T114 by dependency resolution.
 - Local agent is unchanged by this release.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
+
+### T118 — deterministic operating scenarios
+
+Investment cases → Operating scenarios adds an optional EV/EBITDA model with
+analyst-entered revenue CAGR, EBITDA margin, valuation multiple, net debt, other
+senior claims, nonoperating assets and diluted shares. Shared currency, millions
+and fiscal-year boundaries are explicit. This first template requires positive
+EBITDA; it is not appropriate for banks, insurers, REITs or recovery models.
+Existing EPS/P-E sensitivities remain unchanged in Current thesis.
+
+`operating_model.py` validates and computes with Decimal; no model/provider call
+is used. `/api/research/operating-model/preview` is nonpersistent. Case saves
+recompute outputs, ignore client-supplied calculated values, and freeze normalized
+inputs and `ev-ebitda-v1` results in the same immutable investment-case revision.
+Source references remain manually entered and unverified. Changes invalidate
+proposal context hashes and hide stale draft previews. Investor explicitly saves.
+
+Snapshot, historical comparison and HTML investment-map exports include the
+selected revision's scenario inputs and outcomes. Sensitivities perturb base
+EBITDA and multiple independently. Reverse EBITDA holds the equity bridge and
+multiple fixed; it is not observed consensus. Negative equity is explicitly
+floored at zero and flagged, not represented as a negative share price or a
+restructuring forecast. No probabilities, dividends, FX or discounting included.
+
+Validation: focused arithmetic, reverse bridge, source-definition requirements,
+unit/period rejection, negative-equity handling, preview purity and immutable
+input normalization tests pass. 808 backend tests and 71 frontend tests pass;
+synthetic 1440/390/320px checks cover editing, calculation, stale-output exclusion,
+save payloads, invalid periods and overflow. No production models/cases or paid
+research were created for QA. Build and deployment verification remain pending.
+
+Next: reconcile source-extracted typed observations before treating any model
+input as verified; add sector-specific templates, then bounded committee review
+against frozen research, case and model revisions. Real-source research quality
+validation still requires an authorized user-selected pack, not paid testing.
 
 ### T117 — scheduler database-driver compatibility
 

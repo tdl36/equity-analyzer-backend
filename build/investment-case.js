@@ -5,6 +5,7 @@ import { ResearchWorkbench } from './research-workbench';
 import { UnderweightMonitor } from './underweight-monitor';
 import { ThesisEvolution } from './thesis-evolution';
 import { CaseSignals } from './case-signals';
+import { OperatingModel } from './operating-model';
 import { CompanyResearch } from './company-research';
 import { CompanySnapshot } from './company-snapshot';
 import { CaseEvidence } from './investment-case-evidence';
@@ -197,11 +198,21 @@ export function InvestmentCase({
   }, /*#__PURE__*/React.createElement("h3", null, active, " \xB7 ", revision ? `Revision ${revision}` : 'New investment case'), /*#__PURE__*/React.createElement("span", null, dirty ? 'Unsaved changes' : 'Saved working assumptions')), /*#__PURE__*/React.createElement("nav", {
     className: "lifecycle-tabs",
     "aria-label": "Investment thesis workspace"
-  }, [['snapshot', 'Snapshot'], ['research', 'Deep Research'], ['case', 'Current thesis'], ['evidence', 'Evidence & proposals'], ['reviews', 'Decisions & underweights'], ['signals', 'Case signals'], ['evolution', 'Evolution']].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
+  }, [['snapshot', 'Snapshot'], ['research', 'Deep Research'], ['case', 'Current thesis'], ['model', 'Operating scenarios'], ['evidence', 'Evidence & proposals'], ['reviews', 'Decisions & underweights'], ['signals', 'Case signals'], ['evolution', 'Evolution']].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
     key: id,
     "aria-pressed": workspaceTab === id,
     onClick: () => setWorkspaceTab(id)
-  }, label))), workspaceTab === 'research' && /*#__PURE__*/React.createElement(CompanyResearch, {
+  }, label))), workspaceTab === 'model' && /*#__PURE__*/React.createElement(OperatingModel, {
+    key: active,
+    api: api,
+    ticker: active,
+    body: body,
+    revision: revision,
+    busy: busy,
+    dirty: dirty,
+    onChange: edit,
+    onSave: save
+  }), workspaceTab === 'research' && /*#__PURE__*/React.createElement(CompanyResearch, {
     key: active,
     api: api,
     ticker: active,
@@ -216,6 +227,7 @@ export function InvestmentCase({
       setWorkspaceTab('case');
     }
   }), workspaceTab === 'snapshot' && /*#__PURE__*/React.createElement(CompanySnapshot, {
+    onModel: () => setWorkspaceTab('model'),
     key: active,
     ticker: active,
     versions: versions,
