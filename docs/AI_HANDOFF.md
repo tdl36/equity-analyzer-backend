@@ -35,10 +35,17 @@ structured research revisions with source inventories, section coverage and an
 explicit case baseline, followed by the Deep Research workflow. See
 `docs/integrated-investment-workspace.md` for the full sequence.
 
-Validation: 67 frontend tests passed, including saved identity, stale excerpt
+Validation: 791 safe backend tests and 67 frontend tests passed. Frontend checks cover saved identity, stale excerpt
 exclusion, assumption additions/removals, and escaped versioned exports. Synthetic
 browser checks cover desktop/mobile comparison, update navigation and historical
 export; no paid research or investor acceptance was used. Local agent unchanged.
+
+Deployment observation October 1, 12:14 UTC: source commit `27f4088` is pushed
+and Cloudflare serves T115. Hosted frontend SHA-256 matches the local build and
+the service worker reports the matching release. Render remains healthy but
+still reports `195fd14` after several minutes; its redeploy is not confirmed.
+This increment has no backend changes and uses existing endpoints. Do not claim
+an authenticated live research run was tested; browser verification was synthetic.
 
 ### T114 — issuer ambiguity and follow-up screening
 
