@@ -4,7 +4,7 @@ Updated: October 1, 2026
 
 ## Start here
 
-Charlie is releasing **T120** (`2026-10-01T120`), research-linked revenue observations and a ticker-to-case workflow guide. Use
+Charlie is running **T120** (`2026-10-01T120`), research-linked revenue observations and a ticker-to-case workflow guide. Use
 `git log -1` and backend `/health` to verify the exact deployed revision.
 
 - App: `https://charlie-deployment.tonydlee.workers.dev/?release=T120#view=desk`
@@ -50,7 +50,14 @@ isolated guide check; no overflow at 1440/390/320px and no console errors. Tests
 cover changed/restricted/missing originals, unsupported claims, wrong ticker,
 forged receipts, duplicate saves, unit/period mismatch and historical restoration.
 No real research/observations/cases were created or accepted for QA. Production
-build and deployment verification are recorded after release.
+build passes. Render health reports `b53d4e22f7cacfb2cd6468d9890bb20ce69d9ee7`;
+Cloudflare deployment `ba2fcdd7-ef1d-4c31-a493-ae13f2d47615` serves T120 with matching
+hosted bundle hash and service-worker version. Live ticker entry and guide-to-model
+navigation passed. The hosted guide's isolated calculator check passed, including
+zero-share rejection. Authenticated missing-evidence input returns 400 and the
+unauthenticated observation endpoint returns 401. Full evidence attachment/save
+was tested with hermetic synthetic API fixtures, not a real production case.
+Paid research generation/quality was not exercised.
 
 Next: richer typed metrics and accounting reconciliation, sector templates,
 then bounded committee review against frozen research/case/model references.
