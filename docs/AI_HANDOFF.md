@@ -4,7 +4,7 @@ Updated: October 1, 2026
 
 ## Start here
 
-Charlie is releasing **T119** (`2026-10-01T119`), versioned operating scenarios alongside Deep Research. Use
+Charlie is running **T119** (`2026-10-01T119`), versioned operating scenarios alongside Deep Research. Use
 `git log -1` and backend `/health` to verify the exact deployed revision.
 
 - App: `https://charlie-deployment.tonydlee.workers.dev/?release=T119#view=desk`
@@ -21,6 +21,15 @@ Live T118 UI verification caught a null preview access when no model existed.
 The guarded preview lookup now supports opening an empty case and removing a
 model from the unsaved draft. A real JSX rendering regression covers empty,
 newly added and removed drafts. No saved case data was affected.
+
+Verified production revision: `882bbbe6145b39a42cc6db29bb10d580ad2ffff4`.
+Render `/health` reports this revision with PostgreSQL healthy. Cloudflare version
+`692a8a91-9f13-485b-b39f-fd4f154377db` serves T119; hosted bundle SHA-256 matches
+local `dist/app.js`, and service worker is `20261001-119`. The hosted full app
+successfully opened AAPL's empty Operating scenarios tab, added an unsaved model,
+and removed that draft. No case was saved. 72 frontend tests and production
+build pass; unchanged backend last passed all 808 tests for T118. Only whitelisted
+assets were uploaded. No paid research or production data mutations used for QA.
 
 ### T118 — deterministic operating scenarios
 
