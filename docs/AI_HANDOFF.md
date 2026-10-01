@@ -23,7 +23,14 @@ Charlie's installed psycopg2 driver for generic PostgreSQL URLs, preserving
 credentials and connection options. Other explicit drivers remain unchanged.
 An isolated test verifies URL preservation without importing the app, connecting
 to a database or starting any scheduled work. Frontend assets match T117.
-Deployment/startup verification is pending.
+Verified October 1, 12:52 UTC: Render `/health` reports
+`f8a9f54adfaafa2252ace95d9cf3ca61bc3a4e57`; its startup log confirms
+"Media tracker scheduler started". Cloudflare version
+`c03418a5-8f61-4eb7-8980-032ec6f5c8da` serves T117. Hosted app bytes match
+the local bundle; the service worker matches. Authenticated research listing
+works through the Worker proxy. Live read-only navigation reaches Deep Research
+and correctly disables submission with no selected originals. Full research
+execution and generated report quality have only synthetic validation so far.
 
 ### T116 — durable source-backed Deep Research
 
