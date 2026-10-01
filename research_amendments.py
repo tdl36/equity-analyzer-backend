@@ -326,8 +326,15 @@ def create_blueprint(get_db, call_model, get_key, model_identity=lambda: 'defaul
                         actual={r['filename']:hashlib.sha256(r['file_data'].encode()).hexdigest() for r in original_rows}
                         if actual!=expected:return jsonify(error='Monitored source changed before submission. Review the monitor reservation.'),409
                     source_hashes={r['filename']:file_hash(r) for r in original_rows}
+                    research_id=data.get('researchRunId')
+                    if research_id:
+                        from company_research import validate_handoff
+                        cur.execute('SELECT ticker,status,input,baseline FROM company_research_runs WHERE id=%s',(str(uuid.UUID(research_id)),))
+                        try:validate_handoff(cur.fetchone(),tk,data['revision'],source_hashes)
+                        except ValueError as exc:return jsonify(error=str(exc)),409
+
                 except (ValueError,TypeError):return jsonify(error='A selected original could not be verified. Reimport the document before retrying.'),400
-            cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input) VALUES(%s,%s,%s,'queued',%s::jsonb)",(job_id,STAGE,tk,json.dumps({'baseline':baseline,'filenames':names,'instructions':instructions,'commandId':command_id,'commandBridge':bridge,'sourceHashes':source_hashes,'recoverable':True,'target':target,'conciseProposal':True})))
+            cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input) VALUES(%s,%s,%s,'queued',%s::jsonb)",(job_id,STAGE,tk,json.dumps({'baseline':baseline,'filenames':names,'instructions':instructions,'commandId':command_id,'researchRunId':data.get('researchRunId'),'commandBridge':bridge,'sourceHashes':source_hashes,'recoverable':True,'target':target,'conciseProposal':True})))
         threading.Thread(target=run,args=(job_id,tk,baseline,names,key,instructions,source_hashes),daemon=True).start()
         return jsonify(jobId=job_id),202
 

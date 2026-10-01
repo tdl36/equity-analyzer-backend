@@ -2241,7 +2241,7 @@ def _call_anthropic(*, messages, system, model, max_tokens, timeout, api_key):
     }
 
 def _call_anthropic_stream(*, messages, system, model, max_tokens, timeout, api_key,
-                           on_text=None):
+                           on_text=None, max_retries=2):
     """Streaming twin of _call_anthropic, returning the same shape.
 
     The SDK refuses a non-streaming call whose ESTIMATED duration exceeds ten
@@ -2252,7 +2252,7 @@ def _call_anthropic_stream(*, messages, system, model, max_tokens, timeout, api_
     streaming, for this same reason) did not. Streaming also keeps the socket
     busy, so a slow first token is not mistaken for a dead connection.
     """
-    client = anthropic.Anthropic(api_key=api_key, timeout=timeout)
+    client = anthropic.Anthropic(api_key=api_key, timeout=timeout, max_retries=max_retries)
     kwargs = {
         "model": model,
         "max_tokens": max_tokens,
@@ -29235,6 +29235,28 @@ app.register_blueprint(meeting_workspace.create_blueprint(get_db))
 
 import investment_case
 app.register_blueprint(investment_case.create_blueprint(get_db))
+
+import company_research
+
+def _company_research_call(prompt, key, tokens, run_id, stage):
+    # One explicit paid attempt; never fall back or replay an ambiguous call.
+    spec = resolve_picker_spec(PICKER_DEFAULT_MODEL)
+    if spec.get('provider') != 'anthropic':
+        raise ValueError('Company research requires the configured Anthropic research model.')
+    result = _call_anthropic_stream(messages=[{'role':'user','content':prompt}],
+        system='You are a careful equity research analyst. Return only the requested JSON. Preserve source uncertainty.',
+        model=spec['model'],max_tokens=tokens,timeout=1200,api_key=key,max_retries=0)
+    record_llm_usage('company-research',result,detail={'runId':run_id,'stage':stage})
+    if result.get('stop_reason') == 'max_tokens':
+        raise ValueError('Research response exceeded its output bound. Inspect the saved stages before retrying.')
+    parsed = _extract_json(result.get('text') or '')
+    if not isinstance(parsed,dict):raise ValueError('Research returned invalid JSON; saved stages are retained.')
+    return parsed
+
+app.register_blueprint(company_research.create_blueprint(get_db,_company_research_call,
+    lambda key: _get_api_keys(key).get('anthropic',''),lambda:resolve_picker_spec(PICKER_DEFAULT_MODEL)['model'],
+    lambda:budget_blocks('company-research')))
+
 
 import portfolio_heatmap
 app.register_blueprint(portfolio_heatmap.create_blueprint(get_db))

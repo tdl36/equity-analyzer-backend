@@ -17,7 +17,10 @@ gunicorn>=23.0,<24
 openai>=1.60,<2
 img2pdf>=0.5,<1
 xhtml2pdf>=0.2,<1
-tradingagents @ git+https://github.com/TauricResearch/TradingAgents.git
+# Freeze the upstream release: floating HEAD now requires incompatible SDK majors.
+tradingagents @ git+https://github.com/TauricResearch/TradingAgents.git@e1a5f2048065b69ac35ebe413b0ab4c90c29322c
+# Compatible with Charlie's Google SDK v1 integration.
+langchain-google-genai==4.2.0
 tavily-python
 feedparser>=6.0,<7
 beautifulsoup4>=4.12,<5

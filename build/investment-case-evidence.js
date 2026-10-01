@@ -8,13 +8,14 @@ export function CaseEvidence({
   body,
   revision,
   disabled,
-  onCommit
+  onCommit,
+  researchContext = null
 }) {
   var [rows, setRows] = React.useState([]),
     [error, setError] = React.useState(''),
     [loading, setLoading] = React.useState(true);
   var [documents, setDocuments] = React.useState([]),
-    [files, setFiles] = React.useState([]),
+    [files, setFiles] = React.useState(researchContext?.filenames || []),
     [instructions, setInstructions] = React.useState(''),
     [working, setWorking] = React.useState(false),
     [notice, setNotice] = React.useState(''),
@@ -109,7 +110,10 @@ export function CaseEvidence({
     var value = {
       revision,
       filenames: files,
-      instructions
+      instructions,
+      ...(researchContext ? {
+        researchRunId: researchContext.id
+      } : {})
     };
     var signature = JSON.stringify(value);
     if (requestRef.current?.signature !== signature) requestRef.current = {
@@ -130,7 +134,9 @@ export function CaseEvidence({
     className: "case-evidence-heading"
   }, /*#__PURE__*/React.createElement("p", {
     className: "workspace-eyebrow"
-  }, ticker, " / EVIDENCE & PROPOSALS"), /*#__PURE__*/React.createElement("h2", null, "What does the new evidence change?"), /*#__PURE__*/React.createElement("p", null, "Choose the documents you want Charlie to assess against your saved investment case.")), disabled && /*#__PURE__*/React.createElement("p", {
+  }, ticker, " / EVIDENCE & PROPOSALS"), /*#__PURE__*/React.createElement("h2", null, "What does the new evidence change?"), /*#__PURE__*/React.createElement("p", null, "Choose the documents you want Charlie to assess against your saved investment case.")), researchContext && /*#__PURE__*/React.createElement("p", {
+    className: "case-evidence-banner"
+  }, "Research revision ", researchContext.id, " \xB7 originals and case baseline are checked again before comparison. This creates a separately reviewed proposal; it does not accept the research automatically."), disabled && /*#__PURE__*/React.createElement("p", {
     className: "case-evidence-banner"
   }, "Save your current case edits before generating or accepting changes."), !revision || !body.assumptions.length ? /*#__PURE__*/React.createElement("p", {
     className: "case-evidence-banner"

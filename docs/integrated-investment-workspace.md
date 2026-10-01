@@ -285,3 +285,15 @@ agreement, report length and attractive graphics are not quality measures.
 
 These do not block the shared record, existing-source workflows, versioning,
 review gates, deterministic rendering or synthetic verification work.
+
+## T116 implementation record — October 1
+
+The durable 22-section source-pack workflow is implemented in `company_research.py`
+and `src/company-research.jsx`. Research and claim review are bounded stages, with
+frozen original hashes, extraction hashes, case baseline, request idempotency,
+worker ownership and explicit interrupted-call recovery. Full reports preserve
+uncertainty; compact maps require matched, model-reviewed claims. Research hands
+its exact sources and baseline to the existing proposal workflow, and initiation
+creates only an unsaved draft. This is not a web-search or exhaustive-coverage
+claim. Next priority is typed financial facts and deterministic scenarios before
+committee opinions or probabilistic simulation. No paid model validation was run.

@@ -5,6 +5,7 @@ import { ResearchWorkbench } from './research-workbench';
 import { UnderweightMonitor } from './underweight-monitor';
 import { ThesisEvolution } from './thesis-evolution';
 import { CaseSignals } from './case-signals';
+import { CompanyResearch } from './company-research';
 import { CompanySnapshot } from './company-snapshot';
 import { CaseEvidence } from './investment-case-evidence';
 var empty = () => ({
@@ -32,6 +33,7 @@ export function InvestmentCase({
     [dirty, setDirty] = React.useState(false),
     [selectedVersion, setSelectedVersion] = React.useState('');
   var [workspaceTab, setWorkspaceTab] = React.useState('snapshot');
+  var [researchContext, setResearchContext] = React.useState(null);
   var pending = React.useRef(null),
     lock = React.useRef(false),
     alive = React.useRef(true);
@@ -61,6 +63,7 @@ export function InvestmentCase({
       var d = await json('/api/research/investment-case/' + encodeURIComponent(t));
       if (!alive.current) return;
       setActive(t);
+      setResearchContext(null);
       setRevision(d.revision);
       setBody({
         ...empty(),
@@ -194,18 +197,35 @@ export function InvestmentCase({
   }, /*#__PURE__*/React.createElement("h3", null, active, " \xB7 ", revision ? `Revision ${revision}` : 'New investment case'), /*#__PURE__*/React.createElement("span", null, dirty ? 'Unsaved changes' : 'Saved working assumptions')), /*#__PURE__*/React.createElement("nav", {
     className: "lifecycle-tabs",
     "aria-label": "Investment thesis workspace"
-  }, [['snapshot', 'Snapshot'], ['case', 'Current thesis'], ['evidence', 'Evidence & proposals'], ['reviews', 'Decisions & underweights'], ['signals', 'Case signals'], ['evolution', 'Evolution']].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
+  }, [['snapshot', 'Snapshot'], ['research', 'Deep Research'], ['case', 'Current thesis'], ['evidence', 'Evidence & proposals'], ['reviews', 'Decisions & underweights'], ['signals', 'Case signals'], ['evolution', 'Evolution']].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
     key: id,
     "aria-pressed": workspaceTab === id,
     onClick: () => setWorkspaceTab(id)
-  }, label))), workspaceTab === 'snapshot' && /*#__PURE__*/React.createElement(CompanySnapshot, {
+  }, label))), workspaceTab === 'research' && /*#__PURE__*/React.createElement(CompanyResearch, {
+    key: active,
+    api: api,
+    ticker: active,
+    revision: revision,
+    disabled: busy || dirty,
+    onUpdate: context => {
+      setResearchContext(context);
+      setWorkspaceTab('evidence');
+    },
+    onDraft: draft => {
+      edit(draft);
+      setWorkspaceTab('case');
+    }
+  }), workspaceTab === 'snapshot' && /*#__PURE__*/React.createElement(CompanySnapshot, {
     key: active,
     ticker: active,
     versions: versions,
     revision: revision,
     disabled: busy || dirty,
     onEdit: () => setWorkspaceTab('case'),
-    onUpdate: () => setWorkspaceTab('evidence')
+    onUpdate: () => {
+      setResearchContext(null);
+      setWorkspaceTab('evidence');
+    }
   }), /*#__PURE__*/React.createElement("div", {
     hidden: workspaceTab !== 'case'
   }, !revision && /*#__PURE__*/React.createElement("section", {
@@ -341,7 +361,8 @@ export function InvestmentCase({
   })), /*#__PURE__*/React.createElement("div", {
     hidden: workspaceTab !== 'evidence'
   }, /*#__PURE__*/React.createElement(CaseEvidence, {
-    key: active,
+    researchContext: researchContext,
+    key: active + (researchContext?.id || ''),
     revision: revision,
     api: api,
     ticker: active,

@@ -4,16 +4,56 @@ Updated: October 1, 2026
 
 ## Start here
 
-Charlie is releasing **T115** (`2026-10-01T115`), saved company Snapshots and version-matched investment maps. Use
+Charlie is releasing **T116** (`2026-10-01T116`), durable source-backed Deep Research. Use
 `git log -1` and backend `/health` to verify the exact deployed revision.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T115#view=desk`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T116#view=desk`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`, branch `main`.
-- Previous release: T114 / `195fd14`.
+- Previous frontend: T115 / `27f4088`; backend was held at T114 by dependency resolution.
 - Local agent is unchanged by this release.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
+
+### T116 — durable source-backed Deep Research
+
+Investment cases → Deep Research selects up to eight permitted stored originals,
+freezes their byte hashes and the exact case baseline, and saves 22 structured
+sections in six bounded model calls followed by six claim-review groups. Exact
+passage matches are checked deterministically; model support review remains
+separate from fact/interpretation classification and investor approval. Missing
+coverage and unresolved claims remain visible. Source permissions are checked
+before every stage. No web collection or paid QA is performed by this workflow.
+
+PostgreSQL checkpoints precede every provider call. Duplicate submissions reuse
+an ID, worker ownership prevents duplicate execution of a run, and uncertain
+provider outcomes require an explicit paid-retry acknowledgement (bounded to
+three such retries). Completed stages survive restart; recovery is explicit.
+Stopped/partial runs remain readable. No automatic provider retries or fallback.
+Full HTML reports retain unresolved claims; compact investment maps omit them.
+Both exports identify source hashes, research revision and case baseline.
+
+Completed research hands its originals to the existing reviewed thesis proposal
+workflow with a durable researchRunId. Changed originals or case baselines block
+that handoff. Initiation can prepare an unsaved case draft; the investor must
+review and save it. Research completion never accepts a note or thesis change.
+
+Render's prior build failed because floating TradingAgents HEAD required Google
+SDK v2 while Charlie uses v1. Freeze TradingAgents 0.5.1 at its release commit and
+langchain-google-genai 4.2.0. A clean dependency resolution dry run passed locally;
+Render deployment must still be verified. No current environment was upgraded.
+
+Validation: 802 safe backend tests and 69 frontend tests passed; isolated API
+fixtures cover idempotency, restrictions, stale baselines, stop/recovery and
+immutable completion. Synthetic browser checks at 1440, 390 and 320 px cover
+selection, submission, recovery controls, source inspection, initial-draft
+handoff and unresolved export exclusion. No paid or authenticated live model
+run was used. Deployment verification remains pending for this increment.
+
+Next: typed financial facts and a deterministic scenario engine, then bounded
+committee synthesis and monitoring. Automatic issuer resolution, complete
+historical/consensus coverage, cross-report reconciliation and simulation are
+not implemented by this increment. See `docs/integrated-investment-workspace.md`.
 
 ### T115 — saved company Snapshot foundation
 
