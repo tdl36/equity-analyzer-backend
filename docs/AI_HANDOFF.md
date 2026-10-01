@@ -4,16 +4,23 @@ Updated: October 1, 2026
 
 ## Start here
 
-Charlie is releasing **T118** (`2026-10-01T118`), versioned operating scenarios alongside Deep Research. Use
+Charlie is releasing **T119** (`2026-10-01T119`), versioned operating scenarios alongside Deep Research. Use
 `git log -1` and backend `/health` to verify the exact deployed revision.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T118#view=desk`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T119#view=desk`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`, branch `main`.
 - Previous frontend: T115 / `27f4088`; backend was held at T114 by dependency resolution.
 - Local agent is unchanged by this release.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
+
+### T119 — empty operating-model workspace
+
+Live T118 UI verification caught a null preview access when no model existed.
+The guarded preview lookup now supports opening an empty case and removing a
+model from the unsaved draft. A real JSX rendering regression covers empty,
+newly added and removed drafts. No saved case data was affected.
 
 ### T118 — deterministic operating scenarios
 
@@ -43,7 +50,9 @@ unit/period rejection, negative-equity handling, preview purity and immutable
 input normalization tests pass. 808 backend tests and 71 frontend tests pass;
 synthetic 1440/390/320px checks cover editing, calculation, stale-output exclusion,
 save payloads, invalid periods and overflow. No production models/cases or paid
-research were created for QA. Build and deployment verification remain pending.
+research were created for QA. T118 backend health matched `5f7e981` and hosted
+assets matched the build. Live nonpersistent arithmetic returned the expected
+21.95 synthetic share value; the empty UI issue is fixed in T119 above.
 
 Next: reconcile source-extracted typed observations before treating any model
 input as verified; add sector-specific templates, then bounded committee review

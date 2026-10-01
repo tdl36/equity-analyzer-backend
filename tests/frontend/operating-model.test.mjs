@@ -17,3 +17,18 @@ test('model edits and removal appear in historical case comparisons',()=>{
  assert.equal(compareSnapshots(before,after).filter(x=>x.label.includes('Operating model')).length,1);
  assert.ok(compareSnapshots(before,companySnapshot('SYNTH',{revision:9,body:{}})).some(x=>x.after==='No model'));
 });
+
+// Render the real JSX, rather than mirroring the preview-selection expression.
+test('model workspace renders empty, newly added and removed drafts', async()=>{
+ const {build}=await import('esbuild');
+ const {createRequire}=await import('node:module');
+ const require=createRequire(import.meta.url);
+ const React=require('react'),{renderToStaticMarkup}=require('react-dom/server');
+ const bundle=await build({entryPoints:['src/operating-model.jsx'],bundle:true,write:false,platform:'node',format:'cjs',external:['react']});
+ const module={exports:{}};new Function('require','module','exports',bundle.outputFiles[0].text)(require,module,module.exports);
+ const {OperatingModel,newOperatingModel}=module.exports;
+ const render=(body,dirty)=>renderToStaticMarkup(React.createElement(OperatingModel,{body,dirty,ticker:'SYNTH',revision:0,busy:false,onChange:()=>{},onSave:()=>{}}));
+ assert.match(render({},false),/Add EV\/EBITDA model/);
+ assert.match(render({operatingModel:newOperatingModel()},true),/Calculate draft/);
+ assert.match(render({},true),/Add EV\/EBITDA model/);
+});
