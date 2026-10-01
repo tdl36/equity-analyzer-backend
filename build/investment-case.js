@@ -5,6 +5,7 @@ import { ResearchWorkbench } from './research-workbench';
 import { UnderweightMonitor } from './underweight-monitor';
 import { ThesisEvolution } from './thesis-evolution';
 import { CaseSignals } from './case-signals';
+import { CompanySnapshot } from './company-snapshot';
 import { CaseEvidence } from './investment-case-evidence';
 var empty = () => ({
   thesis: '',
@@ -30,7 +31,7 @@ export function InvestmentCase({
     [message, setMessage] = React.useState(''),
     [dirty, setDirty] = React.useState(false),
     [selectedVersion, setSelectedVersion] = React.useState('');
-  var [workspaceTab, setWorkspaceTab] = React.useState('case');
+  var [workspaceTab, setWorkspaceTab] = React.useState('snapshot');
   var pending = React.useRef(null),
     lock = React.useRef(false),
     alive = React.useRef(true);
@@ -116,6 +117,11 @@ export function InvestmentCase({
       });
       if (!alive.current) return;
       setRevision(d.revision);
+      setVersions(old => [{
+        revision: d.revision,
+        body: d.body || payload.body,
+        created_at: null
+      }, ...old.filter(v => v.revision !== d.revision)]);
       setBody(d.body || payload.body);
       setBridge(d.bridge || {});
       setDirty(false);
@@ -188,11 +194,19 @@ export function InvestmentCase({
   }, /*#__PURE__*/React.createElement("h3", null, active, " \xB7 ", revision ? `Revision ${revision}` : 'New investment case'), /*#__PURE__*/React.createElement("span", null, dirty ? 'Unsaved changes' : 'Saved working assumptions')), /*#__PURE__*/React.createElement("nav", {
     className: "lifecycle-tabs",
     "aria-label": "Investment thesis workspace"
-  }, [['case', 'Current thesis'], ['evidence', 'Evidence & proposals'], ['reviews', 'Decisions & underweights'], ['signals', 'Case signals'], ['evolution', 'Evolution']].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
+  }, [['snapshot', 'Snapshot'], ['case', 'Current thesis'], ['evidence', 'Evidence & proposals'], ['reviews', 'Decisions & underweights'], ['signals', 'Case signals'], ['evolution', 'Evolution']].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
     key: id,
     "aria-pressed": workspaceTab === id,
     onClick: () => setWorkspaceTab(id)
-  }, label))), /*#__PURE__*/React.createElement("div", {
+  }, label))), workspaceTab === 'snapshot' && /*#__PURE__*/React.createElement(CompanySnapshot, {
+    key: active,
+    ticker: active,
+    versions: versions,
+    revision: revision,
+    disabled: busy || dirty,
+    onEdit: () => setWorkspaceTab('case'),
+    onUpdate: () => setWorkspaceTab('evidence')
+  }), /*#__PURE__*/React.createElement("div", {
     hidden: workspaceTab !== 'case'
   }, !revision && /*#__PURE__*/React.createElement("section", {
     className: "workspace-panel"
@@ -372,7 +386,7 @@ export function InvestmentCase({
   }, "Choose revision"), versions.map(v => /*#__PURE__*/React.createElement("option", {
     key: v.revision,
     value: v.revision
-  }, "Revision ", v.revision, " \xB7 ", new Date(v.created_at).toLocaleString())))), snapshot && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", null, "Restore makes a new revision; all intervening history is retained. Review this snapshot before restoring."), /*#__PURE__*/React.createElement("button", {
+  }, "Revision ", v.revision, " \xB7 ", v.created_at ? new Date(v.created_at).toLocaleString() : 'Date unavailable · refresh history')))), snapshot && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", null, "Restore makes a new revision; all intervening history is retained. Review this snapshot before restoring."), /*#__PURE__*/React.createElement("button", {
     disabled: busy || dirty || snapshot.revision === revision,
     onClick: () => save({
       mode: 'restore',

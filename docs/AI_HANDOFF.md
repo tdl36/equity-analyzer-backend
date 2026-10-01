@@ -1,19 +1,44 @@
 # Charlie AI engineering handoff
 
-Updated: September 29, 2026
+Updated: October 1, 2026
 
 ## Start here
 
-Charlie is releasing **T114** (`2026-09-29T114`), ambiguous leadership and follow-up commentary screening before collection. Use
+Charlie is releasing **T115** (`2026-10-01T115`), saved company Snapshots and version-matched investment maps. Use
 `git log -1` and backend `/health` to verify the exact deployed revision.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T114#view=heatmap`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T115#view=desk`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`, branch `main`.
-- Previous release: T113 / `881dc74`.
+- Previous release: T114 / `195fd14`.
 - Local agent is unchanged by this release.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
+
+### T115 — saved company Snapshot foundation
+
+Research desk → Investment cases & portfolio now opens a Snapshot of the selected
+company's saved investment case. It shows thesis, expectations, variant view,
+change conditions, assumptions, current-wording excerpt links and missing case
+fields. Historical snapshots and explicit earlier-revision wording comparisons
+share existing immutable case history. HTML investment-map exports retain the
+selected revision, evidence wording, uncertainty labels and black Calibri text.
+Update thesis leads to the existing source-selection and reviewed-proposal flow;
+it does not submit research or accept changes. A successful case save stays
+available to Snapshot even if the subsequent history refresh fails; unavailable
+save dates are explicitly labeled rather than invented.
+
+This is the first foundation increment, not completion of the integrated research
+workspace. No new backend, database migration, full 22-section research generator,
+issuer resolver, committee or financial engine is introduced. Next: durable
+structured research revisions with source inventories, section coverage and an
+explicit case baseline, followed by the Deep Research workflow. See
+`docs/integrated-investment-workspace.md` for the full sequence.
+
+Validation: 67 frontend tests passed, including saved identity, stale excerpt
+exclusion, assumption additions/removals, and escaped versioned exports. Synthetic
+browser checks cover desktop/mobile comparison, update navigation and historical
+export; no paid research or investor acceptance was used. Local agent unchanged.
 
 ### T114 — issuer ambiguity and follow-up screening
 
