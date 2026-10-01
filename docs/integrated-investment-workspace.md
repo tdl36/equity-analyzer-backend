@@ -1,11 +1,11 @@
 # Integrated Charlie investment workspace
 
 Design and implementation specification — October 1, 2026.
-Status: first foundation increment implemented (T115); Release 1 remains incomplete.
-Implementation progress: saved-case Snapshot, historical wording comparisons,
-current-wording excerpt links and versioned HTML investment-map export. Existing
-evidence review remains the Update Thesis entry point. Durable full research
-revisions, source inventories, issuer resolution and Deep Research remain next.
+Status: saved Snapshots and durable Deep Research implemented (T115–T116);
+Release 1 remains incomplete pending issuer resolution and authorized real-source
+validation. Source inventories, frozen research revisions, claim review, explicit
+initiation drafts and baseline-checked Update Thesis handoff are implemented.
+Typed financial observations and deterministic operating scenarios are next.
 No paid validation has been performed.
 
 ## Scope and source material

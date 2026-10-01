@@ -153,11 +153,20 @@ def run_earnings_fetch_sweep():
         print(f'run_earnings_fetch_sweep error: {e}')
 
 
+def jobstore_url(value):
+    """Use Charlie's installed driver, independent of SQLAlchemy's default."""
+    from sqlalchemy.engine import make_url
+    url = make_url(value)
+    if url.drivername in ('postgres', 'postgresql'):
+        url = url.set(drivername='postgresql+psycopg2')
+    return url
+
+
 def build_scheduler(use_memory_jobstore: bool = False) -> BackgroundScheduler:
     if use_memory_jobstore or not os.environ.get('DATABASE_URL'):
         jobstore = MemoryJobStore()
     else:
-        jobstore = SQLAlchemyJobStore(url=os.environ['DATABASE_URL'], tablename='apscheduler_jobs')
+        jobstore = SQLAlchemyJobStore(url=jobstore_url(os.environ['DATABASE_URL']), tablename='apscheduler_jobs')
     sched = BackgroundScheduler(
         jobstores={'default': jobstore},
         job_defaults={'coalesce': True, 'max_instances': 1, 'misfire_grace_time': 300},

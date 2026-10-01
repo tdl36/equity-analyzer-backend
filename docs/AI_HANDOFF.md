@@ -4,16 +4,26 @@ Updated: October 1, 2026
 
 ## Start here
 
-Charlie is releasing **T116** (`2026-10-01T116`), durable source-backed Deep Research. Use
+Charlie is releasing **T117** (`2026-10-01T117`), durable source-backed Deep Research. Use
 `git log -1` and backend `/health` to verify the exact deployed revision.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T116#view=desk`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T117#view=desk`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`, branch `main`.
 - Previous frontend: T115 / `27f4088`; backend was held at T114 by dependency resolution.
 - Local agent is unchanged by this release.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
+
+### T117 — scheduler database-driver compatibility
+
+Startup verification of T116 caught SQLAlchemy's newer default PostgreSQL driver
+trying to import uninstalled psycopg v3. The scheduler now explicitly selects
+Charlie's installed psycopg2 driver for generic PostgreSQL URLs, preserving
+credentials and connection options. Other explicit drivers remain unchanged.
+An isolated test verifies URL preservation without importing the app, connecting
+to a database or starting any scheduled work. Frontend assets match T117.
+Deployment/startup verification is pending.
 
 ### T116 — durable source-backed Deep Research
 
@@ -48,7 +58,9 @@ fixtures cover idempotency, restrictions, stale baselines, stop/recovery and
 immutable completion. Synthetic browser checks at 1440, 390 and 320 px cover
 selection, submission, recovery controls, source inspection, initial-draft
 handoff and unresolved export exclusion. No paid or authenticated live model
-run was used. Deployment verification remains pending for this increment.
+run was used. Backend revision `4bbb545` is live and authenticated research listing returns
+22 sections; unauthenticated requests return 401. No live research was started.
+Frontend publication is bundled with the T117 scheduler compatibility fix.
 
 Next: typed financial facts and a deterministic scenario engine, then bounded
 committee synthesis and monitoring. Automatic issuer resolution, complete
