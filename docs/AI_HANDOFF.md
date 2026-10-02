@@ -1,13 +1,13 @@
 # Charlie AI engineering handoff
 
-Updated: October 1, 2026
+Updated: October 2, 2026
 
 ## Start here
 
-Charlie is running **T120** (`2026-10-01T120`), research-linked revenue observations and a ticker-to-case workflow guide. Use
+Charlie is running **T121** (`2026-10-02T121`), adding shorthand Meeting Notes to Summary and Summary Lab. Use
 `git log -1` and backend `/health` to verify the exact deployed revision.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T120#view=desk`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T121#view=desk`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`, branch `main`.
 - Previous frontend: T115 / `27f4088`; backend was held at T114 by dependency resolution.
@@ -15,7 +15,7 @@ Charlie is running **T120** (`2026-10-01T120`), research-linked revenue observat
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
 
-### T121 — Meeting Notes (release verification pending)
+### T121 — Meeting Notes
 
 Adds a separate shorthand Meeting Notes section to original Summary and Summary Lab.
 The shared prompt in `meeting_notes.py` preserves substantive coverage, figures, qualifiers,
@@ -45,6 +45,14 @@ build passed. Mocked browser checks cover Summary/Lab display at 1440/390/320px,
 horizontal overflow or page errors, and the saved Summary section-only generation button. Synthetic tests cover source input, empty provider output, SQL parameter
 shapes, isolated export, legacy compatibility, section-only retry, concurrent requests and
 Lab checkpoint reuse. Real generated-note quality remains for a user-directed source run.
+
+Deployment verified: backend health reports `f568654ff7350e51bfefca27c2380a096d25a333`;
+Cloudflare deployment `5f629f48-b15d-4098-a9dc-867ccf414eab` serves T121, matching
+the local bundle hash and `20261002-121` service worker. Authenticated Summary listing
+returns 200 with the new field on all 443 existing rows. Missing-summary section generation
+returns 404 without a model call; unauthenticated requests return 401. Zero active audio
+jobs were reported before deployment. No existing sources regenerated, emails sent, or
+production note content modified for QA.
 
 ### T120 — revenue observation → operating model → case revision
 
