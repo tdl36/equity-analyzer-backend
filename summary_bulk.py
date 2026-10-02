@@ -1,6 +1,6 @@
 """Ordered summary sections shared by pooled email and PDF export."""
 from html import escape
-SECTIONS=(('brief','brief','Brief'),('takeaways','summary','Key Takeaways'),('meeting','meeting_summary','Meeting Summary'),('questions','questions','Follow-up Questions'),('assessment','assessment','Assessment'),('korean','korean_takeaways','Korean Key Takeaways'),('transcript','raw_notes','Full Transcript'))
+SECTIONS=(('notes','meeting_notes','Meeting Notes'),('brief','brief','Brief'),('takeaways','summary','Key Takeaways'),('meeting','meeting_summary','Meeting Summary'),('questions','questions','Follow-up Questions'),('assessment','assessment','Assessment'),('korean','korean_takeaways','Korean Key Takeaways'),('transcript','raw_notes','Full Transcript'))
 
 def validate_ids(ids):
     if not isinstance(ids,list) or not ids or any(not isinstance(i,str) or not i or len(i)>100 for i in ids) or len(set(ids))!=len(ids):raise ValueError('Choose distinct saved summaries.')

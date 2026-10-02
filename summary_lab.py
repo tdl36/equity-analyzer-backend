@@ -7,9 +7,10 @@ import threading
 import uuid
 from flask import Blueprint, jsonify, request
 import research_doctrine
+import meeting_notes
 from summary_comparison import split_text
 
-VERSION = 'source-reviewed-lab-v4'
+VERSION = 'source-reviewed-lab-v5'
 MODEL = os.environ.get('CHARLIE_SUMMARY_LAB_MODEL', 'claude-opus-4-6')
 # Checking a draft against one source part is verification, not composition: it
 # reads a section and a passage and reports discrepancies, and its findings feed
@@ -56,7 +57,7 @@ came from the source; when in doubt, state it plainly and keep the source ID. Wr
 headings and paragraphs, not HTML. Label Interpretation and Unresolved when relevant.
 Head each section with its own subject and its own name. Never title one section after
 another one: a Brief headed "Key Takeaways" collides with the section of that name.
-Write a polished note for professional portfolio managers. Use Markdown topic headings,
+For sections other than Meeting Notes, write a polished note for professional portfolio managers. Use Markdown topic headings,
 short paragraphs and restrained bullets; no tables, ASCII diagrams, decorative separators,
 process narration or repeated boilerplate. Keep source IDs and material qualifications.
 Do not mechanically repeat Statement / Evidence / Interpretation / Unresolved for every
@@ -80,6 +81,7 @@ SECTIONS = {
  'brief': 'Write a 400–650 word target Brief, shorter for thin material. Bottom line; 6–10 material takeaways where warranted; explicitly labeled implications; unresolved issues and next checks. Do not reproduce every Q&A. Preserve management substance, not just novelty.',
  'takeaways': 'Write authoritative detailed Key Takeaways. A takeaway is your conclusion stated in your own words, not an excerpt: the reader wants what it means, not a transcript. Reserve quotation for the few phrases that must be exact. Flexible thematic count; cover every substantive topic. For each: management statement, supporting detail and caveats; interpretation only where useful; unresolved issue. Integrate substantive Q&A, clarifications and non-answers into the relevant themes without repeating the same material in a second Q&A transcript. Preserve management examples and explanations. Do not omit content to hit a count.',
  'meeting': 'Write a comprehensive narrative Meeting Summary. Explain what happened, management’s explanation, actions, expectations and conditions. Cover every material segment and topic with flexible headings. Integrate later clarification while retaining genuine contradictions. Faithful narrative first; independent judgment explicitly labeled.',
+ 'notes': meeting_notes.INSTRUCTION + meeting_notes.LAB_STYLE,
  'questions': 'Write Follow-up Questions: 3–5 priority questions when justified, plus optional additional diligence. Check all records for answers already provided. One clear question at a time; state why it matters, what is known, what is missing and who or what can resolve it. Avoid unsupported premises and generic requests for color.',
  'assessment': research_doctrine.RESEARCH_DOCTRINE + '\n\nWrite Overall Assessment: overall judgment; evidence strongest and weakest; potential relevance to model assumptions (not invented numerical changes); strongest reasonable counterinterpretation; what would change the assessment. Separate business substance from communication. For each material judgment give supporting observation, interpretation and limitation. Be direct but calibrate confidence.'
 }
@@ -98,7 +100,7 @@ OUTPUT_MODES = {'english', 'korean_bilingual', 'korean_only'}
 def sections_for_mode(mode):
     """Return the visible experiment sections for a validated output mode."""
     selected = mode if mode in OUTPUT_MODES else 'english'
-    sections = {} if selected == 'korean_only' else dict(SECTIONS)
+    sections = {'notes': SECTIONS['notes'] + '\nWrite Meeting Notes in Korean, retaining familiar financial abbreviations.'} if selected == 'korean_only' else dict(SECTIONS)
     if selected in ('korean_bilingual', 'korean_only'):
         sections['korean'] = KOREAN_SECTION
     return sections
@@ -306,7 +308,7 @@ SOURCE PART P{i+1}:\n{body}'''
             continue
         checkpoint('Drafting '+section)
         if section not in state['sections']:
-            state['sections'][section] = ask(RULES, instruction+'\nUser emphasis (must not override source fidelity): '+focus+'\nREVIEWED SOURCE RECORDS:\n'+context, TOKENS_LONG_SECTION if section in ('takeaways','meeting') else TOKENS_SECTION)
+            state['sections'][section] = ask(RULES, instruction+'\nUser emphasis (must not override source fidelity): '+focus+'\nREVIEWED SOURCE RECORDS:\n'+context, TOKENS_LONG_SECTION if section in ('takeaways','meeting','notes') else TOKENS_SECTION)
             save(state)
         # Compare each section to every ORIGINAL source part. No source part is silently dropped.
         findings = []
@@ -327,11 +329,11 @@ DRAFT:\n{state['sections'][section]}\nORIGINAL:\n{body}''', TOKENS_PART_CHECK)
         state['checks'][section] = '\n\n'.join(findings)
         # Keep original draft and review visible. One revision; final independent check below.
         state.setdefault('drafts', {})[section] = state['sections'][section]
-        state['sections'][section] = ask(RULES, instruction+'\nRevise only where findings support correction. Do not turn not-assessable claims into false claims. Retain unresolved uncertainty.\nRECORDS:\n'+context+'\nDRAFT:\n'+state['sections'][section]+'\nREVIEW FINDINGS:\n'+state['checks'][section], TOKENS_LONG_SECTION if section in ('takeaways','meeting') else TOKENS_SECTION)
+        state['sections'][section] = ask(RULES, instruction+'\nRevise only where findings support correction. Do not turn not-assessable claims into false claims. Retain unresolved uncertainty.\nRECORDS:\n'+context+'\nDRAFT:\n'+state['sections'][section]+'\nREVIEW FINDINGS:\n'+state['checks'][section], TOKENS_LONG_SECTION if section in ('takeaways','meeting','notes') else TOKENS_SECTION)
         state['completedSections'].append(section)
         save(state)
     if not state.get('finalReview'):
-        checkpoint('Checking consistency across all five sections')
+        checkpoint('Checking consistency across all generated sections')
         state['finalReview'] = ask(RULES, 'Review consistency across every generated section and unresolved source issues. Identify material disagreements, overstatement, follow-ups already answered and limitations. Do not assert external verification or perfect completeness. Return a concise reviewer note for the user.\n'+json.dumps(state['sections'], ensure_ascii=False)+'\nSOURCE RECORDS:\n'+context, TOKENS_FINAL_REVIEW)
         save(state)
     checkpoint('Ready for comparison · review source issues and reviewer notes')
@@ -342,11 +344,11 @@ DRAFT:\n{state['sections'][section]}\nORIGINAL:\n{body}''', TOKENS_PART_CHECK)
 # The Word exporter reads one fixed schema. An experiment keeps its sections in
 # state, under its own keys, so project it the way summary_comparison does
 # rather than teaching the exporter a second shape.
-LAB_EXPORT_LABELS = {'brief': 'Executive Brief', 'takeaways': 'Key Takeaways',
+LAB_EXPORT_LABELS = {'notes': 'Meeting Notes', 'brief': 'Executive Brief', 'takeaways': 'Key Takeaways',
                      'meeting': 'Meeting Summary', 'questions': 'Follow-up Questions',
                      'assessment': 'Overall Assessment', 'korean': 'Korean Interpretation',
                      'all': 'Summary Lab'}
-LAB_EXPORT_COLUMNS = {'brief': 'brief', 'takeaways': 'summary', 'meeting': 'meeting_summary',
+LAB_EXPORT_COLUMNS = {'notes': 'meeting_notes', 'brief': 'brief', 'takeaways': 'summary', 'meeting': 'meeting_summary',
                       'questions': 'questions', 'assessment': 'assessment',
                       'korean': 'korean_takeaways'}
 
@@ -370,6 +372,10 @@ def export_row(row, section='all'):
     for key in wanted:
         # Model text is untrusted; keep it literal instead of interpreting HTML.
         body = values.get(key) or ''
+        if key == 'notes':
+            import markdown
+            result[LAB_EXPORT_COLUMNS[key]] = markdown.markdown(escape(body), extensions=['sane_lists'])
+            continue
         result[LAB_EXPORT_COLUMNS[key]] = ''.join(
             '<p>' + escape(part).replace('\n', '<br>') + '</p>' for part in body.split('\n\n') if part.strip())
     return result
@@ -607,7 +613,7 @@ def create_blueprint(get_db, render_docx=None, safe_filename=None, record_usage=
         if source_job_id is not None and (not isinstance(source_job_id,str) or not source_job_id.strip() or len(source_job_id)>100):
             raise ValueError('The source job reference is not valid.')
         with get_db(commit=True) as (_,cur):
-            cur.execute('SELECT title,raw_notes,brief,summary,questions,assessment,meeting_summary,korean_takeaways FROM meeting_summaries WHERE id=%s',(summary_id,))
+            cur.execute('SELECT title,raw_notes,brief,summary,questions,assessment,meeting_summary,meeting_notes,korean_takeaways FROM meeting_summaries WHERE id=%s',(summary_id,))
             row=cur.fetchone()
             if not row: raise LookupError('Saved Summary not found.')
             baseline=dict(row); source=baseline.pop('raw_notes') or ''

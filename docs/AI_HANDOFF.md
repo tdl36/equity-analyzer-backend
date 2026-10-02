@@ -15,6 +15,37 @@ Charlie is running **T120** (`2026-10-01T120`), research-linked revenue observat
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
 
+### T121 — Meeting Notes (release verification pending)
+
+Adds a separate shorthand Meeting Notes section to original Summary and Summary Lab.
+The shared prompt in `meeting_notes.py` preserves substantive coverage, figures, qualifiers,
+attribution and open questions while using fragments, bullets, familiar abbreviations and
+occasional arrows. It forbids invented first-person participation, unsupported mental-state
+claims, external legal corrections and converting uncertainty into certainty. The supplied
+CI notes were used as a style reference only; no private source bodies are committed.
+
+Original paste/document/audio/YouTube/podcast generation persists `meeting_notes` through
+an additive schema migration. Existing rows are not backfilled. An unavailable extra pass
+leaves the other sections intact; the saved Summary offers Generate Meeting Notes, which
+runs only this section from saved source text. Its transaction advisory lock rejects concurrent
+submissions and reuses existing output after a successful retry. A backend failure after a
+model response but before commit can still require another model call; no exactly-once
+provider guarantee is claimed. Existing clients omitting this field do not erase saved notes.
+
+Lab v5 adds this section to source review/revision/checkpointing and all section actions.
+Korean-only output includes Korean Meeting Notes; English/bilingual use English notes.
+Older Lab runs retain their existing section plan in the UI and are not silently regenerated.
+An older interrupted Lab run still follows the existing version guard (start a new experiment).
+Both workflows support section copy/email/iCloud Word and full-document/bulk exports.
+Note typography is black Calibri with fallbacks. Model usage increases by one original
+composition pass and the Lab's additional draft/check/revision passes; no paid QA was run.
+
+Validation: 824 safe backend unit tests, 76 frontend tests, Python compilation and production
+build passed. Mocked browser checks cover Summary/Lab display at 1440/390/320px, no
+horizontal overflow or page errors, and the saved Summary section-only generation button. Synthetic tests cover source input, empty provider output, SQL parameter
+shapes, isolated export, legacy compatibility, section-only retry, concurrent requests and
+Lab checkpoint reuse. Real generated-note quality remains for a user-directed source run.
+
 ### T120 — revenue observation → operating model → case revision
 
 Operating scenarios can select a printed number from a completed same-ticker

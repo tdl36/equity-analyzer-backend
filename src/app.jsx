@@ -93,7 +93,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-10-01T120';
+        const BUILD_VERSION = '2026-10-02T121';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -3576,6 +3576,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [transcriptExpanded, setTranscriptExpanded] = useState(false);
             const [assessmentExpanded, setAssessmentExpanded] = useState(true);
             const [meetingSummaryExpanded, setMeetingSummaryExpanded] = useState(true);
+            const [meetingNotesExpanded, setMeetingNotesExpanded] = useState(true);
+            const [meetingNotesBusy, setMeetingNotesBusy] = useState(false);
             // iCloud save state: tracks which section is currently being
             // queued so the per-section button can show a spinner. Resets
             // on toast display.
@@ -3638,7 +3640,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     data = await res.json();
                 }
                 // Generate assessment + meeting summary if not already present (e.g. standard mode via N8N webhook)
-                if (!data.assessment || !data.meetingSummary) {
+                if (!data.assessment || !data.meetingSummary || !data.meetingNotes) {
                     try {
                         const assessRes = await fetch(`${DIRECT_API_URL}/api/generate-assessment`, {
                             method: 'POST',
@@ -3649,12 +3651,33 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             const assessData = await assessRes.json();
                             if (!data.assessment) data.assessment = assessData.assessment || '';
                             if (!data.meetingSummary) data.meetingSummary = assessData.meetingSummary || '';
+                            if (!data.meetingNotes) data.meetingNotes = assessData.meetingNotes || '';
                         }
                     } catch (e) {
                         console.error('Assessment generation failed:', e);
                     }
                 }
                 return data;
+            };
+
+            const generateMeetingNotes = async () => {
+                const summaryId = currentSummary?.id;
+                if (!summaryId || meetingNotesBusy) return;
+                setMeetingNotesBusy(true);
+                try {
+                    const response = await fetch(`${DIRECT_API_URL}/api/summaries/${summaryId}/meeting-notes`, {
+                        method: 'POST', headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({apiKey: loadApiKeyFromStorage() || ''})
+                    });
+                    const data = await response.json();
+                    if (!response.ok) throw Error(data.error || 'Meeting Notes could not be generated.');
+                    setCurrentSummary(value => value?.id === summaryId ? {...value, meetingNotes: data.meetingNotes} : value);
+                    setSavedSummaries(rows => rows.map(value => value.id === summaryId ? {...value, meetingNotes: data.meetingNotes} : value));
+                } catch (error) {
+                    alert(error.message);
+                } finally {
+                    setMeetingNotesBusy(false);
+                }
             };
 
             // Load summaries from database
@@ -3728,6 +3751,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         questions: data.questions,
                         assessment: data.assessment || '',
                         meetingSummary: data.meetingSummary || '',
+                        meetingNotes: data.meetingNotes || '',
                         topic: newTopicName || currentSummaryTopic || 'General',
                         topicType: newTopicType || 'other',
                         createdAt: new Date().toISOString()
@@ -3904,6 +3928,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 const parts = [];
                 if (currentSummary.brief) parts.push('<h2>Brief</h2>' + currentSummary.brief);
                 if (currentSummary.summary) parts.push('<h2>Key Takeaways</h2>' + currentSummary.summary);
+                if (currentSummary.meetingNotes) parts.push('<h2>Meeting Notes</h2>' + currentSummary.meetingNotes);
                 if (currentSummary.meetingSummary) parts.push('<h2>Meeting Summary</h2>' + currentSummary.meetingSummary);
                 if (currentSummary.questions) parts.push('<h2>Follow-up Questions</h2>' + currentSummary.questions);
                 if (currentSummary.assessment) parts.push("<h2>Claude's Assessment</h2>" + currentSummary.assessment);
@@ -3949,6 +3974,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 if (currentSummary.title) lines.push(currentSummary.title, '');
                 if (currentSummary.brief) lines.push('=== BRIEF ===', stripHtml(currentSummary.brief), '');
                 if (currentSummary.summary) lines.push('=== KEY TAKEAWAYS ===', stripHtml(currentSummary.summary), '');
+                if (currentSummary.meetingNotes) lines.push('=== MEETING NOTES ===', stripHtml(currentSummary.meetingNotes), '');
                 if (currentSummary.meetingSummary) lines.push('=== MEETING SUMMARY ===', stripHtml(currentSummary.meetingSummary), '');
                 if (currentSummary.questions) lines.push('=== FOLLOW-UP QUESTIONS ===', stripHtml(currentSummary.questions), '');
                 if (currentSummary.assessment) lines.push("=== CLAUDE'S ASSESSMENT ===", stripHtml(currentSummary.assessment), '');
@@ -4513,6 +4539,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         questions: data.questions,
                         assessment: data.assessment || '',
                         meetingSummary: data.meetingSummary || '',
+                        meetingNotes: data.meetingNotes || '',
                         topic: newTopicName || currentSummaryTopic || 'General',
                         topicType: newTopicType || 'other',
                         docType: summaryDocType || 'other',
@@ -4976,7 +5003,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     }
 
                     // Generate assessment + meeting summary if not already present (e.g. standard mode via N8N webhook)
-                    if (!data.assessment || !data.meetingSummary) {
+                    if (!data.assessment || !data.meetingSummary || !data.meetingNotes) {
                         try {
                             setBgTranscriptionJob(prev => prev ? { ...prev, progress: 'Generating assessment...' } : null);
                             const assessRes = await fetch(`${DIRECT_API_URL}/api/generate-assessment`, {
@@ -4988,6 +5015,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 const assessData = await assessRes.json();
                                 if (!data.assessment) data.assessment = assessData.assessment || '';
                                 if (!data.meetingSummary) data.meetingSummary = assessData.meetingSummary || '';
+                            if (!data.meetingNotes) data.meetingNotes = assessData.meetingNotes || '';
                             }
                         } catch (e) {
                             console.error('Assessment generation failed:', e);
@@ -5010,6 +5038,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         questions: data.questions,
                         assessment: data.assessment || '',
                         meetingSummary: data.meetingSummary || '',
+                        meetingNotes: data.meetingNotes || '',
                         topic: jobMeta.topic,
                         topicType: jobMeta.topicType,
                         docType: jobMeta.docType,
@@ -5112,6 +5141,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             questions: data.questions,
                             assessment: data.assessment || '',
                             meetingSummary: data.meetingSummary || '',
+                        meetingNotes: data.meetingNotes || '',
                             topic: newTopicName || currentSummaryTopic || 'General',
                             topicType: newTopicType || 'other',
                             docType: summaryDocType || 'other',
@@ -5249,6 +5279,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 let defaultSubject = '';
                 if (section === 'takeaways') {
                     defaultSubject = `Key Takeaways: ${currentSummary?.title || 'Summary'}`;
+                } else if (section === 'notes') {
+                    defaultSubject = `Meeting Notes: ${currentSummary?.title || 'Summary'}`;
                 } else if (section === 'meeting') {
                     defaultSubject = `Meeting Summary: ${currentSummary?.title || 'Summary'}`;
                 } else if (section === 'questions') {
@@ -5286,6 +5318,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 let section = summaryEmailSection;
                 if (section === 'takeaways') {
                     content = currentSummary.summary;
+                } else if (section === 'notes') {
+                    content = currentSummary.meetingNotes;
                 } else if (section === 'meeting') {
                     content = currentSummary.meetingSummary;
                 } else if (section === 'questions') {
@@ -11732,6 +11766,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         questions: data.questions,
                         assessment: data.assessment || '',
                         meetingSummary: data.meetingSummary || '',
+                        meetingNotes: data.meetingNotes || '',
                         topic: newTopicName || currentSummaryTopic || 'General',
                         topicType: newTopicType || 'other',
                         docType: summaryDocType || 'other',
@@ -18999,11 +19034,12 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     <div className="flex flex-wrap items-center gap-2 text-xs"><button onClick={bulkEmailSummaries} disabled={bulkSummaryEmailLoading} className="px-3 py-2 rounded-lg bg-amber-600 text-white disabled:opacity-50">{bulkSummaryEmailLoading ? 'Sending…' : 'Email selected · all sections'}</button><span className="text-slate-400">One combined email to your saved recipient. Includes every available section, regardless of export toggles.</span></div>
                                                     {/* Section toggles */}
                                                     <div className="flex flex-wrap items-center gap-2 text-xs">
-                                                        <span className="text-slate-400">Word / PDF sections:</span><button onClick={() => setBulkExportSections(new Set(['brief','takeaways','meeting','questions','assessment','korean','transcript']))}>All sections</button>
+                                                        <span className="text-slate-400">Word / PDF sections:</span><button onClick={() => setBulkExportSections(new Set(['brief','takeaways','meeting','notes','questions','assessment','korean','transcript']))}>All sections</button>
                                                         {[
                                                             { key: 'brief', label: 'Brief' },
                                                             { key: 'takeaways', label: 'Key Takeaways' },
                                                             { key: 'meeting', label: 'Meeting Summary' },
+                                                            { key: 'notes', label: 'Meeting Notes' },
                                                             { key: 'questions', label: 'Follow-up Questions' },
                                                             { key: 'assessment', label: 'Assessment' },
                                                             { key: 'korean', label: 'Korean Takeaways' },
@@ -19197,6 +19233,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 takeawaysExpanded &&
                                                                 questionsExpanded &&
                                                                 (!currentSummary.assessment || assessmentExpanded) &&
+                                                                (!currentSummary.meetingNotes || meetingNotesExpanded) &&
                                                                 (!currentSummary.meetingSummary || meetingSummaryExpanded) &&
                                                                 (!currentSummary.koreanTakeaways || koreanExpanded) &&
                                                                 (currentSummary.sourceType !== 'audio' || transcriptExpanded);
@@ -19206,6 +19243,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             setQuestionsExpanded(next);
                                                             if (currentSummary.assessment) setAssessmentExpanded(next);
                                                             if (currentSummary.meetingSummary) setMeetingSummaryExpanded(next);
+                                                            if (currentSummary.meetingNotes) setMeetingNotesExpanded(next);
                                                             if (currentSummary.koreanTakeaways) setKoreanExpanded(next);
                                                             if (currentSummary.sourceType === 'audio') setTranscriptExpanded(next);
                                                         }}
@@ -19215,7 +19253,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                          takeawaysExpanded &&
                                                          questionsExpanded &&
                                                          (!currentSummary.assessment || assessmentExpanded) &&
-                                                         (!currentSummary.meetingSummary || meetingSummaryExpanded) &&
+                                                         (!currentSummary.meetingNotes || meetingNotesExpanded) &&
+                                                                (!currentSummary.meetingSummary || meetingSummaryExpanded) &&
                                                          (!currentSummary.koreanTakeaways || koreanExpanded) &&
                                                          (currentSummary.sourceType !== 'audio' || transcriptExpanded) ? (
                                                             <>
@@ -19510,6 +19549,18 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     )}
                                                 </div>
                                                 )}
+
+                                                {(currentSummary.meetingNotes || currentSummary.rawNotes) && (
+                                                <div className="rounded-xl border border-white/10 overflow-hidden">
+                                                    <div className="px-4 py-3 flex flex-wrap items-center gap-2">
+                                                        <button onClick={() => setMeetingNotesExpanded(!meetingNotesExpanded)} aria-expanded={meetingNotesExpanded} className="flex-1 text-left font-semibold">Meeting Notes <span aria-hidden="true">{meetingNotesExpanded ? '▾' : '▸'}</span></button>
+                                                        <button disabled={!currentSummary.meetingNotes} className="p-2 disabled:opacity-40" onClick={() => navigator.clipboard.writeText(new DOMParser().parseFromString(currentSummary.meetingNotes.replace(/<\/(li|h2|p)>/g, '</$1>\n'), 'text/html').body.textContent || '')}>Copy</button>
+                                                        <button disabled={!currentSummary.meetingNotes} className="p-2 disabled:opacity-40" onClick={() => openSummaryEmailWithOptions('notes')}>Email</button>
+                                                        <button className="p-2" disabled={!currentSummary.meetingNotes || iCloudSavingSection === 'notes'} onClick={() => saveSectionToICloud('notes')}>Save to iCloud</button>
+                                                    </div>
+                                                    {meetingNotesExpanded && !currentSummary.meetingNotes && <div className="p-4"><p>Meeting Notes have not been generated for this summary. Generate this section from the saved source; this uses your model.</p><button disabled={meetingNotesBusy} onClick={generateMeetingNotes}>{meetingNotesBusy?'Generating…':'Generate Meeting Notes'}</button></div>}
+                                                    {meetingNotesExpanded && currentSummary.meetingNotes && <div className="p-6 summary-content meeting-notes bg-white text-black" style={{fontFamily:'Calibri, Carlito, Arial, sans-serif'}} dangerouslySetInnerHTML={{__html:sanitizeHtml(currentSummary.meetingNotes)}} />}
+                                                </div>)}
 
                                                 {/* FOLLOW-UP QUESTIONS Section - Collapsible */}
                                                 <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl border border-white/10 overflow-hidden">

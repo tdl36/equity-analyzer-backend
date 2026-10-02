@@ -547,3 +547,16 @@ body {
 .theme-chip[data-theme-key="graphite"] { --chip-bg:#101820;--chip-accent:#68c5bb; }
 .theme-chip[data-theme-key="parchment"] { --chip-bg:#f5f2ed;--chip-accent:#753d54; }
 .theme-switch { flex-wrap:wrap;row-gap:8px; }
+
+/* Meeting Notes retains document typography independently of workspace theme. */
+.summary-content.meeting-notes, .summary-content.meeting-notes * {
+  font-family: Calibri, Carlito, Arial, sans-serif !important;
+  color: #000 !important;
+}
+.summary-content.meeting-notes ul, .summary-lab .working-notes .reader ul {
+  list-style-type: disc !important;
+  padding-left: 1.4em;
+}
+.summary-content.meeting-notes li, .summary-lab .working-notes .reader li {
+  display: list-item;
+}

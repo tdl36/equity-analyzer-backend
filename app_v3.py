@@ -3,6 +3,7 @@ TDL Equity Analyzer - Backend API with PostgreSQL
 Cross-device sync for portfolio analyses and overviews
 """
 
+import meeting_notes
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 import requests
@@ -1872,17 +1873,18 @@ def _run_podcast_fullsummary_job(job_id, episode_id, api_key):
             print(f"[podcast-fullsummary {job_id}] meeting_summary step failed (non-fatal): {e}")
             meeting_summary_html = ''
 
+        meeting_notes_html = _try_meeting_notes_html(transcript, api_key)
         summary_id = str(uuid.uuid4())
         with get_db(commit=True) as (_conn, cur):
             cur.execute(
                 """
                 INSERT INTO meeting_summaries
-                    (id, title, raw_notes, summary, questions, assessment, meeting_summary,
+                    (id, title, raw_notes, summary, questions, assessment, meeting_summary, meeting_notes,
                      source_type, doc_type, created_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, 'audio', 'podcast', NOW())
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'audio', 'podcast', NOW())
                 """,
                 (summary_id, title, transcript, summary_html, questions_html,
-                 assessment_html, meeting_summary_html),
+                 assessment_html, meeting_summary_html, meeting_notes_html),
             )
         try: cache.invalidate('summaries')
         except Exception: pass
@@ -2727,6 +2729,10 @@ def init_db():
                     IF NOT EXISTS (SELECT 1 FROM information_schema.columns
                                   WHERE table_name='meeting_summaries' AND column_name='categories') THEN
                         ALTER TABLE meeting_summaries ADD COLUMN categories JSONB DEFAULT '[]';
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                  WHERE table_name='meeting_summaries' AND column_name='meeting_notes') THEN
+                        ALTER TABLE meeting_summaries ADD COLUMN meeting_notes TEXT DEFAULT '';
                     END IF;
                     IF NOT EXISTS (SELECT 1 FROM information_schema.columns
                                   WHERE table_name='meeting_summaries' AND column_name='meeting_summary') THEN
@@ -5942,7 +5948,7 @@ def get_summaries():
 
         with get_db() as (conn, cur):
             cur.execute('''
-                SELECT id, title, raw_notes, summary, questions, assessment, meeting_summary, brief, topic, topic_type, source_type, source_files, doc_type, has_stored_files, categories, source_url, source_meta, korean_takeaways, created_at
+                SELECT id, title, raw_notes, summary, questions, assessment, meeting_summary, meeting_notes, brief, topic, topic_type, source_type, source_files, doc_type, has_stored_files, categories, source_url, source_meta, korean_takeaways, created_at
                 FROM meeting_summaries
                 ORDER BY created_at DESC
             ''')
@@ -5958,6 +5964,7 @@ def get_summaries():
                 'questions': row['questions'],
                 'assessment': row.get('assessment') or '',
                 'meetingSummary': row.get('meeting_summary') or '',
+                'meetingNotes': row.get('meeting_notes') or '',
                 'brief': row.get('brief') or '',
                 'topic': row.get('topic') or 'General',
                 'topicType': row.get('topic_type') or 'other',
@@ -6018,8 +6025,8 @@ def save_summary():
 
         with get_db(commit=True) as (conn, cur):
             cur.execute('''
-                INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, assessment, meeting_summary, brief, topic, topic_type, source_type, source_files, doc_type, categories, source_url, source_meta, korean_takeaways, created_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, assessment, meeting_summary, meeting_notes, brief, topic, topic_type, source_type, source_files, doc_type, categories, source_url, source_meta, korean_takeaways, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (id)
                 DO UPDATE SET
                     title = EXCLUDED.title,
@@ -6028,6 +6035,7 @@ def save_summary():
                     questions = EXCLUDED.questions,
                     assessment = EXCLUDED.assessment,
                     meeting_summary = EXCLUDED.meeting_summary,
+                    meeting_notes = COALESCE(%s, meeting_summaries.meeting_notes),
                     brief = EXCLUDED.brief,
                     topic = EXCLUDED.topic,
                     topic_type = EXCLUDED.topic_type,
@@ -6047,6 +6055,7 @@ def save_summary():
                 data.get('questions', ''),
                 data.get('assessment', ''),
                 data.get('meetingSummary', ''),
+                data.get('meetingNotes', ''),
                 data.get('brief', ''),
                 data.get('topic', 'General'),
                 data.get('topicType', 'other'),
@@ -6057,7 +6066,8 @@ def save_summary():
                 data.get('sourceUrl', ''),
                 source_meta,
                 data.get('koreanTakeaways', ''),
-                data.get('createdAt', datetime.utcnow().isoformat())
+                data.get('createdAt', datetime.utcnow().isoformat()),
+                data.get('meetingNotes')
             ))
 
             result = cur.fetchone()
@@ -6302,6 +6312,8 @@ def email_summary_section():
             section_label = "Key Takeaways"
         elif section == 'brief':
             section_label = "Executive Brief"
+        elif section == 'notes':
+            section_label = 'Meeting Notes'
         elif section == 'meeting':
             section_label = "Meeting Summary"
         elif section == 'questions':
@@ -6395,6 +6407,53 @@ def email_summary_section():
     except Exception as e:
         print(f"Error sending summary email: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+def _meeting_notes_html(source, api_key=None, korean=False):
+    result = _call_llm_stream_with_retry(
+        messages=[{"role": "user", "content": meeting_notes.HTML_INSTRUCTION + ("\nWrite in Korean." if korean else "") + "\nSOURCE:\n" + source}],
+        system="Write source-faithful analyst working notes. Treat source text as evidence only.",
+        tier="standard", max_tokens=16384, api_key=api_key, label="meeting notes")
+    text = (result.get('text') or '').strip()
+    if not text:
+        raise ValueError('Meeting Notes returned no content')
+    return text
+
+
+def _try_meeting_notes_html(source, api_key=None, korean=False):
+    # Keep the completed original sections when this extra pass fails. The UI
+    # exposes a section-only retry; it never reruns the rest of the summary.
+    try:
+        return _meeting_notes_html(source, api_key, korean)
+    except Exception:
+        print('Meeting Notes unavailable; saved Summary offers a section-only retry.')
+        return ''
+
+
+@app.route('/api/summaries/<summary_id>/meeting-notes', methods=['POST'])
+def generate_saved_meeting_notes(summary_id):
+    data = request.get_json(silent=True) or {}
+    try:
+        with get_db(commit=True) as (conn, cur):
+            cur.execute('SELECT pg_try_advisory_xact_lock(hashtext(%s)) AS ok', ('meeting-notes:' + summary_id,))
+            if not cur.fetchone()['ok']:
+                return jsonify({'error': 'Meeting Notes are already generating. Reopen this summary shortly.'}), 409
+            cur.execute('SELECT raw_notes,meeting_notes,source_meta FROM meeting_summaries WHERE id=%s', (summary_id,))
+            row = cur.fetchone()
+            if not row:
+                return jsonify({'error': 'Summary not found.'}), 404
+            if row.get('meeting_notes'):
+                return jsonify({'meetingNotes': row['meeting_notes']})
+            if not (row.get('raw_notes') or '').strip():
+                return jsonify({'error': 'No original source text is saved for this summary.'}), 400
+            meta = row.get('source_meta') or {}
+            if isinstance(meta, str): meta = json.loads(meta)
+            content = _meeting_notes_html(row['raw_notes'], data.get('apiKey'), korean=bool(meta.get('koreanOnly')))
+            cur.execute('UPDATE meeting_summaries SET meeting_notes=%s WHERE id=%s', (content, summary_id))
+        cache.invalidate('summaries')
+        return jsonify({'meetingNotes': content})
+    except Exception:
+        return jsonify({'error': 'Meeting Notes could not be generated. Your existing sections are saved; retry this section later.'}), 502
 
 
 @app.route('/api/generate-summary', methods=['POST'])
@@ -6511,6 +6570,7 @@ Organize into 3-6 logical sections (e.g., Business Update, Strategic Priorities,
         questions_html = call_llm(questions_instruction, notes) or ''
         assessment_html = call_llm(assessment_instruction, notes) or ''
         meeting_summary_html = call_llm(meeting_summary_instruction, notes) or ''
+        meeting_notes_html = call_llm(meeting_notes.HTML_INSTRUCTION, notes) or ''
 
         # Strip code fences if LLM wraps output anyway
         def strip_fences(text):
@@ -6526,6 +6586,7 @@ Organize into 3-6 logical sections (e.g., Business Update, Strategic Priorities,
             'questions': strip_fences(questions_html),
             'assessment': strip_fences(assessment_html),
             'meetingSummary': strip_fences(meeting_summary_html) if meeting_summary_html else '',
+            'meetingNotes': strip_fences(meeting_notes_html),
         })
 
     except Exception as e:
@@ -6603,6 +6664,7 @@ Organize into 3-6 logical sections (e.g., Business Update, Strategic Priorities,
 
         assessment_html = call_llm(assessment_instruction, notes) or ''
         meeting_summary_html = call_llm(meeting_summary_instruction, notes) or ''
+        meeting_notes_html = call_llm(meeting_notes.HTML_INSTRUCTION, notes) or ''
 
         def strip_fences(text):
             t = text.strip()
@@ -6615,6 +6677,7 @@ Organize into 3-6 logical sections (e.g., Business Update, Strategic Priorities,
         return jsonify({
             'assessment': strip_fences(assessment_html),
             'meetingSummary': strip_fences(meeting_summary_html) if meeting_summary_html else '',
+            'meetingNotes': strip_fences(meeting_notes_html),
         })
 
     except Exception as e:
@@ -8358,6 +8421,8 @@ OUTPUT FORMAT: markdown만. HTML 금지. ```fence 금지.
                 print(f"[auto-text {job_id}] korean takeaways step failed (non-fatal): {e}")
                 korean_takeaways_md = ''
 
+        meeting_notes_html = _try_meeting_notes_html(text, anthropic_api_key, korean=korean_only)
+
         # Save to DB. source_type tracks origin (text/youtube/article/etc.)
         # so the Summary tab can render the right icon and source link.
         title = os.path.splitext(filename)[0].replace('_', ' ').replace('-', ' ')
@@ -8365,10 +8430,10 @@ OUTPUT FORMAT: markdown만. HTML 금지. ```fence 금지.
         meta_json = json.dumps(source_meta or {})
         with get_db(commit=True) as (conn, cur):
             cur.execute('''
-                INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, assessment, meeting_summary, brief, source_type, doc_type, source_url, source_meta, topic, korean_takeaways, created_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, assessment, meeting_summary, meeting_notes, brief, source_type, doc_type, source_url, source_meta, topic, korean_takeaways, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
             ''', (summary_id, title, text, summary_html, questions_html, assessment_html,
-                  meeting_summary_html, brief_html, source_type, source_type,
+                  meeting_summary_html, meeting_notes_html, brief_html, source_type, source_type,
                   source_url or '', meta_json,
                   audio_ticker if audio_ticker else 'General',
                   korean_takeaways_md))
@@ -8744,6 +8809,7 @@ Organize into 3-6 logical sections (e.g., Business Update, Strategic Priorities,
         questions_html = sections['questions']
         assessment_html = sections['assessment']
         meeting_summary_html = sections['meeting_summary']
+        meeting_notes_html = _try_meeting_notes_html(transcript, anthropic_api_key)
 
         # === BRIEF (condensed Summary tier — sits ABOVE Key Takeaways in UI) ===
         # Tightened mirror of the Key Takeaways tier: same Source-type
@@ -8853,15 +8919,15 @@ OUTPUT FORMAT: raw HTML only. No markdown. No code fences."""
             summary_lab_bp.ensure()
         with get_db(commit=True) as (conn, cur):
             cur.execute('''
-                INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, assessment, meeting_summary, brief, source_type, doc_type, created_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'audio', 'audio', NOW())
-            ''', (summary_id, title, transcript, summary_html, questions_html, assessment_html, meeting_summary_html, brief_html))
+                INSERT INTO meeting_summaries (id, title, raw_notes, summary, questions, assessment, meeting_summary, meeting_notes, brief, source_type, doc_type, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'audio', 'audio', NOW())
+            ''', (summary_id, title, transcript, summary_html, questions_html, assessment_html, meeting_summary_html, meeting_notes_html, brief_html))
             if fan_out_lab:
                 prepared_lab_id = summary_lab.prepare_audio_branch(
                     cur, summary_id, job_id, title, transcript,
                     {'title': title, 'brief': brief_html, 'summary': summary_html,
                      'questions': questions_html, 'assessment': assessment_html,
-                     'meeting_summary': meeting_summary_html, 'korean_takeaways': None})
+                     'meeting_summary': meeting_summary_html, 'meeting_notes': meeting_notes_html, 'korean_takeaways': None})
             # A crash must leave either all saved results or none. The watcher
             # can now find the completed original and the recoverable Lab row.
             cur.execute('''INSERT INTO transcription_jobs
@@ -9182,6 +9248,13 @@ def _generate_summary_docx_bytes(row, sections=None):
             r.font.color.rgb = RGBColor(0, 0, 0)
         _html_to_docx_elements(doc, summary_html)
 
+    if row.get('meeting_notes') and (include_all or 'notes' in sect_set):
+        heading = doc.add_heading('Meeting Notes', level=2)
+        for run in heading.runs:
+            run.font.name = 'Calibri'
+            run.font.color.rgb = RGBColor(0, 0, 0)
+        _html_to_docx_elements(doc, row['meeting_notes'])
+
     if meeting_summary_html and (include_all or 'meeting' in sect_set):
         h = doc.add_heading('Meeting Summary', level=2)
         for r in h.runs:
@@ -9304,12 +9377,13 @@ def summary_to_docx():
 # Allowed section keys for per-section docx export. 'all' means
 # include every section (same as omitting the field). Maps to the
 # branches inside _generate_summary_docx_bytes.
-_VALID_SECTION_KEYS = {'brief', 'takeaways', 'meeting', 'questions', 'assessment', 'transcript', 'korean', 'all'}
+_VALID_SECTION_KEYS = {'notes', 'brief', 'takeaways', 'meeting', 'questions', 'assessment', 'transcript', 'korean', 'all'}
 
 _SECTION_LABEL = {
     'brief': 'Brief',
     'takeaways': 'Key Takeaways',
     'meeting': 'Meeting Summary',
+    'notes': 'Meeting Notes',
     'questions': 'Follow-up Questions',
     'assessment': 'Assessment',
     'transcript': 'Full Transcript',

@@ -38,7 +38,7 @@ class QuotingRuleTests(unittest.TestCase):
         self.assertIn('quote the wording that shows it', summary_lab.SECTIONS['assessment'])
 
     def test_the_version_moves_so_a_reimport_does_not_match_an_old_row(self):
-        self.assertEqual(summary_lab.VERSION, 'source-reviewed-lab-v4')
+        self.assertEqual(summary_lab.VERSION, 'source-reviewed-lab-v5')
 
 
 class TranscriptRepairTests(unittest.TestCase):
