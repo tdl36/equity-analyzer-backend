@@ -162,7 +162,8 @@ class ProviderAttemptTests(unittest.TestCase):
         from unittest.mock import MagicMock
         tree=ast.parse(Path('app_v3.py').read_text())
         nodes=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in ('_call_anthropic','_call_anthropic_stream')]
-        sdk=MagicMock();ns={'anthropic':sdk}
+        import model_registry
+        sdk=MagicMock();ns={'anthropic':sdk,'model_registry':model_registry}
         exec(compile(ast.Module(body=nodes,type_ignores=[]),'provider-test','exec'),ns)
         kwargs=dict(messages=[],system='',model='synthetic',max_tokens=5,timeout=2,api_key='synthetic')
         stream=sdk.Anthropic.return_value.messages.stream.return_value.__enter__.return_value

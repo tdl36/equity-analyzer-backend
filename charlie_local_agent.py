@@ -12,6 +12,7 @@ Usage:
     python3 charlie_local_agent.py --ticker MDT     # Process specific ticker (no backend job needed)
     python3 charlie_local_agent.py --debug          # Verbose logging
 """
+import model_registry
 
 import os
 import sys
@@ -59,13 +60,14 @@ MAX_SYNC_BYTES = 400 * 1024 * 1024
 # answers 404 NotFoundError, so every note generated through the agent failed
 # with an error that reads like a missing endpoint rather than a missing model.
 # Overridable so a model change does not need a code edit next time.
-NOTE_MODEL = os.environ.get("CHARLIE_NOTE_MODEL", "claude-sonnet-5")
+NOTE_MODEL = model_registry.role("note", "CHARLIE_NOTE_MODEL")
 
 # Source mtime at import. launchd starts this once and keeps it alive forever,
 # so editing the file changes nothing until someone restarts it by hand -- and
 # nothing reports that they have not. This agent ran for thirteen days on code
 # predating a model-id fix, failing every note job with a 404 for a model that
 # had been retired, while the corrected line sat on disk unread.
+_MODEL_SOURCE_MTIMES = {p: p.stat().st_mtime_ns for p in (model_registry.PATH, Path(model_registry.__file__))}
 _SOURCE_MTIME = None
 try:
     _SOURCE_MTIME = os.path.getmtime(os.path.abspath(__file__))
@@ -78,7 +80,8 @@ def _source_changed() -> bool:
     if _SOURCE_MTIME is None:
         return False
     try:
-        return os.path.getmtime(os.path.abspath(__file__)) != _SOURCE_MTIME
+        return (os.path.getmtime(os.path.abspath(__file__)) != _SOURCE_MTIME or
+                any(p.stat().st_mtime_ns != stamp for p, stamp in _MODEL_SOURCE_MTIMES.items()))
     except OSError:
         return False
 CHARLIE_API = "https://equity-analyzer-backend.onrender.com"
@@ -1026,7 +1029,7 @@ def push_heartbeat() -> None:
     try:
         requests.post(
             f"{CHARLIE_API}/api/agent/heartbeat",
-            json={"agentId": _agent_id(), "version": "1.0"},
+            json={"agentId": _agent_id(), "version": "1.0; models:" + model_registry.REVISION},
             headers=_agent_headers(),
             timeout=10,
         )
@@ -1593,6 +1596,7 @@ Return your response in this exact format:
     # "Streaming is required for operations that may take longer than 10 minutes."
     with client.messages.stream(
         model=NOTE_MODEL,
+        **model_registry.request_options(NOTE_MODEL),
         max_tokens=16384,
         system="You are a senior equity research analyst. Write thorough, data-driven research notes. Be precise with numbers. No sellside attribution in the main note.",
         messages=[{"role": "user", "content": content}],
@@ -3400,13 +3404,13 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
     custom_instructions = steps_detail.get("customInstructions", "")
     prompt_variant = (steps_detail.get("prompt_variant") or "").strip().lower()
     # Provider + model selection. Backend passes both in steps_detail when
-    # the user picked one in the UI. Defaults: anthropic + claude-sonnet-4-6.
+    # the user picked one in the UI. Defaults come from the reviewed registry.
     recap_provider = (steps_detail.get("provider") or os.environ.get("CHARLIE_RECAP_PROVIDER") or "anthropic").strip().lower()
     if recap_provider not in ("anthropic", "openai", "google"):
         log.warning(f"Unknown recap provider {recap_provider!r}, falling back to anthropic")
         recap_provider = "anthropic"
     _provider_default_models = {
-        "anthropic": "claude-sonnet-4-6",
+        "anthropic": model_registry.role("recap"),
         "openai": "gpt-4.1",
         "google": "gemini-2.5-pro",
     }
@@ -3500,6 +3504,7 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
                 # Use streaming and reconstruct the full text + stop_reason at end.
                 with client.messages.stream(
                     model=model,
+                    **model_registry.request_options(model),
                     max_tokens=max_tokens,
                     system=system_prompt,
                     messages=[{"role": "user", "content": anthropic_blocks}],
@@ -3533,6 +3538,7 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
                         {"role": "user", "content": user_text},
                     ],
                     max_completion_tokens=max_tokens,
+                    **model_registry.request_options(model),
                 )
                 if resp.choices[0].finish_reason == 'length':
                     raise ValueError('Recap output reached its token limit; partial output was not accepted.')

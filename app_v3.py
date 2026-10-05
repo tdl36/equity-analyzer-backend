@@ -4,6 +4,7 @@ Cross-device sync for portfolio analyses and overviews
 """
 
 import meeting_notes
+import model_registry
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 import requests
@@ -2091,26 +2092,14 @@ class LLMError(Exception):
 # and outline generation -- each of which had to be found by someone hitting it.
 # A retirement is now a one-line change, and CHARLIE_MODEL_* lets it be done
 # without a deploy.
-MODEL_WORKHORSE = os.environ.get('CHARLIE_MODEL_WORKHORSE', 'claude-sonnet-5')
-MODEL_LONG_FORM = os.environ.get('CHARLIE_MODEL_LONG_FORM', 'claude-sonnet-5')
-MODEL_FAST = os.environ.get('CHARLIE_MODEL_FAST', 'claude-haiku-4-5-20251001')
+MODEL_WORKHORSE = model_registry.role('workhorse', 'CHARLIE_MODEL_WORKHORSE')
+MODEL_LONG_FORM = model_registry.role('long_form', 'CHARLIE_MODEL_LONG_FORM')
+MODEL_FAST = model_registry.role('fast', 'CHARLIE_MODEL_FAST')
 
 MODEL_TIERS = {
-    "fast": [
-        ("anthropic", "claude-haiku-4-5-20251001"),
-        ("gemini",    "gemini-2.5-flash"),
-        ("openai",    "gpt-4o-mini"),
-    ],
-    "standard": [
-        ("anthropic", "claude-sonnet-4-5-20250929"),
-        ("gemini",    "gemini-2.5-flash"),
-        ("openai",    "gpt-4o"),
-    ],
-    "advanced": [
-        ("anthropic", "claude-opus-4-6"),
-        ("gemini",    "gemini-2.5-pro"),
-        ("openai",    "gpt-4o"),
-    ],
+    'fast': [('anthropic', MODEL_FAST), ('gemini', 'gemini-2.5-flash'), ('openai', model_registry.role('fast_openai'))],
+    'standard': [('anthropic', MODEL_WORKHORSE), ('gemini', 'gemini-2.5-flash'), ('openai', model_registry.role('standard_openai'))],
+    'advanced': [('anthropic', model_registry.role('research')), ('gemini', 'gemini-2.5-pro'), ('openai', model_registry.role('advanced_openai'))],
 }
 
 def _extract_json(text):
@@ -2227,6 +2216,7 @@ def _call_anthropic(*, messages, system, model, max_tokens, timeout, api_key):
     }
     if system:
         kwargs["system"] = system
+    kwargs.update(model_registry.request_options(model))
     response = client.messages.create(**kwargs)
     text = ""
     for block in response.content:
@@ -2235,9 +2225,9 @@ def _call_anthropic(*, messages, system, model, max_tokens, timeout, api_key):
     return {
         "text": text,
         "usage": {
-            "input_tokens": response.usage.input_tokens,
-            "output_tokens": response.usage.output_tokens,
+            **model_registry.usage_dict(response.usage),
         },
+        "stop_reason": getattr(response, 'stop_reason', None),
         "provider": "anthropic",
         "model": model,
     }
@@ -2262,6 +2252,7 @@ def _call_anthropic_stream(*, messages, system, model, max_tokens, timeout, api_
     }
     if system:
         kwargs["system"] = system
+    kwargs.update(model_registry.request_options(model))
     parts = []
     with client.messages.stream(**kwargs) as stream:
         for chunk in stream.text_stream:
@@ -2278,8 +2269,7 @@ def _call_anthropic_stream(*, messages, system, model, max_tokens, timeout, api_
     return {
         "text": "".join(parts),
         "usage": {
-            "input_tokens": getattr(usage, "input_tokens", 0) if usage else 0,
-            "output_tokens": getattr(usage, "output_tokens", 0) if usage else 0,
+            **model_registry.usage_dict(usage),
         },
         # Whether the model ran out of room. Without this a truncated response is
         # indistinguishable from a complete one, and everything the output
@@ -2360,23 +2350,29 @@ def _call_openai(*, messages, system, model, max_tokens, timeout, api_key):
                         "image_url": {"url": data_uri}
                     })
                 elif block.get("type") == "document":
-                    # OpenAI chat completions don't support inline PDFs — skip
-                    oai_content.append({"type": "text", "text": "[PDF document — content not available for this provider]"})
+                    source = block.get('source', {})
+                    if source.get('type') != 'base64' or source.get('media_type', 'application/pdf') != 'application/pdf':
+                        raise ValueError('OpenAI fallback requires a base64 PDF; source was not discarded.')
+                    oai_content.append({'type': 'file', 'file': {'filename': 'source.pdf',
+                        'file_data': 'data:application/pdf;base64,' + source['data']}})
+                else:
+                    raise ValueError('Unsupported source block for OpenAI; source was not discarded.')
             oai_messages.append({"role": role, "content": oai_content})
         else:
             oai_messages.append({"role": role, "content": msg["content"]})
     response = client.chat.completions.create(
         model=model,
         messages=oai_messages,
-        max_tokens=max_tokens,
+        max_completion_tokens=max_tokens,
+        **model_registry.request_options(model),
     )
     text = response.choices[0].message.content or ""
     return {
         "text": text,
         "usage": {
-            "input_tokens": response.usage.prompt_tokens if response.usage else 0,
-            "output_tokens": response.usage.completion_tokens if response.usage else 0,
+            **model_registry.usage_dict(response.usage, 'openai'),
         },
+        "stop_reason": response.choices[0].finish_reason,
         "provider": "openai",
         "model": model,
     }
@@ -2446,6 +2442,7 @@ def call_llm_stream(*, messages, system="", tier="standard", max_tokens=16384,
                 kwargs = {"model": model, "max_tokens": max_tokens, "messages": messages}
                 if system:
                     kwargs["system"] = system
+                kwargs.update(model_registry.request_options(model))
                 q: _queue.Queue = _queue.Queue()
                 final_holder: dict = {}
                 SENTINEL = object()
@@ -2461,9 +2458,9 @@ def call_llm_stream(*, messages, system="", tier="standard", max_tokens=16384,
                         final_holder["result"] = {
                             "text": result_text,
                             "usage": {
-                                "input_tokens": response.usage.input_tokens,
-                                "output_tokens": response.usage.output_tokens,
+                                **model_registry.usage_dict(response.usage),
                             },
+                            "stop_reason": getattr(response, 'stop_reason', None),
                             "provider": provider,
                             "model": model,
                         }
@@ -4015,18 +4012,10 @@ def _run_trading_agent(run_id, ticker, date_str, provider, model):
         _append_log("system", f"Analysis complete. Decision: {decision_signal}")
 
         # Estimate cost based on model
-        cost_per_1k = {
-            'claude-haiku-4-5-20251001': 0.001, 'claude-sonnet-4-6': 0.003, 'claude-opus-4-6': 0.015,
-            'gpt-4.1-mini': 0.0004, 'gpt-4.1': 0.002, 'o4-mini': 0.001,
-            'gemini-2.0-flash': 0.0001, 'gemini-2.5-pro': 0.005,
-        }
-        # Rough estimate from log count (each log ~500 tokens avg)
-        # `logs` never existed in this scope, so this always took the else
-        # branch -- the dir() guard hid a dead reference rather than counting
-        # anything. Kept as the flat estimate it always was.
-        est_tokens = 5000
-        rate = cost_per_1k.get(model, 0.001)
-        est_cost = (est_tokens / 1000) * rate
+        # This workflow exposes only an estimate, not actual provider usage.
+        # Use the reviewed output rate as a conservative 5K-token allowance.
+        rate = model_registry.PRICES.get(model)
+        est_cost = round(5000 / 1e6 * rate[1], 4) if rate else None
 
         with get_db(commit=True) as (conn, cur):
             cur.execute('''
@@ -7310,6 +7299,7 @@ def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key
                 # non-streaming threshold; the SDK refuses those calls outright.
                 with _client.messages.stream(
                     model=MODEL_LONG_FORM,
+                    **model_registry.request_options(MODEL_LONG_FORM),
                     max_tokens=64000,
                     system=cleanup_prompt,
                     messages=[{'role': 'user', 'content': f"Please correct the specialized terms in this transcript:\n\n{transcript_text}"}],
@@ -12973,27 +12963,7 @@ def _onepager_research(ticker, anthropic_key='', gemini_key=''):
 # notes and the thesis would mean a model retirement had to be fixed in three
 # places, which is the shape of the bug that took out note generation when
 # claude-sonnet-4-20250514 was retired.
-PICKER_MODELS = [
-    # Anthropic
-    {'key': 'opus-5',    'provider': 'anthropic', 'label': 'Opus 5',    'model': 'claude-opus-5',             'note': 'Latest Opus'},
-    {'key': 'fable-5-1', 'provider': 'anthropic', 'label': 'Fable 5.1', 'model': 'claude-fable-5-1',          'note': 'Demanding reasoning, 2x the price'},
-    {'key': 'opus-4-8',  'provider': 'anthropic', 'label': 'Opus 4.8',  'model': 'claude-opus-4-8',           'note': 'Legacy Opus'},
-    {'key': 'opus-4-7',  'provider': 'anthropic', 'label': 'Opus 4.7',  'model': 'claude-opus-4-7',           'note': 'Legacy Opus'},
-    {'key': 'opus-4-6',  'provider': 'anthropic', 'label': 'Opus 4.6',  'model': 'claude-opus-4-6',           'note': 'Current default'},
-    {'key': 'sonnet-5',  'provider': 'anthropic', 'label': 'Sonnet 5',  'model': 'claude-sonnet-5',           'note': 'Faster, cheaper'},
-    {'key': 'fable-5',   'provider': 'anthropic', 'label': 'Fable 5',   'model': 'claude-fable-5',            'note': 'Superseded by Fable 5.1'},
-    {'key': 'haiku-4-5', 'provider': 'anthropic', 'label': 'Haiku 4.5', 'model': 'claude-haiku-4-5-20251001', 'note': 'Fastest'},
-    # Google. gemini-pro-latest is an alias the provider repoints, so it does
-    # not go stale the way a pinned dated id does.
-    {'key': 'gemini-pro',       'provider': 'gemini', 'label': 'Gemini Pro',       'model': 'gemini-pro-latest',      'note': 'Latest Gemini Pro'},
-    {'key': 'gemini-3-1-pro',   'provider': 'gemini', 'label': 'Gemini 3.1 Pro',   'model': 'gemini-3.1-pro-preview', 'note': 'Preview'},
-    {'key': 'gemini-3-8-flash', 'provider': 'gemini', 'label': 'Gemini 3.8 Flash', 'model': 'gemini-3.8-flash',       'note': 'Fast'},
-    {'key': 'gemini-2-5-pro',   'provider': 'gemini', 'label': 'Gemini 2.5 Pro',   'model': 'gemini-2.5-pro',         'note': 'Proven'},
-    # OpenAI
-    {'key': 'gpt-4-1',      'provider': 'openai', 'label': 'GPT-4.1',      'model': 'gpt-4.1',      'note': 'Long context'},
-    {'key': 'gpt-4-1-mini', 'provider': 'openai', 'label': 'GPT-4.1 mini', 'model': 'gpt-4.1-mini', 'note': 'Fast, cheap'},
-    {'key': 'gpt-4o',       'provider': 'openai', 'label': 'GPT-4o',       'model': 'gpt-4o',       'note': 'Proven'},
-]
+PICKER_MODELS = model_registry.picker_models()
 
 # _fetch_provider_models calls Google's key 'google'; the adapters call it
 # 'gemini'. One mapping rather than two vocabularies leaking into callers.
@@ -13016,18 +12986,19 @@ def available_picker_models(api_keys=None):
     """
     keys = api_keys or _get_api_keys()
     out = [spec for spec in PICKER_MODELS
-           if keys.get(spec.get('provider', 'anthropic'))]
+           if keys.get(spec.get('provider', 'anthropic')) and
+           model_registry.MODELS[spec['model']].get('retirement', '9999-12-31') > datetime.utcnow().date().isoformat()]
     # Never return nothing: a picker with no options cannot be used at all.
     return out or [m for m in PICKER_MODELS if m['provider'] == 'anthropic']
-PICKER_MODEL_BY_KEY = {m['key']: m for m in PICKER_MODELS}
-PICKER_DEFAULT_MODEL = 'opus-4-6'
+PICKER_MODEL_BY_KEY = {m['key']: m for m in model_registry.REGISTRY['picker']}
+PICKER_DEFAULT_MODEL = model_registry.REGISTRY['pickerDefaults']['research']
 
 # Per-feature defaults. Each is the model that feature already used, so putting a
 # picker in front of it changes what you *can* choose, never what you get by
 # default -- a picker that silently re-pointed Decipher from 4.7 to 4.6 would be
 # a regression wearing a feature's clothes.
-DECIPHER_DEFAULT_MODEL = 'opus-4-7'
-MEETING_PREP_DEFAULT_MODEL = 'sonnet-5'
+DECIPHER_DEFAULT_MODEL = model_registry.REGISTRY['pickerDefaults']['decipher']
+MEETING_PREP_DEFAULT_MODEL = model_registry.REGISTRY['pickerDefaults']['meeting']
 
 # The one-pager names kept as aliases so its call sites read unchanged.
 ONEPAGER_MODELS = PICKER_MODELS
@@ -13041,6 +13012,8 @@ def resolve_picker_spec(model_key, default_key=PICKER_DEFAULT_MODEL):
     A stale key reaching this (an old browser tab, a saved preference for a
     model since dropped) must not fail the job -- it picks the default instead.
     """
+    if model_key in PICKER_MODEL_BY_KEY:
+        model_registry.ensure_active(PICKER_MODEL_BY_KEY[model_key]['model'])
     return (PICKER_MODEL_BY_KEY.get(model_key)
             or PICKER_MODEL_BY_KEY.get(default_key)
             or PICKER_MODEL_BY_KEY[PICKER_DEFAULT_MODEL])
@@ -13055,33 +13028,9 @@ def resolve_picker_model(model_key, default_key=PICKER_DEFAULT_MODEL):
     return resolve_picker_spec(model_key, default_key)['model']
 
 
-# Published per-million token prices. Kept next to the recorder so a price
-# change is one edit, and deliberately explicit: an unknown model prices at 0
-# rather than guessing, which shows up as a gap rather than a wrong number.
-LLM_PRICES = {
-    # Anthropic rates verified against platform.claude.com/docs/en/about-claude/pricing
-    # on 2026-09-20. The Opus rows previously carried (15, 75), which is the
-    # retired Opus 4/4.1 tier, so every Opus cost Charlie reported was 3x high.
-    'claude-opus-5':              (5.0, 25.0),
-    'claude-opus-4-8':            (5.0, 25.0),
-    'claude-opus-4-7':            (5.0, 25.0),
-    'claude-opus-4-6':            (5.0, 25.0),
-    'claude-fable-5-1':           (10.0, 50.0),
-    'claude-fable-5':             (10.0, 50.0),
-    'claude-sonnet-5':            (2.0, 10.0),
-    'claude-sonnet-4-6':          (3.0, 15.0),
-    'claude-sonnet-4-5-20250929': (3.0, 15.0),
-    'claude-haiku-4-5-20251001':  (1.0, 5.0),
-    'gemini-3.8-flash':           (0.75, 3.75),
-    'gemini-2.5-flash':           (0.30, 2.50),
-    'gemini-2.5-flash-lite':      (0.10, 0.40),
-    'gemini-pro-latest':          (1.25, 10.0),
-    'gemini-3.1-pro-preview':     (1.25, 10.0),
-    'gemini-2.5-pro':             (1.25, 10.0),
-    'gpt-4.1':                    (2.0, 8.0),
-    'gpt-4.1-mini':               (0.40, 1.60),
-    'gpt-4o':                     (2.50, 10.0),
-}
+# Reviewed rates shared with the Mac agent. Unknown prices are recorded as NULL
+# and flagged in API usage, never represented as free.
+LLM_PRICES = model_registry.PRICES
 
 
 # Gemini charges audio input at its own rate, several times the text rate, and
@@ -13096,8 +13045,10 @@ LLM_AUDIO_INPUT_PRICES = {
 
 
 def llm_cost_usd(model, input_tokens, output_tokens, audio_input=False):
-    """Dollars for one call. 0 for a model we have no price for."""
-    pin, pout = LLM_PRICES.get(model or '', (0.0, 0.0))
+    """Dollars for basic/audio accounting; None for unknown prices."""
+    if model not in LLM_PRICES:
+        return None
+    pin, pout = LLM_PRICES[model]
     if audio_input:
         pin = LLM_AUDIO_INPUT_PRICES.get(model or '', pin)
     return round((input_tokens or 0) / 1e6 * pin + (output_tokens or 0) / 1e6 * pout, 4)
@@ -13195,16 +13146,18 @@ def record_llm_usage(feature, result, ticker='', attempt=1, detail=None):
         tin = int(usage.get('input_tokens') or 0)
         tout = int(usage.get('output_tokens') or 0)
         model = (result or {}).get('model') or ''
-        if not (tin or tout):
+        if not (tin or tout or usage.get('cache_read_input_tokens') or usage.get('cache_creation_input_tokens')):
             return
+        detail = dict(detail or {})
+        cost = (llm_cost_usd(model, tin, tout, True) if detail.get('audio_input') else model_registry.estimate(model, usage))
+        detail.update(modelRegistry=model_registry.REVISION, pricingStatus='estimated' if cost is not None else 'unknown', usage=usage)
         with get_db(commit=True) as (_c, cur):
             cur.execute("""INSERT INTO llm_usage (feature, ticker, provider, model,
                            input_tokens, output_tokens, cost_usd, attempt, detail)
                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                         (feature[:60], (ticker or '')[:20],
                          (result or {}).get('provider', ''), model[:60],
-                         tin, tout, llm_cost_usd(model, tin, tout,
-                                                 bool((detail or {}).get('audio_input'))), attempt,
+                         tin, tout, cost, attempt,
                          json.dumps(detail or {})))
     except Exception as e:
         print(f'[usage] could not record {feature}: {type(e).__name__}: {e}')
@@ -13293,6 +13246,7 @@ def _pinned_caller(model_key, anthropic_key):
     spec = PICKER_MODEL_BY_KEY.get(model_key)
     if not spec:
         return call_llm
+    model_registry.ensure_active(spec['model'])
     provider = spec.get('provider', 'anthropic')
     # The key for the chosen provider, not always the Anthropic one: this used
     # to take anthropic_key regardless, so a Gemini or OpenAI pick would have
@@ -13329,7 +13283,7 @@ _onepager_caller = _pinned_caller
 # Charlie: OpenAI via OPENAI_API_KEY, Gemini via the same model powering the
 # existing infographic styles.
 ONEPAGER_IMAGE_MODELS = [
-    {'key': 'openai', 'label': 'OpenAI', 'model': 'gpt-image-1',
+    {'key': 'openai', 'label': 'OpenAI', 'model': model_registry.role('poster_openai'),
      'note': 'Closest to the ChatGPT look'},
     {'key': 'gemini', 'label': 'Gemini', 'model': 'gemini-3-pro-image-preview',
      'note': 'Already used by Charlie infographics'},
@@ -13350,7 +13304,7 @@ def _onepager_poster_image(prompt, provider, keys):
             client = openai.OpenAI(api_key=keys['openai'], timeout=300)
             # Portrait: a one-pager is a page, not a slide.
             res = client.images.generate(
-                model=spec['model'], prompt=prompt,
+                model=model_registry.ensure_active(spec['model']), prompt=prompt,
                 size='1024x1536', quality='high', n=1,
             )
             b64 = getattr(res.data[0], 'b64_json', None)
@@ -14417,6 +14371,12 @@ def llm_usage_summary():
             out['inputTokens'] = int(r.get('tin') or 0)
             out['outputTokens'] = int(r.get('tout') or 0)
             out['calls'] = int(r.get('calls') or 0)
+            cur.execute("""SELECT COUNT(*) AS n FROM llm_usage
+                WHERE created_at > NOW() - INTERVAL '%s days'
+                AND (cost_usd IS NULL OR detail->>'pricingStatus' = 'unknown'
+                     OR NOT (model = ANY(%%s)))""" % days, (list(LLM_PRICES),))
+            out['unpricedCalls'] = int((cur.fetchone() or {}).get('n') or 0)
+
 
             cur.execute("""SELECT feature, COUNT(*) AS calls,
                                   COALESCE(SUM(cost_usd),0) AS cost
@@ -14637,6 +14597,28 @@ def list_note_stances():
                     'default': NOTE_DEFAULT_STANCE})
 
 
+@app.route('/api/models/maintenance', methods=['GET', 'POST'])
+def model_maintenance_status():
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+        if data.get('status') not in ('checked', 'deployed', 'attention') or not isinstance(data.get('summary'), str):
+            return jsonify({'error': 'A maintenance status and summary are required.'}), 400
+        report = {'checkedAt': datetime.utcnow().isoformat() + 'Z', 'status': data['status'],
+                  'summary': data['summary'][:2000], 'revision': model_registry.REVISION}
+        with get_db(commit=True) as (_, cur):
+            cur.execute("""INSERT INTO app_settings (key,value,updated_at) VALUES (%s,%s,NOW())
+                ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value,updated_at=NOW()""",
+                ('model_maintenance_last_check', json.dumps(report)))
+        return jsonify(report)
+    result = model_registry.public_status()
+    with get_db() as (_, cur):
+        cur.execute('SELECT value FROM app_settings WHERE key=%s', ('model_maintenance_last_check',))
+        row = cur.fetchone()
+    if row and row.get('value'):
+        result['lastCheck'] = json.loads(row['value']) if isinstance(row['value'], str) else row['value']
+    return jsonify(result)
+
+
 @app.route('/api/models', methods=['GET'])
 def list_picker_models():
     """The models offered by the note and thesis pickers.
@@ -14646,7 +14628,10 @@ def list_picker_models():
     next frontend deploy, and picking it would fail the job.
     """
     return jsonify({'models': available_picker_models(),
-                    'default': PICKER_DEFAULT_MODEL})
+                    'default': PICKER_DEFAULT_MODEL,
+                    'recapDefault': model_registry.role('recap'),
+                    'directAnalysis': {'model': MODEL_WORKHORSE, **model_registry.request_options(MODEL_WORKHORSE)},
+                    'registryRevision': model_registry.REVISION})
 
 
 def _run_onepager_job(job_id, ticker, anthropic_key, gemini_key, openai_key, force_research, model_key=None, depth=None):
@@ -16070,6 +16055,7 @@ Return ONLY valid JSON, no markdown, no explanation."""
                     "messages": [{'role': 'user', 'content': content}],
                     "system": "You are an expert equity research analyst. Provide institutional-quality investment analysis that is CONCISE: 2-3 printed pages max. Limit to 3-5 pillars, 4-6 signposts, 3-5 threats, each described in 1-2 sentences. Prioritize the most important insights and consolidate related points. Always respond with valid JSON only.",
                 }
+                kwargs.update(model_registry.request_options(MODEL_WORKHORSE))
                 usage_data = {}
                 with client.messages.stream(**kwargs) as stream:
                     for text in stream.text_stream:
@@ -20449,10 +20435,10 @@ def agent_health():
 TRADING_AGENT_PROVIDERS_FALLBACK = {
     "anthropic": [
         "claude-haiku-4-5-20251001",
-        "claude-sonnet-4-6",
-        "claude-opus-4-7",
+        model_registry.role("workhorse"),
+        model_registry.role("research"),
     ],
-    "openai": ["gpt-4.1-mini", "gpt-4.1", "o4-mini"],
+    "openai": [model_registry.role("fast_openai"), "gpt-4.1"],
     "google": ["gemini-2.5-flash", "gemini-2.5-pro"],
 }
 
@@ -20601,6 +20587,10 @@ def start_agent_run():
     date_str = data.get('date', '')
     provider = data.get('provider', 'anthropic')
     model = data.get('model') or MODEL_FAST
+    try:
+        model_registry.ensure_active(model)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
 
     if not ticker or not date_str:
         return jsonify({'error': 'ticker and date required'}), 400
@@ -22453,7 +22443,7 @@ Return ONLY valid JSON (no markdown fences):
 
 VALIDATION_MODELS = [
     {'provider': 'anthropic', 'model': MODEL_WORKHORSE, 'name': 'Claude'},
-    {'provider': 'openai', 'model': 'gpt-4.1-mini', 'name': 'GPT'},
+    {'provider': 'openai', 'model': model_registry.role('validation_openai'), 'name': 'GPT'},
     {'provider': 'gemini', 'model': 'gemini-2.0-flash', 'name': 'Gemini'},
 ]
 
@@ -26356,10 +26346,11 @@ Return ONLY valid JSON array, no markdown fencing."""
         client_ai = anthropic.Anthropic(api_key=api_key, timeout=_httpx.Timeout(120.0, connect=15.0))
         response = client_ai.messages.create(
             model=MODEL_WORKHORSE,
+            **model_registry.request_options(MODEL_WORKHORSE),
             max_tokens=8192,
             messages=[{"role": "user", "content": llm_prompt}],
         )
-        response_text = response.content[0].text.strip()
+        response_text = ''.join(getattr(b, 'text', '') for b in response.content).strip()
         # Parse JSON from response
         if response_text.startswith('```'):
             response_text = response_text.split('\n', 1)[1].rsplit('```', 1)[0].strip()
@@ -28411,7 +28402,7 @@ def _dispatch_activity_run(activity_id: str, length: str = 'standard', custom_in
         'thesis_block': thesis_block,
         'companyMemory': memory_snapshot,
         'comparison_baseline': _catalyst_comparison_baseline(ticker, thesis_block, activity_id),
-        'model': (model or '').strip(),  # local agent defaults to claude-sonnet-4-6 if blank
+        'model': (model or '').strip(),  # local agent uses the reviewed recap role if blank
         'provider': (provider or 'anthropic').strip().lower(),  # anthropic | openai | google
     }
     with get_db(commit=True) as (_c, cur):

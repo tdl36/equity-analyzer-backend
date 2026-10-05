@@ -93,7 +93,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-10-02T121';
+        const BUILD_VERSION = '2026-10-05T122';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -2042,7 +2042,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [recapSavedIds, setRecapSavedIds] = useState({}); // {activityId: summaryId} — flips Save → Saved ✓
             const [recapSavingId, setRecapSavingId] = useState(null); // activityId currently being saved
             const RECAP_DEFAULT_PROVIDER = 'anthropic';
-            const RECAP_DEFAULT_MODEL = 'claude-sonnet-4-6';
+            const [RECAP_DEFAULT_MODEL, setRecapDefaultModel] = useState('');
             // Parse the multi-version recap HTML into {pm, quick, summary, comprehensive}.
             // Falls back to a single comprehensive entry if no <section data-version> blocks
             // are present (older recaps were generated before the multi-version prompt change).
@@ -3054,6 +3054,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         if (!r.ok) return;
                         const j = await r.json();
                         const list = j.models || [];
+                        if (j.recapDefault) setRecapDefaultModel(j.recapDefault);
                         setPipelineModels(list);
                         // A saved choice for a model that has since been retired
                         // must not be sent to the backend -- drop back to the
@@ -13227,6 +13228,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     }
                     content.push({ type: 'text', text: analysisPrompt });
 
+                    // Read a reviewed, release-pinned policy before this call.
+                    const modelResponse = await fetch(`${API_URL}/api/models`);
+                    if (!modelResponse.ok) throw new Error('Model policy is unavailable; please retry.');
+                    const modelPolicy = (await modelResponse.json()).directAnalysis;
+                    if (!modelPolicy?.model) throw new Error('Model policy is missing; please refresh Charlie.');
                     // Call Anthropic API with streaming
                     const controller = new AbortController();
                     const timeoutId = setTimeout(() => controller.abort(), 300000);
@@ -13239,7 +13245,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             'anthropic-dangerous-direct-browser-access': 'true'
                         },
                         body: JSON.stringify({
-                            model: 'claude-sonnet-4-5-20250929',
+                            ...modelPolicy,
                             max_tokens: 64000,
                             stream: true,
                             messages: [{ role: 'user', content }],
@@ -13259,6 +13265,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     const decoder = new TextDecoder();
                     let fullText = '';
                     let usageData = {};
+                    let stopReason = null;
                     let buffer = '';
                     while (true) {
                         const { done, value } = await reader.read();
@@ -13274,13 +13281,17 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     fullText += evt.delta.text;
                                     if (onProgress) onProgress({ charsReceived: fullText.length });
                                 }
-                                else if (evt.type === 'message_delta' && evt.usage) usageData.output_tokens = evt.usage.output_tokens;
+                                else if (evt.type === 'message_delta') {
+                                    if (evt.usage) usageData.output_tokens = evt.usage.output_tokens;
+                                    if (evt.delta?.stop_reason) stopReason = evt.delta.stop_reason;
+                                }
                                 else if (evt.type === 'message_start' && evt.message?.usage) usageData.input_tokens = evt.message.usage.input_tokens;
                             } catch {}
                         }
                     }
 
-                    // Parse JSON response — with truncation repair
+                    if (stopReason !== 'end_turn') throw new Error(`Analysis did not finish (${stopReason || 'interrupted stream'}). Partial output was not accepted.`);
+                    // Parse a completed JSON response
                     let cleaned = fullText.trim();
                     if (cleaned.startsWith('```')) cleaned = cleaned.split('\n').slice(1).join('\n');
                     if (cleaned.endsWith('```')) cleaned = cleaned.split('\n').slice(0, -1).join('\n');
@@ -30991,8 +31002,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                 
                                     <p className="text-sm text-slate-400 mb-5">Manage your workspace, connected services, and research preferences.</p>
                                     <nav className="workspace-settings-tabs" aria-label="Settings categories">
-                                        {[['account','Account'],['appearance','Appearance'],['connections','Connections'],['notifications','Notifications'],['monitoring','Media trackers'],['usage','API usage'],['data','Data & backups']].map(([id,label]) => <button key={id} aria-current={settingsSection === id ? 'page' : undefined} onClick={() => setSettingsSection(id)}>{label}</button>)}
+                                        {[['account','Account'],['appearance','Appearance'],['connections','Connections'],['notifications','Notifications'],['monitoring','Media trackers'],['usage','API usage'],['models','AI models'],['data','Data & backups']].map(([id,label]) => <button key={id} aria-current={settingsSection === id ? 'page' : undefined} onClick={() => setSettingsSection(id)}>{label}</button>)}
                                     </nav>
+                                    {settingsSection === 'models' && <ModelMaintenance apiUrl={API_URL} />}
                                     {settingsSection === 'appearance' && <section className="workspace-panel max-w-3xl"><h2>Make Charlie yours</h2><p className="text-slate-400 mb-5">Seven distinct environments for research and portfolio work. Your choice is saved in this browser.</p><ThemeGallery /></section>}
                                     <div className="space-y-6 max-w-3xl">
                                     {/* API spend */}
@@ -31103,6 +31115,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 </div>
                                             )}
 
+                                            {!!usageData.unpricedCalls && <p role="alert" className="text-sm mb-3">{usageData.unpricedCalls} calls have unknown prices and are excluded from the total.</p>}
                                             {usageData.byDay && usageData.byDay.length > 1 && (() => {
                                                 const days = [...usageData.byDay].reverse();
                                                 const peak = Math.max(...days.map(d => d.cost), 0.01);

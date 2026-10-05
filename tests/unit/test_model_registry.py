@@ -6,6 +6,7 @@ The existing guard only caught a *missing* model (priced at 0); nothing caught
 a wrong one. Rates verified against platform.claude.com on 2026-09-20.
 """
 import ast
+import model_registry
 import re
 import unittest
 from pathlib import Path
@@ -14,7 +15,7 @@ TREE = ast.parse(Path('app_v3.py').read_text())
 
 
 def constant(name):
-    namespace = {}
+    namespace = {"model_registry": model_registry}
     for node in TREE.body:
         if isinstance(node, ast.Assign) and getattr(node.targets[0], 'id', '') == name:
             exec(compile(ast.Module(body=[node], type_ignores=[]), 'app_v3.py', 'exec'), namespace)

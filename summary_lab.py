@@ -1,4 +1,5 @@
 """Opt-in Summary Lab. Independent experiments; never writes legacy Summary tables."""
+import model_registry
 import base64
 import hashlib
 import json
@@ -11,13 +12,13 @@ import meeting_notes
 from summary_comparison import split_text
 
 VERSION = 'source-reviewed-lab-v5'
-MODEL = os.environ.get('CHARLIE_SUMMARY_LAB_MODEL', 'claude-opus-4-6')
+MODEL = model_registry.role('summary', 'CHARLIE_SUMMARY_LAB_MODEL')
 # Checking a draft against one source part is verification, not composition: it
 # reads a section and a passage and reports discrepancies, and its findings feed
 # a revision rather than reaching the reader. Those calls are 47% of a run, so
 # they go to a cheaper model. Deliberately a non-thinking one -- these budgets
 # were sized for a model that answers rather than deliberates.
-CHECK_MODEL = os.environ.get('CHARLIE_SUMMARY_LAB_CHECK_MODEL', 'claude-sonnet-4-5-20250929')
+CHECK_MODEL = model_registry.role('summary_check', 'CHARLIE_SUMMARY_LAB_CHECK_MODEL')
 
 # max_tokens is a hard limit on thinking plus response text, and every model
 # from Opus 4.7 on thinks adaptively at the default high effort. These budgets
@@ -154,7 +155,7 @@ def ask_with_recovery(key, model, system, prompt, tokens, state, save, client_fa
             # SDK HTTP retries do not recover errors received after streaming starts.
             # This bounded loop covers both; incomplete output is never checkpointed.
             with client_factory(api_key=key, timeout=300, max_retries=0) as client:
-                with client.messages.stream(model=model,max_tokens=tokens,system=system,messages=[{'role':'user','content':prompt}]) as stream:
+                with client.messages.stream(model=model,**model_registry.request_options(model),max_tokens=tokens,system=system,messages=[{'role':'user','content':prompt}]) as stream:
                     for event in stream:
                         if time.monotonic()-last > 15:
                             save(state); last=time.monotonic()
@@ -167,8 +168,7 @@ def ask_with_recovery(key, model, system, prompt, tokens, state, save, client_fa
                 usage = getattr(result, 'usage', None)
                 on_usage({'provider': 'anthropic',
                           'model': getattr(result, 'model', model),
-                          'usage': {'input_tokens': getattr(usage, 'input_tokens', 0) or 0,
-                                    'output_tokens': getattr(usage, 'output_tokens', 0) or 0}},
+                          'usage': model_registry.usage_dict(usage)},
                          attempt + 1)
             if result.stop_reason == 'max_tokens':
                 raise ValueError(
@@ -488,8 +488,13 @@ def create_blueprint(get_db, render_docx=None, safe_filename=None, record_usage=
                 def ask(system, prompt, tokens):
                     return ask_with_recovery(key, row['model'], system, prompt, tokens, state, save,
                                              on_usage=usage_for('generate'))
+                # Freeze checker at first use; resumed checkpoints retain their model.
+                if 'checkModel' not in state:
+                    state['checkModel'] = ('claude-sonnet-4-5-20250929' if state.get('partChecks') else CHECK_MODEL)
+                    state['modelRegistry'] = model_registry.REVISION
+                    save(state)
                 def check(system, prompt, tokens):
-                    return ask_with_recovery(key, CHECK_MODEL, system, prompt, tokens, state, save,
+                    return ask_with_recovery(key, state['checkModel'], system, prompt, tokens, state, save,
                                              on_usage=usage_for('check'))
                 generate(row['source'], state, ask, save, row['focus'], check=check)
                 with get_db(commit=True) as (_, cur):

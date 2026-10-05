@@ -1,0 +1,591 @@
+{
+  "version": 1,
+  "verifiedAt": "2026-10-05",
+  "roles": {
+    "workhorse": "claude-sonnet-5-5",
+    "long_form": "claude-sonnet-5-5",
+    "fast": "claude-haiku-4-5-20251001",
+    "note": "claude-sonnet-5-5",
+    "recap": "claude-sonnet-5-5",
+    "summary_check": "claude-sonnet-5-5",
+    "research": "claude-opus-4-6",
+    "summary": "claude-opus-4-6",
+    "comparison": "claude-opus-4-6",
+    "questions": "claude-opus-4-6",
+    "validation_openai": "gpt-6-luna",
+    "fast_openai": "gpt-6-luna",
+    "standard_openai": "gpt-4o",
+    "advanced_openai": "gpt-4o",
+    "web_research": "claude-sonnet-5-5",
+    "poster_openai": "gpt-image-1"
+  },
+  "protectedRoles": [
+    "research",
+    "summary",
+    "comparison",
+    "questions",
+    "poster_openai",
+    "advanced_openai",
+    "standard_openai"
+  ],
+  "pickerDefaults": {
+    "research": "opus-4-6",
+    "decipher": "opus-4-7",
+    "meeting": "sonnet-5-5"
+  },
+  "models": {
+    "claude-opus-5": {
+      "provider": "anthropic",
+      "input": 5.0,
+      "output": 25.0,
+      "request": {},
+      "verifiedAt": "2026-10-05",
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "capabilities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "cacheRead": 0.5,
+      "cacheWrite5m": 6.25,
+      "cacheWrite1h": 10.0
+    },
+    "claude-opus-4-8": {
+      "provider": "anthropic",
+      "input": 5.0,
+      "output": 25.0,
+      "request": {},
+      "verifiedAt": "2026-10-05",
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "capabilities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "cacheRead": 0.5,
+      "cacheWrite5m": 6.25,
+      "cacheWrite1h": 10.0
+    },
+    "claude-opus-4-7": {
+      "provider": "anthropic",
+      "input": 5.0,
+      "output": 25.0,
+      "request": {},
+      "verifiedAt": "2026-10-05",
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "capabilities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "cacheRead": 0.5,
+      "cacheWrite5m": 6.25,
+      "cacheWrite1h": 10.0
+    },
+    "claude-opus-4-6": {
+      "provider": "anthropic",
+      "input": 5.0,
+      "output": 25.0,
+      "request": {},
+      "verifiedAt": "2026-10-05",
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "capabilities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "cacheRead": 0.5,
+      "cacheWrite5m": 6.25,
+      "cacheWrite1h": 10.0
+    },
+    "claude-fable-5-1": {
+      "provider": "anthropic",
+      "input": 10.0,
+      "output": 50.0,
+      "request": {},
+      "verifiedAt": "2026-10-05",
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "capabilities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "cacheRead": 1.0,
+      "cacheWrite5m": 12.5,
+      "cacheWrite1h": 20.0
+    },
+    "claude-fable-5": {
+      "provider": "anthropic",
+      "input": 10.0,
+      "output": 50.0,
+      "request": {},
+      "verifiedAt": "2026-10-05",
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "capabilities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "cacheRead": 1.0,
+      "cacheWrite5m": 12.5,
+      "cacheWrite1h": 20.0
+    },
+    "claude-sonnet-5": {
+      "provider": "anthropic",
+      "input": 2.0,
+      "output": 10.0,
+      "request": {},
+      "verifiedAt": "2026-10-05",
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "capabilities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "cacheRead": 0.2,
+      "cacheWrite5m": 2.5,
+      "cacheWrite1h": 4.0
+    },
+    "claude-sonnet-4-6": {
+      "provider": "anthropic",
+      "input": 3.0,
+      "output": 15.0,
+      "request": {},
+      "verifiedAt": "2026-10-05",
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "capabilities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "cacheRead": 0.30000000000000004,
+      "cacheWrite5m": 3.75,
+      "cacheWrite1h": 6.0
+    },
+    "claude-sonnet-4-5-20250929": {
+      "provider": "anthropic",
+      "input": 3.0,
+      "output": 15.0,
+      "request": {},
+      "verifiedAt": "2026-10-05",
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "capabilities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "cacheRead": 0.30000000000000004,
+      "cacheWrite5m": 3.75,
+      "cacheWrite1h": 6.0,
+      "retirement": "2026-11-30"
+    },
+    "claude-haiku-4-5-20251001": {
+      "provider": "anthropic",
+      "input": 1.0,
+      "output": 5.0,
+      "request": {},
+      "verifiedAt": "2026-10-05",
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "capabilities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "cacheRead": 0.1,
+      "cacheWrite5m": 1.25,
+      "cacheWrite1h": 2.0
+    },
+    "gemini-3.8-flash": {
+      "provider": "gemini",
+      "input": 0.75,
+      "output": 3.75,
+      "request": {},
+      "verifiedAt": "2026-09-20",
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "capabilities": [
+        "text",
+        "image",
+        "pdf"
+      ]
+    },
+    "gemini-2.5-flash": {
+      "provider": "gemini",
+      "input": 0.3,
+      "output": 2.5,
+      "request": {},
+      "verifiedAt": "2026-09-20",
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "capabilities": [
+        "text",
+        "image",
+        "pdf"
+      ]
+    },
+    "gemini-2.5-flash-lite": {
+      "provider": "gemini",
+      "input": 0.1,
+      "output": 0.4,
+      "request": {},
+      "verifiedAt": "2026-09-20",
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "capabilities": [
+        "text",
+        "image",
+        "pdf"
+      ]
+    },
+    "gemini-pro-latest": {
+      "provider": "gemini",
+      "input": 1.25,
+      "output": 10.0,
+      "request": {},
+      "verifiedAt": "2026-09-20",
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "capabilities": [
+        "text",
+        "image",
+        "pdf"
+      ]
+    },
+    "gemini-3.1-pro-preview": {
+      "provider": "gemini",
+      "input": 1.25,
+      "output": 10.0,
+      "request": {},
+      "verifiedAt": "2026-09-20",
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "capabilities": [
+        "text",
+        "image",
+        "pdf"
+      ]
+    },
+    "gemini-2.5-pro": {
+      "provider": "gemini",
+      "input": 1.25,
+      "output": 10.0,
+      "request": {},
+      "verifiedAt": "2026-09-20",
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "capabilities": [
+        "text",
+        "image",
+        "pdf"
+      ]
+    },
+    "gpt-4.1": {
+      "provider": "openai",
+      "input": 2.0,
+      "output": 8.0,
+      "request": {},
+      "verifiedAt": "2026-10-05",
+      "source": "https://developers.openai.com/api/docs/pricing",
+      "capabilities": [
+        "text",
+        "image"
+      ],
+      "cacheRead": 0.5
+    },
+    "gpt-4.1-mini": {
+      "provider": "openai",
+      "input": 0.4,
+      "output": 1.6,
+      "request": {},
+      "verifiedAt": "2026-10-05",
+      "source": "https://developers.openai.com/api/docs/pricing",
+      "capabilities": [
+        "text",
+        "image"
+      ],
+      "cacheRead": 0.1
+    },
+    "gpt-4o": {
+      "provider": "openai",
+      "input": 2.5,
+      "output": 10.0,
+      "request": {},
+      "verifiedAt": "2026-10-05",
+      "source": "https://developers.openai.com/api/docs/pricing",
+      "capabilities": [
+        "text",
+        "image"
+      ],
+      "cacheRead": 1.25
+    },
+    "claude-sonnet-5-5": {
+      "provider": "anthropic",
+      "input": 2,
+      "output": 10,
+      "request": {
+        "thinking": {
+          "type": "between_tools"
+        },
+        "output_config": {
+          "effort": "high"
+        }
+      },
+      "verifiedAt": "2026-10-05",
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "capabilities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "cacheRead": 0.2,
+      "cacheWrite5m": 2.5,
+      "cacheWrite1h": 4
+    },
+    "claude-opus-5-5": {
+      "provider": "anthropic",
+      "input": 4,
+      "output": 20,
+      "request": {
+        "thinking": {
+          "type": "adaptive"
+        },
+        "output_config": {
+          "effort": "medium"
+        }
+      },
+      "verifiedAt": "2026-10-05",
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "capabilities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "cacheRead": 0.2,
+      "cacheWrite5m": 5.0,
+      "cacheWrite1h": 8
+    },
+    "gpt-6-luna": {
+      "provider": "openai",
+      "input": 0.1,
+      "output": 0.5,
+      "request": {
+        "reasoning_effort": "none"
+      },
+      "verifiedAt": "2026-10-05",
+      "source": "https://developers.openai.com/api/docs/pricing",
+      "capabilities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "longContext": {
+        "threshold": 272000,
+        "inputMultiplier": 2,
+        "outputMultiplier": 1.5
+      },
+      "cacheRead": 0.01
+    },
+    "gpt-6.1-sol": {
+      "provider": "openai",
+      "input": 2,
+      "output": 10,
+      "request": {
+        "reasoning_effort": "low"
+      },
+      "verifiedAt": "2026-10-05",
+      "source": "https://developers.openai.com/api/docs/pricing",
+      "capabilities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "longContext": {
+        "threshold": 272000,
+        "inputMultiplier": 2,
+        "outputMultiplier": 1.5
+      },
+      "cacheRead": 0.1
+    },
+    "gpt-4o-mini": {
+      "provider": "openai",
+      "input": 0.15,
+      "output": 0.6,
+      "request": {},
+      "verifiedAt": "2026-10-05",
+      "source": "https://developers.openai.com/api/docs/pricing",
+      "capabilities": [
+        "text",
+        "image"
+      ],
+      "cacheRead": 0.075
+    },
+    "o4-mini": {
+      "provider": "openai",
+      "input": 1.1,
+      "output": 4.4,
+      "request": {},
+      "verifiedAt": "2026-10-05",
+      "source": "https://developers.openai.com/api/docs/pricing",
+      "capabilities": [
+        "text",
+        "image"
+      ],
+      "cacheRead": 0.275,
+      "retirement": "2026-10-23"
+    },
+    "gpt-image-1": {
+      "provider": "openai",
+      "retirement": "2026-10-23",
+      "capabilities": [
+        "image_generation"
+      ],
+      "request": {},
+      "source": "https://developers.openai.com/api/docs/deprecations",
+      "verifiedAt": "2026-10-05"
+    }
+  },
+  "picker": [
+    {
+      "key": "opus-5-5",
+      "provider": "anthropic",
+      "label": "Opus 5.5",
+      "model": "claude-opus-5-5",
+      "note": "Optional; thinking and token use can increase total cost"
+    },
+    {
+      "key": "sonnet-5-5",
+      "provider": "anthropic",
+      "label": "Sonnet 5.5",
+      "model": "claude-sonnet-5-5",
+      "note": "Routine work; no up-front thinking"
+    },
+    {
+      "key": "opus-5",
+      "provider": "anthropic",
+      "label": "Opus 5",
+      "model": "claude-opus-5",
+      "note": "Previous Opus"
+    },
+    {
+      "key": "fable-5-1",
+      "provider": "anthropic",
+      "label": "Fable 5.1",
+      "model": "claude-fable-5-1",
+      "note": "Demanding reasoning, 2x the price"
+    },
+    {
+      "key": "opus-4-8",
+      "provider": "anthropic",
+      "label": "Opus 4.8",
+      "model": "claude-opus-4-8",
+      "note": "Legacy Opus"
+    },
+    {
+      "key": "opus-4-7",
+      "provider": "anthropic",
+      "label": "Opus 4.7",
+      "model": "claude-opus-4-7",
+      "note": "Legacy Opus"
+    },
+    {
+      "key": "opus-4-6",
+      "provider": "anthropic",
+      "label": "Opus 4.6",
+      "model": "claude-opus-4-6",
+      "note": "Current default"
+    },
+    {
+      "key": "sonnet-5",
+      "provider": "anthropic",
+      "label": "Sonnet 5",
+      "model": "claude-sonnet-5",
+      "note": "Faster, cheaper"
+    },
+    {
+      "key": "fable-5",
+      "provider": "anthropic",
+      "label": "Fable 5",
+      "model": "claude-fable-5",
+      "note": "Superseded by Fable 5.1"
+    },
+    {
+      "key": "haiku-4-5",
+      "provider": "anthropic",
+      "label": "Haiku 4.5",
+      "model": "claude-haiku-4-5-20251001",
+      "note": "Fastest"
+    },
+    {
+      "key": "gemini-pro",
+      "provider": "gemini",
+      "label": "Gemini Pro",
+      "model": "gemini-pro-latest",
+      "note": "Latest Gemini Pro"
+    },
+    {
+      "key": "gemini-3-1-pro",
+      "provider": "gemini",
+      "label": "Gemini 3.1 Pro",
+      "model": "gemini-3.1-pro-preview",
+      "note": "Preview"
+    },
+    {
+      "key": "gemini-3-8-flash",
+      "provider": "gemini",
+      "label": "Gemini 3.8 Flash",
+      "model": "gemini-3.8-flash",
+      "note": "Fast"
+    },
+    {
+      "key": "gemini-2-5-pro",
+      "provider": "gemini",
+      "label": "Gemini 2.5 Pro",
+      "model": "gemini-2.5-pro",
+      "note": "Proven"
+    },
+    {
+      "key": "gpt-4-1",
+      "provider": "openai",
+      "label": "GPT-4.1",
+      "model": "gpt-4.1",
+      "note": "Long context"
+    },
+    {
+      "key": "gpt-4-1-mini",
+      "provider": "openai",
+      "label": "GPT-4.1 mini",
+      "model": "gpt-4.1-mini",
+      "note": "Fast, cheap"
+    },
+    {
+      "key": "gpt-4o",
+      "provider": "openai",
+      "label": "GPT-4o",
+      "model": "gpt-4o",
+      "note": "Proven"
+    },
+    {
+      "key": "gpt-6-luna",
+      "provider": "openai",
+      "label": "GPT-6 Luna",
+      "model": "gpt-6-luna",
+      "note": "Bounded extraction; reasoning off"
+    },
+    {
+      "key": "gpt-6-1-sol",
+      "provider": "openai",
+      "label": "GPT-6.1 Sol",
+      "model": "gpt-6.1-sol",
+      "note": "Optional; not a cost-neutral GPT-4.1 replacement"
+    }
+  ],
+  "sources": [
+    "https://platform.claude.com/docs/en/models/overview",
+    "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+    "https://platform.claude.com/docs/en/models/sonnet-5-5/migration-guide",
+    "https://platform.claude.com/docs/en/models/opus-5-5/migration-guide",
+    "https://developers.openai.com/api/docs/models/gpt-6-luna",
+    "https://developers.openai.com/api/docs/pricing",
+    "https://developers.openai.com/api/docs/deprecations"
+  ],
+  "history": [
+    {
+      "date": "2026-10-05",
+      "summary": "User-approved Sonnet 5.5 routine defaults and GPT-6 Luna bounded tasks. Opus 4.6 research retained. Opus 5.5 and GPT-6.1 Sol optional. No paid quality evaluation."
+    }
+  ]
+}

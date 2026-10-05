@@ -1,19 +1,55 @@
 # Charlie AI engineering handoff
 
-Updated: October 2, 2026
+Updated: October 5, 2026
 
 ## Start here
 
-Charlie is running **T121** (`2026-10-02T121`), adding shorthand Meeting Notes to Summary and Summary Lab. Use
+T122 (`2026-10-05T122`) adds model policy and recurring maintenance. Use
 `git log -1` and backend `/health` to verify the exact deployed revision.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T121#view=desk`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T122#view=desk`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`, branch `main`.
 - Previous frontend: T115 / `27f4088`; backend was held at T114 by dependency resolution.
-- Local agent is unchanged by this release.
+- Local agent shares the model registry, reloads changed registry files between jobs, and reports its registry revision in its heartbeat.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
+
+### T122 — reviewed model defaults and recurring maintenance
+
+`model_registry.json` centralizes primary backend/Mac workflow defaults, picker
+choices, request settings, text prices and announced retirement dates. Sonnet 5.5
+runs routine work and Lab checks with no up-front thinking (`between_tools`, high
+effort); GPT-6 Luna handles bounded OpenAI validation/fast fallback with reasoning
+off. Opus 4.6 stays the research/composition default. Opus 5.5 and GPT-6.1 Sol are
+optional choices. Existing saved preferences and environment overrides stay pinned.
+Browser recap/direct analysis obtains its settings from the authenticated API.
+OpenAI fallback now sends native PDF parts instead of discarding the source.
+
+Settings → AI models shows the deployed policy, sources, changes, retirement
+notices and durable maintenance check status. Unknown ledger prices are NULL and
+flagged separately; new shared adapter/Lab usage includes cache accounting and
+registry revision, including GPT-6 long-context pricing. This remains an estimate,
+not a complete invoice for tool fees, images, browser-direct or all Mac/helper calls.
+Lab checker identity is checkpointed; partially checked legacy runs retain their
+old checker. Known retired selections stop rather than silently remap a pinned job.
+
+A daily Codex heartbeat `charlie-model-maintenance` is ACTIVE in the existing chat.
+Its exact procedure is in `docs/model-maintenance.md`. It checks official sources
+and account catalogs, documents migration evidence, applies the offline cost and
+compatibility gate, runs safe tests and deploys eligible routine upgrades. Protected
+research/image defaults or uncertain price/quality changes require attention. It
+needs this Mac, Codex, network and deployment credentials; it is not a Render cron.
+Unchanged checks only update the durable status, with no unnecessary deployment.
+Interrupted releases resume from their recorded stage. No paid research QA is allowed.
+
+Validation: 836 safe backend unit tests, 78 frontend tests, Python compilation and
+production build pass. Real SDKs were exercised with synthetic HTTP responses for
+Sonnet thinking options and OpenAI PDF/reasoning parameters. Policy tests reject
+missing evidence, increased cache/token costs and protected research changes.
+Synthetic panel checks at 1440/390/320px verify layout and error visibility.
+No paid model quality evaluation, research approval, original-file edit or email.
+Deployment verification will be recorded after the release lands.
 
 ### T121 — Meeting Notes
 

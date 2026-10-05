@@ -102,7 +102,9 @@ class UsageRecordingTests(unittest.TestCase):
         self.run_one_call(on_usage=lambda result, attempt: self.recorded.append((result, attempt)))
         self.assertEqual(len(self.recorded), 1)
         result, attempt = self.recorded[0]
-        self.assertEqual(result['usage'], {'input_tokens': 1200, 'output_tokens': 340})
+        self.assertEqual(result['usage']['input_tokens'], 1200)
+        self.assertEqual(result['usage']['output_tokens'], 340)
+        self.assertEqual(result['usage']['cache_read_input_tokens'], 0)
         self.assertEqual(result['model'], 'claude-opus-5')
         self.assertEqual(result['provider'], 'anthropic')
         self.assertEqual(attempt, 1)

@@ -1,7 +1,8 @@
 """Schema-constrained question output for managed meeting assignments."""
+import model_registry
 import json,time
 
-MODEL='claude-opus-4-6'
+MODEL=model_registry.role('questions')
 
 
 def schema(source_names,with_quotes=False,passage_ids=None):

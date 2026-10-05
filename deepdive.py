@@ -28,6 +28,7 @@ before anything reaches a renderer.
 """
 
 from __future__ import annotations   # the local agent still runs Python 3.9
+import model_registry
 
 import json
 import re
@@ -1197,7 +1198,7 @@ def gather_web_context(ticker, company, search_fn, per_query=4):
 
 
 def research_with_web_search(ticker, company, market, api_key, extract_json,
-                             model="claude-sonnet-4-5-20250929", on_step=None,
+                             model=None, on_step=None,
                              max_searches=8):
     """Canonical research using the model provider's own web search.
 
@@ -1234,8 +1235,10 @@ def research_with_web_search(ticker, company, market, api_key, extract_json,
         "use \"N/A\" rather than inventing precision. Return the JSON as your "
         "final message.\n\n" + master_length_contract())
 
+    model = model or model_registry.role('web_research')
     resp = client.messages.create(
         model=model,
+        **model_registry.request_options(model),
         max_tokens=16000,
         system=deepdive_prompts.MASTER_RESEARCH_SYSTEM,
         tools=[{"type": "web_search_20250305", "name": "web_search",
