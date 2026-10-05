@@ -49,7 +49,20 @@ Sonnet thinking options and OpenAI PDF/reasoning parameters. Policy tests reject
 missing evidence, increased cache/token costs and protected research changes.
 Synthetic panel checks at 1440/390/320px verify layout and error visibility.
 No paid model quality evaluation, research approval, original-file edit or email.
-Deployment verification will be recorded after the release lands.
+Deployment verified: Render `/health` reports
+`1f5db725e165f8fe54bba8a84038a480a9cfb607`; Cloudflare version
+`362b7d36-7c08-4157-ba8f-000948eafbb1` serves matching bundle bytes and
+`20261005-122` service worker. Authenticated model policy, picker, Lab default and
+usage endpoints return 200; unauthenticated policy/picker requests return 401.
+The deployed registry is `e372116305335f31`, with Sonnet 5.5 request options
+confirmed and Opus 4.6 retained. The initial maintenance report is persisted.
+The Mac agent was restarted; its heartbeat reports that same registry revision,
+and its stderr has no recent traceback. Its separate Python 3.9 / Anthropic 0.86
+runtime passed a synthetic request-serialization check (backend/dev SDK is 0.96).
+No current transcription/pipeline jobs were active at rollout. One legacy v3 Lab
+run has been labeled running since September 21 with no updates; it was preserved.
+The October 23 GPT Image 1 / o4-mini retirement choices remain attention items;
+there is no approved automatic image/agent replacement with proven equal task cost.
 
 ### T121 — Meeting Notes
 
