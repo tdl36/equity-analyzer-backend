@@ -4,16 +4,44 @@ Updated: October 5, 2026
 
 ## Start here
 
-T122 (`2026-10-05T122`) adds model policy and recurring maintenance. Use
+T123 (`2026-10-05T123`) adds subscription-assisted thesis import and investor review. Use
 `git log -1` and backend `/health` to verify the exact deployed revision.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T122#view=desk`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T123#view=thesisimports`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`, branch `main`.
-- Previous frontend: T115 / `27f4088`; backend was held at T114 by dependency resolution.
+- Previous release: T122 / `1f5db72`; its model policy remains unchanged.
 - Local agent shares the model registry, reloads changed registry files between jobs, and reports its registry revision in its heartbeat.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
+
+### T123 — external thesis draft import and review
+
+Companies → Import & review thesis (also linked from the Thesis toolbar) offers
+Prepare for ChatGPT → Import draft → Review changes → explicit investor approval.
+Preparation exports the current detailed thesis and a version fingerprint. JSON
+imports support new names and upgrades, including the earlier proposed-v1 SYK file.
+A durable inbox keeps pending/approved/dismissed drafts and source/provenance metadata.
+Complete before/proposed sections show removed items, with readable desktop/mobile
+layouts in black Calibri. References and supplied hashes are not certified originals.
+
+Approval checks the unchanged baseline, then saves the native detailed thesis,
+restorable history, evolution snapshot and idempotent receipt in one transaction.
+Duplicate uploads reopen the same review; duplicate approvals replay the receipt.
+Concurrent edits block stale approval; failures leave drafts recoverable. No model
+calls or automatic downstream research, scorecard or report generation occur.
+Full/condensed theses, scorecards and other derived outputs remain separate, with
+an explicit warning to review/update them. Existing API execution is unchanged.
+See `docs/thesis-imports.md` for format, lifecycle, dependencies and limitations.
+
+Validation: 846 safe backend tests and 81 frontend tests passed; focused tests use a
+new disposable PostgreSQL cluster (never the existing or production database) to
+exercise restart, concurrent uploads/approvals, conflicts and forced journal rollback.
+The browser flow passed with synthetic research and disposable SQL, including restart,
+retry and conflict screens, plus the actual built app shell at 1440/390/320px.
+Python compilation and production build pass. The private SYK JSON passed local format
+validation; no real thesis was imported or approved for QA. Release verification is
+recorded after deployment below.
 
 ### T122 — reviewed model defaults and recurring maintenance
 
@@ -1428,9 +1456,9 @@ Use `py_compile` for every touched Python module. Do not start paid research, se
 
 Current release markers must stay synchronized:
 
-- `worker.js`: `2026-09-26T111`
-- `service-worker.js`: `20260926-111`
-- `src/app.jsx`: `2026-09-26T111`
+- `worker.js`: `2026-10-05T123`
+- `service-worker.js`: `20261005-123`
+- `src/app.jsx`: `2026-10-05T123`
 
 After an application change:
 

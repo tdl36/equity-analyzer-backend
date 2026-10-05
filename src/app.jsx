@@ -19,6 +19,7 @@ import { OnePagerFit, ONEPAGER_STYLES } from './onepager';
 import { DeepDiveArtifact, PageFit, preflightPages, printArtifact, saveArtifact, clampZoom, ZOOM_MIN, ZOOM_MAX, ONEPAGER_TEMPLATES, TWOPAGER_TEMPLATES } from './deepdive';
 import * as htmlToImage from 'html-to-image';
 import { ResearchChat } from './research-chat';
+import { ThesisImports } from './thesis-imports';
 import { ResearchDesk } from './research-desk';
 import { WorkspaceShell, TodayWorkspace, CompaniesWorkspace, LibraryWorkspace, CreateWorkspace, AutomationsWorkspace, ResearchDocument } from './workspace';
 import { readRoute, routeHash, parseTimestamp, selectedProjectSlide } from './workspace-model.mjs';
@@ -93,7 +94,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-10-05T122';
+        const BUILD_VERSION = '2026-10-05T123';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -15368,6 +15369,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         {activeTab === 'create' && <CreateWorkspace ticker={workspaceTicker} onTicker={value => { workspaceRouteReplace.current = true; setWorkspaceTicker(value); }} onNavigate={navigateWorkspace} />}
                         {activeTab === 'automations' && <AutomationsWorkspace onNavigate={navigateWorkspace} local={_useLocalBackend} />}
 
+                        {activeTab === 'thesisimports' && <ThesisImports api={API_URL} initialTicker={workspaceTicker} onNavigate={(view, ticker) => { setWorkspaceTicker(ticker); setThesisTier('detailed'); loadAnalysis(ticker); switchTab(view); }} onSaved={loadSavedAnalyses} />}
                         {/* PORTFOLIO TAB */}
                         {activeTab === 'portfolio' && (
                             <div className="flex-1 flex flex-col md:flex-row overflow-hidden pb-24 md:pb-0">
@@ -15557,6 +15559,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     <p className="text-xs text-slate-400 truncate">{currentTicker ? `Viewing: ${currentTicker}` : 'Thesis analysis'}</p>
                                 </div>
                             </div>
+                            <button onClick={() => { setWorkspaceTicker(currentTicker || ''); switchTab('thesisimports'); }} className="px-3 py-2 bg-white/10 rounded-lg text-xs">Import &amp; review</button>
                             <div className="hidden sm:flex flex-wrap gap-1 sm:gap-2 flex-shrink-0 justify-end items-center">
                                 {documents.length > 0 && !analysis && (
                                     <div className="text-xs text-slate-400 hidden md:block">{enabled}/{documents.length} docs • 100% weight</div>

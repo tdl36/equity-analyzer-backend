@@ -29300,6 +29300,9 @@ app.register_blueprint(meeting_workspace.create_blueprint(get_db))
 
 import investment_case
 app.register_blueprint(investment_case.create_blueprint(get_db))
+import thesis_imports
+app.register_blueprint(thesis_imports.create_blueprint(get_db, lambda: (
+    cache.invalidate('analyses'), cache.invalidate('portfolio_dashboard'))))
 
 import company_research
 
