@@ -41,7 +41,18 @@ The browser flow passed with synthetic research and disposable SQL, including re
 retry and conflict screens, plus the actual built app shell at 1440/390/320px.
 Python compilation and production build pass. The private SYK JSON passed local format
 validation; no real thesis was imported or approved for QA. Release verification is
-recorded after deployment below.
+recorded below.
+
+Deployment verified: Render `/health` reports
+`b27fb44db7dfc749e77c86c3eb4f9fb2ff8bd2c3`. Cloudflare deployment
+`b9e0f3d3-2a3c-43d7-b291-ee127a7d013a` serves T123 with matching hosted
+bundle and service-worker bytes. Authenticated draft listing and SYK preparation
+return 200; both reject unauthenticated requests with 401. SYK preparation reports
+initial mode; the production inbox is empty. No real draft was imported/approved,
+no original was uploaded and no paid model QA was launched. Active audio jobs were
+zero before deployment. Only whitelisted assets were uploaded. The local agent was
+unchanged and did not require restarting. Next user action: import the full-source
+SYK JSON, review it and approve explicitly in Charlie when satisfied.
 
 ### T122 — reviewed model defaults and recurring maintenance
 
