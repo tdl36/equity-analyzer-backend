@@ -10,7 +10,7 @@ T124 (`2026-10-05T124`) adds the local assistant handoff and direct draft review
 - App: `https://charlie-deployment.tonydlee.workers.dev/?release=T124#view=thesisimports`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`, branch `main`.
-- Previous release: T122 / `1f5db72`; its model policy remains unchanged.
+- Previous release: T123 / `b27fb44`; T122 model policy remains unchanged.
 - Local agent shares the model registry, reloads changed registry files between jobs, and reports its registry revision in its heartbeat.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
@@ -37,7 +37,15 @@ pass. Synthetic browser/disposable SQL checks cover reload of the exact selected
 and built-shell direct links at 1440/390/320px, without JavaScript errors or overflow.
 The real SYK handoff preparation discovered an already approved draft; no duplicate
 was submitted and no live thesis was changed. No paid model calls or original uploads.
-Deployment verification pending below; T123 remains the previous verified release.
+Deployment verified: backend health reports `6b6d63c5cb53b718cce80a3d7340b9107f409411`.
+Cloudflare deployment `fc3b6b42-5e99-4648-8f2c-040c9a8fa97f` serves T124 with matching
+hosted bundle and service-worker bytes. Authenticated draft list/preparation return
+200 and unauthenticated requests return 401. Only whitelisted assets were deployed;
+active audio jobs were zero beforehand. The local agent was unchanged. A brief backend
+rollout interruption recovered before final verification. SYK's existing approved
+review matches the full-source draft's four research sections; no duplicate submitted.
+Future requests: ticker + accessible source folder + research instructions, then investor
+review/approval through the returned link. Requires the configured local Mac assistant.
 
 ### T123 — external thesis draft import and review
 
