@@ -1,5 +1,5 @@
 import React, {useState, useEffect} from 'react';
-import {parseDraft, canApprove, downloadFile, MAX_DRAFT_BYTES} from './thesis-import-model.mjs';
+import {parseDraft, canApprove, downloadFile, MAX_DRAFT_BYTES, requestedDraft} from './thesis-import-model.mjs';
 
 const labels = {pdfPages:'PDF pages', sourceId:'Source', sha256:'File hash', claimBasis:'Basis',
   thresholdBasis:'Threshold basis', reviewTrigger:'Review trigger', triggerPoints:'Trigger points',
@@ -27,9 +27,15 @@ export function ThesisImports({api='', initialTicker='', onNavigate, onSaved}) {
     return d;
   }
   async function list() { const data = await call(filter ? `?ticker=${encodeURIComponent(filter)}` : ''); setDrafts(data.drafts); setLoaded(true); }
-  async function select(id) { const d = await call(`/${id}`); setDraft(d); setTicker(d.ticker); setChecked(false); setConfirmation(''); }
+  async function select(id) { const d = await call(`/${id}`); setDraft(d); setTicker(d.ticker); setChecked(false); setConfirmation(''); const url = new URL(window.location.href); url.searchParams.set('thesisDraft', id); window.history.replaceState(null, '', url); }
   async function act(fn) { setBusy(true); setError(''); setNotice(''); try { await fn(); } catch(e) { setError(e.message); } finally { setBusy(false); } }
-  useEffect(() => { let active=true; call('').then(d=>{if(active){setDrafts(d.drafts);setLoaded(true);}}).catch(e=>{if(active)setError(e.message);}); return ()=>{active=false;}; }, [api]);
+  useEffect(() => { let active=true; (async()=>{try {
+    const id = requestedDraft(window.location.search);
+    const data = await call('');
+    if(active){setDrafts(data.drafts);setLoaded(true);}
+    if(id){const d=await call(`/${id}`);if(active){setDraft(d);setTicker(d.ticker);setChecked(false);setConfirmation('');}}
+  } catch(e){if(active)setError(e.message);}})(); return ()=>{active=false;}; }, [api]);
+
   async function prepare() {
     if (!/^[A-Z0-9][A-Z0-9.-]{0,19}$/.test(ticker)) throw new Error('Enter a ticker before preparing a thesis.');
     const data = await call(`/prepare/${encodeURIComponent(ticker)}`);
@@ -63,6 +69,7 @@ export function ThesisImports({api='', initialTicker='', onNavigate, onSaved}) {
       <div className="ti-kicker">Investment thesis · External drafts</div>
       <h1>Bring your research into Charlie</h1>
       <p>Write with your subscription. Review here. Keep the same thesis history and future upgrade workflow.</p>
+      <div className="ti-message"><strong>Working with an assistant that can access your files?</strong><p>Give it the ticker and source folder, and ask it to prepare the thesis and send a draft to Charlie for review. It can handle preparation and import, then give you a direct review link. You still approve every thesis change here.</p><p className="ti-muted">Requires the configured Charlie handoff on your Mac. In chats without folder access, use the file workflow below.</p></div>
       <div className="ti-guide">
         <div><strong>01 · Prepare for ChatGPT</strong><span>Download a template with the current thesis and its starting version. Attach your own sources in ChatGPT.</span></div>
         <div><strong>02 · Import draft</strong><span>Upload the completed JSON file. Drafts stay in this inbox until you approve or dismiss them.</span></div>

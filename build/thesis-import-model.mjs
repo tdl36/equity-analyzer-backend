@@ -15,3 +15,10 @@ export function downloadFile(name, body) {
   const a = document.createElement('a'); a.href = url; a.download = name; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+export function requestedDraft(search) {
+  const id = new URLSearchParams(search).get('thesisDraft');
+  if (!id) return null;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) throw new Error('This draft link is invalid. Select a draft from the inbox.');
+  return id;
+}

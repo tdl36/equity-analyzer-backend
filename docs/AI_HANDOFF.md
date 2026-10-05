@@ -4,16 +4,40 @@ Updated: October 5, 2026
 
 ## Start here
 
-T123 (`2026-10-05T123`) adds subscription-assisted thesis import and investor review. Use
+T124 (`2026-10-05T124`) adds the local assistant handoff and direct draft review links. Use
 `git log -1` and backend `/health` to verify the exact deployed revision.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T123#view=thesisimports`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T124#view=thesisimports`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`, branch `main`.
 - Previous release: T122 / `1f5db72`; its model policy remains unchanged.
 - Local agent shares the model registry, reloads changed registry files between jobs, and reports its registry revision in its heartbeat.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
+
+### T124 — local assistant thesis handoff
+
+`thesis_handoff.py prepare` captures the live baseline and inventories a source folder
+into a private workspace outside watched source folders. The assistant reads selected
+originals and writes the draft; `submit` validates, freezes the exact package before
+upload, reads back its fingerprint, and saves a direct review receipt. Uncertain
+uploads retry idempotently; changed baselines/sources block fresh submission. A local
+file lock prevents simultaneous submission in one workspace. No approval or model
+endpoint is accessible through this helper. Credentials use the existing Mac agent
+convention and only the fixed production origin; redirects are refused.
+
+`?thesisDraft=UUID` selects a specific review independently of the latest-100 list and
+survives reload and app hash routing. Investor approval remains explicit. The UI and
+AGENTS.md explain the assistant path; ordinary chats without local access retain the
+manual file workflow. See docs/thesis-imports.md for recovery and dependencies.
+
+Validation: 853 safe backend tests plus a new passing helper/disposable-SQL integration
+test, 82 frontend tests, compilation and production build
+pass. Synthetic browser/disposable SQL checks cover reload of the exact selected draft
+and built-shell direct links at 1440/390/320px, without JavaScript errors or overflow.
+The real SYK handoff preparation discovered an already approved draft; no duplicate
+was submitted and no live thesis was changed. No paid model calls or original uploads.
+Deployment verification pending below; T123 remains the previous verified release.
 
 ### T123 — external thesis draft import and review
 

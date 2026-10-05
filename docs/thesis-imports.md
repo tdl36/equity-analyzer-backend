@@ -100,6 +100,48 @@ blocking, dismissal and malformed input at desktop/390/320px. The built-app shel
 uses synthetic read responses and forbids writes. No real research is approved.
 
 The private SYK full-source draft was validated locally against the format only.
-Do not describe this as a production import or investor approval. Production checks
+Do not describe this as a production import or investor approval. Production QA checks
 must remain read-only (plus safe schema initialization); validate authentication,
 release identities, draft listing and template preparation without paid model calls.
+
+## T124: assistant handoff from an accessible folder
+
+With the configured Mac and a local-capable assistant, the investor can say:
+“Create an initial thesis for XYZ using this folder and send it to Charlie for review.”
+The assistant performs the following; the investor only reviews and approves in Charlie.
+
+1. Run `.venv/bin/python thesis_handoff.py prepare XYZ '/absolute/source/folder' --output '/private/new/workspace'`.
+   Use a new workspace outside the repo and outside watched iCloud source folders.
+   This reads the live template/baseline and inventories supported source files with
+   SHA-256 hashes. ZIP archives are hashed as files; the researcher must separately
+   inspect and cite their members. Inventory does not attest review or source rights.
+2. Read selected originals, account for review coverage and limitations, and write
+   `draft.json` in that workspace. Follow `preparation.json` instructions, preserving
+   its exact baseline and existing item IDs. Complete source references and provenance.
+   No helper extracts, analyzes or sends original documents to a model.
+3. Run `.venv/bin/python thesis_handoff.py submit '/private/new/workspace'`.
+   It validates structure, ticker, baseline and unchanged inventoried files, then freezes
+   `submission.json` before uploading the normalized research draft and metadata only.
+   It reads back the saved draft, checks its fingerprint and writes `receipt.json`.
+   The receipt includes a direct `?thesisDraft=UUID#view=thesisimports&ticker=XYZ` link.
+4. Return that link to the investor. Opening it selects the exact draft, even if it is
+   outside the inbox's latest 100 results. Approval remains an explicit Charlie action.
+
+On an uncertain upload or restart, rerun submit in the same workspace. It sends the
+same frozen package, even if draft.json has since changed; an explicit `--draft` with
+different content is rejected. Revisions require a new preparation workspace and
+reconciliation. Local concurrent submits are locked. A stale server baseline is
+rejected; do not silently replace the hash. Saved receipts expose pending, approved,
+dismissed and stale states without implying approval or freshness.
+
+Dependencies: this Mac, Python environment, reachable Charlie backend, and existing
+`CHARLIE_API_KEY` environment/`charlie-agent` Keychain/private agent configuration.
+Credentials go only to the fixed production origin; redirects are refused. No keys
+are accepted in command arguments or printed. Work files are private local artifacts,
+not deployable assets. The helper cannot approve, dismiss or call a model endpoint.
+Ordinary ChatGPT sessions without local tools/credentials still use attachments and
+manual import. This does not provide a general unattended subscription API.
+
+Validation uses synthetic fixtures and disposable SQL. A user-requested real draft
+handoff is separate from QA and may be submitted pending; investor approval must never
+be simulated on real research.

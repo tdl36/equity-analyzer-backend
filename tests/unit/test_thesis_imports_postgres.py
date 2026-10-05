@@ -67,6 +67,26 @@ class PostgresDraftTests(unittest.TestCase):
         with self.db() as (_,cur):
             cur.execute(sql,args);return list(cur.fetchone().values())[0]
 
+    def test_local_handoff_stages_and_retries_without_changing_live_thesis(self):
+        import thesis_handoff as h
+        def call(path='', body=None):
+            response = (self.client.get('/api/thesis-imports'+path) if body is None
+                        else self.client.post('/api/thesis-imports'+path, json=body))
+            self.assertIn(response.status_code, (200, 201), response.json)
+            return response.json
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory); sources=root/'sources'; sources.mkdir()
+            (sources/'fixture.txt').write_text('Synthetic evidence')
+            workspace=root/'handoff'
+            h.prepare(self.ticker, sources, workspace, call)
+            self.p['baseline']=h.read(workspace/'preparation.json')['package']['baseline']
+            h.save(workspace/'draft.json',self.p)
+            receipt=h.submit(workspace,call=call)
+            self.assertEqual(receipt['status'],'pending')
+            self.assertEqual(h.submit(workspace,call=call)['id'],receipt['id'])
+            self.assertEqual(self.scalar('SELECT COUNT(*) FROM external_thesis_drafts WHERE ticker=%s',(self.ticker,)),1)
+            self.assertEqual(self.scalar('SELECT COUNT(*) FROM portfolio_analyses WHERE ticker=%s',(self.ticker,)),0)
+
     def test_initial_duplicate_restart_and_future_upgrade(self):
         d=self.stage();self.assertIsNone(d['baseline']);self.assertEqual(self.stage()['id'],d['id'])
         self.assertEqual(self.scalar('SELECT COUNT(*) FROM portfolio_analyses WHERE ticker=%s',(self.ticker,)),0)

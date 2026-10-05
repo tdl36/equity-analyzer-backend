@@ -17,3 +17,11 @@ test('approval requires active reviewed draft, exact company and fresh baseline'
 test('import review has a navigable company-aware route',()=>{
   assert.deepEqual(readRoute(routeHash('thesisimports','BRK.B')),{view:'thesisimports',ticker:'BRK.B'});
 });
+
+test('specific draft links accept only UUIDs and coexist with company routes', async()=>{
+  const {requestedDraft}=await import('../../src/thesis-import-model.mjs');
+  const id='12345678-1234-1234-1234-123456789abc';
+  assert.equal(requestedDraft('?release=T124&thesisDraft='+id),id);
+  assert.equal(requestedDraft(''),null);
+  assert.throws(()=>requestedDraft('?thesisDraft=../../approve'));
+});

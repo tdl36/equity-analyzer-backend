@@ -63,3 +63,13 @@ Documentation-only commits do not require a release bump or deployment.
 - Tests and build pass without destructive fixtures.
 - Only intended files are committed.
 - `docs/AI_HANDOFF.md` is updated when production state, major behavior, known risks, or the next priority changes.
+
+## Assistant-assisted thesis handoff
+
+When the user asks to draft a thesis from an accessible source folder and send it to
+Charlie for review, use `thesis_handoff.py` and `docs/thesis-imports.md`. Prepare before
+research to freeze the live baseline, read selected originals, write the compatible
+draft privately, then submit and return its specific review link. Never approve it.
+Keep private workspaces outside this repository and watched source folders. The helper
+uses existing Mac credentials and no model API; folder inventory is not evidence of
+review. Chats without local access must use the manual file workflow.

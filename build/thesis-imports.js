@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { parseDraft, canApprove, downloadFile, MAX_DRAFT_BYTES } from './thesis-import-model.mjs';
+import { parseDraft, canApprove, downloadFile, MAX_DRAFT_BYTES, requestedDraft } from './thesis-import-model.mjs';
 var labels = {
   pdfPages: 'PDF pages',
   sourceId: 'Source',
@@ -83,6 +83,9 @@ export function ThesisImports({
     setTicker(d.ticker);
     setChecked(false);
     setConfirmation('');
+    var url = new URL(window.location.href);
+    url.searchParams.set('thesisDraft', id);
+    window.history.replaceState(null, '', url);
   }
   async function act(fn) {
     setBusy(true);
@@ -98,14 +101,27 @@ export function ThesisImports({
   }
   useEffect(() => {
     var active = true;
-    call('').then(d => {
-      if (active) {
-        setDrafts(d.drafts);
-        setLoaded(true);
+    (async () => {
+      try {
+        var id = requestedDraft(window.location.search);
+        var data = await call('');
+        if (active) {
+          setDrafts(data.drafts);
+          setLoaded(true);
+        }
+        if (id) {
+          var d = await call(`/${id}`);
+          if (active) {
+            setDraft(d);
+            setTicker(d.ticker);
+            setChecked(false);
+            setConfirmation('');
+          }
+        }
+      } catch (e) {
+        if (active) setError(e.message);
       }
-    }).catch(e => {
-      if (active) setError(e.message);
-    });
+    })();
     return () => {
       active = false;
     };
@@ -154,6 +170,10 @@ export function ThesisImports({
   }, /*#__PURE__*/React.createElement("div", {
     className: "ti-kicker"
   }, "Investment thesis \xB7 External drafts"), /*#__PURE__*/React.createElement("h1", null, "Bring your research into Charlie"), /*#__PURE__*/React.createElement("p", null, "Write with your subscription. Review here. Keep the same thesis history and future upgrade workflow."), /*#__PURE__*/React.createElement("div", {
+    className: "ti-message"
+  }, /*#__PURE__*/React.createElement("strong", null, "Working with an assistant that can access your files?"), /*#__PURE__*/React.createElement("p", null, "Give it the ticker and source folder, and ask it to prepare the thesis and send a draft to Charlie for review. It can handle preparation and import, then give you a direct review link. You still approve every thesis change here."), /*#__PURE__*/React.createElement("p", {
+    className: "ti-muted"
+  }, "Requires the configured Charlie handoff on your Mac. In chats without folder access, use the file workflow below.")), /*#__PURE__*/React.createElement("div", {
     className: "ti-guide"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", null, "01 \xB7 Prepare for ChatGPT"), /*#__PURE__*/React.createElement("span", null, "Download a template with the current thesis and its starting version. Attach your own sources in ChatGPT.")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", null, "02 \xB7 Import draft"), /*#__PURE__*/React.createElement("span", null, "Upload the completed JSON file. Drafts stay in this inbox until you approve or dismiss them.")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", null, "03 \xB7 Review changes"), /*#__PURE__*/React.createElement("span", null, "Compare every section and source reference, then approve the new thesis or upgrade."))), /*#__PURE__*/React.createElement("div", {
     className: "ti-actions"

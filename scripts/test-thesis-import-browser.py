@@ -58,9 +58,11 @@ createRoot(document.getElementById('root')).render(<ThesisImports onNavigate={{(
             page.get_by_role('heading',name='SYNTH — Synthetic Review Company').wait_for()
             assert page.get_by_role('button',name='Approve & save thesis').is_disabled()
             assert page.evaluate('window.injected') is None
-            page.screenshot(path='/tmp/charlie-t123-desktop.png',full_page=False)
+            page.screenshot(path='/tmp/charlie-t124-desktop.png',full_page=False)
             page.reload();page.wait_for_load_state('networkidle')
-            page.get_by_role('button',name='SYNTH · Synthetic Review Company',exact=False).click()
+            page.get_by_role('heading',name='SYNTH — Synthetic Review Company').wait_for()
+            assert 'thesisDraft=' in page.url
+            initial_id = urlparse(page.url).query.split('thesisDraft=')[1].split('&')[0]
             page.get_by_role('heading',name='Your approval').wait_for()
             page.get_by_role('checkbox').check();page.get_by_label('Confirm ticker').fill('OTHER')
             assert page.get_by_role('button',name='Approve & save thesis').is_disabled()
@@ -81,10 +83,10 @@ createRoot(document.getElementById('root')).render(<ThesisImports onNavigate={{(
             assert 'before · saved at import' in page.locator('body').inner_text().lower()
             for width in (390,320):
                 page.set_viewport_size({'width':width,'height':844});page.evaluate('window.scrollTo(0,0)')
-                page.screenshot(path=f'/tmp/charlie-t123-mobile-{width}.png',full_page=False)
+                page.screenshot(path=f'/tmp/charlie-t124-mobile-{width}.png',full_page=False)
                 assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth'),str(page.evaluate('Array.from(document.querySelectorAll("*")).filter(e=>e.getBoundingClientRect().right>innerWidth).map(e=>({tag:e.tagName,cls:e.className,width:e.getBoundingClientRect().width,right:e.getBoundingClientRect().right})).slice(0,20)'))
                 page.get_by_role('heading',name='Your approval').scroll_into_view_if_needed()
-                page.screenshot(path=f'/tmp/charlie-t123-approval-{width}.png',full_page=False)
+                page.screenshot(path=f'/tmp/charlie-t124-approval-{width}.png',full_page=False)
             # A legacy write after import must block approval, retaining the pending draft.
             with PostgresDraftTests.db(True) as (_,cur):
                 cur.execute("UPDATE portfolio_analyses SET updated_at=updated_at+INTERVAL '1 second' WHERE ticker='SYNTH'")
@@ -109,19 +111,22 @@ createRoot(document.getElementById('root')).render(<ThesisImports onNavigate={{(
                     if path in ('/api/analyses','/api/overviews','/api/summaries','/api/analyst-activities','/api/research-documents'):
                         return route.fulfill(json=[])
                     return route.fulfill(json=[])
-                if path=='/version':return route.fulfill(json={'version':'2026-10-05T123'})
+                if path=='/version':return route.fulfill(json={'version':'2026-10-05T124'})
                 if parsed.hostname in ('127.0.0.1','localhost'):return route.continue_()
                 return route.abort()
             context.route('**/*',safe_route)
             shell=context.new_page();shell_errors=[];shell.on('pageerror',lambda e:shell_errors.append(str(e)))
-            shell.goto(f'http://127.0.0.1:{server.server_port}/full?local=1#view=thesisimports&ticker=SYNTH')
+            shell.goto(f'http://127.0.0.1:{server.server_port}/full?local=1&thesisDraft={initial_id}#view=thesisimports&ticker=SYNTH')
             shell.get_by_role('heading',name='Bring your research into Charlie').wait_for()
             shell.wait_for_load_state('networkidle')
             shell.locator('[class*="z-[100]"]').wait_for(state='hidden')
             assert shell.get_by_role('heading',name='Bring your research into Charlie').is_visible()
+            shell.get_by_role('button',name='Open saved thesis').wait_for()
+            assert initial_id in shell.url
+            assert shell.get_by_role('button',name='Approve & save thesis').count()==0
             for width in (1440,390,320):
                 shell.set_viewport_size({'width':width,'height':1000 if width==1440 else 844})
-                shell.screenshot(path=f'/tmp/charlie-t123-shell-{width}.png')
+                shell.screenshot(path=f'/tmp/charlie-t124-shell-{width}.png')
                 assert shell.evaluate('document.documentElement.scrollWidth<=innerWidth'),f'shell overflow {width}'
             assert 'Calibri' in shell.get_by_role('heading',name='Bring your research into Charlie').evaluate('(e)=>getComputedStyle(e).fontFamily')
             assert not shell_errors,shell_errors
