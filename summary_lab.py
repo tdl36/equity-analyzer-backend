@@ -6,6 +6,7 @@ import json
 import os
 import threading
 import uuid
+from recovery_credentials import anthropic_recovery_key
 from flask import Blueprint, jsonify, request
 import research_doctrine
 import meeting_notes
@@ -526,7 +527,7 @@ def create_blueprint(get_db, render_docx=None, safe_filename=None, record_usage=
 
     def recover_once():
         """Resume automatic folder jobs interrupted by a backend restart."""
-        key=os.environ.get('ANTHROPIC_API_KEY','').strip()
+        key=anthropic_recovery_key(get_db)
         if not key: return
         ensure()
         with get_db() as (_,cur):

@@ -7,6 +7,7 @@ import os
 import threading
 import time
 import uuid
+from recovery_credentials import anthropic_recovery_key
 from flask import Blueprint, jsonify, request
 
 VERSION = 'source-first-v7'
@@ -336,7 +337,7 @@ def create_blueprint(get_db):
             with active_lock:active.discard(jid)
 
     def recover_once():
-        api_key=os.environ.get('ANTHROPIC_API_KEY','').strip()
+        api_key=anthropic_recovery_key(get_db)
         if not api_key:return
         ensure()
         with get_db() as (_,cur):

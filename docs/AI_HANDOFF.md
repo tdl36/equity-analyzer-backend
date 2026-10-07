@@ -1,19 +1,38 @@
 # Charlie AI engineering handoff
 
-Updated: October 5, 2026
+Updated: October 6, 2026
 
 ## Start here
 
-T124 (`2026-10-05T124`) adds the local assistant handoff and direct draft review links. Use
+T125 (`2026-10-06T125`) restores Settings-key recovery for interrupted summary jobs. Use
 `git log -1` and backend `/health` to verify the exact deployed revision.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T124#view=thesisimports`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T125#view=thesisimports`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`, branch `main`.
-- Previous release: T123 / `b27fb44`; T122 model policy remains unchanged.
+- Previous release: T124 / `6b6d63c`; T122 model policy remains unchanged.
 - Local agent shares the model registry, reloads changed registry files between jobs, and reports its registry revision in its heartbeat.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
+
+### T125 — saved credential recovery
+
+Automatic Summary Lab and legacy Improved-note recovery now prefer the server
+Anthropic key and fall back to the existing saved Settings `apiKey`. The lookup
+runs each sweep, so rotation/removal takes effect without a restart. It does not
+persist keys on jobs or change eligible jobs, models, checkpoints, ownership,
+concurrency or retry limits. Missing keys start nothing; database lookup failure
+leaves jobs intact and is logged by exception type only.
+
+Validation: six synthetic credential/recovery regressions, 860 safe backend tests
+and 82 frontend tests passed. The broad suite still emits existing mocked Lab
+worker exceptions from incomplete SQL fixtures; no live provider work was run.
+Production compilation/build and deployment verification are recorded below when
+complete. No originals or research were modified. Downloads access remains denied
+by macOS; restore Codex Files and Folders permission before resuming collection.
+Next: complete a user-selected real-source acceptance journey, then broaden typed
+financial observations/accounting reconciliation and sector templates before the
+independent committee. Collection failure is not successful empty coverage.
 
 ### T124 — local assistant thesis handoff
 
@@ -1466,7 +1485,7 @@ workflow. Do not remove saved notes or merge workflows before the user makes tha
 5. **Prove a complete managed AlphaSense assignment.** Demonstrate browser discovery, source restrictions, original download, iCloud handoff, recap, thesis proposal, and recovery for a real user-selected ticker without overstating unattended coverage.
 6. **Improve real-source quality benchmarks.** Current automated checks are useful regressions, not expert certification. Add frozen real-source packs and investor-scored outputs without committing licensed source bodies.
 7. **Continue UI simplification.** Navigation and complex evidence workflows have improved but remain dense. Any redesign must be inspected at desktop and mobile widths with real long content. T83 did this for Catalyst synthesis. The same pattern is worth auditing elsewhere: sub-views held in unrouted local state have no URL, no back-button behavior and no way for an alert or sidebar entry to link into them. `agentView`'s remaining panels and the Research agents heading are the obvious next candidates.
-8. **Broaden recovery cautiously.** Long-running Summary Lab and several research jobs have bounded recovery; audit remaining model-backed jobs for durable identity, checkpointing, ownership fencing, duplicate prevention, and visible failure. T82 fixed the Summary Lab recovery sweep and the audio completion mirror. T111 closes the saved-Summary-to-Lab creation gap with an atomic save for new opted-in recordings; the live restart scenario remains unproven. `recover_once` still reads `ANTHROPIC_API_KEY` from the environment, so recovery is inactive if only a Settings-supplied key is present.
+8. **Broaden recovery cautiously.** Long-running Summary Lab and several research jobs have bounded recovery; audit remaining model-backed jobs for durable identity, checkpointing, ownership fencing, duplicate prevention, and visible failure. T82 fixed the Summary Lab recovery sweep and the audio completion mirror. T111 closes the saved-Summary-to-Lab creation gap with an atomic save for new opted-in recordings; the live restart scenario remains unproven. T125 resolves the server key or existing saved Settings key for Summary Lab and Improved-note recovery; remaining workers still need a credential/recovery audit.
 
 ## Safe commands
 
@@ -1499,9 +1518,9 @@ Use `py_compile` for every touched Python module. Do not start paid research, se
 
 Current release markers must stay synchronized:
 
-- `worker.js`: `2026-10-05T123`
-- `service-worker.js`: `20261005-123`
-- `src/app.jsx`: `2026-10-05T123`
+- `worker.js`: `2026-10-06T125`
+- `service-worker.js`: `20261006-125`
+- `src/app.jsx`: `2026-10-06T125`
 
 After an application change:
 
