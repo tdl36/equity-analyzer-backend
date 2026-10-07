@@ -30,8 +30,13 @@ Edits reset confirmations and hide stale results. Saved exports retain the bridg
 Validation: 868 safe backend tests, 84 frontend tests, Python compilation and
 production build passed. Synthetic real-component browser checks at 1440/390/320px
 cover signed arithmetic, confirmation reset, mismatched totals, removal and layout.
-No paid research or live case writes were used for QA. Deployment verification is
-pending. Mac agent unchanged; no restart required.
+No paid research or live case writes were used for QA. Render recovered from a
+brief rollout 502 and reports `e4b40b7700d1096b769dd1eeafd0630ba300c1a7`.
+Cloudflare `9e4c2aa8-f6b2-4da7-a32d-c1704073f6a9` serves T127 with byte-matching
+hosted bundle/service worker. Authenticated nonpersistent synthetic preview verified
+180 + 20 = 200 and unchanged 21.95 share value; mismatch returns 400, no auth 401.
+Predeployment audio/pipeline checks showed no active jobs; the unchanged September
+21 legacy Lab running row was preserved. Mac agent unchanged; no restart required.
 
 Downloads access was verified on October 7 after the investor enabled it. Fifteen
 permission-only requests (DGX, DHR, DLR, DOV, ELV, ETN, GD, GILD, HCA, HON, HST,
