@@ -1,4 +1,6 @@
 import * as React from 'react';
+import { CommitteeFindings } from './investment-committee';
+import { committeeDocument } from './investment-committee-model.mjs';
 import { researchProgress, researchDocument, researchCaseDraft } from './company-research-model.mjs';
 export function CompanyResearch({
   api,
@@ -6,8 +8,10 @@ export function CompanyResearch({
   revision,
   disabled,
   onUpdate,
-  onDraft
+  onDraft,
+  committee = false
 }) {
+  var route = committee ? 'committee' : 'company';
   var [inventory, setInventory] = React.useState(null),
     [error, setError] = React.useState(''),
     [notice, setNotice] = React.useState('');
@@ -44,7 +48,7 @@ export function CompanyResearch({
       if (inflight) return;
       inflight = true;
       try {
-        var d = await json('/api/research/company/' + encodeURIComponent(ticker));
+        var d = await json('/api/research/' + route + '/' + encodeURIComponent(ticker));
         if (live) {
           setInventory(d);
           setError('');
@@ -73,7 +77,7 @@ export function CompanyResearch({
       if (inflight) return;
       inflight = true;
       try {
-        var d = await json('/api/research/company-run/' + encodeURIComponent(selected));
+        var d = await json('/api/research/' + route + '-run/' + encodeURIComponent(selected));
         if (live) setRun(d);
       } catch (e) {
         if (live) setNotice(e.message);
@@ -137,7 +141,7 @@ export function CompanyResearch({
         requestId: crypto.randomUUID()
       }
     };
-    mutate('/api/research/company/' + ticker, pending.current.payload, d => {
+    mutate('/api/research/' + route + '/' + ticker, pending.current.payload, d => {
       setSelected(d.id);
       pending.current = null;
     });
@@ -145,7 +149,7 @@ export function CompanyResearch({
   var stats = researchProgress(run),
     sourceById = new Map((run?.sources || []).map(s => [s.id, s]));
   var download = compact => {
-    var url = URL.createObjectURL(new Blob([researchDocument(run, compact)], {
+    var url = URL.createObjectURL(new Blob([committee ? committeeDocument(run) : researchDocument(run, compact)], {
       type: 'text/html;charset=utf-8'
     }));
     var a = document.createElement('a');
@@ -158,15 +162,15 @@ export function CompanyResearch({
   return /*#__PURE__*/React.createElement("section", {
     className: "company-research",
     "aria-label": "Source-backed company research"
-  }, /*#__PURE__*/React.createElement("style", null, `.company-research{font-family:Calibri,sans-serif;background:#fff;color:#000;padding:24px;border-radius:12px}.company-research *{color:#000!important;overflow-wrap:anywhere}.company-research button,.company-research select{background:#f4f4ef!important;border:1px solid #aaa;border-radius:6px;padding:10px;max-width:100%}.company-research button:disabled{opacity:.5}.company-research h3{font-size:26px;margin:12px 0}.company-research h4{font-size:20px;font-weight:bold;margin:16px 0}.company-research p{margin:12px 0;white-space:pre-wrap}.company-research label{display:block;margin:12px 0}.company-research select{width:100%}.company-research article{padding:18px;border:1px solid #ccc;border-radius:8px;margin:16px 0}.company-research blockquote{padding:12px;border-left:3px solid #aaa}.company-research nav{display:flex;flex-wrap:wrap;gap:10px;margin:16px 0}.company-research input{margin-right:10px}.company-research summary{cursor:pointer;font-weight:700;margin:16px 0}`), /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("style", null, `.company-research{font-family:Calibri,sans-serif;background:#fff;color:#000;padding:24px;border-radius:12px}.company-research *{color:#000!important;overflow-wrap:anywhere}.company-research button,.company-research select{background:#f4f4ef!important;border:1px solid #aaa;border-radius:6px;padding:10px;max-width:100%}.company-research button:disabled{opacity:.5}.company-research h3{font-size:26px;margin:12px 0}.company-research h4{font-size:20px;font-weight:bold;margin:16px 0}.company-research p{margin:12px 0;white-space:pre-wrap}.company-research label{display:block;margin:12px 0}.company-research select{width:100%}.company-research article{padding:18px;border:1px solid #ccc;border-radius:8px;margin:16px 0}.company-research blockquote{padding:12px;border-left:3px solid #aaa}.company-research nav{display:flex;flex-wrap:wrap;gap:10px;margin:16px 0}.company-research input{margin-right:10px}.company-research button,.company-research input,.company-research select{font:inherit}.company-research summary{cursor:pointer;font-weight:700;margin:16px 0}`), /*#__PURE__*/React.createElement("p", {
     className: "workspace-eyebrow"
-  }, ticker, " / SOURCE-BACKED RESEARCH"), /*#__PURE__*/React.createElement("h3", null, "Build the research. Preserve the evidence."), /*#__PURE__*/React.createElement("p", null, "Deep Research uses selected originals already stored in Charlie. Each revision freezes its sources and case baseline, covers 22 sections, and reviews generated claims. It does not search the web or collect new documents."), error && /*#__PURE__*/React.createElement("p", {
+  }, ticker, " / ", committee ? 'INVESTMENT COMMITTEE' : 'SOURCE-BACKED RESEARCH'), /*#__PURE__*/React.createElement("h3", null, committee ? 'Independent investment committee' : 'Build the research. Preserve the evidence.'), /*#__PURE__*/React.createElement("p", null, committee ? 'Five independent first-pass roles examine the same frozen originals and saved case: lead, upside, downside, accounting/evidence and valuation/expectations. Each assessment receives an evidence review, then a shared challenge round and one lead response. This does not change your case.' : 'Deep Research uses selected originals already stored in Charlie. Each revision freezes its sources and case baseline, covers 22 sections, and reviews generated claims. It does not search the web or collect new documents.'), error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
   }, error, " ", /*#__PURE__*/React.createElement("button", {
     onClick: () => setRefresh(x => x + 1)
   }, "Reload research")), /*#__PURE__*/React.createElement("details", {
     open: !inventory?.runs.length
-  }, /*#__PURE__*/React.createElement("summary", null, "Prepare a new Deep Research revision"), /*#__PURE__*/React.createElement("p", null, "Baseline: saved case R", revision, !revision ? ' · initiation, no saved case yet' : '', ". Confirm the issuer in the originals; filing under a ticker alone does not establish identity."), /*#__PURE__*/React.createElement("fieldset", {
+  }, /*#__PURE__*/React.createElement("summary", null, committee ? 'Prepare a committee review' : 'Prepare a new Deep Research revision'), /*#__PURE__*/React.createElement("p", null, "Baseline: saved case R", revision, !revision ? ' · initiation, no saved case yet' : '', ". Confirm the issuer in the originals; filing under a ticker alone does not establish identity."), /*#__PURE__*/React.createElement("fieldset", {
     disabled: disabled || busy || !!error || !inventory || active
   }, /*#__PURE__*/React.createElement("div", {
     style: {
@@ -190,10 +194,10 @@ export function CompanyResearch({
   }), "I checked that these originals concern ", ticker, " and permit AI research."), /*#__PURE__*/React.createElement("button", {
     disabled: !files.length || !confirmed || files.some(f => !inventory?.documents.some(d => d.filename === f && d.eligible)),
     onClick: start
-  }, "Start Deep Research"), /*#__PURE__*/React.createElement("p", null, "Uses model credits: up to six research calls and six review calls, plus explicitly acknowledged retries. Monthly budget checks apply before each call. No automatic thesis changes.")), disabled && /*#__PURE__*/React.createElement("p", null, "Save your case edits before starting research."), active && /*#__PURE__*/React.createElement("p", null, "An unfinished research revision already exists. Inspect it below, then resume or stop it before starting another.")), /*#__PURE__*/React.createElement("p", {
+  }, committee ? 'Start committee review' : 'Start Deep Research'), /*#__PURE__*/React.createElement("p", null, "Uses model credits: ", committee ? 'up to five assessments, five evidence reviews, one challenge round and one lead response' : 'up to six research calls and six review calls', ", plus explicitly acknowledged retries. Monthly budget checks apply before each call. No automatic thesis changes.")), disabled && /*#__PURE__*/React.createElement("p", null, "Save your case edits before starting research."), active && /*#__PURE__*/React.createElement("p", null, "An unfinished research revision already exists. Inspect it below, then resume or stop it before starting another.")), /*#__PURE__*/React.createElement("p", {
     role: "status"
-  }, notice), /*#__PURE__*/React.createElement("label", null, "Saved research revision", /*#__PURE__*/React.createElement("select", {
-    "aria-label": "Saved research revision",
+  }, notice), /*#__PURE__*/React.createElement("label", null, committee ? 'Saved committee review' : 'Saved research revision', /*#__PURE__*/React.createElement("select", {
+    "aria-label": committee ? 'Saved committee review' : 'Saved research revision',
     value: selected,
     onChange: e => {
       setSelected(e.target.value);
@@ -204,7 +208,7 @@ export function CompanyResearch({
   }, "Choose research"), inventory?.runs.map(r => /*#__PURE__*/React.createElement("option", {
     key: r.id,
     value: r.id
-  }, new Date(r.created_at).toLocaleString(), " \xB7 ", r.status, " \xB7 case R", r.baseline.revision)))), run && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, run.status.replaceAll('_', ' ')), " \xB7 ", stats.sections, "/22 sections saved \xB7 ", stats.stages, "/12 stages \xB7 ", stats.supported, " claims passed excerpt and model checks \xB7 ", stats.unresolved, " unresolved"), /*#__PURE__*/React.createElement("p", null, "Research ID ", run.id, " \xB7 ", run.model, " \xB7 case baseline R", run.baseline.revision), run.error && /*#__PURE__*/React.createElement("p", {
+  }, new Date(r.created_at).toLocaleString(), " \xB7 ", r.status, " \xB7 case R", r.baseline.revision)))), run && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, run.status.replaceAll('_', ' ')), " \xB7 ", stats.sections, "/", committee ? 5 : 22, " ", committee ? 'role assessments' : 'sections', " saved \xB7 ", stats.stages, "/12 stages \xB7 ", stats.supported, " claims passed excerpt and model checks \xB7 ", stats.unresolved, " unresolved"), /*#__PURE__*/React.createElement("p", null, "Research ID ", run.id, " \xB7 ", run.model, " \xB7 case baseline R", run.baseline.revision), run.error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
   }, run.error), run.baselineStale && /*#__PURE__*/React.createElement("p", {
     role: "alert"
@@ -214,13 +218,15 @@ export function CompanyResearch({
     onChange: e => setAck(e.target.checked)
   }), "I checked provider usage and accept that retrying the interrupted call may incur another charge."), /*#__PURE__*/React.createElement("nav", null, /*#__PURE__*/React.createElement("button", {
     disabled: busy || !!run.state?.inFlight && !ack,
-    onClick: () => mutate('/api/research/company-run/' + run.id + '/resume', {
+    onClick: () => mutate('/api/research/' + route + '-run/' + run.id + '/resume', {
       acknowledgeRetry: ack
     })
   }, "Resume saved work"), /*#__PURE__*/React.createElement("button", {
     disabled: busy || run.cancel_requested,
-    onClick: () => mutate('/api/research/company-run/' + run.id + '/stop', {})
-  }, run.cancel_requested ? 'Stop requested' : 'Stop research'))), /*#__PURE__*/React.createElement("nav", {
+    onClick: () => mutate('/api/research/' + route + '-run/' + run.id + '/stop', {})
+  }, run.cancel_requested ? 'Stop requested' : 'Stop research'))), committee && /*#__PURE__*/React.createElement(CommitteeFindings, {
+    run: run
+  }), /*#__PURE__*/React.createElement("nav", {
     "aria-label": "Research views"
   }, [['snapshot', 'Snapshot'], ['full', 'Full research'], ['sources', 'Sources & baseline']].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
     key: id,
@@ -229,16 +235,18 @@ export function CompanyResearch({
   }, label)), /*#__PURE__*/React.createElement("button", {
     disabled: !stats.sections,
     onClick: () => download(false)
-  }, "Download research"), /*#__PURE__*/React.createElement("button", {
+  }, committee ? 'Download committee review' : 'Download research'), /*#__PURE__*/React.createElement("button", {
+    hidden: committee,
     disabled: run.status !== 'complete',
     onClick: () => download(true)
   }, "Download investment map"), /*#__PURE__*/React.createElement("button", {
+    hidden: committee,
     disabled: disabled || !revision || run.status !== 'complete' || run.baselineStale,
     onClick: () => onUpdate({
       id: run.id,
       filenames: run.input.filenames
     })
-  }, "Update thesis \xB7 select evidence"), !revision && run.status === 'complete' && !run.baseline.revision && /*#__PURE__*/React.createElement("button", {
+  }, "Update thesis \xB7 select evidence"), !committee && !revision && run.status === 'complete' && !run.baseline.revision && /*#__PURE__*/React.createElement("button", {
     disabled: disabled || !stats.supported,
     onClick: () => onDraft(researchCaseDraft(run, () => crypto.randomUUID()))
   }, "Prepare initial thesis draft \xB7 review before saving")), view === 'sources' ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h4", null, "Frozen originals"), run.sources.map(s => /*#__PURE__*/React.createElement("article", {
@@ -247,7 +255,7 @@ export function CompanyResearch({
     style: {
       whiteSpace: 'pre-wrap'
     }
-  }, JSON.stringify(run.baseline.body, null, 2)))) : /*#__PURE__*/React.createElement(React.Fragment, null, (run.state?.sections || []).filter(s => view === 'full' || ['summary', 'business', 'variant', 'risks', 'monitor', 'synthesis'].includes(s.id)).map(s => /*#__PURE__*/React.createElement("article", {
+  }, JSON.stringify(run.baseline.body, null, 2)))) : /*#__PURE__*/React.createElement(React.Fragment, null, (run.state?.sections || []).filter(s => committee || view === 'full' || ['summary', 'business', 'variant', 'risks', 'monitor', 'synthesis'].includes(s.id)).map(s => /*#__PURE__*/React.createElement("article", {
     key: s.id
   }, /*#__PURE__*/React.createElement("h4", null, s.title), !s.claims.length && /*#__PURE__*/React.createElement("p", null, "No supported conclusion generated from this source pack."), s.claims.map(c => /*#__PURE__*/React.createElement("section", {
     key: c.id
@@ -255,5 +263,5 @@ export function CompanyResearch({
     key: i
   }, /*#__PURE__*/React.createElement("strong", null, sourceById.get(e.sourceId)?.filename || 'Unknown source', " \xB7 ", e.matched ? 'Passage matched' : 'Unmatched'), /*#__PURE__*/React.createElement("p", null, e.excerpt)))))), /*#__PURE__*/React.createElement("h5", null, "Gaps and unresolved questions"), s.gaps.map((g, i) => /*#__PURE__*/React.createElement("p", {
     key: i
-  }, g))))), /*#__PURE__*/React.createElement("p", null, "Model review is not investor approval. Financial calculations and consensus are not independently verified by this workflow. Investment-map exports omit unresolved claims; the full research retains them with warnings.")));
+  }, g))))), /*#__PURE__*/React.createElement("p", null, "Model review is not investor approval. Financial calculations and consensus are not independently verified by this workflow. ", committee ? 'The committee export preserves dissent, unresolved claims and unaccepted proposals.' : 'Investment-map exports omit unresolved claims; the full research retains them with warnings.')));
 }

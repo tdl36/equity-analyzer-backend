@@ -126,13 +126,14 @@ def create_blueprint(get_db):
         try:
             data=request.get_json(silent=True)
             model=evaluate(data)
-            if model.get('baseRevenueObservation') or model.get('baseEbitdaObservation'):
+            from financial_observations import LINKS
+            if any(model.get(f) for f,_ in LINKS):
                 from financial_observations import resolve
                 ticker=data.get('ticker','')
                 if not isinstance(ticker,str) or not re.fullmatch(r'[A-Z0-9][A-Z0-9.-]{0,19}',ticker):
                     raise ValueError('Choose the company for this source-linked preview.')
                 with get_db() as (_,cur):
-                    for field,metric in (('baseRevenueObservation','revenue'),('baseEbitdaObservation','ebitda')):
+                    for field,metric in LINKS:
                         if model.get(field):model[field]=resolve(model[field],ticker,cur,metric)
             response=jsonify(model=model)
             response.headers['Cache-Control']='no-store'
@@ -141,9 +142,11 @@ def create_blueprint(get_db):
             return jsonify(error=str(exc)),400
 
     @bp.route('/api/research/operating-model/<ticker>/revenue-observation',methods=['GET','POST'])
+    @bp.route('/api/research/operating-model/<ticker>/cash-observation',methods=['GET','POST'])
+    @bp.route('/api/research/operating-model/<ticker>/debt-observation',methods=['GET','POST'])
     @bp.route('/api/research/operating-model/<ticker>/ebitda-observation',methods=['GET','POST'])
     def revenue_observation(ticker):
-        metric='ebitda' if request.path.endswith('/ebitda-observation') else 'revenue'
+        metric=request.path.rsplit('/',1)[-1].removesuffix('-observation')
         from financial_observations import candidates, resolve
         if not re.fullmatch(r'[A-Z0-9][A-Z0-9.-]{0,19}',ticker):return jsonify(error='Invalid ticker'),400
         try:
@@ -242,10 +245,11 @@ def create_blueprint(get_db):
                 return jsonify(error='A newer investment case was saved. Your unsaved edits are retained; reload and reconcile them before saving.'),409
             if mode=='save':
                 body=operation['body']
-                if any(body.get('operatingModel',{}).get(f) for f in ('baseRevenueObservation','baseEbitdaObservation')):
+                from financial_observations import LINKS
+                if any(body.get('operatingModel',{}).get(f) for f,_ in LINKS):
                     from financial_observations import resolve
                     try:
-                        for field,metric in (('baseRevenueObservation','revenue'),('baseEbitdaObservation','ebitda')):
+                        for field,metric in LINKS:
                             if body['operatingModel'].get(field):
                                 body['operatingModel'][field]=resolve(body['operatingModel'][field],ticker,cur,metric)
                     except (ValueError,TypeError,AttributeError) as exc:return jsonify(error=str(exc)),409

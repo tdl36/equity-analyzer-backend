@@ -8,8 +8,14 @@ export function RevenueObservation({
   metric = "revenue"
 }) {
   var isEbitda = metric === 'ebitda',
-    label = isEbitda ? 'EBITDA' : 'revenue',
-    field = isEbitda ? 'baseEbitda' : 'baseRevenue';
+    isBalance = ['cash', 'debt'].includes(metric),
+    label = isEbitda ? 'EBITDA' : metric,
+    field = {
+      revenue: 'baseRevenue',
+      ebitda: 'baseEbitda',
+      cash: 'baseCash',
+      debt: 'baseDebt'
+    }[metric];
   var [runs, setRuns] = React.useState(null),
     [runId, setRunId] = React.useState(''),
     [options, setOptions] = React.useState([]),
@@ -98,19 +104,22 @@ export function RevenueObservation({
       if (seq !== sequence.current) return;
       if (JSON.stringify(latest.current) !== captured) throw Error('Model inputs changed during the check. Review them, then link again.');
       var o = d.observation;
-      if (isEbitda && (Number(model.baseYear) !== o.fiscalYear || model.currency !== o.currency)) throw Error('EBITDA must match the model base fiscal year and currency. Update those inputs first.');
+      if ((isEbitda || isBalance) && (Number(model.baseYear) !== o.fiscalYear || model.currency !== o.currency)) throw Error('Historical input must match the model base fiscal year and currency. Update those inputs first.');
       onChange({
         ...model,
         baseEbitdaComparable: false,
+        balanceSheetComparable: false,
         [field]: o.valueMillions,
-        ...(isEbitda ? {
+        ...(isBalance ? {
+          [field + 'Basis']: o.basis
+        } : isEbitda ? {
           ebitdaBasis: o.basis,
           baseEbitdaComparable: false
         } : {
           baseYear: o.fiscalYear,
           currency: o.currency
         }),
-        [isEbitda ? 'baseEbitdaReference' : 'revenueReference']: `${o.filename} · ${o.locator} · FY${o.fiscalYear} · ${o.basis}`,
+        [isBalance ? field + 'Reference' : isEbitda ? 'baseEbitdaReference' : 'revenueReference']: `${o.filename} · ${o.locator} · FY${o.fiscalYear} · ${o.basis}`,
         [field + 'Observation']: o
       });
     } catch (e) {
@@ -123,7 +132,7 @@ export function RevenueObservation({
   return /*#__PURE__*/React.createElement("section", {
     "aria-label": "Base " + label + " evidence",
     className: "revenue-observation"
-  }, /*#__PURE__*/React.createElement("style", null, `.revenue-observation{border:1px solid #b8c5ce;border-left:4px solid #667f90;padding:18px;margin:20px 0;background:#f6f8fa}.revenue-observation select{display:block;width:100%;max-width:100%;padding:10px;background:white;color:black;border:1px solid #888}.revenue-observation blockquote{white-space:pre-wrap;overflow-wrap:anywhere;margin:12px 0;border-left:2px solid #aaa;padding:12px}.revenue-observation code{overflow-wrap:anywhere;font-size:12px}`), /*#__PURE__*/React.createElement("h4", null, "Base ", label, " \xB7 source observation"), /*#__PURE__*/React.createElement("p", null, "Choose a printed number from a reviewed research passage. Charlie checks the passage, number and conversion; you confirm what that number means. Future growth, margins and the equity bridge remain your assumptions."), observation ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, "Passage and printed number matched \xB7 analyst meaning confirmed")), /*#__PURE__*/React.createElement("p", null, observation.token, " ", observation.unit, " ", observation.currency, " \u2192 ", observation.valueMillions, " million \xB7 FY", observation.fiscalYear), /*#__PURE__*/React.createElement("p", null, observation.filename, " \xB7 ", observation.locator, " \xB7 ", observation.basis), /*#__PURE__*/React.createElement("blockquote", null, observation.excerpt), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Frozen evidence receipt"), /*#__PURE__*/React.createElement("p", null, "Research: ", /*#__PURE__*/React.createElement("code", null, observation.researchRunId)), /*#__PURE__*/React.createElement("p", null, "Original SHA-256: ", /*#__PURE__*/React.createElement("code", null, observation.originalHash)), /*#__PURE__*/React.createElement("p", null, "Extracted text SHA-256: ", /*#__PURE__*/React.createElement("code", null, observation.extractionHash)), /*#__PURE__*/React.createElement("p", null, observation.interpretation)), /*#__PURE__*/React.createElement("p", null, "Changing the base ", label, ", fiscal year, currency or linked EBITDA definition requires relinking or unlinking. Every calculation and new save rechecks the original. Historical revisions retain their original receipt."), /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("style", null, `.revenue-observation{border:1px solid #b8c5ce;border-left:4px solid #667f90;padding:18px;margin:20px 0;background:#f6f8fa}.revenue-observation select{display:block;width:100%;max-width:100%;padding:10px;background:white;color:black;border:1px solid #888}.revenue-observation blockquote{white-space:pre-wrap;overflow-wrap:anywhere;margin:12px 0;border-left:2px solid #aaa;padding:12px}.revenue-observation code{overflow-wrap:anywhere;font-size:12px}`), /*#__PURE__*/React.createElement("h4", null, "Base ", label, " \xB7 source observation"), /*#__PURE__*/React.createElement("p", null, "Choose a printed number from a reviewed research passage. Charlie checks the passage, number and conversion; you confirm what that number means. Future growth, margins and the equity bridge remain your assumptions."), observation ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, "Passage and printed number matched \xB7 analyst meaning confirmed")), /*#__PURE__*/React.createElement("p", null, observation.token, " ", observation.unit, " ", observation.currency, " \u2192 ", observation.valueMillions, " million \xB7 FY", observation.fiscalYear), /*#__PURE__*/React.createElement("p", null, observation.filename, " \xB7 ", observation.locator, " \xB7 ", observation.basis), /*#__PURE__*/React.createElement("blockquote", null, observation.excerpt), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Frozen evidence receipt"), /*#__PURE__*/React.createElement("p", null, "Research: ", /*#__PURE__*/React.createElement("code", null, observation.researchRunId)), /*#__PURE__*/React.createElement("p", null, "Original SHA-256: ", /*#__PURE__*/React.createElement("code", null, observation.originalHash)), /*#__PURE__*/React.createElement("p", null, "Extracted text SHA-256: ", /*#__PURE__*/React.createElement("code", null, observation.extractionHash)), /*#__PURE__*/React.createElement("p", null, observation.interpretation)), /*#__PURE__*/React.createElement("p", null, "Changing the base ", label, ", fiscal year, currency or linked definition requires relinking or unlinking. Every calculation and new save rechecks the original. Historical revisions retain their original receipt."), /*#__PURE__*/React.createElement("button", {
     onClick: () => {
       var next = {
         ...model
@@ -146,7 +155,7 @@ export function RevenueObservation({
   }, "Choose a run"), runs.map(r => /*#__PURE__*/React.createElement("option", {
     key: r.id,
     value: r.id
-  }, r.created_at ? new Date(r.created_at).toLocaleString() : 'Date unavailable', " \xB7 ", r.id.slice(0, 8), " \xB7 case baseline R", r.baseline.revision)))), runId && options.length === 0 && !busy && /*#__PURE__*/React.createElement("p", null, "No eligible numeric passages. Claims must be reported facts with matched passages and supported review. Missing ", label, " stays manual; guidance, estimates and unresolved claims cannot be linked here."), options.length > 0 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", null, "Reported passage \xB7 verify it is consolidated annual ", label, /*#__PURE__*/React.createElement("select", {
+  }, r.created_at ? new Date(r.created_at).toLocaleString() : 'Date unavailable', " \xB7 ", r.id.slice(0, 8), " \xB7 case baseline R", r.baseline.revision)))), runId && options.length === 0 && !busy && /*#__PURE__*/React.createElement("p", null, "No eligible numeric passages. Claims must be reported facts with matched passages and supported review. Missing ", label, " stays manual; guidance, estimates and unresolved claims cannot be linked here."), options.length > 0 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", null, "Reported passage \xB7 verify it is consolidated ", isBalance ? 'fiscal-year-end' : 'annual', " ", label, /*#__PURE__*/React.createElement("select", {
     value: choice,
     onChange: e => {
       setChoice(e.target.value);
@@ -200,10 +209,10 @@ export function RevenueObservation({
       ...form,
       confirmed: e.target.checked
     })
-  }), "I inspected the original and confirm this is ", ticker, " consolidated annual ", isEbitda ? 'positive EBITDA' : label, ", with the stated year, currency, units and accounting basis. It is not a forecast, segment figure or a different issuer."), /*#__PURE__*/React.createElement("button", {
+  }), "I inspected the original and confirm this is ", ticker, " consolidated ", isBalance ? 'fiscal-year-end' : 'annual', " ", isEbitda ? 'positive EBITDA' : label, ", with the stated year, currency, units and accounting basis. It is not a forecast, segment figure or a different issuer."), /*#__PURE__*/React.createElement("button", {
     disabled: !form.confirmed || !form.token || !form.unit,
     onClick: link
-  }, "Check and use ", label, " in draft"), /*#__PURE__*/React.createElement("p", null, isEbitda ? 'This sets positive base EBITDA and its definition in the draft. Confirm comparability with forecast margins before calculating.' : 'This changes base revenue, base fiscal year and currency in your draft.', " It does not save a case or launch research."))))), /*#__PURE__*/React.createElement("p", {
+  }, "Check and use ", label, " in draft"), /*#__PURE__*/React.createElement("p", null, isBalance ? 'This sets a historical balance-sheet input only; target-period debt remains a separate assumption.' : isEbitda ? 'This sets positive base EBITDA and its definition in the draft. Confirm comparability with forecast margins before calculating.' : 'This changes base revenue, base fiscal year and currency in your draft.', " It does not save a case or launch research."))))), /*#__PURE__*/React.createElement("p", {
     role: "alert"
   }, error));
 }

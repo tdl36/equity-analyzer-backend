@@ -331,3 +331,13 @@ source receipts with preview/new-save permission and hash rechecks. Valuation
 formulas, old models and historical case revisions remain intact. This is not an
 accounting bridge or independently verified EBITDA definition; reported-to-adjusted
 reconciliation and additional typed financial inputs remain next.
+
+### T128 implementation boundary
+
+Historical cash and debt receipts extend the operating-model inputs without changing
+forecast assumptions. The first committee release adds five independent initial
+roles, evidence checks and a bounded challenge/lead-response round. It uses a
+separate durable ledger and no automatic case acceptance. Responses are unverified
+proposals, not resolved investor decisions. Read AI_HANDOFF.md for current release
+validation. Real-source committee quality and same-pack comparison against the
+single-reviewer baseline still require an investor-selected acceptance pack.

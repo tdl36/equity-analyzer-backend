@@ -4,10 +4,10 @@ import {workflowSteps,workflowGuideHtml,syntheticOperatingModel,syntheticExpecte
 
 test('workflow covers the ticker-to-evidence-to-model-to-revision journey with limitations',()=>{
  const html=workflowGuideHtml();
- for(const phrase of ['Open investment case','160,000','Start Deep Research','unknown provider-call','consolidated annual revenue','Unlink revenue evidence','Restore revision','not delivered','Calibri','zero-share']) {
+ for(const phrase of ['Open investment case','160,000','Start Deep Research','unknown provider-call','consolidated annual revenue','Unlink revenue evidence','Restore revision','remain outstanding','Calibri','zero-share']) {
   assert.ok(html.includes(phrase),phrase);
  }
- assert.equal(workflowSteps.length,9);
+ assert.equal(workflowSteps.length,10);
  assert.ok(workflowSteps.every(s=>s.action&&s.check&&s.stop));
 });
 test('isolated calculator fixtures cannot edit a company case and return independent assumptions',()=>{

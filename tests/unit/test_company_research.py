@@ -85,6 +85,9 @@ class ApiTests(unittest.TestCase):
         class Cursor:
             def execute(self,sql,args=()):
                 self.result=[]
+                if getattr(outer,'committee',False):
+                    outer.tables.append(sql)
+                    sql=sql.replace('investment_committee_runs','company_research_runs')
                 if sql.startswith(('CREATE','ALTER','SELECT pg_advisory')):return
                 if 'to_regclass' in sql:self.result=[{'name':'investment_case_versions'}]
                 elif 'FROM investment_case_versions' in sql:self.result=[{'revision':outer.revision,'body':{'thesis':'Synthetic baseline'}}]
@@ -113,7 +116,7 @@ class ApiTests(unittest.TestCase):
         def worker(*args):yield True
         self.thread=patch('company_research.threading.Thread').start();self.addCleanup(patch.stopall)
         patch('amendment_ownership.worker_session',worker).start()
-        app=Flask(__name__);app.register_blueprint(create_blueprint(db,lambda *a:None,lambda key:'synthetic-key',lambda:'synthetic-model'))
+        app=Flask(__name__);app.register_blueprint(create_blueprint(db,lambda *a:None,lambda key:'synthetic-key',lambda:'synthetic-model',committee=getattr(self,'committee',False)))
         self.client=app.test_client()
     def payload(self):
         import uuid

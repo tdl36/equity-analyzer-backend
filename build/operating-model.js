@@ -46,6 +46,10 @@ export function OperatingModel({
   }, []);
   var edit = m => {
     setError('');
+    if (['baseCash', 'baseDebt', 'baseCashBasis', 'baseDebtBasis', 'baseYear', 'currency'].some(k => m[k] !== model?.[k])) m = {
+      ...m,
+      balanceSheetComparable: false
+    };
     if (m.ebitdaReconciliation && ['baseYear', 'currency', 'baseEbitda', 'ebitdaBasis'].some(k => m[k] !== model?.[k])) m = {
       ...m,
       ebitdaReconciliation: {
@@ -166,7 +170,34 @@ export function OperatingModel({
     type: "checkbox",
     checked: model.baseEbitdaComparable === true,
     onChange: e => set('baseEbitdaComparable', e.target.checked)
-  }), "I confirm revenue and EBITDA cover the same consolidated fiscal year and currency, and the historical and forecast EBITDA definitions and adjustments are comparable.")), /*#__PURE__*/React.createElement("div", {
+  }), "I confirm revenue and EBITDA cover the same consolidated fiscal year and currency, and the historical and forecast EBITDA definitions and adjustments are comparable.")), /*#__PURE__*/React.createElement("section", {
+    "aria-label": "Historical balance sheet"
+  }, /*#__PURE__*/React.createElement("h4", null, "Historical balance sheet \xB7 optional"), /*#__PURE__*/React.createElement("p", null, "Fiscal-year-end cash and debt, in millions. These observations do not replace target-period net debt in your scenarios. Confirm scope, including lease liabilities and restricted cash treatment."), [['baseCash', 'cash'], ['baseDebt', 'debt']].map(([field, metric]) => /*#__PURE__*/React.createElement("article", {
+    key: field
+  }, /*#__PURE__*/React.createElement("label", null, "Year-end ", metric, " (millions; zero or positive)", /*#__PURE__*/React.createElement("input", {
+    inputMode: "decimal",
+    value: model[field] ?? '',
+    onChange: e => set(field, e.target.value)
+  })), /*#__PURE__*/React.createElement("label", null, "Year-end ", metric, " definition", /*#__PURE__*/React.createElement("textarea", {
+    value: model[field + 'Basis'] || '',
+    maxLength: 1800,
+    onChange: e => set(field + 'Basis', e.target.value)
+  })), /*#__PURE__*/React.createElement("label", null, "Year-end ", metric, " source and period", /*#__PURE__*/React.createElement("textarea", {
+    value: model[field + 'Reference'] || '',
+    maxLength: 1800,
+    onChange: e => set(field + 'Reference', e.target.value)
+  })), /*#__PURE__*/React.createElement(RevenueObservation, {
+    metric: metric,
+    api: api,
+    ticker: ticker,
+    model: model,
+    onChange: edit,
+    onResearch: onResearch
+  }))), /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: model.balanceSheetComparable === true,
+    onChange: e => set('balanceSheetComparable', e.target.checked)
+  }), "I confirm cash and debt use the same fiscal-year-end date, consolidated scope and currency.")), /*#__PURE__*/React.createElement("div", {
     className: "operating-model-grid"
   }, names.map(name => /*#__PURE__*/React.createElement("article", {
     key: name
@@ -199,7 +230,7 @@ export function OperatingModel({
     }
   }, "Remove model from draft")), /*#__PURE__*/React.createElement("p", {
     role: "alert"
-  }, error), output?.results ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h4", null, dirty ? 'Draft calculations · not saved' : `Calculated from saved case R${revision}`), output.baseEbitda && /*#__PURE__*/React.createElement("p", null, "Historical FY", output.baseYear, ": EBITDA ", output.baseEbitda, " million ", output.currency, " \xB7 margin ", output.baseMarginPct, "%. Definition: ", output.ebitdaBasis, ". Source: ", output.baseEbitdaReference, "."), output.ebitdaReconciliation && /*#__PURE__*/React.createElement("p", null, "EBITDA bridge: starting ", output.ebitdaReconciliation.startingEbitda, " + signed adjustments ", output.ebitdaReconciliation.totalAdjustments, " = ", output.ebitdaReconciliation.reconciledEbitda, " million ", output.currency, ". Arithmetic reconciled; accounting treatment is analyst-confirmed."), /*#__PURE__*/React.createElement("div", {
+  }, error), output?.results ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h4", null, dirty ? 'Draft calculations · not saved' : `Calculated from saved case R${revision}`), output.baseEbitda && /*#__PURE__*/React.createElement("p", null, "Historical FY", output.baseYear, ": EBITDA ", output.baseEbitda, " million ", output.currency, " \xB7 margin ", output.baseMarginPct, "%. Definition: ", output.ebitdaBasis, ". Source: ", output.baseEbitdaReference, "."), output.historicalNetDebt !== undefined && /*#__PURE__*/React.createElement("p", null, "Historical net debt: ", output.baseDebt, " debt \u2212 ", output.baseCash, " cash = ", output.historicalNetDebt, " million ", output.currency, ". Target-period scenario net debt remains separate."), output.ebitdaReconciliation && /*#__PURE__*/React.createElement("p", null, "EBITDA bridge: starting ", output.ebitdaReconciliation.startingEbitda, " + signed adjustments ", output.ebitdaReconciliation.totalAdjustments, " = ", output.ebitdaReconciliation.reconciledEbitda, " million ", output.currency, ". Arithmetic reconciled; accounting treatment is analyst-confirmed."), /*#__PURE__*/React.createElement("div", {
     style: {
       overflowX: 'auto'
     }

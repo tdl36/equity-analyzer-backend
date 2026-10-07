@@ -29306,7 +29306,7 @@ app.register_blueprint(thesis_imports.create_blueprint(get_db, lambda: (
 
 import company_research
 
-def _company_research_call(prompt, key, tokens, run_id, stage):
+def _company_research_call(prompt, key, tokens, run_id, stage, usage_kind="company-research"):
     # One explicit paid attempt; never fall back or replay an ambiguous call.
     spec = resolve_picker_spec(PICKER_DEFAULT_MODEL)
     if spec.get('provider') != 'anthropic':
@@ -29314,7 +29314,7 @@ def _company_research_call(prompt, key, tokens, run_id, stage):
     result = _call_anthropic_stream(messages=[{'role':'user','content':prompt}],
         system='You are a careful equity research analyst. Return only the requested JSON. Preserve source uncertainty.',
         model=spec['model'],max_tokens=tokens,timeout=1200,api_key=key,max_retries=0)
-    record_llm_usage('company-research',result,detail={'runId':run_id,'stage':stage})
+    record_llm_usage(usage_kind,result,detail={'runId':run_id,'stage':stage})
     if result.get('stop_reason') == 'max_tokens':
         raise ValueError('Research response exceeded its output bound. Inspect the saved stages before retrying.')
     parsed = _extract_json(result.get('text') or '')
@@ -29324,6 +29324,11 @@ def _company_research_call(prompt, key, tokens, run_id, stage):
 app.register_blueprint(company_research.create_blueprint(get_db,_company_research_call,
     lambda key: _get_api_keys(key).get('anthropic',''),lambda:resolve_picker_spec(PICKER_DEFAULT_MODEL)['model'],
     lambda:budget_blocks('company-research')))
+
+app.register_blueprint(company_research.create_blueprint(get_db,
+    lambda *args: _company_research_call(*args,usage_kind='investment-committee'),
+    lambda key: _get_api_keys(key).get('anthropic',''),lambda:resolve_picker_spec(PICKER_DEFAULT_MODEL)['model'],
+    lambda:budget_blocks('company-research'),committee=True))
 
 
 import portfolio_heatmap

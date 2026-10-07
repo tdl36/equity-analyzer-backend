@@ -57,3 +57,9 @@ test('EBITDA reconciliation export keeps signed adjustments and escapes manual r
  assert.ok(!html.includes('<script>'));
  assert.ok(!operatingModelHtml(model).includes('Reported-to-adjusted'));
 });
+
+test('historical balance sheet export remains separate from target debt',()=>{
+ const m={...model,baseCash:'0',baseDebt:'300',baseCashBasis:'Cash equivalents',baseDebtBasis:'Including leases',baseCashReference:'Synthetic',baseDebtReference:'<original>',historicalNetDebt:'300.00'};
+ const html=operatingModelHtml(m);
+ for(const value of ['Year-end Cash: 0','Year-end Debt: 300','Including leases','Historical net debt: 300.00','Target-period scenario debt remains separate','&lt;original&gt;'])assert.ok(html.includes(value),value);
+});

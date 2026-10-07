@@ -123,6 +123,21 @@ def evaluate(data):
         if 'baseEbitda' not in result:
             raise ValueError('Enter base-year EBITDA before adding its reconciliation.')
         result['ebitdaReconciliation'] = reconcile_ebitda(data['ebitdaReconciliation'], base_ebitda)
+    for metric, key in (('cash','baseCash'),('debt','baseDebt')):
+        if data.get(key) not in (None, ''):
+            result[key] = str(number(data[key], 'year-end '+metric, '0', '1000000000'))
+            result[key+'Basis'] = text(data.get(key+'Basis'), 'year-end '+metric+' definition')
+            result[key+'Reference'] = text(data.get(key+'Reference'), 'year-end '+metric+' source and period')
+            if data.get(key+'Observation') is not None:
+                from financial_observations import validate_model_link
+                result[key+'Observation'] = validate_model_link({**result,key+'Observation':data[key+'Observation']}, metric)
+        elif data.get(key+'Observation') is not None:
+            raise ValueError('Unlink historical '+metric+' evidence before removing the value.')
+    if 'baseCash' in result and 'baseDebt' in result:
+        if data.get('balanceSheetComparable') is not True:
+            raise ValueError('Confirm historical cash and debt use the same fiscal-year-end scope and currency.')
+        result['balanceSheetComparable'] = True
+        result['historicalNetDebt'] = money(Decimal(result['baseDebt']) - Decimal(result['baseCash']))
     if data.get('baseRevenueObservation') is not None:
         from financial_observations import validate_model_link
         result['baseRevenueObservation'] = validate_model_link({**result, 'baseRevenueObservation': data['baseRevenueObservation']})

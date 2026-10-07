@@ -4,16 +4,54 @@ Updated: October 7, 2026
 
 ## Start here
 
-T127 (`2026-10-07T127`) adds an itemized historical EBITDA reconciliation. Use
+T128 (`2026-10-07T128`) adds source-linked historical cash/debt and a draft investment committee. Use
 `git log -1` and backend `/health` to verify the exact deployed revision.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T127#view=thesisimports`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T128#view=thesisimports`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`, branch `main`.
-- Previous release: T126 / `6d87a60`; T122 model policy remains unchanged.
+- Previous release: T127 / `e4b40b7`; T122 model policy remains unchanged.
 - Local agent shares the model registry, reloads changed registry files between jobs, and reports its registry revision in its heartbeat.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
+
+### T128 — historical balance sheet and investment committee
+
+Operating scenarios now accept optional fiscal-year-end cash and total debt, with
+explicit definitions, manual references or reviewed-source receipts. Both use the
+model year/currency; net debt is computed only after scope comparability is confirmed.
+Zero is supported; negative cash/debt are rejected. Forecast debt assumptions are
+unchanged. New saves and previews recheck original permissions/hashes and linked
+value/year/currency/definition; historical exports preserve receipts.
+
+Committee is a separate workspace tab and durable `investment_committee_runs`
+ledger, using the existing bounded research worker infrastructure. Five first-pass
+roles (lead, upside, downside, accounting/evidence, valuation/expectations) see only
+the same frozen originals and case, not other role outputs. Five evidence checks,
+one linked challenge round and one lead response follow (up to 12 calls, 6,000 output
+tokens each, plus explicit retries). Source text remains bounded to 160,000 characters
+and eight originals. Same configured research model and monthly budget checks;
+usage is recorded as investment-committee. These are roles of one model, not
+independent humans. Lead responses are unverified draft interpretations; original
+dissent remains visible. No automatic case changes or approval controls exist.
+
+The shared worker now checks original hashes as well as permissions before calls.
+Submission identity, per-ticker unfinished-job exclusion, database worker ownership,
+pre-call reservations, saved stages, stop/resume and unknown-outcome acknowledgement
+apply independently to each ledger. Interrupted jobs require explicit resume; there
+is no automatic paid retry. Baseline drift is flagged; completed runs are immutable.
+Committee IDs cannot be used as research receipts or proposal handoffs. Exports
+preserve partial state, source hashes, dissent, challenges and unaccepted responses.
+
+Validation: 876 safe backend tests and 87 frontend tests passed, with Python
+compilation and production build. Synthetic browser checks at 1440/390/320px cover
+cash/debt source linking, net debt, confirmation reset, committee findings, dissent,
+source hashes and export; no overflow or page errors. Model-policy gate passes with
+no protected defaults changed. Deployment verification pending. No paid committee
+or live investment-case saves were used for QA.
+Mac agent and model registry unchanged. Next: user-selected real-source acceptance
+and comparison with the existing single-reviewer research on identical originals;
+additional financial metrics, signed source observations and deeper sector templates.
 
 ### T127 — itemized EBITDA reconciliation
 

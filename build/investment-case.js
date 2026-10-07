@@ -203,7 +203,7 @@ export function InvestmentCase({
   }, /*#__PURE__*/React.createElement("h3", null, active, " \xB7 ", revision ? `Revision ${revision}` : 'New investment case'), /*#__PURE__*/React.createElement("span", null, dirty ? 'Unsaved changes' : 'Saved working assumptions')), /*#__PURE__*/React.createElement("nav", {
     className: "lifecycle-tabs",
     "aria-label": "Investment thesis workspace"
-  }, [['snapshot', 'Snapshot'], ['research', 'Deep Research'], ['case', 'Current thesis'], ['model', 'Operating scenarios'], ['evidence', 'Evidence & proposals'], ['reviews', 'Decisions & underweights'], ['signals', 'Case signals'], ['evolution', 'Evolution']].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
+  }, [['snapshot', 'Snapshot'], ['research', 'Deep Research'], ['committee', 'Committee'], ['case', 'Current thesis'], ['model', 'Operating scenarios'], ['evidence', 'Evidence & proposals'], ['reviews', 'Decisions & underweights'], ['signals', 'Case signals'], ['evolution', 'Evolution']].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
     key: id,
     "aria-pressed": workspaceTab === id,
     onClick: () => setWorkspaceTab(id)
@@ -232,6 +232,13 @@ export function InvestmentCase({
       edit(draft);
       setWorkspaceTab('case');
     }
+  }), workspaceTab === 'committee' && /*#__PURE__*/React.createElement(CompanyResearch, {
+    committee: true,
+    key: active + '-committee',
+    api: api,
+    ticker: active,
+    revision: revision,
+    disabled: busy || dirty
   }), workspaceTab === 'snapshot' && /*#__PURE__*/React.createElement(CompanySnapshot, {
     onModel: () => setWorkspaceTab('model'),
     key: active,
