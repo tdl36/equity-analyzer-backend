@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { RevenueObservation } from './revenue-observation';
+import { EbitdaReconciliation } from './ebitda-reconciliation';
 var names = ['bear', 'base', 'bull'];
 var numeric = [['growthPct', 'Revenue CAGR (%)'], ['marginPct', 'Target EBITDA margin (%)'], ['multiple', 'Target EV / EBITDA (×)'], ['netDebt', 'Target net debt (millions; negative = net cash)'], ['otherClaims', 'Other senior claims (millions)'], ['nonOperatingAssets', 'Nonoperating assets (millions)'], ['shares', 'Target diluted shares (millions)']];
 export var newOperatingModel = () => ({
@@ -45,6 +46,13 @@ export function OperatingModel({
   }, []);
   var edit = m => {
     setError('');
+    if (m.ebitdaReconciliation && ['baseYear', 'currency', 'baseEbitda', 'ebitdaBasis'].some(k => m[k] !== model?.[k])) m = {
+      ...m,
+      ebitdaReconciliation: {
+        ...m.ebitdaReconciliation,
+        confirmed: false
+      }
+    };
     onChange({
       ...body,
       operatingModel: m
@@ -99,7 +107,7 @@ export function OperatingModel({
   var output = preview && preview.signature === signature ? preview.model : !dirty ? model : null;
   return /*#__PURE__*/React.createElement("section", {
     className: "operating-model"
-  }, /*#__PURE__*/React.createElement("style", null, `.operating-model{font-family:Calibri,sans-serif;color:#000;background:#fff;border-radius:12px;padding:24px}.operating-model *{color:#000!important}.operating-model p{margin:12px 0}.operating-model h3{font-size:24px}.operating-model h4{font-size:20px;font-weight:bold;margin:16px 0}.operating-model label{display:block;margin:12px 0}.operating-model input:not([type=checkbox]),.operating-model textarea{display:block;background:#fff!important;border:1px solid #888;border-radius:4px;padding:10px;width:100%;min-width:0}.operating-model textarea{min-height:90px}.operating-model button{background:#eee!important;border:1px solid #999;border-radius:5px;padding:10px;margin:8px 8px 8px 0}.operating-model button:disabled{opacity:.5}.operating-model article{border:1px solid #ccc;padding:16px;border-radius:8px;margin:12px 0}.operating-model-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.operating-model td,.operating-model th{padding:10px;border-bottom:1px solid #ddd;text-align:left}.operating-model small{display:block}.operating-model table{width:100%}@media(max-width:850px){.operating-model-grid{grid-template-columns:1fr}.operating-model{padding:16px}}`), /*#__PURE__*/React.createElement("h3", null, ticker, " \xB7 Operating scenarios"), /*#__PURE__*/React.createElement("p", null, "Translate explicit assumptions into revenue, EBITDA and equity value. All calculations run in code and use no model credits. Inputs are your assumptions; source references remain unverified."), !model ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "The first template uses EV/EBITDA for businesses where positive EBITDA is an appropriate valuation basis. It is not a bank, insurer, REIT, loss-making or recovery model. Existing EPS/P-E sensitivities remain in Current thesis."), /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("style", null, `.operating-model{font-family:Calibri,sans-serif;color:#000;background:#fff;border-radius:12px;padding:24px}.operating-model *{color:#000!important}.operating-model input,.operating-model textarea,.operating-model select,.operating-model button{font:inherit}.operating-model select{display:block;background:#fff;border:1px solid #888;border-radius:4px;padding:10px;width:100%}.operating-model p{margin:12px 0}.operating-model h3{font-size:24px}.operating-model h4{font-size:20px;font-weight:bold;margin:16px 0}.operating-model label{display:block;margin:12px 0}.operating-model input:not([type=checkbox]),.operating-model textarea{display:block;background:#fff!important;border:1px solid #888;border-radius:4px;padding:10px;width:100%;min-width:0}.operating-model textarea{min-height:90px}.operating-model button{background:#eee!important;border:1px solid #999;border-radius:5px;padding:10px;margin:8px 8px 8px 0}.operating-model button:disabled{opacity:.5}.operating-model article{border:1px solid #ccc;padding:16px;border-radius:8px;margin:12px 0}.operating-model-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.operating-model td,.operating-model th{padding:10px;border-bottom:1px solid #ddd;text-align:left}.operating-model small{display:block}.operating-model table{width:100%}@media(max-width:850px){.operating-model-grid{grid-template-columns:1fr}.operating-model{padding:16px}}`), /*#__PURE__*/React.createElement("h3", null, ticker, " \xB7 Operating scenarios"), /*#__PURE__*/React.createElement("p", null, "Translate explicit assumptions into revenue, EBITDA and equity value. All calculations run in code and use no model credits. Inputs are your assumptions; source references remain unverified."), !model ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "The first template uses EV/EBITDA for businesses where positive EBITDA is an appropriate valuation basis. It is not a bank, insurer, REIT, loss-making or recovery model. Existing EPS/P-E sensitivities remain in Current thesis."), /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: () => edit(newOperatingModel())
   }, "Add EV/EBITDA model")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, dirty ? 'Unsaved model / case edits' : `Saved with case R${revision}`, " \xB7 ", model.version, ". Money and shares must both be in millions, in the same currency and forecast period. Share prices are per share."), /*#__PURE__*/React.createElement("fieldset", {
@@ -131,7 +139,7 @@ export function OperatingModel({
     onResearch: onResearch
   }), /*#__PURE__*/React.createElement("section", {
     "aria-label": "Historical EBITDA baseline"
-  }, /*#__PURE__*/React.createElement("h4", null, "Historical EBITDA \xB7 optional"), /*#__PURE__*/React.createElement("p", null, "Compare the industrials / medtech forecast with the base-year starting point. This positive-EBITDA comparison does not change the valuation formula. No accounting reconciliation is implied."), /*#__PURE__*/React.createElement("label", null, "Base-year EBITDA (millions; positive)", /*#__PURE__*/React.createElement("input", {
+  }, /*#__PURE__*/React.createElement("h4", null, "Historical EBITDA \xB7 optional"), /*#__PURE__*/React.createElement("p", null, "Compare the industrials / medtech forecast with the base-year starting point. This positive-EBITDA comparison does not change the valuation formula. An optional itemized reconciliation below can explain the starting point."), /*#__PURE__*/React.createElement("label", null, "Base-year EBITDA (millions; positive)", /*#__PURE__*/React.createElement("input", {
     inputMode: "decimal",
     value: model.baseEbitda || '',
     onChange: e => edit({
@@ -151,6 +159,9 @@ export function OperatingModel({
     model: model,
     onChange: edit,
     onResearch: onResearch
+  }), /*#__PURE__*/React.createElement(EbitdaReconciliation, {
+    model: model,
+    onChange: edit
   }), /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
     checked: model.baseEbitdaComparable === true,
@@ -188,7 +199,7 @@ export function OperatingModel({
     }
   }, "Remove model from draft")), /*#__PURE__*/React.createElement("p", {
     role: "alert"
-  }, error), output?.results ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h4", null, dirty ? 'Draft calculations · not saved' : `Calculated from saved case R${revision}`), output.baseEbitda && /*#__PURE__*/React.createElement("p", null, "Historical FY", output.baseYear, ": EBITDA ", output.baseEbitda, " million ", output.currency, " \xB7 margin ", output.baseMarginPct, "%. Definition: ", output.ebitdaBasis, ". Source: ", output.baseEbitdaReference, "."), /*#__PURE__*/React.createElement("div", {
+  }, error), output?.results ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h4", null, dirty ? 'Draft calculations · not saved' : `Calculated from saved case R${revision}`), output.baseEbitda && /*#__PURE__*/React.createElement("p", null, "Historical FY", output.baseYear, ": EBITDA ", output.baseEbitda, " million ", output.currency, " \xB7 margin ", output.baseMarginPct, "%. Definition: ", output.ebitdaBasis, ". Source: ", output.baseEbitdaReference, "."), output.ebitdaReconciliation && /*#__PURE__*/React.createElement("p", null, "EBITDA bridge: starting ", output.ebitdaReconciliation.startingEbitda, " + signed adjustments ", output.ebitdaReconciliation.totalAdjustments, " = ", output.ebitdaReconciliation.reconciledEbitda, " million ", output.currency, ". Arithmetic reconciled; accounting treatment is analyst-confirmed."), /*#__PURE__*/React.createElement("div", {
     style: {
       overflowX: 'auto'
     }

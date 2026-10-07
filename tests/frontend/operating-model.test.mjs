@@ -48,3 +48,12 @@ test('historical EBITDA comparison and evidence survive saved exports',()=>{
  for(const value of ['Base EBITDA evidence','ebitda-hash','Historical EBITDA: 200','20.00%','21.00%','percentage points','Synthetic baseline'])assert.ok(html.includes(value),value);
  assert.ok(!operatingModelHtml(model).includes('Historical EBITDA:'));
 });
+
+test('EBITDA reconciliation export keeps signed adjustments and escapes manual references',()=>{
+ const m=structuredClone(model);
+ m.ebitdaReconciliation={startingEbitda:'180',startingBasis:'Reported EBITDA',sourceReference:'<source>',totalAdjustments:'20',reconciledEbitda:'200',adjustments:[{label:'Gain reversal',amount:'-10',recurrence:'uncertain',reference:'<script>source</script>'}]};
+ const html=operatingModelHtml(m);
+ for(const text of ['Reported-to-adjusted','Gain reversal: -10','uncertain','&lt;source&gt;','&lt;script&gt;','Reconciled base EBITDA: 200','analyst judgments'])assert.ok(html.includes(text),text);
+ assert.ok(!html.includes('<script>'));
+ assert.ok(!operatingModelHtml(model).includes('Reported-to-adjusted'));
+});

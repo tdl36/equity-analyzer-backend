@@ -31,6 +31,43 @@ def money(value):
     return str(value.quantize(Decimal('.01'), rounding=ROUND_HALF_UP))
 
 
+def reconcile_ebitda(data, baseline):
+    """Check a manually evidenced bridge, without asserting accounting quality."""
+    if not isinstance(data, dict) or data.get('confirmed') is not True:
+        raise ValueError('Confirm the EBITDA reconciliation period, currency and absence of double-counting.')
+    start = number(data.get('startingEbitda'), 'starting EBITDA', '-1000000000', '1000000000')
+    rows = data.get('adjustments')
+    if not isinstance(rows, list) or not 1 <= len(rows) <= 20:
+        raise ValueError('Provide one to twenty EBITDA adjustments, or remove the optional reconciliation.')
+    result = dict(startingEbitda=str(start),
+                  startingBasis=text(data.get('startingBasis'), 'starting EBITDA definition'),
+                  sourceReference=text(data.get('sourceReference'), 'starting EBITDA source and period'),
+                  confirmed=True, adjustments=[])
+    labels = set()
+    total = Decimal(0)
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError('Enter each EBITDA adjustment.')
+        label = text(row.get('label'), 'adjustment name', 200)
+        if label.casefold() in labels:
+            raise ValueError('Adjustment names must be distinct; check for double-counting.')
+        labels.add(label.casefold())
+        amount = number(row.get('amount'), label, '-1000000000', '1000000000')
+        if amount == 0:
+            raise ValueError('Remove zero-value adjustments.')
+        recurrence = row.get('recurrence')
+        if recurrence not in ('recurring', 'nonrecurring', 'uncertain'):
+            raise ValueError('Classify adjustment recurrence, or choose uncertain.')
+        result['adjustments'].append(dict(label=label, amount=str(amount), recurrence=recurrence,
+            reference=text(row.get('reference'), 'adjustment source and rationale')))
+        total += amount
+    adjusted = start + total
+    if adjusted != baseline:
+        raise ValueError('Starting EBITDA plus signed adjustments must exactly equal base-year EBITDA; check units and rounding.')
+    result.update(totalAdjustments=str(total), reconciledEbitda=str(adjusted))
+    return result
+
+
 def evaluate(data):
     """Validate inputs, normalize units, and replace any client-supplied results."""
     if not isinstance(data, dict):
@@ -82,6 +119,10 @@ def evaluate(data):
                 {**result, 'baseEbitdaObservation': data['baseEbitdaObservation']}, 'ebitda')
     elif data.get('baseEbitdaObservation') is not None:
         raise ValueError('Unlink EBITDA evidence before removing its base value.')
+    if data.get('ebitdaReconciliation') is not None:
+        if 'baseEbitda' not in result:
+            raise ValueError('Enter base-year EBITDA before adding its reconciliation.')
+        result['ebitdaReconciliation'] = reconcile_ebitda(data['ebitdaReconciliation'], base_ebitda)
     if data.get('baseRevenueObservation') is not None:
         from financial_observations import validate_model_link
         result['baseRevenueObservation'] = validate_model_link({**result, 'baseRevenueObservation': data['baseRevenueObservation']})
@@ -132,6 +173,10 @@ def evaluate(data):
     ]
     if any(row['equityFloored'] for row in result['results'].values()):
         result['warnings'].append('At least one equity residual is negative and is floored at zero; this is not a recovery or restructuring model.')
+    if 'ebitdaReconciliation' in result:
+        result['warnings'].append('EBITDA reconciliation verifies arithmetic only. Sources, recurrence and accounting treatment are analyst judgments; the starting EBITDA is not necessarily a GAAP measure.')
+        if any(r['recurrence'] != 'nonrecurring' for r in result['ebitdaReconciliation']['adjustments']):
+            result['warnings'].append('The EBITDA bridge includes recurring or uncertain adjustments; assess whether excluding these costs is sustainable.')
     if not result['results']['base']['reverseValid']:
         result['warnings'].append('Base reverse EBITDA is nonpositive; this reverse valuation is not interpretable with this method.')
     return result

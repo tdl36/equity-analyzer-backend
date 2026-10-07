@@ -1,19 +1,44 @@
 # Charlie AI engineering handoff
 
-Updated: October 6, 2026
+Updated: October 7, 2026
 
 ## Start here
 
-T126 (`2026-10-06T126`) adds an industrials/medtech historical EBITDA baseline. Use
+T127 (`2026-10-07T127`) adds an itemized historical EBITDA reconciliation. Use
 `git log -1` and backend `/health` to verify the exact deployed revision.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T126#view=thesisimports`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T127#view=thesisimports`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`, branch `main`.
-- Previous release: T125 / `14dd027`; T122 model policy remains unchanged.
+- Previous release: T126 / `6d87a60`; T122 model policy remains unchanged.
 - Local agent shares the model registry, reloads changed registry files between jobs, and reports its registry revision in its heartbeat.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
+
+### T127 — itemized EBITDA reconciliation
+
+An optional bridge now records a signed starting EBITDA, its definition/source,
+and up to 20 signed adjustments with source/rationale and recurrence classification.
+Decimal arithmetic must exactly reconcile to the positive historical EBITDA used
+by the operating model. Duplicate names, missing references, zero/nonfinite
+amounts and mismatched totals fail preview and save. Calculated totals are replaced
+on the server, not trusted from the client. Existing valuation formulas are unchanged.
+Manual references do not constitute verified source receipts or GAAP reconciliation;
+recurring/uncertain adjustments remain visible with a sustainability warning.
+Edits reset confirmations and hide stale results. Saved exports retain the bridge.
+
+Validation: 868 safe backend tests, 84 frontend tests, Python compilation and
+production build passed. Synthetic real-component browser checks at 1440/390/320px
+cover signed arithmetic, confirmation reset, mismatched totals, removal and layout.
+No paid research or live case writes were used for QA. Deployment verification is
+pending. Mac agent unchanged; no restart required.
+
+Downloads access was verified on October 7 after the investor enabled it. Fifteen
+permission-only requests (DGX, DHR, DLR, DOV, ELV, ETN, GD, GILD, HCA, HON, HST,
+HUM, IDXX, IQV, LH) were resumed as queued with frozen windows/progress intact.
+This is queue recovery, not completed collection. Issuer-mismatch and other pauses
+remain for separate verification. Next: broader source-linked financial observations
+and independent committee review, plus a user-selected real-source acceptance pack.
 
 ### T126 — industrials / medtech historical EBITDA baseline
 
