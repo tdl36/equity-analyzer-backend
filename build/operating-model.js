@@ -52,7 +52,10 @@ export function OperatingModel({
   };
   var set = (key, value) => edit({
     ...model,
-    [key]: value
+    [key]: value,
+    ...(['baseYear', 'baseRevenue', 'currency', 'ebitdaBasis'].includes(key) ? {
+      baseEbitdaComparable: false
+    } : {})
   });
   var scenario = (name, key, value) => edit({
     ...model,
@@ -126,7 +129,33 @@ export function OperatingModel({
     model: model,
     onChange: edit,
     onResearch: onResearch
-  }), /*#__PURE__*/React.createElement("div", {
+  }), /*#__PURE__*/React.createElement("section", {
+    "aria-label": "Historical EBITDA baseline"
+  }, /*#__PURE__*/React.createElement("h4", null, "Historical EBITDA \xB7 optional"), /*#__PURE__*/React.createElement("p", null, "Compare the industrials / medtech forecast with the base-year starting point. This positive-EBITDA comparison does not change the valuation formula. No accounting reconciliation is implied."), /*#__PURE__*/React.createElement("label", null, "Base-year EBITDA (millions; positive)", /*#__PURE__*/React.createElement("input", {
+    inputMode: "decimal",
+    value: model.baseEbitda || '',
+    onChange: e => edit({
+      ...model,
+      baseEbitda: e.target.value,
+      baseEbitdaComparable: false
+    })
+  })), /*#__PURE__*/React.createElement("label", null, "Base EBITDA \xB7 source, fiscal period and adjustments", /*#__PURE__*/React.createElement("textarea", {
+    value: model.baseEbitdaReference || '',
+    maxLength: 1800,
+    onChange: e => set('baseEbitdaReference', e.target.value)
+  })), /*#__PURE__*/React.createElement(RevenueObservation, {
+    key: "ebitda",
+    metric: "ebitda",
+    api: api,
+    ticker: ticker,
+    model: model,
+    onChange: edit,
+    onResearch: onResearch
+  }), /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: model.baseEbitdaComparable === true,
+    onChange: e => set('baseEbitdaComparable', e.target.checked)
+  }), "I confirm revenue and EBITDA cover the same consolidated fiscal year and currency, and the historical and forecast EBITDA definitions and adjustments are comparable.")), /*#__PURE__*/React.createElement("div", {
     className: "operating-model-grid"
   }, names.map(name => /*#__PURE__*/React.createElement("article", {
     key: name
@@ -159,17 +188,17 @@ export function OperatingModel({
     }
   }, "Remove model from draft")), /*#__PURE__*/React.createElement("p", {
     role: "alert"
-  }, error), output?.results ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h4", null, dirty ? 'Draft calculations · not saved' : `Calculated from saved case R${revision}`), /*#__PURE__*/React.createElement("div", {
+  }, error), output?.results ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h4", null, dirty ? 'Draft calculations · not saved' : `Calculated from saved case R${revision}`), output.baseEbitda && /*#__PURE__*/React.createElement("p", null, "Historical FY", output.baseYear, ": EBITDA ", output.baseEbitda, " million ", output.currency, " \xB7 margin ", output.baseMarginPct, "%. Definition: ", output.ebitdaBasis, ". Source: ", output.baseEbitdaReference, "."), /*#__PURE__*/React.createElement("div", {
     style: {
       overflowX: 'auto'
     }
-  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Scenario"), /*#__PURE__*/React.createElement("th", null, "Revenue (m)"), /*#__PURE__*/React.createElement("th", null, "EBITDA (m)"), /*#__PURE__*/React.createElement("th", null, "EV (m)"), /*#__PURE__*/React.createElement("th", null, "Equity (m)"), /*#__PURE__*/React.createElement("th", null, "Price (", output.currency, ")"), /*#__PURE__*/React.createElement("th", null, "Price return"))), /*#__PURE__*/React.createElement("tbody", null, names.map(name => {
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Scenario"), /*#__PURE__*/React.createElement("th", null, "Revenue (m)"), /*#__PURE__*/React.createElement("th", null, "EBITDA (m)"), /*#__PURE__*/React.createElement("th", null, "EV (m)"), /*#__PURE__*/React.createElement("th", null, "Equity (m)"), /*#__PURE__*/React.createElement("th", null, "Price (", output.currency, ")"), /*#__PURE__*/React.createElement("th", null, "Price return"), output.baseEbitda && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("th", null, "Margin change (pp)"), /*#__PURE__*/React.createElement("th", null, "EBITDA growth \xB7 total")))), /*#__PURE__*/React.createElement("tbody", null, names.map(name => {
     var r = output.results[name];
     return /*#__PURE__*/React.createElement("tr", {
       key: name
     }, /*#__PURE__*/React.createElement("th", null, name), ['revenue', 'ebitda', 'enterpriseValue', 'equityValue', 'impliedPrice'].map(k => /*#__PURE__*/React.createElement("td", {
       key: k
-    }, r[k])), /*#__PURE__*/React.createElement("td", null, r.priceReturnPct, "%"));
+    }, r[k])), /*#__PURE__*/React.createElement("td", null, r.priceReturnPct, "%"), output.baseEbitda && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("td", null, r.marginChangePp), /*#__PURE__*/React.createElement("td", null, r.ebitdaGrowthPct, "%")));
   })))), /*#__PURE__*/React.createElement("h4", null, "Conditional reverse valuation"), /*#__PURE__*/React.createElement("p", null, "At the reference price, base-case EBITDA required is ", output.results.base.reverseValid ? `${output.results.base.impliedEbitdaAtReferencePrice} million ${output.currency}` : 'not interpretable (nonpositive implied EBITDA)', ". This holds the base multiple, net debt, other claims, nonoperating assets and shares fixed. It is not a consensus estimate or a unique market-implied forecast."), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Base-case EBITDA / multiple sensitivity"), /*#__PURE__*/React.createElement("div", {
     style: {
       overflowX: 'auto'

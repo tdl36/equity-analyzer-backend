@@ -4,16 +4,45 @@ Updated: October 6, 2026
 
 ## Start here
 
-T125 (`2026-10-06T125`) restores Settings-key recovery for interrupted summary jobs. Use
+T126 (`2026-10-06T126`) adds an industrials/medtech historical EBITDA baseline. Use
 `git log -1` and backend `/health` to verify the exact deployed revision.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T125#view=thesisimports`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T126#view=thesisimports`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`, branch `main`.
-- Previous release: T124 / `6b6d63c`; T122 model policy remains unchanged.
+- Previous release: T125 / `14dd027`; T122 model policy remains unchanged.
 - Local agent shares the model registry, reloads changed registry files between jobs, and reports its registry revision in its heartbeat.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
+
+### T126 — industrials / medtech historical EBITDA baseline
+
+The investor selected industrials/medtech as the first model expansion. Operating
+scenarios now optionally accept positive consolidated base-year EBITDA, a source
+reference and explicit historical/forecast definition comparability. Decimal
+calculations show historical EBITDA margin, target-minus-historical margin in
+percentage points and total (not annualized) EBITDA growth over the forecast.
+Existing EV/EBITDA valuations and saved models without a baseline are unchanged.
+This is not GAAP-to-adjusted reconciliation, a loss/recovery model, or automated
+financial extraction. Meaning and comparability remain analyst attestations.
+
+The existing reviewed-passage flow now supports EBITDA as well as revenue, with
+separate receipts. Linking EBITDA requires the model year/currency to match and
+sets its definition; changing value/year/currency/definition invalidates the link.
+Preview and each new save recheck source permission/hash and derive receipt fields
+on the server. Exact save retries replay the existing revision. Historical restore
+retains the receipt without re-certifying current availability. Parenthesized
+numbers are excluded from positive-number candidates rather than turning losses
+into positive EBITDA. Unlink keeps the value as a manual input. Saved investment
+map exports preserve both evidence receipts and the historical comparison.
+
+Validation: 864 safe backend and 83 frontend tests passed; synthetic real-component
+browser checks cover 1440/390/320px, arithmetic, stale-result hiding, definition
+confirmation, evidence link/unlink and no page errors/overflow. No production
+cases or research were saved, approved or generated for QA. Build and deployment
+verification follow. Next: explicit reported-to-adjusted EBITDA reconciliation and
+broader financial observations, followed by independent committee review. A real
+user-selected acceptance pack and macOS Downloads access remain outstanding.
 
 ### T125 — saved credential recovery
 
@@ -27,8 +56,7 @@ leaves jobs intact and is logged by exception type only.
 Validation: six synthetic credential/recovery regressions, 860 safe backend tests
 and 82 frontend tests passed. The broad suite still emits existing mocked Lab
 worker exceptions from incomplete SQL fixtures; no live provider work was run.
-Production compilation/build and deployment verification are recorded below when
-complete. No originals or research were modified. Downloads access remains denied
+Python compilation and production build passed. Render reports `14dd0278b08b04ad4ff3160cacb6b1af1d2e166a`; Cloudflare `b5e0eadd-175b-41ba-87b1-dad622af2471` serves byte-matching T125 bundle and service worker. No originals or research were modified. Downloads access remains denied
 by macOS; restore Codex Files and Folders permission before resuming collection.
 Next: complete a user-selected real-source acceptance journey, then broaden typed
 financial observations/accounting reconciliation and sector templates before the
@@ -1518,9 +1546,9 @@ Use `py_compile` for every touched Python module. Do not start paid research, se
 
 Current release markers must stay synchronized:
 
-- `worker.js`: `2026-10-06T125`
-- `service-worker.js`: `20261006-125`
-- `src/app.jsx`: `2026-10-06T125`
+- `worker.js`: `2026-10-06T126`
+- `service-worker.js`: `20261006-126`
+- `src/app.jsx`: `2026-10-06T126`
 
 After an application change:
 

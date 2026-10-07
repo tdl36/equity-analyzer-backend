@@ -67,6 +67,21 @@ def evaluate(data):
                   priceReference=text(data.get('priceReference'), 'reference-price source'),
                   ebitdaBasis=text(data.get('ebitdaBasis'), 'EBITDA definition / adjustments'),
                   scenarios={}, results={})
+    if data.get('baseEbitda') not in (None, ''):
+        base_ebitda = number(data['baseEbitda'], 'base EBITDA', '.000001', '1000000000')
+        if data.get('baseEbitdaComparable') is not True:
+            raise ValueError('Confirm base EBITDA and forecast margins use the same consolidated annual definition.')
+        result.update(baseEbitda=str(base_ebitda), baseEbitdaComparable=True,
+                      baseEbitdaReference=text(data.get('baseEbitdaReference'), 'base EBITDA source / period'))
+        with localcontext() as ctx:
+            ctx.prec = 60
+            result['baseMarginPct'] = money(base_ebitda / base_revenue * 100)
+        if data.get('baseEbitdaObservation') is not None:
+            from financial_observations import validate_model_link
+            result['baseEbitdaObservation'] = validate_model_link(
+                {**result, 'baseEbitdaObservation': data['baseEbitdaObservation']}, 'ebitda')
+    elif data.get('baseEbitdaObservation') is not None:
+        raise ValueError('Unlink EBITDA evidence before removing its base value.')
     if data.get('baseRevenueObservation') is not None:
         from financial_observations import validate_model_link
         result['baseRevenueObservation'] = validate_model_link({**result, 'baseRevenueObservation': data['baseRevenueObservation']})
@@ -97,6 +112,10 @@ def evaluate(data):
                 impliedPrice=money(target), priceReturnPct=money((target / price - 1) * 100),
                 impliedEbitdaAtReferencePrice=money(implied_ebitda),
                 equityFloored=residual < 0, reverseValid=implied_ebitda > 0)
+            if 'baseEbitda' in result:
+                result['results'][name]['marginChangePp'] = money(
+                    values['marginPct'] - base_ebitda / base_revenue * 100)
+                result['results'][name]['ebitdaGrowthPct'] = money((ebitda / base_ebitda - 1) * 100)
         # One-variable sensitivities around the base assumptions. Preserve full precision.
         base = result['scenarios']['base']
         ebitda = base_revenue * (1 + Decimal(base['growthPct']) / 100) ** horizon * Decimal(base['marginPct']) / 100

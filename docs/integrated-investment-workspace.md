@@ -320,3 +320,14 @@ and remains explicitly historical on restore. This is a bounded manual review
 bridge, not general automated financial-fact extraction or reconciliation.
 An in-app/downloadable ticker-to-case guide and isolated free calculator check
 make the delivered journey testable without paid research or production writes.
+
+## T126 implementation record — October 6
+
+Industrials/medtech is the investor-selected first model expansion. Optional
+positive historical EBITDA now anchors margin-change and total EBITDA-growth
+comparisons. Analysts explicitly confirm comparable fiscal scope/currency and
+reported/adjusted EBITDA definitions. Reviewed EBITDA passages have independent
+source receipts with preview/new-save permission and hash rechecks. Valuation
+formulas, old models and historical case revisions remain intact. This is not an
+accounting bridge or independently verified EBITDA definition; reported-to-adjusted
+reconciliation and additional typed financial inputs remain next.

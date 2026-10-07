@@ -126,13 +126,14 @@ def create_blueprint(get_db):
         try:
             data=request.get_json(silent=True)
             model=evaluate(data)
-            if model.get('baseRevenueObservation'):
+            if model.get('baseRevenueObservation') or model.get('baseEbitdaObservation'):
                 from financial_observations import resolve
                 ticker=data.get('ticker','')
                 if not isinstance(ticker,str) or not re.fullmatch(r'[A-Z0-9][A-Z0-9.-]{0,19}',ticker):
                     raise ValueError('Choose the company for this source-linked preview.')
                 with get_db() as (_,cur):
-                    model['baseRevenueObservation']=resolve(model['baseRevenueObservation'],ticker,cur)
+                    for field,metric in (('baseRevenueObservation','revenue'),('baseEbitdaObservation','ebitda')):
+                        if model.get(field):model[field]=resolve(model[field],ticker,cur,metric)
             response=jsonify(model=model)
             response.headers['Cache-Control']='no-store'
             return response
@@ -140,13 +141,15 @@ def create_blueprint(get_db):
             return jsonify(error=str(exc)),400
 
     @bp.route('/api/research/operating-model/<ticker>/revenue-observation',methods=['GET','POST'])
+    @bp.route('/api/research/operating-model/<ticker>/ebitda-observation',methods=['GET','POST'])
     def revenue_observation(ticker):
+        metric='ebitda' if request.path.endswith('/ebitda-observation') else 'revenue'
         from financial_observations import candidates, resolve
         if not re.fullmatch(r'[A-Z0-9][A-Z0-9.-]{0,19}',ticker):return jsonify(error='Invalid ticker'),400
         try:
             with get_db() as (_,cur):
                 if request.method=='POST':
-                    result={'observation':resolve(request.get_json(silent=True),ticker,cur)}
+                    result={'observation':resolve(request.get_json(silent=True),ticker,cur,metric)}
                 else:
                     ident=str(uuid.UUID(request.args.get('runId','')))
                     cur.execute("SELECT to_regclass('company_research_runs') AS name")
@@ -239,9 +242,12 @@ def create_blueprint(get_db):
                 return jsonify(error='A newer investment case was saved. Your unsaved edits are retained; reload and reconcile them before saving.'),409
             if mode=='save':
                 body=operation['body']
-                if body.get('operatingModel',{}).get('baseRevenueObservation'):
+                if any(body.get('operatingModel',{}).get(f) for f in ('baseRevenueObservation','baseEbitdaObservation')):
                     from financial_observations import resolve
-                    try:body['operatingModel']['baseRevenueObservation']=resolve(body['operatingModel']['baseRevenueObservation'],ticker,cur)
+                    try:
+                        for field,metric in (('baseRevenueObservation','revenue'),('baseEbitdaObservation','ebitda')):
+                            if body['operatingModel'].get(field):
+                                body['operatingModel'][field]=resolve(body['operatingModel'][field],ticker,cur,metric)
                     except (ValueError,TypeError,AttributeError) as exc:return jsonify(error=str(exc)),409
                 # Evidence metadata can only originate in a server-reviewed operation.
                 body['evidenceLinks']=(current['body'].get('evidenceLinks',[]) if current else [])

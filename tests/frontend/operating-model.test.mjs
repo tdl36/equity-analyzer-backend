@@ -39,3 +39,12 @@ test('source receipt export preserves provenance and explicitly limits verificat
  for(const value of ['analyst','not independently verified','historical','original-hash','text-hash','&lt;script&gt;','1.0 billions'])assert.ok(html.includes(value),value);
  assert.ok(!html.includes('<script>'));
 });
+
+test('historical EBITDA comparison and evidence survive saved exports',()=>{
+ const m=structuredClone(model);
+ Object.assign(m,{baseEbitda:'200',baseMarginPct:'20.00',baseEbitdaReference:'Synthetic baseline',baseEbitdaObservation:{token:'200',unit:'millions',currency:'USD',valueMillions:'200',fiscalYear:2025,basis:'Adjusted EBITDA',excerpt:'Synthetic EBITDA',originalHash:'ebitda-hash'}});
+ for(const row of Object.values(m.results))Object.assign(row,{marginChangePp:'0.00',ebitdaGrowthPct:'21.00'});
+ const html=operatingModelHtml(m);
+ for(const value of ['Base EBITDA evidence','ebitda-hash','Historical EBITDA: 200','20.00%','21.00%','percentage points','Synthetic baseline'])assert.ok(html.includes(value),value);
+ assert.ok(!operatingModelHtml(model).includes('Historical EBITDA:'));
+});
