@@ -47,8 +47,15 @@ Validation: 876 safe backend tests and 87 frontend tests passed, with Python
 compilation and production build. Synthetic browser checks at 1440/390/320px cover
 cash/debt source linking, net debt, confirmation reset, committee findings, dissent,
 source hashes and export; no overflow or page errors. Model-policy gate passes with
-no protected defaults changed. Deployment verification pending. No paid committee
-or live investment-case saves were used for QA.
+no protected defaults changed. Render recovered from a brief rollout 502 and reports
+`72743fa21ddb2eb060d7dd42c7364f19c1382d43`. Cloudflare
+`9665d04f-c122-4be1-bba7-e96f923a1af5` serves byte-matching T128 bundle/service
+worker. Live authenticated committee listing confirms five roles and the new schema;
+invalid submission returns 400 and unauthenticated listing 401. Synthetic nonpersistent
+preview verifies historical net debt 200.00 and unchanged 21.95 share value; missing
+scope confirmation returns 400. No paid committee or live investment-case saves
+were used for QA. Predeployment audio/pipeline/SYK research checks found no active
+jobs; the unchanged September 21 legacy Lab row was preserved.
 Mac agent and model registry unchanged. Next: user-selected real-source acceptance
 and comparison with the existing single-reviewer research on identical originals;
 additional financial metrics, signed source observations and deeper sector templates.
