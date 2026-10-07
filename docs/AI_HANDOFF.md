@@ -39,8 +39,14 @@ map exports preserve both evidence receipts and the historical comparison.
 Validation: 864 safe backend and 83 frontend tests passed; synthetic real-component
 browser checks cover 1440/390/320px, arithmetic, stale-result hiding, definition
 confirmation, evidence link/unlink and no page errors/overflow. No production
-cases or research were saved, approved or generated for QA. Build and deployment
-verification follow. Next: explicit reported-to-adjusted EBITDA reconciliation and
+cases or research were saved, approved or generated for QA. Python compilation and production build pass. Render recovered from a brief rollout
+502 and reports `6d87a60ba9f6fa871c741774c1aff3eb2228954e`. Cloudflare
+`fe8baa60-474b-40d8-a370-0cd9b02688e2` serves byte-matching T126 bundle and
+service worker. Authenticated nonpersistent synthetic preview returns 20% base
+margin, 21% total EBITDA growth and unchanged 21.95 share value. Invalid evidence
+returns 400; unauthenticated access returns 401. No active audio/pipeline jobs
+preceded deployment; the unchanged September 21 legacy Lab row was preserved.
+The Mac agent is unchanged and was not restarted. Next: explicit reported-to-adjusted EBITDA reconciliation and
 broader financial observations, followed by independent committee review. A real
 user-selected acceptance pack and macOS Downloads access remain outstanding.
 
