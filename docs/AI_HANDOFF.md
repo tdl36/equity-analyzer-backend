@@ -30,7 +30,11 @@ failures; no paid explanation was run. The reported original browser failure was
 not reproduced; direct backend CORS preflight was healthy during diagnosis.
 Validation: 876 safe backend tests and 90 frontend tests passed; production build
 passed. Live authenticated empty-input submission through the hosted proxy returned
-400 before any model call. Hosted release verification pending.
+400 before any model call. Render recovered from a brief rollout 502 and reports
+`3bfbb1f081b46eb28ed8c8fd351016f56ce2364f`. Cloudflare
+`05cf4a19-adb7-44d1-8038-7c67013422f2` serves T129 with byte-matching
+versioned bundle and service worker. Unversioned bundle remained intermediary-cached;
+the release HTML uses versioned URLs. Mac agent unchanged; no restart required.
 
 ### T128 — historical balance sheet and investment committee
 
