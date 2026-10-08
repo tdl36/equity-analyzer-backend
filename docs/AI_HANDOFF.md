@@ -1,19 +1,36 @@
 # Charlie AI engineering handoff
 
-Updated: October 7, 2026
+Updated: October 8, 2026
 
 ## Start here
 
-T128 (`2026-10-07T128`) adds source-linked historical cash/debt and a draft investment committee. Use
+T129 (`2026-10-08T129`) routes Explain uploads and polling through the same-origin API proxy. Use
 `git log -1` and backend `/health` to verify the exact deployed revision.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T128#view=thesisimports`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T129#view=thesisimports`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`, branch `main`.
 - Previous release: T127 / `e4b40b7`; T122 model policy remains unchanged.
 - Local agent shares the model registry, reloads changed registry files between jobs, and reports its registry revision in its heartbeat.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
+
+### T129 — Explain upload connection handling
+
+Explain dispatch, status polling and follow-ups now use the app API proxy, avoiding
+an unnecessary direct cross-origin backend connection. Dispatch is asynchronous,
+so the old long-request timeout rationale does not apply. Network failures now
+preserve attachments and describe uncertain submission without automatically
+retrying a potentially paid POST. Oversized uploads, unavailable backend responses
+(including HTML) and expired sessions show actionable errors. Initial polling stops
+on terminal client errors instead of waiting twelve minutes for an expired job.
+
+Regression tests use synthetic screenshot payloads and simulated network/HTTP
+failures; no paid explanation was run. The reported original browser failure was
+not reproduced; direct backend CORS preflight was healthy during diagnosis.
+Validation: 876 safe backend tests and 90 frontend tests passed; production build
+passed. Live authenticated empty-input submission through the hosted proxy returned
+400 before any model call. Hosted release verification pending.
 
 ### T128 — historical balance sheet and investment committee
 

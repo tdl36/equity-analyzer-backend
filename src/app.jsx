@@ -4,6 +4,7 @@
 // existing `React.createElement`, `React.Fragment`, and `ReactDOM.render`
 // calls inside the main app body continue to work unchanged.
 import * as React from 'react';
+import {explainRequest} from './explain-request.mjs';
 import {createReadScheduler} from './api-read-scheduler.mjs';
 import {CatalystComparison} from './catalyst-comparison';
 import {PortfolioHeatmap} from './portfolio-heatmap';
@@ -94,7 +95,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-10-07T128';
+        const BUILD_VERSION = '2026-10-08T129';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -26755,10 +26756,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             mimeType: f.mimeType || '',
                                                         })),
                                                     };
-                                                    // Use DIRECT_API_URL to bypass Cloudflare's 100s idle timeout.
-                                                    // Backend now returns a jobId immediately and runs the
-                                                    // Anthropic call in a daemon thread; we poll for completion.
-                                                    const dispatchRes = await fetch(`${DIRECT_API_URL}/api/decipher`, {
+                                                    // Dispatch and polling are short requests. Use the same-origin
+                                                    // proxy so uploads do not depend on a cross-origin connection.
+                                                    const dispatchRes = await explainRequest(API_URL, '', {
                                                         method: 'POST',
                                                         headers: { 'Content-Type': 'application/json' },
                                                         body: JSON.stringify(body),
@@ -26778,7 +26778,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     for (let i = 0; i < maxIterations; i++) {
                                                         await new Promise(r => setTimeout(r, pollInterval));
                                                         try {
-                                                            const r = await fetch(`${DIRECT_API_URL}/api/decipher/${jobId}`);
+                                                            const r = await explainRequest(API_URL, `/${jobId}`);
                                                             if (!r.ok) continue; // transient error, keep trying
                                                             const j = await r.json();
                                                             if (j.status === 'complete') {
@@ -26792,11 +26792,12 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             }
                                                             // status is 'queued' or 'running' — keep polling
                                                         } catch (e) {
+                                                            if ([400, 401, 403, 404, 413].includes(e.status)) throw e;
                                                             // Network blip on a single poll is fine — keep trying
                                                         }
                                                     }
                                                     if (!result) {
-                                                        setDecipherError('Job timed out after 12 minutes. Backend may still be running — check Render logs.');
+                                                        setDecipherError('Charlie has not returned the explanation after 12 minutes. The job may still be running; your attachments are still here. No new request has been submitted.');
                                                         setDecipherLoading(false);
                                                         return;
                                                     }
@@ -26818,7 +26819,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     setDecipherResult(entry);
                                                     setDecipherHistory(prev => [entry, ...prev].slice(0, 20));
                                                 } catch (e) {
-                                                    setDecipherError(String(e));
+                                                    setDecipherError(e.message || String(e));
                                                 } finally {
                                                     setDecipherLoading(false);
                                                 }
@@ -27277,7 +27278,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                     setDecipherChatInput('');
                                                                     setDecipherChats(prev => ({ ...prev, [r.id]: { ...chat, inFlight: true, error: null, startedAt: Date.now(), elapsedSec: 0 } }));
                                                                     try {
-                                                                        const dispatch = await fetch(`${DIRECT_API_URL}/api/decipher/${r.jobId}/followup`, {
+                                                                        const dispatch = await explainRequest(API_URL, `/${r.jobId}/followup`, {
                                                                             method: 'POST',
                                                                             headers: { 'Content-Type': 'application/json' },
                                                                             body: JSON.stringify({ question: q }),
@@ -27292,7 +27293,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                         for (let i = 0; i < maxIter; i++) {
                                                                             await new Promise(res => setTimeout(res, 3000));
                                                                             try {
-                                                                                const pr = await fetch(`${DIRECT_API_URL}/api/decipher/followup/${fid}`);
+                                                                                const pr = await explainRequest(API_URL, `/followup/${fid}`);
                                                                                 if (!pr.ok) continue;
                                                                                 const pj = await pr.json();
                                                                                 if (pj.status === 'complete') { answer = pj.answer || ''; meta = { tokensIn: pj.inputTokens, tokensOut: pj.outputTokens, cacheRead: pj.cacheReadTokens }; break; }
