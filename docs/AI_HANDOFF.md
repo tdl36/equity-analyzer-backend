@@ -15,7 +15,7 @@ T129 (`2026-10-08T129`) routes Explain uploads and polling through the same-orig
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
 
-### T130 — native Stock Research Studio (release verification pending)
+### T131 — native Stock Research Studio (release verification pending)
 
 Stock analysis is a new investment-case workspace tab with Snapshot, Deep research
 and Update thesis modes. The supplied Studio schema/doctrine now run through
@@ -28,7 +28,7 @@ the investor reviews and saves it.
 
 Nine-panel source-linked HTML infographics are rendered without an image model and
 saved idempotently in existing Studio storage. Comparable positive historical series
-have conservative charts; unavailable or unresolved fields remain gaps. Analyst
+have conservative charts with readable labels and bounded horizontal scrolling; unavailable or unresolved fields remain gaps. Analyst
 figure review is required before saving a visual. Model review is not factual proof.
 No new secrets or model defaults. Current source-pack bounds and manual restart/retry
 rules are retained. Legacy Deep Research and Committee remain available.
