@@ -29,3 +29,28 @@ An unchanged submission reuses its request ID. Look at saved runs after a networ
 Synthetic tests cover schema rejection, unknown citations, quotation matching, interrupted calls, conservative chart parsing, escaping, comparisons and thesis draft safeguards. Disposable PostgreSQL tests exercise the real worker, report/version readback across blueprint restart, duplicate submission, canonical company linkage, source permission changes, comparison selection and idempotent Studio storage. They never connect to the user's database or a model provider. Browser checks cover 1440/390/320px with the real component and synthetic API responses.
 
 No paid real-source report or live image generation is performed solely for QA. User-driven real-source acceptance remains outstanding. Licensed consensus/market data, live public-web retrieval and AI-generated company illustrations are not added in this integration. Visuals use deterministic typography, panels and charts; export is HTML/JSON, with PDF available through browser printing. Reports can describe scenarios but do not independently certify their arithmetic; Charlie's existing Operating scenarios remains the validated calculation workspace.
+
+## T132: automatic collector originals
+
+New eligible AlphaSense handoffs to STOCKS now create a durable local import queue
+in the collector transaction. The Mac agent processes up to three originals per
+manifest cycle, checks source permissions and exact bytes again, and uploads through
+an agent-authenticated endpoint. Exact filename/hash replays are safe after an
+uncertain response; changed existing originals and restrictions are preserved.
+Transient failures retry with bounded backoff (up to one hour); changed/missing
+files and permission issues remain visible until corrected. An interrupted upload
+lease expires after three minutes. No model call, thesis edit or research acceptance
+is triggered by this import.
+
+Stock Analysis shows the last reported queue status under **Originals arriving from
+AlphaSense**, including the Mac snapshot time and actionable failures. This panel
+shows the latest 100 import records across companies, not a historical archive.
+The source picker independently lists cloud-stored originals. The Mac must be
+running and connected; an offline snapshot is not live progress.
+
+This queue covers newly handed-off, research-eligible STOCKS PDFs only. Existing
+CATALYSTS command imports retain their verified command workflow. Historical folders
+are not automatically backfilled by this queue. For a specifically authorized prior
+collection, replay `charlie_collector.py handoff DOCUMENT_ID` to enqueue its already
+verified original without moving or deleting it. Reference-only originals remain
+private and cannot enter the queue. No browser session or credentials are exported.

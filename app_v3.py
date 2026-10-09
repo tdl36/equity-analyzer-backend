@@ -29245,6 +29245,10 @@ app.register_blueprint(pipeline_recovery.create_blueprint(get_db))
 import pipeline_delivery
 app.register_blueprint(pipeline_delivery.create_blueprint(get_db))
 
+import collection_original_sync
+app.register_blueprint(collection_original_sync.create_blueprint(get_db,
+    lambda: bool(CHARLIE_API_KEY) and hmac.compare_digest(request.headers.get('Authorization',''), 'ApiKey '+CHARLIE_API_KEY)))
+
 import command_source_import
 app.register_blueprint(command_source_import.create_blueprint(get_db))
 

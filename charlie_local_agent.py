@@ -4114,6 +4114,10 @@ def main() -> None:
                 try:
                     auto_unzip_stock_folders()
                     auto_unzip_catalyst_folders()
+                    try:
+                        from collection_original_sync import sync as sync_collected_originals
+                        sync_collected_originals()
+                    except Exception as exc: log.warning("Original import queue unavailable: %s",type(exc).__name__)
                     try: sync_collection_control()
                     except Exception as exc: log.debug("Collection control sync unavailable: %s",type(exc).__name__)
                     push_file_manifest()

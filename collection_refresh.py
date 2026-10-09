@@ -213,7 +213,8 @@ class RefreshManager:
                         if ticker_name(path.name)==path.name:values.append(path.name)
                     except ValueError:pass
             folders[name]=sorted(values)
-        return {'policies':policies,'requests':requests,'worker':dict(worker) if worker else None,'folders':folders}
+        from collection_original_sync import snapshot
+        return {'policies':policies,'requests':requests,'worker':dict(worker) if worker else None,'folders':folders,'originalImports':snapshot(self.c)}
 
     def claim(self):
         self.due()

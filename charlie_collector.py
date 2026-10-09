@@ -205,6 +205,8 @@ class Collector:
             self.db.commit()
         for column in ('analyst','author_evidence'):
             if column not in columns:self.db.execute(f'ALTER TABLE documents ADD COLUMN {column} TEXT')
+        from collection_original_sync import initialize
+        initialize(self.db)
         task_columns = {r[1] for r in self.db.execute('PRAGMA table_info(tasks)')}
         for column in ('paused_status', 'evidence_after'):
             if column not in task_columns:
@@ -372,6 +374,8 @@ class Collector:
             if row['usage'] == 'reference_only':
                 raise ValueError('Reference-only original remains in staging; AI pipeline handoff is blocked')
             if row["status"] in ("handed_off", "duplicate"):
+                from collection_original_sync import enqueue
+                enqueue(self, document_id)
                 return dict(row)
             from source_selection_gate import check
             check(self.db,row['run'],row['ticker'],row['kind'],row['publisher'],row['source_url'],analyst=row['analyst'],author_evidence=row['author_evidence'])
@@ -403,6 +407,8 @@ class Collector:
                 status = "handed_off"
             self.db.execute("UPDATE documents SET destination=?,status=? WHERE id=?",
                             (str(target), status, document_id))
+            from collection_original_sync import enqueue
+            enqueue(self, document_id)
             self.event(row["run"], status, document=document_id, destination=str(target))
         return dict(self.db.execute("SELECT * FROM documents WHERE id=?", (document_id,)).fetchone())
 

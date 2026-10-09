@@ -14,6 +14,12 @@ def validate(data):
     if not isinstance(data, dict):
         raise ValueError('Expected a source object')
     uuid.UUID(data.get('commandId', ''))
+    return validate_original(data)
+
+
+def validate_original(data):
+    if not isinstance(data, dict):
+        raise ValueError('Expected a source object')
     name = data.get('filename', '')
     if (not isinstance(name, str) or not 1 <= len(name) <= 255 or Path(name).name != name
             or name.startswith('.') or '\\' in name or Path(name).suffix.lower() not in ('.pdf','.txt','.html','.htm')):

@@ -53,6 +53,7 @@ export function StockAnalysis({
     [files, setFiles] = React.useState([]),
     [confirmed, setConfirmed] = React.useState(false),
     [priorId, setPriorId] = React.useState('');
+  var [importState, setImportState] = React.useState(null);
   var [error, setError] = React.useState(''),
     [notice, setNotice] = React.useState(''),
     [busy, setBusy] = React.useState(false),
@@ -116,6 +117,30 @@ export function StockAnalysis({
       clearInterval(timer);
     };
   }, [ticker, api, reload]);
+  React.useEffect(() => {
+    var live = true;
+    var load = async () => {
+      try {
+        var r = await fetch(api + '/api/collection/control', {
+          signal: AbortSignal.timeout(15000)
+        });
+        if (!r.ok) throw Error();
+        var d = await r.json();
+        if (live) setImportState({
+          rows: (d.snapshot?.originalImports || []).filter(x => x.ticker === ticker),
+          updated: d.updatedAt
+        });
+      } catch {
+        if (live) setImportState(null);
+      }
+    };
+    load();
+    var timer = setInterval(load, 30000);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+  }, [ticker, api]);
   React.useEffect(() => {
     var live = true,
       inflight = false;
@@ -232,6 +257,15 @@ export function StockAnalysis({
   }, error, " ", /*#__PURE__*/React.createElement("button", {
     onClick: () => setReload(x => x + 1)
   }, "Reload")), /*#__PURE__*/React.createElement("details", {
+    className: "sa-prepare"
+  }, /*#__PURE__*/React.createElement("summary", null, "Originals arriving from AlphaSense"), /*#__PURE__*/React.createElement("p", null, "Eligible originals saved by the collector upload automatically while the Mac agent is running and connected. Each upload verifies the original file. Importing does not start research."), importState?.updated ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("small", null, "Last Mac update: ", new Date(importState.updated).toLocaleString(), ". This is the last reported state; an offline Mac cannot send new updates."), importState.rows.length ? importState.rows.map(x => /*#__PURE__*/React.createElement("article", {
+    key: x.document
+  }, /*#__PURE__*/React.createElement("strong", null, x.filename), /*#__PURE__*/React.createElement("p", null, {
+    queued: 'Waiting for Mac upload',
+    uploading: 'Uploading and verifying',
+    imported: 'Original verified in Charlie',
+    attention: 'Import needs attention — retry scheduled'
+  }[x.status] || x.status), x.issue && /*#__PURE__*/React.createElement("p", null, x.issue))) : /*#__PURE__*/React.createElement("p", null, "No automatic imports reported for this company yet.")) : /*#__PURE__*/React.createElement("p", null, "Import status unavailable. Check the Mac agent and connection; this does not mean there are no queued originals.")), /*#__PURE__*/React.createElement("details", {
     className: "sa-prepare",
     open: !inventory?.runs.length
   }, /*#__PURE__*/React.createElement("summary", null, "Prepare an analysis"), /*#__PURE__*/React.createElement("fieldset", {

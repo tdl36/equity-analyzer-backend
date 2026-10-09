@@ -4,17 +4,31 @@ Updated: October 9, 2026
 
 ## Start here
 
-T131 (`2026-10-09T131`) adds native Stock Research Studio under Companies → Stock analysis.
-Deployed source revision: `07a5a3b590acb4f92df0b3bbd80af8fd02a493e5`; later documentation-only
+T132 (`2026-10-09T132`) adds automatic original imports for native Stock Research Studio.
+Previous deployed source revision (T131): `07a5a3b590acb4f92df0b3bbd80af8fd02a493e5`; later documentation-only
 commits may be ahead of the backend. Verify the exact runtime revision with `/health`.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T131#view=stockanalysis`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T132#view=stockanalysis`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`, branch `main`.
-- Previous release: T129 / `3bfbb1f`; T122 model policy remains unchanged.
+- Previous release: T131 / `07a5a3b`; T122 model policy remains unchanged.
 - Local agent shares the model registry, reloads changed registry files between jobs, and reports its registry revision in its heartbeat.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
+
+### T132 — automatic originals into Stock Analysis
+
+New collector-approved STOCKS handoffs now enqueue exact-byte cloud imports.
+`collection_original_sync.py` provides durable retry/lease state, agent-authenticated
+non-overwriting imports and hash receipts. The Mac processes three per manifest
+cycle; collection snapshots expose the last 100 records and Stock Analysis shows
+status/failures with snapshot time. No paid research or thesis changes are triggered.
+Validation: 895 safe backend tests and 93 frontend tests passed; production build
+and unchanged-model policy gate passed. Synthetic browser checks at 1440/390/320px
+verified queue failure visibility and no horizontal overflow. Production deployment
+and the authorized six-original SYK backfill are to be verified after this commit.
+Only explicitly replayed older handoffs are backfilled; CATALYSTS retains the
+existing command import path. See docs/stock-analysis.md for dependencies/recovery.
 
 ### T131 — native Stock Research Studio
 
