@@ -4,17 +4,44 @@ Updated: October 9, 2026
 
 ## Start here
 
-T132 (`2026-10-09T132`) adds automatic original imports for native Stock Research Studio.
-Deployed source revision: `66f67aa4bb4c927e059886b6c19039e0b7b2f2ec`; later documentation-only
-commits may be ahead of the backend. Verify the exact runtime revision with `/health`.
+T133 (`2026-10-09T133`) adds one durable end-to-end research assignment in Stock Analysis.
+Release validation is recorded below; verify the exact runtime revision with `/health`.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T132#view=stockanalysis`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T133#view=stockanalysis`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`, branch `main`.
-- Previous release: T131 / `07a5a3b`; T122 model policy remains unchanged.
+- Previous release: T132 / `66f67aa4`; T122 model policy remains unchanged.
 - Local agent shares the model registry, reloads changed registry files between jobs, and reports its registry revision in its heartbeat.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
+
+### T133 — one end-to-end research assignment
+
+Stock Analysis takes ticker/date range/output choices and coordinates managed
+AlphaSense collection, iCloud STOCKS handoff, exact-byte cloud imports, the existing
+bounded Stock Analysis engine and saved source-linked drafts. Stable child IDs,
+PostgreSQL ownership, local cancellation tombstones and frozen source/baseline
+checks protect restart and duplicate dispatch. It advances on Mac heartbeats even
+when the browser page is closed. Existing policies and live theses are preserved.
+Output defaults are editable. Summary note, stock summary and compact draft visual
+share the full report; a thesis draft/update goes to the existing pending-review
+inbox. Thesis updates are additive evidence proposals, not automatic reconciliation
+or approval. Partial outputs remain accessible after a later failure.
+
+Dependencies remain Mac awake/online, running Mac agent, scheduled Codex worker,
+signed-in Chrome/AlphaSense, source permission/selection, and configured model
+budget/key. Unknown paid outcomes require explicit retry acknowledgement. At most
+eight selected originals; no exhaustive-market or fresh-consensus claim. See
+`docs/research-assignments.md` and the updated collection worker runbook.
+
+Synthetic validation covers actual stock worker to actual thesis inbox with a
+mock model, temporary SQLite collection/import/cancel/replay and disposable
+PostgreSQL recovery/baseline/hash/duplicate tests. Desktop/mobile checks at
+1440/390/320px cover submission, progress and stop with intercepted API calls.
+907 safe backend tests and 93 frontend tests passed; production build and unchanged
+model-policy gate passed. Additional focused reruns cover final draft rendering.
+No new live collection, paid research, thesis approval or portfolio mutation was
+performed for QA. Deployment verification pending the release procedure.
 
 ### T132 — automatic originals into Stock Analysis
 

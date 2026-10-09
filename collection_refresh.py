@@ -92,7 +92,26 @@ class RefreshManager:
             if old:
                 if old['input']!=encoded:raise ValueError('Cloud command ID conflict')
                 return json.loads(old['result'])
-            if value['action']=='research_task':
+            if value['action'] in ('research_assignment','cancel_assignment'):
+                self.db.execute('CREATE TABLE IF NOT EXISTS cancelled_assignments(id TEXT PRIMARY KEY)')
+                raw=value['payload'];aid=str(uuid.UUID(raw['assignmentId']))
+                if value['action']=='cancel_assignment':
+                    self.db.execute('INSERT OR IGNORE INTO cancelled_assignments VALUES(?)',(aid,))
+                    rows=self.db.execute("SELECT id FROM refresh_requests WHERE json_extract(config,'$.assignment.assignmentId')=? AND status NOT IN ('complete','cancelled')",(aid,)).fetchall()
+                    for r in rows:self._cancel(r['id'])
+                    result={'assignmentId':aid,'cancelled':True}
+                elif self.db.execute('SELECT id FROM cancelled_assignments WHERE id=?',(aid,)).fetchone():
+                    result={'assignmentId':aid,'cancelled':True}
+                else:
+                    from research_assignments import plan
+                    p=plan(raw);p.update(assignmentId=aid,sourcePolicy=raw['sourcePolicy'])
+                    instructions=('Screen all four source categories in the fixed date window. Select at most eight distinct eligible originals in total for the requested research, prioritizing the latest event/earnings transcripts, presentations, material company releases and substantive broker analysis, including relevant contrary views. Record reviewed counts and explain selection and omissions. Do not collect outside this window or invent missing coverage. '+p['instruction'])
+                    cfg=dict(ticker=p['ticker'],hours=0,enabled=True,createFolder=True,lookbackDays=7,workflow='thesis',kinds=list(KINDS),instructions=instructions)
+                    (self.c.stocks/p['ticker']).mkdir(exist_ok=True)
+                    if not self.db.execute('SELECT ticker FROM refresh_policies WHERE ticker=?',(p['ticker'],)).fetchone():self._save(cfg)
+                    rid=self._enqueue({'ticker':p['ticker'],'config':json.dumps(cfg),'last_success':None},manual=True,event={'id':command_id,'reason':'Research assignment','url':''},assignment=p)
+                    result={'refreshRequestId':rid,'assignmentId':aid}
+            elif value['action']=='research_task':
                 from research_commands import plan
                 raw=value['payload'];p=plan({**raw,'date':raw['until'],'days':(datetime.fromisoformat(raw['until'])-datetime.fromisoformat(raw['since'])).days+1})
                 tk=p['ticker'];topic=f"{tk} {p['until']} {p['kind']} {command_id[:8]}"
@@ -134,7 +153,7 @@ class RefreshManager:
             self.db.execute('INSERT INTO cloud_control_receipts VALUES(?,?,?)',(command_id,encoded,json.dumps(result)))
             return result
 
-    def _enqueue(self, row, manual=False, event=None, command=None):
+    def _enqueue(self, row, manual=False, event=None, command=None, assignment=None):
         # Caller holds the collector transaction/operation lock.
         existing = self.db.execute("SELECT id FROM refresh_requests WHERE ticker=? AND status NOT IN ('complete','cancelled') ORDER BY created LIMIT 1", (row['ticker'],)).fetchone()
         if existing and not event:
@@ -151,12 +170,15 @@ class RefreshManager:
             from collection_source_sync import frozen_default
             default=frozen_default(self.db)
             if default is not None:cfg['sourcePolicy']=default
+        if assignment:cfg.update(assignment=assignment,sourcePolicy=assignment['sourcePolicy'])
         today = datetime.fromtimestamp(self.clock(), timezone.utc).date()
         since = today - timedelta(days=cfg['lookbackDays'] - 1)
         if row['last_success']:
             since = min(today, datetime.fromisoformat(row['last_success']).date() - timedelta(days=2))
         if command:
             since=datetime.fromisoformat(command['since']).date();today=datetime.fromisoformat(command['until']).date()
+        if assignment:
+            since=datetime.fromisoformat(assignment['since']).date();today=datetime.fromisoformat(assignment['until']).date()
         topic = cfg['topic'] or None
         if topic:
             folder = self.c.catalysts / cfg['ticker'] / topic
@@ -165,7 +187,7 @@ class RefreshManager:
             folder.mkdir(exist_ok=True)
             if command:(folder/'.charlie-collection-pending').write_text(event['id'])
         run, request_id = uuid.uuid4().hex[:12], str(uuid.uuid4())
-        cfg['sourceReviewId']=event['id'] if command else request_id
+        cfg['sourceReviewId']=event['id'] if command or assignment else request_id
         if topic and cfg.get('sourcePolicy'):(folder/'.charlie-collection-pending').write_text(request_id)
         self.db.execute('INSERT INTO runs(id,created,since,until_date,topic) VALUES(?,?,?,?,?)',
                         (run, now(), since.isoformat(), today.isoformat(), topic))
@@ -317,6 +339,20 @@ class RefreshManager:
         result = {'newDocuments':len(delivered),'heldDocuments':sum(d['usage']=='reference_only' for d in collection['documents']),
                   'verification':verification, 'research':'existing Charlie intake' if delivered else 'no new eligible documents'}
         cfg = json.loads(row['config'])
+        if cfg.get('assignment'):
+            from collection_original_sync import sync
+            sync(self.c,limit=8,only_run=row['run'])
+            pack={}
+            for d in collection['documents']:
+                if d['usage']!='research' or d['status'] not in ('handed_off','duplicate'):continue
+                q=self.db.execute('SELECT status,receipt FROM original_imports WHERE document=?',(d['id'],)).fetchone()
+                receipt=json.loads(q['receipt']) if q and q['receipt'] else {}
+                if not q or q['status']!='imported' or receipt.get('sha256')!=d['sha256']:
+                    raise ValueError('Original cloud import is pending or needs attention. Keep this collection unfinished; inspect Originals arriving from AlphaSense and retry after exact-byte verification.')
+                pack[receipt['filename']]={'filename':receipt['filename'],'sha256':receipt['sha256'],'sourceUrl':d['source_url']}
+            if len(pack)>8:raise ValueError('Assignment source pack exceeds eight originals; inspect selection before dispatch.')
+            result['assignmentSources']=list(pack.values())
+            result['research']='Coordinating assignment will generate requested drafts after cloud verification'
         public_count=0
         if cfg.get('researchCommand') or (cfg.get('sourcePolicy') and cfg.get('topic')):
             from catalyst_sources import inventory, fingerprint, record_dispatch

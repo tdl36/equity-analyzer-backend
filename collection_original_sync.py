@@ -58,7 +58,7 @@ def payload(collector, row):
         sourceUrl=row['source_url'],publisher=row['publisher'],published=row['published'])
 
 
-def sync(collector=None, post=None, limit=3, clock=time.time):
+def sync(collector=None, post=None, limit=3, clock=time.time, only_run=None):
     """Retry exact-byte imports after restart/timeouts; never retry research generation."""
     from charlie_collector import Collector
     own=collector is None;c=collector or Collector();results=[]
@@ -75,7 +75,7 @@ def sync(collector=None, post=None, limit=3, clock=time.time):
         for _ in range(min(max(limit,0),10)):
             owner=uuid.uuid4().hex;now=clock()
             with c.lock():
-                q=c.db.execute("SELECT * FROM original_imports WHERE status!='imported' AND next_attempt<=? AND COALESCE(lease_until,0)<=? ORDER BY next_attempt,updated LIMIT 1",(now,now)).fetchone()
+                q=c.db.execute("SELECT * FROM original_imports WHERE status!='imported' AND next_attempt<=? AND COALESCE(lease_until,0)<=? AND (? IS NULL OR document IN (SELECT id FROM documents WHERE run=?)) ORDER BY next_attempt,updated LIMIT 1",(now,now,only_run,only_run)).fetchone()
                 if not q:break
                 c.db.execute("UPDATE original_imports SET status='uploading',owner=?,lease_until=?,attempts=attempts+1,updated=? WHERE document=?",(owner,now+180,now,q['document']))
                 row=c.db.execute('SELECT d.*,r.topic FROM documents d JOIN runs r ON r.id=d.run WHERE d.id=?',(q['document'],)).fetchone()

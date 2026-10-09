@@ -1,5 +1,6 @@
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
 import * as React from 'react';
+import { ResearchAssignment } from './research-assignment';
 import { sections, label, supported, reportStats, thesisDraft, downloadText } from './stock-analysis-model.mjs';
 function Field({
   value,
@@ -252,7 +253,15 @@ export function StockAnalysis({
     className: "sa-heading"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("small", null, "CHARLIE / STOCK RESEARCH STUDIO"), /*#__PURE__*/React.createElement("h3", null, "Understand the business.", /*#__PURE__*/React.createElement("br", null), "Test the investment case."), /*#__PURE__*/React.createElement("p", null, "Structured research, a source-linked visual, and a record of what changed.")), /*#__PURE__*/React.createElement("div", {
     className: "sa-company"
-  }, /*#__PURE__*/React.createElement("strong", null, ticker), /*#__PURE__*/React.createElement("span", null, "Saved thesis R", revision))), error && /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("strong", null, ticker), /*#__PURE__*/React.createElement("span", null, "Saved thesis R", revision))), /*#__PURE__*/React.createElement(ResearchAssignment, {
+    api: api,
+    ticker: ticker,
+    disabled: disabled,
+    onReport: id => {
+      setSelected(id);
+      setReload(x => x + 1);
+    }
+  }), error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
   }, error, " ", /*#__PURE__*/React.createElement("button", {
     onClick: () => setReload(x => x + 1)
@@ -266,9 +275,8 @@ export function StockAnalysis({
     imported: 'Original verified in Charlie',
     attention: 'Import needs attention — retry scheduled'
   }[x.status] || x.status), x.issue && /*#__PURE__*/React.createElement("p", null, x.issue))) : /*#__PURE__*/React.createElement("p", null, "No automatic imports reported for this company yet.")) : /*#__PURE__*/React.createElement("p", null, "Import status unavailable. Check the Mac agent and connection; this does not mean there are no queued originals.")), /*#__PURE__*/React.createElement("details", {
-    className: "sa-prepare",
-    open: !inventory?.runs.length
-  }, /*#__PURE__*/React.createElement("summary", null, "Prepare an analysis"), /*#__PURE__*/React.createElement("fieldset", {
+    className: "sa-prepare"
+  }, /*#__PURE__*/React.createElement("summary", null, "Use originals already in Charlie"), /*#__PURE__*/React.createElement("fieldset", {
     disabled: disabled || busy || !inventory || !!error || unfinished
   }, /*#__PURE__*/React.createElement("div", {
     className: "sa-form-grid"

@@ -1,4 +1,5 @@
 import * as React from 'react';
+import {ResearchAssignment} from './research-assignment';
 import {sections,label,supported,reportStats,thesisDraft,downloadText} from './stock-analysis-model.mjs';
 
 function Field({value,path,citations,sources}){
@@ -27,9 +28,10 @@ export function StockAnalysis({api,ticker,revision,disabled,onDraft}){
  const sourceProps={citations:run?.state?.citations||{},sources:run?.sources||[]};
  return <section className="stock-analysis" aria-label="Stock analysis"><style>{styles}</style>
  <header className="sa-heading"><div><small>CHARLIE / STOCK RESEARCH STUDIO</small><h3>Understand the business.<br/>Test the investment case.</h3><p>Structured research, a source-linked visual, and a record of what changed.</p></div><div className="sa-company"><strong>{ticker}</strong><span>Saved thesis R{revision}</span></div></header>
+ <ResearchAssignment api={api} ticker={ticker} disabled={disabled} onReport={id=>{setSelected(id);setReload(x=>x+1);}}/>
  {error&&<p role="alert">{error} <button onClick={()=>setReload(x=>x+1)}>Reload</button></p>}
  <details className="sa-prepare"><summary>Originals arriving from AlphaSense</summary><p>Eligible originals saved by the collector upload automatically while the Mac agent is running and connected. Each upload verifies the original file. Importing does not start research.</p>{importState?.updated?<><small>Last Mac update: {new Date(importState.updated).toLocaleString()}. This is the last reported state; an offline Mac cannot send new updates.</small>{importState.rows.length?importState.rows.map(x=><article key={x.document}><strong>{x.filename}</strong><p>{({queued:'Waiting for Mac upload',uploading:'Uploading and verifying',imported:'Original verified in Charlie',attention:'Import needs attention — retry scheduled'})[x.status]||x.status}</p>{x.issue&&<p>{x.issue}</p>}</article>):<p>No automatic imports reported for this company yet.</p>}</>:<p>Import status unavailable. Check the Mac agent and connection; this does not mean there are no queued originals.</p>}</details>
- <details className="sa-prepare" open={!inventory?.runs.length}><summary>Prepare an analysis</summary><fieldset disabled={disabled||busy||!inventory||!!error||unfinished}>
+ <details className="sa-prepare"><summary>Use originals already in Charlie</summary><fieldset disabled={disabled||busy||!inventory||!!error||unfinished}>
  <div className="sa-form-grid"><label>Research mode<select value={mode} onChange={e=>setMode(e.target.value)}><option value="snapshot">Snapshot</option><option value="deep">Deep research</option><option value="update">Update thesis</option></select></label><label>Investment horizon<input value={horizon} onChange={e=>setHorizon(e.target.value)} maxLength={100}/></label></div>
  <label>Existing thesis or research question <span>Optional</span><textarea value={question} onChange={e=>setQuestion(e.target.value)} rows={3} maxLength={12000} placeholder="What must be true for this business to outperform expectations?"/></label>
  <label>Compare with an earlier report<select value={priorId} onChange={e=>setPriorId(e.target.value)}><option value="">Latest completed report, or saved thesis</option>{inventory?.runs.filter(r=>r.status==='complete').map(r=><option key={r.id} value={r.id}>{new Date(r.created_at).toLocaleString()} · {r.id.slice(0,8)}</option>)}</select></label>

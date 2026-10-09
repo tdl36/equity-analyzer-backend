@@ -124,3 +124,24 @@ choices and the shortlist is sealed. It will not resume authentication, cancelle
 dispatch-uncertainty or unrelated error states. Paused ticker policies also remain
 paused, except explicit manual requests. Browser pickup still requires the next
 available scheduled worker; approval does not imply immediate downloads.
+
+## End-to-end research assignments (T133)
+
+A request with `config.assignment` belongs to one coordinating research job.
+Honor its exact since/until dates, ticker, source policy, outputs and instructions.
+Screen all four supported categories: transcript, broker-report, press-release,
+presentation. Select **at most eight distinct eligible originals in total** for
+this bounded research pack. Prioritize material/latest events, substantive analysis
+and relevant contrary views. Record actual reviewed counts, exclusions, selection
+rationale and missing coverage. Do not relabel filings as a supported category or
+claim all available documents were ingested. Only source content is evidence.
+
+Handoff goes to the confirmed STOCKS/ticker folder. Completion now also requires
+exact-byte cloud import receipts for every eligible handed-off/duplicate original
+in the pack. Pending uploads keep completion blocked; preserve progress and report
+an actionable issue. The helper may process only this run's pending imports. Its
+completed `assignmentSources` receipt lets the backend coordinator start the
+requested bounded research automatically. **Do not separately start any report,
+recap, note or thesis generation**: the assignment owns that dispatch. A stopped
+assignment cancels its managed collection, including delayed/out-of-order delivery.
+Thesis output is a pending investor-review proposal, never approval or application.

@@ -20378,6 +20378,7 @@ def agent_heartbeat():
                     version = EXCLUDED.version
             ''', (agent_id, version))
         _research_automation.wake()
+        _research_assignments.wake()
         import thesis_monitor
         thesis_monitor.wake(app)
         return jsonify({'ok': True, 'agentId': agent_id})
@@ -29339,6 +29340,23 @@ app.register_blueprint(company_research.create_blueprint(get_db,
     lambda *args: _company_research_call(*args,usage_kind='stock-analysis'),
     lambda key: _get_api_keys(key).get('anthropic',''),lambda:resolve_picker_spec(PICKER_DEFAULT_MODEL)['model'],
     lambda:budget_blocks('company-research'),studio=True))
+
+
+import research_assignments
+
+def _assignment_invoke(endpoint, method, body, params):
+    # Internal orchestration of existing bounded services; routes retain their own
+    # idempotency, source, budget and baseline checks. No client-selected endpoint.
+    with app.test_request_context('/internal/research-assignment',method=method,json=body):
+        try:
+            response=app.make_response(app.view_functions[endpoint](**params))
+            return response.get_json(),response.status_code
+        except ValueError as exc:
+            return {'error':str(exc)},409
+
+_research_assignments=research_assignments.Coordinator(app,get_db,_assignment_invoke,
+    lambda:bool(_get_api_keys('').get('anthropic')))
+app.register_blueprint(_research_assignments.bp)
 
 
 import portfolio_heatmap
