@@ -4,18 +4,19 @@ Updated: October 9, 2026
 
 ## Start here
 
-T129 (`2026-10-08T129`) routes Explain uploads and polling through the same-origin API proxy. Use
-`git log -1` and backend `/health` to verify the exact deployed revision.
+T131 (`2026-10-09T131`) adds native Stock Research Studio under Companies → Stock analysis.
+Deployed source revision: `07a5a3b590acb4f92df0b3bbd80af8fd02a493e5`; later documentation-only
+commits may be ahead of the backend. Verify the exact runtime revision with `/health`.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T129#view=thesisimports`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T131#view=stockanalysis`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`, branch `main`.
-- Previous release: T127 / `e4b40b7`; T122 model policy remains unchanged.
+- Previous release: T129 / `3bfbb1f`; T122 model policy remains unchanged.
 - Local agent shares the model registry, reloads changed registry files between jobs, and reports its registry revision in its heartbeat.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
 
-### T131 — native Stock Research Studio (release verification pending)
+### T131 — native Stock Research Studio
 
 Stock analysis is a new investment-case workspace tab with Snapshot, Deep research
 and Update thesis modes. The supplied Studio schema/doctrine now run through
@@ -39,7 +40,17 @@ synthetic browser checks at 1440/390/320px cover report generation, evidence,
 comparison, visual persistence and unsaved draft handoff without page errors or
 overflow. No paid research or production case saves were run for QA. Real-source
 acceptance, licensed consensus feeds and live web retrieval remain outstanding.
-See docs/stock-analysis.md for scope and recovery. Deployment verification pending.
+See docs/stock-analysis.md for scope and recovery. T130 first integrated the feature;
+T131 keeps chart labels readable with bounded horizontal scrolling on narrow screens.
+The real built application route and chart rendering also passed at 1440/390/320px.
+Render reports `07a5a3b590acb4f92df0b3bbd80af8fd02a493e5`. Cloudflare deployment
+`f2282ddc-3fd5-403d-992f-dc7b727d1b7c` serves byte-matching T131 bundle and service
+worker, and release HTML references the versioned T131 bundle. Live authenticated
+SYK listing returns 200 with 16 sections, unauthenticated listing 401, and invalid
+empty submission 400 before model execution. No production report or case was saved
+for validation. Audio/pipeline checks found no active processing; the unchanged
+September 21 legacy Summary Lab running entry was preserved. Mac agent is healthy
+with unchanged model registry `e372116305335f31`; no restart was required.
 
 ### T129 — Explain upload connection handling
 
@@ -1674,9 +1685,9 @@ Use `py_compile` for every touched Python module. Do not start paid research, se
 
 Current release markers must stay synchronized:
 
-- `worker.js`: `2026-10-06T126`
-- `service-worker.js`: `20261006-126`
-- `src/app.jsx`: `2026-10-06T126`
+- `worker.js`: `2026-10-09T131`
+- `service-worker.js`: `20261009-131`
+- `src/app.jsx`: `2026-10-09T131`
 
 After an application change:
 
