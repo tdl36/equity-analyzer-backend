@@ -5,7 +5,8 @@ Updated: October 9, 2026
 ## Start here
 
 T133 (`2026-10-09T133`) adds one durable end-to-end research assignment in Stock Analysis.
-Release validation is recorded below; verify the exact runtime revision with `/health`.
+Deployed source revision: `d0cbd5283cfb51c378f603ad8a222d71f8351d8c`; later documentation-only
+commits may be ahead. Verify the exact runtime revision with `/health`.
 
 - App: `https://charlie-deployment.tonydlee.workers.dev/?release=T133#view=stockanalysis`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
@@ -41,7 +42,16 @@ PostgreSQL recovery/baseline/hash/duplicate tests. Desktop/mobile checks at
 907 safe backend tests and 93 frontend tests passed; production build and unchanged
 model-policy gate passed. Additional focused reruns cover final draft rendering.
 No new live collection, paid research, thesis approval or portfolio mutation was
-performed for QA. Deployment verification pending the release procedure.
+performed for QA. Render recovered from a transient rollout 502 and reports
+`d0cbd5283cfb51c378f603ad8a222d71f8351d8c`. Cloudflare deployment
+`c694081d-117e-477c-b783-c1dcbfa92198` serves byte-matching T133 HTML, bundle and
+service worker from 13 whitelisted assets. Authenticated assignment/default reads
+returned 200, unauthenticated access 401, invalid empty submission 400 before
+dispatch. The Mac agent was restarted after zero active pipeline/collection checks;
+RunAtLoad/KeepAlive remain true, recent stderr had no errors and the post-restart
+heartbeat was healthy (12.4 seconds old at verification). Live user-authorized
+AlphaSense-to-generated-deliverable acceptance remains outstanding; no paid QA
+assignment was launched.
 
 ### T132 — automatic originals into Stock Analysis
 
