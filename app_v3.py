@@ -29331,6 +29331,12 @@ app.register_blueprint(company_research.create_blueprint(get_db,
     lambda:budget_blocks('company-research'),committee=True))
 
 
+app.register_blueprint(company_research.create_blueprint(get_db,
+    lambda *args: _company_research_call(*args,usage_kind='stock-analysis'),
+    lambda key: _get_api_keys(key).get('anthropic',''),lambda:resolve_picker_spec(PICKER_DEFAULT_MODEL)['model'],
+    lambda:budget_blocks('company-research'),studio=True))
+
+
 import portfolio_heatmap
 app.register_blueprint(portfolio_heatmap.create_blueprint(get_db))
 

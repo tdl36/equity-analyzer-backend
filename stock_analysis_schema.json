@@ -1,0 +1,786 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ticker": {
+          "type": "string"
+        },
+        "company": {
+          "type": "string"
+        },
+        "sector": {
+          "type": "string"
+        },
+        "industry": {
+          "type": "string"
+        },
+        "market_cap": {
+          "type": "string"
+        },
+        "as_of": {
+          "type": "string"
+        },
+        "horizon": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string"
+        },
+        "data_quality": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ticker",
+        "company",
+        "sector",
+        "industry",
+        "market_cap",
+        "as_of",
+        "horizon",
+        "mode",
+        "data_quality"
+      ]
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "one_liner": {
+          "type": "string"
+        },
+        "core_question": {
+          "type": "string"
+        },
+        "investment_thesis": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "what_market_believes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "variant_view": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "earnings_direction": {
+          "type": "string"
+        },
+        "top_drivers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "one_liner",
+        "core_question",
+        "investment_thesis",
+        "what_market_believes",
+        "variant_view",
+        "earnings_direction",
+        "top_drivers"
+      ]
+    },
+    "business": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "plain_english": {
+          "type": "string"
+        },
+        "revenue_engine": {
+          "type": "string"
+        },
+        "customers": {
+          "type": "string"
+        },
+        "geography": {
+          "type": "string"
+        },
+        "segments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "revenue_mix": {
+                "type": "string"
+              },
+              "business_model": {
+                "type": "string"
+              },
+              "profit_driver": {
+                "type": "string"
+              },
+              "key_kpi": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "revenue_mix",
+              "business_model",
+              "profit_driver",
+              "key_kpi"
+            ]
+          }
+        }
+      },
+      "required": [
+        "plain_english",
+        "revenue_engine",
+        "customers",
+        "geography",
+        "segments"
+      ]
+    },
+    "industry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "structure": {
+          "type": "string"
+        },
+        "competition": {
+          "type": "string"
+        },
+        "durable_advantages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "temporary_advantages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "disruption_risks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "structure",
+        "competition",
+        "durable_advantages",
+        "temporary_advantages",
+        "disruption_risks"
+      ]
+    },
+    "financials": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "historical": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "period": {
+                "type": "string"
+              },
+              "revenue": {
+                "type": "string"
+              },
+              "organic_growth": {
+                "type": "string"
+              },
+              "operating_margin": {
+                "type": "string"
+              },
+              "eps": {
+                "type": "string"
+              },
+              "free_cash_flow": {
+                "type": "string"
+              },
+              "leverage": {
+                "type": "string"
+              },
+              "shares": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "period",
+              "revenue",
+              "organic_growth",
+              "operating_margin",
+              "eps",
+              "free_cash_flow",
+              "leverage",
+              "shares"
+            ]
+          }
+        },
+        "improved": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "weakened": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "earnings_quality": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "historical",
+        "improved",
+        "weakened",
+        "earnings_quality"
+      ]
+    },
+    "earnings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "reporting_period": {
+          "type": "string"
+        },
+        "headline": {
+          "type": "string"
+        },
+        "beat_miss_quality": {
+          "type": "string"
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "metric": {
+                "type": "string"
+              },
+              "actual": {
+                "type": "string"
+              },
+              "prior_year": {
+                "type": "string"
+              },
+              "prior_guidance": {
+                "type": "string"
+              },
+              "consensus": {
+                "type": "string"
+              },
+              "interpretation": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "metric",
+              "actual",
+              "prior_year",
+              "prior_guidance",
+              "consensus",
+              "interpretation"
+            ]
+          }
+        },
+        "management_tone": {
+          "type": "string"
+        },
+        "analyst_concerns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "what_changed": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "reporting_period",
+        "headline",
+        "beat_miss_quality",
+        "results",
+        "management_tone",
+        "analyst_concerns",
+        "what_changed"
+      ]
+    },
+    "expectations": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "revision_cycle": {
+          "type": "string"
+        },
+        "revision_data": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "period": {
+                "type": "string"
+              },
+              "eps_estimate": {
+                "type": "string"
+              },
+              "change_30d": {
+                "type": "string"
+              },
+              "change_90d": {
+                "type": "string"
+              },
+              "driver": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "period",
+              "eps_estimate",
+              "change_30d",
+              "change_90d",
+              "driver"
+            ]
+          }
+        },
+        "consensus_data_quality": {
+          "type": "string"
+        },
+        "priced_in": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "revision_cycle",
+        "revision_data",
+        "consensus_data_quality",
+        "priced_in"
+      ]
+    },
+    "management": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "execution_assessment": {
+          "type": "string"
+        },
+        "capital_allocation": {
+          "type": "string"
+        },
+        "balance_sheet": {
+          "type": "string"
+        },
+        "management_track_record": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "execution_assessment",
+        "capital_allocation",
+        "balance_sheet",
+        "management_track_record"
+      ]
+    },
+    "valuation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "summary": {
+          "type": "string"
+        },
+        "metrics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "metric": {
+                "type": "string"
+              },
+              "current": {
+                "type": "string"
+              },
+              "historical_range": {
+                "type": "string"
+              },
+              "peer_reference": {
+                "type": "string"
+              },
+              "interpretation": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "metric",
+              "current",
+              "historical_range",
+              "peer_reference",
+              "interpretation"
+            ]
+          }
+        },
+        "reverse_expectations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sensitivity": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "summary",
+        "metrics",
+        "reverse_expectations",
+        "sensitivity"
+      ]
+    },
+    "peers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ticker": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "growth": {
+            "type": "string"
+          },
+          "profitability": {
+            "type": "string"
+          },
+          "leverage": {
+            "type": "string"
+          },
+          "valuation": {
+            "type": "string"
+          },
+          "distinctive_feature": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker",
+          "name",
+          "growth",
+          "profitability",
+          "leverage",
+          "valuation",
+          "distinctive_feature"
+        ]
+      }
+    },
+    "scenarios": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "business_conditions": {
+            "type": "string"
+          },
+          "revenue_growth": {
+            "type": "string"
+          },
+          "operating_margin": {
+            "type": "string"
+          },
+          "eps_or_fcf": {
+            "type": "string"
+          },
+          "valuation_multiple": {
+            "type": "string"
+          },
+          "implied_value": {
+            "type": "string"
+          },
+          "upside_downside": {
+            "type": "string"
+          },
+          "major_risks": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "business_conditions",
+          "revenue_growth",
+          "operating_margin",
+          "eps_or_fcf",
+          "valuation_multiple",
+          "implied_value",
+          "upside_downside",
+          "major_risks"
+        ]
+      }
+    },
+    "debates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "topic": {
+            "type": "string"
+          },
+          "market_view": {
+            "type": "string"
+          },
+          "alternative_view": {
+            "type": "string"
+          },
+          "evidence_for_market": {
+            "type": "string"
+          },
+          "evidence_for_alternative": {
+            "type": "string"
+          },
+          "resolution_signal": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "topic",
+          "market_view",
+          "alternative_view",
+          "evidence_for_market",
+          "evidence_for_alternative",
+          "resolution_signal"
+        ]
+      }
+    },
+    "catalysts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "catalyst": {
+            "type": "string"
+          },
+          "window": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "impact": {
+            "type": "string"
+          },
+          "kpi_to_watch": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "catalyst",
+          "window",
+          "status",
+          "impact",
+          "kpi_to_watch"
+        ]
+      }
+    },
+    "risks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "risk": {
+            "type": "string"
+          },
+          "window": {
+            "type": "string"
+          },
+          "earnings_impact": {
+            "type": "string"
+          },
+          "early_warning": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "risk",
+          "window",
+          "earnings_impact",
+          "early_warning"
+        ]
+      }
+    },
+    "monitor": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kpis": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "metric": {
+                "type": "string"
+              },
+              "current": {
+                "type": "string"
+              },
+              "bull_threshold": {
+                "type": "string"
+              },
+              "bear_threshold": {
+                "type": "string"
+              },
+              "why_it_matters": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "metric",
+              "current",
+              "bull_threshold",
+              "bear_threshold",
+              "why_it_matters"
+            ]
+          }
+        },
+        "strengtheners": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "breakers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "kpis",
+        "strengtheners",
+        "breakers"
+      ]
+    },
+    "diligence_questions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "infographic": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "headline": {
+          "type": "string"
+        },
+        "subhead": {
+          "type": "string"
+        },
+        "key_message": {
+          "type": "string"
+        },
+        "visual_motifs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "headline",
+        "subhead",
+        "key_message",
+        "visual_motifs"
+      ]
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "organization": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "used_for": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "organization",
+          "date",
+          "url",
+          "used_for"
+        ]
+      }
+    }
+  },
+  "required": [
+    "meta",
+    "summary",
+    "business",
+    "industry",
+    "financials",
+    "earnings",
+    "expectations",
+    "management",
+    "valuation",
+    "peers",
+    "scenarios",
+    "debates",
+    "catalysts",
+    "risks",
+    "monitor",
+    "diligence_questions",
+    "infographic",
+    "sources"
+  ]
+}

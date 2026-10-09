@@ -8,14 +8,15 @@ import {ThesisEvolution} from './thesis-evolution';
 import {CaseSignals} from './case-signals';
 import {OperatingModel} from './operating-model';
 import {CompanyResearch} from './company-research';
+import {StockAnalysis} from './stock-analysis';
 import {CompanySnapshot} from './company-snapshot';
 import {CaseEvidence} from './investment-case-evidence';
 
 const empty=()=>({thesis:'',variantView:'',marketBaseline:'',changeConditions:'',assumptions:[],scenarios:{}});
 const fields=[['thesis','Investment thesis'],['variantView','Where my view differs'],['marketBaseline','Market expectations · include source and date'],['changeConditions','What would change my mind']];
-export function InvestmentCase({api,analyses=[],initialTicker=''}) {
+export function InvestmentCase({api,analyses=[],initialTicker='',initialTab='snapshot'}) {
  const [ticker,setTicker]=React.useState(initialTicker),[active,setActive]=React.useState(''),[body,setBody]=React.useState(empty),[revision,setRevision]=React.useState(0),[versions,setVersions]=React.useState([]),[bridge,setBridge]=React.useState({}),[busy,setBusy]=React.useState(false),[message,setMessage]=React.useState(''),[dirty,setDirty]=React.useState(false),[selectedVersion,setSelectedVersion]=React.useState('');
- const [workspaceTab,setWorkspaceTab]=React.useState('snapshot');
+ const [workspaceTab,setWorkspaceTab]=React.useState(initialTab);
  const [researchContext,setResearchContext]=React.useState(null);
  const pending=React.useRef(null),lock=React.useRef(false),alive=React.useRef(true);
  React.useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
@@ -29,14 +30,15 @@ export function InvestmentCase({api,analyses=[],initialTicker=''}) {
  };
  const assumption=(i,key,value)=>edit({...body,assumptions:body.assumptions.map((a,j)=>i===j?{...a,[key]:value}:a)});
  const snapshot=versions.find(v=>String(v.revision)===selectedVersion);
- return <section className="workspace-panel" aria-label="Investment case"><p className="workspace-eyebrow">INVESTMENT CASE / YOUR ASSUMPTIONS</p><h2>Investment thesis workspace.</h2><p>Record what you believe, the evidence against it, and the next test. These are your working assumptions. Manual source references are unverified; accepted research links retain the original excerpt and its provenance.</p>
- <InvestmentWorkflowGuide api={api} active={active} onNavigate={setWorkspaceTab}/><InvestorFramework api={api}/><UnderweightMonitor api={api} disabled={busy||dirty} onOpen={t=>{setWorkspaceTab('reviews');load(t);}}/>
+ return <section className="workspace-panel" aria-label="Investment case"><p className="workspace-eyebrow">{initialTab==='stock-analysis'?'COMPANIES / RESEARCH & EVIDENCE':'INVESTMENT CASE / YOUR ASSUMPTIONS'}</p><h2>{initialTab==='stock-analysis'?'Stock analysis.':'Investment thesis workspace.'}</h2><p>{initialTab==='stock-analysis'?'Choose a company to build source-linked research, compare evidence over time and prepare an investment visual. Thesis changes remain yours to review.':'Record what you believe, the evidence against it, and the next test. These are your working assumptions. Manual source references are unverified; accepted research links retain the original excerpt and its provenance.'}</p>
+ {initialTab!=='stock-analysis'&&<><InvestmentWorkflowGuide api={api} active={active} onNavigate={setWorkspaceTab}/><InvestorFramework api={api}/><UnderweightMonitor api={api} disabled={busy||dirty} onOpen={t=>{setWorkspaceTab('reviews');load(t);}}/></>}
  <div className="desk-filter"><label>Company<input list="investment-case-tickers" value={ticker} disabled={busy||dirty} onChange={e=>setTicker(e.target.value.toUpperCase())} placeholder="ABBV" maxLength={20}/></label><datalist id="investment-case-tickers">{[...new Set(analyses.map(a=>a.ticker).filter(Boolean))].sort().map(t=><option key={t} value={t}/>)}</datalist><button disabled={busy||dirty||!ticker.trim()} onClick={load}>Open investment case</button></div>
  {dirty&&<p>Save your edits before switching companies. To discard them, use <button disabled={busy} onClick={()=>{setDirty(false);setMessage('Edits remain visible until you open a company again.');}}>Allow reload without saving</button>.</p>}
  <p role="status">{message}</p>
  {active&&<><div className="workspace-section-heading"><h3>{active} · {revision?`Revision ${revision}`:'New investment case'}</h3><span>{dirty?'Unsaved changes':'Saved working assumptions'}</span></div>
- <nav className="lifecycle-tabs" aria-label="Investment thesis workspace">{[['snapshot','Snapshot'],['research','Deep Research'],['committee','Committee'],['case','Current thesis'],['model','Operating scenarios'],['evidence','Evidence & proposals'],['reviews','Decisions & underweights'],['signals','Case signals'],['evolution','Evolution']].map(([id,label])=><button key={id} aria-pressed={workspaceTab===id} onClick={()=>setWorkspaceTab(id)}>{label}</button>)}</nav>
+ <nav className="lifecycle-tabs" aria-label="Investment thesis workspace">{[['snapshot','Snapshot'],['stock-analysis','Stock analysis'],['research','Deep Research'],['committee','Committee'],['case','Current thesis'],['model','Operating scenarios'],['evidence','Evidence & proposals'],['reviews','Decisions & underweights'],['signals','Case signals'],['evolution','Evolution']].map(([id,label])=><button key={id} aria-pressed={workspaceTab===id} onClick={()=>setWorkspaceTab(id)}>{label}</button>)}</nav>
  {workspaceTab==='model'&&<OperatingModel key={active} api={api} ticker={active} body={body} revision={revision} busy={busy} dirty={dirty} onChange={edit} onSave={save} onResearch={()=>setWorkspaceTab('research')}/>}
+ {workspaceTab==='stock-analysis'&&<StockAnalysis key={active+'-stock-analysis'} api={api} ticker={active} revision={revision} disabled={busy||dirty} onDraft={draft=>{edit({...empty(),...draft});setWorkspaceTab('case');setMessage('Stock analysis draft loaded. Review changes and source passages before saving; no thesis change has been approved.');}}/>}
  {workspaceTab==='research'&&<CompanyResearch key={active} api={api} ticker={active} revision={revision} disabled={busy||dirty} onUpdate={context=>{setResearchContext(context);setWorkspaceTab('evidence');}} onDraft={draft=>{edit(draft);setWorkspaceTab('case');}}/>}
  {workspaceTab==='committee'&&<CompanyResearch committee key={active+'-committee'} api={api} ticker={active} revision={revision} disabled={busy||dirty}/>}
  {workspaceTab==='snapshot'&&<CompanySnapshot onModel={()=>setWorkspaceTab('model')} key={active} ticker={active} versions={versions} revision={revision} disabled={busy||dirty} onEdit={()=>setWorkspaceTab('case')} onUpdate={()=>{setResearchContext(null);setWorkspaceTab('evidence');}}/>}

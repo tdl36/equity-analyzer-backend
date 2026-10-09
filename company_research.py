@@ -151,13 +151,15 @@ def generate(state,sources,baseline,ask,save,check):
 class Stopped(Exception): pass
 
 
-def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda:None,*,committee=False):
-    table = "investment_committee_runs" if committee else "company_research_runs"
-    index_name = "investment_committee_ticker" if committee else "company_research_ticker"
-    route = "committee" if committee else "company"
-    version = "investment-committee-v1" if committee else VERSION
-    worker_kind = "investment-committee" if committee else "company-research"
-    bp=Blueprint('investment_committee' if committee else 'company_research',__name__);lock=threading.Lock();ready=False;slots=threading.BoundedSemaphore(1)
+def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda:None,*,committee=False,studio=False):
+    if committee and studio:raise ValueError("Choose one research workflow")
+    table = "stock_analysis_runs" if studio else "investment_committee_runs" if committee else "company_research_runs"
+    index_name = "stock_analysis_ticker" if studio else "investment_committee_ticker" if committee else "company_research_ticker"
+    route = "stock-analysis" if studio else "committee" if committee else "company"
+    from stock_analysis import VERSION as studio_version, TITLES as studio_titles
+    version = studio_version if studio else "investment-committee-v1" if committee else VERSION
+    worker_kind = "stock-analysis" if studio else "investment-committee" if committee else "company-research"
+    bp=Blueprint('stock_analysis' if studio else 'investment_committee' if committee else 'company_research',__name__);lock=threading.Lock();ready=False;slots=threading.BoundedSemaphore(1)
     def ensure():
         nonlocal ready
         with lock:
@@ -231,7 +233,10 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
                         cur.execute(f'UPDATE {table} SET sources=%s::jsonb,updated_at=NOW() WHERE id=%s AND owner=%s RETURNING id',(json.dumps(sources),ident,owner))
                         if not cur.fetchone():raise Stopped()
                 def ask(prompt,tokens,stage):return ask_model(prompt,key,tokens,ident,stage)
-                if committee:
+                if studio:
+                    from stock_analysis import generate as studio_generate
+                    studio_generate(state,sources,row['baseline'],ask,save,check,row['input'])
+                elif committee:
                     from investment_committee import generate as committee_generate
                     committee_generate(state,sources,row['baseline'],ask,save,check)
                 else:
@@ -254,7 +259,7 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
             cur.execute('SELECT filename,metadata FROM document_files WHERE ticker=%s ORDER BY filename',(ticker,));docs=[{'filename':r['filename'],'eligible':eligible(r.get('metadata') or {})} for r in cur.fetchall()]
             current=baseline(cur,ticker)
         from investment_committee import ROLES
-        response=jsonify(runs=rows,documents=docs,baseline=current,sections=ROLES if committee else SECTIONS,version=version,model=model_identity());response.headers['Cache-Control']='no-store';return response
+        response=jsonify(runs=rows,documents=docs,baseline=current,sections=list(studio_titles.items()) if studio else ROLES if committee else SECTIONS,version=version,model=model_identity());response.headers['Cache-Control']='no-store';return response
 
     @bp.post(f'/api/research/{route}/<ticker>')
     def submit(ticker):
@@ -265,10 +270,14 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
             ident=str(uuid.UUID(data.get('requestId','')));names=data.get('filenames')
             if not isinstance(names,list) or not 1<=len(names)<=8 or any(not isinstance(n,str) or len(n)>255 for n in names) or len(set(names))!=len(names):raise ValueError('Select 1–8 distinct stored originals.')
             if data.get('confirmed') is not True:raise ValueError('Confirm the issuer and permitted source use before starting.')
+            studio_options={}
+            if studio:
+                from stock_analysis import options
+                studio_options=options(data)
             revision=data.get('revision')
             if type(revision)!=int or revision<0:raise ValueError('Load the current case baseline.')
         except (ValueError,TypeError,AttributeError) as exc:return jsonify(error=str(exc)),400
-        signature=digest({'ticker':ticker,'filenames':sorted(names),'revision':revision})
+        signature=digest({'ticker':ticker,'filenames':sorted(names),'revision':revision,**studio_options})
         key=get_key(data.get('apiKey',''))
         from command_thesis_bridge import file_hash
         with get_db(commit=True) as (_,cur):
@@ -290,7 +299,27 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
             if len(docs)!=len(names) or any(not eligible(d.get('metadata') or {}) for d in docs):return jsonify(error='Sources missing or restricted. Reload your source selection.'),409
             try:hashes={d['filename']:file_hash(d) for d in docs}
             except (ValueError,TypeError):return jsonify(error='Original source bytes could not be verified.'),400
-            cur.execute(f"INSERT INTO {table}(id,ticker,payload_hash,version,model,status,input,baseline) VALUES(%s,%s,%s,%s,%s,'queued',%s::jsonb,%s::jsonb)",(ident,ticker,signature,version,model_identity(),json.dumps({'filenames':sorted(names),'hashes':hashes}),json.dumps(current)))
+            frozen_input={'filenames':sorted(names),'hashes':hashes}
+            if studio:
+                cur.execute('INSERT INTO mp_companies(ticker,name) VALUES(%s,%s) ON CONFLICT(ticker) DO UPDATE SET ticker=EXCLUDED.ticker RETURNING id,name',(ticker,ticker))
+                company=dict(cur.fetchone())
+                prior=None
+                if studio_options['priorId']:
+                    cur.execute(f"SELECT * FROM {table} WHERE id=%s AND ticker=%s AND status='complete'",(studio_options['priorId'],ticker))
+                    prior=cur.fetchone()
+                    if not prior:return jsonify(error='Choose a completed report for the same company.'),409
+                else:
+                    cur.execute(f"SELECT * FROM {table} WHERE ticker=%s AND status='complete' ORDER BY created_at DESC LIMIT 1",(ticker,))
+                    prior=cur.fetchone()
+                if studio_options['mode']=='update' and not prior and not current['revision']:
+                    return jsonify(error='Update thesis requires a saved case or completed report.'),400
+                if prior:
+                    prior={'id':prior['id'],'sources':public_run(prior)['sources'],
+                           'state':{k:prior['state'].get(k,{}) for k in ('report','citations')}}
+                    if len(json.dumps(prior))>300000:return jsonify(error='Prior report exceeds the comparison context bound.'),400
+                frozen_input.update(studio_options)
+                frozen_input.update(companyId=company['id'],companyName=company['name'],ticker=ticker,prior=prior)
+            cur.execute(f"INSERT INTO {table}(id,ticker,payload_hash,version,model,status,input,baseline) VALUES(%s,%s,%s,%s,%s,'queued',%s::jsonb,%s::jsonb)",(ident,ticker,signature,version,model_identity(),json.dumps(frozen_input),json.dumps(current)))
         start(ident,key);return jsonify(id=ident),202
 
     @bp.get(f'/api/research/{route}-run/<ident>')
@@ -328,4 +357,7 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
                 if len(state.get('retries',[]))>=4:return jsonify(error='Retry limit reached. Stop this research and inspect its saved output.'),409
                 cur.execute(f"UPDATE {table} SET status='queued',owner=NULL,cancel_requested=FALSE,state=%s::jsonb,error=NULL,updated_at=NOW() WHERE id=%s",(json.dumps(state),ident))
         start(ident,key);return jsonify(ok=True)
+    if studio:
+        from stock_analysis_visual import register_routes
+        register_routes(bp,get_db,ensure,read)
     return bp

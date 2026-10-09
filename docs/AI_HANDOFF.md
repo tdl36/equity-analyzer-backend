@@ -1,6 +1,6 @@
 # Charlie AI engineering handoff
 
-Updated: October 8, 2026
+Updated: October 9, 2026
 
 ## Start here
 
@@ -14,6 +14,32 @@ T129 (`2026-10-08T129`) routes Explain uploads and polling through the same-orig
 - Local agent shares the model registry, reloads changed registry files between jobs, and reports its registry revision in its heartbeat.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
+
+### T130 — native Stock Research Studio (release verification pending)
+
+Stock analysis is a new investment-case workspace tab with Snapshot, Deep research
+and Update thesis modes. The supplied Studio schema/doctrine now run through
+Charlie's durable frozen-source worker in a separate stock_analysis_runs ledger.
+Reports capture canonical company ID, case baseline, prior report, original hashes
+and field-level citations. Six structured generation/review pairs checkpoint before
+paid calls. Source changes and wording changes are compared separately; no thesis
+breaker or thesis edit is automatically accepted. Draft handoff remains unsaved until
+the investor reviews and saves it.
+
+Nine-panel source-linked HTML infographics are rendered without an image model and
+saved idempotently in existing Studio storage. Comparable positive historical series
+have conservative charts; unavailable or unresolved fields remain gaps. Analyst
+figure review is required before saving a visual. Model review is not factual proof.
+No new secrets or model defaults. Current source-pack bounds and manual restart/retry
+rules are retained. Legacy Deep Research and Committee remain available.
+
+Validation: 885 safe backend tests, 93 frontend tests, production build and model
+policy gate passed. Disposable PostgreSQL tests cover worker/storage/restart and
+synthetic browser checks at 1440/390/320px cover report generation, evidence,
+comparison, visual persistence and unsaved draft handoff without page errors or
+overflow. No paid research or production case saves were run for QA. Real-source
+acceptance, licensed consensus feeds and live web retrieval remain outstanding.
+See docs/stock-analysis.md for scope and recovery. Deployment verification pending.
 
 ### T129 — Explain upload connection handling
 

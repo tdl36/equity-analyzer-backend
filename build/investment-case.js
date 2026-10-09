@@ -8,6 +8,7 @@ import { ThesisEvolution } from './thesis-evolution';
 import { CaseSignals } from './case-signals';
 import { OperatingModel } from './operating-model';
 import { CompanyResearch } from './company-research';
+import { StockAnalysis } from './stock-analysis';
 import { CompanySnapshot } from './company-snapshot';
 import { CaseEvidence } from './investment-case-evidence';
 var empty = () => ({
@@ -22,7 +23,8 @@ var fields = [['thesis', 'Investment thesis'], ['variantView', 'Where my view di
 export function InvestmentCase({
   api,
   analyses = [],
-  initialTicker = ''
+  initialTicker = '',
+  initialTab = 'snapshot'
 }) {
   var [ticker, setTicker] = React.useState(initialTicker),
     [active, setActive] = React.useState(''),
@@ -34,7 +36,7 @@ export function InvestmentCase({
     [message, setMessage] = React.useState(''),
     [dirty, setDirty] = React.useState(false),
     [selectedVersion, setSelectedVersion] = React.useState('');
-  var [workspaceTab, setWorkspaceTab] = React.useState('snapshot');
+  var [workspaceTab, setWorkspaceTab] = React.useState(initialTab);
   var [researchContext, setResearchContext] = React.useState(null);
   var pending = React.useRef(null),
     lock = React.useRef(false),
@@ -160,7 +162,7 @@ export function InvestmentCase({
     "aria-label": "Investment case"
   }, /*#__PURE__*/React.createElement("p", {
     className: "workspace-eyebrow"
-  }, "INVESTMENT CASE / YOUR ASSUMPTIONS"), /*#__PURE__*/React.createElement("h2", null, "Investment thesis workspace."), /*#__PURE__*/React.createElement("p", null, "Record what you believe, the evidence against it, and the next test. These are your working assumptions. Manual source references are unverified; accepted research links retain the original excerpt and its provenance."), /*#__PURE__*/React.createElement(InvestmentWorkflowGuide, {
+  }, initialTab === 'stock-analysis' ? 'COMPANIES / RESEARCH & EVIDENCE' : 'INVESTMENT CASE / YOUR ASSUMPTIONS'), /*#__PURE__*/React.createElement("h2", null, initialTab === 'stock-analysis' ? 'Stock analysis.' : 'Investment thesis workspace.'), /*#__PURE__*/React.createElement("p", null, initialTab === 'stock-analysis' ? 'Choose a company to build source-linked research, compare evidence over time and prepare an investment visual. Thesis changes remain yours to review.' : 'Record what you believe, the evidence against it, and the next test. These are your working assumptions. Manual source references are unverified; accepted research links retain the original excerpt and its provenance.'), initialTab !== 'stock-analysis' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(InvestmentWorkflowGuide, {
     api: api,
     active: active,
     onNavigate: setWorkspaceTab
@@ -173,7 +175,7 @@ export function InvestmentCase({
       setWorkspaceTab('reviews');
       load(t);
     }
-  }), /*#__PURE__*/React.createElement("div", {
+  })), /*#__PURE__*/React.createElement("div", {
     className: "desk-filter"
   }, /*#__PURE__*/React.createElement("label", null, "Company", /*#__PURE__*/React.createElement("input", {
     list: "investment-case-tickers",
@@ -203,7 +205,7 @@ export function InvestmentCase({
   }, /*#__PURE__*/React.createElement("h3", null, active, " \xB7 ", revision ? `Revision ${revision}` : 'New investment case'), /*#__PURE__*/React.createElement("span", null, dirty ? 'Unsaved changes' : 'Saved working assumptions')), /*#__PURE__*/React.createElement("nav", {
     className: "lifecycle-tabs",
     "aria-label": "Investment thesis workspace"
-  }, [['snapshot', 'Snapshot'], ['research', 'Deep Research'], ['committee', 'Committee'], ['case', 'Current thesis'], ['model', 'Operating scenarios'], ['evidence', 'Evidence & proposals'], ['reviews', 'Decisions & underweights'], ['signals', 'Case signals'], ['evolution', 'Evolution']].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
+  }, [['snapshot', 'Snapshot'], ['stock-analysis', 'Stock analysis'], ['research', 'Deep Research'], ['committee', 'Committee'], ['case', 'Current thesis'], ['model', 'Operating scenarios'], ['evidence', 'Evidence & proposals'], ['reviews', 'Decisions & underweights'], ['signals', 'Case signals'], ['evolution', 'Evolution']].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
     key: id,
     "aria-pressed": workspaceTab === id,
     onClick: () => setWorkspaceTab(id)
@@ -218,6 +220,20 @@ export function InvestmentCase({
     onChange: edit,
     onSave: save,
     onResearch: () => setWorkspaceTab('research')
+  }), workspaceTab === 'stock-analysis' && /*#__PURE__*/React.createElement(StockAnalysis, {
+    key: active + '-stock-analysis',
+    api: api,
+    ticker: active,
+    revision: revision,
+    disabled: busy || dirty,
+    onDraft: draft => {
+      edit({
+        ...empty(),
+        ...draft
+      });
+      setWorkspaceTab('case');
+      setMessage('Stock analysis draft loaded. Review changes and source passages before saving; no thesis change has been approved.');
+    }
   }), workspaceTab === 'research' && /*#__PURE__*/React.createElement(CompanyResearch, {
     key: active,
     api: api,
