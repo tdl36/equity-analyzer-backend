@@ -5,7 +5,7 @@ Updated: October 9, 2026
 ## Start here
 
 T132 (`2026-10-09T132`) adds automatic original imports for native Stock Research Studio.
-Previous deployed source revision (T131): `07a5a3b590acb4f92df0b3bbd80af8fd02a493e5`; later documentation-only
+Deployed source revision: `66f67aa4bb4c927e059886b6c19039e0b7b2f2ec`; later documentation-only
 commits may be ahead of the backend. Verify the exact runtime revision with `/health`.
 
 - App: `https://charlie-deployment.tonydlee.workers.dev/?release=T132#view=stockanalysis`
@@ -25,8 +25,12 @@ cycle; collection snapshots expose the last 100 records and Stock Analysis shows
 status/failures with snapshot time. No paid research or thesis changes are triggered.
 Validation: 895 safe backend tests and 93 frontend tests passed; production build
 and unchanged-model policy gate passed. Synthetic browser checks at 1440/390/320px
-verified queue failure visibility and no horizontal overflow. Production deployment
-and the authorized six-original SYK backfill are to be verified after this commit.
+verified queue failure visibility and no horizontal overflow. Render health verified `66f67aa4bb4c927e059886b6c19039e0b7b2f2ec`; Cloudflare
+`bb214e10-3b92-402f-a1d5-26b281d1fca3` serves matching T132 bundle/service worker.
+The six user-authorized SYK originals have exact-hash import receipts and all six
+are eligible in the live Stock Analysis picker. No Stock Analysis generation was
+started. The Mac agent was restarted with zero active pipeline jobs; its existing
+startup imports may delay the first normal polling cycle.
 Only explicitly replayed older handoffs are backfilled; CATALYSTS retains the
 existing command import path. See docs/stock-analysis.md for dependencies/recovery.
 
