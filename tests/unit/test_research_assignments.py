@@ -117,6 +117,20 @@ class AssignmentPostgresTests(unittest.TestCase):
         out=self.client.get('/api/research/assignments/'+self.ident+'/artifact/visual');self.assertEqual(out.status_code,200);self.assertIn('sandbox',out.headers['Content-Security-Policy'])
         public=self.client.get('/api/research/assignments?ticker='+self.ticker).json['assignments'][0]
         self.assertNotIn('thesisPackage',public['result']);self.assertNotIn('html',public['result']['artifacts'][0])
+    def test_visual_refresh_is_read_only_and_original_remains_available(self):
+        self.start(['visual']);self.collected();self.advance()
+        before=self.co.read(self.ident)
+        path='/api/research/assignments/'+self.ident+'/artifact/visual'
+        original=self.client.get(path+'?render=original')
+        self.assertEqual(original.status_code,200)
+        refreshed=self.client.get(path)
+        self.assertIn(b'research-onepager-v2',refreshed.data)
+        self.assertEqual(before,self.co.read(self.ident))
+        self.assertEqual(len(self.submits),1)
+        self.report_status='running'
+        self.assertEqual(self.client.get(path).status_code,409)
+        self.assertEqual(self.client.get(path+'?render=original').data,original.data)
+
     def test_hash_mismatch_no_dispatch(self):
         self.start();self.collected('bad');r=self.advance();self.assertEqual(r['status'],'attention');self.assertEqual(self.submits,{})
     def test_delivery_overdue_visible_and_recovers_without_duplicate(self):

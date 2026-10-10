@@ -2,6 +2,23 @@
 
 Updated: October 10, 2026
 
+## T139 — visual brief repair (release verification pending)
+
+Replaces the coordinating assignment's generic first-two-fields boxes with a
+source-linked editorial brief: paired competing views, recovery/pressure panels,
+complete statements, broker-estimate labels, and explicit company valuation and
+scenario/history gaps. Existing visual exports render from their saved report
+without a model call or database mutation; `?render=original` retains the saved
+original. Stock Analysis adds a sandboxed inline preview. No thesis was changed.
+
+The actual UNH saved report was rendered offline to a one-page A4 PDF and inspected
+visually using installed Calibri fonts, black text, and light fills. This verifies
+that specific artifact, not arbitrary future report lengths. Long future claims
+remain whole and may need more than one printed page. Missing company valuation
+and financial history remain substantive evidence gaps. No paid QA research ran.
+932 safe backend tests and 96 frontend tests passed; frontend build and unchanged
+model-policy gate passed. Production revision/assets/preview verification pending.
+
 ## Start here
 
 T134 repaired Mac delivery; T135 adds bounded source excerpts and overdue delivery visibility.

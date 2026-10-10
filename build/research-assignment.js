@@ -21,7 +21,8 @@ export function ResearchAssignment({
     [busy, setBusy] = React.useState(false),
     [message, setMessage] = React.useState(''),
     [error, setError] = React.useState(''),
-    [ack, setAck] = React.useState(false);
+    [ack, setAck] = React.useState(false),
+    [preview, setPreview] = React.useState(null);
   var locked = React.useRef(false),
     pending = React.useRef(null),
     generation = React.useRef(0);
@@ -63,6 +64,7 @@ export function ResearchAssignment({
     generation.current++;
     setJobs([]);
     setAck(false);
+    setPreview(null);
     var load = async () => {
       if (inflight) return;
       inflight = true;
@@ -198,7 +200,23 @@ export function ResearchAssignment({
     role: "alert"
   }, j.error), /*#__PURE__*/React.createElement("div", {
     className: "sa-actions"
-  }, j.result.reportId && /*#__PURE__*/React.createElement("button", {
+  }, j.result.artifacts?.some(a => a.kind === 'visual') && /*#__PURE__*/React.createElement("button", {
+    disabled: busy,
+    onClick: () => mutate(async () => {
+      var g = generation.current;
+      var a = j.result.artifacts.find(a => a.kind === 'visual');
+      var r = await fetch(api + a.url, {
+        signal: AbortSignal.timeout(30000)
+      });
+      if (!r.ok) throw Error('Preview unavailable. Saved original remains available.');
+      var html = await r.text();
+      if (g === generation.current) setPreview({
+        id: j.id,
+        html
+      });
+      return 'Visual draft opened below.';
+    })
+  }, "Preview visual one-pager"), j.result.reportId && /*#__PURE__*/React.createElement("button", {
     onClick: () => onReport(j.result.reportId)
   }, "Open research report"), j.result.artifacts?.map(a => /*#__PURE__*/React.createElement("button", {
     key: a.kind,
@@ -213,7 +231,19 @@ export function ResearchAssignment({
     })
   }, "Export ", outputs.find(x => x[0] === a.kind)?.[1])), j.result.thesisDraftId && /*#__PURE__*/React.createElement("a", {
     href: `?thesisDraft=${j.result.thesisDraftId}#view=thesisimports&ticker=${encodeURIComponent(ticker)}`
-  }, "Review thesis proposal")), j.status === 'attention' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", {
+  }, "Review thesis proposal")), preview?.id === j.id && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("button", {
+    onClick: () => setPreview(null)
+  }, "Close preview"), /*#__PURE__*/React.createElement("iframe", {
+    title: `${ticker} visual one-pager preview`,
+    sandbox: "",
+    srcDoc: preview.html,
+    style: {
+      width: '100%',
+      height: '1100px',
+      border: '1px solid #d8dedd',
+      marginTop: 12
+    }
+  })), j.status === 'attention' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", {
     className: "sa-check"
   }, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",

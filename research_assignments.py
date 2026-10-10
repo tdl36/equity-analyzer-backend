@@ -232,4 +232,14 @@ class Coordinator:
         def artifact(ident,kind):
             row=self.read(ident);item=obj(row['result']).get('artifacts',{}).get(kind) if row else None
             if not item:return jsonify(error='Requested output is not ready.'),404
-            return Response(item['html'],mimetype='text/html',headers={'Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; sandbox"})
+            output=item['html']
+            # Re-render saved visual evidence without changing the original artifact,
+            # starting research, or mutating the investor's thesis.
+            if kind=='visual' and request.args.get('render')!='original':
+                state=obj(row['result'])
+                report,code=self.invoke('stock_analysis.detail','GET',None,dict(ident=state.get('reportId')))
+                if code!=200 or report.get('status')!='complete':
+                    return jsonify(error='Saved report unavailable. Original export remains accessible with render=original.'),409
+                from research_onepager import render
+                output=render(report,obj(row['input']))
+            return Response(output,mimetype='text/html',headers={'Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; sandbox"})

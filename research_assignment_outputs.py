@@ -10,6 +10,9 @@ def fields(run,prefix):
 
 
 def note(run,kind,assignment):
+    if kind == "visual":
+        from research_onepager import render
+        return render(run, assignment)
     esc=html.escape
     groups=([('Investment view','/summary/'),('Catalysts','/catalysts/'),('Risks','/risks/'),('What to monitor','/monitor/')]
         if kind=='summary_note' else [('Company','/summary/one_liner'),('Business','/business/'),('Financials','/financials/'),('Valuation','/valuation/'),('Risks','/risks/')])
