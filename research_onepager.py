@@ -107,8 +107,8 @@ def render(run, assignment):
     scenario = ''.join(scenarios[:1]) or gap('Bull / base / bear assumptions and comparable multi-year financials require additional evidence. The selected event window is not a complete company model.')
     bottom = claim(get('/summary/earnings_direction')) or thesis
     rows = (panel(1, 'Company & business', company + business, 'company')
-            + panel(3, 'Financial signals', signals, 'signals')
             + panel(2, 'The ownership case', thesis, 'thesis')
+            + panel(3, 'Financial signals', signals, 'signals')
             + panel(4, 'What remains contested', debate, 'debates')
             + panel(5, 'Next catalyst', catalyst, 'catalyst')
             + panel(6, 'What to monitor', monitor, 'monitor')

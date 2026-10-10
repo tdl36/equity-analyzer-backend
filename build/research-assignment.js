@@ -135,7 +135,7 @@ export function ResearchAssignment({
   return /*#__PURE__*/React.createElement("section", {
     className: "sa-prepare",
     "aria-label": "End-to-end research"
-  }, /*#__PURE__*/React.createElement("h4", null, "One research assignment"), /*#__PURE__*/React.createElement("p", null, "For ", /*#__PURE__*/React.createElement("strong", null, ticker), ", collect new originals and prepare the outputs you choose."), /*#__PURE__*/React.createElement("fieldset", {
+  }, /*#__PURE__*/React.createElement("style", null, `@media(max-width:650px){.sa-visual-preview{position:fixed;inset:58px 0 64px;background:white;z-index:80;padding:10px!important;display:flex;flex-direction:column}.sa-visual-preview iframe{flex:1;min-height:0;height:100%!important}.sa-visual-preview button{align-self:flex-start;margin:0!important}}`), /*#__PURE__*/React.createElement("h4", null, "One research assignment"), /*#__PURE__*/React.createElement("p", null, "For ", /*#__PURE__*/React.createElement("strong", null, ticker), ", collect new originals and prepare the outputs you choose."), /*#__PURE__*/React.createElement("fieldset", {
     disabled: disabled || busy || unfinished || !!error
   }, /*#__PURE__*/React.createElement("div", {
     className: "sa-form-grid"
@@ -231,7 +231,9 @@ export function ResearchAssignment({
     })
   }, "Export ", outputs.find(x => x[0] === a.kind)?.[1])), j.result.thesisDraftId && /*#__PURE__*/React.createElement("a", {
     href: `?thesisDraft=${j.result.thesisDraftId}#view=thesisimports&ticker=${encodeURIComponent(ticker)}`
-  }, "Review thesis proposal")), preview?.id === j.id && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("button", {
+  }, "Review thesis proposal")), preview?.id === j.id && /*#__PURE__*/React.createElement("div", {
+    className: "sa-visual-preview"
+  }, /*#__PURE__*/React.createElement("button", {
     onClick: () => setPreview(null)
   }, "Close preview"), /*#__PURE__*/React.createElement("iframe", {
     title: `${ticker} visual one-pager preview`,

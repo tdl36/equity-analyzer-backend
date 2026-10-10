@@ -2,7 +2,7 @@
 
 Updated: October 10, 2026
 
-## T139 — visual brief repair (release verification pending)
+## T139 / T140 — visual brief repair
 
 Replaces the coordinating assignment's generic first-two-fields boxes with a
 source-linked editorial brief: paired competing views, recovery/pressure panels,
@@ -17,7 +17,10 @@ that specific artifact, not arbitrary future report lengths. Long future claims
 remain whole and may need more than one printed page. Missing company valuation
 and financial history remain substantive evidence gaps. No paid QA research ran.
 932 safe backend tests and 96 frontend tests passed; frontend build and unchanged
-model-policy gate passed. Production revision/assets/preview verification pending.
+model-policy gate passed. T139 production revision and hosted bytes verified; desktop preview works. Mobile
+inspection found nested panels squeezed the iframe; T140 expands it into a
+full-width mobile overlay and aligns document reading order with section numbers.
+T140 production verification pending.
 
 ## Start here
 
