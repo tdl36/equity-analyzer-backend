@@ -150,8 +150,8 @@ class Coordinator:
     def public(self,row):
         p=obj(row['input']);s=copy.deepcopy(obj(row.get('result')))
         if s.get('visualFundamentals'):
-            f=s['visualFundamentals'];s['visualFundamentals']={k:f.get(k) for k in ('asOf','retrievedAt','gaps')}
-        s.pop('thesisPackage',None);s.pop('researchInput',None);s.pop('artifactRevisions',None)
+            f=s['visualFundamentals'];s['visualFundamentals']={k:f.get(k) for k in ('version','asOf','retrievedAt','gaps')}
+        s.pop('visualFundamentalRevisions',None);s.pop('thesisPackage',None);s.pop('researchInput',None);s.pop('artifactRevisions',None)
         if s.get('collection'):s['collection']={k:s['collection'].get(k) for k in ('status','issue','sourceProgress')}
         s['artifacts']=[{'kind':k,'url':'/api/research/assignments/'+row['id']+'/artifact/'+k,'reviewRequired':True} for k in s.get('artifacts',{})]
         return dict(id=row['id'],ticker=row['ticker'],status=row['status'],error=row.get('error'),created_at=row.get('created_at'),updated_at=row.get('updated_at'),input={k:v for k,v in p.items() if k not in ('thesisBaseline','sourcePolicy')},result=s)
@@ -215,11 +215,14 @@ class Coordinator:
                 if not row or row['status']!='complete':return jsonify(error='Choose a completed assignment.'),409
                 state=obj(row['result'])
                 if 'visual' not in state.get('artifacts',{}):return jsonify(error='This assignment has no visual output.'),409
-                if not state.get('visualFundamentals'):
+                previous=state.get('visualFundamentals')
+                if not previous or previous.get('version',1)<2:
                     from stock_visual_fundamentals import collect
-                    try:state['visualFundamentals']=collect(row['ticker'])
+                    try:current=collect(row['ticker'])
                     except Exception:return jsonify(error='Public fundamentals could not be validated. Research and original export were retained; retry public retrieval later.'),409
-                    # Append a separate dated snapshot; never rewrite report claims or original exports.
+                    if previous:state.setdefault('visualFundamentalRevisions',[]).append(previous)
+                    state['visualFundamentals']=current
+                    # Preserve the prior evidence snapshot; never rewrite report claims or original exports.
                     self.store(ident,state,row['status'],row.get('error'))
                 return jsonify(ok=True,asOf=state['visualFundamentals']['asOf'])
         @bp.post('/api/research/assignments/<ident>/<action>')

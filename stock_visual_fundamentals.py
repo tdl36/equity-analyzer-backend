@@ -69,17 +69,19 @@ def collect(ticker):
     if int(raw.get('cik',-1))!=cik:raise ValueError('SEC issuer identity mismatch.')
     rows=annuals(raw,asof)
     if len([r for r in rows if 'revenue' in r])<3:raise ValueError('At least three comparable annual revenue observations are required.')
-    out={'version':1,'ticker':ticker,'company':raw.get('entityName'),'cik':cik,'retrievedAt':now.isoformat(),'asOf':asof,'annuals':rows,'sourceUrl':url,'sourceHash':sha,'quote':None,'gaps':[]}
-    try:
-        import yfinance as yf
-        info=yf.Ticker(ticker).get_info()
-        stamp=info.get('regularMarketTime');price=info.get('regularMarketPrice')
-        if info.get('symbol')!=ticker or info.get('currency')!='USD' or not stamp or not price or not math.isfinite(float(price)) or float(price)<=0:raise ValueError('Invalid quote identity, currency or price.')
-        quote_time=datetime.fromtimestamp(stamp,timezone.utc)
-        if not 0<=(now-quote_time).total_seconds()<=7*86400:raise ValueError('Quote is stale or future dated.')
-        out['quote']={'price':price,'currency':'USD','observedAt':quote_time.isoformat(),'retrievedAt':now.isoformat(),'sourceUrl':f'https://finance.yahoo.com/quote/{ticker}/','provider':'Yahoo Finance','basis':'Regular market quote; provider timestamp',**{k:positive_number(info.get(k)) for k in ['marketCap','trailingPE','forwardPE']},**{k:info.get(k) for k in ['sector','exchange']}}
-    except Exception:
-        out['gaps'].append('Current market quote unavailable or not validated; no current valuation inferred.')
+    out={'version':2,'ticker':ticker,'company':raw.get('entityName'),'cik':cik,'retrievedAt':now.isoformat(),'asOf':asof,'annuals':rows,'sourceUrl':url,'sourceHash':sha,'quote':None,'gaps':[]}
+    try:out['quote']=quote(ticker,now)
+    except Exception:out['gaps'].append('Current market quote unavailable or not validated; no current valuation inferred.')
+    from visual_business_profiles import PROFILES
+    profile=PROFILES.get(ticker,{})
+    out['peers']=[]
+    for symbol,name,role in profile.get('peers',[]):
+        try:
+            peer=quote(symbol,now)
+            # Comparable market snapshots must come from the same trading date.
+            if not out['quote'] or peer['observedAt'][:10]!=out['quote']['observedAt'][:10]:raise ValueError('Quote dates differ.')
+            out['peers'].append(dict(ticker=symbol,name=name,role=role,quote=peer))
+        except Exception:out['gaps'].append(f'{symbol} peer quote unavailable or not date-matched.')
     try:add_segments(out)
     except Exception:out['gaps'].append('Segment filing data could not be validated.')
     return out
@@ -123,3 +125,15 @@ def add_segments(out):
             if not out['segments']:out['gaps'].append('No unambiguous segment revenue mapping was found in the annual filing.')
             out['segmentSource']={'url':url,'sha256':hashlib.sha256(r.content).hexdigest(),'filed':recent['filingDate'][i]}
             return
+
+
+def quote(ticker,now):
+    import yfinance as yf
+    info=yf.Ticker(ticker).get_info()
+    stamp=info.get('regularMarketTime');price=positive_number(info.get('regularMarketPrice'))
+    if info.get('symbol')!=ticker or info.get('currency')!='USD' or not stamp or not price:raise ValueError('Invalid quote identity, currency or price.')
+    qt=datetime.fromtimestamp(stamp,timezone.utc)
+    if not 0<=(now-qt).total_seconds()<=7*86400:raise ValueError('Stale or future quote.')
+    return dict(ticker=ticker,price=price,currency='USD',observedAt=qt.isoformat(),retrievedAt=now.isoformat(),sourceUrl=f'https://finance.yahoo.com/quote/{ticker}/',provider='Yahoo Finance',basis='Regular market quote; provider-defined multiples',
+        **{k:positive_number(info.get(k)) for k in ['marketCap','trailingPE','forwardPE','forwardEps']},
+        **{k:info.get(k) for k in ['sector','industry','exchange']})

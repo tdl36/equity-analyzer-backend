@@ -133,7 +133,7 @@ class AssignmentPostgresTests(unittest.TestCase):
 
     def test_public_visual_supplement_preserves_research_and_replays_without_network(self):
         self.start(['visual']);self.collected();self.advance()
-        before=self.co.read(self.ident)['result'];f={'asOf':'2026-10-10','annuals':[]}
+        before=self.co.read(self.ident)['result'];f={'version':2,'asOf':'2026-10-10','annuals':[]}
         path='/api/research/assignments/'+self.ident+'/visual-supplement'
         with patch('stock_visual_fundamentals.collect',return_value=f) as collect:
             self.assertEqual(self.client.post(path,json={}).status_code,200)
@@ -142,6 +142,26 @@ class AssignmentPostgresTests(unittest.TestCase):
         after=self.co.read(self.ident)['result']
         self.assertEqual(before['artifacts'],after['artifacts']);self.assertEqual(len(self.submits),1)
         self.assertEqual(after['visualFundamentals'],f)
+
+    def test_visual_upgrade_preserves_previous_snapshot_on_failure_and_success(self):
+        self.start(['visual']);self.collected();self.advance()
+        row=self.co.read(self.ident);state=row['result']
+        old={'version':1,'asOf':'2026-10-09','annuals':[]}
+        state['visualFundamentals']=old;self.co.store(self.ident,state,row['status'],row.get('error'))
+        path='/api/research/assignments/'+self.ident+'/visual-supplement'
+        before=self.co.read(self.ident)
+        with patch('stock_visual_fundamentals.collect',side_effect=ValueError('unavailable')):
+            self.assertEqual(self.client.post(path,json={}).status_code,409)
+        self.assertEqual(before,self.co.read(self.ident))
+        new={'version':2,'asOf':'2026-10-10','annuals':[]}
+        with patch('stock_visual_fundamentals.collect',return_value=new) as collect:
+            self.assertEqual(self.client.post(path,json={}).status_code,200)
+            self.assertEqual(self.client.post(path,json={}).status_code,200)
+            self.assertEqual(collect.call_count,1)
+        after=self.co.read(self.ident)['result']
+        self.assertEqual(after['visualFundamentalRevisions'],[old])
+        self.assertEqual(after['artifacts'],before['result']['artifacts'])
+        self.assertEqual(len(self.submits),1)
 
     def test_hash_mismatch_no_dispatch(self):
         self.start();self.collected('bad');r=self.advance();self.assertEqual(r['status'],'attention');self.assertEqual(self.submits,{})

@@ -2,6 +2,28 @@
 
 Updated: October 10, 2026
 
+## T143 — editorial investment map (release verification pending)
+
+Rebuilds the visual renderer as an A4 editorial map with conceptual healthcare
+artwork, public UNH business descriptions, endpoint changes on five financial
+charts, distinct supported thesis drivers, paired debates and resolution signals.
+Public fundamentals v2 adds curated UNH comparables (CVS, CI, HUM) with matching
+quote dates. The valuation matrix is arithmetic EPS/P-E sensitivity, explicitly
+not calibrated forecasts or price targets. Other issuers retain a generic
+source-backed layout; company-specific artwork/peer curation is currently UNH.
+
+Completed visual supplementation upgrades v1 evidence to v2 once, archives the
+previous evidence snapshot, and preserves original exports and report/thesis
+references. Failed public retrieval leaves the prior snapshot untouched. No
+research model or thesis approval is invoked. Missing peer data remains visible
+in retrieval gaps. Historical valuation ranges and calibrated scenario forecasts
+remain absent; these must not be invented to fill the reference template.
+
+The actual existing UNH evidence rendered to one A4 page locally. 943 safe backend tests and 96 frontend tests pass; production build, Python
+compilation and unchanged model-policy gate pass. PDF inspection confirms only
+Calibri/Calibri Bold, black text, and no text outside the page. Production
+deployment and hosted/mobile inspection are pending below.
+
 ## T141 / T142 — illustrated stock brief and public financial supplement
 
 Implements an opt-in public financial supplement for visual assignments: five

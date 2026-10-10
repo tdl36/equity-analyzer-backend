@@ -208,7 +208,7 @@ export function ResearchAssignment({
     role: "alert"
   }, j.error), /*#__PURE__*/React.createElement("div", {
     className: "sa-actions"
-  }, j.status === 'complete' && j.result.artifacts?.some(a => a.kind === 'visual') && !j.result.visualFundamentals && /*#__PURE__*/React.createElement("button", {
+  }, j.status === 'complete' && j.result.artifacts?.some(a => a.kind === 'visual') && (!j.result.visualFundamentals || j.result.visualFundamentals.version < 2) && /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: () => mutate(async () => {
       await request(`assignments/${j.id}/visual-supplement`, {});

@@ -29,3 +29,16 @@ class FundamentalsTests(unittest.TestCase):
         for value in [None,False,'bad',float('nan'),float('inf'),-1,0]:
             self.assertIsNone(positive_number(value))
         self.assertEqual(positive_number('24.5'),24.5)
+
+    def test_quote_identity_freshness_and_optional_values(self):
+        from datetime import datetime, timezone
+        from unittest.mock import patch
+        from stock_visual_fundamentals import quote
+        now=datetime(2026,10,10,tzinfo=timezone.utc)
+        valid=dict(symbol='UNH',currency='USD',regularMarketTime=now.timestamp()-3600,regularMarketPrice=100,forwardPE=float('nan'))
+        with patch('yfinance.Ticker') as ticker:
+            ticker.return_value.get_info.return_value=valid
+            self.assertIsNone(quote('UNH',now)['forwardPE'])
+            for delta in [dict(symbol='OTHER'),dict(currency='EUR'),dict(regularMarketTime=now.timestamp()+60),dict(regularMarketTime=now.timestamp()-8*86400)]:
+                ticker.return_value.get_info.return_value=valid|delta
+                with self.assertRaises(ValueError):quote('UNH',now)

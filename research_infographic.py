@@ -1,97 +1,204 @@
-"""Illustrated investment infographic. Structured facts and reviewed claims stay separate."""
+"""Source-preserving editorial investment map. No model calls or input mutation."""
+import base64
 import html
 import json
 import math
+import re
+from functools import lru_cache
+from pathlib import Path
 from urllib.parse import urlparse
-VERSION='stock-infographic-v3'
-e=lambda x:html.escape(str(x if x is not None else ''),quote=True)
-COLORS=['#cdeaff','#d9f0df','#eee0fb','#ffe4c6','#d7eced']
+from visual_business_profiles import PROFILES
 
-def icon(kind):
-    shapes={
-     'company':'<path d="M8 46V14l18-8v40M26 18h24v28M4 46h52M14 18v4m6-7v4m-6 9v4m6-7v4m-6 9v4m6-7v4M32 25h5m7 0h2m-14 8h5m7 0h2m-8 13V38"/>',
-     'money':'<ellipse cx="28" cy="13" rx="19" ry="7"/><path d="M9 13v10c0 9 38 9 38 0V13M9 24v10c0 9 38 9 38 0V24M9 35v9c0 9 38 9 38 0V35"/>',
-     'chart':'<path d="M6 48h46M12 43V29h7v14M27 43V19h7v24M42 43V8h7v35M8 21l15-8 12 1 13-9"/>',
-     'target':'<circle cx="28" cy="29" r="21"/><circle cx="28" cy="29" r="13"/><circle cx="28" cy="29" r="4"/><path d="M28 29 50 7M41 7h9v9"/>',
-     'risk':'<path d="m28 5 25 45H3ZM28 20v14M28 40v2"/>',
-     'clock':'<circle cx="28" cy="28" r="22"/><path d="M28 12v17l12 7"/>',
-     'balance':'<path d="M28 6v43M17 49h22M8 16h40M12 16 4 34h16ZM44 16 36 34h16Z"/>',
-     'monitor':'<path d="M4 9h49v32H4ZM18 50h21M28 41v9M8 28h10l6-12 9 19 6-9h10"/>',
-     'care':'<path d="M9 49V15h38v34M3 49h50M22 49V36h12v13M28 6v18M19 15h18M16 27h4m16 0h4"/>',
-    }
-    return '<svg class="icon" viewBox="0 0 58 58" aria-hidden="true" fill="none" stroke="#24577a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">'+shapes.get(kind,shapes['chart'])+'</svg>'
+VERSION='stock-infographic-v4'
+e=lambda value:html.escape(str(value if value is not None else ''),quote=True)
 
-def campus():
-    # Conceptual architecture, never a depiction of actual company premises.
-    windows=''.join(f'<rect x="{x}" y="{y}" width="13" height="18" fill="#91bdd4" stroke="#fff"/>' for x in range(97,320,23) for y in range(50,129,27))
-    return '<svg class="campus" viewBox="0 0 450 180" aria-label="Conceptual company illustration"><defs><linearGradient id="sky" x2="0" y2="1"><stop stop-color="#e5f5ff"/><stop offset="1" stop-color="#fff"/></linearGradient></defs><rect width="450" height="180" fill="url(#sky)"/><path d="M0 148 210 132 450 144v36H0" fill="#dbeccf"/><path d="m75 143 40-119 235 5 34 114" fill="#a5bcc8"/><path d="M87 145V37h253v108" fill="#dae5eb"/>'+windows+'<path d="m74 37 41-15 237 6-12 10Z" fill="#7998a9"/><path d="M219 146V95h57v51" fill="#547e95"/><path d="M224 98h46v47h-46M247 98v47" fill="#bde0ec" stroke="#fff"/><path d="m210 146-45 34h145l-29-34" fill="#e9e4d8"/>'+''.join(f'<path d="M{x} 153v-36" stroke="#847051" stroke-width="5"/><circle cx="{x}" cy="111" r="22" fill="#a1c98c"/><circle cx="{x-9}" cy="102" r="17" fill="#bddba8"/>' for x in [43,65,377,409])+'</svg>'
+@lru_cache(maxsize=1)
+def healthcare_art():
+    path=Path(__file__).parent/'assets/research-visuals/healthcare-value-chain.png'
+    return 'data:image/png;base64,'+base64.b64encode(path.read_bytes()).decode()
+
+def numeric(value):
+    return isinstance(value,(int,float)) and not isinstance(value,bool) and math.isfinite(value)
+
+def sentence_key(text):
+    return set(re.findall(r'[a-z0-9]+',text.lower()))-{'the','a','and','of','to','in','with','for','by','is','at'}
+
+class Editor:
+    """Rank supported evidence by relevance and strength, then suppress repeated ideas."""
+    def __init__(self,run):
+        self.sources=run.get('sources',[])
+        self.refs={s['id']:i+1 for i,s in enumerate(self.sources)}
+        self.cs={p:c for p,c in run.get('state',{}).get('citations',{}).items() if self.valid(c)}
+        self.used=[];self.used_refs=set()
+    def valid(self,c):
+        return bool(c and c.get('statement') and c.get('review')=='supported' and c.get('passageMatched') and any(x.get('matched') and x.get('sourceId') in self.refs for x in c.get('evidence',[])))
+    def get(self,path):return self.cs.get(path)
+    def fresh(self,c):
+        k=sentence_key(c['statement'])
+        return all(len(k & old)/max(1,len(k | old))<.62 for old in self.used)
+    def score(self,item):
+        p,c=item;t=c['statement']
+        sources=len({x.get('sourceId') for x in c.get('evidence',[]) if x.get('matched')})
+        return (sources*3+(4 if topic(c)!='Investment debate' and topic(c)==topic(self.cs.get('/infographic/headline',{'statement':''})) else 0)+min(3,len(re.findall(r'\d',t)))+(2 if c.get('basis') in ('reported_fact','reported fact') else 0),-len(t),p)
+    def select(self,prefixes,limit=2,exclude=()):
+        items=[x for x in self.cs.items() if any(x[0].startswith(p) for p in prefixes) and not any(x[0].endswith(z) for z in exclude)]
+        selected=[]
+        for _,c in sorted(items,key=self.score,reverse=True):
+            if not self.fresh(c):continue
+            if any(topic(c)==topic(prior) and topic(c)!='Investment debate' for prior in selected):continue
+            selected.append(c);self.used.append(sentence_key(c['statement']))
+            if len(selected)>=limit:break
+        return selected
+    def refs_html(self,c):
+        ids=sorted({self.refs[x['sourceId']] for x in c.get('evidence',[]) if x.get('matched') and x.get('sourceId') in self.refs})
+        self.used_refs.update(ids)
+        return '<sup>'+','.join(f'<a href="#source-{n}">{n}</a>' for n in ids)+'</sup>'
+    def claim(self,c,remember=False):
+        if not c:return '<span class="missing">Evidence needed</span>'
+        if remember:self.used.append(sentence_key(c['statement']))
+        basis={'broker_estimate':'Estimate','broker estimate':'Estimate','interpretation':'Interpretation'}.get(c.get('basis'),'Source view')
+        return '<p class="claim"><span class="basis">'+basis+'</span> '+e(c['statement'])+self.refs_html(c)+'</p>'
+
+def metric_change(points,metric):
+    if len(points)<2:return 'History unavailable'
+    a,b=points[0][1],points[-1][1]
+    if metric=='operatingMargin':return f'{b-a:+.1f} pp'
+    if a>0:return f'{(b/a-1)*100:+.1f}%'
+    return 'Change not comparable'
 
 def charts(rows):
     parts=[]
-    for k,title,div,unit in [('revenue','Revenue',1e9,'$bn'),('operatingMargin','Operating margin',1,'%'),('eps','GAAP diluted EPS',1,'$'),('freeCashFlow','Free cash flow¹',1e9,'$bn'),('netIncome','GAAP net income',1e9,'$bn')]:
-        pts=[(r['year'],r[k]['value']/div) for r in rows if k in r]
+    metrics=[('revenue','Revenue',1e9,'$bn','#57a7d6'),('operatingMargin','Operating margin',1,'%','#6eb59e'),('eps','Diluted EPS',1,'$','#aa93c9'),('freeCashFlow','Free cash flow',1e9,'$bn','#e3aa65'),('netIncome','Net income',1e9,'$bn','#79adb3')]
+    for key,title,scale,unit,color in metrics:
+        pts=[(r.get('year',''),r[key]['value']/scale) for r in rows if key in r and numeric(r[key].get('value'))]
         if len(pts)<3:
-            parts.append('<div class="chart"><h3>'+title+'</h3><p>Comparable history unavailable</p></div>');continue
-        low=min(0,min(v for _,v in pts));high=max(0,max(v for _,v in pts));span=high-low or 1
-        baseline=116-(0-low)/span*78;svg=f'<line x1="5" y1="{baseline}" x2="190" y2="{baseline}" stroke="#879dab"/>'
-        for j,(yr,v) in enumerate(pts):
-            x=10+j*37;vy=116-(v-low)/span*78;h=abs(vy-baseline)
-            svg+=f'<rect x="{x}" y="{min(vy,baseline):.2f}" width="25" height="{h:.2f}" rx="2" fill="{COLORS[j%5]}" stroke="#7facc6"/><text font-family="Calibri" x="{x+12}" y="{vy-5 if v>=0 else vy+12}" text-anchor="middle" font-size="10">{v:.1f}</text><text font-family="Calibri" x="{x+12}" y="137" text-anchor="middle" font-size="10">{e(yr)}</text>'
-        parts.append(f'<figure class="chart"><h3>{title} <small>({unit})</small></h3><svg role="img" aria-label="{title}: '+e('; '.join(f'{yr}: {v:.1f} {unit}' for yr,v in pts))+f'" viewBox="0 0 200 145">{svg}</svg></figure>')
+            parts.append(f'<figure class="chart"><h3>{title}</h3><p>Comparable history unavailable</p></figure>');continue
+        pts=pts[-5:];low=min(0,min(v for _,v in pts));high=max(0,max(v for _,v in pts));span=high-low or 1
+        y=lambda v:90-(v-low)/span*56
+        bars=f'<path d="M4 {y(0):.1f}H196" stroke="#a0aab0"/>'
+        for j,(year,value) in enumerate(pts):
+            x=8+j*39
+            bars+=f'<rect x="{x}" y="{min(y(value),y(0)):.1f}" width="26" height="{abs(y(value)-y(0)):.1f}" fill="{color}" opacity="{1 if j==len(pts)-1 else .45}"/><text x="{x+13}" y="{y(value)-5 if value>=0 else y(value)+11:.1f}">{value:.1f}</text><text x="{x+13}" y="111">{e(year)}</text>'
+        title_change=metric_change(pts,key)
+        parts.append(f'<figure class="chart"><h3>{title} <span>({unit})</span></h3><b class="change">{title_change}</b><small>{e(pts[0][0])}–{e(pts[-1][0])} total change</small><svg viewBox="0 0 204 118" role="img" aria-label="{e(title)}: {e(str(pts))}"><g font-family="Calibri" fill="#000" text-anchor="middle" font-size="12">{bars}</g></svg></figure>')
     return ''.join(parts)
 
+def sensitivity(q):
+    """Mechanical two-factor sensitivity; never label these cells as target prices."""
+    pe=q.get('forwardPE');price=q.get('price')
+    if not numeric(pe) or not numeric(price) or pe<=0 or price<=0:return '<p>Forward valuation inputs unavailable.</p>'
+    implied=price/pe
+    out='<table class="sensitivity"><thead><tr><th>EPS × P/E</th>'+''.join(f'<th>{pe*m:.1f}×</th>' for m in [.9,1,1.1])+'</tr></thead><tbody>'
+    for a in [.9,1,1.1]:
+        out+=f'<tr><th>${implied*a:.2f}</th>'
+        for b in [.9,1,1.1]:
+            value=price*a*b;out+=f'<td class="{"center" if a==b==1 else ""}">${value:.0f} <small>({(a*b-1)*100:+.0f}%)</small></td>'
+        out+='</tr>'
+    return out+'</tbody></table><p class="micro">±10% EPS / P/E; EPS = price ÷ forward P/E. Mechanical values, not forecasts. [M]</p>'
+
+def topic(c):
+    t=c['statement'].lower()
+    for name,words in [('Star ratings',('star','cahps')),('Commercial pricing',('idr','commercial')),('Optum recovery',('optum','oh ')),('Medical costs',('utilization','medical')),('Medicaid',('medicaid',)),('Medicare margins',('ma margin','medicare advantage')),('Capital returns',('buyback','debt/'))]:
+        if any(w in t for w in words):return name
+    return 'Investment debate'
+
+def section(n,title,body,sub=''):
+    return f'<section class="panel"><header><span class="number">{n}</span><h2>{e(title)}</h2><span class="sub">{e(sub)}</span></header>{body}</section>'
+
 def render(run,assignment,fundamentals):
-    f=fundamentals;rows=f['annuals'];q=f.get('quote') or {};sources=run.get('sources',[])
-    refs={s['id']:str(i+1) for i,s in enumerate(sources)};cs=run.get('state',{}).get('citations',{})
-    def get(p):
-        c=cs.get(p)
-        return c if c and c.get('review')=='supported' and c.get('passageMatched') and any(x.get('matched') and x.get('sourceId') in refs for x in c.get('evidence',[])) else None
-    def claim(c):
-        if not c:return ''
-        numbers=sorted({refs[x['sourceId']] for x in c.get('evidence',[]) if x.get('matched') and x.get('sourceId') in refs})
-        basis={'broker_estimate':'Broker estimate · ','broker estimate':'Broker estimate · ','interpretation':'Interpretation · '}.get(c.get('basis'),'')
-        return '<p>'+('<small>'+basis+'</small>' if basis else '')+e(c['statement'])+'<sup>['+','.join(numbers)+']</sup></p>'
-    def many(prefix,n=2):return ''.join(claim(get(p)) for p in [p for p in sorted(cs) if p.startswith(prefix) and get(p)][:n])
-    def section(n,title,content,cls=''):
-        return f'<section class="panel {cls}"><header><b>{n}</b><h2>{title}</h2></header>{content}</section>'
-    def stat(label,value,kind='chart',sub=''):
-        return '<div class="stat">'+icon(kind)+'<div><small>'+e(label)+'</small><strong>'+e(value)+'</strong><small>'+e(sub)+'</small></div></div>'
-    latest=rows[-1];money=lambda k:('$'+format(latest[k]['value']/1e9,'.1f')+'bn') if k in latest else 'Not established'
-    company=claim(get('/summary/one_liner'))
-    hero='<div class="hero"><div><h1>'+e(f.get('company') or run['ticker'])+'</h1><p class="ticker">'+e(run['ticker'])+' · Company overview → investment thesis</p>'+company+'</div><div>'+campus()+'<small>Conceptual illustration</small></div><div class="facts">'+stat('Sector',q.get('sector','Not established'),'company')+stat('Market capitalisation',('$'+format(q['marketCap']/1e9,'.1f')+'bn') if q.get('marketCap') else 'Not established','money')+stat('Investment horizon',assignment.get('horizon','12–24 months'),'clock')+'</div></div>'
-    # Business identity from the reviewed pack; economic flow is explicitly consolidated.
-    segs=[]
-    for i in range(8):
-        p=f'/business/segments/{i}/';c=get(p+'name')
-        if c:segs.append('<div class="business-card">'+icon('care')+'<h3>'+e(c['statement'])+'</h3>'+claim(get(p+'description') or get(p+'key_kpi'))+'</div>')
-    if f.get('segments'):
-        segs=['<div class="business-card">'+icon('company')+'<h3>'+e(s['name'])+'</h3><strong>$'+format(s['revenue']/1e9,'.1f')+'bn</strong><small>'+e(s['year'])+' segment revenue [F]</small></div>' for s in f['segments']]
-    business='<div class="business">'+''.join(segs[:4])+'<div class="flow-arrow">→</div>'+stat('Consolidated revenue',money('revenue'),'money',latest['year'])+'<div class="flow-arrow">→</div>'+stat('Operating earnings',money('operatingIncome'),'chart',latest['year'])+'<div class="flow-arrow">→</div>'+stat('Net income',money('netIncome'),'money',latest['year'])+'</div><small>Segment amounts may include internal sales; arrows summarize group profitability, not additive segment contributions. Consolidated GAAP figures [F]. Intersegment revenue must not be added to group sales.</small>'
-    history='<div class="charts">'+charts(rows)+'</div><div class="signal-strip"><div><b>Recovery signals</b>'+many('/financials/improved/',1)+'</div><div><b>Pressure points</b>'+many('/financials/weakened/',1)+'</div></div><small>[F] Annual SEC XBRL facts; latest filed values at retrieval. GAAP definitions. ¹ Free cash flow = operating cash flow − capital expenditure; margin = operating earnings ÷ revenue. These are calculations, not separately reported GAAP metrics.</small>'
-    thesis=many('/summary/investment_thesis/',2)
-    scenarios=[]
-    for title,prefix,color in [('Upside conditions','/monitor/strengtheners/',0),('Current evidence','/summary/earnings_direction',1),('Downside conditions','/monitor/breakers/',2)]:
-        content=many(prefix,1)
-        scenarios.append('<div class="scenario s'+str(color)+'"><h3>'+e(title)+'</h3>'+ (content or '<p>Further evidence required</p>')+'</div>')
-    thesis+='<div class="scenarios">'+''.join(scenarios)+'</div><small>Conditional evidence map, not a calibrated bull/base/bear valuation model.</small>'
-    debates=''
-    for i in range(10):
-        p=f'/debates/{i}/';a=get(p+'market_view') or get(p+'evidence_for_market');b=get(p+'alternative_view') or get(p+'evidence_for_alternative')
-        if a and b:debates+='<tr><td>'+claim(a)+'</td><td>'+claim(b)+'</td></tr>'
-        if debates:break
-    debate='<table><thead><tr><th>Market / recovery argument</th><th>What could be different</th></tr></thead><tbody>'+debates+'</tbody></table>' if debates else '<p>Paired debate requires further evidence.</p>'
-    catalysts='<div class="risk-grid"><div><h3>'+icon('clock')+' Catalysts</h3>'+many('/catalysts/',2)+'</div><div><h3>'+icon('risk')+' Risks</h3>'+many('/financials/weakened/',2)+'</div></div>'
-    valuation='<div class="valuation">'+stat('Market price',f"${q['price']:.2f}" if q.get('price') else 'Unavailable','money')+stat('Trailing P/E',f"{q['trailingPE']:.1f}×" if q.get('trailingPE') else 'Unavailable','balance')+stat('Forward P/E',f"{q['forwardPE']:.1f}×" if q.get('forwardPE') else 'Unavailable','chart')+'</div><small>[M] '+e(q.get('provider','Market data unavailable'))+' · '+e(q.get('observedAt',''))+'. Multiples use provider definitions; forward estimates are not independently reconstructed. Peer comparison and scenario price targets require matched evidence; no relative-value conclusion is implied.</small>'
-    monitor='<div class="monitor-grid"><div><h3>'+icon('target')+' Thesis strengthens</h3>'+many('/monitor/strengtheners/',2)+'</div><div><h3>'+icon('risk')+' Thesis weakens</h3>'+many('/monitor/breakers/',2)+'</div><div><h3>'+icon('monitor')+' Next checkpoint</h3>'+many('/catalysts/',1)+'</div></div>'
-    bottom=claim(get('/summary/earnings_direction'))
-    foot=' · '.join('['+str(i+1)+'] '+e(s.get('filename','Original')) for i,s in enumerate(sources))
-    details='<p>[F] <a href="'+e(f['sourceUrl'])+'">SEC company facts</a> · Retrieved '+e(f['retrievedAt'])+' · SHA-256 '+e(f['sourceHash'])+'</p>'
-    if f.get('segmentSource'):details+='<p>Segment filing: <a href="'+e(f['segmentSource']['url'])+'">Original 10-K</a> · SHA-256 '+e(f['segmentSource']['sha256'])+'</p>'
-    if q:details+='<p>[M] <a href="'+e(q['sourceUrl'])+'">Yahoo Finance quote</a> · Retrieved '+e(q['retrievedAt'])+'</p>'
-    for i,s in enumerate(sources,1):
-        url=s.get('sourceUrl','');link='<a href="'+e(url)+'">Open original</a>' if urlparse(url).scheme in ('http','https') else 'URL unavailable'
-        details+='<p>['+str(i)+'] '+e(s.get('filename'))+' · '+link+'</p>'
-    details+='<pre>'+e(json.dumps({'annuals':rows,'quote':q},indent=2))+'</pre>'
-    return '''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'''+e(run['ticker'])+''' · Visual investment map</title><style>
-@page{size:A3 portrait;margin:9mm}*{box-sizing:border-box;font-family:Calibri,Carlito,sans-serif;color:#000}body{margin:0;background:#e8eff4;font-size:13px;line-height:1.22}.poster{max-width:1180px;margin:20px auto;padding:18px;background:white}.top{display:flex;justify-content:space-between;font-size:10px;letter-spacing:1px;border-bottom:2px solid #85bddb;padding-bottom:6px}.panel{border:1px solid #c8dfee;border-radius:7px;margin-top:8px;padding:9px;break-inside:avoid}header{display:flex;align-items:center;gap:8px;background:linear-gradient(90deg,#d6eaf8,#f5fbff);margin:-9px -9px 8px;padding:5px 8px;border-radius:7px 7px 0 0}header b{width:25px;height:25px;display:grid;place-items:center;border:1px solid #71a6c7;border-radius:50%;background:#bddcef;font-size:18px}h1{font-size:33px;line-height:1.02;margin:3px 0 7px;letter-spacing:-.6px}h2{font-size:20px;margin:0}h3{font-size:14px;margin:0 0 6px}p{margin:0 0 6px}small{display:block;font-size:9px;line-height:1.2}sup{font-size:8px;margin-left:2px}.hero{display:grid;grid-template-columns:1.1fr .9fr .65fr;gap:12px;align-items:center}.ticker{font-size:15px;font-weight:700;margin:9px 0}.campus{width:100%;display:block}.icon{width:34px;height:34px;flex-shrink:0}.stat{display:flex;align-items:center;gap:9px;padding:8px;background:#edf6fc;border:1px solid #c6dfed;border-radius:5px}.stat strong{display:block;font-size:20px;line-height:1.1;margin:3px 0}.facts{display:grid;gap:5px}.facts .stat:nth-child(2){background:#e5f3e9}.business{display:flex;gap:7px;align-items:stretch}.business .stat,.business-card{flex:1;min-width:0}.business-card{padding:7px;background:#f3effa;border:1px solid #ded1eb;border-radius:5px}.business-card p{font-size:11px}.business .stat{display:block}.flow-arrow{align-self:center;font-size:23px}.charts{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}.chart{margin:0;padding:6px;border:1px solid #d4e6ef;border-radius:4px;background:#fbfdff}.chart svg{width:100%;display:block}.chart small{display:inline}.signal-strip{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:7px 0}.signal-strip>div{padding:7px;background:#e8f4e9}.signal-strip>div+div{background:#fbeeee}.signal-strip p{font-size:11px;margin:3px 0}.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}.two .panel{min-width:0}.scenarios{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:8px 0}.scenario{padding:8px;background:#e3f2e7;border-radius:5px;border-top:4px solid #8dc6a2}.scenario p{font-size:11px}.s1{background:#eaf3fb;border-color:#8abbdc}.s2{background:#faeeee;border-color:#daa3a3}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{text-align:left;vertical-align:top;padding:8px;border:1px solid #d4e2eb;font-size:12px}th{background:#e0effa}.risk-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.risk-grid>div{background:#edf6ef;padding:8px}.risk-grid>div+div{background:#fcefee}h3 .icon{width:23px;height:23px;vertical-align:middle}.valuation{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:9px}.valuation .stat{display:block}.monitor-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.monitor-grid>div{padding:8px;background:#eef5f7}.monitor-grid>div:nth-child(2){background:#faeeee}.bottom{background:#e8f2ed;font-size:16px;font-weight:700}.footer{margin-top:8px;font-size:8px;line-height:1.3}.status{padding:5px 8px;background:#fff3d7;font-size:10px;margin:8px 0 0}details{max-width:1180px;margin:10px auto;padding:18px;background:white;font-size:12px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px}@media print{body{background:white;font-size:9pt;line-height:1.18}.poster{margin:0;padding:0;max-width:none}h1{font-size:22pt}h2{font-size:14pt}.panel{margin-top:5px;padding:7px}header{margin:-7px -7px 6px;padding:3px 6px}.campus{max-height:125px}.facts .stat{padding:5px}.chart svg{max-height:112px}.top{font-size:7pt}small{font-size:7pt}.stat strong{font-size:15pt}.chart h3{font-size:10pt}.scenario p,.business-card p,.signal-strip p{font-size:8pt}th,td{font-size:9pt}.footer{font-size:6pt}details{display:none}}@media(max-width:650px){.poster{margin:0;padding:10px}.hero,.two,.scenarios,.monitor-grid{display:block}.hero>div,.scenario,.monitor-grid>div{margin-bottom:9px}.campus{max-height:150px}.facts{grid-template-columns:1fr 1fr}.business{flex-wrap:wrap}.business-card,.business .stat{min-width:40%}.flow-arrow{display:none}.charts{grid-template-columns:repeat(2,minmax(0,1fr))}.charts .chart:last-child{grid-column:1 / span 2}.signal-strip,.risk-grid{display:block}.valuation .stat{padding:5px}.valuation .stat strong{font-size:17px}.top{font-size:8px}h1{font-size:30px}.bottom{font-size:14px}}
-</style><body><article class="poster" data-render-version="'''+VERSION+'''"><div class="top"><b>CHARLIE / VISUAL STOCK RESEARCH</b><span>INVESTOR REVIEW DRAFT</span></div>'''+section(1,'Company at a glance',hero)+section(2,'How the business makes money',business)+section(3,'Five-year financial snapshot',history)+'<div class="two">'+section(4,'Investment thesis',thesis)+section(5,'What the market is debating',debate)+'</div><div class="two">'+section(6,'Key catalysts and risks',catalysts)+section(7,'Valuation and market context',valuation)+'</div>'+section(8,'What to monitor',monitor)+section(9,'Bottom line',bottom,'bottom')+'<p class="status">Evidence coverage: historical filings and dated market data supplement the event window '+e(assignment.get('since'))+'–'+e(assignment.get('until'))+'. Peer comparisons and calibrated scenario prices remain incomplete. No thesis changes applied.</p><p class="footer">'+foot+' · [F] SEC annual facts · [M] Yahoo Finance. Some research originals were excerpted; omitted text was not reviewed. Illustration is conceptual. Research claims retain model-review limitations; public numerical facts are mechanically mapped and calculations are shown in the source register.</p></article><details><summary>Sources, dates, definitions and calculation inputs</summary>'+details+'</details></body></html>'
+    f=fundamentals;rows=f.get('annuals',[]);latest=rows[-1] if rows else {};q=f.get('quote') or {};ticker=run['ticker'];profile=PROFILES.get(ticker,{})
+    ed=Editor(run);money=lambda value:'$'+format(value/1e9,'.1f')+'bn' if numeric(value) else 'Not available'
+    val=lambda k:latest.get(k,{}).get('value')
+    headline=ed.get('/infographic/headline')
+    headline_text=re.sub(r'^'+re.escape(ticker)+r'\s*:\s*','',headline['statement']) if headline else 'The business, the evidence and the investment case'
+    headline_refs=ed.refs_html(headline) if headline else ''
+    if headline:ed.used.append(sentence_key(headline['statement']))
+    overview=e(profile['overview'])+' <sup>[B]</sup>' if profile.get('overview') else ed.claim(ed.get('/summary/one_liner'))
+    asof=e(f.get('asOf',''));window=e(assignment.get('since',''))+' — '+e(assignment.get('until',''))
+    head='<div class="mast"><b>CHARLIE / INVESTMENT MAP</b><span>'+e(ticker)+' · '+asof+' · REVIEW DRAFT</span></div><div class="title"><h1>'+e(profile.get('name') or f.get('company') or ticker)+'</h1><div class="symbol">'+e(ticker)+'</div></div><h2 class="headline">'+e(headline_text)+headline_refs+'</h2>'
+    facts='<div class="facts"><div><small>Market value [M]</small><b>'+money(q.get('marketCap'))+'</b></div><div><small>Share price [M]</small><b>'+('$'+format(q['price'],'.2f') if numeric(q.get('price')) else 'Unavailable')+'</b></div><div><small>Investment horizon</small><b>'+e(assignment.get('horizon','12–24 months'))+'</b></div></div>'
+    company='<div class="overview"><p>'+overview+'</p>'+facts+'</div>'
+    segments=f.get('segments',[])
+    # The healthcare illustration is an industry concept, not actual facilities.
+    artwork='<img class="value-chain" src="'+healthcare_art()+'" alt="Conceptual illustration: health benefits, care delivery, health technology and pharmacy"/><span class="art-note">Conceptual industry illustration</span>' if profile else ''
+    cards=''
+    for i,s in enumerate(segments[:4]):
+        context=profile.get('segments',{}).get(s['name'])
+        desc='<p>'+e(context[0])+'</p><small>'+e(context[1])+'</small><small><b>Watch:</b> '+e(context[2])+'</small>' if context else '<small>Reported operating segment</small>'
+        cards+=f'<div class="segment c{i}"><h3>{e(s["name"])}</h3><b class="segment-value">{money(s["revenue"])}</b>{desc}</div>'
+    if not cards:cards='<p>Segment economics need additional filing evidence.</p>'
+    bridge='<div class="bridge"><div><small>Consolidated revenue</small><b>'+money(val('revenue'))+'</b></div><span>→</span><div><small>Operating earnings</small><b>'+money(val('operatingIncome'))+'</b></div><span>→</span><div><small>Net income</small><b>'+money(val('netIncome'))+'</b></div></div>'
+    company='<div class="company-hero"><div>'+company+'</div><div>'+artwork+'</div></div>' if artwork else company
+    business='<div class="segments">'+cards+'</div>'+bridge+'<p class="micro">'+e(latest.get('year',''))+' reported figures [F]. Segments include internal sales; do not add to group revenue. FY2025 structure. '+('Optum Financial moved in 2026. [B]' if profile else '')+'</p>'
+    history='<div class="charts">'+charts(rows)+'</div><p class="micro">GAAP [F]. FCF = operating cash flow − capex. Margin = operating income / sales.</p>'
+    # Reserve whole paired arguments before selecting other sections. Never cross-pair topics.
+    debates=[];monitor=[]
+    for i in range(20):
+        prefix=f'/debates/{i}/';a=ed.get(prefix+'market_view') or ed.get(prefix+'evidence_for_market');b=ed.get(prefix+'alternative_view') or ed.get(prefix+'evidence_for_alternative');resolution=ed.get(prefix+'resolution_signal')
+        if a and b:
+            debates.append((a,b));ed.used.extend([sentence_key(a['statement']),sentence_key(b['statement'])])
+            if resolution:monitor.append((topic(a),resolution))
+    debates=sorted(debates,key=lambda pair:-(ed.score(('',pair[0]))[0]+ed.score(('',pair[1]))[0]))[:3]
+    debate='<table class="debates"><thead><tr><th>Recovery argument</th><th>Counterpoint</th></tr></thead><tbody>'+''.join('<tr><td><h3>'+e(topic(a))+'</h3>'+ed.claim(a)+'</td><td>'+ed.claim(b)+'</td></tr>' for a,b in debates)+'</tbody></table>' if debates else '<p>Paired source evidence needs review.</p>'
+    thesis_claims=ed.select(['/summary/investment_thesis/','/summary/top_drivers/'],2)
+    thesis='<div class="question"><b>Investment test</b><p>Can earnings recovery justify the valuation?</p></div>'+''.join(ed.claim(c) for c in thesis_claims)
+
+    catalysts=[]
+    for i in range(15):
+        prefix=f'/catalysts/{i}/';c=ed.get(prefix+'catalyst')
+        if c and ed.fresh(c):
+            impact=ed.get(prefix+'impact');timing=ed.get(prefix+'timing')
+            catalysts.append(ed.claim(c,True)+(('<small>'+e(timing['statement'])+'</small>') if timing else ''))
+    risks=ed.select(['/financials/weakened/','/industry/disruption_risks/','/monitor/breakers/'],2)
+    triggers='<div class="triggers"><div class="positive"><h3>Upcoming checkpoints</h3>'+''.join(catalysts[:2])+'</div><div class="negative"><h3>Downside exposures</h3>'+''.join(ed.claim(c) for c in risks)+'</div></div>'
+    multiples=lambda quote,key:f'{quote[key]:.1f}×' if numeric(quote.get(key)) and quote[key]>0 else 'n/a'
+    peers=[dict(ticker=ticker,name=profile.get('name') or f.get('company'),quote=q)]+f.get('peers',[])
+    peer_table='<table class="peers"><thead><tr><th>Company</th><th>Mkt cap</th><th>Trailing P/E</th><th>Forward P/E</th></tr></thead><tbody>'
+    for peer in peers:
+        pq=peer['quote'];peer_table+='<tr><td><b>'+e(peer['ticker'])+'</b>'+'</td><td>'+money(pq.get('marketCap'))+'</td><td>'+multiples(pq,'trailingPE')+'</td><td>'+multiples(pq,'forwardPE')+'</td></tr>'
+    peer_table+='</tbody></table><p class="micro">Selected comparables; business mixes differ. Same-date provider multiples. [M]</p>'
+    valuation='<div class="valuation"><div><h3>Market comparison</h3>'+peer_table+'</div><div><h3>Price sensitivity—not price targets</h3>'+sensitivity(q)+'</div></div>'
+    monitor_rows=''.join('<tr><th>'+e(name)+'</th><td>'+ed.claim(c,True)+'</td></tr>' for name,c in monitor[:3])
+    if not monitor_rows:
+        monitor_rows=''.join('<tr><th>Evidence to watch</th><td>'+ed.claim(c)+'</td></tr>' for c in ed.select(['/monitor/strengtheners/','/monitor/breakers/'],2))
+    watch='<table class="watch"><thead><tr><th>Decision area</th><th>Evidence that resolves the debate</th></tr></thead><tbody>'+monitor_rows+'</tbody></table>'
+    bottom_claim=ed.get('/summary/earnings_direction')
+    bottom=ed.claim(bottom_claim)
+    glossary='MA = Medicare Advantage · IDR = independent dispute resolution · EBIT = operating earnings · EPS = earnings per share · PY = plan year' if profile else 'EPS = earnings per share · P/E = price / earnings · FCF = free cash flow'
+    source_names=[]
+    for n,s in enumerate(ed.sources,1):
+        name=s.get('publisher') or s.get('filename','Source')
+        if not s.get('publisher'):
+            name=re.sub(r'--[a-f0-9]+(?=\.)','',name);name=re.sub(r'\.pdf$','',name);name=name.replace(ticker+'-','',1);name=re.sub(r'^\d{4}-','',name).replace('-',' ')
+        source_names.append(f'<span>[{n}] '+e(name)+'</span>')
+    footer='<div class="footer"><p><b>Dates:</b> Events '+window+' · Financials '+e(latest.get('year',''))+' · Quote '+e(q.get('observedAt','Unavailable')[:10])+'.</p><p>'+e(glossary)+'</p><p>'+ ' · '.join(source_names)+' · [F/B] SEC / company filings · [M] Yahoo Finance. Illustration is conceptual.</p></div>'
+    details='<details><summary>Source register, dates and calculation inputs</summary>'
+    def link(url,label):return '<a href="'+e(url)+'">'+e(label)+'</a>' if urlparse(url or '').scheme in ('https','http') else e(label)
+    for n,s in enumerate(ed.sources,1):details+=f'<p id="source-{n}">[{n}] '+link(s.get('sourceUrl',''),s.get('filename','Original'))+'</p>'
+    details+='<p>[F] '+link(f.get('sourceUrl',''),'SEC company facts')+' · SHA-256 '+e(f.get('sourceHash',''))+'</p>'
+    if f.get('segmentSource'):details+='<p>'+link(f['segmentSource']['url'],'Segment filing')+' · SHA-256 '+e(f['segmentSource']['sha256'])+'</p>'
+    if profile:details+='<p>[B] '+link(profile['source'],'Business description and FY2025 structure')+'</p>'
+    for peer in peers:details+='<p>[M] '+e(peer['ticker'])+' '+link(peer['quote'].get('sourceUrl',''),'Market snapshot')+' · '+e(peer['quote'].get('observedAt',''))+'</p>'
+    details+='<p>AI source review does not replace investor review. Some originals were excerpted; omitted text was not reviewed. Scenario forecasts and calibrated price targets are not established by this page. Historical multiples are not supplied. Generated artwork is conceptual.</p><pre>'+e(json.dumps(f,indent=2))+'</pre></details>'
+    body=head+section(1,'The company',company)+section(2,'Four businesses. One integrated model.' if profile else 'How the business makes money',business)+section(3,'Growth is only half the story',history,'Five-year financial record')+'<div class="research-grid">'+section(4,'The investment thesis',thesis)+section(5,'What the market is debating',debate)+'</div><div class="lower-grid">'+section(6,'Catalysts & risks',triggers)+section(7,'Valuation & peer context',valuation)+section(8,'What to monitor',watch)+'</div>'+section(9,'The investment view',bottom)+footer
+    return '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+e(ticker)+' · Investment map</title><style>'+CSS+'</style><body><main data-render-version="'+VERSION+'">'+body+'</main>'+details+'</body></html>'
+
+CSS='''
+@page{size:A4 portrait;margin:9mm}*{box-sizing:border-box;color:#000;font-family:Calibri,Carlito,sans-serif}body{margin:0;background:#edf1f3;font-size:13px;line-height:1.2}main{max-width:1000px;margin:20px auto;background:#fff;padding:24px 28px}.mast{display:flex;justify-content:space-between;font-size:10px;letter-spacing:1px;border-bottom:2px solid #75a9c7;padding-bottom:7px}.title{display:flex;align-items:center;justify-content:space-between;margin-top:9px}h1{font-size:34px;letter-spacing:-1px;line-height:1;margin:0}.symbol{font-size:25px;font-weight:700;border-bottom:4px solid #abd2e4}h2.headline{font-size:23px;line-height:1.06;font-weight:400;margin:8px 0 12px;max-width:90%}h2{font-size:16px;margin:0}h3{font-size:12px;margin:0 0 4px}p{margin:0 0 5px}small,.micro{font-size:10px;line-height:1.18}.micro{margin:4px 0 0}sup{font-size:8px;white-space:nowrap}a{color:#000}.panel{margin-top:9px;break-inside:avoid}header{display:flex;align-items:center;gap:7px;background:linear-gradient(90deg,#dfedf6,#f5f9fb);border-top:1px solid #c8dce8;padding:3px 6px;margin-bottom:6px}.number{display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;border:1px solid #7ea8c2;border-radius:50%;background:#c6dfee;width:22px;height:22px;flex-shrink:0}.sub{font-size:10px;margin-left:auto}.overview{display:grid;grid-template-columns:1fr 1fr;gap:15px;align-items:center}.overview>p{font-size:13px;margin:0}.facts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px}.facts>div{background:#edf5f8;padding:7px}.facts b{display:block;font-size:17px}.facts small{display:block}.value-chain{width:100%;display:block;max-height:150px;object-fit:cover;object-position:center 48%}.art-note{display:block;font-size:9px;text-align:right;margin-top:-3px}.segments{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;margin-top:3px}.segment{padding:6px 8px;background:#e9f4fa;border-top:3px solid #64a6c7}.segment.c1{background:#e9f3ee;border-color:#6eaa8d}.segment.c2{background:#f0eaf6;border-color:#a28bbb}.segment.c3{background:#fbf1e4;border-color:#d9aa68}.segment-value{font-size:18px;display:block;margin:3px 0}.segment p{font-size:12px}.segment small{display:block}.bridge{display:flex;align-items:center;justify-content:space-around;background:#f1f5f6;border-bottom:1px solid #c5d9e3;margin-top:5px;padding:5px}.bridge>div{display:flex;align-items:baseline;gap:7px}.bridge b{font-size:16px}.bridge>span{font-size:22px}.charts{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}.chart{margin:0;padding:5px 4px;border-right:1px solid #d6e1e8}.chart:last-child{border:0}.chart h3{font-size:12px}.chart h3 span{font-size:10px}.change{display:block;font-size:19px;line-height:1.05}.chart small{display:block;font-size:9px}.chart svg{width:100%;display:block}.research-grid{display:grid;grid-template-columns:.8fr 1.2fr;gap:10px}.research-grid>.panel{min-width:0}.question{background:#eaf3f7;border-left:3px solid #6d9fb7;padding:6px;margin-bottom:6px}.question p{margin-top:3px}.claim{margin:0 0 6px}.basis{font-weight:700;font-size:9px;letter-spacing:.2px;text-transform:uppercase}.thesis-note{background:#f6f2e6;padding:5px;font-size:10px}.triggers{display:grid;grid-template-columns:1fr 1fr;gap:8px}.triggers>div{padding:6px 8px}.positive{background:#ebf4ec}.negative{background:#faeeee}.valuation{display:grid;grid-template-columns:1.1fr 1fr;gap:10px}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px}th,td{padding:5px;vertical-align:top;text-align:left;border-bottom:1px solid #d7e2e9}th{background:#edf4f8;font-weight:700}td .claim:last-child{margin-bottom:0}.debates td{width:50%;font-size:12px}.peers th,.peers td{font-size:11px}.peers td small{display:block;font-size:9px}.peers tr:first-child td{background:#edf5f8}.sensitivity td,.sensitivity th{text-align:center;font-size:12px;padding:4px}.sensitivity small{display:block;font-size:9px}.sensitivity td.center{background:#dcefe4;font-weight:700}.watch th:first-child{width:23%}.watch .claim{margin:0}.footer{border-top:1px solid #bbcfdc;margin-top:8px;padding-top:5px;font-size:9px;line-height:1.18}.footer p{margin:0 0 3px}.missing{font-style:italic}details{max-width:1000px;margin:20px auto;background:white;padding:20px}details pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px}details p{overflow-wrap:anywhere}summary{cursor:pointer;font-weight:700}
+@media print{body{background:white;font-size:9pt;line-height:1.14}main{margin:0;padding:0;max-width:none}.mast{font-size:7pt;padding-bottom:4px}.title{margin-top:6px}h1{font-size:25pt}.symbol{font-size:19pt}h2.headline{font-size:16pt;margin:5px 0 7px}h2{font-size:11pt}h3{font-size:9pt}.panel{margin-top:6px}header{padding:2px 4px;margin-bottom:4px}.number{width:17px;height:17px;font-size:10pt}.sub{font-size:7pt}.overview>p{font-size:9pt}.facts>div{padding:4px}.facts b{font-size:11pt}small,.micro{font-size:7pt}.value-chain{max-height:103px}.art-note{font-size:6pt}.segment{padding:4px 5px}.segment-value{font-size:12pt}.segment p{font-size:8pt}.segment small{font-size:7pt}.bridge{padding:4px;margin-top:4px}.bridge b{font-size:11pt}.bridge small{font-size:7pt}.chart h3{font-size:8pt}.chart h3 span{font-size:7pt}.change{font-size:14pt}.chart small{font-size:6pt}.chart svg{max-height:68px}.claim{margin-bottom:4px}.basis{font-size:6pt}.question{padding:4px}.thesis-note{font-size:7pt}.research-grid{gap:7px}.triggers>div{padding:4px 6px}table,.debates td{font-size:8pt}th,td{padding:4px}.peers th,.peers td{font-size:8pt}.peers td small{font-size:6pt}.sensitivity td,.sensitivity th{font-size:8pt;padding:3px}.sensitivity small{font-size:6pt}.footer{font-size:6pt;margin-top:6px}.micro{font-size:6.5pt}.watch .claim{font-size:8pt}sup{font-size:6pt}details{display:none}}
+@media screen and (max-width:650px){main{margin:0;padding:15px}h1{font-size:29px}.headline{font-size:21px!important}.mast{font-size:8px;gap:8px}.overview,.research-grid,.valuation,.triggers{display:block}.facts{margin-top:8px}.facts b{font-size:15px}.segments{grid-template-columns:repeat(2,minmax(0,1fr))}.value-chain{max-height:none;object-fit:contain}.bridge{flex-wrap:wrap;gap:6px}.bridge>div{display:block}.charts{grid-template-columns:repeat(2,minmax(0,1fr))}.charts>figure:last-child{grid-column:1 / span 2;max-width:60%}.chart svg{max-height:160px}.sub{display:none}.triggers>div{margin-bottom:6px}.valuation>div{margin-bottom:10px}table,.debates td{font-size:13px}small,.micro,.footer{font-size:11px}.basis{font-size:10px}.watch th:first-child{width:28%}}
+'''
+
+CSS += """
+.company-hero{display:grid;grid-template-columns:1fr 1.15fr;gap:12px;align-items:center}.company-hero .overview{display:block}.company-hero .facts{margin-top:8px}.company-hero .value-chain{max-height:none;height:auto;object-fit:contain}.lower-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.lower-grid .valuation{display:block}.lower-grid .valuation>div+div{margin-top:8px}.lower-grid .triggers{display:block}.lower-grid .triggers>div{margin-bottom:5px}.lower-grid .watch th:first-child{width:27%}
+@media print{.company-hero{gap:8px}.company-hero .facts{margin-top:5px}.company-hero .facts b{font-size:10pt}.lower-grid{gap:7px}.lower-grid .valuation>div+div{margin-top:5px}.lower-grid .micro{font-size:6.5pt}.triggers .claim{font-size:8pt}.watch th{font-size:8pt}.panel{margin-top:5px}.art-note{font-size:6pt}}
+@media screen and (max-width:650px){.company-hero,.lower-grid{display:block}.company-hero .value-chain{margin-top:8px}.lower-grid .triggers{display:grid;grid-template-columns:1fr}.facts b{font-size:14px}.lower-grid .watch th:first-child{width:28%}}
+"""
+
+CSS += """@media print{.title{margin-top:3px}h2.headline{margin:3px 0 5px;font-size:15pt}.panel{margin-top:4px}.company-hero{grid-template-columns:1fr .9fr}.company-hero .value-chain{max-height:80px;object-fit:contain}.company-hero .art-note{display:none}.segment small{font-size:7pt}.segment-value{margin:1px 0}.segment p{margin:1px 0}.chart svg{max-height:55px}.chart{padding:3px}.claim{margin-bottom:3px}.micro{margin-top:2px}.question{margin-bottom:4px}.triggers>div{padding:3px 5px}.sensitivity td,.sensitivity th{padding:2px}.footer{font-size:6pt}header{margin-bottom:3px}.lower-grid{grid-template-columns:1fr 1fr}.lower-grid .valuation>div+div{margin-top:3px}}"""
+
+CSS += """@media print{.sensitivity small{display:inline;font-size:6pt}.sensitivity th,.sensitivity td{font-size:8pt;white-space:nowrap}.chart svg{max-height:51px}.footer{line-height:1.1}.company-hero .value-chain{max-height:85px}.watch .claim{font-size:8pt}.peers th,.peers td{padding:4px}.lower-grid .valuation .micro{font-size:6pt}}"""
+CSS += '@media print{.panel{margin-top:2px}header{margin-bottom:2px}.footer{padding-top:3px;margin-top:3px}.micro{margin-top:1px}}'
+CSS += '@media print{.company-hero .value-chain{height:72px;max-height:72px;object-fit:cover;object-position:center 50%}.mast{padding-bottom:3px}.headline{margin-bottom:4px!important}}'
+
+CSS += '.lower-grid{column-gap:10px;row-gap:0}.lower-grid>.panel:nth-child(2){grid-column:2;grid-row:1 / span 2}.lower-grid>.panel:nth-child(3){grid-column:1;grid-row:2}'
