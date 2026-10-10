@@ -101,3 +101,21 @@ class StudioTests(unittest.TestCase):
         self.assertNotIn('<svg',chart(report,citations))
         report['financials']['historical'][1]['revenue']='USD 125 billion'
         self.assertNotIn('<svg',chart(report,citations))
+
+class ThesisRepairTests(unittest.TestCase):
+    def test_repair_retains_prior_output_and_other_completed_groups(self):
+        from stock_analysis import repair_unsupported_thesis
+        state={'completed':[k+str(i) for i in range(6) for k in ('report-','review-')],
+               'report':{'summary':{'investment_thesis':['Unsupported old claim']},'financials':{'kept':True}},
+               'citations':{'/summary/investment_thesis/0':{'review':'needs_review','passageMatched':True},'/financials/value':{'review':'supported'}},'retries':['report-0']}
+        fixed=repair_unsupported_thesis(state)
+        self.assertEqual(fixed['report']['financials'],{'kept':True});self.assertNotIn('report-0',fixed['completed'])
+        self.assertIn('review-5',fixed['completed']);self.assertEqual(len(fixed['retries']),3)
+        self.assertEqual(fixed['qualityRevisions'][0]['report']['summary'],state['report']['summary'])
+        self.assertIn('summary',state['report'])
+        state['citations']['/summary/investment_thesis/0']['review']='supported'
+        with self.assertRaisesRegex(ValueError,'already exist'):repair_unsupported_thesis(state)
+    def test_unresolved_call_or_unfinished_review_cannot_be_repaired(self):
+        from stock_analysis import repair_unsupported_thesis
+        for state in ({'inFlight':'review-0'},{'completed':['report-0']}):
+            with self.assertRaises(ValueError):repair_unsupported_thesis(state)

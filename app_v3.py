@@ -29358,6 +29358,9 @@ _research_assignments=research_assignments.Coordinator(app,get_db,_assignment_in
     lambda:bool(_get_api_keys('').get('anthropic')))
 app.register_blueprint(_research_assignments.bp)
 
+import activity_snapshot
+app.register_blueprint(activity_snapshot.create_blueprint(get_db))
+
 
 import portfolio_heatmap
 app.register_blueprint(portfolio_heatmap.create_blueprint(get_db))

@@ -1,4 +1,5 @@
 import * as React from 'react';
+import {ActivityWorkspace} from './activity';
 import { GROUPS, viewLabel, viewGroup, companyIndex, parseTimestamp } from './workspace-model.mjs';
 const { useState, useEffect, useRef } = React;
 
@@ -59,12 +60,13 @@ export function WorkspaceShell({active, onNavigate, themeControl, local, health,
 const dateLabel = v => parseTimestamp(v)?.toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'America/New_York'}) || 'Date unavailable';
 function PageHeading({eyebrow,title,children,action}) { return <div className="workspace-page-heading"><div><p className="workspace-eyebrow">{eyebrow}</p><h1>{title}</h1><p className="workspace-lead">{children}</p></div>{action}</div>; }
 function Empty({children}) { return <p className="workspace-empty">{children}</p>; }
-export function TodayWorkspace({analyses,overviews,summaries,alerts,meetings,onNavigate,onSummary,onCompany}) {
+export function TodayWorkspace({api,analyses,overviews,summaries,alerts,meetings,onNavigate,onSummary,onCompany}) {
   const companies=companyIndex(analyses,overviews);
   const recent=[...summaries].sort((a,b)=>(parseTimestamp(b.createdAt)?.getTime()||0)-(parseTimestamp(a.createdAt)?.getTime()||0)).slice(0,5);
   const pending=alerts.filter(a=>!['dismissed','done','archived'].includes(a.status));
   const upcoming=(meetings||[]).filter(m=>m.meeting_date && m.meeting_date>=new Date().toLocaleDateString('en-CA')).sort((a,b)=>a.meeting_date.localeCompare(b.meeting_date)).slice(0,3);
   return <div className="workspace-page"><PageHeading eyebrow={new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})} title="A clearer view of what matters." action={<button className="workspace-primary" onClick={()=>onNavigate('create')}>Create research <Icon name="arrow"/></button>}>Revisit your companies, follow the evidence, and move your research forward.</PageHeading>
+    <ActivityWorkspace api={api} onNavigate={onNavigate} compact/>
     <div className="workspace-metrics">{[[companies.length,'Companies in your library','companies'],[summaries.length,'Saved source summaries','library'],[pending.length,'Alerts to review','alerts']].map(([n,label,id])=><button key={id} onClick={()=>onNavigate(id)}><strong>{n}</strong><span>{label}</span><Icon name="arrow"/></button>)}</div>
     <div className="workspace-home-grid"><section className="workspace-panel"><div className="workspace-section-heading"><h2>Continue your research</h2><button onClick={()=>onNavigate('library')}>Open library ↗</button></div>{recent.length?recent.map(s=><button className="workspace-document-row" key={s.id} onClick={()=>onSummary(s)}><span className="workspace-document-icon"><Icon name="library"/></span><span><strong>{s.title || 'Untitled document'}</strong><small>{s.topic || 'General'} · {s.docType || s.sourceType || 'Research'}</small></span><time>{dateLabel(s.createdAt)}</time><Icon name="arrow"/></button>):<Empty>Your saved research will appear here. Start by adding a document to the Library.</Empty>}</section>
     <div className="workspace-home-side"><section className="workspace-panel"><p className="workspace-eyebrow">NEXT STEP</p><h2>What are you working on?</h2>{[['companies','Revisit an investment view'],['meetingprep','Prepare for a management meeting'],['explain','Understand a difficult document']].map(([id,label])=><button className="workspace-link-row" key={id} onClick={()=>onNavigate(id)}>{label}<Icon name="arrow"/></button>)}</section><section className="workspace-panel"><h2>Upcoming meetings</h2>{upcoming.length?upcoming.map(m=><button className="workspace-link-row" key={m.id} onClick={()=>onNavigate('meetingprep')}>{m.ticker} <time>{dateLabel(m.meeting_date)}</time></button>):<Empty>No upcoming meetings in this workspace. Your saved meeting preparation is available in Create.</Empty>}</section></div></div>

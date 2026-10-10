@@ -366,9 +366,14 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
             if not acquired:return jsonify(error='A worker is still active. Stop takes effect after its current call finishes.'),409
             with get_db(commit=True) as (_,cur):
                 cur.execute(f'SELECT * FROM {table} WHERE id=%s FOR UPDATE',(ident,));row=cur.fetchone()
-                if not row or row['status']=='complete':return jsonify(error='No unfinished research found'),409
+                repairing=studio and data.get('repairThesis') is True
+                if not row or (row['status']=='complete' and not repairing):return jsonify(error='No unfinished research found'),409
                 if row['version']!=version or row['model']!=model_identity():return jsonify(error='Configuration changed. Start a new research revision.'),409
                 state=row['state'] or {}
+                if repairing:
+                    from stock_analysis import repair_unsupported_thesis
+                    try:state=repair_unsupported_thesis(state)
+                    except ValueError as exc:return jsonify(error=str(exc)),409
                 # T135 and earlier left a reservation on these confirmed responses.
                 # Only these exact provider-return errors qualify; network failures
                 # remain ambiguous and retain the explicit retry acknowledgement.

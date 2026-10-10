@@ -102,6 +102,10 @@ def generate(state,sources,baseline,ask,save,check,inputs):
                          '"basis":"reported_fact|management_guidance|broker_estimate|interpretation|hypothesis",'
                          '"evidence":[{"sourceId":"exact supplied id","excerpt":"exact contiguous passage >=30 characters"}]}]}. '
                          'Cite EVERY nonempty string leaf, including periods and row labels. Do not generate a sources list or metadata. '
+                         'EVIDENCE FIRST: select one exact passage and its source ID before writing each field. '
+                         'Each field makes one narrow proposition fully supported by that same passage. Do not combine extra numbers, targets or claims from memory. '
+                         'Investment thesis entries must be short, conditional investment interpretations of a specific cited operating fact; '
+                         'prefer one well-supported thesis entry over multiple compound assertions. Do not embellish broker estimates or management language. '
                          'OUTPUT BUDGET OVERRIDES VERBOSITY: at most 40 populated string fields across this entire group. '
                          'Each field is at most 180 characters; each citation uses one exact excerpt of 40–160 characters. '
                          'Prefer at most two high-value rows per array; omit lower-priority whole rows instead of padding. '
@@ -178,3 +182,24 @@ def compare(prior,state,sources,baseline):
                        'Report text changed without changed supported source passages. No fundamental change established.'})
     return {'priorId':prior['id'],'baselineRevision':baseline['revision'],'sourceChanges':changes,'sections':sections,
             'note':'Evidence selection is compared separately from report wording. New documents do not automatically establish changed fundamentals or triggered thesis breakers.'}
+
+
+def repair_unsupported_thesis(state):
+    """Explicit bounded retry, retaining the prior first group and its review."""
+    state=copy.deepcopy(state)
+    if state.get('inFlight'):raise ValueError('A provider call is unresolved; inspect its usage first.')
+    if not all('review-'+str(i) in state.get('completed',[]) for i in range(6)):
+        raise ValueError('Finish the saved source reviews before repairing the thesis group.')
+    if any(p.startswith('/summary/investment_thesis/') and c.get('review')=='supported' and c.get('passageMatched') for p,c in state.get('citations',{}).items()):
+        raise ValueError('Supported thesis statements already exist; no automatic replacement is needed.')
+    group=GROUPS[0]
+    old={'report':{k:state.get('report',{}).get(k) for k in group},
+         'citations':{p:c for p,c in state.get('citations',{}).items() if p.split('/')[1] in group},
+         'reason':'Explicit retry of unsupported thesis group; prior output retained.'}
+    state.setdefault('qualityRevisions',[]).append(old)
+    for k in group:state.get('report',{}).pop(k,None)
+    state['citations']={p:c for p,c in state.get('citations',{}).items() if p.split('/')[1] not in group}
+    state['completed']=[k for k in state['completed'] if k not in ('report-0','review-0')]
+    state.setdefault('retries',[]).extend(['quality-report-0','quality-review-0'])
+    state.pop('comparison',None)
+    return state

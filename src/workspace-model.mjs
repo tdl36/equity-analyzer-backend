@@ -4,6 +4,7 @@ export const GROUPS = [
   { id: 'companies', label: 'Companies', description: 'Coverage & investment views', items: [['overview', 'Company overview'], ['stockanalysis', 'Stock analysis'], ['portfolio', 'Investment thesis'], ['thesisimports', 'Import & review thesis'], ['review', 'Investment review']] },
   { id: 'library', label: 'Library', description: 'Evidence & conversations', items: [['summary', 'Summaries'], ['summarylab', 'Summary Lab'], ['research', 'Research documents'], ['explain', 'Explain a document'], ['chat', 'Ask Charlie']] },
   { id: 'create', label: 'Create', description: 'Turn research into an output', items: [['deepdive', 'Research brief'], ['onepager', 'Investment one-pager'], ['catalysts', 'Catalyst notes'], ['meetingprep', 'Meeting preparation'], ['formats', 'Thesis templates'], ['slides', 'Presentations'], ['studio', 'Creative studio']] },
+  { id: 'activity', label: 'Activity', description: 'Work in progress & recent results', items: [] },
   { id: 'automations', label: 'Automations', description: 'Monitor, investigate & update', items: [['desk', 'Research desk'], ['pipeline', 'Research pipeline'], ['analysts', 'Analyst team'], ['agents', 'Research agents'], ['feed', 'Podcast feed']] },
 ];
 export const VIEWS = [...GROUPS.flatMap(g => [g.id, ...g.items.map(i => i[0])]), 'settings'];

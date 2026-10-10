@@ -1,5 +1,6 @@
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
 import * as React from 'react';
+import { ActivityWorkspace } from './activity';
 import { GROUPS, viewLabel, viewGroup, companyIndex, parseTimestamp } from './workspace-model.mjs';
 var {
   useState,
@@ -261,6 +262,7 @@ function Empty({
   }, children);
 }
 export function TodayWorkspace({
+  api,
   analyses,
   overviews,
   summaries,
@@ -289,7 +291,11 @@ export function TodayWorkspace({
     }, "Create research ", /*#__PURE__*/React.createElement(Icon, {
       name: "arrow"
     }))
-  }, "Revisit your companies, follow the evidence, and move your research forward."), /*#__PURE__*/React.createElement("div", {
+  }, "Revisit your companies, follow the evidence, and move your research forward."), /*#__PURE__*/React.createElement(ActivityWorkspace, {
+    api: api,
+    onNavigate: onNavigate,
+    compact: true
+  }), /*#__PURE__*/React.createElement("div", {
     className: "workspace-metrics"
   }, [[companies.length, 'Companies in your library', 'companies'], [summaries.length, 'Saved source summaries', 'library'], [pending.length, 'Alerts to review', 'alerts']].map(([n, label, id]) => /*#__PURE__*/React.createElement("button", {
     key: id,

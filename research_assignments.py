@@ -143,7 +143,7 @@ class Coordinator:
                 self.store(ident,state,'attention',str(exc)[:900])
     def public(self,row):
         p=obj(row['input']);s=copy.deepcopy(obj(row.get('result')))
-        s.pop('thesisPackage',None);s.pop('researchInput',None)
+        s.pop('thesisPackage',None);s.pop('researchInput',None);s.pop('artifactRevisions',None)
         if s.get('collection'):s['collection']={k:s['collection'].get(k) for k in ('status','issue','sourceProgress')}
         s['artifacts']=[{'kind':k,'url':'/api/research/assignments/'+row['id']+'/artifact/'+k,'reviewRequired':True} for k in s.get('artifacts',{})]
         return dict(id=row['id'],ticker=row['ticker'],status=row['status'],error=row.get('error'),created_at=row.get('created_at'),updated_at=row.get('updated_at'),input={k:v for k,v in p.items() if k not in ('thesisBaseline','sourcePolicy')},result=s)
@@ -219,8 +219,12 @@ class Coordinator:
                 if state.get('reportId'):
                     report,code=self.invoke('stock_analysis.detail','GET',None,dict(ident=state['reportId']))
                     if code not in (200,404):return jsonify(report),code
-                    if code==200 and report['status']!='complete':
-                        response,status=self.invoke('stock_analysis.control','POST',{'acknowledgeRetry':d.get('acknowledgeRetry') is True},dict(ident=state['reportId'],action='resume'))
+                    repair=code==200 and report['status']=='complete' and (row.get('error') or '').startswith('No supported thesis statements')
+                    if code==200 and (report['status']!='complete' or repair):
+                        response,status=self.invoke('stock_analysis.control','POST',{'acknowledgeRetry':d.get('acknowledgeRetry') is True,'repairThesis':repair},dict(ident=state['reportId'],action='resume'))
+                        if repair and status<400:
+                            state['step']='Retrying unsupported thesis group; previous output retained'
+                            if state.get('artifacts'):state.setdefault('artifactRevisions',[]).append(state.pop('artifacts'))
                         if status>=400:return jsonify(response),status
                 self.store(ident,state,'running')
             self.wake();return jsonify(resumed=True)

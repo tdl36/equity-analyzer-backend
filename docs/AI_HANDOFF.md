@@ -6,8 +6,10 @@ Updated: October 10, 2026
 
 T134 repaired Mac delivery; T135 adds bounded source excerpts and overdue delivery visibility.
 T136 repairs known-response recovery and reduces structured-output verbosity.
-Verify the exact runtime revision with `/health`; T136 deployment and live UNH output
-verification are in progress. Last verified production revision: `08deac5d9b5d19e30a638f9ecea81aab8eee1833`.
+T136 is verified at `2bfc6257c395923647af5ba039c2fe61f0eddab2`. T137 Activity and
+explicit thesis-quality recovery are prepared for deployment. UNH completed all
+12 stages but its unsupported thesis group blocked the final handoff; no call is
+in flight. Resume the existing assignment after T137 is verified.
 
 - App: `https://charlie-deployment.tonydlee.workers.dev/?release=T136#view=stockanalysis`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
@@ -16,6 +18,32 @@ verification are in progress. Last verified production revision: `08deac5d9b5d19
 - Local agent shares the model registry, reloads changed registry files between jobs, and reports its registry revision in its heartbeat.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
+
+### T137 — central activity and bounded thesis-quality recovery
+
+Adds an authenticated, read-only `/api/activity` inventory across saved research,
+Mac collection, document processing and audio work. Active/attention records are
+selected independently of recent completions, so old stuck work stays visible.
+Parent assignments suppress their report/collection child duplicates. Payloads,
+source bodies and credentials are not returned. Partial source failures and caps
+are explicit. Activity is in the main navigation; Today shows a compact snapshot.
+Desktop/mobile layout uses the existing workspace theme, with status filters,
+search, elapsed times, Mac reporting status and company/workspace links.
+
+The live UNH review found unsupported thesis fields. The matching-source gate is
+unchanged. Explicitly resuming that specific quality failure retries only the first
+author/reviewer pair, within the existing retry bound; it preserves old output in
+`qualityRevisions` and all other completed groups. It may add two paid calls and
+is never an automatic unbounded quality loop. Author guidance now favors one narrow
+proposition and a source-first conditional thesis over compound claims.
+
+The existing collection heartbeat remains every 15 minutes; its expired build
+extension was removed. Empty local queues no longer count as proof that cloud
+requests were delivered. Keep the Mac awake, Codex running and AlphaSense signed in.
+
+Validation: 925 safe backend tests, 96 frontend tests, production build and unchanged
+model policy. Synthetic desktop/mobile Activity checks passed, including ticker
+shortcut propagation. Production verification is still required.
 
 ### T136 — bounded response and known-outcome recovery
 

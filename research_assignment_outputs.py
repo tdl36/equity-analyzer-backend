@@ -48,7 +48,7 @@ def thesis(run,prepared,assignment_id):
                  'supportType':c.get('basis','interpretation')}
                 for e in c.get('evidence',[]) if e.get('matched') and e['sourceId'] in sources]
     claims=fields(run,'/summary/investment_thesis/')
-    if not claims:raise ValueError('No supported thesis statements were produced. Review the report gaps before preparing a thesis.')
+    if not claims:raise ValueError('No supported thesis statements were produced. Resume explicitly to retry the first author and source-review pair; this may add two paid calls. Other completed stages and prior output are retained.')
     initial=p['baseline']['mode']=='initial'
     if initial:a={'thesis':{'summary':'','pillars':[]},'signposts':[],'threats':[]}
     if not isinstance(a.get('thesis'),dict) or not isinstance(a['thesis'].get('pillars'),list):raise ValueError('Existing thesis structure needs review before automatic draft preparation.')

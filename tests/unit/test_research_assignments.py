@@ -193,3 +193,20 @@ class AssignmentPostgresTests(unittest.TestCase):
             r=self.advance();self.assertEqual(r['status'],'complete',r['error'])
             self.assertEqual(len(r['result']['artifacts']),3);self.assertTrue(r['result']['thesisDraftId'])
             n=len(calls);self.advance();self.assertEqual(len(calls),n);self.assertGreater(n,0)
+    def test_quality_resume_archives_derived_outputs_and_repairs_only_on_request(self):
+        original=self.report
+        def unsupported():
+            r=original();r['state']['citations']['/summary/investment_thesis/0']['review']='needs_review';return r
+        self.report=unsupported;self.start();self.collected();r=self.advance()
+        self.assertEqual(r['status'],'attention');self.assertTrue(r['result']['artifacts']);self.assertNotIn('thesisDraftId',r['result'])
+        before=copy.deepcopy(r['result']['artifacts']);invoke=self.co.invoke;calls=[]
+        def recording(endpoint,method,body,params):
+            if endpoint=='stock_analysis.control':calls.append(body)
+            return invoke(endpoint,method,body,params)
+        self.co.invoke=recording
+        self.advance();self.assertEqual(calls,[])
+        response=self.client.post('/api/research/assignments/'+self.ident+'/resume',json={})
+        self.assertEqual(response.status_code,200,response.json);self.assertTrue(calls[0]['repairThesis'])
+        state=self.co.read(self.ident)['result'];self.assertNotIn('artifacts',state);self.assertEqual(state['artifactRevisions'][0],before)
+        self.assertNotIn('artifactRevisions',self.co.public(self.co.read(self.ident))['result'])
+        self.report=original;r=self.advance();self.assertEqual(r['status'],'complete');self.assertTrue(r['result']['thesisDraftId'])

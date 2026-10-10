@@ -1,0 +1,6 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {activityRows,activityAge,macConnected} from '../../src/activity-model.mjs';
+import {readRoute,routeHash,VIEWS} from '../../src/workspace-model.mjs';
+test('activity is reachable without company context',()=>{assert.ok(VIEWS.includes('activity'));assert.deepEqual(readRoute(routeHash('activity')),{view:'activity',ticker:''});});
+test('filters find work across tickers without mixing attention and active',()=>{const data={items:[{ticker:'UNH',title:'Research',step:'Review',bucket:'active'},{ticker:'SYK',title:'Collection',step:'Sign in',bucket:'attention'}]};assert.equal(activityRows(data,'active','unh').length,1);assert.equal(activityRows(data,'attention','SYK').length,1);assert.equal(activityRows(data,'active','SYK').length,0);});
+test('unknown/stale Mac status never presents as connected',()=>{const now=Date.parse('2026-10-10T12:00:00Z');assert.equal(macConnected(null,now),false);assert.equal(macConnected('2026-10-10 11:59:00',now),true);assert.equal(macConnected('2026-10-10T11:00:00Z',now),false);assert.equal(activityAge('2026-10-10 10:45:00',now),'1h 15m ago');assert.equal(activityAge(null,now),'Time unavailable');});
