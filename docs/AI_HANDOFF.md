@@ -2,7 +2,7 @@
 
 Updated: October 10, 2026
 
-## T143 — editorial investment map (release verification pending)
+## T143 — editorial investment map
 
 Rebuilds the visual renderer as an A4 editorial map with conceptual healthcare
 artwork, public UNH business descriptions, endpoint changes on five financial
@@ -21,8 +21,16 @@ remain absent; these must not be invented to fill the reference template.
 
 The actual existing UNH evidence rendered to one A4 page locally. 943 safe backend tests and 96 frontend tests pass; production build, Python
 compilation and unchanged model-policy gate pass. PDF inspection confirms only
-Calibri/Calibri Bold, black text, and no text outside the page. Production
-deployment and hosted/mobile inspection are pending below.
+Calibri/Calibri Bold, black text, and no text outside the page. Production verified at `78652f8f6d9d006a9de3d7ea1e516825a5c60fa2`, Cloudflare
+`9498f4ce-5fb2-4d14-894c-d29883bdf227`. Hosted index, bundle and service-worker
+bytes match. Authenticated reads passed; unauthorized reads and invalid submissions
+remain blocked. UNH v2 supplementation returned no gaps at
+`2026-10-10T19:57:02.555767+00:00`; replay kept the same timestamp. Original
+export bytes and saved report/thesis references remained unchanged. The actual
+production HTML rendered to one A4 page with Calibri/black text and no clipping;
+desktop/mobile iframe width equals scrollWidth (746px/353px). Mobile viewport
+was restored. Mac agent remained connected. No paid research was run for QA.
+User deliverable: Downloads/UNH-investment-map-v4.pdf and matching HTML/PNG.
 
 ## T141 / T142 — illustrated stock brief and public financial supplement
 
