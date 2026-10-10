@@ -192,7 +192,9 @@ export function ResearchAssignment({
       paddingTop: 12,
       marginTop: 12
     }
-  }, /*#__PURE__*/React.createElement("strong", null, j.input.since, "\u2013", j.input.until, " \xB7 ", j.status), /*#__PURE__*/React.createElement("p", null, j.result.step), /*#__PURE__*/React.createElement("small", null, "Saved update: ", new Date(j.updated_at).toLocaleString(), j.result.macReportedAt ? ' · Mac report: ' + new Date(j.result.macReportedAt).toLocaleString() : ''), j.result.sources && /*#__PURE__*/React.createElement("p", null, j.result.sources.length, " originals verified \xB7 ", j.result.researchStages || 0, "/12 research stages"), j.error && /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("strong", null, j.input.since, "\u2013", j.input.until, " \xB7 ", j.status), /*#__PURE__*/React.createElement("p", null, j.result.step), j.result.delayWarning && /*#__PURE__*/React.createElement("p", {
+    role: "alert"
+  }, j.result.delayWarning), /*#__PURE__*/React.createElement("small", null, "Saved update: ", new Date(j.updated_at).toLocaleString(), j.result.macReportedAt ? ' · Mac report: ' + new Date(j.result.macReportedAt).toLocaleString() : ''), j.result.sources && /*#__PURE__*/React.createElement("p", null, j.result.sources.length, " originals verified \xB7 ", j.result.researchStages || 0, "/12 research stages"), j.error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
   }, j.error), /*#__PURE__*/React.createElement("div", {
     className: "sa-actions"

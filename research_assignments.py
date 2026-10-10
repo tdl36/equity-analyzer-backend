@@ -5,7 +5,7 @@ import json
 import re
 import threading
 import uuid
-from datetime import date,datetime
+from datetime import date,datetime,timezone
 from zoneinfo import ZoneInfo
 from flask import Blueprint,jsonify,request,Response
 
@@ -17,6 +17,13 @@ KEY='research_assignment_defaults_v1'
 
 def child(ident,kind):return str(uuid.uuid5(uuid.NAMESPACE_URL,'charlie:assignment:'+ident+':'+kind))
 def obj(v):return json.loads(v) if isinstance(v,str) else v or {}
+
+
+def age_seconds(value):
+    if not value:return 0
+    stamp=value if isinstance(value,datetime) else datetime.fromisoformat(str(value).replace('Z','+00:00'))
+    if stamp.tzinfo is None:stamp=stamp.replace(tzinfo=timezone.utc)
+    return max(0,(datetime.now(timezone.utc)-stamp).total_seconds())
 
 
 
@@ -60,17 +67,22 @@ class Coordinator:
             row=self.read(ident)
             if not row or row['status'] not in ('queued','running'):return
             p=obj(row['input']);state=obj(row['result']);ticker=row['ticker']
+            state.pop('delayWarning',None)
             try:
                 with self.db() as (_,cur):
-                    cur.execute("SELECT status,result,error FROM mp_jobs WHERE id=%s AND stage='collection_control'",(child(ident,'collection'),));command=cur.fetchone()
+                    cur.execute("SELECT status,result,error,created_at FROM mp_jobs WHERE id=%s AND stage='collection_control'",(child(ident,'collection'),));command=cur.fetchone()
                     cur.execute("SELECT value,updated_at FROM app_settings WHERE key='collection_control_snapshot'");snap=cur.fetchone()
                 if not command:raise ValueError('Collection command missing; preserve this assignment and inspect recovery.')
                 if command['status']=='failed':raise ValueError(command['error'] or 'Mac could not create the collection request.')
                 if command['status']!='applied':
+                    if age_seconds(command['created_at'])>300:
+                        state['delayWarning']='Collection delivery is overdue: the Mac has not acknowledged this request. A healthy agent heartbeat does not confirm collection sync. Check the Mac agent collection log and connection; this saved request will continue retrying without creating another research job.'
                     state['step']='Waiting for Mac to receive collection';self.store(ident,state,'running');return
                 receipt=obj(command['result']);rid=receipt.get('refreshRequestId');state['refreshRequestId']=rid
                 collection=next((r for r in obj(snap['value']).get('requests',[]) if r['id']==rid),None) if snap else None
                 if (state.get('collection') or {}).get('status')=='complete':collection=state['collection']
+                if (not snap or age_seconds(snap['updated_at'])>180) and (collection or {}).get('status')!='complete':
+                    state['delayWarning']='The Mac collection report is stale or unavailable. Keep the Mac awake and online and check collection sync. Saved progress is retained; research will wait for verified originals.'
                 if not collection:
                     state['step']='Waiting for collection status from Mac';self.store(ident,state,'running');return
                 state['collection']=collection;state['macReportedAt']=str(snap['updated_at'])

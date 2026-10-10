@@ -119,6 +119,20 @@ class AssignmentPostgresTests(unittest.TestCase):
         self.assertNotIn('thesisPackage',public['result']);self.assertNotIn('html',public['result']['artifacts'][0])
     def test_hash_mismatch_no_dispatch(self):
         self.start();self.collected('bad');r=self.advance();self.assertEqual(r['status'],'attention');self.assertEqual(self.submits,{})
+    def test_delivery_overdue_visible_and_recovers_without_duplicate(self):
+        self.start()
+        with self.db(True) as (_,cur):
+            cur.execute("UPDATE mp_jobs SET created_at=NOW()-INTERVAL '20 hours' WHERE id=%s",(child(self.ident,'collection'),))
+        r=self.advance();self.assertEqual(r['status'],'running');self.assertIn('overdue',r['result']['delayWarning'])
+        self.assertEqual(self.submits,{})
+        self.collected();r=self.advance();self.assertEqual(r['status'],'complete');self.assertNotIn('delayWarning',r['result'])
+        self.assertEqual(len(self.submits),1)
+    def test_stale_collection_snapshot_visible_without_paid_dispatch(self):
+        self.start();self.collected()
+        with self.db(True) as (_,cur):
+            v={'requests':[{'id':self.ident,'status':'collecting'}]}
+            cur.execute("UPDATE app_settings SET value=%s,updated_at=NOW()-INTERVAL '20 minutes' WHERE key='collection_control_snapshot'",(json.dumps(v),))
+        r=self.advance();self.assertEqual(r['status'],'running');self.assertIn('stale',r['result']['delayWarning']);self.assertEqual(self.submits,{})
     def test_stale_thesis_retains_other_outputs(self):
         self.start();self.collected();self.stale=True;r=self.advance();self.assertEqual(r['status'],'attention');self.assertEqual(len(r['result']['artifacts']),3);self.assertNotIn('thesisDraftId',r['result'])
     def test_unknown_call_requires_explicit_resume(self):

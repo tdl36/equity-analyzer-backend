@@ -4,17 +4,41 @@ Updated: October 10, 2026
 
 ## Start here
 
-T133 (`2026-10-09T133`) adds one durable end-to-end research assignment in Stock Analysis.
-Deployed source revision: `d0cbd5283cfb51c378f603ad8a222d71f8351d8c`; later documentation-only
-commits may be ahead. Verify the exact runtime revision with `/health`.
+T134 repaired Mac delivery; T135 adds bounded source excerpts and overdue delivery visibility.
+Verify the exact runtime revision with `/health`; T135 deployment and live UNH output
+verification are in progress. Last verified production revision: `75ebf4d34b406b1eced9714b1a00658b1f89fd17`.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T133#view=stockanalysis`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T135#view=stockanalysis`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`, branch `main`.
 - Previous release: T132 / `66f67aa4`; T122 model policy remains unchanged.
 - Local agent shares the model registry, reloads changed registry files between jobs, and reports its registry revision in its heartbeat.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
+
+### T135 — source context and stalled-delivery visibility
+
+The live UNH assignment verified six exact-byte cloud originals (one conference,
+one company release, four brokers); two more originals are held locally because
+their disclosures explicitly prohibit AI input. All 57 broker result titles and
+15 release titles were screened; presentation search was empty. Full-text review
+of all matching results is not claimed. The six-source extraction was 187,848
+characters, exceeding the existing 160,000-character ceiling before model stages.
+Stock Analysis now fairly shares the same context ceiling across exact front/back
+excerpts of longer sources, retaining smaller sources complete. Original hashes
+remain frozen; supplied-text hashes, included ranges, omitted counts and coverage
+warnings are saved and exposed in the report and derived drafts. This is partial
+source coverage, not exhaustive document review. Per-document extraction/OCR
+failures still stop safely. Other research workflows keep their existing bounds.
+No model, output-token cap or call count was increased. Existing frozen source
+packs are not modified on resume.
+
+Undelivered commands older than five minutes and collection snapshots older than
+three minutes now show actionable nonblocking warnings, which clear on recovery.
+Checks: 914 safe backend tests, 93 frontend tests, production build, unchanged model
+policy; local extraction of the actual six eligible originals fits 159,999 supplied
+characters. No model QA run was launched. Resume the existing authorized UNH job
+only after deployed revision verification; preserve its deterministic report ID.
 
 ### T134 — Mac research-assignment delivery repair
 

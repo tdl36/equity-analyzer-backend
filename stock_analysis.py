@@ -110,6 +110,7 @@ def generate(state,sources,baseline,ask,save,check,inputs):
                            'Detailed research: at most four entries per array, six historical periods and ten diligence questions. ')
                          +'Investor focus and horizon are context, not source facts.\nSCHEMA: '+json.dumps({k:SCHEMA['properties'][k] for k in group})+
                          '\nCONTEXT: '+json.dumps({k:v for k,v in inputs.items() if k not in ('hashes','filenames')})+
+                         ' Source coverage metadata identifies omitted text and OCR limitations. Treat omissions as evidence gaps, never as proof of absence; do not claim full-document review. '
                          '\nFROZEN CASE: '+json.dumps(baseline)+'\nORIGINALS: '+json.dumps(sources))
             report,citations=validate_report(ask(instruction,10000,key),group,sources,mode)
             state.setdefault('report',{}).update(report);state.setdefault('citations',{}).update(citations)

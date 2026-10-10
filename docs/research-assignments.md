@@ -48,3 +48,15 @@ persisted in the parent so rotating the Mac's latest-50 snapshot cannot lose the
 No real collection or paid research is needed for QA. Test with the isolated
 PostgreSQL and temporary SQLite fixtures in test_research_assignments.py, the
 existing stock-analysis worker tests, and intercepted synthetic frontend requests.
+
+Stock Analysis shares its existing 160,000-character source context across the pack.
+Short originals remain complete; oversized combined packs use deterministic exact
+opening/closing excerpts from the longest sources. Saved coverage lists included
+character ranges, omitted counts and extraction hashes. Omissions remain explicit
+in the report and derivatives, and cannot support citations or absence claims.
+Individual unreadable/oversized extractions still need attention. Existing frozen
+research inputs are never silently re-extracted during resume.
+
+Mac command delivery waiting more than five minutes and stale collection snapshots
+(over three minutes) surface warnings without disabling automatic recovery. An
+agent heartbeat alone is not evidence of successful collection-control sync.
