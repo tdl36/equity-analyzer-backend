@@ -55,6 +55,13 @@ def thesis(run,prepared,assignment_id):
     for group in ('signposts','threats'):
         if a.get(group) is None:a[group]=[]
         if not isinstance(a[group],list):raise ValueError('Existing thesis monitoring structure needs review.')
+    # Older native theses stored risks without the later required trigger field.
+    # Preserve their text/identity and expose the gap only in this pending draft.
+    legacy_gaps=0
+    for item in a['threats']:
+        if item.get('triggerPoints') in (None,''):
+            item['triggerPoints']='Not recorded in the prior thesis. Investor review is required to define a trigger; no new threshold has been inferred.'
+            legacy_gaps+=1
     # Keep legacy reference identities without claiming their originals were re-read.
     registered={s['id'] for s in p['sourceRegister']}
     for item in a['thesis']['pillars']+a['signposts']+a['threats']:
@@ -71,6 +78,7 @@ def thesis(run,prepared,assignment_id):
         for i,(_,c) in enumerate(entries):a[group].append({'id':f'RA-{suffix}-{group}-{i}',label:c['statement'],**extra,'sources':refs(c)})
         if not a[group]:a[group]=[{'id':f'RA-{suffix}-{group}-gap',label:'Evidence gap: '+group,**extra,'sources':[]}]
     a['conclusion']='Proposed evidence update from research assignment '+assignment_id+'. Existing item identities were preserved; older pillars/signposts/risks are carried forward, not independently re-reviewed. New entries are additive. Review removals, contradictions and significance before approval. No live thesis has been changed.'
+    if legacy_gaps:a['conclusion']+=' '+str(legacy_gaps)+' carried-forward risks lacked trigger points; their missing fields are marked as evidence gaps in this draft.'
     if any(s.get('coverage') for s in run['sources']):a['conclusion']+=' Source coverage is partial: some originals were excerpted within the fixed context limit. Omitted text was not reviewed; inspect source provenance and originals.'
     a['researchAssignment']={'id':assignment_id,'reportId':run['id'],'reviewRequired':True,'comparison':run['state'].get('comparison',{})}
     p['analysis']=a;p['companyName']=p.get('companyName') or run['input'].get('companyName') or run['ticker']

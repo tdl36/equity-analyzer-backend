@@ -7,9 +7,13 @@ Updated: October 10, 2026
 T134 repaired Mac delivery; T135 adds bounded source excerpts and overdue delivery visibility.
 T136 repairs known-response recovery and reduces structured-output verbosity.
 T136 is verified at `2bfc6257c395923647af5ba039c2fe61f0eddab2`. T137 Activity and
-explicit thesis-quality recovery are prepared for deployment. UNH completed all
-12 stages but its unsupported thesis group blocked the final handoff; no call is
-in flight. Resume the existing assignment after T137 is verified.
+explicit thesis-quality recovery are verified at `27dafdfde7655343241cb3cf4cb4a986d60a953d`.
+UNH completed all 12 stages, then its unsupported thesis group blocked handoff. Its
+explicit two-stage repair completed with two supported thesis statements and the
+other ten stages retained. Handoff then exposed legacy risks lacking triggerPoints.
+T138 marks those missing legacy fields explicitly in the pending draft and corrects
+Activity status grouping after production data verification. No further paid calls
+are needed for the adapter repair; verify the actual pending draft after deployment.
 
 - App: `https://charlie-deployment.tonydlee.workers.dev/?release=T136#view=stockanalysis`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
@@ -18,6 +22,18 @@ in flight. Resume the existing assignment after T137 is verified.
 - Local agent shares the model registry, reloads changed registry files between jobs, and reports its registry revision in its heartbeat.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
+
+### T138 — current work versus review backlog
+
+Production verification exposed legacy `needs_review`, `awaiting_approval`,
+`proposed` and evidence-intake `submitted` statuses being treated as active.
+Activity now classifies these accurately, keeps work unchanged for over seven days
+under Older unfinished, and paginates visible rows. No jobs are deleted or marked
+complete by this display change. Active rows are prioritized independently of
+review-history volume. The Today snapshot prioritizes end-to-end assignments. Legacy risks without
+triggerPoints are carried forward with an explicit missing-field note, preserving
+original text/IDs and the untouched live thesis. Local adapter validation using
+the actual UNH saved report and existing thesis succeeded without submission.
 
 ### T137 — central activity and bounded thesis-quality recovery
 

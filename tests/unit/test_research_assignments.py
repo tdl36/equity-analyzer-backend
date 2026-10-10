@@ -210,3 +210,13 @@ class AssignmentPostgresTests(unittest.TestCase):
         state=self.co.read(self.ident)['result'];self.assertNotIn('artifacts',state);self.assertEqual(state['artifactRevisions'][0],before)
         self.assertNotIn('artifactRevisions',self.co.public(self.co.read(self.ident))['result'])
         self.report=original;r=self.advance();self.assertEqual(r['status'],'complete');self.assertTrue(r['result']['thesisDraftId'])
+    def test_legacy_risk_schema_gets_explicit_gap_only_in_pending_draft(self):
+        from tests.unit.test_thesis_imports import sample
+        old=sample(self.ticker);old['analysis']['threats'][0].pop('triggerPoints',None)
+        with self.db(True) as (_,cur):cur.execute('INSERT INTO portfolio_analyses(ticker,company,analysis) VALUES(%s,%s,%s::jsonb)',(self.ticker,old['companyName'],json.dumps(old['analysis'])))
+        self.start();self.collected();r=self.advance();self.assertEqual(r['status'],'complete',r['error'])
+        draft=self.client.get('/api/thesis-imports/'+r['result']['thesisDraftId']).json
+        self.assertEqual(draft['status'],'pending');risk=draft['package']['analysis']['threats'][0]
+        self.assertEqual(risk['id'],old['analysis']['threats'][0]['id']);self.assertIn('Not recorded',risk['triggerPoints'])
+        with self.db() as (_,cur):
+            cur.execute('SELECT analysis FROM portfolio_analyses WHERE ticker=%s',(self.ticker,));self.assertEqual(cur.fetchone()['analysis'],old['analysis'])

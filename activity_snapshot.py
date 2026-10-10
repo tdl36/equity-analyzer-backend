@@ -2,9 +2,10 @@
 from datetime import datetime, timezone
 from flask import Blueprint, jsonify
 
-TERMINAL = ('complete','completed','done','cancelled','stopped','applied','skipped')
-ATTENTION = ('attention','needs_auth','failed','error','interrupted')
-WORKFLOW_LABELS={'research_assignment':'End-to-end research','collection_control':'Collection request','auto_evidence_intake':'Evidence processing','command_meeting':'Meeting preparation','pipeline':'Meeting research','thesis':'Thesis draft','fanout':'Analyst research','orchestrate':'Research coordination'}
+TERMINAL = ('complete','completed','done','cancelled','stopped','applied','skipped','submitted')
+ATTENTION = ('attention','needs_auth','failed','error','interrupted','needs_review','awaiting_approval','proposed','detected','blocked')
+ACTIVE=('queued','running','pending','waiting','starting','processing','transcribing','downloading','uploading','collecting','collection_queued')
+WORKFLOW_LABELS={'evidence_amendment':'Evidence proposal','catalyst_watch':'Catalyst monitoring','research_assignment':'End-to-end research','collection_control':'Collection request','auto_evidence_intake':'Evidence processing','command_meeting':'Meeting preparation','pipeline':'Meeting research','thesis':'Thesis draft','fanout':'Analyst research','orchestrate':'Research coordination'}
 # Identifiers/projections are constants, never request input. No source bodies or keys.
 SOURCES = [
  ('mp_jobs','Research workflows','desk',"stage, result->>'step' AS step, result->>'reportId' AS report_id, result->>'refreshRequestId' AS refresh_id, result->>'researchStages' AS stages, result->>'delayWarning' AS warning, COALESCE(input->>'assignmentId',input#>>'{payload,assignmentId}') AS assignment_id",'updated_at'),
@@ -28,7 +29,7 @@ def stamp(value):
     return (value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value).isoformat()
 
 def bucket(status):
-    return 'recent' if status in TERMINAL else 'attention' if status in ATTENTION else 'active'
+    return 'recent' if status in TERMINAL else 'active' if status in ACTIVE else 'attention'
 
 def assemble(rows, collection, now):
     parents=[r for r in rows if r.get('stage')=='research_assignment']
@@ -55,7 +56,9 @@ def assemble(rows, collection, now):
         updated=item['updatedAt']; age=(now-datetime.fromisoformat(updated)).total_seconds() if updated else None
         item['quietMinutes']=int(max(0,age)/60) if age is not None else None
         item['stale']=item['bucket']=='active' and (age is None or age>900)
-    items.sort(key=lambda r:({'attention':0,'active':1,'recent':2}[r['bucket']],-(datetime.fromisoformat(r['updatedAt']).timestamp() if r['updatedAt'] else 0)))
+        history_age=age if age is not None else ((now-datetime.fromisoformat(item['createdAt'])).total_seconds() if item['createdAt'] else None)
+        if item['bucket']!='recent' and history_age is not None and history_age>7*86400:item['bucket']='older'
+    items.sort(key=lambda r:({'attention':0,'active':1,'recent':2,'older':3}[r['bucket']],-(datetime.fromisoformat(r['updatedAt']).timestamp() if r['updatedAt'] else 0)))
     return items
 
 def create_blueprint(get_db):
@@ -73,7 +76,7 @@ def create_blueprint(get_db):
                     # Active work is selected independently of recent history: old
                     # blocked jobs must never disappear behind newer completions.
                     projection=f'id,{ticker} AS ticker,status,{error} AS error,created_at,{updated} AS updated_at,{extra}'
-                    cur.execute(f'SELECT {projection} FROM {table} WHERE status NOT IN %s ORDER BY {updated} DESC LIMIT 201',(TERMINAL,))
+                    cur.execute(f'SELECT {projection} FROM {table} WHERE status NOT IN %s ORDER BY CASE WHEN status IN %s THEN 1 ELSE 0 END,{updated} DESC LIMIT 201',(TERMINAL,ATTENTION))
                     active=list(cur.fetchall())
                     if len(active)>200:truncated.append(label)
                     cur.execute(f'SELECT {projection} FROM {table} WHERE status IN %s AND {updated}>NOW()-INTERVAL \'24 hours\' ORDER BY {updated} DESC LIMIT 20',(TERMINAL,))
@@ -89,8 +92,8 @@ def create_blueprint(get_db):
                 cur.execute('SELECT MAX(last_seen) AS last_seen FROM agent_heartbeats');r=cur.fetchone();agent=stamp(r['last_seen']) if r else None
         except Exception:unavailable.append('Mac status')
         items=assemble(rows,collection,now)
-        response=jsonify(items=items,counts={b:sum(r['bucket']==b for r in items) for b in ('active','attention','recent')},
+        response=jsonify(items=items,counts={b:sum(r['bucket']==b for r in items) for b in ('active','attention','recent','older')},
             asOf=now.isoformat(),agentLastSeen=agent,collectionLastSeen=collected_at,unavailable=unavailable,truncated=truncated,
-            scope='Saved research, collection, document and audio jobs. Recent history shows up to 20 results per workflow from the last 24 hours. Browser collection needs the Mac awake, Codex running and AlphaSense signed in.')
+            scope='Saved research, collection, document and audio jobs. Work unchanged for more than seven days is retained under Older unfinished. Recent history shows up to 20 results per workflow from the last 24 hours. Browser collection needs the Mac awake, Codex running and AlphaSense signed in.')
         response.headers['Cache-Control']='no-store';return response
     return bp

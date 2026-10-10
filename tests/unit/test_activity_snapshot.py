@@ -18,6 +18,15 @@ class ActivityTests(unittest.TestCase):
   r=row();r.update(status='attention',error='Check authentication')
   items=assemble([r],{'requests':[{'id':'x','ticker':'PFE','status':'queued','created':NOW.timestamp()}]},NOW)
   self.assertEqual(items[0]['bucket'],'attention');self.assertIsNone(items[1]['updatedAt']);self.assertTrue(items[1]['stale'])
+ def test_review_requests_are_not_running_and_old_work_is_retained(self):
+  records=[]
+  for i,status in enumerate(('needs_review','awaiting_approval','proposed','submitted','unrecognized')):
+   r=row();r.update(id=str(i),status=status);records.append(r)
+  old=row();old.update(id='old',updated_at=NOW-timedelta(days=20));records.append(old)
+  result={r['jobId']:r for r in assemble(records,{},NOW)}
+  self.assertEqual(result['0']['bucket'],'attention');self.assertEqual(result['1']['bucket'],'attention')
+  self.assertEqual(result['2']['bucket'],'attention');self.assertEqual(result['3']['bucket'],'recent')
+  self.assertEqual(result['4']['bucket'],'attention');self.assertEqual(result['old']['bucket'],'older')
  def test_timestamps_are_utc(self):
   self.assertEqual(stamp(NOW.replace(tzinfo=None)),NOW.isoformat());self.assertEqual(stamp(NOW.timestamp()),NOW.isoformat());self.assertIsNone(stamp('invalid'))
 
@@ -36,3 +45,10 @@ class ActivityPostgresTests(unittest.TestCase):
   app=Flask(__name__);app.register_blueprint(create_blueprint(self.db));d=app.test_client().get('/api/activity').json
   self.assertEqual(d['unavailable'],[]);self.assertEqual(d['counts']['active'],1);self.assertEqual(d['counts']['recent'],20)
   old=next(x for x in d['items'] if x['jobId']=='old');self.assertTrue(old['stale']);self.assertNotIn('input',old);self.assertNotIn('result',old)
+ def test_review_backlog_cannot_hide_older_active_work(self):
+  with self.db(True) as (_,c):c.execute("INSERT INTO mp_jobs SELECT 'review-'||i,'evidence_amendment','TEST','needs_review',NULL,'{}','{}',NOW(),NOW() FROM generate_series(1,205)i")
+  try:
+   app=Flask(__name__);app.register_blueprint(create_blueprint(self.db));d=app.test_client().get('/api/activity').json
+   self.assertTrue(any(r['jobId']=='old' for r in d['items']));self.assertIn('Research workflows',d['truncated'])
+  finally:
+   with self.db(True) as (_,c):c.execute("DELETE FROM mp_jobs WHERE id LIKE 'review-%'")
