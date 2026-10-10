@@ -29321,9 +29321,9 @@ def _company_research_call(prompt, key, tokens, run_id, stage, usage_kind="compa
         model=spec['model'],max_tokens=tokens,timeout=1200,api_key=key,max_retries=0)
     record_llm_usage(usage_kind,result,detail={'runId':run_id,'stage':stage})
     if result.get('stop_reason') == 'max_tokens':
-        raise ValueError('Research response exceeded its output bound. Inspect the saved stages before retrying.')
+        raise company_research.KnownResponseError('Research response exceeded its output bound. Inspect the saved stages before retrying.')
     parsed = _extract_json(result.get('text') or '')
-    if not isinstance(parsed,dict):raise ValueError('Research returned invalid JSON; saved stages are retained.')
+    if not isinstance(parsed,dict):raise company_research.KnownResponseError('Research returned invalid JSON; saved stages are retained.')
     return parsed
 
 app.register_blueprint(company_research.create_blueprint(get_db,_company_research_call,

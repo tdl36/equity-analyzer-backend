@@ -5,16 +5,31 @@ Updated: October 10, 2026
 ## Start here
 
 T134 repaired Mac delivery; T135 adds bounded source excerpts and overdue delivery visibility.
-Verify the exact runtime revision with `/health`; T135 deployment and live UNH output
-verification are in progress. Last verified production revision: `75ebf4d34b406b1eced9714b1a00658b1f89fd17`.
+T136 repairs known-response recovery and reduces structured-output verbosity.
+Verify the exact runtime revision with `/health`; T136 deployment and live UNH output
+verification are in progress. Last verified production revision: `08deac5d9b5d19e30a638f9ecea81aab8eee1833`.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T135#view=stockanalysis`
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T136#view=stockanalysis`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`, branch `main`.
 - Previous release: T132 / `66f67aa4`; T122 model policy remains unchanged.
 - Local agent shares the model registry, reloads changed registry files between jobs, and reports its registry revision in its heartbeat.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
+
+### T136 — bounded response and known-outcome recovery
+
+The live UNH first author response reached its unchanged 10,000-output-token cap;
+usage recorded one call at $0.5359, with zero completed report stages. Tightened
+field/quotation lengths and populated-field guidance within the same six author
+and six reviewer stages, same model and same token ceilings. Confirmed provider
+returns (output cap/invalid JSON) now have a distinct known failure receipt; network
+uncertainty still requires explicit retry acknowledgement. Resumes count retries
+against the existing bound. Returned structured JSON is persisted before schema
+validation so a validation repair can reuse it without another paid request.
+Tests distinguish known failures from timeouts and prove no rebilling on repeated
+validation failure. Mac report timestamps now explicitly identify UTC.
+Live UNH remains the same authorized assignment/report, not a new QA research run.
 
 ### T135 — source context and stalled-delivery visibility
 

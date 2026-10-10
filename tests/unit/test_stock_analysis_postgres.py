@@ -50,6 +50,9 @@ class StockPostgresTests(unittest.TestCase):
             cur.execute('INSERT INTO document_files VALUES(%s,%s,%s,%s,%s::jsonb)',(self.ticker,SOURCE['filename'],base64.b64encode(SOURCE['text'].encode()).decode(),'txt','{}'))
         def ask(prompt,key,tokens,ident,stage):
             self.calls.append(stage)
+            if getattr(self,'simulate_known',False):
+                from company_research import KnownResponseError
+                raise KnownResponseError('Research response exceeded its output bound. Inspect the saved stages before retrying.')
             if getattr(self,'simulate_failure',False):raise TimeoutError('Synthetic timeout')
             if stage.startswith('report'):
                 raw=result(GROUPS[int(stage[-1])])
@@ -104,3 +107,17 @@ class StockPostgresTests(unittest.TestCase):
             self.assertEqual(self.client.post(self.url,json=p).status_code,400)
         self.assertEqual(self.client.post(self.url,json={**self.payload,'priorId':str(uuid.uuid4())}).status_code,409)
         self.assertEqual(self.thread.call_count,0)
+    def test_known_provider_response_can_resume_but_is_counted(self):
+        self.simulate_known=True;r=self.start();self.assertEqual(r['status'],'attention')
+        self.assertNotIn('inFlight',r['state']);self.assertEqual(r['state']['knownFailure']['stage'],'report-0')
+        path='/api/research/stock-analysis-run/'+r['id']
+        self.assertEqual(self.client.post(path+'/resume',json={}).status_code,200)
+        self.simulate_known=False
+        self.thread.call_args.kwargs['target'](*self.thread.call_args.kwargs['args'])
+        r=self.client.get(path).json;self.assertEqual(r['status'],'complete');self.assertEqual(r['state']['retries'],['report-0'])
+    def test_legacy_output_limit_reservation_is_not_network_uncertainty(self):
+        self.simulate_failure=True;r=self.start();path='/api/research/stock-analysis-run/'+r['id']
+        with self.db(True) as (_,cur):
+            cur.execute('UPDATE stock_analysis_runs SET error=%s WHERE id=%s',('Research response exceeded its output bound. Inspect the saved stages before retrying.',r['id']))
+        self.assertEqual(self.client.post(path+'/resume',json={}).status_code,200)
+        self.assertEqual(self.client.get(path).json['state']['retries'],['report-0'])

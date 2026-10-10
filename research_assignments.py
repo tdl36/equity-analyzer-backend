@@ -85,7 +85,10 @@ class Coordinator:
                     state['delayWarning']='The Mac collection report is stale or unavailable. Keep the Mac awake and online and check collection sync. Saved progress is retained; research will wait for verified originals.'
                 if not collection:
                     state['step']='Waiting for collection status from Mac';self.store(ident,state,'running');return
-                state['collection']=collection;state['macReportedAt']=str(snap['updated_at'])
+                state['collection']=collection
+                if snap:
+                    stamp=snap['updated_at']
+                    state['macReportedAt']=(stamp.replace(tzinfo=timezone.utc) if stamp.tzinfo is None else stamp).isoformat()
                 if collection['status'] in ('attention','needs_auth','cancelled'):raise ValueError(collection.get('issue') or 'Collection '+collection['status']+'. Resolve it in Collection and recovery controls, then resume this assignment.')
                 if collection['status']!='complete':
                     state['step']='Collecting and verifying originals';self.store(ident,state,'running');return

@@ -71,6 +71,14 @@ class StudioTests(unittest.TestCase):
         self.assertEqual(d['sections'][0]['kind'],'evidence_selection_changed')
         self.assertEqual(d['sourceChanges'][0]['change'],'changed')
 
+    def test_returned_response_is_retained_before_validation_and_not_rebilled(self):
+        saved=[];calls=[]
+        def ask(prompt,tokens,stage):calls.append(stage);return {'report':{},'citations':[]}
+        with self.assertRaises(ValueError):generate({},[SOURCE],{},ask,lambda v:saved.append(copy.deepcopy(v)),lambda:None,{'mode':'deep'})
+        self.assertNotIn('inFlight',saved[-1]);self.assertIn('report-0',saved[-1]['responses'])
+        with self.assertRaises(ValueError):generate(saved[-1],[SOURCE],{},ask,lambda v:None,lambda:None,{'mode':'deep'})
+        self.assertEqual(calls,['report-0'])
+
     def test_visual_omits_unreviewed_fields_and_escapes_text(self):
         report,c=validate_report(result(GROUPS[0]),GROUPS[0],[SOURCE],'deep')
         report['summary']['one_liner']='<script>unsafe</script>'

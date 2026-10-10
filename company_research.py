@@ -21,6 +21,16 @@ GROUPS = [SECTIONS[i:i+4] for i in range(0,len(SECTIONS),4)]
 BASES = {'reported_fact','management_guidance','broker_estimate','interpretation','hypothesis'}
 
 
+class KnownResponseError(ValueError):
+    """A provider response was received and usage recorded, but cannot be used."""
+
+
+KNOWN_RESPONSE_ERRORS = {
+    'Research response exceeded its output bound. Inspect the saved stages before retrying.',
+    'Research returned invalid JSON; saved stages are retained.',
+}
+
+
 def digest(value):
     return hashlib.sha256(json.dumps(value,sort_keys=True,separators=(',',':')).encode()).hexdigest()
 
@@ -247,6 +257,10 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
                     generate(state,sources,row['baseline'],ask,save,check)
                 with get_db(commit=True) as (_,cur):cur.execute(f"UPDATE {table} SET status=CASE WHEN cancel_requested THEN 'cancelled' ELSE 'complete' END,error=NULL,updated_at=NOW() WHERE id=%s AND owner=%s",(ident,owner))
             except Exception as exc:
+                if isinstance(exc,KnownResponseError):
+                    state=read(ident)['state'] or {}
+                    state['knownFailure']={'stage':state.pop('inFlight',None),'reason':str(exc)}
+                    save(state)
                 status='cancelled' if isinstance(exc,Stopped) else 'attention'
                 message='Stopped. Saved stages are retained.' if isinstance(exc,Stopped) else str(exc) if isinstance(exc,ValueError) else 'Research interrupted. Review saved stages and provider usage before resuming.'
                 with get_db(commit=True) as (_,cur):cur.execute(f'UPDATE {table} SET status=%s,error=%s,updated_at=NOW() WHERE id=%s AND owner=%s',(status,message[:600],ident,owner))
@@ -355,7 +369,14 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
                 if not row or row['status']=='complete':return jsonify(error='No unfinished research found'),409
                 if row['version']!=version or row['model']!=model_identity():return jsonify(error='Configuration changed. Start a new research revision.'),409
                 state=row['state'] or {}
+                # T135 and earlier left a reservation on these confirmed responses.
+                # Only these exact provider-return errors qualify; network failures
+                # remain ambiguous and retain the explicit retry acknowledgement.
+                if state.get('inFlight') and row.get('error') in KNOWN_RESPONSE_ERRORS:
+                    state['knownFailure']={'stage':state.pop('inFlight'),'reason':row['error']}
                 if state.get('inFlight') and data.get('acknowledgeRetry') is not True:return jsonify(error='Previous model call outcome is unknown. Check usage and acknowledge that retry may incur another charge.'),409
+                if state.get('knownFailure'):
+                    state.setdefault('retries',[]).append(state.pop('knownFailure')['stage'])
                 if state.get('inFlight'):
                     state.setdefault('retries',[]).append(state.pop('inFlight'))
                 if len(state.get('retries',[]))>=4:return jsonify(error='Retry limit reached. Stop this research and inspect its saved output.'),409
