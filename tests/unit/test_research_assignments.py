@@ -131,6 +131,18 @@ class AssignmentPostgresTests(unittest.TestCase):
         self.assertEqual(self.client.get(path).status_code,409)
         self.assertEqual(self.client.get(path+'?render=original').data,original.data)
 
+    def test_public_visual_supplement_preserves_research_and_replays_without_network(self):
+        self.start(['visual']);self.collected();self.advance()
+        before=self.co.read(self.ident)['result'];f={'asOf':'2026-10-10','annuals':[]}
+        path='/api/research/assignments/'+self.ident+'/visual-supplement'
+        with patch('stock_visual_fundamentals.collect',return_value=f) as collect:
+            self.assertEqual(self.client.post(path,json={}).status_code,200)
+            self.assertEqual(self.client.post(path,json={}).status_code,200)
+            self.assertEqual(collect.call_count,1)
+        after=self.co.read(self.ident)['result']
+        self.assertEqual(before['artifacts'],after['artifacts']);self.assertEqual(len(self.submits),1)
+        self.assertEqual(after['visualFundamentals'],f)
+
     def test_hash_mismatch_no_dispatch(self):
         self.start();self.collected('bad');r=self.advance();self.assertEqual(r['status'],'attention');self.assertEqual(self.submits,{})
     def test_delivery_overdue_visible_and_recovers_without_duplicate(self):

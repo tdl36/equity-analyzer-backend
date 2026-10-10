@@ -124,13 +124,19 @@ class Coordinator:
                     resumed=self.invoke('stock_analysis.control','POST',{},dict(ident=report_id,action='resume'))
                     if resumed[1]>=400 and 'active' not in resumed[0].get('error','').lower():raise ValueError(resumed[0].get('error','Research resume needs attention.'))
                     state['step']='Research and source review';self.store(ident,state,'running');return
+                if p.get('visualFundamentals') and 'visual' in p['outputs'] and not state.get('visualFundamentals'):
+                    from stock_visual_fundamentals import collect
+                    state['step']='Collecting historical filings and dated market data';self.store(ident,state,'running')
+                    try:state['visualFundamentals']=collect(ticker)
+                    except Exception:raise ValueError('Public fundamentals could not be validated. Saved research is retained; resume to retry public data retrieval without new model calls.')
+                    self.store(ident,state,'running')
                 # Use raw saved source metadata; detail intentionally removes source text.
                 from research_assignment_outputs import note,thesis
                 artifacts=state.setdefault('artifacts',{})
                 for kind in p['outputs']:
                     if kind=='thesis':continue
                     if kind not in artifacts:
-                        artifacts[kind]={'html':note(report,kind,p),'reviewRequired':True}
+                        artifacts[kind]={'html':note(report,kind,{**p,'_visualFundamentals':state.get('visualFundamentals')}),'reviewRequired':True}
                         state['step']='Preparing requested deliverables';self.store(ident,state,'running')
                 if 'thesis' in p['outputs'] and not state.get('thesisDraftId'):
                     if report.get('baselineStale'):raise ValueError('The saved investment case changed during research. Other outputs are retained; review the completed report and start a new assignment for thesis delivery.')
@@ -143,6 +149,8 @@ class Coordinator:
                 self.store(ident,state,'attention',str(exc)[:900])
     def public(self,row):
         p=obj(row['input']);s=copy.deepcopy(obj(row.get('result')))
+        if s.get('visualFundamentals'):
+            f=s['visualFundamentals'];s['visualFundamentals']={k:f.get(k) for k in ('asOf','retrievedAt','gaps')}
         s.pop('thesisPackage',None);s.pop('researchInput',None);s.pop('artifactRevisions',None)
         if s.get('collection'):s['collection']={k:s['collection'].get(k) for k in ('status','issue','sourceProgress')}
         s['artifacts']=[{'kind':k,'url':'/api/research/assignments/'+row['id']+'/artifact/'+k,'reviewRequired':True} for k in s.get('artifacts',{})]
@@ -198,6 +206,22 @@ class Coordinator:
             with self.db() as (_,cur):
                 cur.execute('SELECT * FROM mp_jobs WHERE stage=%s'+(' AND ticker=%s' if ticker else '')+' ORDER BY created_at DESC LIMIT 30',(STAGE,ticker) if ticker else (STAGE,));rows=[self.public(r) for r in cur.fetchall()]
             self.wake();r=jsonify(assignments=rows);r.headers['Cache-Control']='no-store';return r
+        @bp.post('/api/research/assignments/<ident>/visual-supplement')
+        def visual_supplement(ident):
+            from amendment_ownership import worker_session
+            with worker_session(self.db,'assignment:'+ident) as acquired:
+                if not acquired:return jsonify(error='Assignment is busy. Try again shortly.'),409
+                row=self.read(ident)
+                if not row or row['status']!='complete':return jsonify(error='Choose a completed assignment.'),409
+                state=obj(row['result'])
+                if 'visual' not in state.get('artifacts',{}):return jsonify(error='This assignment has no visual output.'),409
+                if not state.get('visualFundamentals'):
+                    from stock_visual_fundamentals import collect
+                    try:state['visualFundamentals']=collect(row['ticker'])
+                    except Exception:return jsonify(error='Public fundamentals could not be validated. Research and original export were retained; retry public retrieval later.'),409
+                    # Append a separate dated snapshot; never rewrite report claims or original exports.
+                    self.store(ident,state,row['status'],row.get('error'))
+                return jsonify(ok=True,asOf=state['visualFundamentals']['asOf'])
         @bp.post('/api/research/assignments/<ident>/<action>')
         def control(ident,action):
             if action not in ('stop','resume'):return jsonify(error='Unknown assignment action.'),400
@@ -241,5 +265,5 @@ class Coordinator:
                 if code!=200 or report.get('status')!='complete':
                     return jsonify(error='Saved report unavailable. Original export remains accessible with render=original.'),409
                 from research_onepager import render
-                output=render(report,obj(row['input']))
+                output=render(report,{**obj(row['input']),'_visualFundamentals':state.get('visualFundamentals')})
             return Response(output,mimetype='text/html',headers={'Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; sandbox"})

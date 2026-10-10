@@ -16,7 +16,8 @@ export function ResearchAssignment({
     [until, setUntil] = React.useState(() => date(new Date())),
     [chosen, setChosen] = React.useState(outputs.map(x => x[0])),
     [horizon, setHorizon] = React.useState('12–24 months'),
-    [instruction, setInstruction] = React.useState('');
+    [instruction, setInstruction] = React.useState(''),
+    [visualFundamentals, setVisualFundamentals] = React.useState(true);
   var [jobs, setJobs] = React.useState([]),
     [busy, setBusy] = React.useState(false),
     [message, setMessage] = React.useState(''),
@@ -117,7 +118,8 @@ export function ResearchAssignment({
       until,
       outputs: [...chosen].sort(),
       horizon,
-      instruction
+      instruction,
+      visualFundamentals
     };
     var signature = JSON.stringify(p);
     if (pending.current?.signature !== signature) pending.current = {
@@ -161,7 +163,13 @@ export function ResearchAssignment({
     type: "checkbox",
     checked: chosen.includes(id),
     onChange: e => setChosen(p => e.target.checked ? [...p, id] : p.filter(x => x !== id))
-  }), title))), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Research focus and defaults"), /*#__PURE__*/React.createElement("label", null, "Investment horizon", /*#__PURE__*/React.createElement("input", {
+  }), title))), chosen.includes('visual') && /*#__PURE__*/React.createElement("label", {
+    className: "sa-check"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: visualFundamentals,
+    onChange: e => setVisualFundamentals(e.target.checked)
+  }), "Add historical public filings and dated market data for the visual. Recent events still use your selected date range."), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Research focus and defaults"), /*#__PURE__*/React.createElement("label", null, "Investment horizon", /*#__PURE__*/React.createElement("input", {
     value: horizon,
     maxLength: 100,
     onChange: e => setHorizon(e.target.value)
@@ -200,7 +208,14 @@ export function ResearchAssignment({
     role: "alert"
   }, j.error), /*#__PURE__*/React.createElement("div", {
     className: "sa-actions"
-  }, j.result.artifacts?.some(a => a.kind === 'visual') && /*#__PURE__*/React.createElement("button", {
+  }, j.status === 'complete' && j.result.artifacts?.some(a => a.kind === 'visual') && !j.result.visualFundamentals && /*#__PURE__*/React.createElement("button", {
+    disabled: busy,
+    onClick: () => mutate(async () => {
+      await request(`assignments/${j.id}/visual-supplement`, {});
+      setPreview(null);
+      return 'Public financial history and market snapshot saved. Preview or export the illustrated version. No model calls were made.';
+    })
+  }, "Add financial charts & market data"), j.result.artifacts?.some(a => a.kind === 'visual') && /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: () => mutate(async () => {
       var g = generation.current;

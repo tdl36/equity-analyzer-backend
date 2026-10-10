@@ -17,4 +17,8 @@ def plan(data):
     outputs=data.get('outputs',list(OUTPUTS));horizon=data.get('horizon','12–24 months');instruction=data.get('instruction','')
     if not isinstance(outputs,list) or not outputs or any(not isinstance(x,str) or x not in OUTPUTS for x in outputs) or len(set(outputs))!=len(outputs):raise ValueError('Choose at least one supported output.')
     if not isinstance(horizon,str) or not 1<=len(horizon.strip())<=100 or not isinstance(instruction,str) or len(instruction)>1800:raise ValueError('Invalid horizon or research instructions.')
-    return dict(ticker=ticker,since=since.isoformat(),until=until.isoformat(),outputs=sorted(outputs),horizon=horizon.strip(),instruction=instruction.strip())
+    supplement=data.get('visualFundamentals',False)
+    if not isinstance(supplement,bool):raise ValueError('Invalid public fundamentals choice.')
+    result=dict(ticker=ticker,since=since.isoformat(),until=until.isoformat(),outputs=sorted(outputs),horizon=horizon.strip(),instruction=instruction.strip())
+    if supplement:result['visualFundamentals']=True
+    return result

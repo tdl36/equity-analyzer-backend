@@ -2,6 +2,34 @@
 
 Updated: October 10, 2026
 
+## T141 — illustrated stock brief and public financial supplement
+
+Implements an opt-in public financial supplement for visual assignments: five
+annual SEC XBRL periods, issuer-verified inline-XBRL segment revenues, and a dated
+Yahoo Finance quote with provider-defined multiples. New assignments default to
+this visible choice; the selected window still governs event research. Existing
+completed visuals can append a cached supplement through the authenticated
+`visual-supplement` action without changing frozen inputs, original exports,
+research claims, or thesis approvals. Retry is idempotent; no model calls are used
+for supplementation. Public retrieval failures preserve research and are visible.
+
+The SVG/HTML renderer supplies nine numbered panels, business and company
+illustrations, five financial charts, source-linked views, valuation cards and
+monitoring conditions. Calibri/black text and light fills follow user preferences.
+Calculations require matching periods and accession numbers; invalid, future,
+conflicting or nonfinite data are withheld. Intersegment sales are explicitly
+non-additive. SEC receipt hashes and calculation inputs remain in the source
+register. No claim of independently reviewed forward estimates is made.
+
+The actual UNH saved report and public evidence were rendered as a one-page A3
+PDF and inspected visually. Peer comparisons and calibrated scenario prices are
+still incomplete and labeled as such; this release does not establish that the
+full reference quality has been reached. Public data depends on SEC/Yahoo/network
+availability; non-US or unsupported accounting mappings need attention.
+937 safe backend tests and 96 frontend tests passed; production build, Python
+compilation and unchanged model-policy gate passed. Release verification is
+pending. No paid research ran for QA.
+
 ## T139 / T140 — visual brief repair
 
 Replaces the coordinating assignment's generic first-two-fields boxes with a

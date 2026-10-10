@@ -15,6 +15,9 @@ def esc(value):
 
 
 def render(run, assignment):
+    if assignment.get('_visualFundamentals'):
+        from research_infographic import render as infographic
+        return infographic(run, assignment, assignment['_visualFundamentals'])
     citations = run.get('state', {}).get('citations', {})
     sources = run.get('sources', [])
     refs = {s['id']: i + 1 for i, s in enumerate(sources)}
