@@ -20,7 +20,13 @@ and financial history remain substantive evidence gaps. No paid QA research ran.
 model-policy gate passed. T139 production revision and hosted bytes verified; desktop preview works. Mobile
 inspection found nested panels squeezed the iframe; T140 expands it into a
 full-width mobile overlay and aligns document reading order with section numbers.
-T140 production verification pending.
+T140 verified at `f025393f56eedd6a2c3061188be43975ee4d2d99`; Cloudflare version
+`4e087b8a-15b4-40e2-9d3c-d49cef22d78e`. Backend revision and all hosted asset bytes
+match. Authenticated production UNH HTML exactly matches the local renderer;
+`render=original` retains the old export and the parent timestamp is unchanged.
+Mobile preview fits at 390px (353px iframe content, no horizontal overflow),
+desktop preview inspected, and viewport restored. Mac heartbeat healthy.
+The follow-up passed 21 focused backend tests, 96 frontend tests and build.
 
 ## Start here
 
