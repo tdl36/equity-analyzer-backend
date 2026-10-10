@@ -2,7 +2,7 @@
 
 Updated: October 10, 2026
 
-## T141 — illustrated stock brief and public financial supplement
+## T141 / T142 — illustrated stock brief and public financial supplement
 
 Implements an opt-in public financial supplement for visual assignments: five
 annual SEC XBRL periods, issuer-verified inline-XBRL segment revenues, and a dated
@@ -28,7 +28,8 @@ full reference quality has been reached. Public data depends on SEC/Yahoo/networ
 availability; non-US or unsupported accounting mappings need attention.
 937 safe backend tests and 96 frontend tests passed; production build, Python
 compilation and unchanged model-policy gate passed. Release verification is
-pending. No paid research ran for QA.
+pending. T142 explicitly sets SVG chart labels to Calibri after PDF font inspection
+found an SVG fallback; the regenerated PDF embeds only Calibri and Calibri Bold. No paid research ran for QA.
 
 ## T139 / T140 — visual brief repair
 

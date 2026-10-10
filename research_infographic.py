@@ -36,7 +36,7 @@ def charts(rows):
         baseline=116-(0-low)/span*78;svg=f'<line x1="5" y1="{baseline}" x2="190" y2="{baseline}" stroke="#879dab"/>'
         for j,(yr,v) in enumerate(pts):
             x=10+j*37;vy=116-(v-low)/span*78;h=abs(vy-baseline)
-            svg+=f'<rect x="{x}" y="{min(vy,baseline):.2f}" width="25" height="{h:.2f}" rx="2" fill="{COLORS[j%5]}" stroke="#7facc6"/><text x="{x+12}" y="{vy-5 if v>=0 else vy+12}" text-anchor="middle" font-size="10">{v:.1f}</text><text x="{x+12}" y="137" text-anchor="middle" font-size="10">{e(yr)}</text>'
+            svg+=f'<rect x="{x}" y="{min(vy,baseline):.2f}" width="25" height="{h:.2f}" rx="2" fill="{COLORS[j%5]}" stroke="#7facc6"/><text font-family="Calibri" x="{x+12}" y="{vy-5 if v>=0 else vy+12}" text-anchor="middle" font-size="10">{v:.1f}</text><text font-family="Calibri" x="{x+12}" y="137" text-anchor="middle" font-size="10">{e(yr)}</text>'
         parts.append(f'<figure class="chart"><h3>{title} <small>({unit})</small></h3><svg role="img" aria-label="{title}: '+e('; '.join(f'{yr}: {v:.1f} {unit}' for yr,v in pts))+f'" viewBox="0 0 200 145">{svg}</svg></figure>')
     return ''.join(parts)
 

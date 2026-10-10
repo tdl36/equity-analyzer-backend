@@ -123,4 +123,3 @@ def add_segments(out):
             if not out['segments']:out['gaps'].append('No unambiguous segment revenue mapping was found in the annual filing.')
             out['segmentSource']={'url':url,'sha256':hashlib.sha256(r.content).hexdigest(),'filed':recent['filingDate'][i]}
             return
-
