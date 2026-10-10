@@ -103,7 +103,7 @@ class RefreshManager:
                 elif self.db.execute('SELECT id FROM cancelled_assignments WHERE id=?',(aid,)).fetchone():
                     result={'assignmentId':aid,'cancelled':True}
                 else:
-                    from research_assignments import plan
+                    from research_assignment_plan import plan
                     p=plan(raw);p.update(assignmentId=aid,sourcePolicy=raw['sourcePolicy'])
                     instructions=('Screen all four source categories in the fixed date window. Select at most eight distinct eligible originals in total for the requested research, prioritizing the latest event/earnings transcripts, presentations, material company releases and substantive broker analysis, including relevant contrary views. Record reviewed counts and explain selection and omissions. Do not collect outside this window or invent missing coverage. '+p['instruction'])
                     cfg=dict(ticker=p['ticker'],hours=0,enabled=True,createFolder=True,lookbackDays=7,workflow='thesis',kinds=list(KINDS),instructions=instructions)
@@ -238,7 +238,7 @@ class RefreshManager:
         from collection_original_sync import snapshot
         return {'policies':policies,'requests':requests,'worker':dict(worker) if worker else None,'folders':folders,'originalImports':snapshot(self.c)}
 
-    def claim(self):
+    def claim(self, request_id=None):
         self.due()
         with self.c.lock():
             stamp = self.clock()
@@ -247,7 +247,8 @@ class RefreshManager:
                 return None
             row = self.db.execute("""SELECT q.* FROM refresh_requests q JOIN refresh_policies p ON p.ticker=q.ticker
                 WHERE q.status IN ('queued','collecting','verifying') AND (q.lease_until IS NULL OR q.lease_until<=?)
-                AND (json_extract(p.config,'$.enabled')=1 OR json_extract(q.config,'$.manual')=1) ORDER BY q.created LIMIT 1""", (stamp,)).fetchone()
+                AND (json_extract(p.config,'$.enabled')=1 OR json_extract(q.config,'$.manual')=1)
+                AND (? IS NULL OR q.id=?) ORDER BY q.created LIMIT 1""", (stamp,request_id,request_id)).fetchone()
             if not row:
                 return None
             owner = str(uuid.uuid4())
@@ -445,7 +446,8 @@ def main():
     parser.add_argument('--status');parser.add_argument('--issue',default='')
     args=parser.parse_args();c=Collector(args.state,args.stocks);m=RefreshManager(c)
     try:
-        if args.command=='trigger':result=m.trigger(args.ticker)
+        if args.command=='claim':result=m.claim(args.request)
+        elif args.command=='trigger':result=m.trigger(args.ticker)
         elif args.command=='mark':result=m.mark(args.request,args.owner,args.status,args.issue)
         elif args.command=='complete':result=m.complete(args.request,args.owner)
         elif args.command=='preflight':result=m.preflight(args.request,args.owner)

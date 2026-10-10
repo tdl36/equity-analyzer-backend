@@ -4119,7 +4119,7 @@ def main() -> None:
                         sync_collected_originals()
                     except Exception as exc: log.warning("Original import queue unavailable: %s",type(exc).__name__)
                     try: sync_collection_control()
-                    except Exception as exc: log.debug("Collection control sync unavailable: %s",type(exc).__name__)
+                    except Exception as exc: log.warning("Collection control sync failed (%s); queued commands have not been acknowledged and will retry",type(exc).__name__)
                     push_file_manifest()
                     process_pending_syncs()
                     check_for_new_files()

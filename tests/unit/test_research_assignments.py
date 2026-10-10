@@ -25,6 +25,14 @@ class CollectionAssignmentTests(unittest.TestCase):
     setUp=refresh_tests.RefreshTests.setUp
     def command(self):
         return {'action':'research_assignment','payload':{**P,'ticker':'MDT','assignmentId':str(uuid.uuid4()),'sourcePolicy':{'mode':'auto','rules':[]}}}
+    def test_targeted_claim_preserves_other_requests_and_global_lease(self):
+        a=self.m.apply_cloud_command(str(uuid.uuid4()),self.command())['refreshRequestId']
+        b=self.m.apply_cloud_command(str(uuid.uuid4()),self.command())['refreshRequestId']
+        claimed=self.m.claim(b)
+        self.assertEqual(claimed['id'],b)
+        self.assertIsNone(self.m.claim(a))
+        self.m.mark(b,claimed['owner'],'queued','')
+        self.assertEqual(self.m.claim(a)['id'],a)
     def test_exact_window_replay_cancellation_and_policy_preservation(self):
         self.m.save({**self.cfg,'enabled':False});cmd=self.command();ident=str(uuid.uuid4())
         first=self.m.apply_cloud_command(ident,cmd)

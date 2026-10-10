@@ -1,6 +1,6 @@
 # Charlie AI engineering handoff
 
-Updated: October 9, 2026
+Updated: October 10, 2026
 
 ## Start here
 
@@ -15,6 +15,19 @@ commits may be ahead. Verify the exact runtime revision with `/health`.
 - Local agent shares the model registry, reloads changed registry files between jobs, and reports its registry revision in its heartbeat.
 
 Read `AGENTS.md` before changing anything. Preserve unrelated dirty and untracked files.
+
+### T134 — Mac research-assignment delivery repair
+
+UNH assignment e998e805-0bd4-49ce-aafa-2af123e1aace stalled before collection:
+the LaunchAgent uses system Python 3.9 without Flask, while the collection manager
+imported its planner from the Flask coordinator. The exception was logged only at
+debug level; healthy heartbeats did not prove command delivery. Moved validation
+to a standard-library-only shared module and made collection-sync failures visible
+at warning level. Regression validation must include Python without site packages
+and the actual LaunchAgent interpreter, not just the repository virtual environment.
+The existing UNH command was replayed idempotently through the normal sync path;
+its receipt now points to queued request bb20d70d-f5fe-4b66-a440-6f3ac38b7142.
+Collection/research completion is still pending, not validated by that receipt.
 
 ### T133 — one end-to-end research assignment
 
