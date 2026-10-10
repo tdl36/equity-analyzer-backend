@@ -27,8 +27,17 @@ still incomplete and labeled as such; this release does not establish that the
 full reference quality has been reached. Public data depends on SEC/Yahoo/network
 availability; non-US or unsupported accounting mappings need attention.
 937 safe backend tests and 96 frontend tests passed; production build, Python
-compilation and unchanged model-policy gate passed. Release verification is
-pending. T142 explicitly sets SVG chart labels to Calibri after PDF font inspection
+compilation and unchanged model-policy gate passed. T142 verified at
+`fd7b23280a8abd1962dad6270ca364d3c501ae23`, Cloudflare version
+`4ef1728b-317f-4512-8b8b-f44a676d261d`: exact backend revision and hosted asset
+bytes match. Authenticated APIs passed, unauthenticated access remained blocked.
+UNH production public retrieval succeeded with no retrieval gaps; repeated
+supplementation returned the same timestamp, original bytes and report/thesis
+references remained unchanged. The hosted HTML was rendered to one A3 page with
+only Calibri/Calibri Bold and black text. Desktop preview inspected; mobile iframe
+368px width/scrollWidth has no horizontal overflow; viewport restored. Mac agent
+continued running through deployment; unrelated pending catalyst sources remain.
+T142 explicitly sets SVG chart labels to Calibri after PDF font inspection
 found an SVG fallback; the regenerated PDF embeds only Calibri and Calibri Bold. No paid research ran for QA.
 
 ## T139 / T140 — visual brief repair
