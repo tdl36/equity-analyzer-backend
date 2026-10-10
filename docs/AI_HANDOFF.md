@@ -13,9 +13,22 @@ explicit two-stage repair completed with two supported thesis statements and the
 other ten stages retained. Handoff then exposed legacy risks lacking triggerPoints.
 T138 marks those missing legacy fields explicitly in the pending draft and corrects
 Activity status grouping after production data verification. No further paid calls
-are needed for the adapter repair; verify the actual pending draft after deployment.
+were needed for the adapter repair. T138 is verified at `36cc9cdbfc506a89ec3b1d82095cf9bbb0d9d700`
+with Cloudflare version `fd719525-2af3-47e6-b249-103c8a5b0966`. Hosted assets match locally built bytes;
+928 backend and 96 frontend tests passed. Authenticated Activity succeeds; unauthenticated access
+remains protected. Mac heartbeat is healthy. Desktop navigation and 390px mobile overflow checks passed.
 
-- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T136#view=stockanalysis`
+UNH assignment `e998e805-0bd4-49ce-aafa-2af123e1aace` completed at 17:23 UTC October 10.
+All 12 research stages are saved, with 66 supported fields and 171 requiring review.
+Draft `5733d627-eedb-4b33-8628-0713f528272f` is pending, not stale, investorApproved=false:
+five pillars, eight risks, seven explicitly marked legacy trigger gaps, six original source references.
+The live thesis was not changed. The visual is saved and exportable; HTML metadata and coverage
+warning were checked. Browser policy blocked local-file rendering, so no new visual-render claim is made.
+Two restricted sources remain held; two eligible originals were excerpted with omissions recorded.
+Activity shows the parent as Ready for investor review and opens UNH directly.
+Other companies and legacy queued/attention jobs were preserved; their completion is not claimed.
+
+- App: `https://charlie-deployment.tonydlee.workers.dev/?release=T138#view=activity`
 - Backend: `https://equity-analyzer-backend.onrender.com/health`
 - Repository: `/Users/tonydlee/Projects/equity-analyzer-backend`, branch `main`.
 - Previous release: T132 / `66f67aa4`; T122 model policy remains unchanged.
