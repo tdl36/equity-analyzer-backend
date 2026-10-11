@@ -2,6 +2,21 @@
 
 Updated: October 10, 2026
 
+## T172 — keep queued analyst runs tracked on screen
+
+The single analyst screen now starts at queued, keeps polling through queued and
+running, and stops only for recognized terminal states. Failed/malformed reads
+retain the last saved display. Reads are serialized and bounded to 15 seconds;
+old poll responses cannot overwrite a newer selected run or stop its timer.
+Queued runs disable the run button and show Waiting to start rather than Run
+Complete. Failed runs say Run stopped. This fixes the T168 queue-state mismatch;
+it does not add HTTP submission deduplication or reload restoration.
+
+Validation/deployment pending. Synthetic screen-function tests exercise queued,
+failed reads, running and completion without any provider or production job call.
+Next: batch restart bounds, submission deduplication, reload restoration and
+supported interrupted-attempt reconciliation.
+
 ## T171 — distinguish unstarted jobs from uncertain execution
 
 Activity projects durable enrollment/reservation markers without changing jobs.

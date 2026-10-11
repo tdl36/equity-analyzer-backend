@@ -4,6 +4,7 @@
 // existing `React.createElement`, `React.Fragment`, and `ReactDOM.render`
 // calls inside the main app body continue to work unchanged.
 import * as React from 'react';
+import {agentRunPending,agentRunTerminal,agentRunHeading,mergeAgentSnapshot} from './agent-run-state.mjs';
 import {explainRequest} from './explain-request.mjs';
 import {createReadScheduler} from './api-read-scheduler.mjs';
 import {CatalystComparison} from './catalyst-comparison';
@@ -97,7 +98,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-10-11T171';
+        const BUILD_VERSION = '2026-10-11T172';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -8538,28 +8539,32 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     });
                     if (res.ok) {
                         const data = await res.json();
-                        setAgentActiveRun({ runId: data.runId, status: 'running', logs: [], decision: null });
+                        setAgentActiveRun({ runId: data.runId, status: 'queued', logs: [], decision: null });
                         setAgentView('new');
                         // Start polling
-                        let logIndex = 0;
-                        agentPollRef.current = setInterval(async () => {
+                        let logIndex = 0, reading = false;
+                        const poll = setInterval(async () => {
+                            if (reading) return;
+                            reading = true;
+                            const controller = new AbortController(), timeout = setTimeout(()=>controller.abort(),15000);
                             try {
-                                const r = await fetch(`${API_URL}/api/agents/status/${data.runId}?since=${logIndex}`);
+                                const r = await fetch(`${API_URL}/api/agents/status/${data.runId}?since=${logIndex}`,{signal:controller.signal});
+                                if (!r.ok) throw new Error('Saved run read failed');
                                 const d = await r.json();
+                                if (!Array.isArray(d.newLogs) || !Number.isInteger(d.totalLogs) || d.totalLogs < logIndex || typeof d.status !== 'string') throw new Error('Invalid saved run state');
+                                if (agentPollRef.current !== poll) return;
                                 logIndex = d.totalLogs;
-                                setAgentActiveRun(prev => ({
-                                    ...prev,
-                                    status: d.status,
-                                    logs: [...(prev?.logs || []), ...(d.newLogs || [])],
-                                    decision: d.decision,
-                                    report: d.report,
-                                }));
-                                if (d.status !== 'running') {
-                                    clearInterval(agentPollRef.current);
+                                setAgentActiveRun(prev => mergeAgentSnapshot(prev, data.runId, d));
+                                if (agentRunTerminal(d.status)) {
+                                    clearInterval(poll);
                                     fetchAgentHistory();
                                 }
-                            } catch (e) { console.warn('Agent poll error:', e); }
+                            } catch (e) {
+                                if (agentPollRef.current === poll) setAgentActiveRun(prev => prev?.runId === data.runId ? {...prev,readError:'Status refresh failed. Showing the last saved state; Charlie will retry this read.'} : prev);
+                            }
+                            finally { clearTimeout(timeout); reading = false; }
                         }, 3000);
+                        agentPollRef.current = poll;
                     }
                 } catch (e) { console.error('Failed to start agent run:', e); alert('Error: ' + e.message); }
             };
@@ -28595,9 +28600,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             </select>
                                                         </div>
                                                     </div>
-                                                    <button onClick={startAgentRun} disabled={!agentTicker || !agentDate || agentActiveRun?.status === 'running'}
+                                                    <button onClick={startAgentRun} disabled={!agentTicker || !agentDate || agentRunPending(agentActiveRun?.status)}
                                                         className="w-full mt-3 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors">
-                                                        {agentActiveRun?.status === 'running' ? 'Running...' : 'Run Analysis'}
+                                                        {agentActiveRun?.status === 'queued' ? 'Waiting to start…' : agentActiveRun?.status === 'running' ? 'Running...' : 'Run Analysis'}
                                                     </button>
                                                     <p className="text-[9px] text-slate-600 mt-1.5 text-center">Uses yfinance for market data. Runs take 5-15 min. Cost depends on model.</p>
                                                 </div>
@@ -28606,12 +28611,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 {agentActiveRun && (
                                                     <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4">
                                                         <div className="flex items-center justify-between mb-3">
-                                                            <span className="text-sm font-semibold">{agentActiveRun.status === 'running' ? 'Live Agent Logs' : 'Run Complete'}</span>
+                                                            <span className="text-sm font-semibold">{agentRunHeading(agentActiveRun.status)}</span>
                                                             <span className={`text-xs font-mono ${
-                                                                agentActiveRun.status === 'running' ? 'text-yellow-400' :
+                                                                agentRunPending(agentActiveRun.status) ? 'text-yellow-400' :
                                                                 agentActiveRun.status === 'complete' ? 'text-green-400' : 'text-red-400'
                                                             }`}>{agentActiveRun.status.toUpperCase()}</span>
                                                         </div>
+                                                        {agentActiveRun.readError && <p role="status" className="text-xs text-amber-300 mb-3">{agentActiveRun.readError}</p>}
 
                                                         {agentActiveRun.decision && (
                                                             <div className="bg-white/[0.02] border border-green-500/30 rounded-lg p-3 mb-3">
