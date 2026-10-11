@@ -2,14 +2,20 @@
 
 Updated: October 11, 2026
 
-## T185 — protect blocked-job alert visibility (release in progress)
+## T185 — protect blocked-job alert visibility (verified)
 
 Activity selection now uses independent 200-row attention and active budgets,
 with explicit truncation categories; global alerts warn on incomplete blocked
 research coverage. Synthetic regression covers >200 active jobs plus blocked
 assignment visibility and >200 blocked jobs. 1037 backend / 140 frontend tests
 and frontend build passed. Python compile and unchanged model-policy gate against fcc2598 also passed.
-Releasing source and generated assets; live ABT visibility verification pending.
+Backend revision 423147a86d09f4cdff9051d7ebf42fdebe4feb26 verified healthy.
+Hosted JS and service worker exactly match local release bytes; Cloudflare version
+f8c27660-e1e1-4ddc-9686-04ebe28e3949. Live authenticated Activity now includes
+ABT parent f9e363e4-597e-4394-b9d4-36d83def935f as attention. Both research
+budgets are currently capped, so the frontend also warns of incomplete coverage.
+Mac heartbeat fresh, no unavailable Activity reads. No research retries or approvals.
+This is bounded visibility, not proof all eight workflow phases are complete.
 Three release markers set T185. Preserve unrelated dirty state.
 
 Historical audit of the first assistant proposal (superseded below): audit found
