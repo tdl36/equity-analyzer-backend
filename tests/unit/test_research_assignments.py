@@ -106,6 +106,35 @@ class AssignmentPostgresTests(unittest.TestCase):
     def advance(self):
         with self.app.app_context():self.co.advance(self.ident)
         return self.co.read(self.ident)
+    def test_separate_proposal_link_checks_provenance_and_preserves_failed_run(self):
+        self.start(['thesis']);self.collected();row=self.advance()
+        state=row['result'];draft_id=state.pop('thesisDraftId')
+        self.co.store(self.ident,state,'attention','No supported thesis statements were produced.')
+        path='/api/research/assignments/'+self.ident+'/link-thesis'
+        before=self.co.read(self.ident);calls=len(self.submits)
+        original=self.co.invoke
+        for change in ({'ticker':'WRONG'},{'stale':True},{'status':'dismissed'},
+                       {'package':{'baseline':{'hash':'wrong'}}},
+                       {'package':{'baseline':before['input']['thesisBaseline']['baseline'],'sourceRegister':[]}}):
+            def changed(endpoint,method,body,params):
+                data,code=original(endpoint,method,body,params)
+                if endpoint=='thesis_imports.detail':data={**data,**change}
+                return data,code
+            with patch.object(self.co,'invoke',side_effect=changed):
+                self.assertEqual(self.client.post(path,json={'draftId':draft_id}).status_code,409)
+            self.assertEqual(self.co.read(self.ident),before)
+        response=self.client.post(path,json={'draftId':draft_id})
+        self.assertEqual(response.status_code,200,response.json)
+        saved=self.co.read(self.ident)
+        self.assertEqual(saved['status'],'attention');self.assertEqual(saved['error'],before['error'])
+        self.assertEqual(saved['result']['separateThesisProposal']['sharedOriginals'],1)
+        self.assertEqual(saved['result']['sources'],before['result']['sources'])
+        self.assertEqual(self.client.post(path,json={'draftId':draft_id}).status_code,200)
+        self.assertEqual(self.co.read(self.ident),saved)
+        self.assertEqual(self.client.post(path,json={'draftId':str(uuid.uuid4())}).status_code,409)
+        self.assertEqual(len(self.submits),calls)
+        self.assertEqual(self.client.get('/api/thesis-imports/'+draft_id).json['status'],'pending')
+
     def test_financial_workbook_uses_saved_values_without_dispatch_or_mutation(self):
         from io import BytesIO
         from openpyxl import load_workbook

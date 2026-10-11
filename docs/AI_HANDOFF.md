@@ -2,7 +2,23 @@
 
 Updated: October 11, 2026
 
-## T186 — exhausted thesis recovery guidance (release in progress)
+## T187 — separate proposal association (release in progress)
+
+Blocked thesis assignments can associate an existing pending proposal through
+POST /api/research/assignments/<id>/link-thesis with draftId. This uses the worker
+lock, checks company, current pending status, equal frozen thesis baseline and
+at least one exact original hash in common. Repeated same links are idempotent;
+a different replacement is rejected. The association preserves the original
+failed status, artifacts, source records and error. It neither approves a thesis
+nor claims automated quality passed. The assignment UI links to the exact rebuilt
+proposal and discloses partial source overlap and possible supplemental evidence.
+Synthetic tests cover stale/company/baseline/source rejection, replay, preserved
+research, no new calls and pending approval. 1040 backend tests and 140 frontend
+tests passed; Python compile, model policy against fcc2598 and build passed.
+Next: verify deployed revision and hosted assets, associate the user-authorized
+ABT rebuilt proposal, inspect the result, then continue phase-1 reconciliation.
+
+## T186 — exhausted thesis recovery guidance (verified live)
 
 Assignments inspect the saved report on read to identify an already-used quality
 revision. The review screen then offers Import & review thesis rather than another
@@ -12,7 +28,20 @@ paid retry. Originals, outputs and accepted theses remain untouched. Read-only
 inspection dispatches no research. Regression covers both legacy saved errors and
 new exhausted reports. 1038 backend tests, 140 frontend tests, plus 15 focused
 Activity tests after the final alert-copy change passed; compile, model-policy gate
-and frontend build passed. Live release verification pending.
+and frontend build passed. Source pushed as 557dc3e. Cloudflare deployed
+88994d1f-0af9-485f-a388-79cdac8725b9; hosted JS/SW exact bytes verified.
+Backend revision 557dc3edf79be4cbeb8a4e6ad18681bc9afcdf04 verified healthy
+October 11 at 23:00 UTC. After user signed in via Chrome Incognito, Render
+history showed no deployment attempt for the pushed T186 commit. Manually deployed
+that existing tested commit as dep-db618o59fdbs73eeh48g; build/deploy succeeded in
+2m00s. A transient 502 during switchover cleared. Missing automatic trigger cause
+remains unconfirmed; do not describe it as a failed build or proven webhook issue.
+Authenticated ABT read confirms exhausted-retry/manual-review guidance, preserved
+visual and stock-summary artifacts and eight source records. Hosted app JS and
+service worker exactly match local release bytes. Mac heartbeat fresh; Activity
+reads available. No paid research retry or thesis approval was performed.
+Screenshot: /tmp/charlie-t186-render-live.png. Resume the phase-1 backlog; Render
+sign-in is no longer the deployment blocker.
 
 ## T185 — protect blocked-job alert visibility (verified)
 

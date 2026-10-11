@@ -289,7 +289,18 @@ export function ResearchAssignment({
       border: '1px solid #d8dedd',
       marginTop: 12
     }
-  })), j.status === 'attention' && j.result.manualThesisReviewRequired && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("a", {
+  })), j.result.separateThesisProposal && /*#__PURE__*/React.createElement("aside", {
+    "aria-label": "Separate thesis proposal",
+    style: {
+      background: "#f4f6f4",
+      borderLeft: "3px solid #365b4c",
+      padding: "16px 20px",
+      margin: "16px 0",
+      overflowWrap: "anywhere"
+    }
+  }, /*#__PURE__*/React.createElement("strong", null, "Rebuilt proposal available for review"), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("a", {
+    href: `?thesisDraft=${encodeURIComponent(j.result.separateThesisProposal.id)}#view=thesisimports&ticker=${encodeURIComponent(ticker)}`
+  }, "Review rebuilt thesis proposal")), /*#__PURE__*/React.createElement("p", null, "This separately prepared proposal references ", j.result.separateThesisProposal.sharedOriginals, " of this assignment\u2019s ", j.result.separateThesisProposal.assignmentOriginals, " originals and may use supplemental sources. Review its source register and current baseline before approving. The original automated research remains blocked; linking does not approve the thesis or certify its quality.")), j.status === 'attention' && j.result.manualThesisReviewRequired && !j.result.separateThesisProposal && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("a", {
     href: routeHash('thesisimports', ticker)
   }, "Import & review thesis"), " \xB7 Review the saved report above before preparing a separate proposal. Your accepted thesis is unchanged."), j.status === 'attention' && !j.result.manualThesisReviewRequired && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", {
     className: "sa-check"

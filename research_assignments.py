@@ -248,6 +248,39 @@ class Coordinator:
                     # Preserve the prior evidence snapshot; never rewrite report claims or original exports.
                     self.store(ident,state,row['status'],row.get('error'))
                 return jsonify(ok=True,asOf=state['visualFundamentals']['asOf'])
+        @bp.post('/api/research/assignments/<ident>/link-thesis')
+        def link_thesis(ident):
+            """Associate a separately reviewed draft without approving or completing research."""
+            d=request.get_json(silent=True) or {}
+            try:draft_id=str(uuid.UUID(d.get('draftId','')))
+            except (ValueError,TypeError,AttributeError):return jsonify(error='Choose a saved thesis draft.'),400
+            from amendment_ownership import worker_session
+            with worker_session(self.db,'assignment:'+ident) as acquired:
+                if not acquired:return jsonify(error='Assignment is advancing. Try again shortly.'),409
+                row=self.read(ident)
+                if not row:return jsonify(error='Assignment not found.'),404
+                p=obj(row['input']);state=obj(row['result'])
+                if row['status']!='attention' or 'thesis' not in p.get('outputs',[]):
+                    return jsonify(error='Only a blocked thesis assignment can link a separate proposal.'),409
+                existing=state.get('separateThesisProposal')
+                if existing and existing['id']!=draft_id:return jsonify(error='A separate proposal is already linked. Open it for review.'),409
+                draft,code=self.invoke('thesis_imports.detail','GET',None,dict(ident=draft_id))
+                if code!=200:return jsonify(error='Saved thesis draft unavailable.'),409
+                package=draft.get('package',{});baseline=p.get('thesisBaseline',{}).get('baseline',{})
+                if draft.get('ticker')!=row['ticker'] or draft.get('status')!='pending' or draft.get('stale'):
+                    return jsonify(error='Use a current, pending proposal for this company.'),409
+                if not baseline.get('hash') or package.get('baseline',{}).get('hash')!=baseline['hash']:
+                    return jsonify(error='Proposal and assignment must share the same thesis baseline.'),409
+                source_hashes={x.get('sha256') for x in state.get('sources',[]) if x.get('sha256')}
+                draft_hashes={x.get('sha256') or x.get('hash') for x in package.get('sourceRegister',[]) if x.get('sha256') or x.get('hash')}
+                shared=source_hashes & draft_hashes
+                if not shared:return jsonify(error='Proposal must reference at least one exact original from this assignment.'),409
+                if not existing:
+                    state['separateThesisProposal']={'id':draft_id,'fingerprint':draft.get('fingerprint'),
+                        'linkedAt':datetime.now(timezone.utc).isoformat(),'sharedOriginals':len(shared),
+                        'assignmentOriginals':len(source_hashes),'sourceRegisterEntries':len(package.get('sourceRegister',[]))}
+                    self.store(ident,state,row['status'],row.get('error'))
+            return jsonify(linked=True,draftId=draft_id,approvalRequired=True)
         @bp.post('/api/research/assignments/<ident>/<action>')
         def control(ident,action):
             if action not in ('stop','resume'):return jsonify(error='Unknown assignment action.'),400
