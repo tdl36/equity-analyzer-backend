@@ -2,6 +2,32 @@
 
 Updated: October 10, 2026
 
+## T178 — preserve returned research before parsing
+
+Company/committee/stock research now saves returned text and stop reason privately
+in the owned job state before JSON parsing or usage logging. The callback follows
+the generator checkpoint state, preserving earlier stages and the in-flight marker.
+Only these two allowlisted response fields are stored; headers/credentials are
+excluded. Normal read APIs redact raw and archived returns and expose only saved
+stage names/counts. Existing source, budget, owner and version checks still apply.
+
+JSON parser ValueErrors are classified as known returned-response failures instead
+of network uncertainty. A saved return can be reused locally after an explicitly
+resumed interrupted attempt; explicit retry of a known failed response archives
+its prior return before a new paid call. No automatic retry, larger token cap or
+model change was introduced. Persistence failure stops processing. ABT's earlier
+response was never saved, so this release cannot recover it retroactively; do not
+retry its unresolved reservation without usage review and user acknowledgment.
+
+Validation: 1025 safe backend and 134 frontend tests, Python compile, production
+build and unchanged model-policy gate against 63c25b2 passed. Synthetic tests
+exercise the actual call function, failed parsing, cached response reuse, private
+API redaction, persistence failures and isolated PostgreSQL multistage checkpoints.
+No paid QA. Activity showed only legacy unconfirmed WELL running before release;
+ABT remains attention. Deployment verification pending. Next: a reviewable receipt
+inspection/local parse-recovery UI and operator reconciliation for legacy attempts.
+Phase 1 remains incomplete; later phases remain in the approved order.
+
 ## T177 — durable graph model-call evidence
 
 New analyst executions attach a run-scoped LangChain callback through the pinned

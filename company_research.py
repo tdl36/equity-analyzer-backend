@@ -109,6 +109,11 @@ def validate_handoff(run,ticker,revision,hashes):
 
 def public_run(row):
     data=dict(row)
+    state=dict(data.get('state') or {})
+    receipts=state.pop('returnedResponses',{})
+    previous=state.pop('previousReturnedResponses',[])
+    data['responseRecovery']={'savedStages':list(receipts),'previousAttempts':len(previous)}
+    data['state']=state
     data['sources']=[{k:v for k,v in s.items() if k!='text'} for s in data.get('sources',[])]
     data.pop('payload_hash',None);data.pop('owner',None)
     return data
@@ -219,9 +224,11 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
                     if any(file_hash(d)!=row['input']['hashes'].get(d['filename']) for d in permissions):
                         raise ValueError('Original source bytes changed. Start a new revision before continuing.')
                 def save(value):
+                    nonlocal state
                     with get_db(commit=True) as (_,cur):
                         cur.execute(f"UPDATE {table} SET state=%s::jsonb,updated_at=NOW() WHERE id=%s AND owner=%s AND status='running' RETURNING id",(json.dumps(value),ident,owner))
                         if not cur.fetchone():raise Stopped()
+                    state=value
                 check()
                 sources=row['sources'] or []
                 if not sources:
@@ -246,7 +253,10 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
                     with get_db(commit=True) as (_,cur):
                         cur.execute(f'UPDATE {table} SET sources=%s::jsonb,updated_at=NOW() WHERE id=%s AND owner=%s RETURNING id',(json.dumps(sources),ident,owner))
                         if not cur.fetchone():raise Stopped()
-                def ask(prompt,tokens,stage):return ask_model(prompt,key,tokens,ident,stage)
+                def ask(prompt,tokens,stage):
+                    from research_response_receipts import response_scope
+                    with response_scope(stage,state,save):
+                        return ask_model(prompt,key,tokens,ident,stage)
                 if studio:
                     from stock_analysis import generate as studio_generate
                     studio_generate(state,sources,row['baseline'],ask,save,check,row['input'])
@@ -403,6 +413,8 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
                     state['knownFailure']={'stage':state.pop('inFlight'),'reason':row['error']}
                 if state.get('inFlight') and data.get('acknowledgeRetry') is not True:return jsonify(error='Previous model call outcome is unknown. Check usage and acknowledge that retry may incur another charge.'),409
                 if state.get('knownFailure'):
+                    from research_response_receipts import archive_for_retry
+                    archive_for_retry(state,state['knownFailure']['stage'])
                     state.setdefault('retries',[]).append(state.pop('knownFailure')['stage'])
                 if state.get('inFlight'):
                     state.setdefault('retries',[]).append(state.pop('inFlight'))

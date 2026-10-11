@@ -29332,13 +29332,20 @@ def _company_research_call(prompt, key, tokens, run_id, stage, usage_kind="compa
     spec = resolve_picker_spec(PICKER_DEFAULT_MODEL)
     if spec.get('provider') != 'anthropic':
         raise ValueError('Company research requires the configured Anthropic research model.')
-    result = _call_anthropic_stream(messages=[{'role':'user','content':prompt}],
-        system='You are a careful equity research analyst. Return only the requested JSON. Preserve source uncertainty.',
-        model=spec['model'],max_tokens=tokens,timeout=1200,api_key=key,max_retries=0)
-    record_llm_usage(usage_kind,result,detail={'runId':run_id,'stage':stage})
+    from research_response_receipts import cached_response, preserve_response
+    result = cached_response()
+    if result is None:
+        result = _call_anthropic_stream(messages=[{'role':'user','content':prompt}],
+            system='You are a careful equity research analyst. Return only the requested JSON. Preserve source uncertainty.',
+            model=spec['model'],max_tokens=tokens,timeout=1200,api_key=key,max_retries=0)
+        preserve_response(result)
+        record_llm_usage(usage_kind,result,detail={'runId':run_id,'stage':stage})
     if result.get('stop_reason') == 'max_tokens':
         raise company_research.KnownResponseError('Research response exceeded its output bound. Inspect the saved stages before retrying.')
-    parsed = _extract_json(result.get('text') or '')
+    try:
+        parsed = _extract_json(result.get('text') or '')
+    except ValueError:
+        raise company_research.KnownResponseError('Research returned invalid JSON; saved stages are retained.') from None
     if not isinstance(parsed,dict):raise company_research.KnownResponseError('Research returned invalid JSON; saved stages are retained.')
     return parsed
 

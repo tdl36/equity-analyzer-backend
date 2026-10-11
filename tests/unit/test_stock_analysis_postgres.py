@@ -50,6 +50,9 @@ class StockPostgresTests(unittest.TestCase):
             cur.execute('INSERT INTO document_files VALUES(%s,%s,%s,%s,%s::jsonb)',(self.ticker,SOURCE['filename'],base64.b64encode(SOURCE['text'].encode()).decode(),'txt','{}'))
         def ask(prompt,key,tokens,ident,stage):
             self.calls.append(stage)
+            if getattr(self,'simulate_receipts',False):
+                from research_response_receipts import preserve_response
+                preserve_response({'text':'Synthetic private return '+stage,'stop_reason':'end_turn'})
             if getattr(self,'simulate_known',False):
                 from company_research import KnownResponseError
                 raise KnownResponseError('Research response exceeded its output bound. Inspect the saved stages before retrying.')
@@ -94,6 +97,19 @@ class StockPostgresTests(unittest.TestCase):
         next_payload={**self.payload,'requestId':str(uuid.uuid4()),'mode':'update','priorId':r['id']}
         next_r=self.start(next_payload);self.assertEqual(next_r['status'],'complete',next_r.get('error'))
         self.assertEqual(next_r['state']['comparison']['priorId'],r['id']);self.assertEqual(next_r['state']['comparison']['sections'],[])
+    def test_return_receipts_preserve_all_stage_checkpoints(self):
+        self.simulate_receipts=True
+        r=self.start()
+        self.assertEqual(r['status'],'complete',r.get('error'))
+        self.assertEqual(len(r['state']['completed']),12)
+        self.assertEqual(len(r['responseRecovery']['savedStages']),7)
+        self.assertNotIn('returnedResponses',r['state'])
+        with self.db() as (_,cur):
+            cur.execute('SELECT state FROM stock_analysis_runs WHERE id=%s',(r['id'],))
+            state=cur.fetchone()['state']
+        self.assertEqual(len(state['returnedResponses']),7)
+        self.assertNotIn('inFlight',state)
+
     def test_original_download_requires_exact_frozen_source_and_bytes(self):
         r=self.start();calls=len(self.calls);source=r['sources'][0]
         path='/api/research/stock-analysis-run/'+r['id']+'/source/'+source['id']
