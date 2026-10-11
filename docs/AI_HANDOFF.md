@@ -8,7 +8,9 @@ Illustrated renderer v9 calls the financial series "Saved GAAP history". Replayi
 an older snapshot must not imply it was refreshed with the latest filing-selection
 logic. Existing snapshot dates, observation register and original exports remain.
 This is a caption correction, not a data refresh. 1003 backend tests, 124 frontend
-tests, compile/build pass. Deployment verification pending.
+tests, compile/build pass. Backend 4739060 and exact hosted T164 bundle/service-worker bytes verified;
+Cloudflare 188d90ea-bd27-4bf6-a2e1-5d6ca0ece8b2. Mac healthy. Live UNH report
+shows renderer v9; its exported PDF is one page, Calibri/black, no out-of-page text.
 
 ## T163 — saved financial history workbook
 
