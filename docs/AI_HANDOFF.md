@@ -15,8 +15,13 @@ those are next steps. Existing logs, reports, model pins and legacy states remai
 
 Disposable PostgreSQL tests cover concurrent claims, replay refusal, legacy and
 terminal states. A synthetic graph-entry test proves reservation refusal returns
-before graph imports or writes. Broad safe suite, frontend tests, compile/build
-and release verification recorded after completion. No paid research QA.
+before graph imports or writes. 1010 tests in the broad safe suite and the added
+graph guard test pass, as do 125 frontend tests, compile/build and unchanged model
+policy. Backend 501b0f56ab23e9b153d877977def1317cd2f2a91 and exact hosted T168
+JS/CSS/service-worker bytes verified. Cloudflare
+624b944b-2e52-4beb-bdd1-244cf242f7a2. Read-only live inspection confirms WELL
+remains running with 22 logs and no outputs; no legacy job mutated. Mac agent
+code unchanged/no restart; heartbeat observed 14:40:39 UTC. No paid research QA.
 
 ## T167 — inspect the exact analyst run from Activity
 
