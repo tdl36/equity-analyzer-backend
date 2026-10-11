@@ -14,7 +14,15 @@ with the same identity are rejected. Existing callers without requestId retain
 legacy behavior; batches and separate tabs are not deduplicated. Pending reads
 and submission failures remain visible. No ambiguous paid attempt is replayed.
 
-Validation/deployment pending. Next: durable batch recovery and submission
+Validation: 1013 safe backend tests and 130 frontend tests pass, plus compile,
+production build and unchanged model-policy gate. Six concurrent same-ID
+submissions create one row; replay after reservation creates no new attempt;
+changed-input reuse is rejected without altering the original. Screen tests
+cover double-click blocking and persisted identity reuse. Backend revision
+605b1e8fb883f06c4cf3d5982d7a89efddf86799 and exact hosted T173 JS/CSS/service-worker
+bytes verified; Cloudflare 6b0a013c-d1dc-439c-8b05-de9067d3b716. No paid research
+or production submission used for QA. Activity health checked; Mac code unchanged
+and no restart. Next: durable batch recovery and submission
 identity, selected-run reload restoration and interrupted-attempt reconciliation.
 
 ## T172 — keep queued analyst runs tracked on screen
