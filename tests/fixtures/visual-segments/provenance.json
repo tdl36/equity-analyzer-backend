@@ -1,0 +1,20 @@
+{
+  "DE": {
+    "source": "https://www.sec.gov/Archives/edgar/data/315189/000110465925122321/de-20251102x10k.htm",
+    "sourceSha256": "72ef87b7e33d0a9160347186b23d8a0c80ee37b117c4de192423d0537d83f2e3",
+    "fragmentSha256": "ffa099cde6acc3be01c9a7431b8c0e55d458beb26bdf42fccd811f753bd679df",
+    "start": "2024-10-28",
+    "end": "2025-11-02",
+    "cik": 315189,
+    "scope": "Extracted annual segment revenue contexts, currency units and facts only. Not a complete filing."
+  },
+  "SYK": {
+    "source": "https://www.sec.gov/Archives/edgar/data/310764/000031076426000010/syk-20251231.htm",
+    "sourceSha256": "998a254cc43486b9e7761dd67aea1c9ec94a7266b994ca1f691ca721ecfb3447",
+    "fragmentSha256": "ab02a0fcc1371646c9e87211d69c5132ca097e2c170dd9716a664cb2de8482a3",
+    "start": "2025-01-01",
+    "end": "2025-12-31",
+    "cik": 310764,
+    "scope": "Extracted annual segment revenue contexts, currency units and facts only. Not a complete filing."
+  }
+}

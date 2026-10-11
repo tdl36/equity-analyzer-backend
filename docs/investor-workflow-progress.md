@@ -44,4 +44,12 @@ build pass. Backend d2ccf67 and hosted T149 bytes verified. No paid QA.
 
 Direct workflow sections from Activity; URL/reload/back-forward support for
 Research desk and Stock Analysis. Company navigation preserves ticker context.
-No job submission/review side effects. 106 frontend tests/build pass. Release/live navigation verification pending.
+No job submission/review side effects. 106 frontend tests/build pass. Backend 095a20f and hosted bytes verified. Section links/reload/Back and Activity
+to SYK collection inspected.
+
+## T151 in progress
+
+Deere/Stryker profiles, art and verified segment mappings; generic renderer no
+longer inherits UNH copy. Real public financial retrieval succeeded. DE/SYK public
+data-only and saved UNH PDFs each one page, Calibri/black text, no clipping.
+See visual-business-profile-validation.md. 960 backend tests, 106 frontend tests, compile/build pass. Release pending.

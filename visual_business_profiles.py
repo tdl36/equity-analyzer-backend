@@ -1,7 +1,9 @@
 """Public business context, never private research. Curated comparisons are not rankings."""
 PROFILES = {
  'UNH': {
-  'name':'UnitedHealth Group', 'industry':'Managed care & health services',
+  'name':'UnitedHealth Group', 'cik':731766, 'art':'healthcare',
+  'businessTitle':'Four businesses. One integrated model.',
+  'glossary':'MA = Medicare Advantage · IDR = independent dispute resolution · EBIT = operating earnings · EPS = earnings per share · PY = plan year', 'industry':'Managed care & health services',
   'source':'https://www.unitedhealthgroup.com/content/dam/UHG/PDF/investors/2025/UNH-Q4-2025-Form-10-K.pdf',
   'basis':'FY2025 operating structure; Optum Financial moved from Health to Insight in 2026.',
   'overview':'Health benefits through UnitedHealthcare; care delivery, technology and pharmacy services through Optum.',
@@ -13,5 +15,37 @@ PROFILES = {
   },
   'peers':[('CVS','CVS Health','Benefits + pharmacy'),('CI','The Cigna Group','Benefits + services'),('HUM','Humana','Medicare-focused')],
   'peerBasis':'Selected US health-benefit comparables; business mixes differ. No ranking or pure-play equivalence implied.',
- }
+ },
+ 'SYK': {
+  'cik':310764, 'art':'medical-technology', 'name':'Stryker', 'industry':'Medical technology',
+  'source':'https://www.sec.gov/Archives/edgar/data/310764/000031076426000010/syk-20251231.htm',
+  'basis':'FY2025 reportable segments; Orthopaedics includes the 2025 spine divestiture period.',
+  'overview':'Medical technologies sold to hospitals and clinicians: surgical and neurovascular products, joint implants and supporting robotic systems.',
+  'businessTitle':'Two segments. Different procedure exposures.',
+  'segments':{
+   'MedSurg and Neurotechnology':('Surgery & neurovascular','Equipment and procedure products','Procedure demand, product adoption','medical'),
+   'Orthopaedics':('Implants & robotics','Joint and trauma products','Procedure volumes, implant mix','implant'),
+  },
+  'segmentMembers':{'syk:MedSurgAndNeurotechnologyMember':'MedSurg and Neurotechnology','syk:OrthopaedicsAndSpineMember':'Orthopaedics','syk:OrthopaedicsMember':'Orthopaedics'},
+  'peers':[('ZBH','Zimmer Biomet','Orthopaedics'),('MDT','Medtronic','Diversified devices'),('SNN','Smith & Nephew','Orthopaedics / surgery')],
+  'peerBasis':'Selected competitors named in the FY2025 filing. Product mixes and ADR structures differ; not pure-play equivalents.',
+ },
+ 'DE': {
+  'cik':315189, 'art':'equipment', 'name':'Deere & Company', 'industry':'Equipment & financial services',
+  'source':'https://www.sec.gov/Archives/edgar/data/315189/000110465925122321/de-20251102x10k.htm',
+  'basis':'FY2025 operating segments. Segment revenues include intersegment amounts; group totals eliminate these.',
+  'overview':'Equipment and technology for agriculture, turf, construction and forestry, with financing for dealers and equipment customers.',
+  'businessTitle':'Equipment cycles and captive finance.',
+  'segmentScope':'operating',
+  'financialNote':'Consolidated cash flows include financial services; this is not equipment-only free cash flow.',
+  'segments':{
+   'Production & Precision Agriculture':('Large-scale farming','Equipment, technology and parts','Farm demand, replacement cycle','agriculture'),
+   'Small Agriculture & Turf':('Small farms & turf','Equipment and parts','Dairy, livestock and turf demand','turf'),
+   'Construction & Forestry':('Earthmoving & roads','Machines, technology and parts','Construction and forestry demand','construction'),
+   'Financial Services':('Dealer & customer finance','Interest and lease revenue','Credit losses, funding costs','finance'),
+  },
+  'segmentMembers':{'de:ProductionAndPrecisionAgricultureSegmentMember':'Production & Precision Agriculture','de:SmallAgricultureAndTurfSegmentMember':'Small Agriculture & Turf','de:ConstructionAndForestrySegmentMember':'Construction & Forestry','de:FinancialServicesSegmentMember':'Financial Services'},
+  'peers':[('AGCO','AGCO','Agriculture'),('CNH','CNH Industrial','Agriculture / construction'),('CAT','Caterpillar','Construction / engines')],
+  'peerBasis':'Selected competitors named in the FY2025 filing. Equipment, end-market and finance mixes differ.',
+ },
 }

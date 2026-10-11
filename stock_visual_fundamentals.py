@@ -89,6 +89,13 @@ def collect(ticker):
 def segment_facts(content, start, end, cik):
     from bs4 import BeautifulSoup
     soup=BeautifulSoup(content,'html.parser');contexts={};result={}
+    from visual_business_profiles import PROFILES
+    profile=next((p for p in PROFILES.values() if p.get('cik')==cik),{})
+    usd_units=set()
+    for unit in soup.find_all(lambda t:t.name.endswith(':unit')):
+        measures=unit.find_all(lambda t:t.name.endswith(':measure'))
+        if len(measures)==1 and measures[0].text.strip()=='iso4217:USD' and not unit.find(lambda t:t.name.endswith(':divide')):
+            usd_units.add(unit.get('id'))
     names={'Unitedhealthcare':'UnitedHealthcare','Optumhealth':'Optum Health','Optuminsight':'Optum Insight','Optumrx':'Optum Rx'}
     for c in soup.find_all(lambda t:t.name.endswith(':context')):
         ident=c.find(lambda t:t.name.endswith(':identifier'))
@@ -97,18 +104,21 @@ def segment_facts(content, start, end, cik):
         dims={m.get('dimension'):m.text for m in c.find_all(lambda t:t.name.endswith(':explicitmember'))}
         member=dims.pop('us-gaap:StatementBusinessSegmentsAxis',None)
         if not member or dims not in ({},{'srt:ConsolidationItemsAxis':'us-gaap:OperatingSegmentsMember'}):continue
+        if profile.get('segmentScope')=='operating' and dims!={'srt:ConsolidationItemsAxis':'us-gaap:OperatingSegmentsMember'}:continue
         raw=member.split(':')[-1].removesuffix('Member')
         if any(x in raw.lower() for x in ('total','elimination','corporate','other')):continue
-        name=names.get(raw,re.sub(r'(?<=[a-z])(?=[A-Z])',' ',raw))
+        name=profile.get('segmentMembers',{}).get(member) or names.get(raw,re.sub(r'(?<=[a-z])(?=[A-Z])',' ',raw))
         contexts[c['id']]=(member,name)
     for x in soup.find_all('ix:nonfraction'):
-        if x.get('contextref') not in contexts or x.get('name','').split(':')[-1] not in METRICS['revenue'] or x.get('format') not in ('ixt:num-dot-decimal','ixt:numdotdecimal') or x.get('unitref','').lower()!='usd':continue
+        if x.get('contextref') not in contexts or x.get('name') not in {'us-gaap:'+tag for tag in METRICS['revenue']} or x.get('format') not in ('ixt:num-dot-decimal','ixt:numdotdecimal') or x.get('unitref') not in usd_units:continue
         try:
             value=float(x.text.replace(',',''))*10**int(x.get('scale','0'))
             if x.get('sign')=='-':value=-value
             if not math.isfinite(value) or value<=0:continue
-        except ValueError:continue
-        member,name=contexts[x['contextref']];result.setdefault(member,{'name':name,'values':set()})['values'].add(value)
+        except (ValueError,TypeError,OverflowError):continue
+        member,name=contexts[x['contextref']]
+        key=name if member in profile.get('segmentMembers',{}) else member
+        result.setdefault(key,{'name':name,'values':set()})['values'].add(value)
     return [{'name':r['name'],'revenue':next(iter(r['values'])),'year':end[:4],'basis':'Segment revenues, including intersegment activity where reported'} for r in result.values() if len(r['values'])==1][:6]
 
 def add_segments(out):

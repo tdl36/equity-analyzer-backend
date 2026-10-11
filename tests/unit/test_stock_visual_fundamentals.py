@@ -15,7 +15,7 @@ class FundamentalsTests(unittest.TestCase):
         raw['facts']['us-gaap']['PaymentsToAcquirePropertyPlantAndEquipment']['units']['USD'][0]['accn']='different'
         self.assertNotIn('freeCashFlow',annuals(raw,'2026-10-10')[0])
     def test_segment_identity_dimensions_sign_and_conflict(self):
-        context='''<xbrli:context id="a"><xbrli:identifier>0000000001</xbrli:identifier><xbrli:startDate>2025-01-01</xbrli:startDate><xbrli:endDate>2025-12-31</xbrli:endDate><xbrldi:explicitMember dimension="us-gaap:StatementBusinessSegmentsAxis">test:ServicesMember</xbrldi:explicitMember></xbrli:context>'''
+        context='''<xbrli:unit id="usd"><xbrli:measure>iso4217:USD</xbrli:measure></xbrli:unit><xbrli:context id="a"><xbrli:identifier>0000000001</xbrli:identifier><xbrli:startDate>2025-01-01</xbrli:startDate><xbrli:endDate>2025-12-31</xbrli:endDate><xbrldi:explicitMember dimension="us-gaap:StatementBusinessSegmentsAxis">test:ServicesMember</xbrldi:explicitMember></xbrli:context>'''
         fact='<ix:nonFraction contextRef="a" name="us-gaap:Revenues" unitRef="usd" format="ixt:num-dot-decimal" scale="6">100</ix:nonFraction>'
         r=segment_facts(context+fact,'2025-01-01','2025-12-31',1);self.assertEqual(r[0]['revenue'],100e6)
         self.assertEqual(segment_facts(context+fact,'2025-01-01','2025-12-31',2),[])

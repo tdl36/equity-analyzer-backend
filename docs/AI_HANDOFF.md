@@ -2,6 +2,19 @@
 
 Updated: October 10, 2026
 
+## T151 — issuer-specific visuals and segment fidelity
+
+The investment map adds sourced Deere/Stryker business profiles, bounded peer
+sets and conceptual industry artwork. Healthcare wording/art remains UNH-specific;
+general investment-test and debate labels no longer impose a recovery narrative.
+Stryker segment aliases deduplicate only when values agree. Deere uses the mapped
+operating-segment context and actual USD unit definitions. Missing research fields
+remain explicit. Existing stored originals/reports/fundamentals are unchanged.
+
+See docs/visual-business-profile-validation.md for public-source regressions,
+actual retrieval observations and PDF checks. 960 backend tests, 106 frontend
+tests, compilation and build pass. Deployment verification pending.
+
 ## T150 — direct workflow navigation
 
 Activity and Today route known job types to the appropriate research-desk or
@@ -12,7 +25,9 @@ Links select a company/workflow, not an individual job ID; the saved job selecto
 remains necessary when multiple jobs share that company/workflow.
 
 Validation: 106 frontend tests and production build pass. The preceding backend
-change passed 956 tests. Live navigation/release verification pending.
+change passed 956 tests. Backend 095a20f, exact hosted assets and authenticated reads verified. Cloudflare
+8d9025d5-bf9e-4ff4-b8e4-7fd9f23b77a1. Live section links, reload and Back
+verified; Activity opened SYK collection directly without submitting work.
 
 ## T149 — conservative catalyst issuer attribution
 
