@@ -14,7 +14,16 @@ before graph imports rather than acquiring a replacement. Recovery runs serially
 within each process's loop; this is not a global concurrency queue. Capabilities
 report single-start recovery separately from durable batch execution.
 
-Validation/deployment pending. No paid research QA. Next: batch concurrency
+Validation: 1012 safe backend tests and 125 frontend tests pass, with compile,
+production build and unchanged model-policy gate. Concurrent disposable database
+recovery tests confirm one claim, preserved saved parameters and excluded jobs.
+Backend 112172c93e97abc14307bda11ce7d56b23e7bd41 and exact hosted T170
+JS/CSS/service-worker bytes verified; Cloudflare
+7a768218-166c-4bf1-bbb0-cc5b780da557. Authenticated capability read confirms
+single-start recovery enabled and interrupted retries disabled. WELL remains
+running with 22 logs and no outputs. Mac heartbeat 15:42:30 UTC; agent code
+unchanged/no restart. No paid research QA or live restart scenario induced.
+Next: batch concurrency
 persistence, submission deduplication, interrupted-attempt reconciliation, and
 clearer recovery status in Activity. Existing legacy WELL state is untouched.
 
