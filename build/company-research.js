@@ -1,3 +1,4 @@
+import { verifiedOriginal, saveOriginal } from './research-originals.mjs';
 import { workId } from './workspace-model.mjs';
 import * as React from 'react';
 import { CommitteeFindings } from './investment-committee';
@@ -136,6 +137,24 @@ export function CompanyResearch({
       if (alive.current) setBusy(false);
     }
   };
+  var openOriginal = async source => {
+    if (mutation.current) return;
+    mutation.current = true;
+    setBusy(true);
+    setNotice('Verifying original bytes…');
+    try {
+      var blob = await verifiedOriginal(api, route, run.id, source);
+      if (alive.current) {
+        saveOriginal(blob, source.filename);
+        setNotice('Original downloaded after matching the frozen file hash.');
+      }
+    } catch (e) {
+      if (alive.current) setNotice(e.message);
+    } finally {
+      mutation.current = false;
+      if (alive.current) setBusy(false);
+    }
+  };
   var start = () => {
     var input = {
       filenames: [...files].sort(),
@@ -263,7 +282,10 @@ export function CompanyResearch({
     onClick: () => onDraft(researchCaseDraft(run, () => crypto.randomUUID()))
   }, "Prepare initial thesis draft \xB7 review before saving")), view === 'sources' ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h4", null, "Frozen originals"), run.sources.map(s => /*#__PURE__*/React.createElement("article", {
     key: s.id
-  }, /*#__PURE__*/React.createElement("strong", null, s.filename), /*#__PURE__*/React.createElement("p", null, "Original hash: ", s.originalHash), /*#__PURE__*/React.createElement("p", null, "Extraction hash: ", s.extractionHash), /*#__PURE__*/React.createElement("p", null, "Observed URL: ", s.sourceUrl || 'Not recorded'))), /*#__PURE__*/React.createElement("h4", null, "Case baseline R", run.baseline.revision), /*#__PURE__*/React.createElement("p", null, run.baseline.body.thesis || 'No thesis recorded at submission.'), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Full frozen case"), /*#__PURE__*/React.createElement("pre", {
+  }, /*#__PURE__*/React.createElement("strong", null, s.filename), /*#__PURE__*/React.createElement("p", null, "Original hash: ", s.originalHash), /*#__PURE__*/React.createElement("p", null, "Extraction hash: ", s.extractionHash), /*#__PURE__*/React.createElement("p", null, "Observed URL: ", s.sourceUrl || 'Not recorded'), /*#__PURE__*/React.createElement("button", {
+    disabled: busy,
+    onClick: () => openOriginal(s)
+  }, "Download verified original"))), /*#__PURE__*/React.createElement("h4", null, "Case baseline R", run.baseline.revision), /*#__PURE__*/React.createElement("p", null, run.baseline.body.thesis || 'No thesis recorded at submission.'), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Full frozen case"), /*#__PURE__*/React.createElement("pre", {
     style: {
       whiteSpace: 'pre-wrap'
     }
@@ -273,7 +295,10 @@ export function CompanyResearch({
     key: c.id
   }, /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, c.basis.replaceAll('_', ' '), " \xB7 ", c.review === 'supported' && c.passageMatched ? 'Passage matched + model reviewed' : 'Needs review')), /*#__PURE__*/React.createElement("p", null, c.statement), /*#__PURE__*/React.createElement("p", null, c.reviewReason || 'Review pending'), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Supporting excerpts \xB7 ", c.evidence.length), c.evidence.map((e, i) => /*#__PURE__*/React.createElement("blockquote", {
     key: i
-  }, /*#__PURE__*/React.createElement("strong", null, sourceById.get(e.sourceId)?.filename || 'Unknown source', " \xB7 ", e.matched ? 'Passage matched' : 'Unmatched'), /*#__PURE__*/React.createElement("p", null, e.excerpt)))))), /*#__PURE__*/React.createElement("h5", null, "Gaps and unresolved questions"), s.gaps.map((g, i) => /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("strong", null, sourceById.get(e.sourceId)?.filename || 'Unknown source', " \xB7 ", e.matched ? 'Passage matched' : 'Unmatched'), /*#__PURE__*/React.createElement("p", null, e.excerpt), sourceById.has(e.sourceId) && /*#__PURE__*/React.createElement("button", {
+    disabled: busy,
+    onClick: () => openOriginal(sourceById.get(e.sourceId))
+  }, "Download verified original")))))), /*#__PURE__*/React.createElement("h5", null, "Gaps and unresolved questions"), s.gaps.map((g, i) => /*#__PURE__*/React.createElement("p", {
     key: i
   }, g))))), /*#__PURE__*/React.createElement("p", null, "Model review is not investor approval. Financial calculations and consensus are not independently verified by this workflow. ", committee ? 'The committee export preserves dissent, unresolved claims and unaccepted proposals.' : 'Investment-map exports omit unresolved claims; the full research retains them with warnings.')));
 }

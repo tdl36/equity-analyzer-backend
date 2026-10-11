@@ -1,4 +1,5 @@
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
+import { verifiedOriginal, saveOriginal } from './research-originals.mjs';
 import { ResearchCoverage } from './research-coverage';
 import { workId } from './workspace-model.mjs';
 import * as React from 'react';
@@ -8,7 +9,9 @@ function Field({
   value,
   path,
   citations,
-  sources
+  sources,
+  onOriginal,
+  busy
 }) {
   if (Array.isArray(value)) return value.length ? /*#__PURE__*/React.createElement("div", {
     className: "sa-rows"
@@ -18,7 +21,9 @@ function Field({
     value: v,
     path: `${path}/${i}`,
     citations: citations,
-    sources: sources
+    sources: sources,
+    onOriginal: onOriginal,
+    busy: busy
   })))) : /*#__PURE__*/React.createElement("p", {
     className: "sa-gap"
   }, "Unavailable in this source pack.");
@@ -29,7 +34,9 @@ function Field({
     value: v,
     path: `${path}/${k}`,
     citations: citations,
-    sources: sources
+    sources: sources,
+    onOriginal: onOriginal,
+    busy: busy
   }))));
   var c = citations?.[path];
   var unavailable = !value || /^unavailable|^not available|^not recorded/i.test(value);
@@ -37,7 +44,10 @@ function Field({
     className: supported(c) ? 'sa-evidence' : 'sa-warning'
   }, label(c?.basis || 'interpretation'), " \xB7 ", supported(c) ? 'Source matched · model reviewed' : 'Needs review'), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Inspect evidence"), /*#__PURE__*/React.createElement("p", null, c?.reviewReason || 'No source review is available.'), (c?.evidence || []).map((e, i) => /*#__PURE__*/React.createElement("blockquote", {
     key: i
-  }, /*#__PURE__*/React.createElement("strong", null, sources?.find(s => s.id === e.sourceId)?.filename || 'Source unavailable', " \xB7 ", e.matched ? 'Passage matched' : 'Unmatched'), /*#__PURE__*/React.createElement("p", null, e.excerpt))), !c?.evidence?.length && /*#__PURE__*/React.createElement("p", null, "No field-level source citation."))));
+  }, /*#__PURE__*/React.createElement("strong", null, sources?.find(s => s.id === e.sourceId)?.filename || 'Source unavailable', " \xB7 ", e.matched ? 'Passage matched' : 'Unmatched'), /*#__PURE__*/React.createElement("p", null, e.excerpt), sources?.find(s => s.id === e.sourceId) && /*#__PURE__*/React.createElement("button", {
+    disabled: busy,
+    onClick: () => onOriginal(sources.find(s => s.id === e.sourceId))
+  }, "Download verified original"))), !c?.evidence?.length && /*#__PURE__*/React.createElement("p", null, "No field-level source citation."))));
 }
 export function StockAnalysis({
   api,
@@ -253,9 +263,18 @@ export function StockAnalysis({
   });
   var unfinished = inventory?.runs.some(r => ['queued', 'running', 'attention'].includes(r.status));
   var stats = reportStats(run);
+  var openOriginal = source => mutate(async () => {
+    var blob = await verifiedOriginal(api, 'stock-analysis', run.id, source);
+    if (alive.current) {
+      saveOriginal(blob, source.filename);
+      setNotice('Original downloaded after matching the frozen file hash.');
+    }
+  });
   var sourceProps = {
     citations: run?.state?.citations || {},
-    sources: run?.sources || []
+    sources: run?.sources || [],
+    onOriginal: openOriginal,
+    busy
   };
   return /*#__PURE__*/React.createElement("section", {
     className: "stock-analysis",
@@ -437,7 +456,10 @@ export function StockAnalysis({
     }
   }), view === 'sources' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h4", null, "Frozen originals"), run.sources.map(s => /*#__PURE__*/React.createElement("article", {
     key: s.id
-  }, /*#__PURE__*/React.createElement("h5", null, s.filename), /*#__PURE__*/React.createElement("p", null, s.sourceUrl || 'Observed URL unavailable'), s.coverage?.limitation && /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("h5", null, s.filename), /*#__PURE__*/React.createElement("p", null, s.sourceUrl || 'Observed URL unavailable'), /*#__PURE__*/React.createElement("button", {
+    disabled: busy,
+    onClick: () => openOriginal(s)
+  }, "Download verified original"), s.coverage?.limitation && /*#__PURE__*/React.createElement("p", {
     role: "alert"
   }, s.coverage.limitation, " Omitted: ", s.coverage.omittedCharacters.toLocaleString(), " characters."), s.textExtraction?.limitations?.map((issue, i) => /*#__PURE__*/React.createElement("p", {
     key: i

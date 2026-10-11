@@ -2,6 +2,20 @@
 
 Updated: October 10, 2026
 
+## T155 — exact-original evidence downloads
+
+Stock Analysis, Deep Research and Committee source/evidence views offer verified
+original downloads. The authenticated read route resolves a source only within
+its saved run and company, verifies both frozen identities and current stored
+bytes, and returns an attachment with no-store/nosniff/sandbox headers. Missing,
+changed, malformed or over-bound originals fail explicitly; no newer file is
+silently substituted. The browser checks SHA-256 again before offering the file.
+No extraction, model call, collection or job wakeup is added. Originals remain
+unchanged. Human source inspection does not approve the research.
+
+Synthetic exact-byte/tamper/unknown-source tests and focused disposable-PostgreSQL
+route tests pass. 966 backend tests, 117 frontend tests, compilation and build pass. Deployment verification pending.
+
 ## T154 — research coverage and review checklist
 
 Stock Analysis has a deterministic Coverage & review tab and export. It walks
@@ -17,7 +31,7 @@ Saved UNH inspection found 65 populated matched fields, 171 needing source revie
 These are metadata/structural observations, not new factual adjudication. No paid
 research was started. Exact assignment focus now hides the unrelated default
 report until its explicit report link is opened; R0 no longer says saved thesis.
-115 frontend tests and build pass. Deployment verification pending.
+115 frontend tests and build pass. Backend 76576f4 and exact hosted T154 assets verified. Live UNH counts, section navigation and mobile width checked.
 
 ## T153 — exact saved-work links
 

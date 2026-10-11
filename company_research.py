@@ -348,6 +348,28 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
         result=public_run(row);result['baselineStale']=current['revision']!=row['baseline']['revision'];result['currentRevision']=current['revision']
         response=jsonify(result);response.headers['Cache-Control']='no-store';return response
 
+    @bp.get(f'/api/research/{route}-run/<ident>/source/<source_id>')
+    def original(ident,source_id):
+        # Human inspection only: no extraction, model calls, or job wakeup.
+        ensure();row=read(ident)
+        if not row:return jsonify(error='Research revision not found'),404
+        source=next((s for s in row.get('sources',[]) if s.get('id')==source_id),None)
+        if not source:return jsonify(error='Source is not part of this saved research.'),404
+        with get_db() as (_,cur):
+            cur.execute('SELECT filename,file_data FROM document_files WHERE ticker=%s AND filename=%s',(row['ticker'],source['filename']))
+            document=cur.fetchone()
+        from research_originals import verified_original
+        try:raw=verified_original(source,document,row['input'].get('hashes',{}).get(source['filename']))
+        except ValueError as exc:return jsonify(error=str(exc)),409
+        from flask import send_file
+        from io import BytesIO
+        from werkzeug.utils import secure_filename
+        response=send_file(BytesIO(raw),as_attachment=True,download_name=secure_filename(source['filename']) or 'original',conditional=False,max_age=0)
+        response.headers['Cache-Control']='no-store'
+        response.headers['X-Content-Type-Options']='nosniff'
+        response.headers['Content-Security-Policy']="sandbox; default-src 'none'"
+        return response
+
     @bp.post(f'/api/research/{route}-run/<ident>/<action>')
     def control(ident,action):
         if action not in ('stop','resume'):return jsonify(error='Unknown research action'),400

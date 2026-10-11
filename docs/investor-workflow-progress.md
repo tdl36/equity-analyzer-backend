@@ -72,4 +72,10 @@ backend tests and 111 frontend tests pass. 964 backend tests, compile/build pass
 Coverage & review checklist, source omissions and safe HTML export. Saved UNH
 structural audit: 65 populated matched fields, 171 unresolved, 27 unavailable;
 not an expert quality score. Assignment focus hides unrelated report selection.
-115 frontend tests pass. Build/deployment verification pending.
+115 frontend tests pass. Build/backend 76576f4 and hosted T154 verified. Live UNH counts and section links/mobile width checked.
+
+## T155 in progress
+
+Verified-original downloads from source citations across stock/company/committee
+research. Exact frozen/current byte checks, authenticated read-only attachment,
+browser rehash, no research dispatch. 966 backend tests, 117 frontend tests and compile/build pass. Deployment pending.

@@ -94,6 +94,21 @@ class StockPostgresTests(unittest.TestCase):
         next_payload={**self.payload,'requestId':str(uuid.uuid4()),'mode':'update','priorId':r['id']}
         next_r=self.start(next_payload);self.assertEqual(next_r['status'],'complete',next_r.get('error'))
         self.assertEqual(next_r['state']['comparison']['priorId'],r['id']);self.assertEqual(next_r['state']['comparison']['sections'],[])
+    def test_original_download_requires_exact_frozen_source_and_bytes(self):
+        r=self.start();calls=len(self.calls);source=r['sources'][0]
+        path='/api/research/stock-analysis-run/'+r['id']+'/source/'+source['id']
+        response=self.client.get(path)
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(response.data,SOURCE['text'].encode())
+        self.assertEqual(response.headers['Cache-Control'],'no-store')
+        self.assertIn('attachment',response.headers['Content-Disposition'])
+        self.assertEqual(response.headers['X-Content-Type-Options'],'nosniff')
+        self.assertEqual(self.client.get(path+'-unknown').status_code,404)
+        with self.db(True) as (_,cur):
+            cur.execute('UPDATE document_files SET file_data=%s WHERE ticker=%s',(base64.b64encode(b'Changed original').decode(),self.ticker))
+        self.assertEqual(self.client.get(path).status_code,409)
+        self.assertEqual(len(self.calls),calls)
+
     def test_unknown_outcome_requires_explicit_retry_and_rechecks_sources(self):
         self.simulate_failure=True;r=self.start();self.assertEqual(r['status'],'attention');self.assertEqual(r['state']['inFlight'],'report-0')
         path='/api/research/stock-analysis-run/'+r['id']
