@@ -16,7 +16,13 @@ Legacy WELL remains unresolved; no production job was mutated.
 Validation: 1017 safe backend tests and 134 frontend tests passed, plus Python
 compile, production build and unchanged model-policy gate. Synthetic evidence
 tests cover legacy/malformed logs, bounded UUID validation, and reservations
-older than the displayed log window. Deployment verification pending.
+older than the displayed log window. Backend revision
+f24deec58f425682364087b1f04b9964ca9f4440 verified healthy; hosted T176
+JS/CSS/service-worker exact bytes and version verified. Cloudflare version:
+bd272ef7-111d-43c6-bee6-afc5683da487. Read-only WELL inspection confirms legacy
+unenrolled record, zero saved reservations, no report/completion, and unverified
+provider outcome. Activity has no unavailable services or pending collection
+commands; Mac heartbeat fresh. Agent unchanged/no restart. No paid QA.
 Next: capture durable provider
 request/outcome evidence and build supported recovery controls without treating
 missing records or elapsed time as proof that paid work did not run. The graph
