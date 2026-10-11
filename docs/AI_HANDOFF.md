@@ -2,7 +2,21 @@
 
 Updated: October 11, 2026
 
-## T187 — separate proposal association (release in progress)
+## T188 — provider response references for recovery
+
+Activity's recovery evidence now exposes up to 20 distinct saved provider response
+references from valid returned graph callbacks. Persisted entries are revalidated
+against the response-ID allowlist and valid execution/call UUIDs before exposure;
+malformed entries and starts/errors cannot introduce references. Truncation is
+explicit. These are reconciliation aids, not billing receipts, whole-job success
+or permission to replay. Legacy WELL has no callback evidence, so this does not
+resolve its outcome. No provider calls, approvals or job-state mutations occur.
+Focused synthetic tests cover deduplication, malformed metadata and bounded output.
+1041 backend and 140 frontend tests passed; Python compilation, model policy
+against 75097e5 and production build passed. Deployment verification pending.
+Continue phase-1 reconciliation.
+
+## T187 — separate proposal association (verified live)
 
 Blocked thesis assignments can associate an existing pending proposal through
 POST /api/research/assignments/<id>/link-thesis with draftId. This uses the worker
@@ -15,8 +29,18 @@ proposal and discloses partial source overlap and possible supplemental evidence
 Synthetic tests cover stale/company/baseline/source rejection, replay, preserved
 research, no new calls and pending approval. 1040 backend tests and 140 frontend
 tests passed; Python compile, model policy against fcc2598 and build passed.
-Next: verify deployed revision and hosted assets, associate the user-authorized
-ABT rebuilt proposal, inspect the result, then continue phase-1 reconciliation.
+Backend 2b4074c568c003670b8bfbbd54a4c98ead09e0ba verified healthy. This push
+triggered Render Auto-Deploy normally; the earlier missing trigger cause remains
+unconfirmed. Cloudflare 9f0985b3-4238-4e9e-9c54-a8f2c7adaaa3 and hosted JS/SW
+exact bytes verified. ABT proposal 39df605a-c074-4f8f-8f2d-03e6e05a2807 linked to
+parent f9e363e4-597e-4394-b9d4-36d83def935f: 4 of 8 original hashes shared,
+10 source-register entries, original attention status retained. Live UI exact link
+verified at normal and 390px phone width; no horizontal text overflow observed.
+Screenshot /tmp/charlie-t187-abt-linked.png. No approval or paid replay.
+Legacy WELL abe12953-4353-44e8-b7e9-00f81920d5cd remains unverified: March 23
+running record, no saved report/decision, no reservation or provider callback
+receipt. Do not infer no charge or replay it. Continue supported interrupted-job
+reconciliation and one-pager acceptance work; all eight phases remain unfinished.
 
 ## T186 — exhausted thesis recovery guidance (verified live)
 

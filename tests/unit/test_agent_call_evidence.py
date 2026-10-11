@@ -41,6 +41,19 @@ class EvidenceTests(unittest.TestCase):
         self.assertNotIn('retry', result)
         self.assertEqual(summary([{'event': 'model_call_v1', 'callId': 'bad'}])['recordedCalls'], 0)
 
+    def test_recovery_response_references_are_bounded_and_revalidated(self):
+        row = dict(event='model_call_v1', executionId=self.execution,
+                   callId=self.call, outcome='returned',
+                   responseIds=['msg_123', 'msg_123', 'PRIVATE header', 'resp_abc'])
+        self.assertEqual(summary([None, row])['responseIds'], ['msg_123', 'resp_abc'])
+        self.assertEqual(summary([dict(row, outcome='started')])['responseIds'], [])
+        self.assertEqual(summary([dict(row, executionId='invalid')])['responseIds'], [])
+        self.assertEqual(summary([dict(row, responseIds='msg_123')])['responseIds'], [])
+        result = summary([dict(row, responseIds=['msg_' + str(i) for i in range(21)])])
+        self.assertEqual(len(result['responseIds']), 20)
+        self.assertTrue(result['responseIdsTruncated'])
+        self.assertNotIn('retry', result)
+
     def test_instance_scoping_and_no_prompt_capture(self):
         original_config = {'callbacks': []}
         graph = NS(propagator=NS(get_graph_args=lambda: {'config': original_config, 'stream_mode': 'values'}))

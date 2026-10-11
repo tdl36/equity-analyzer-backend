@@ -72,7 +72,10 @@ def attach(graph, get_db, run_id, execution_id):
 
 def summary(entries):
     calls = {}
+    response_ids = []
     for entry in entries:
+        if not isinstance(entry, dict):
+            continue
         if entry.get('event') != 'model_call_v1':
             continue
         try:
@@ -82,7 +85,17 @@ def summary(entries):
         outcome = entry.get('outcome')
         if outcome in ('started', 'returned', 'error'):
             calls.setdefault(key, set()).add(outcome)
+        # Revalidate persisted metadata before exposing it through recovery reads.
+        # Only returned callbacks may supply provider response references.
+        identifiers = entry.get('responseIds')
+        if outcome == 'returned' and isinstance(identifiers, list):
+            for identifier in identifiers:
+                if (isinstance(identifier, str) and
+                        re.fullmatch(r'(?:chatcmpl-|msg_|resp_)[A-Za-z0-9_-]{1,160}', identifier) and
+                        identifier not in response_ids):
+                    response_ids.append(identifier)
     return dict(coverage='graph_callbacks_only', recordedCalls=len(calls),
+                responseIds=response_ids[:20], responseIdsTruncated=len(response_ids) > 20,
                 returned=sum('returned' in states for states in calls.values()),
                 errors=sum('error' in states for states in calls.values()),
                 unresolved=sum(states == {'started'} for states in calls.values()))
