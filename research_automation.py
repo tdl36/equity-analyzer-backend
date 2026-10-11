@@ -67,6 +67,8 @@ class ResearchAutomation:
                 self.save(cur,state)
             cur.execute('SELECT id,ticker,status,input,result,error,created_at FROM mp_jobs WHERE stage=%s ORDER BY created_at DESC LIMIT 30',(STAGE,))
             events=[dict(r) for r in cur.fetchall() or []]
+            from intake_status import annotate
+            annotate(cur,events,state,has_key=bool(self.has_key()),budget=self.budget_block())
         response=jsonify(enabled=state['enabled'],dailyLimit=state['dailyLimit'],usedToday=state['used'] if state['day']==datetime.now(timezone.utc).date().isoformat() else 0,manifestInitialized=state['manifestInitialized'],hasServerKey=bool(self.has_key()),lastIssue=state.get('lastIssue'),events=events)
         response.headers['Cache-Control']='no-store'
         if request.method=='POST':self.wake()

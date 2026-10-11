@@ -39,6 +39,8 @@ export function workLane(row) {
 }
 export function nextAction(row) {
  const lane=workLane(row);
+ const intakeActions={paused:'Review automatic source intake settings before enabling comparisons.',credentials:'Add the required server-side key in Settings; never send credentials in chat.',budget:'Inspect the monthly budget in Settings before changing it.',daily_limit:'Pending sources are retained. Wait for the UTC reset or deliberately change the daily limit.',baseline:'Save a thesis for this company before enabling automatic comparison.',review:'Open evidence proposals and record your review of the existing proposal.',in_progress:'Inspect the existing company comparison before submitting another run.',worker:'No decision is currently identified. The worker will recheck eligibility before dispatch.'};
+ if(row.waitCode&&intakeActions[row.waitCode])return intakeActions[row.waitCode];
  if(row.status==='needs_auth')return 'Complete sign-in or MFA directly in the source app, then resume collection.';
  if(lane==='review')return row.workflow==='catalyst_signal'?'Review the detected event and source choices before requesting collection.':'Review the saved draft or proposal. Charlie will not approve it for you.';
  if(lane==='blocked')return row.stale&&row.bucket==='active'?'Check the last saved step and dependency before retrying. A quiet job may still be running.':'Open the saved issue and retained progress. Confirm any uncertain paid call before retrying.';

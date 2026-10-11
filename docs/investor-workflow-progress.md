@@ -18,7 +18,18 @@ unapproved proposals. Preserve source excerpts and display bounded coverage.
 Do not imply that a saved version or an opened page is investor approval.
 
 T147 implemented; 947 backend and 103 frontend tests pass, Python compile and
-production build pass. Deploy and desktop/mobile verification remain. No paid
+production build pass. Deployed and verified backend 3893c89, hosted bytes, authenticated reads and
+desktop/mobile layout. No paid
 research or review mutations were used. After this increment, prioritize reusable coverage policy/recovery
 improvements and stronger issuer/event validation without duplicating existing
 engines. Record exact tests, release revision, verification and remaining gaps.
+
+## Next increment: T148
+
+Implemented read-only intake wait explanations plus the existing daily cap control.
+Focused tests (22), all 952 backend tests, 103 frontend tests, compile and build
+pass. Release verification remains. The
+T147 change brief needs a saved investment-case baseline; UNH has a separate legacy
+thesis but no saved investment-case revisions, so do not fabricate a comparison.
+T148 improves that empty state with a Current thesis link. Do not click controls
+that enable/rebudget live paid automation for QA.

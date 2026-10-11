@@ -18,7 +18,8 @@ export function ResearchChanges({
   revision,
   dirty,
   onEvidence,
-  onHistory
+  onHistory,
+  onCase
 }) {
   var [data, setData] = React.useState(null),
     [error, setError] = React.useState(''),
@@ -86,7 +87,7 @@ export function ResearchChanges({
     role: "status"
   }, "Some history is outside this snapshot. Use Evolution to inspect the available record."), !brief.baseline ? /*#__PURE__*/React.createElement("p", {
     role: "status"
-  }, selected === 'review' ? 'No usable case baseline exists at the latest recorded evidence review. Choose a saved revision above.' : 'The selected baseline is no longer in this snapshot. Choose another saved revision.') : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "Comparing saved case R", brief.baseline.revision, " with R", brief.latest.revision, ". ", selected === 'review' ? `Review recorded ${stamp(brief.at)}; this was an evidence-proposal review, not approval of all research.` : 'You selected a saved revision; its save date does not establish investor review.'), /*#__PURE__*/React.createElement("h3", null, brief.changes.length, " saved case changes"), !brief.changes.length && /*#__PURE__*/React.createElement("p", null, "No tracked wording or valuation-input changes between these revisions."), brief.changes.map((x, i) => /*#__PURE__*/React.createElement("details", {
+  }, !brief.latest ? 'No saved investment case exists for this company. Open Current thesis to prepare and save an initial baseline.' : selected === 'review' ? 'No usable case baseline exists at the latest recorded evidence review. Choose a saved revision above.' : 'The selected baseline is no longer in this snapshot. Choose another saved revision.') : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "Comparing saved case R", brief.baseline.revision, " with R", brief.latest.revision, ". ", selected === 'review' ? `Review recorded ${stamp(brief.at)}; this was an evidence-proposal review, not approval of all research.` : 'You selected a saved revision; its save date does not establish investor review.'), /*#__PURE__*/React.createElement("h3", null, brief.changes.length, " saved case changes"), !brief.changes.length && /*#__PURE__*/React.createElement("p", null, "No tracked wording or valuation-input changes between these revisions."), brief.changes.map((x, i) => /*#__PURE__*/React.createElement("details", {
     key: i
   }, /*#__PURE__*/React.createElement("summary", null, x.label), /*#__PURE__*/React.createElement("div", {
     className: "evolution-change"
@@ -116,7 +117,9 @@ export function ResearchChanges({
     onClick: onEvidence
   }, "Open evidence & proposals"))), /*#__PURE__*/React.createElement("div", {
     className: "sa-actions"
-  }, /*#__PURE__*/React.createElement("button", {
+  }, !brief.latest && /*#__PURE__*/React.createElement("button", {
+    onClick: onCase
+  }, "Open Current thesis"), /*#__PURE__*/React.createElement("button", {
     onClick: onEvidence
   }, "Review evidence & proposals"), /*#__PURE__*/React.createElement("button", {
     onClick: onHistory

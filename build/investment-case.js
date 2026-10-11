@@ -417,6 +417,7 @@ export function InvestmentCase({
     ticker: active,
     revision: revision,
     dirty: dirty,
+    onCase: () => setWorkspaceTab('case'),
     onEvidence: () => setWorkspaceTab('evidence'),
     onHistory: () => setWorkspaceTab('evolution')
   }), workspaceTab === 'signals' && /*#__PURE__*/React.createElement(CaseSignals, {

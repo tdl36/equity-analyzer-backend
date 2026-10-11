@@ -51,7 +51,7 @@ export function InvestmentCase({api,analyses=[],initialTicker='',initialTab='sna
  </div><div hidden={workspaceTab!=='reviews'}><ResearchWorkbench initialKind="underweight" key={active+'-work'} api={api} ticker={active} caseRevision={revision} assumptions={body.assumptions} disabled={busy||dirty}/>
  <ResearchDecisions key={active+'-decisions'} api={api} ticker={active}/>
  </div><div hidden={workspaceTab!=='evidence'}><CaseEvidence researchContext={researchContext} key={active+(researchContext?.id||'')} revision={revision} api={api} ticker={active} body={body} disabled={busy||dirty} onCommit={save}/></div>
- {workspaceTab==='changes'&&<ResearchChanges key={active} api={api} ticker={active} revision={revision} dirty={dirty} onEvidence={()=>setWorkspaceTab('evidence')} onHistory={()=>setWorkspaceTab('evolution')}/>}
+ {workspaceTab==='changes'&&<ResearchChanges key={active} api={api} ticker={active} revision={revision} dirty={dirty} onCase={()=>setWorkspaceTab('case')} onEvidence={()=>setWorkspaceTab('evidence')} onHistory={()=>setWorkspaceTab('evolution')}/>}
  {workspaceTab==='signals'&&<CaseSignals key={active+'-signals'} api={api} body={body} disabled={busy} onChange={edit} onSave={save} message={message}/>}
  {workspaceTab==='evolution'&&<ThesisEvolution key={active} api={api} ticker={active} revision={revision}/>}
  <button disabled={busy||dirty||!revision} onClick={()=>{const blob=new Blob([JSON.stringify({ticker:active,revision,body},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`${active}-investment-case-r${revision}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}}>Download saved case with evidence · JSON</button>

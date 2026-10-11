@@ -68,3 +68,19 @@ class ActivityPostgresTests(unittest.TestCase):
    self.assertIsNotNone(d['collectionDelivery']['oldestPendingAt'])
   finally:
    with self.db(True) as (_,c):c.execute("DELETE FROM mp_jobs WHERE id LIKE 'delivery-%'")
+ def test_intake_wait_explanation_uses_saved_policy_and_company_gate(self):
+  with self.db(True) as (_,c):
+   c.execute('CREATE TABLE IF NOT EXISTS portfolio_analyses(ticker TEXT)')
+   c.execute("INSERT INTO app_settings VALUES('research_auto_intake_v1','{\"enabled\":true,\"dailyLimit\":2,\"used\":0}',NOW())")
+   c.execute("INSERT INTO mp_jobs VALUES('intake-fixture','auto_evidence_intake','TEST','waiting',NULL,'{}','{}',NOW(),NOW())")
+  try:
+   app=Flask(__name__);app.register_blueprint(create_blueprint(self.db));d=app.test_client().get('/api/activity').json
+   item=next(x for x in d['items'] if x['jobId']=='intake-fixture')
+   self.assertEqual(item['waitCode'],'baseline');self.assertIn('saved thesis',item['step'])
+   self.assertEqual(d['unavailable'],[])
+   with self.db() as (_,c):
+    c.execute("SELECT status FROM mp_jobs WHERE id='intake-fixture'");self.assertEqual(c.fetchone()['status'],'waiting')
+  finally:
+   with self.db(True) as (_,c):
+    c.execute("DELETE FROM mp_jobs WHERE id='intake-fixture'")
+    c.execute("DELETE FROM app_settings WHERE key='research_auto_intake_v1'")

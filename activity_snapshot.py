@@ -100,6 +100,18 @@ def create_blueprint(get_db):
                 delivery=dict(pending=int(r['pending']),oldestPendingAt=stamp(r['oldest']))
         except Exception:unavailable.append('Collection delivery')
         items=assemble(rows,collection,now)
+        intake=[r for r in items if r.get('workflow')=='auto_evidence_intake' and r['status']=='waiting']
+        if intake:
+            try:
+                from intake_status import annotate
+                import json
+                with get_db() as (_,cur):
+                    cur.execute("SELECT value FROM app_settings WHERE key='research_auto_intake_v1'")
+                    r=cur.fetchone();state=r['value'] if r else {}
+                    if isinstance(state,str):state=json.loads(state)
+                    annotate(cur,intake,state,now=now)
+                for r in intake:r['step']=r['waitReason']
+            except Exception:unavailable.append('Intake eligibility')
         response=jsonify(items=items,counts={b:sum(r['bucket']==b for r in items) for b in ('active','attention','recent','older')},
             asOf=now.isoformat(),agentLastSeen=agent,collectionLastSeen=collected_at,collectionDelivery=delivery,unavailable=unavailable,truncated=truncated,
             scope='Saved research, collection, document and audio jobs. Work unchanged for more than seven days is retained under Older unfinished. Recent history shows up to 20 results per workflow from the last 24 hours. Browser collection needs the Mac awake, Codex running and AlphaSense signed in.')

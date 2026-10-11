@@ -2,7 +2,21 @@
 
 Updated: October 10, 2026
 
-## T147 — saved-evidence change brief (release in progress)
+## T148 — explain waiting intake and expose its existing daily cap
+
+Activity and automatic intake controls now explain waiting sources using the
+worker's policy, UTC daily reservations, saved-thesis prerequisite and active/open
+company proposal gates. The controls also inspect current server-key/budget gates;
+Activity deliberately does not assert those checks succeeded. Reads do not dispatch
+or mutate jobs. The existing 1–5 daily-comparison setting is now editable in the
+UI, with a clear cost implication; current user settings are not changed by deploy.
+Polling cannot overwrite a newer settings response. T147's empty state now directs
+companies without a saved case to Current thesis rather than an absent baseline.
+
+Validation: 952 safe backend tests, 103 frontend tests, Python compilation and
+production build pass. Deployment verification remains. See the finite checkpoint.
+
+## T147 — saved-evidence change brief
 
 The investment-case workspace adds What changed, a read-only brief combining case
 revision differences, newly accepted evidence links and unresolved investment-case
@@ -13,6 +27,11 @@ updated timestamp identifies later repairs. Excerpts, source filenames, provenan
 and unresolved checks remain visible. Coverage is bounded to the existing 100-item
 history and 30-proposal windows, not a complete news/document scan. No model calls,
 review decisions or thesis mutations occur. Unsaved editor changes are excluded.
+
+Verified T147 backend 3893c89315a045a67ac5b60d085e9a9d733ebd0f and hosted
+asset bytes. Cloudflare 95fe631d-2f2e-4d67-9b9f-bfb26cbade70. Auth checks passed;
+live UNH correctly reports no investment-case baseline. Desktop/mobile inspected,
+390px without horizontal overflow. 947 backend/103 frontend tests passed.
 
 This is the first increment of the authorized two-hour investor workflow session;
 see docs/investor-workflow-progress.md for the checkpoint and finite cutoff.
