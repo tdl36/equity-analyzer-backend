@@ -24,7 +24,11 @@ build and unchanged model-policy gate against 63c25b2 passed. Synthetic tests
 exercise the actual call function, failed parsing, cached response reuse, private
 API redaction, persistence failures and isolated PostgreSQL multistage checkpoints.
 No paid QA. Activity showed only legacy unconfirmed WELL running before release;
-ABT remains attention. Deployment verification pending. Next: a reviewable receipt
+ABT remains attention. Backend f1875301b5fa48c2ec8d3c0d9c52b37a8c7187da verified
+healthy; hosted T178 JS/CSS/service-worker bytes match. Cloudflare version
+704d9daa-b061-486d-8b9b-4380a985365b. Authenticated ABT inspection verifies the new
+receipt summary, no exposed raw receipts, and its unchanged report-0 reservation.
+Mac heartbeat healthy at 19:10:28 UTC; agent unchanged. Next: a reviewable receipt
 inspection/local parse-recovery UI and operator reconciliation for legacy attempts.
 Phase 1 remains incomplete; later phases remain in the approved order.
 
