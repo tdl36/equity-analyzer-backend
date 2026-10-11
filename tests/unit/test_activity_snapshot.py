@@ -78,6 +78,23 @@ class ActivityPostgresTests(unittest.TestCase):
    self.assertEqual(d['unavailable'],[])
    item=next(x for x in d['items'] if x['jobId']=='legacy')
    self.assertTrue(item['executionUnconfirmed']);self.assertEqual(item['bucket'],'attention')
+   from agent_execution import queued_log
+   for recover in (False,True):
+    for minutes in (1,20,20000):
+     with self.db(True) as (_,c):
+      c.execute("DELETE FROM agent_runs WHERE id='pending'")
+      c.execute("INSERT INTO agent_runs(id,ticker,status,created_at,logs) VALUES('pending','TEST','queued',(NOW() AT TIME ZONE 'UTC')-(%s * INTERVAL '1 minute'),%s)",(minutes,queued_log(recover)))
+     result=app.test_client().get('/api/activity').json
+     pending=next(x for x in result['items'] if x['jobId']=='pending')
+     self.assertTrue(pending['pendingStart']);self.assertEqual(pending['startRecovery'],recover)
+     self.assertNotIn('executionUnconfirmed',pending)
+     self.assertEqual(pending['bucket'],'active' if minutes==1 else 'attention')
+     self.assertEqual(pending['step'],'Waiting for first execution')
+   with self.db(True) as (_,c):
+    c.execute("UPDATE agent_runs SET logs=logs || '[{\"event\":\"execution_started\"}]'::jsonb WHERE id='pending'")
+   attempted=next(x for x in app.test_client().get('/api/activity').json['items'] if x['jobId']=='pending')
+   self.assertFalse(attempted['pendingStart']);self.assertTrue(attempted['executionUnconfirmed'])
+
    with self.db() as (_,c):
     c.execute("SELECT status FROM agent_runs WHERE id='legacy'");self.assertEqual(c.fetchone()['status'],'running')
   finally:

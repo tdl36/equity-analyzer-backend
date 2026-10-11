@@ -2,6 +2,21 @@
 
 Updated: October 10, 2026
 
+## T171 — distinguish unstarted jobs from uncertain execution
+
+Activity projects durable enrollment/reservation markers without changing jobs.
+Enrolled queued jobs with no reservation are labeled Waiting for first execution,
+with explicit automatic-start recovery availability. After 15 minutes (or unknown
+or future time), they remain in attention, including beyond seven days, and ask
+for a backend worker check without duplicate submission. Already-reserved or
+legacy uncertain jobs retain provider-outcome reconciliation. These flags are
+saved evidence, never proof a worker is live. Exact-run inspection now labels the
+creation timestamp Created rather than implying execution started then.
+
+Validation and deployment pending. No research, provider calls or job mutations
+for QA. Next: durable batch concurrency, submission deduplication and supported
+interrupted-attempt reconciliation, then further research workspace simplification.
+
 ## T170 — recover single analyst jobs before first execution
 
 New single-company analyst jobs opt into restart discovery. Every minute the

@@ -53,7 +53,7 @@ function AnalystRunInspection({
     role: "status"
   }, "Loading saved steps\u2026"), state.error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
-  }, state.error), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "Recorded status: ", /*#__PURE__*/React.createElement("strong", null, data.status), " \xB7 ", data.model, " \xB7 Started ", activityAge(data.createdAt)), /*#__PURE__*/React.createElement("p", null, data.hasReport ? 'Report text is saved.' : 'No report text is saved.', " ", data.completedAt ? `Completion recorded ${activityAge(data.completedAt)}.` : 'No completion is recorded.'), /*#__PURE__*/React.createElement("p", {
+  }, state.error), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "Recorded status: ", /*#__PURE__*/React.createElement("strong", null, data.status), " \xB7 ", data.model, " \xB7 Created ", activityAge(data.createdAt)), /*#__PURE__*/React.createElement("p", null, data.hasReport ? 'Report text is saved.' : 'No report text is saved.', " ", data.completedAt ? `Completion recorded ${activityAge(data.completedAt)}.` : 'No completion is recorded.'), /*#__PURE__*/React.createElement("p", {
     className: "activity-warning"
   }, "These are saved records, not confirmation that a worker or provider request is running. Inspect the outcome before starting another paid run."), data.truncated && /*#__PURE__*/React.createElement("p", null, "Showing the latest 100 of ", data.totalLogs, " saved entries."), /*#__PURE__*/React.createElement("ol", null, data.logs.map((entry, index) => /*#__PURE__*/React.createElement("li", {
     key: index

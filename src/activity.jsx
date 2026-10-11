@@ -12,7 +12,7 @@ function AnalystRunInspection({api,row}) {
  const data=state.data;
  return <section className="activity-run-inspection" aria-label={`Saved analyst run for ${row.ticker}`}><div className="activity-row-title"><strong>Saved run · {row.ticker}</strong><button disabled={state.loading} onClick={()=>setRevision(n=>n+1)}>Refresh saved state</button></div>
  {state.loading&&<p role="status">Loading saved steps…</p>}{state.error&&<p role="alert">{state.error}</p>}
- {data&&<><p>Recorded status: <strong>{data.status}</strong> · {data.model} · Started {activityAge(data.createdAt)}</p><p>{data.hasReport?'Report text is saved.':'No report text is saved.'} {data.completedAt?`Completion recorded ${activityAge(data.completedAt)}.`:'No completion is recorded.'}</p>
+ {data&&<><p>Recorded status: <strong>{data.status}</strong> · {data.model} · Created {activityAge(data.createdAt)}</p><p>{data.hasReport?'Report text is saved.':'No report text is saved.'} {data.completedAt?`Completion recorded ${activityAge(data.completedAt)}.`:'No completion is recorded.'}</p>
  <p className="activity-warning">These are saved records, not confirmation that a worker or provider request is running. Inspect the outcome before starting another paid run.</p>
  {data.truncated&&<p>Showing the latest 100 of {data.totalLogs} saved entries.</p>}
  <ol>{data.logs.map((entry,index)=><li key={index}><small>{entry.time||'Time unavailable'} · {entry.agent||'Saved step'}</small><p>{entry.message}</p></li>)}</ol>{!data.logs.length&&<p>No saved steps are available.</p>}

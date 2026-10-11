@@ -49,3 +49,11 @@ test('due research issue opens its exact saved review and requests an investor f
 });
 
 test('uncertain legacy execution is surfaced for reconciliation without retry advice',()=>{const row={workflow:'agent_runs',status:'running',bucket:'attention',executionUnconfirmed:true,ticker:'WELL'};assert.equal(workLane(row),'blocked');assert.equal(focusRows({items:[row]}).length,1);assert.match(nextAction(row),/Do not submit another paid run/);});
+
+test('unstarted analyst jobs explain start recovery without a paid retry',()=>{
+ const row={workflow:'agent_runs',status:'queued',bucket:'active',pendingStart:true,startRecovery:true};
+ assert.equal(workLane(row),'waiting');assert.match(nextAction(row),/first execution/);
+ assert.match(nextAction({...row,bucket:'attention'}),/backend worker availability/);
+ assert.match(nextAction({...row,startRecovery:false}),/unavailable/);
+ assert.doesNotMatch(nextAction(row),/collection delivery/i);
+});
