@@ -39,3 +39,14 @@ def archive_for_retry(state, stage):
     receipt = state.get('returnedResponses', {}).pop(stage, None)
     if receipt is not None:
         state.setdefault('previousReturnedResponses', []).append(dict(stage=stage, response=receipt))
+
+
+def receipt_metadata(stage, receipt):
+    """Public diagnostics only; response text and arbitrary provider values stay private."""
+    import hashlib
+    text = receipt.get('text') if isinstance(receipt, dict) else None
+    stop = receipt.get('stop_reason') if isinstance(receipt, dict) else None
+    return {'stage': stage,
+            'characters': len(text) if isinstance(text, str) else None,
+            'sha256': hashlib.sha256(text.encode('utf-8')).hexdigest() if isinstance(text, str) else None,
+            'stopReason': stop if stop in ('end_turn', 'stop', 'max_tokens', 'length', 'stop_sequence', 'tool_use') else 'unavailable'}

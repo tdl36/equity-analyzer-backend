@@ -2,6 +2,25 @@
 
 Updated: October 10, 2026
 
+## T179 — visible saved-response recovery evidence
+
+Stock Analysis, Deep Research and committee review show a shared recovery panel
+for attention/cancelled jobs. It distinguishes unknown outcomes, preserved
+interrupted returns and known failed responses requiring a new paid attempt.
+Public diagnostics include stage, character count, SHA-256 fingerprint and an
+allowlisted stop reason; response text and arbitrary provider fields stay private.
+No resume semantics, approvals, models or paid dispatch behavior changed.
+Older ABT remains unresolved: this cannot recover its unsaved response. Active
+workers are not labeled interrupted. Archived count is responses, not all calls.
+
+Validation: 1026 safe backend tests and 137 frontend tests passed; touched Python
+compiled and unchanged model gate against 64facec passed. Production build passed.
+Synthetic desktop and 390px iframe browser inspection verified disclosure content
+and readable wrapping; fixed mobile counter spacing. No paid QA. Pre-release
+Activity shows only the legacy unresolved WELL run marked running. Deployment
+verification follows. Phase 1 remains incomplete: local parse-recovery controls
+and evidence-based reconciliation of legacy attempts remain outstanding.
+
 ## T178 — preserve returned research before parsing
 
 Company/committee/stock research now saves returned text and stop reason privately

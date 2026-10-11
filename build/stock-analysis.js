@@ -1,4 +1,5 @@
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
+import { ResearchRecovery } from './research-recovery';
 import { financialWorkbook, saveFinancialWorkbook } from './financial-workbook-download.mjs';
 import { ResearchMeetingHandoff } from './research-meeting-handoff';
 import { unavailable as missingValue, pointer } from './stock-analysis-evidence.mjs';
@@ -398,7 +399,9 @@ export function StockAnalysis({
     role: "alert"
   }, run.error), run.baselineStale && /*#__PURE__*/React.createElement("p", {
     className: "sa-warning"
-  }, "The saved thesis has changed since this report started. Its frozen baseline remains R", run.baseline.revision, ". Start a new analysis before preparing a thesis draft."), run.status !== 'complete' && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+  }, "The saved thesis has changed since this report started. Its frozen baseline remains R", run.baseline.revision, ". Start a new analysis before preparing a thesis draft."), /*#__PURE__*/React.createElement(ResearchRecovery, {
+    run: run
+  }), run.status !== 'complete' && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
     className: "sa-check"
   }, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",

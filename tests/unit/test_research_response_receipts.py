@@ -40,3 +40,16 @@ class ReceiptTests(unittest.TestCase):
         def fail(_):raise RuntimeError('synthetic persistence failure')
         with response_scope('stage',{},fail),self.assertRaises(RuntimeError):
             preserve_response({'text':'returned'})
+
+    def test_public_diagnostics_are_allowlisted_and_do_not_mutate_private_state(self):
+        from research_response_receipts import receipt_metadata
+        import hashlib
+        text='private response — α'
+        row={'state':{'returnedResponses':{'report-0':{'text':text,'stop_reason':'PRIVATE STOP','headers':'SECRET'}}}}
+        out=public_run(row)
+        item=out['responseRecovery']['receipts'][0]
+        self.assertEqual(item,{'stage':'report-0','characters':len(text),'sha256':hashlib.sha256(text.encode()).hexdigest(),'stopReason':'unavailable'})
+        self.assertNotIn(text,json.dumps(out));self.assertNotIn('PRIVATE STOP',json.dumps(out))
+        self.assertEqual(row['state']['returnedResponses']['report-0']['text'],text)
+        self.assertEqual(receipt_metadata('x',{'text':'','stop_reason':'max_tokens'})['characters'],0)
+        self.assertIsNone(receipt_metadata('x',{'text':None})['sha256'])

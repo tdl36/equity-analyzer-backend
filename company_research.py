@@ -112,7 +112,9 @@ def public_run(row):
     state=dict(data.get('state') or {})
     receipts=state.pop('returnedResponses',{})
     previous=state.pop('previousReturnedResponses',[])
-    data['responseRecovery']={'savedStages':list(receipts),'previousAttempts':len(previous)}
+    from research_response_receipts import receipt_metadata
+    data['responseRecovery']={'savedStages':list(receipts),'previousAttempts':len(previous),
+                              'receipts':[receipt_metadata(stage,receipt) for stage,receipt in receipts.items()]}
     data['state']=state
     data['sources']=[{k:v for k,v in s.items() if k!='text'} for s in data.get('sources',[])]
     data.pop('payload_hash',None);data.pop('owner',None)

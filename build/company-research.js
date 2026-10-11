@@ -1,3 +1,4 @@
+import { ResearchRecovery } from './research-recovery';
 import { verifiedOriginal, saveOriginal } from './research-originals.mjs';
 import { workId } from './workspace-model.mjs';
 import * as React from 'react';
@@ -243,7 +244,9 @@ export function CompanyResearch({
     role: "alert"
   }, run.error), run.baselineStale && /*#__PURE__*/React.createElement("p", {
     role: "alert"
-  }, "Your case has changed to R", run.currentRevision, ". This research retains baseline R", run.baseline.revision, "; review the differences before using it."), run.status !== 'complete' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "After an interruption, resume uses saved stages. A worker still processing a call will reject a second worker. Stopping takes effect after the current call; its usage may still be charged."), run.state?.inFlight && /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("input", {
+  }, "Your case has changed to R", run.currentRevision, ". This research retains baseline R", run.baseline.revision, "; review the differences before using it."), /*#__PURE__*/React.createElement(ResearchRecovery, {
+    run: run
+  }), run.status !== 'complete' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "After an interruption, resume uses saved stages. A worker still processing a call will reject a second worker. Stopping takes effect after the current call; its usage may still be charged."), run.state?.inFlight && /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
     checked: ack,
     onChange: e => setAck(e.target.checked)
