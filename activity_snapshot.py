@@ -1,4 +1,5 @@
 """Read-only cross-company work inventory. Never resumes jobs or exposes inputs."""
+import json
 from datetime import datetime, timezone
 from flask import Blueprint, jsonify
 
@@ -68,6 +69,19 @@ def assemble(rows, collection, now):
     items.sort(key=lambda r:({'attention':0,'active':1,'recent':2,'older':3}[r['bucket']],-(datetime.fromisoformat(r['updatedAt']).timestamp() if r['updatedAt'] else 0)))
     return items
 
+def has_saved_report(value):
+    """Batch enrollment occupies the legacy report field but is not research."""
+    if not isinstance(value, str) or not value.strip():
+        return False
+    try:
+        parsed = json.loads(value)
+    except ValueError:
+        return True  # Analyst output is normally Markdown, not JSON.
+    if isinstance(parsed, dict) and set(parsed).issubset({'batchId'}):
+        return False
+    return bool(parsed)
+
+
 def create_blueprint(get_db):
     bp=Blueprint('activity_snapshot',__name__)
     @bp.get('/api/activity/analyst-run/<run_id>')
@@ -76,10 +90,9 @@ def create_blueprint(get_db):
         try:run_id=str(UUID(run_id))
         except ValueError:return jsonify(error='Invalid saved run.'),400
         with get_db() as (_,cur):
-            cur.execute("SELECT id,ticker,status,llm_provider,llm_model,created_at,completed_at,logs, LENGTH(COALESCE(report,''))>0 AS has_report, LENGTH(COALESCE(decision,''))>0 AS has_decision FROM agent_runs WHERE id=%s",(run_id,))
+            cur.execute("SELECT id,ticker,status,llm_provider,llm_model,created_at,completed_at,logs, report, LENGTH(COALESCE(decision,''))>0 AS has_decision FROM agent_runs WHERE id=%s",(run_id,))
             r=cur.fetchone()
         if not r:return jsonify(error='Saved run not found.'),404
-        import json
         logs=r.get('logs') or []
         if isinstance(logs,str):
             try:logs=json.loads(logs)
@@ -87,7 +100,7 @@ def create_blueprint(get_db):
         logs=logs if isinstance(logs,list) else []
         entries=[dict(time=stamp(x.get('ts')),agent=str(x.get('agent') or '')[:80],message=str(x.get('message') or '')[:1000]) for x in logs[-100:] if isinstance(x,dict)]
         response=jsonify(id=str(r['id']),ticker=r['ticker'],status=r['status'],provider=r['llm_provider'],model=r['llm_model'],
-            createdAt=stamp(r['created_at']),completedAt=stamp(r['completed_at']),hasReport=bool(r['has_report']),hasDecision=bool(r['has_decision']),
+            createdAt=stamp(r['created_at']),completedAt=stamp(r['completed_at']),hasReport=has_saved_report(r['report']),hasDecision=bool(r['has_decision']),
             logs=entries,totalLogs=len(logs),truncated=len(logs)>100,asOf=datetime.now(timezone.utc).isoformat())
         response.headers['Cache-Control']='no-store'
         return response

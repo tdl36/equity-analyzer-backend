@@ -2,6 +2,16 @@
 
 Updated: October 10, 2026
 
+## T169 — truthful saved-report presence
+
+Activity's exact analyst-run inspection excludes batch enrollment metadata and
+empty values from saved-report presence. This applies regardless of recorded job
+status and preserves every stored report, batch marker, log and job state. The
+endpoint still returns only presence flags, never report bodies. Disposable
+PostgreSQL coverage exercises queued/running/failed/complete states, metadata,
+empty fields and genuine Markdown, and verifies unchanged records after reads.
+Release validation and hosted verification pending. No paid research QA.
+
 ## T168 — one-shot analyst execution reservation
 
 New single and batch analyst runs enroll as queued with a durable marker. Before

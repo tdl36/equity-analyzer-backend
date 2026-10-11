@@ -97,6 +97,21 @@ class ActivityPostgresTests(unittest.TestCase):
    self.assertTrue(d['hasReport']);self.assertTrue(d['hasDecision']);self.assertNotIn('report',d)
    self.assertEqual(len(d['logs']),100);self.assertEqual(d['logs'][0]['message'],'10');self.assertTrue(d['truncated'])
    self.assertEqual(d['status'],'running')
+   # Enrollment metadata must not imply research exists, irrespective of status.
+   for status in ('queued','running','failed','complete'):
+    for report,expected in ((None,False),('  ',False),(' { "batchId": "fixture" } ',False),('{}',False),('# Saved research',True)):
+     with self.db(True) as (_,c):
+      c.execute('UPDATE agent_runs SET status=%s,report=%s WHERE id=%s',(status,report,run))
+     result=client.get('/api/activity/analyst-run/'+run)
+     self.assertEqual(result.status_code,200)
+     self.assertEqual(result.json['hasReport'],expected,(status,report))
+     self.assertNotIn('report',result.json)
+     with self.db() as (_,c):
+      c.execute('SELECT status,report FROM agent_runs WHERE id=%s',(run,))
+      saved=c.fetchone();self.assertEqual(saved['status'],status);self.assertEqual(saved['report'],report)
+   with self.db(True) as (_,c):
+    c.execute("UPDATE agent_runs SET status='running',report='private report' WHERE id=%s",(run,))
+
    with self.db() as (_,c):
     c.execute('SELECT status,report FROM agent_runs WHERE id=%s',(run,));r=c.fetchone();self.assertEqual(r['status'],'running');self.assertEqual(r['report'],'private report')
   finally:
