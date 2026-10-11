@@ -12,8 +12,13 @@ Queued runs disable the run button and show Waiting to start rather than Run
 Complete. Failed runs say Run stopped. This fixes the T168 queue-state mismatch;
 it does not add HTTP submission deduplication or reload restoration.
 
-Validation/deployment pending. Synthetic screen-function tests exercise queued,
-failed reads, running and completion without any provider or production job call.
+Validation: 1012 safe backend tests and 129 frontend tests pass, including the
+actual screen polling function through queued, failed reads, running and completion.
+Production build and unchanged model-policy gate pass. Backend revision
+ef0d7e6e510cf1cc21333ff14f037772b71c11e1 and exact hosted T172 JS/CSS/service-worker
+bytes verified; Cloudflare 9c2c87b1-f0c7-4ad4-bbe9-a2cd98a81648. No provider or
+production job calls for QA. The status-read warning clears after a successful
+read. Mac code unchanged/no restart; Activity health checked after rollout.
 Next: batch restart bounds, submission deduplication, reload restoration and
 supported interrupted-attempt reconciliation.
 
