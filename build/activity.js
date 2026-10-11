@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { activityRows, activityAge, macConnected } from './activity-model.mjs';
+import { activityRows, activityAge, collectionHealth } from './activity-model.mjs';
 export function ActivityWorkspace({
   api,
   onNavigate,
@@ -78,7 +78,13 @@ export function ActivityWorkspace({
     className: "activity-warning"
   }, "Some activity is unavailable: ", data.unavailable.join(', '), ". This is a partial snapshot."), !!data?.truncated?.length && /*#__PURE__*/React.createElement("p", {
     className: "activity-warning"
-  }, "Showing the first 200 unfinished jobs in ", data.truncated.join(', '), ". Open that workspace for more."), !compact && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+  }, "Showing the first 200 unfinished jobs in ", data.truncated.join(', '), ". Open that workspace for more."), data && /*#__PURE__*/React.createElement("div", {
+    className: "activity-health",
+    "aria-label": "Collection delivery health"
+  }, collectionHealth(data).map(h => /*#__PURE__*/React.createElement("div", {
+    key: h.key,
+    className: h.ok ? '' : 'needs-check'
+  }, /*#__PURE__*/React.createElement("small", null, h.label), /*#__PURE__*/React.createElement("strong", null, h.value), !compact && /*#__PURE__*/React.createElement("p", null, h.detail)))), !compact && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "activity-counters",
     "aria-label": "Activity filters"
   }, [['active', 'Active & queued'], ['attention', 'Needs attention'], ['recent', 'Recently finished'], ['older', 'Older unfinished']].map(([key, label]) => /*#__PURE__*/React.createElement("button", {
@@ -92,9 +98,7 @@ export function ActivityWorkspace({
     placeholder: "Ticker or workflow",
     value: query,
     onChange: e => setQuery(e.target.value)
-  })), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("span", {
-    className: 'activity-dot ' + (macConnected(data?.agentLastSeen) ? 'connected' : '')
-  }), macConnected(data?.agentLastSeen) ? 'Mac connected' : 'Mac not reporting', " \xB7 ", activityAge(data?.agentLastSeen)))), !data && !error && /*#__PURE__*/React.createElement("p", {
+  })))), !data && !error && /*#__PURE__*/React.createElement("p", {
     role: "status"
   }, "Loading activity\u2026"), data && !rows.length && /*#__PURE__*/React.createElement("p", {
     className: "workspace-empty"

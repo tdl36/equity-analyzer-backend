@@ -216,10 +216,17 @@ class Coordinator:
                 state=obj(row['result'])
                 if 'visual' not in state.get('artifacts',{}):return jsonify(error='This assignment has no visual output.'),409
                 previous=state.get('visualFundamentals')
-                if not previous or previous.get('version',1)<2:
+                body=request.get_json(silent=True) or {}
+                if not isinstance(body,dict):return jsonify(error='Expected an object.'),400
+                retry=bool(previous and previous.get('gaps'))
+                if retry and (not previous.get('retrievedAt') or body.get('expectedRetrievedAt')!=previous.get('retrievedAt')):
+                    return jsonify(error='The public-data snapshot changed. Refresh the assignment before retrying.'),409
+                if not previous or previous.get('version',1)<2 or retry:
                     from stock_visual_fundamentals import collect
                     try:current=collect(row['ticker'])
                     except Exception:return jsonify(error='Public fundamentals could not be validated. Research and original export were retained; retry public retrieval later.'),409
+                    if previous and current.get('gaps'):
+                        return jsonify(error='Public data is still incomplete. Your previous evidence and exports were retained. Retry public retrieval later.'),409
                     if previous:state.setdefault('visualFundamentalRevisions',[]).append(previous)
                     state['visualFundamentals']=current
                     # Preserve the prior evidence snapshot; never rewrite report claims or original exports.

@@ -52,3 +52,14 @@ class ActivityPostgresTests(unittest.TestCase):
    self.assertTrue(any(r['jobId']=='old' for r in d['items']));self.assertIn('Research workflows',d['truncated'])
   finally:
    with self.db(True) as (_,c):c.execute("DELETE FROM mp_jobs WHERE id LIKE 'review-%'")
+
+ def test_delivery_aggregate_includes_old_commands_beyond_recent_history(self):
+  with self.db(True) as (_,c):
+   c.execute("INSERT INTO mp_jobs SELECT 'delivery-'||i,'collection_control','TEST','applied',NULL,'{}','{}',NOW(),NOW() FROM generate_series(1,60)i")
+   c.execute("INSERT INTO mp_jobs VALUES('delivery-old','collection_control','TEST','queued',NULL,'{}','{}',NOW()-INTERVAL '20 hours',NOW()-INTERVAL '20 hours')")
+  try:
+   app=Flask(__name__);app.register_blueprint(create_blueprint(self.db));d=app.test_client().get('/api/activity').json
+   self.assertEqual(d['collectionDelivery']['pending'],1)
+   self.assertIsNotNone(d['collectionDelivery']['oldestPendingAt'])
+  finally:
+   with self.db(True) as (_,c):c.execute("DELETE FROM mp_jobs WHERE id LIKE 'delivery-%'")

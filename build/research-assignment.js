@@ -206,16 +206,20 @@ export function ResearchAssignment({
     role: "alert"
   }, j.result.delayWarning), /*#__PURE__*/React.createElement("small", null, "Saved update: ", new Date(j.updated_at).toLocaleString(), j.result.macReportedAt ? ' · Mac report: ' + new Date(j.result.macReportedAt).toLocaleString() : ''), j.result.sources && /*#__PURE__*/React.createElement("p", null, j.result.sources.length, " originals verified \xB7 ", j.result.researchStages || 0, "/12 research stages"), j.error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
-  }, j.error), /*#__PURE__*/React.createElement("div", {
+  }, j.error), j.result.visualFundamentals?.gaps?.length > 0 && /*#__PURE__*/React.createElement("p", {
+    role: "status"
+  }, "Public-data gaps: ", j.result.visualFundamentals.gaps.join('; '), ". Retrying retrieves public data only; it does not rerun research. Your previous snapshot stays available if retrieval fails."), /*#__PURE__*/React.createElement("div", {
     className: "sa-actions"
-  }, j.status === 'complete' && j.result.artifacts?.some(a => a.kind === 'visual') && (!j.result.visualFundamentals || j.result.visualFundamentals.version < 2) && /*#__PURE__*/React.createElement("button", {
+  }, j.status === 'complete' && j.result.artifacts?.some(a => a.kind === 'visual') && (!j.result.visualFundamentals || j.result.visualFundamentals.version < 2 || j.result.visualFundamentals.gaps?.length) && /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: () => mutate(async () => {
-      await request(`assignments/${j.id}/visual-supplement`, {});
+      await request(`assignments/${j.id}/visual-supplement`, {
+        expectedRetrievedAt: j.result.visualFundamentals?.retrievedAt
+      });
       setPreview(null);
       return 'Public financial history and market snapshot saved. Preview or export the illustrated version. No model calls were made.';
     })
-  }, "Add financial charts & market data"), j.result.artifacts?.some(a => a.kind === 'visual') && /*#__PURE__*/React.createElement("button", {
+  }, j.result.visualFundamentals?.gaps?.length ? 'Retry missing public data' : 'Add financial charts & market data'), j.result.artifacts?.some(a => a.kind === 'visual') && /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: () => mutate(async () => {
       var g = generation.current;

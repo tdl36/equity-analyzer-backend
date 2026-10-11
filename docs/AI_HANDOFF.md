@@ -2,6 +2,37 @@
 
 Updated: October 10, 2026
 
+## T144 — collection delivery visibility and public-data recovery
+
+Activity and Today now distinguish Mac heartbeat, collection-report freshness,
+and queued cloud collection commands awaiting Mac acknowledgment. Queue metadata
+is aggregated independently of capped activity history. Unknown, future-dated,
+partial and stale snapshots never appear healthy. The panels explain the next
+check; a connected agent alone is not evidence of successful collection.
+
+Completed visual assignments with incomplete public fundamentals expose a retry.
+The retry is guarded by the last retrieval timestamp and the assignment lock.
+Failed or still-incomplete replacements preserve the entire previous snapshot;
+successful replacements archive it. Healthy v2 replays remain cached. Research,
+original exports, saved thesis proposals and paid calls are untouched.
+
+Outstanding priorities after this increment:
+- Extend issuer-specific one-pager profiles and peer curation beyond UNH; verify
+  density, evidence coverage and readability against the supplied visual standard.
+- Add sourced historical valuation context and defensible scenario assumptions;
+  current sensitivity arithmetic must not be presented as calibrated forecasts.
+- Broaden real-source quality benchmarks with analyst grading across document,
+  audio and company types; synthetic passing tests are not live quality proof.
+- Audit interrupted-job recovery across credentials, process restarts and ambiguous
+  provider outcomes; keep explicit confirmation for uncertain paid retries.
+- Resolve individual collection source/authentication blockers through the managed
+  workflow. Do not bypass restrictions or equate collection with research completion.
+
+Validation: 945 safe backend tests and 97 frontend tests pass; focused coverage
+checks old-command visibility, stale/future health timestamps, failed retrieval
+preservation and duplicate retry caching. Python compilation, frontend build and
+unchanged model-policy gate pass. Deployment verification follows the release.
+
 ## T143 — editorial investment map
 
 Rebuilds the visual renderer as an A4 editorial map with conceptual healthcare

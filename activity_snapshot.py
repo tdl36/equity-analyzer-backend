@@ -91,9 +91,16 @@ def create_blueprint(get_db):
                     collection=json.loads(r['value']) if isinstance(r['value'],str) else r['value'];collected_at=stamp(r['updated_at'])
                 cur.execute('SELECT MAX(last_seen) AS last_seen FROM agent_heartbeats');r=cur.fetchone();agent=stamp(r['last_seen']) if r else None
         except Exception:unavailable.append('Mac status')
+        delivery=None
+        try:
+            with get_db() as (_,cur):
+                cur.execute("SELECT COUNT(*) AS pending, MIN(created_at) AS oldest FROM mp_jobs WHERE stage='collection_control' AND status='queued'")
+                r=cur.fetchone()
+                delivery=dict(pending=int(r['pending']),oldestPendingAt=stamp(r['oldest']))
+        except Exception:unavailable.append('Collection delivery')
         items=assemble(rows,collection,now)
         response=jsonify(items=items,counts={b:sum(r['bucket']==b for r in items) for b in ('active','attention','recent','older')},
-            asOf=now.isoformat(),agentLastSeen=agent,collectionLastSeen=collected_at,unavailable=unavailable,truncated=truncated,
+            asOf=now.isoformat(),agentLastSeen=agent,collectionLastSeen=collected_at,collectionDelivery=delivery,unavailable=unavailable,truncated=truncated,
             scope='Saved research, collection, document and audio jobs. Work unchanged for more than seven days is retained under Older unfinished. Recent history shows up to 20 results per workflow from the last 24 hours. Browser collection needs the Mac awake, Codex running and AlphaSense signed in.')
         response.headers['Cache-Control']='no-store';return response
     return bp
