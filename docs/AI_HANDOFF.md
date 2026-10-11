@@ -17,8 +17,12 @@ Validation: 1026 safe backend tests and 137 frontend tests passed; touched Pytho
 compiled and unchanged model gate against 64facec passed. Production build passed.
 Synthetic desktop and 390px iframe browser inspection verified disclosure content
 and readable wrapping; fixed mobile counter spacing. No paid QA. Pre-release
-Activity shows only the legacy unresolved WELL run marked running. Deployment
-verification follows. Phase 1 remains incomplete: local parse-recovery controls
+Activity showed only the legacy unresolved WELL run marked running. Backend
+cd133500ec82c1a1254223ab2f89c545789cf390 is healthy; hosted T179 JS/CSS/service-worker
+bytes match the build. Cloudflare version 1e40eefb-d613-41a3-8a97-5fa516839e35.
+Authenticated ABT read verified the new empty receipt diagnostics, private-state
+redaction and unchanged attention state. Mac heartbeat fresh at 19:41:54 UTC; no
+agent change/restart. Phase 1 remains incomplete: local parse-recovery controls
 and evidence-based reconciliation of legacy attempts remain outstanding.
 
 ## T178 — preserve returned research before parsing
