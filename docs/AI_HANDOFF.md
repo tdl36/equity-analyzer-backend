@@ -2,6 +2,23 @@
 
 Updated: October 10, 2026
 
+## T167 — inspect the exact analyst run from Activity
+
+Analyst-team rows open a read-only inline inspection of that exact saved run,
+including model, recorded state, output-presence flags and the latest 100 log
+entries. No full report body is returned by this diagnostic endpoint. Refresh
+retries only a read. Missing runs and failures remain visible; stale responses
+are cancelled on selection/unmount, and ticker/run mismatches are rejected.
+Desktop/phone layouts wrap long steps and bound the log list. Original run state
+and any saved research remain unchanged; no automatic paid retry is introduced.
+
+Validation: focused PostgreSQL tests verify bounded logs, invalid/missing IDs,
+no report-body disclosure and unchanged database state. Synthetic browser checks
+cover desktop/phone, long messages, read failure/refresh, close and GET-only
+requests. 1007 safe backend tests, 125 frontend tests, Python compile, production build
+and unchanged model-policy gate pass. Release verification pending. Next: durable
+execution ownership and a supported reconciliation action for interrupted runs.
+
 ## T166 — visible reconciliation for legacy analyst jobs
 
 Activity now uses the last saved analyst-team log timestamp and keeps unfinished

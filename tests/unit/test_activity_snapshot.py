@@ -71,8 +71,8 @@ class ActivityPostgresTests(unittest.TestCase):
 
  def test_legacy_agent_progress_projection_is_read_only(self):
   with self.db(True) as (_,c):
-   c.execute('CREATE TABLE agent_runs(id TEXT,ticker TEXT,status TEXT,created_at TIMESTAMP,completed_at TIMESTAMP,logs JSONB)')
-   c.execute("INSERT INTO agent_runs VALUES('legacy','WELL','running',NOW()-INTERVAL '200 days',NULL,'[]')")
+   c.execute('CREATE TABLE agent_runs(id TEXT,ticker TEXT,status TEXT,created_at TIMESTAMP,completed_at TIMESTAMP,logs JSONB,llm_provider TEXT,llm_model TEXT,report TEXT,decision TEXT)')
+   c.execute("INSERT INTO agent_runs(id,ticker,status,created_at,completed_at,logs) VALUES('legacy','WELL','running',NOW()-INTERVAL '200 days',NULL,'[]')")
   try:
    app=Flask(__name__);app.register_blueprint(create_blueprint(self.db));d=app.test_client().get('/api/activity').json
    self.assertEqual(d['unavailable'],[])
@@ -80,6 +80,25 @@ class ActivityPostgresTests(unittest.TestCase):
    self.assertTrue(item['executionUnconfirmed']);self.assertEqual(item['bucket'],'attention')
    with self.db() as (_,c):
     c.execute("SELECT status FROM agent_runs WHERE id='legacy'");self.assertEqual(c.fetchone()['status'],'running')
+  finally:
+   with self.db(True) as (_,c):c.execute('DROP TABLE agent_runs')
+ def test_exact_run_inspection_is_bounded_and_does_not_return_report_bodies(self):
+  import json
+  run='00000000-0000-4000-8000-000000000167'
+  with self.db(True) as (_,c):
+   c.execute('CREATE TABLE agent_runs(id TEXT,ticker TEXT,status TEXT,created_at TIMESTAMP,completed_at TIMESTAMP,logs JSONB,llm_provider TEXT,llm_model TEXT,report TEXT,decision TEXT)')
+   c.execute("INSERT INTO agent_runs VALUES(%s,'TEST','running',NOW(),NULL,%s,'anthropic','fixture','private report','private decision')",(run,json.dumps([{'ts':NOW.isoformat(),'agent':'system','message':str(i)} for i in range(110)])))
+  try:
+   app=Flask(__name__);app.register_blueprint(create_blueprint(self.db));client=app.test_client()
+   self.assertEqual(client.get('/api/activity/analyst-run/invalid').status_code,400)
+   self.assertEqual(client.get('/api/activity/analyst-run/00000000-0000-4000-8000-000000000168').status_code,404)
+   response=client.get('/api/activity/analyst-run/'+run);d=response.json
+   self.assertEqual(response.headers['Cache-Control'],'no-store');self.assertEqual(d['id'],run)
+   self.assertTrue(d['hasReport']);self.assertTrue(d['hasDecision']);self.assertNotIn('report',d)
+   self.assertEqual(len(d['logs']),100);self.assertEqual(d['logs'][0]['message'],'10');self.assertTrue(d['truncated'])
+   self.assertEqual(d['status'],'running')
+   with self.db() as (_,c):
+    c.execute('SELECT status,report FROM agent_runs WHERE id=%s',(run,));r=c.fetchone();self.assertEqual(r['status'],'running');self.assertEqual(r['report'],'private report')
   finally:
    with self.db(True) as (_,c):c.execute('DROP TABLE agent_runs')
  def test_delivery_aggregate_includes_old_commands_beyond_recent_history(self):

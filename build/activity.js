@@ -1,5 +1,64 @@
 import * as React from 'react';
 import { activityRows, activityAge, collectionHealth, workLane, nextAction, workOverview, focusRows, activityDestination } from './activity-model.mjs';
+function AnalystRunInspection({
+  api,
+  row
+}) {
+  var [state, setState] = React.useState({
+      loading: true
+    }),
+    [revision, setRevision] = React.useState(0);
+  React.useEffect(() => {
+    var current = true;
+    var controller = new AbortController(),
+      timer = setTimeout(() => controller.abort(), 15000);
+    setState({
+      loading: true
+    });
+    (async () => {
+      try {
+        var response = await fetch(`${api}/api/activity/analyst-run/${encodeURIComponent(row.jobId)}`, {
+          signal: controller.signal
+        });
+        if (!response.ok) throw new Error('Saved run unavailable');
+        var _data = await response.json();
+        if (_data.id !== row.jobId || _data.ticker !== row.ticker) throw new Error('Saved run identity mismatch');
+        if (current) setState({
+          data: _data
+        });
+      } catch (e) {
+        if (current) setState({
+          error: 'This exact saved run could not be loaded. Refresh to retry this read; no research has been started.'
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+    })();
+    return () => {
+      current = false;
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [api, row.jobId, row.ticker, revision]);
+  var data = state.data;
+  return /*#__PURE__*/React.createElement("section", {
+    className: "activity-run-inspection",
+    "aria-label": `Saved analyst run for ${row.ticker}`
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "activity-row-title"
+  }, /*#__PURE__*/React.createElement("strong", null, "Saved run \xB7 ", row.ticker), /*#__PURE__*/React.createElement("button", {
+    disabled: state.loading,
+    onClick: () => setRevision(n => n + 1)
+  }, "Refresh saved state")), state.loading && /*#__PURE__*/React.createElement("p", {
+    role: "status"
+  }, "Loading saved steps\u2026"), state.error && /*#__PURE__*/React.createElement("p", {
+    role: "alert"
+  }, state.error), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "Recorded status: ", /*#__PURE__*/React.createElement("strong", null, data.status), " \xB7 ", data.model, " \xB7 Started ", activityAge(data.createdAt)), /*#__PURE__*/React.createElement("p", null, data.hasReport ? 'Report text is saved.' : 'No report text is saved.', " ", data.completedAt ? `Completion recorded ${activityAge(data.completedAt)}.` : 'No completion is recorded.'), /*#__PURE__*/React.createElement("p", {
+    className: "activity-warning"
+  }, "These are saved records, not confirmation that a worker or provider request is running. Inspect the outcome before starting another paid run."), data.truncated && /*#__PURE__*/React.createElement("p", null, "Showing the latest 100 of ", data.totalLogs, " saved entries."), /*#__PURE__*/React.createElement("ol", null, data.logs.map((entry, index) => /*#__PURE__*/React.createElement("li", {
+    key: index
+  }, /*#__PURE__*/React.createElement("small", null, entry.time || 'Time unavailable', " \xB7 ", entry.agent || 'Saved step'), /*#__PURE__*/React.createElement("p", null, entry.message)))), !data.logs.length && /*#__PURE__*/React.createElement("p", null, "No saved steps are available."), /*#__PURE__*/React.createElement("small", null, "Run ", data.id, " \xB7 Retrieved ", activityAge(data.asOf))));
+}
 export function ActivityWorkspace({
   api,
   onNavigate,
@@ -10,6 +69,7 @@ export function ActivityWorkspace({
     [filter, setFilter] = React.useState('focus'),
     [query, setQuery] = React.useState(''),
     [limit, setLimit] = React.useState(20);
+  var [inspecting, setInspecting] = React.useState('');
   var [loading, setLoading] = React.useState(false);
   var mounted = React.useRef(false),
     pending = React.useRef(false),
@@ -149,7 +209,13 @@ export function ActivityWorkspace({
     className: "activity-warning"
   }, "No saved progress for ", r.quietMinutes == null ? 'an unknown period' : r.quietMinutes + ' minutes', ". Open the job to inspect what is waiting."), /*#__PURE__*/React.createElement("p", {
     className: "activity-next"
-  }, /*#__PURE__*/React.createElement("strong", null, "Next:"), " ", nextAction(r)), /*#__PURE__*/React.createElement("small", null, "Updated ", activityAge(r.updatedAt), " \xB7 Started ", activityAge(r.createdAt))), /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("strong", null, "Next:"), " ", nextAction(r)), /*#__PURE__*/React.createElement("small", null, "Updated ", activityAge(r.updatedAt), " \xB7 Started ", activityAge(r.createdAt))), r.workflow === 'agent_runs' ? /*#__PURE__*/React.createElement("button", {
+    className: "activity-open",
+    "aria-expanded": inspecting === r.jobId,
+    onClick: () => setInspecting(inspecting === r.jobId ? '' : r.jobId)
+  }, inspecting === r.jobId ? 'Close saved run' : 'Inspect saved run', /*#__PURE__*/React.createElement("span", {
+    className: "sr-only"
+  }, " ", r.ticker)) : /*#__PURE__*/React.createElement("button", {
     className: "activity-open",
     onClick: () => {
       var d = activityDestination(r);
@@ -157,7 +223,10 @@ export function ActivityWorkspace({
     }
   }, "Open work \u2197", /*#__PURE__*/React.createElement("span", {
     className: "sr-only"
-  }, " ", r.ticker, " ", r.title))))), !compact && matching.length > limit && /*#__PURE__*/React.createElement("button", {
+  }, " ", r.ticker, " ", r.title)), r.workflow === 'agent_runs' && inspecting === r.jobId && /*#__PURE__*/React.createElement(AnalystRunInspection, {
+    api: api,
+    row: r
+  })))), !compact && matching.length > limit && /*#__PURE__*/React.createElement("button", {
     className: "activity-open",
     onClick: () => setLimit(n => n + 20)
   }, "Show more \xB7 ", matching.length - limit, " remaining"), data && /*#__PURE__*/React.createElement("p", {
