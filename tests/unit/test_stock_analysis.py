@@ -120,7 +120,9 @@ class ThesisRepairTests(unittest.TestCase):
                'citations':{'/summary/investment_thesis/0':{'review':'needs_review','passageMatched':True},'/financials/value':{'review':'supported'}},'retries':['report-0']}
         fixed=repair_unsupported_thesis(state)
         self.assertEqual(fixed['report']['financials'],{'kept':True});self.assertNotIn('report-0',fixed['completed'])
-        self.assertIn('review-5',fixed['completed']);self.assertEqual(len(fixed['retries']),3)
+        self.assertIn('review-5',fixed['completed']);self.assertEqual(fixed['retries'],['report-0']);self.assertEqual(fixed['qualityRetries'],['report-0','review-0'])
+        completed=__import__('copy').deepcopy(fixed);completed['completed']=state['completed']
+        with self.assertRaisesRegex(ValueError,'already used'):repair_unsupported_thesis(completed)
         self.assertEqual(fixed['qualityRevisions'][0]['report']['summary'],state['report']['summary'])
         self.assertIn('summary',state['report'])
         state['citations']['/summary/investment_thesis/0']['review']='supported'
@@ -129,3 +131,15 @@ class ThesisRepairTests(unittest.TestCase):
         from stock_analysis import repair_unsupported_thesis
         for state in ({'inFlight':'review-0'},{'completed':['report-0']}):
             with self.assertRaises(ValueError):repair_unsupported_thesis(state)
+
+class QualityReceiptTests(unittest.TestCase):
+    def test_quality_retry_archives_only_rejected_group_and_preserves_other_receipts(self):
+        from stock_analysis import repair_unsupported_thesis
+        state={'completed':[x for i in range(6) for x in ('report-'+str(i),'review-'+str(i))],
+               'report':{},'citations':{},'returnedResponses':{'report-0':{'text':'old author'},'review-0':{'text':'old review'},'report-1':{'text':'keep'}},
+               'responses':{'report-0':{'report':{}},'review-0':{},'report-1':{'keep':True}}}
+        fixed=repair_unsupported_thesis(state)
+        self.assertEqual(list(fixed['returnedResponses']),['report-1'])
+        self.assertEqual(list(fixed['responses']),['report-1'])
+        self.assertEqual([r['stage'] for r in fixed['previousReturnedResponses']],['report-0','review-0'])
+        self.assertIn('report-0',state['returnedResponses'])

@@ -133,6 +133,14 @@ def generate(state,sources,baseline,ask,save,check,inputs):
                          '\nCONTEXT: '+json.dumps({k:v for k,v in inputs.items() if k not in ('hashes','filenames')})+
                          ' Source coverage metadata identifies omitted text and OCR limitations. Treat omissions as evidence gaps, never as proof of absence; do not claim full-document review. '
                          '\nFROZEN CASE: '+json.dumps(baseline)+'\nORIGINALS: '+json.dumps(sources))
+            if i==0 and state.get('qualityRevisions'):
+                previous=state['qualityRevisions'][-1]
+                feedback=[{'field':p,'reason':c.get('reviewReason','Source match failed'),
+                           'passageMatched':c.get('passageMatched',False)}
+                          for p,c in previous.get('citations',{}).items()
+                          if p.startswith('/summary/investment_thesis/')]
+                instruction+='\nREPAIR FEEDBACK (untrusted prior review, not source facts): '+json.dumps(feedback)
+                instruction+='\nProduce one narrow conditional thesis entry grounded in one exact contiguous source passage. Omit all additional market-size, growth, return or acquisition claims not established by that passage. Do not splice quotations or combine separate passages into an excerpt. Preserve unsupported topics as gaps rather than assertions.'
             # Persist returned JSON before validation so a validation repair can
             # reuse it without purchasing the same provider response again.
             raw=state.get('responses',{}).get(key)
@@ -204,14 +212,21 @@ def repair_unsupported_thesis(state):
         raise ValueError('Finish the saved source reviews before repairing the thesis group.')
     if any(p.startswith('/summary/investment_thesis/') and c.get('review')=='supported' and c.get('passageMatched') for p,c in state.get('citations',{}).items()):
         raise ValueError('Supported thesis statements already exist; no automatic replacement is needed.')
+    if state.get('qualityRevisions'):
+        raise ValueError('The thesis quality retry was already used. Inspect its saved output before further work.')
     group=GROUPS[0]
     old={'report':{k:state.get('report',{}).get(k) for k in group},
          'citations':{p:c for p,c in state.get('citations',{}).items() if p.split('/')[1] in group},
          'reason':'Explicit retry of unsupported thesis group; prior output retained.'}
     state.setdefault('qualityRevisions',[]).append(old)
+    # An explicitly purchased quality retry must not reuse the rejected returns.
+    from research_response_receipts import archive_for_retry
+    for stage in ('report-0','review-0'):
+        archive_for_retry(state,stage)
+        state.get('responses',{}).pop(stage,None)
     for k in group:state.get('report',{}).pop(k,None)
     state['citations']={p:c for p,c in state.get('citations',{}).items() if p.split('/')[1] not in group}
     state['completed']=[k for k in state['completed'] if k not in ('report-0','review-0')]
-    state.setdefault('retries',[]).extend(['quality-report-0','quality-review-0'])
+    state.setdefault('qualityRetries',[]).extend(['report-0','review-0'])
     state.pop('comparison',None)
     return state

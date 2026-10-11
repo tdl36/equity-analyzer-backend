@@ -192,6 +192,9 @@ class StockPostgresTests(unittest.TestCase):
     def test_explicit_quality_retry_preserves_report_and_reuses_other_groups(self):
         r=self.start();self.assertEqual(r['status'],'complete');path='/api/research/stock-analysis-run/'+r['id']
         self.assertEqual(self.client.post(path+'/resume',json={}).status_code,409)
+        with self.db(True) as (_,cur):
+            cur.execute('UPDATE stock_analysis_runs SET state=state || %s::jsonb WHERE id=%s',
+                        (json.dumps({'retries':['report-0','report-1']}),r['id']))
         self.assertEqual(self.client.post(path+'/resume',json={'repairThesis':True}).status_code,200)
         self.thread.call_args.kwargs['target'](*self.thread.call_args.kwargs['args'])
         retried=self.client.get(path).json

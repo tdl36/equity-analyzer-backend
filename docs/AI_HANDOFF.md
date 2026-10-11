@@ -1,6 +1,25 @@
 # Charlie AI engineering handoff
 
-Updated: October 10, 2026
+Updated: October 11, 2026
+
+## T184 — bounded thesis quality recovery
+
+ABT finished all 12 T183 stages and saved its summary and visual. Parent remains
+attention because neither proposed thesis entry passed the source gate: one
+unmatched quotation and one compound claim containing unsupported market-size
+language. Existing investor thesis remains unchanged.
+
+Explicit thesis repair now archives only report-0/review-0 returned receipts so
+the rejected responses cannot be silently reused. Prior report/citations remain
+in qualityRevisions; other ten stages stay saved. The author receives bounded,
+untrusted review feedback and instructions to produce one narrow conditional
+claim from an exact contiguous source passage. Source review remains mandatory.
+The two-call quality revision has a separate one-revision limit; original provider
+failure retry limits remain unchanged. Repeated quality repair is refused.
+
+Validation: 1036 safe backend tests, 139 frontend tests, Python compile, production
+build and unchanged model policy gate against fcc2598. No paid QA. Deployment
+and the explicitly disclosed two-call live ABT quality repair remain pending.
 
 ## T183 — quarantine bad citations and surface research failures
 
@@ -24,8 +43,14 @@ Mac/Codex availability remains required; unchanged failures remain deduplicated.
 
 Validation: 1035 safe backend tests and 139 frontend tests, Python compile,
 production build and unchanged model gate passed. Synthetic CUA desktop/390px
-banner inspection passed. No paid QA. Deployment and ABT resume pending; preserve
-its eight completed stages and saved report-4 response. Do not create a new job.
+banner inspection passed. No paid QA. Backend fcc2598339a826fdfe3bbe3203f6abf61aa76bac
+verified healthy; hosted T183 JS/service worker match exact bytes. Cloudflare
+version e23095fe-a9da-4be9-9182-1023e5deaf64. Sent one parent resume (no retry
+acknowledgment needed, parsed report-4 already saved), HTTP 200. ABT now has nine
+completed stages and is in review-4. The affected /catalysts/2/window citation
+is explicitly needs_review, passageMatched=false, with the unknown-source reason.
+Do not repeat resume or deploy while active; final outputs remain pending.
+This verification note stays local until research settles.
 
 ## T182 — lossless report-envelope recovery
 
