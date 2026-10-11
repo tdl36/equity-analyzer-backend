@@ -37,7 +37,15 @@ Validation: 947 safe backend tests and 98 frontend tests pass; Python compilatio
 and production build pass. Dark-theme inspection identified and corrected health
 panel contrast by using theme variables. T145 backend revision was verified as
 c022253098e5cfeb6a75761deaa93fba4a235037, with matching hosted assets and
-390px mobile layout without horizontal overflow. T146 verification follows deployment.
+390px mobile layout without horizontal overflow. Final T146 backend revision
+verified: d458c5c68f719f85be0eaa31b51f639a9515dcc8. Cloudflare version:
+e71a5c13-0233-45b2-9dd0-16a3c1b3d8df. Hosted index/bundle/service-worker bytes
+match; authenticated reads returned 200, unauthorized access 401, invalid submission
+400. Mac agent connected, collection snapshot current, no queued cloud delivery.
+Desktop (1280px) and mobile (390px) have no horizontal overflow; Waiting filter
+works and viewport was restored. All retrieval/dispatch failure-path tests used
+isolated fixtures; no paid research was launched. Existing attention jobs remain
+unresolved and unchanged.
 
 ## T144 — collection delivery visibility and public-data recovery
 
