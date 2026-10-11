@@ -106,6 +106,19 @@ class AssignmentPostgresTests(unittest.TestCase):
     def advance(self):
         with self.app.app_context():self.co.advance(self.ident)
         return self.co.read(self.ident)
+    def test_focused_read_keeps_identity_company_and_does_not_dispatch(self):
+        from unittest.mock import Mock
+        self.start();self.co.wake=Mock()
+        path='/api/research/assignments?ticker='+self.ticker+'&requestId='+self.ident
+        response=self.client.get(path)
+        self.assertEqual(response.status_code,200)
+        self.assertEqual([x['id'] for x in response.json['assignments']],[self.ident])
+        self.assertEqual(response.headers['Cache-Control'],'no-store')
+        self.assertEqual(self.client.get(path.replace(self.ticker,'OTHER')).json['assignments'],[])
+        self.assertEqual(self.client.get(path.replace(self.ident,str(uuid.uuid4()))).json['assignments'],[])
+        self.assertEqual(self.client.get(path.replace(self.ident,'not-an-id')).status_code,400)
+        self.co.wake.assert_not_called()
+
     def test_end_to_end_replay_restart_drafts_no_approval(self):
         p=self.start();self.assertEqual(self.client.post('/api/research/assignments',json=p).status_code,200)
         self.assertEqual(self.advance()['result']['step'],'Waiting for Mac to receive collection')

@@ -28,6 +28,8 @@ export function InvestmentCase({
   initialTab = 'snapshot',
   routeSection = '',
   onSectionChange,
+  routeWork = '',
+  onWorkChange,
   onCompanyChange
 }) {
   var [ticker, setTicker] = React.useState(initialTicker),
@@ -236,6 +238,8 @@ export function InvestmentCase({
     onSave: save,
     onResearch: () => setWorkspaceTab('research')
   }), workspaceTab === 'stock-analysis' && /*#__PURE__*/React.createElement(StockAnalysis, {
+    routeWork: routeWork,
+    onWorkChange: onWorkChange,
     key: active + '-stock-analysis',
     api: api,
     ticker: active,
@@ -250,6 +254,8 @@ export function InvestmentCase({
       setMessage('Stock analysis draft loaded. Review changes and source passages before saving; no thesis change has been approved.');
     }
   }), workspaceTab === 'research' && /*#__PURE__*/React.createElement(CompanyResearch, {
+    routeWork: routeWork,
+    onWorkChange: onWorkChange,
     key: active,
     api: api,
     ticker: active,
@@ -265,6 +271,8 @@ export function InvestmentCase({
     }
   }), workspaceTab === 'committee' && /*#__PURE__*/React.createElement(CompanyResearch, {
     committee: true,
+    routeWork: routeWork,
+    onWorkChange: onWorkChange,
     key: active + '-committee',
     api: api,
     ticker: active,

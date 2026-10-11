@@ -47,3 +47,13 @@ test('project refresh preserves selected slide while new projects select their o
   assert.equal(selectedProjectSlide(project,2,7).slide_number,1);
   assert.equal(selectedProjectSlide({id:2,slides:[]},2,3),null);
 });
+
+test('saved work links are typed and bounded to compatible workflow sections',()=>{
+ const id='00000000-0000-4000-8000-000000000123';
+ for(const [view,section,kind] of [['stockanalysis','stock-analysis','assignment'],['stockanalysis','stock-analysis','analysis'],['stockanalysis','research','research'],['stockanalysis','committee','committee'],['desk','collection','collection']]) {
+  assert.deepEqual(readRoute(routeHash(view,'UNH',section,kind+':'+id)),{view,ticker:'UNH',section,work:kind+':'+id});
+ }
+ for(const bad of ['assignment:../../bad','assignment:'+id+':extra','unknown:'+id,'collection:'+id])
+  assert.equal(readRoute(routeHash('stockanalysis','UNH','stock-analysis',bad)).work,undefined);
+ assert.equal(readRoute('#view=today&work=assignment:'+id).work,undefined);
+});

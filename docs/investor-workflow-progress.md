@@ -59,4 +59,10 @@ See visual-business-profile-validation.md. 960 backend tests, 106 frontend tests
 Collection exceptions first and company-scoped; whole-claim infographic content
 budgets prevent tested overflow, preserve paired arguments and linked monitors.
 Actual saved UNH plus DE/SYK public-data-only PDFs each one page; stress fixtures
-200/400/800 characters pass. 963 backend tests, 109 frontend tests, compile/build pass. Deployment pending.
+200/400/800 characters pass. 963 backend tests, 109 frontend tests, compile/build pass. Backend 6523f69 and hosted T152 verified; desktop/mobile collection inspected.
+
+## T153 in progress
+
+Exact saved-work links and inspection-only assignment lookup; company/identity
+guards, reload/Back routing, explicit missing snapshot messages. 22 focused
+backend tests and 111 frontend tests pass. 964 backend tests, compile/build pass. Deployment pending.

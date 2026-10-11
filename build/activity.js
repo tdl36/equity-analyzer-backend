@@ -138,7 +138,7 @@ export function ActivityWorkspace({
     className: "activity-open",
     onClick: () => {
       var d = activityDestination(r);
-      onNavigate(d.view, r.ticker, d.section);
+      onNavigate(d.view, r.ticker, d.section, d.work);
     }
   }, "Open work \u2197", /*#__PURE__*/React.createElement("span", {
     className: "sr-only"

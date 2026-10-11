@@ -1,11 +1,11 @@
 import {CollectionRequests} from './collection-requests';
-import {parseTimestamp} from './workspace-model.mjs';
+import {parseTimestamp,workId} from './workspace-model.mjs';
 import {CatalystWatch} from './catalyst-watch';
 import {parseTickers} from './research-desk-model.mjs';
 import * as React from 'react';
 import {collectionHealth} from './collection-health.mjs';
 const blank={ticker:'',hours:0,lookbackDays:30,kinds:['transcript','broker-report'],workflow:'thesis',topic:'',instructions:'',enabled:true};
-export function CollectionCloud({api,coverage=[],initialTicker=''}) {
+export function CollectionCloud({api,coverage=[],initialTicker='',routeWork='',onWorkChange}) {
   const [data,setData]=React.useState(null),[cfg,setCfg]=React.useState(blank),[error,setError]=React.useState(''),[loadError,setLoadError]=React.useState(''),[message,setMessage]=React.useState(''),[busy,setBusy]=React.useState(false),[uncertain,setUncertain]=React.useState(false);
   const [bulk,setBulk]=React.useState(''),[custom,setCustom]=React.useState(false);
   const [query,setQuery]=React.useState(initialTicker),[policyOpen,setPolicyOpen]=React.useState(false);
@@ -30,7 +30,7 @@ export function CollectionCloud({api,coverage=[],initialTicker=''}) {
     <p role="status">{updated?`Mac last reported ${updated.toLocaleString()}.`:'No Mac collection report yet.'} {stale?'No recent report; commands will wait for the Mac agent.':'Mac collection bridge is reporting.'}</p>
     <div className="workspace-panel"><h3>Automation readiness</h3><p>{health.scheduled} scheduled tickers · {health.verified}/{health.total} policies with a successful refresh recorded · {health.pending} open requests · {health.needsAttention} need attention</p>{health.overdue>0&&<p role="status">{health.overdue} queued requests have waited over 30 minutes; oldest {health.oldestMinutes} minutes. A connected Mac is not proof that browser collection is progressing. Inspect the requests below and the browser worker.</p>}<p className="desk-explainer">Counts reflect the latest Mac snapshot. A successful refresh is delivery evidence, not a guarantee of complete source coverage or research accuracy.</p></div>
     {(error||loadError)&&<p role="alert" className="workspace-error">{error||loadError}</p>}{message&&<p role="status">{message}</p>}
-    <CollectionRequests requests={snapshot?.requests||[]} query={query} onQuery={setQuery} busy={busy||uncertain} onAction={send} available={!!snapshot}/>
+    <CollectionRequests focusId={workId(routeWork,'collection')} onClearFocus={()=>onWorkChange?.('')} requests={snapshot?.requests||[]} query={query} onQuery={setQuery} busy={busy||uncertain} onAction={send} available={!!snapshot}/>
     <details ref={policyEditor} open={policyOpen} onToggle={e=>setPolicyOpen(e.currentTarget.open)}><summary>Create or edit a collection policy</summary><p>Choose a reported policy below to edit its existing settings, or configure a new one. Nothing changes until you save.</p>
     <fieldset className="desk-form" disabled={busy||uncertain}><div className="desk-filter"><label>Ticker<input value={cfg.ticker} maxLength={20} onChange={e=>setCfg({...cfg,ticker:e.target.value.toUpperCase().trim()})} placeholder="MDT"/></label><label>Frequency<select value={custom?'custom':cfg.hours} onChange={e=>{setCustom(e.target.value==='custom');setCfg({...cfg,hours:e.target.value==='custom'?(cfg.hours||168):Number(e.target.value)});}}>{[[0,'Manual'],[1,'Hourly'],[4,'Every 4 hours'],[12,'Every 12 hours'],[24,'Daily'],[168,'Weekly'],[336,'Biweekly (14 days)'],[720,'Monthly (30 days)'],['custom','Custom interval']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>{custom&&<label>Custom interval (hours)<input type="number" min="1" max="8760" step="1" value={cfg.hours||1} onChange={e=>setCfg({...cfg,hours:Number(e.target.value)})}/></label>}<label>Initial lookback days<input type="number" min="1" max="365" value={cfg.lookbackDays} onChange={e=>setCfg({...cfg,lookbackDays:Number(e.target.value)})}/></label></div>
     <label>Destination and workflow<select value={cfg.workflow} onChange={e=>setCfg({...cfg,workflow:e.target.value})}><option value="thesis">STOCKS → thesis proposal intake</option><option value="note">STOCKS → draft note and existing intake</option><option value="recap">CATALYSTS → event recap</option></select></label>

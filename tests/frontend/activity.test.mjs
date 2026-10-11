@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {activityRows,activityAge,macConnected,collectionHealth,workLane,nextAction,workOverview,focusRows} from '../../src/activity-model.mjs';
+import {activityDestination,activityRows,activityAge,macConnected,collectionHealth,workLane,nextAction,workOverview,focusRows} from '../../src/activity-model.mjs';
 import {readRoute,routeHash,VIEWS} from '../../src/workspace-model.mjs';
 test('activity is reachable without company context',()=>{assert.ok(VIEWS.includes('activity'));assert.deepEqual(readRoute(routeHash('activity')),{view:'activity',ticker:''});});
 test('filters find work across tickers without mixing attention and active',()=>{const data={items:[{ticker:'UNH',title:'Research',step:'Review',bucket:'active'},{ticker:'SYK',title:'Collection',step:'Sign in',bucket:'attention'}]};assert.equal(activityRows(data,'active','unh').length,1);assert.equal(activityRows(data,'attention','SYK').length,1);assert.equal(activityRows(data,'active','SYK').length,0);});
@@ -32,4 +32,12 @@ test('exception inbox distinguishes decisions, waiting and reported processing',
  assert.match(nextAction(rows[2]),/may still be running/);
  assert.match(nextAction(rows[3]),/will not approve/);
  assert.match(nextAction({status:'needs_auth',bucket:'attention'}),/directly in the source app/);
+});
+
+test('Activity carries the exact supported job identity without inventing links',()=>{
+ const jobId='00000000-0000-4000-8000-000000000123';
+ assert.equal(activityDestination({workflow:'research_assignment',jobId}).work,'assignment:'+jobId);
+ assert.equal(activityDestination({workflow:'stock_analysis_runs',jobId}).work,'analysis:'+jobId);
+ assert.equal(activityDestination({id:'collection:'+jobId,jobId}).work,'collection:'+jobId);
+ assert.equal(activityDestination({workflow:'research_assignment',jobId:'bad'}).work,undefined);
 });

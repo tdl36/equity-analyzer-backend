@@ -1,5 +1,5 @@
 import { CollectionRequests } from './collection-requests';
-import { parseTimestamp } from './workspace-model.mjs';
+import { parseTimestamp, workId } from './workspace-model.mjs';
 import { CatalystWatch } from './catalyst-watch';
 import { parseTickers } from './research-desk-model.mjs';
 import * as React from 'react';
@@ -17,7 +17,9 @@ var blank = {
 export function CollectionCloud({
   api,
   coverage = [],
-  initialTicker = ''
+  initialTicker = '',
+  routeWork = '',
+  onWorkChange
 }) {
   var [data, setData] = React.useState(null),
     [cfg, setCfg] = React.useState(blank),
@@ -149,6 +151,8 @@ export function CollectionCloud({
   }, error || loadError), message && /*#__PURE__*/React.createElement("p", {
     role: "status"
   }, message), /*#__PURE__*/React.createElement(CollectionRequests, {
+    focusId: workId(routeWork, 'collection'),
+    onClearFocus: () => onWorkChange?.(''),
     requests: snapshot?.requests || [],
     query: query,
     onQuery: setQuery,

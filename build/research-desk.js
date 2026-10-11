@@ -66,7 +66,9 @@ export function ResearchDesk({
   renderRecapHtml,
   initialTicker = '',
   routeSection = '',
-  onSectionChange
+  onSectionChange,
+  routeWork = '',
+  onWorkChange
 }) {
   var [workTicker, setWorkTicker] = useState(initialTicker);
   var [data, setData] = useState({
@@ -423,6 +425,8 @@ export function ResearchDesk({
     onCompany: onCompany,
     onPlan: prepare
   })), section === 'collection' && /*#__PURE__*/React.createElement(CollectionCloud, {
+    routeWork: routeWork,
+    onWorkChange: onWorkChange,
     api: api,
     coverage: analyses,
     initialTicker: initialTicker

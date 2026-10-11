@@ -2,6 +2,18 @@
 
 Updated: October 10, 2026
 
+## T153 — exact saved-work links
+
+Activity links select a specific research assignment, stock analysis, Deep Research,
+committee review or Mac collection request. Work identity is bounded to compatible
+route sections, persists through reload/Back, and is cleared on company/section
+changes. A mismatched/missing item never falls back to a different saved job.
+Collection remains limited to the latest 50-request Mac snapshot and states when
+the linked request is outside it. Focused assignment reads use exact ID + company
+and do not wake the coordinator. Existing authentication and mutation gates remain.
+Assignment setup is collapsed while inspecting a direct link. No paid calls used.
+964 backend tests, 111 frontend tests, compile/build pass. Deployment verification pending.
+
 ## T152 — collection follow-through and bounded investment maps
 
 Collection opens with unfinished requests, attention first, scoped to the company
@@ -18,7 +30,7 @@ debates and catalyst timing retains citations. Saved UNH and public-data-only
 DE/SYK render as one A4 page with Calibri/black text and no outside-page text;
 synthetic 200/400/800-character claims also stay one page. These checks do not
 establish research completeness or universal layout fit. Existing saved outputs
-are not overwritten. 963 backend tests, 109 frontend tests, compilation and build pass. Deployment verification pending.
+are not overwritten. 963 backend tests, 109 frontend tests, compilation and build pass. Backend 6523f69 and exact hosted T152 assets verified. Collection company scope and mobile width inspected; no recovery actions executed.
 
 ## T151 — issuer-specific visuals and segment fidelity
 

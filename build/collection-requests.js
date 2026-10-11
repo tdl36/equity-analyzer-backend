@@ -6,10 +6,12 @@ export function CollectionRequests({
   onQuery,
   busy,
   onAction,
-  available
+  available,
+  focusId = '',
+  onClearFocus
 }) {
   var [finished, setFinished] = React.useState(false);
-  var rows = collectionRequests(requests, query, finished);
+  var rows = focusId ? requests.filter(r => r.id === focusId && (!query || r.ticker === query)) : collectionRequests(requests, query, finished);
   return /*#__PURE__*/React.createElement("section", {
     className: "workspace-panel",
     "aria-label": "Collection requests"
@@ -19,13 +21,24 @@ export function CollectionRequests({
     className: "workspace-eyebrow"
   }, "COLLECTION / FOLLOW-THROUGH"), /*#__PURE__*/React.createElement("h3", null, query ? `${query.toUpperCase()} collection` : 'Collection requests')), /*#__PURE__*/React.createElement("button", {
     disabled: !query,
-    onClick: () => onQuery('')
-  }, "Show all companies")), /*#__PURE__*/React.createElement("div", {
+    onClick: () => {
+      onClearFocus?.();
+      onQuery('');
+    }
+  }, "Show all companies")), /*#__PURE__*/React.createElement("p", {
+    hidden: !focusId,
+    role: "status"
+  }, "Opened request ", focusId.slice(0, 8), ". ", /*#__PURE__*/React.createElement("button", {
+    onClick: onClearFocus
+  }, "Show all company requests")), /*#__PURE__*/React.createElement("div", {
     className: "desk-filter"
   }, /*#__PURE__*/React.createElement("label", null, "Find collection company", /*#__PURE__*/React.createElement("input", {
     value: query,
     maxLength: 20,
-    onChange: e => onQuery(e.target.value.toUpperCase()),
+    onChange: e => {
+      onClearFocus?.();
+      onQuery(e.target.value.toUpperCase());
+    },
     placeholder: "Ticker"
   })), /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
@@ -35,7 +48,7 @@ export function CollectionRequests({
     className: "desk-explainer"
   }, rows.length, " matching requests in the latest ", requests.length, " reported by this Mac (up to 50). Search and document counts describe collection progress, not report completion."), !available ? /*#__PURE__*/React.createElement("p", {
     role: "status"
-  }, "Waiting for a Mac collection snapshot.") : !rows.length ? /*#__PURE__*/React.createElement("p", null, "No ", finished ? 'matching' : 'unfinished', " collection requests in this snapshot.") : rows.map(r => /*#__PURE__*/React.createElement("article", {
+  }, "Waiting for a Mac collection snapshot.") : !rows.length ? /*#__PURE__*/React.createElement("p", null, focusId ? 'The linked request is outside this snapshot or belongs to another company. No replacement request is selected.' : `No ${finished ? 'matching' : 'unfinished'} collection requests in this snapshot.`) : rows.map(r => /*#__PURE__*/React.createElement("article", {
     className: "workspace-panel",
     key: r.id
   }, /*#__PURE__*/React.createElement("div", {

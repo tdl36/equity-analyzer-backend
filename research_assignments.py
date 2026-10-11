@@ -203,9 +203,18 @@ class Coordinator:
                     cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input) VALUES(%s,'collection_control',%s,'queued',%s::jsonb)",(child(ident,'collection'),p['ticker'],json.dumps(command)))
                 self.wake();return jsonify(id=ident,status='queued'),202
             ticker=request.args.get('ticker')
+            target=request.args.get('requestId')
+            if target is not None:
+                try:target=str(uuid.UUID(target))
+                except (ValueError,TypeError,AttributeError):return jsonify(error='Invalid saved assignment link.'),400
+            clauses=['stage=%s'];params=[STAGE]
+            if ticker:clauses.append('ticker=%s');params.append(ticker)
+            if target:clauses.append('id=%s');params.append(target)
             with self.db() as (_,cur):
-                cur.execute('SELECT * FROM mp_jobs WHERE stage=%s'+(' AND ticker=%s' if ticker else '')+' ORDER BY created_at DESC LIMIT 30',(STAGE,ticker) if ticker else (STAGE,));rows=[self.public(r) for r in cur.fetchall()]
-            self.wake();r=jsonify(assignments=rows);r.headers['Cache-Control']='no-store';return r
+                cur.execute('SELECT * FROM mp_jobs WHERE '+' AND '.join(clauses)+' ORDER BY created_at DESC LIMIT 30',tuple(params));rows=[self.public(r) for r in cur.fetchall()]
+            # Focused reads are inspection only; do not wake the coordinator.
+            if not target:self.wake()
+            r=jsonify(assignments=rows);r.headers['Cache-Control']='no-store';return r
         @bp.post('/api/research/assignments/<ident>/visual-supplement')
         def visual_supplement(ident):
             from amendment_ownership import worker_session

@@ -15,16 +15,25 @@ export const SECTIONS = {
   stockanalysis: ['snapshot','stock-analysis','research','committee','case','model','changes','evidence','reviews','signals','evolution'],
 };
 export const validSection = (view, section) => SECTIONS[view]?.includes(section) ? section : '';
+// A work link selects a saved item; it never authorizes starting or resuming it.
+export function validWork(view,section,value='') {
+ const allowed={'stockanalysis:stock-analysis':['assignment','analysis'],'stockanalysis:research':['research'],'stockanalysis:committee':['committee'],'desk:collection':['collection']};
+ const [kind,id,...rest]=String(value).split(':');
+ return !rest.length&&allowed[`${view}:${section}`]?.includes(kind)&&/^(?:[a-f0-9]{32}|[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})$/i.test(id||'')?`${kind}:${id.toLowerCase()}`:'';
+}
+export const workId=(value,kind)=>value?.startsWith(kind+':')?value.slice(kind.length+1):'';
 export function readRoute(hash = '') {
   const params = new URLSearchParams(hash.replace(/^#/, ''));
   const view = params.get('view');
   const section = validSection(view, params.get('section'));
-  return { ...(section ? {section} : {}), view: VIEWS.includes(view) ? view : 'today', ticker: (params.get('ticker') || '').trim().toUpperCase().slice(0,32) };
+  const work = validWork(view,section,params.get('work'));
+  return { ...(work ? {work} : {}), ...(section ? {section} : {}), view: VIEWS.includes(view) ? view : 'today', ticker: (params.get('ticker') || '').trim().toUpperCase().slice(0,32) };
 }
-export function routeHash(view, ticker = '', section = '') {
+export function routeHash(view, ticker = '', section = '', work = '') {
   const p = new URLSearchParams({ view: VIEWS.includes(view) ? view : 'today' });
   if (ticker) p.set('ticker', ticker);
   if (validSection(view,section)) p.set('section',section);
+  if (validWork(view,section,work)) p.set('work',validWork(view,section,work));
   return '#' + p.toString();
 }
 export function parseTimestamp(value) {

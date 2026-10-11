@@ -1,3 +1,4 @@
+import { workId } from './workspace-model.mjs';
 import * as React from 'react';
 import { CommitteeFindings } from './investment-committee';
 import { committeeDocument } from './investment-committee-model.mjs';
@@ -9,13 +10,16 @@ export function CompanyResearch({
   disabled,
   onUpdate,
   onDraft,
-  committee = false
+  committee = false,
+  routeWork = '',
+  onWorkChange
 }) {
+  var focusId = workId(routeWork, committee ? 'committee' : 'research');
   var route = committee ? 'committee' : 'company';
   var [inventory, setInventory] = React.useState(null),
     [error, setError] = React.useState(''),
     [notice, setNotice] = React.useState('');
-  var [selected, setSelected] = React.useState(''),
+  var [selected, setSelected] = React.useState(focusId),
     [run, setRun] = React.useState(null),
     [files, setFiles] = React.useState([]),
     [confirmed, setConfirmed] = React.useState(false),
@@ -42,6 +46,10 @@ export function CompanyResearch({
     return data;
   };
   React.useEffect(() => {
+    setSelected(focusId);
+    setNotice('');
+  }, [focusId]);
+  React.useEffect(() => {
     var live = true,
       inflight = false;
     var load = async () => {
@@ -52,7 +60,7 @@ export function CompanyResearch({
         if (live) {
           setInventory(d);
           setError('');
-          setSelected(old => old || d.runs[0]?.id || '');
+          setSelected(old => old || focusId || d.runs[0]?.id || '');
         }
       } catch (e) {
         if (live) setError(e.message);
@@ -66,7 +74,7 @@ export function CompanyResearch({
       live = false;
       clearInterval(timer);
     };
-  }, [api, ticker, refresh]);
+  }, [api, ticker, refresh, focusId]);
   React.useEffect(() => {
     var live = true,
       inflight = false;
@@ -78,6 +86,7 @@ export function CompanyResearch({
       inflight = true;
       try {
         var d = await json('/api/research/' + route + '-run/' + encodeURIComponent(selected));
+        if (d.ticker !== ticker) throw Error('This research belongs to a different company. Check the saved link.');
         if (live) setRun(d);
       } catch (e) {
         if (live) setNotice(e.message);
@@ -200,15 +209,18 @@ export function CompanyResearch({
     "aria-label": committee ? 'Saved committee review' : 'Saved research revision',
     value: selected,
     onChange: e => {
+      onWorkChange?.(e.target.value ? (committee ? 'committee:' : 'research:') + e.target.value : '');
       setSelected(e.target.value);
       setNotice('');
     }
   }, /*#__PURE__*/React.createElement("option", {
     value: ""
-  }, "Choose research"), inventory?.runs.map(r => /*#__PURE__*/React.createElement("option", {
+  }, "Choose research"), selected && !inventory?.runs.some(r => r.id === selected) && /*#__PURE__*/React.createElement("option", {
+    value: selected
+  }, "Linked research \xB7 ", selected.slice(0, 8)), inventory?.runs.map(r => /*#__PURE__*/React.createElement("option", {
     key: r.id,
     value: r.id
-  }, new Date(r.created_at).toLocaleString(), " \xB7 ", r.status, " \xB7 case R", r.baseline.revision)))), run && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, run.status.replaceAll('_', ' ')), " \xB7 ", stats.sections, "/", committee ? 5 : 22, " ", committee ? 'role assessments' : 'sections', " saved \xB7 ", stats.stages, "/12 stages \xB7 ", stats.supported, " claims passed excerpt and model checks \xB7 ", stats.unresolved, " unresolved"), /*#__PURE__*/React.createElement("p", null, "Research ID ", run.id, " \xB7 ", run.model, " \xB7 case baseline R", run.baseline.revision), run.error && /*#__PURE__*/React.createElement("p", {
+  }, new Date(r.created_at).toLocaleString(), " \xB7 ", r.status, " \xB7 case R", r.baseline.revision)))), run && run.id === selected && run.ticker === ticker && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, run.status.replaceAll('_', ' ')), " \xB7 ", stats.sections, "/", committee ? 5 : 22, " ", committee ? 'role assessments' : 'sections', " saved \xB7 ", stats.stages, "/12 stages \xB7 ", stats.supported, " claims passed excerpt and model checks \xB7 ", stats.unresolved, " unresolved"), /*#__PURE__*/React.createElement("p", null, "Research ID ", run.id, " \xB7 ", run.model, " \xB7 case baseline R", run.baseline.revision), run.error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
   }, run.error), run.baselineStale && /*#__PURE__*/React.createElement("p", {
     role: "alert"

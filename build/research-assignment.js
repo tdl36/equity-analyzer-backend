@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { parseTimestamp, routeHash } from './workspace-model.mjs';
 import { downloadText } from './stock-analysis-model.mjs';
 var outputs = [['summary_note', 'Summary note'], ['stock_summary', 'Stock summary'], ['thesis', 'Thesis draft / update'], ['visual', 'Visual one-pager draft']];
 var date = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -6,7 +7,9 @@ export function ResearchAssignment({
   api,
   ticker,
   onReport,
-  disabled
+  disabled,
+  focusId = '',
+  onClearFocus
 }) {
   var [since, setSince] = React.useState(() => {
       var d = new Date();
@@ -19,11 +22,13 @@ export function ResearchAssignment({
     [instruction, setInstruction] = React.useState(''),
     [visualFundamentals, setVisualFundamentals] = React.useState(true);
   var [jobs, setJobs] = React.useState([]),
+    [loaded, setLoaded] = React.useState(false),
     [busy, setBusy] = React.useState(false),
     [message, setMessage] = React.useState(''),
     [error, setError] = React.useState(''),
     [ack, setAck] = React.useState(false),
     [preview, setPreview] = React.useState(null);
+  var listPath = 'assignments?ticker=' + encodeURIComponent(ticker) + (focusId ? '&requestId=' + encodeURIComponent(focusId) : '');
   var locked = React.useRef(false),
     pending = React.useRef(null),
     generation = React.useRef(0);
@@ -64,15 +69,17 @@ export function ResearchAssignment({
       inflight = false;
     generation.current++;
     setJobs([]);
+    setLoaded(false);
     setAck(false);
     setPreview(null);
     var load = async () => {
       if (inflight) return;
       inflight = true;
       try {
-        var d = await request('assignments?ticker=' + encodeURIComponent(ticker));
+        var d = await request(listPath);
         if (live) {
           setJobs(d.assignments);
+          setLoaded(true);
           setError('');
         }
       } catch (e) {
@@ -88,7 +95,7 @@ export function ResearchAssignment({
       generation.current++;
       clearInterval(timer);
     };
-  }, [api, ticker]);
+  }, [api, ticker, focusId]);
   var mutate = async fn => {
     if (locked.current) return;
     var g = generation.current;
@@ -98,7 +105,7 @@ export function ResearchAssignment({
     try {
       var msg = await fn();
       if (g === generation.current) {
-        var d = await request('assignments?ticker=' + encodeURIComponent(ticker));
+        var d = await request(listPath);
         if (g === generation.current) {
           setJobs(d.assignments);
           setMessage(msg);
@@ -133,12 +140,19 @@ export function ResearchAssignment({
     pending.current = null;
     return 'Assignment saved. Charlie will collect originals and prepare your requested drafts. You can close this page.';
   });
+  var visibleJobs = jobs.filter(j => (!focusId || j.id === focusId) && j.ticker === ticker);
   var unfinished = jobs.some(j => ['queued', 'running', 'attention'].includes(j.status));
   return /*#__PURE__*/React.createElement("section", {
     className: "sa-prepare",
     "aria-label": "End-to-end research"
-  }, /*#__PURE__*/React.createElement("style", null, `@media(max-width:650px){.sa-visual-preview{position:fixed;inset:58px 0 64px;background:white;z-index:80;padding:10px!important;display:flex;flex-direction:column}.sa-visual-preview iframe{flex:1;min-height:0;height:100%!important}.sa-visual-preview button{align-self:flex-start;margin:0!important}}`), /*#__PURE__*/React.createElement("h4", null, "One research assignment"), /*#__PURE__*/React.createElement("p", null, "For ", /*#__PURE__*/React.createElement("strong", null, ticker), ", collect new originals and prepare the outputs you choose."), /*#__PURE__*/React.createElement("fieldset", {
-    disabled: disabled || busy || unfinished || !!error
+  }, /*#__PURE__*/React.createElement("style", null, `@media(max-width:650px){.sa-visual-preview{position:fixed;inset:58px 0 64px;background:white;z-index:80;padding:10px!important;display:flex;flex-direction:column}.sa-visual-preview iframe{flex:1;min-height:0;height:100%!important}.sa-visual-preview button{align-self:flex-start;margin:0!important}}`), /*#__PURE__*/React.createElement("h4", null, "One research assignment"), /*#__PURE__*/React.createElement("p", null, "For ", /*#__PURE__*/React.createElement("strong", null, ticker), ", collect new originals and prepare the outputs you choose."), focusId && /*#__PURE__*/React.createElement("p", {
+    role: "status"
+  }, "Opened saved assignment ", focusId.slice(0, 8), ". ", /*#__PURE__*/React.createElement("button", {
+    onClick: onClearFocus
+  }, "Show all assignments for ", ticker)), /*#__PURE__*/React.createElement("details", {
+    open: !focusId
+  }, /*#__PURE__*/React.createElement("summary", null, "Prepare a new research assignment"), /*#__PURE__*/React.createElement("fieldset", {
+    disabled: disabled || busy || unfinished || !!error || !!focusId
   }, /*#__PURE__*/React.createElement("div", {
     className: "sa-form-grid"
   }, /*#__PURE__*/React.createElement("label", null, "From", /*#__PURE__*/React.createElement("input", {
@@ -191,11 +205,15 @@ export function ResearchAssignment({
     className: "sa-primary",
     disabled: !chosen.length || !since || !until || !horizon.trim(),
     onClick: start
-  }, "Start research for ", ticker)), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "One shared research run: up to eight selected originals and twelve model calls within your configured budget. Starting authorizes these calls; explicitly resumed failed stages may add charges. Draft outputs need investor review; a thesis update is never applied automatically.")), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "How automatic collection works"), /*#__PURE__*/React.createElement("p", null, "Charlie queues collection \u2192 Codex searches AlphaSense \u2192 originals are saved in iCloud STOCKS \u2192 your Mac imports and verifies them \u2192 Charlie researches and prepares the selected drafts. Keep your Mac awake, online, the agent running, and Codex with signed-in Chrome available. Collection starts on an available scheduled worker, usually the next 15-minute wake. Source restrictions, sign-in, source choices and uncertain paid-call outcomes can require your attention. The research uses the selected source pack; missing prices, consensus or financial periods remain gaps.")), error && /*#__PURE__*/React.createElement("p", {
+  }, "Start research for ", ticker))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "One shared research run: up to eight selected originals and twelve model calls within your configured budget. Starting authorizes these calls; explicitly resumed failed stages may add charges. Draft outputs need investor review; a thesis update is never applied automatically.")), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "How automatic collection works"), /*#__PURE__*/React.createElement("p", null, "Charlie queues collection \u2192 Codex searches AlphaSense \u2192 originals are saved in iCloud STOCKS \u2192 your Mac imports and verifies them \u2192 Charlie researches and prepares the selected drafts. Keep your Mac awake, online, the agent running, and Codex with signed-in Chrome available. Collection starts on an available scheduled worker, usually the next 15-minute wake. Source restrictions, sign-in, source choices and uncertain paid-call outcomes can require your attention. The research uses the selected source pack; missing prices, consensus or financial periods remain gaps.")), error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
   }, error), /*#__PURE__*/React.createElement("p", {
     role: "status"
-  }, message), jobs.map(j => /*#__PURE__*/React.createElement("article", {
+  }, message), focusId && !loaded && !error && /*#__PURE__*/React.createElement("p", {
+    role: "status"
+  }, "Loading the saved assignment\u2026"), focusId && loaded && !error && !visibleJobs.length && /*#__PURE__*/React.createElement("p", {
+    role: "status"
+  }, "The requested assignment is not in the loaded results. Check the company and refresh; no other assignment is selected in its place."), visibleJobs.map(j => /*#__PURE__*/React.createElement("article", {
     key: j.id,
     style: {
       borderTop: '1px solid #d8dedd',
@@ -204,7 +222,7 @@ export function ResearchAssignment({
     }
   }, /*#__PURE__*/React.createElement("strong", null, j.input.since, "\u2013", j.input.until, " \xB7 ", j.status), /*#__PURE__*/React.createElement("p", null, j.result.step), j.result.delayWarning && /*#__PURE__*/React.createElement("p", {
     role: "alert"
-  }, j.result.delayWarning), /*#__PURE__*/React.createElement("small", null, "Saved update: ", new Date(j.updated_at).toLocaleString(), j.result.macReportedAt ? ' · Mac report: ' + new Date(j.result.macReportedAt).toLocaleString() : ''), j.result.sources && /*#__PURE__*/React.createElement("p", null, j.result.sources.length, " originals verified \xB7 ", j.result.researchStages || 0, "/12 research stages"), j.error && /*#__PURE__*/React.createElement("p", {
+  }, j.result.delayWarning), /*#__PURE__*/React.createElement("small", null, "Saved update: ", parseTimestamp(j.updated_at)?.toLocaleString() || 'Unavailable', j.result.macReportedAt ? ' · Mac report: ' + parseTimestamp(j.result.macReportedAt)?.toLocaleString() || 'Unavailable' : ''), j.result.sources && /*#__PURE__*/React.createElement("p", null, j.result.sources.length, " originals verified \xB7 ", j.result.researchStages || 0, "/12 research stages"), j.error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
   }, j.error), j.result.visualFundamentals?.gaps?.length > 0 && /*#__PURE__*/React.createElement("p", {
     role: "status"
@@ -279,7 +297,7 @@ export function ResearchAssignment({
       return 'Resume requested; saved stages are retained.';
     })
   }, "Resume assignment"), /*#__PURE__*/React.createElement("a", {
-    href: "#view=desk"
+    href: routeHash('desk', ticker, 'collection', j.result.refreshRequestId ? 'collection:' + j.result.refreshRequestId : '')
   }, "Collection and source choices")), ['queued', 'running', 'attention'].includes(j.status) && /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: () => mutate(async () => {

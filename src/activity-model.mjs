@@ -1,4 +1,4 @@
-import {parseTimestamp} from './workspace-model.mjs';
+import {parseTimestamp,validWork} from './workspace-model.mjs';
 export function activityRows(data,filter='active',query='') {
  const q=query.trim().toLowerCase();
  return (data?.items||[]).filter(r=>(filter==='all'||(filter==='focus'?['blocked','review'].includes(workLane(r)):['processing','waiting','review','blocked'].includes(filter)?workLane(r)===filter:r.bucket===filter))&&(r.ticker+' '+r.title+' '+r.step).toLowerCase().includes(q));
@@ -64,9 +64,14 @@ export function focusRows(data) {
 
 export function activityDestination(row) {
  const sections={auto_evidence_intake:'evidence',evidence_amendment:'evidence',catalyst_signal:'collection',catalyst_watch:'collection',collection_control:'collection',command_meeting:'command',agent_runs:'runs'};
- if(row.id?.startsWith('collection:'))return {view:'desk',section:'collection'};
+ if(row.id?.startsWith('collection:'))return {view:'desk',section:'collection',...workLink(row,'desk','collection','collection')};
  if(sections[row.workflow])return {view:'desk',section:sections[row.workflow]};
  const cases={company_research_runs:'research',investment_committee_runs:'committee',stock_analysis_runs:'stock-analysis',research_assignment:'stock-analysis'};
- if(cases[row.workflow])return {view:'stockanalysis',section:cases[row.workflow]};
+ if(cases[row.workflow])return {view:'stockanalysis',section:cases[row.workflow],...workLink(row,'stockanalysis',cases[row.workflow],({research_assignment:'assignment',stock_analysis_runs:'analysis',company_research_runs:'research',investment_committee_runs:'committee'})[row.workflow])};
  return {view:row.view,section:''};
+}
+
+function workLink(row,view,section,kind) {
+ const work=validWork(view,section,kind+':'+row.jobId);
+ return work?{work}:{};
 }

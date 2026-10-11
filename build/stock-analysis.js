@@ -1,4 +1,5 @@
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
+import { workId } from './workspace-model.mjs';
 import * as React from 'react';
 import { ResearchAssignment } from './research-assignment';
 import { sections, label, supported, reportStats, thesisDraft, downloadText } from './stock-analysis-model.mjs';
@@ -42,11 +43,14 @@ export function StockAnalysis({
   ticker,
   revision,
   disabled,
-  onDraft
+  onDraft,
+  routeWork = '',
+  onWorkChange
 }) {
+  var focusId = workId(routeWork, 'analysis');
   var [inventory, setInventory] = React.useState(null),
     [run, setRun] = React.useState(null),
-    [selected, setSelected] = React.useState(''),
+    [selected, setSelected] = React.useState(focusId),
     [reload, setReload] = React.useState(0);
   var [mode, setMode] = React.useState('snapshot'),
     [horizon, setHorizon] = React.useState('12–24 months'),
@@ -93,6 +97,10 @@ export function StockAnalysis({
     return d;
   };
   React.useEffect(() => {
+    setSelected(focusId);
+    setNotice('');
+  }, [focusId]);
+  React.useEffect(() => {
     var live = true,
       inflight = false;
     var load = async () => {
@@ -103,7 +111,7 @@ export function StockAnalysis({
         if (live) {
           setInventory(d);
           setError('');
-          setSelected(s => s || d.runs[0]?.id || '');
+          setSelected(s => s || focusId || d.runs[0]?.id || '');
         }
       } catch (e) {
         if (live) setError(e.message);
@@ -117,7 +125,7 @@ export function StockAnalysis({
       live = false;
       clearInterval(timer);
     };
-  }, [ticker, api, reload]);
+  }, [ticker, api, reload, focusId]);
   React.useEffect(() => {
     var live = true;
     var load = async () => {
@@ -155,6 +163,7 @@ export function StockAnalysis({
       inflight = true;
       try {
         var d = await json('stock-analysis-run/' + selected);
+        if (d.ticker !== ticker) throw Error('This report belongs to a different company. Check the saved link.');
         if (live) setRun(d);
       } catch (e) {
         if (live) setNotice(e.message);
@@ -254,10 +263,13 @@ export function StockAnalysis({
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("small", null, "CHARLIE / STOCK RESEARCH STUDIO"), /*#__PURE__*/React.createElement("h3", null, "Understand the business.", /*#__PURE__*/React.createElement("br", null), "Test the investment case."), /*#__PURE__*/React.createElement("p", null, "Structured research, a source-linked visual, and a record of what changed.")), /*#__PURE__*/React.createElement("div", {
     className: "sa-company"
   }, /*#__PURE__*/React.createElement("strong", null, ticker), /*#__PURE__*/React.createElement("span", null, "Saved thesis R", revision))), /*#__PURE__*/React.createElement(ResearchAssignment, {
+    focusId: workId(routeWork, 'assignment'),
+    onClearFocus: () => onWorkChange?.(''),
     api: api,
     ticker: ticker,
     disabled: disabled,
     onReport: id => {
+      onWorkChange?.('analysis:' + id);
       setSelected(id);
       setReload(x => x + 1);
     }
@@ -332,18 +344,25 @@ export function StockAnalysis({
     onClick: start
   }, "Generate analysis"), /*#__PURE__*/React.createElement("small", null, files.length, "/8 originals \xB7 up to six research and six source-review calls. Uses Charlie\u2019s configured research model and budget. Snapshot produces shorter answers; all modes retain source checks."))), unfinished && /*#__PURE__*/React.createElement("p", null, "One analysis is unfinished. Open it below to inspect progress, stop or resume."), /*#__PURE__*/React.createElement("p", {
     role: "status"
-  }, notice), /*#__PURE__*/React.createElement("label", null, "Saved analyses", /*#__PURE__*/React.createElement("select", {
+  }, notice), focusId && /*#__PURE__*/React.createElement("p", {
+    role: "status"
+  }, "Opened saved report ", focusId.slice(0, 8), ". ", /*#__PURE__*/React.createElement("button", {
+    onClick: () => onWorkChange?.('')
+  }, "Show latest report")), /*#__PURE__*/React.createElement("label", null, "Saved analyses", /*#__PURE__*/React.createElement("select", {
     value: selected,
     onChange: e => {
+      onWorkChange?.(e.target.value ? 'analysis:' + e.target.value : '');
       setSelected(e.target.value);
       setNotice('');
     }
   }, /*#__PURE__*/React.createElement("option", {
     value: ""
-  }, "Choose a report"), inventory?.runs.map(r => /*#__PURE__*/React.createElement("option", {
+  }, "Choose a report"), selected && !inventory?.runs.some(r => r.id === selected) && /*#__PURE__*/React.createElement("option", {
+    value: selected
+  }, "Linked report \xB7 ", selected.slice(0, 8)), inventory?.runs.map(r => /*#__PURE__*/React.createElement("option", {
     key: r.id,
     value: r.id
-  }, new Date(r.created_at).toLocaleString(), " \xB7 ", r.status, " \xB7 ", r.id.slice(0, 8))))), run && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+  }, new Date(r.created_at).toLocaleString(), " \xB7 ", r.status, " \xB7 ", r.id.slice(0, 8))))), run && run.id === selected && run.ticker === ticker && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "sa-report-heading"
   }, /*#__PURE__*/React.createElement("h4", null, label(run.input.mode || 'deep'), " \xB7 ", run.status), /*#__PURE__*/React.createElement("p", null, stats.stages, "/12 stages \xB7 ", stats.supported, " source-supported fields \xB7 ", stats.unresolved, " fields need review"), /*#__PURE__*/React.createElement("small", null, "Report ", run.id, " \xB7 Company ID ", run.input.companyId, " \xB7 ", run.model)), run.error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
