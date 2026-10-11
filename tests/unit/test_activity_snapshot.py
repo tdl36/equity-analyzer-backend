@@ -114,6 +114,8 @@ class ActivityPostgresTests(unittest.TestCase):
    self.assertTrue(d['hasReport']);self.assertTrue(d['hasDecision']);self.assertNotIn('report',d)
    self.assertEqual(len(d['logs']),100);self.assertEqual(d['logs'][0]['message'],'10');self.assertTrue(d['truncated'])
    self.assertEqual(d['status'],'running')
+   self.assertEqual(d['executionEvidence']['reservationCount'],0)
+   self.assertEqual(d['executionEvidence']['providerOutcome'],'unverified')
    # Enrollment metadata must not imply research exists, irrespective of status.
    for status in ('queued','running','failed','complete'):
     for report,expected in ((None,False),('  ',False),(' { "batchId": "fixture" } ',False),('{}',False),('# Saved research',True)):

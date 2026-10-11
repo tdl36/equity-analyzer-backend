@@ -107,7 +107,8 @@ def create_blueprint(get_db):
             except ValueError:logs=[]
         logs=logs if isinstance(logs,list) else []
         entries=[dict(time=stamp(x.get('ts')),agent=str(x.get('agent') or '')[:80],message=str(x.get('message') or '')[:1000]) for x in logs[-100:] if isinstance(x,dict)]
-        response=jsonify(id=str(r['id']),ticker=r['ticker'],status=r['status'],provider=r['llm_provider'],model=r['llm_model'],
+        from agent_execution import execution_evidence
+        response=jsonify(executionEvidence=execution_evidence(logs),id=str(r['id']),ticker=r['ticker'],status=r['status'],provider=r['llm_provider'],model=r['llm_model'],
             createdAt=stamp(r['created_at']),completedAt=stamp(r['completed_at']),hasReport=has_saved_report(r['report']),hasDecision=bool(r['has_decision']),
             logs=entries,totalLogs=len(logs),truncated=len(logs)>100,asOf=datetime.now(timezone.utc).isoformat())
         response.headers['Cache-Control']='no-store'

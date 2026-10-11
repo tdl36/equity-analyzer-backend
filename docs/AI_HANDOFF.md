@@ -2,6 +2,27 @@
 
 Updated: October 10, 2026
 
+## T176 — explicit execution evidence in Activity
+
+Saved analyst-run inspection now exposes execution enrollment, reservation count
+and up to five validated Charlie execution UUIDs. Evidence is derived from all
+saved logs, independent of the last-100 display window; arbitrary log fields and
+report bodies are not added to the response. The UI explains that these are
+Charlie references, not provider request IDs, and that a legacy run with no
+marker may still have executed. Provider outcome remains explicitly unverified.
+This is a diagnostic increment, not reconciliation, cancellation or retry.
+Legacy WELL remains unresolved; no production job was mutated.
+
+Validation: 1017 safe backend tests and 134 frontend tests passed, plus Python
+compile, production build and unchanged model-policy gate. Synthetic evidence
+tests cover legacy/malformed logs, bounded UUID validation, and reservations
+older than the displayed log window. Deployment verification pending.
+Next: capture durable provider
+request/outcome evidence and build supported recovery controls without treating
+missing records or elapsed time as proof that paid work did not run. The graph
+currently records coarse lifecycle logs rather than per-provider receipts; a
+Charlie reservation UUID alone cannot resolve that gap retroactively.
+
 ## T175 — durable batch identity and pre-execution recovery
 
 The user approved the eight-phase order and one-click latest-source refresh;

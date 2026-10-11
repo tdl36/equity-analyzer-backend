@@ -137,3 +137,30 @@ def enqueue_batch(get_db, tickers, date_str, provider, model, concurrency, reque
             runs.append(dict(id=run_id,ticker=ticker))
         cur.execute('UPDATE app_settings SET value=%s::jsonb,updated_at=NOW() WHERE key=%s',(json.dumps(dict(inputs=inputs,runs=runs)),key))
         return batch_id,runs,True
+
+
+def execution_evidence(logs):
+    """Expose bounded reservation metadata, never infer provider outcome from logs."""
+    from uuid import UUID
+    if isinstance(logs, str):
+        try:
+            logs = json.loads(logs)
+        except ValueError:
+            logs = []
+    entries = [x for x in logs if isinstance(x, dict)] if isinstance(logs, list) else []
+    reservations = [x for x in entries if x.get('event') == 'execution_started']
+    ids = []
+    for entry in reservations:
+        try:
+            identifier = str(UUID(str(entry.get('executionId'))))
+        except (ValueError, TypeError, AttributeError):
+            continue
+        if identifier not in ids:
+            ids.append(identifier)
+    return {
+        'enrolled': any(x.get('event') == 'execution_queued' for x in entries),
+        'reservationCount': len(reservations),
+        'reservationIds': ids[:5],
+        'reservationIdsTruncated': len(ids) > 5,
+        'providerOutcome': 'unverified',
+    }

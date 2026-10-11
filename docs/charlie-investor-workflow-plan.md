@@ -57,6 +57,7 @@ instruction, not a promise of instantaneous browser collection or source availab
 
 ## Current phase
 
-Phase 1 in progress. T168–T174 protect/restore single-run execution and visibility.
-Batch recovery/deduplication is the next increment. Later phases and the complete
+Phase 1 in progress. T168–T175 protect/restore single and batch execution,
+submission identity and visibility. Interrupted-attempt reconciliation and
+operational recovery controls are next. Later phases and the complete
 one-click refresh experience are not yet accepted as complete.

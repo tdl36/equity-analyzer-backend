@@ -55,7 +55,16 @@ function AnalystRunInspection({
     role: "alert"
   }, state.error), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "Recorded status: ", /*#__PURE__*/React.createElement("strong", null, data.status), " \xB7 ", data.model, " \xB7 Created ", activityAge(data.createdAt)), /*#__PURE__*/React.createElement("p", null, data.hasReport ? 'Report text is saved.' : 'No report text is saved.', " ", data.completedAt ? `Completion recorded ${activityAge(data.completedAt)}.` : 'No completion is recorded.'), /*#__PURE__*/React.createElement("p", {
     className: "activity-warning"
-  }, "These are saved records, not confirmation that a worker or provider request is running. Inspect the outcome before starting another paid run."), data.truncated && /*#__PURE__*/React.createElement("p", null, "Showing the latest 100 of ", data.totalLogs, " saved entries."), /*#__PURE__*/React.createElement("ol", null, data.logs.map((entry, index) => /*#__PURE__*/React.createElement("li", {
+  }, "These are saved records, not confirmation that a worker or provider request is running. Inspect the outcome before starting another paid run."), data.executionEvidence && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Recovery evidence"), /*#__PURE__*/React.createElement("p", null, "Saved run ID: ", /*#__PURE__*/React.createElement("span", {
+    style: {
+      overflowWrap: 'anywhere'
+    }
+  }, data.id)), /*#__PURE__*/React.createElement("p", null, data.executionEvidence.enrolled ? 'This run has a saved execution enrollment.' : 'This run has no execution enrollment record; absence does not prove it never ran.', " Recorded reservations: ", data.executionEvidence.reservationCount, "."), data.executionEvidence.reservationIds.map(id => /*#__PURE__*/React.createElement("p", {
+    key: id,
+    style: {
+      overflowWrap: 'anywhere'
+    }
+  }, "Execution reference: ", id)), data.executionEvidence.reservationIdsTruncated && /*#__PURE__*/React.createElement("p", null, "Showing the first five execution references."), /*#__PURE__*/React.createElement("p", null, "Provider outcome is unverified. Execution references identify Charlie reservations, not provider request IDs. Reconcile backend execution and provider records before authorizing any new attempt.")), data.truncated && /*#__PURE__*/React.createElement("p", null, "Showing the latest 100 of ", data.totalLogs, " saved entries."), /*#__PURE__*/React.createElement("ol", null, data.logs.map((entry, index) => /*#__PURE__*/React.createElement("li", {
     key: index
   }, /*#__PURE__*/React.createElement("small", null, entry.time || 'Time unavailable', " \xB7 ", entry.agent || 'Saved step'), /*#__PURE__*/React.createElement("p", null, entry.message)))), !data.logs.length && /*#__PURE__*/React.createElement("p", null, "No saved steps are available."), /*#__PURE__*/React.createElement("small", null, "Run ", data.id, " \xB7 Retrieved ", activityAge(data.asOf))));
 }
