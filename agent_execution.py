@@ -68,3 +68,22 @@ def start_recovery(get_db, run):
             except Exception as exc:
                 print('[Analyst queue recovery]', type(exc).__name__)
     threading.Thread(target=loop, daemon=True, name='analyst-queue-recovery').start()
+
+
+def enqueue_single(get_db, ticker, date_str, provider, model, request_id=None):
+    """One durable job per client request identity; reject changed frozen inputs."""
+    from uuid import UUID
+    run_id = str(UUID(request_id)) if request_id is not None else str(uuid4())
+    with get_db(commit=True) as (_, cur):
+        cur.execute("""
+            INSERT INTO agent_runs(id,ticker,analysis_date,llm_provider,llm_model,status,logs)
+            VALUES(%s,%s,%s,%s,%s,'queued',%s::jsonb)
+            ON CONFLICT(id) DO NOTHING RETURNING id
+        """, (run_id,ticker,date_str,provider,model,queued_log(recover_single=True)))
+        if cur.fetchone():
+            return run_id, True
+        cur.execute('SELECT ticker,analysis_date,llm_provider,llm_model FROM agent_runs WHERE id=%s',(run_id,))
+        saved = cur.fetchone()
+        if not saved or (saved['ticker'],str(saved['analysis_date']),saved['llm_provider'],saved['llm_model']) != (ticker,date_str,provider,model):
+            raise ValueError('This submission identity belongs to different saved inputs. Inspect the original run.')
+        return run_id, False

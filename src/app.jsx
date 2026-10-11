@@ -4,7 +4,7 @@
 // existing `React.createElement`, `React.Fragment`, and `ReactDOM.render`
 // calls inside the main app body continue to work unchanged.
 import * as React from 'react';
-import {agentRunPending,agentRunTerminal,agentRunHeading,mergeAgentSnapshot} from './agent-run-state.mjs';
+import {agentRunPending,agentRunTerminal,agentRunHeading,mergeAgentSnapshot,savedSubmission} from './agent-run-state.mjs';
 import {explainRequest} from './explain-request.mjs';
 import {createReadScheduler} from './api-read-scheduler.mjs';
 import {CatalystComparison} from './catalyst-comparison';
@@ -98,7 +98,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-10-11T172';
+        const BUILD_VERSION = '2026-10-11T173';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -1799,6 +1799,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [agentProvider, setAgentProvider] = useState('anthropic');
             const [agentModel, setAgentModel] = useState('claude-haiku-4-5-20251001');
             const [agentActiveRun, setAgentActiveRun] = useState(null);
+            const [agentSubmitting,setAgentSubmitting]=useState(false),[agentSubmitError,setAgentSubmitError]=useState('');
+            const agentSubmitRef=React.useRef(false);
             const [agentHistory, setAgentHistory] = useState([]);
             const [agentView, setAgentView] = useState('new'); // 'new' | 'history' | 'detail'  (decipher moved to the Explain tab)
             // Decipher sub-tab state — one-shot agent that explains industry jargon
@@ -8529,16 +8531,24 @@ Regulatory, execution, or macro risks that could derail the thesis:
             };
 
             const startAgentRun = async () => {
-                if (!agentTicker || !agentDate) return;
+                if (!agentTicker || !agentDate || agentSubmitRef.current || agentRunPending(agentActiveRun?.status)) return;
+                agentSubmitRef.current=true;setAgentSubmitting(true);setAgentSubmitError('');
                 clearInterval(agentPollRef.current);
+                const submitController=new AbortController(),submitTimer=setTimeout(()=>submitController.abort(),30000);
                 try {
+                    const payload={ticker:agentTicker,date:agentDate,provider:agentProvider,model:agentModel};
+                    const submission=savedSubmission(sessionStorage,payload);
                     const res = await fetch(`${API_URL}/api/agents/run`, {
                         method: 'POST',
+                        signal:submitController.signal,
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ ticker: agentTicker, date: agentDate, provider: agentProvider, model: agentModel }),
+                        body: JSON.stringify({...payload,requestId:submission.id}),
                     });
+                    if (!res.ok) throw new Error('Submission could not be confirmed. Check Activity or retry with the same settings; the saved submission identity will be reused.');
                     if (res.ok) {
                         const data = await res.json();
+                        if(data.runId!==submission.id)throw new Error('Saved run identity could not be confirmed. Inspect Activity before submitting again.');
+                        sessionStorage.removeItem(submission.key);
                         setAgentActiveRun({ runId: data.runId, status: 'queued', logs: [], decision: null });
                         setAgentView('new');
                         // Start polling
@@ -8566,7 +8576,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         }, 3000);
                         agentPollRef.current = poll;
                     }
-                } catch (e) { console.error('Failed to start agent run:', e); alert('Error: ' + e.message); }
+                } catch (e) { setAgentSubmitError(e.message || 'Submission outcome is uncertain. Inspect Activity before retrying.'); }
+                finally { clearTimeout(submitTimer);agentSubmitRef.current=false;setAgentSubmitting(false); }
             };
 
             const saveAgentRun = async (runId) => {
@@ -28600,10 +28611,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                             </select>
                                                         </div>
                                                     </div>
-                                                    <button onClick={startAgentRun} disabled={!agentTicker || !agentDate || agentRunPending(agentActiveRun?.status)}
+                                                    <button onClick={startAgentRun} disabled={agentSubmitting || !agentTicker || !agentDate || agentRunPending(agentActiveRun?.status)}
                                                         className="w-full mt-3 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors">
-                                                        {agentActiveRun?.status === 'queued' ? 'Waiting to start…' : agentActiveRun?.status === 'running' ? 'Running...' : 'Run Analysis'}
+                                                        {agentSubmitting ? 'Saving request…' : agentActiveRun?.status === 'queued' ? 'Waiting to start…' : agentActiveRun?.status === 'running' ? 'Running...' : 'Run Analysis'}
                                                     </button>
+                                                    {agentSubmitError && <p role="alert" className="text-xs text-amber-300 mt-2">{agentSubmitError}</p>}
                                                     <p className="text-[9px] text-slate-600 mt-1.5 text-center">Uses yfinance for market data. Runs take 5-15 min. Cost depends on model.</p>
                                                 </div>
 

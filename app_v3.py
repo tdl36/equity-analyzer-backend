@@ -20587,30 +20587,33 @@ def refresh_agent_providers():
 
 @app.route('/api/agents/run', methods=['POST'])
 def start_agent_run():
-    from agent_execution import queued_log
-    data = request.get_json()
-    ticker = data.get('ticker', '').upper().strip()
+    from agent_execution import enqueue_single
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify(error='Expected a JSON object'),400
+    ticker = str(data.get('ticker') or '').upper().strip()
     date_str = data.get('date', '')
     provider = data.get('provider', 'anthropic')
     model = data.get('model') or MODEL_FAST
     try:
+        date_str=datetime.strptime(date_str, '%Y-%m-%d').strftime('%Y-%m-%d')
+        if not isinstance(provider,str) or not isinstance(model,str):
+            raise ValueError('Invalid model settings')
         model_registry.ensure_active(model)
+        if not ticker or len(ticker)>20:
+            raise ValueError('A valid ticker is required.')
+        request_id = data.get('requestId')
+        if request_id is not None:
+            request_id = str(uuid.UUID(request_id))
+    except (ValueError,TypeError,AttributeError) as exc:
+        return jsonify(error='Use a valid ticker, date, model and submission identity.'),400
+    try:
+        run_id, created = enqueue_single(get_db,ticker,date_str,provider,model,request_id)
     except ValueError as exc:
-        return jsonify({'error': str(exc)}), 400
-
-    if not ticker or not date_str:
-        return jsonify({'error': 'ticker and date required'}), 400
-
-    run_id = str(uuid.uuid4())
-    with get_db(commit=True) as (conn, cur):
-        cur.execute('''
-            INSERT INTO agent_runs (id, ticker, analysis_date, llm_provider, llm_model, status, logs)
-            VALUES (%s, %s, %s, %s, %s, 'queued', %s::jsonb)
-        ''', (run_id, ticker, date_str, provider, model, queued_log(recover_single=True)))
-
-    threading.Thread(target=_run_trading_agent, args=(run_id, ticker, date_str, provider, model), daemon=True).start()
-
-    return jsonify({'runId': run_id, 'ticker': ticker})
+        return jsonify(error=str(exc)),409
+    if created:
+        threading.Thread(target=_run_trading_agent, args=(run_id,ticker,date_str,provider,model), daemon=True).start()
+    return jsonify({'runId':run_id,'ticker':ticker,'reused':not created})
 
 
 @app.route('/api/agents/status/<run_id>', methods=['GET'])

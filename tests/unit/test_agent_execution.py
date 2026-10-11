@@ -2,7 +2,7 @@ import ast
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import unittest
-from agent_execution import claim, queued_log, recover_pending
+from agent_execution import claim, queued_log, recover_pending, enqueue_single
 from tests.unit import test_stock_analysis_postgres as pg
 
 @unittest.skipUnless((pg.PG/'initdb').exists(),'Disposable PostgreSQL unavailable')
@@ -47,12 +47,23 @@ class ExecutionTests(unittest.TestCase):
    states={r['id']:r['status'] for r in c.fetchall()}
   self.assertEqual(states['recover-batch'],'queued');self.assertEqual(states['recover-started'],'queued')
   self.assertEqual(states['recover-terminal'],'complete');self.assertEqual(states['recover-safe'],'running')
+ def test_submission_identity_is_durable_concurrent_and_input_bound(self):
+  request='00000000-0000-4000-8000-000000000173'
+  def submit():return enqueue_single(self.db,'TEST','2026-10-11','fixture','pinned-model',request)
+  with ThreadPoolExecutor(max_workers=6) as pool:results=list(pool.map(lambda _:submit(),range(6)))
+  self.assertEqual(sum(created for _,created in results),1)
+  self.assertEqual({id for id,_ in results},{request})
+  self.assertIsNotNone(claim(self.db,request))
+  self.assertEqual(submit(),(request,False))
+  with self.assertRaises(ValueError):enqueue_single(self.db,'OTHER','2026-10-11','fixture','pinned-model',request)
+  with self.db() as (_,c):
+   c.execute('SELECT ticker,status FROM agent_runs WHERE id=%s',(request,));row=c.fetchone()
+  self.assertEqual(row['ticker'],'TEST');self.assertEqual(row['status'],'running')
  def test_batch_and_single_enroll_and_graph_reserves_before_import(self):
   tree=ast.parse(Path('app_v3.py').read_text())
   funcs={n.name:n for n in tree.body if isinstance(n,ast.FunctionDef)}
-  for name in ['start_agent_run','start_agent_batch_run']:
-   self.assertIn('queued_log',ast.unparse(funcs[name]))
-  self.assertIn('recover_single=True',ast.unparse(funcs['start_agent_run']))
+  self.assertIn('enqueue_single',ast.unparse(funcs['start_agent_run']))
+  self.assertIn('queued_log',ast.unparse(funcs['start_agent_batch_run']))
   self.assertNotIn('recover_single=True',ast.unparse(funcs['start_agent_batch_run']))
   graph=ast.unparse(funcs['_run_trading_agent'])
   self.assertLess(graph.index('claim(get_db, run_id)'),graph.index('TradingAgentsGraph'))

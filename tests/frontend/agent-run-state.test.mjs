@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {agentRunPending,agentRunTerminal,agentRunHeading,mergeAgentSnapshot} from '../../src/agent-run-state.mjs';
+import {agentRunPending,agentRunTerminal,agentRunHeading,mergeAgentSnapshot,savedSubmission} from '../../src/agent-run-state.mjs';
 test('queued stays pending and cannot be mistaken for completion',()=>{
  for(const status of ['queued','running']){assert.equal(agentRunPending(status),true);assert.equal(agentRunTerminal(status),false);}
  assert.equal(agentRunHeading('queued'),'Waiting to start');
@@ -26,12 +26,23 @@ test('actual screen poll continues through queued and failed reads, then stops o
   {ok:false},
   {ok:true,json:async()=>({status:'running',newLogs:[{message:'started'}],totalLogs:1})},
   {ok:true,json:async()=>({status:'complete',newLogs:[],totalLogs:1})}];
- const env={agentTicker:'TEST',agentDate:'2026-10-11',agentProvider:'fixture',agentModel:'fixture',API_URL:'fixture',agentPollRef:{current:null},
+ const env={agentActiveRun:null,agentSubmitRef:{current:false},setAgentSubmitting:()=>{},setAgentSubmitError:()=>{},sessionStorage:{removeItem:()=>{}},savedSubmission:()=>({key:'fixture',id:'a'}),agentRunPending,agentTicker:'TEST',agentDate:'2026-10-11',agentProvider:'fixture',agentModel:'fixture',API_URL:'fixture',agentPollRef:{current:null},
   fetch:async()=>responses.shift(),clearInterval:id=>clears.push(id),setInterval:fn=>{tick=fn;return 7;},
   setAgentActiveRun:value=>{row=typeof value==='function'?value(row):value;},setAgentView:()=>{},fetchAgentHistory:()=>history++,
   mergeAgentSnapshot,agentRunTerminal,console:{warn:()=>{},error:()=>{}},alert:()=>{throw Error('unexpected alert');}};
- await new Function(...Object.keys(env),'return ('+body+');')(...Object.values(env))();
+ const start=new Function(...Object.keys(env),'return ('+body+');')(...Object.values(env));
+ await Promise.all([start(),start()]);
+ assert.equal(responses.length,4);
  assert.equal(row.status,'queued');await tick();assert.equal(row.status,'queued');assert.equal(clears.includes(7),false);
  await tick();assert.equal(row.status,'queued');assert.equal(clears.includes(7),false);assert.match(row.readError,/Status refresh failed/);
  await tick();assert.equal(row.status,'running');assert.equal(row.readError,null);await tick();assert.equal(row.status,'complete');assert.equal(history,1);assert.equal(clears.includes(7),true);
+});
+
+test('submission identity survives reload and is bound to frozen settings',()=>{
+ const items=new Map(),storage={getItem:k=>items.get(k),setItem:(k,v)=>items.set(k,v)};
+ const id='00000000-0000-4000-8000-000000000173',payload={ticker:'TEST',date:'2026-10-11',model:'pinned'};
+ const first=savedSubmission(storage,payload,()=>id);
+ assert.deepEqual(savedSubmission(storage,{...payload},()=>{throw Error('must reuse');}),first);
+ assert.notEqual(savedSubmission(storage,{...payload,model:'changed'},()=>id).key,first.key);
+ assert.throws(()=>savedSubmission({getItem:()=>null,setItem:()=>{throw Error('storage unavailable');}},payload,()=>id),/storage unavailable/);
 });

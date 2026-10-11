@@ -2,6 +2,21 @@
 
 Updated: October 10, 2026
 
+## T173 — duplicate-safe single analyst submission
+
+The single-run screen retains a request UUID in session storage for the exact
+settings until the server confirms the matching job. Double-clicks are blocked
+synchronously; uncertain/failed replies preserve the identity for a deliberate
+retry, including after reload in the same tab. Storage failure prevents dispatch.
+The backend inserts that UUID once with conflict handling, compares saved frozen
+inputs on replay, returns the same job and starts no second worker. Changed inputs
+with the same identity are rejected. Existing callers without requestId retain
+legacy behavior; batches and separate tabs are not deduplicated. Pending reads
+and submission failures remain visible. No ambiguous paid attempt is replayed.
+
+Validation/deployment pending. Next: durable batch recovery and submission
+identity, selected-run reload restoration and interrupted-attempt reconciliation.
+
 ## T172 — keep queued analyst runs tracked on screen
 
 The single analyst screen now starts at queued, keeps polling through queued and
