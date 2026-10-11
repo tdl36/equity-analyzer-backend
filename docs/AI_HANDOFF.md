@@ -2,6 +2,19 @@
 
 Updated: October 10, 2026
 
+## T149 — conservative catalyst issuer attribution
+
+New catalyst candidates require an explicit ticker prefix or a saved company-name
+prefix before automatic collection is eligible. Related-company feed membership
+alone no longer qualifies. Short ticker words, missing company names, other issuers
+and relationship headlines remain reviewable without consuming collection quota.
+Saved attribution basis is a triage hint, not primary-source or event-date proof;
+collection still must verify the issuer, actual event date and materiality. Existing
+frozen requests are unchanged. No new provider/model lookup is introduced.
+
+Validation: 956 safe backend tests, 103 frontend tests, Python compilation and
+production build pass. Deployment verification pending.
+
 ## T148 — explain waiting intake and expose its existing daily cap
 
 Activity and automatic intake controls now explain waiting sources using the
@@ -14,7 +27,9 @@ Polling cannot overwrite a newer settings response. T147's empty state now direc
 companies without a saved case to Current thesis rather than an absent baseline.
 
 Validation: 952 safe backend tests, 103 frontend tests, Python compilation and
-production build pass. Deployment verification remains. See the finite checkpoint.
+production build pass. Backend ebc195a and exact hosted bytes verified; authenticated
+intake and Activity reads return actual review/baseline wait reasons. No settings
+or research changed during live QA. See the finite checkpoint.
 
 ## T147 — saved-evidence change brief
 

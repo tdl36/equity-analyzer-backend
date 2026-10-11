@@ -49,7 +49,7 @@ COMMENTARY_HEADLINE = re.compile(
     r'what .{0,160}means? for (?:the )?(?:stock|investors|valuation))\b', re.I)
 
 
-def candidate(ticker,article,after,now):
+def candidate(ticker,article,after,now,company_name=None):
     if not isinstance(article,dict):return None
     title=article.get('headline');url=article.get('url');ts=article.get('datetime')
     if not isinstance(title,str) or not isinstance(url,str) or type(ts) not in (int,float) or not after<=ts<=now+300:return None
@@ -66,15 +66,17 @@ def candidate(ticker,article,after,now):
     # Same ticker, normalized headline and publication day deduplicate syndication.
     identity=hashlib.sha256((ticker+'|'+datetime.fromtimestamp(ts,timezone.utc).date().isoformat()+'|'+re.sub(r'\W+',' ',title.lower()).strip()).encode()).hexdigest()
     third_party_purchase=category=='corporate' and bool(re.search(r'\b(acquires?|purchases?|buys?)\b.*\b(gpus?|compute cluster|servers?|hardware|equipment)\b',title,re.I))
-    issuer_explicit=bool(re.match(r'^'+re.escape(ticker)+r'\b',title.strip(),re.I))
+    from catalyst_attribution import attribution
+    issuer=attribution(ticker,title,company_name)
+    issuer_explicit=issuer['matched']
     # A feed's `related` list is association, not identification of the employer.
-    # Until company-name resolution is available, ambiguous leadership headlines
-    # stay reviewable; never infer the issuer from a destination employer mention.
+    # Saved company names provide only a conservative headline hint. Ambiguous
+    # leadership remains reviewable; a destination employer is not the issuer.
     leadership_review=category=='leadership' and not issuer_explicit
     commentary=bool(COMMENTARY_HEADLINE.search(title))
     associated={x.strip().upper() for x in related.split(',') if x.strip()} if isinstance(related,str) else set()
     mixed_issuer=bool(ROUNDUP_HEADLINE.search(title)) or (len(associated)>1 and not issuer_explicit)
-    requires_review=mixed_issuer or commentary or leadership_review or third_party_purchase or (category=='corporate' and not issuer_explicit) or category in REVIEW_CATEGORIES
+    requires_review=not issuer_explicit or mixed_issuer or commentary or leadership_review or third_party_purchase or (category=='corporate' and not issuer_explicit) or category in REVIEW_CATEGORIES
     if commentary:
         triage='This headline appears to be commentary or an industry comparison. Verify a distinct new issuer event and check existing coverage before collection.'
     elif mixed_issuer:
@@ -85,11 +87,13 @@ def candidate(ticker,article,after,now):
         triage='Confirm which company the leadership change belongs to. A related-company feed or a mentioned destination employer does not establish an event for this ticker.'
     elif category in REVIEW_CATEGORIES:
         triage='The headline may be relevant but does not establish scale or investment significance. Verify issuer relevance and materiality before collection.'
+    elif not issuer_explicit:
+        triage='Issuer attribution is unverified. Match the event to this company in a primary source and verify the actual event date before collection; the news feed alone is insufficient.'
     elif requires_review:
         triage='Verify the transaction parties and issuer relevance before automatic collection.'
     else:
         triage='Potential catalyst; original-source verification still required.'
-    return {'id':identity,'ticker':ticker,'title':title[:500],'url':url[:2000],'publishedAt':ts,'category':category,'requiresReview':requires_review,'triageReason':triage,
+    return {'id':identity,'ticker':ticker,'title':title[:500],'url':url[:2000],'publishedAt':ts,'category':category,'requiresReview':requires_review,'triageReason':triage,'issuerAttribution':issuer,
             'reason':f'Potential {category} catalyst: {title[:500]}. Rule-based news signal; confirm company, event and materiality in primary sources.'}
 
 
@@ -150,6 +154,8 @@ class CatalystWatch:
             if not key or not key['value']:
                 state.update(lastCheck=stamp,lastIssue='Save a Finnhub news API key in Settings to enable detection.');self.save(cur,state);return
             ticker=state['tickers'][state.get('cursor',0)%len(state['tickers'])]
+            cur.execute('SELECT name FROM mp_companies WHERE ticker=%s',(ticker,));company=cur.fetchone()
+            company_name=company.get('name') if company else None
             state.update(cursor=state.get('cursor',0)+1,lastCheck=stamp,lastTicker=ticker,lastIssue=None);self.save(cur,state)
             api_key=str(key['value']).strip();after=max(state.get('enabledAt',stamp),stamp-2*86400)
         try:
@@ -160,7 +166,7 @@ class CatalystWatch:
             with self.db(commit=True) as (_,cur):
                 state=self.load(cur);state['lastIssue']='Company-news lookup failed. Check news access/key; this ticker will be retried on a later sweep.';self.save(cur,state)
             return
-        signals=[c for a in articles[:300] if (c:=candidate(ticker,a,after,stamp))]
+        signals=[c for a in articles[:300] if (c:=candidate(ticker,a,after,stamp,company_name))]
         with self.db(commit=True) as (_,cur):
             state=self.load(cur)
             if not state['enabled'] or ticker not in state['tickers']:return

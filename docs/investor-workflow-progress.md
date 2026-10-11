@@ -28,8 +28,14 @@ engines. Record exact tests, release revision, verification and remaining gaps.
 
 Implemented read-only intake wait explanations plus the existing daily cap control.
 Focused tests (22), all 952 backend tests, 103 frontend tests, compile and build
-pass. Release verification remains. The
+pass. Backend ebc195a and hosted bytes verified; live wait reasons confirmed. The
 T147 change brief needs a saved investment-case baseline; UNH has a separate legacy
 thesis but no saved investment-case revisions, so do not fabricate a comparison.
 T148 improves that empty state with a Current thesis link. Do not click controls
 that enable/rebudget live paid automation for QA.
+
+## T149 in progress
+
+Conservative saved-company-name/ticker attribution for catalyst candidates.
+23 focused tests, 956 full backend tests, 103 frontend tests, compilation and
+build pass. Deployment verification pending. No paid QA.

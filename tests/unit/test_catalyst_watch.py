@@ -56,6 +56,7 @@ class WatchDispatchTests(unittest.TestCase):
                 elif "key='finnhub_api_key'" in sql:self.row={'value':'fake-test-key'}
                 elif "key='collection_control_snapshot'" in sql:self.row={'value':{'policies':[{'ticker':'ABBV','enabled':True,'hours':168,'lookbackDays':7,'workflow':'thesis','kinds':['transcript'],'topic':'','instructions':''}]}}
                 elif sql.startswith('INSERT INTO app_settings'):owner.state=json.loads(args[1])
+                elif sql.startswith('SELECT name FROM mp_companies'):self.row={'name':'AbbVie Inc.'}
                 elif sql.startswith('SELECT id FROM analysts'):self.row={'id':'covering-analyst'}
                 elif sql.startswith('SELECT id FROM mp_jobs'):self.row=owner.jobs.get(args[0])
                 elif sql.startswith('SELECT id,input,result FROM mp_jobs'):self.rows=[j for j in owner.jobs.values() if j['stage']=='catalyst_signal']
@@ -97,6 +98,13 @@ class WatchDispatchTests(unittest.TestCase):
         self.assertEqual(len(self.jobs),3)
         self.assertTrue(all(j['status']=='needs_review' for j in self.jobs.values()))
         self.assertTrue(all('actual event date' in j['result']['reason'] for j in self.jobs.values()))
+        self.assertEqual(self.state['used'],0)
+
+    def test_wrong_issuer_in_single_company_feed_requires_review(self):
+        self.tick([{**self.article,'headline':'Roche receives FDA approval for new indication'}])
+        self.assertEqual(len(self.jobs),1)
+        row=next(iter(self.jobs.values()));self.assertEqual(row['status'],'needs_review')
+        self.assertIn('Issuer attribution is unverified',row['result']['reason'])
         self.assertEqual(self.state['used'],0)
 
     def test_detection_only_does_not_queue_collection(self):
@@ -157,8 +165,8 @@ class WatchDispatchTests(unittest.TestCase):
 
     def test_phase_2b_3_brunello_headlines_hold_second_dispatch(self):
         self.state['dailyLimit']=10
-        first='Merck announces positive Phase 2b/3 BRUNELLO study results for intismeran'
-        second='BRUNELLO Phase 2b/3 trial of intismeran met its primary endpoint, Merck says'
+        first='AbbVie announces positive Phase 2b/3 BRUNELLO study results for intismeran'
+        second='BRUNELLO Phase 2b/3 trial of intismeran met its primary endpoint, AbbVie says'
         self.tick([{**self.article,'headline':first,'related':'ABBV'}])
         self.state['lastCheck']=0
         self.tick([{**self.article,'headline':second,'related':'ABBV','datetime':self.now-2}])
