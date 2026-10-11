@@ -32,6 +32,17 @@ class ActivityTests(unittest.TestCase):
   item=assemble([r],{},NOW)[0]
   self.assertEqual(item['title'],'Catalyst signal');self.assertEqual(item['workflow'],'catalyst_signal')
   self.assertEqual(item['step'],'Check possible duplicate');self.assertNotIn('input',item)
+ def test_legacy_agent_uses_progress_time_and_keeps_uncertain_execution_visible(self):
+  base={**row(),'source':'agent_runs','stage':None,'label':'Analyst team','updated_at':NOW-timedelta(days=200)}
+  for last in (None,'invalid',(NOW-timedelta(days=200)).isoformat(),(NOW+timedelta(hours=1)).isoformat()):
+   item=assemble([{**base,'last_log_at':last}],{},NOW)[0]
+   self.assertEqual(item['bucket'],'attention');self.assertTrue(item['executionUnconfirmed'])
+   self.assertEqual(item['status'],'running');self.assertIn('another charge',item['warning'])
+  fresh=assemble([{**base,'last_log_at':NOW.isoformat()}],{},NOW)[0]
+  self.assertEqual(fresh['bucket'],'active');self.assertFalse(fresh['stale'])
+  self.assertNotIn('executionUnconfirmed',fresh)
+  done=assemble([{**base,'status':'complete','last_log_at':NOW.isoformat()}],{},NOW)[0]
+  self.assertEqual(done['bucket'],'recent');self.assertNotIn('executionUnconfirmed',done)
  def test_timestamps_are_utc(self):
   self.assertEqual(stamp(NOW.replace(tzinfo=None)),NOW.isoformat());self.assertEqual(stamp(NOW.timestamp()),NOW.isoformat());self.assertIsNone(stamp('invalid'))
 
@@ -58,6 +69,19 @@ class ActivityPostgresTests(unittest.TestCase):
   finally:
    with self.db(True) as (_,c):c.execute("DELETE FROM mp_jobs WHERE id LIKE 'review-%'")
 
+ def test_legacy_agent_progress_projection_is_read_only(self):
+  with self.db(True) as (_,c):
+   c.execute('CREATE TABLE agent_runs(id TEXT,ticker TEXT,status TEXT,created_at TIMESTAMP,completed_at TIMESTAMP,logs JSONB)')
+   c.execute("INSERT INTO agent_runs VALUES('legacy','WELL','running',NOW()-INTERVAL '200 days',NULL,'[]')")
+  try:
+   app=Flask(__name__);app.register_blueprint(create_blueprint(self.db));d=app.test_client().get('/api/activity').json
+   self.assertEqual(d['unavailable'],[])
+   item=next(x for x in d['items'] if x['jobId']=='legacy')
+   self.assertTrue(item['executionUnconfirmed']);self.assertEqual(item['bucket'],'attention')
+   with self.db() as (_,c):
+    c.execute("SELECT status FROM agent_runs WHERE id='legacy'");self.assertEqual(c.fetchone()['status'],'running')
+  finally:
+   with self.db(True) as (_,c):c.execute('DROP TABLE agent_runs')
  def test_delivery_aggregate_includes_old_commands_beyond_recent_history(self):
   with self.db(True) as (_,c):
    c.execute("INSERT INTO mp_jobs SELECT 'delivery-'||i,'collection_control','TEST','applied',NULL,'{}','{}',NOW(),NOW() FROM generate_series(1,60)i")

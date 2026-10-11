@@ -47,3 +47,5 @@ test('due research issue opens its exact saved review and requests an investor f
  assert.equal(workLane(row),'review');assert.match(nextAction(row),/follow-up review/);
  assert.deepEqual(activityDestination(row),{view:'stockanalysis',section:'reviews',work:'decision:'+row.jobId});
 });
+
+test('uncertain legacy execution is surfaced for reconciliation without retry advice',()=>{const row={workflow:'agent_runs',status:'running',bucket:'attention',executionUnconfirmed:true,ticker:'WELL'};assert.equal(workLane(row),'blocked');assert.equal(focusRows({items:[row]}).length,1);assert.match(nextAction(row),/Do not submit another paid run/);});

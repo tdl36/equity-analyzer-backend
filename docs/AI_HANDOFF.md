@@ -2,6 +2,25 @@
 
 Updated: October 10, 2026
 
+## T166 — visible reconciliation for legacy analyst jobs
+
+Activity now uses the last saved analyst-team log timestamp and keeps unfinished
+legacy jobs with missing, future, or over-15-minute-old progress in attention,
+including jobs older than seven days. It explicitly labels execution unconfirmed
+and warns against a duplicate paid retry. This is a read-only projection: original
+status, logs, reports and provider calls are untouched. Fresh logs retain the
+normal active lane; completed jobs retain their completion state.
+
+Build continuation restored as `continue-charlie-improvements`, without the prior
+two-hour expiry. Remaining priorities include supported legacy-run reconciliation
+and durable execution ownership, sourced historical valuation context, broader
+issuer profiles and analyst-graded real-source output benchmarks. T166 does not
+claim to resolve the WELL provider outcome or clear the model-maintenance gate.
+
+Validation: 1006 safe backend tests and 125 frontend tests pass; Python compile,
+production build and unchanged model-policy gate pass. Disposable PostgreSQL
+coverage verifies projection and unchanged stored status. Deployment pending.
+
 ## T165 — preserve citations in printed visuals
 
 Renderer v10 places citation destinations and safe original source links in the

@@ -14,7 +14,7 @@ SOURCES = [
  ('company_research_runs','Company research','portfolio',"NULL::text AS step",'updated_at'),
  ('investment_committee_runs','Investment committee','portfolio',"NULL::text AS step",'updated_at'),
  ('analysis_jobs','Thesis processing','portfolio','progress AS step','updated_at'),
- ('agent_runs','Analyst team','desk','NULL::text AS step','COALESCE(completed_at,created_at)'),
+ ('agent_runs','Analyst team','desk',"NULL::text AS step, logs->-1->>'ts' AS last_log_at",'COALESCE(completed_at,created_at)'),
  ('transcription_jobs','Audio processing','summary','progress AS step','updated_at'),
 ]
 
@@ -45,7 +45,7 @@ def assemble(rows, collection, now):
             step=r.get('step') or r.get('reason') or ('Waiting for Mac collection' if is_parent else status.replace('_',' ')),
             workflow=r.get('stage') or r['source'],
             stages=stages,warning=r.get('warning'),error=(r.get('error') or '')[:600],
-            createdAt=stamp(r.get('created_at')),updatedAt=stamp(r.get('updated_at')),
+            createdAt=stamp(r.get('created_at')),updatedAt=(stamp(r.get('last_log_at')) or stamp(r.get('updated_at'))) if r['source']=='agent_runs' and status in ACTIVE else stamp(r.get('updated_at')),
             view='stockanalysis' if is_parent else r['view']))
     for r in (collection or {}).get('requests',[]):
         if r.get('id') in refreshes:continue
@@ -58,7 +58,13 @@ def assemble(rows, collection, now):
         item['quietMinutes']=int(max(0,age)/60) if age is not None else None
         item['stale']=item['bucket']=='active' and (age is None or age>900)
         history_age=age if age is not None else ((now-datetime.fromisoformat(item['createdAt'])).total_seconds() if item['createdAt'] else None)
-        if item['bucket']!='recent' and history_age is not None and history_age>7*86400:item['bucket']='older'
+        if item.get('workflow')=='agent_runs' and item['status'] in ACTIVE and (age is None or age<0 or age>900):
+            item['bucket']='attention'
+            item['executionUnconfirmed']=True
+            item['step']='Execution needs reconciliation'
+            item['warning']='The saved run is unfinished, but current execution is not confirmed. Preserve its logs and check the backend/provider outcome before retrying; a retry may create another charge.'
+            item['stale']=age is None or age>900
+        if not item.get('executionUnconfirmed') and item['bucket']!='recent' and history_age is not None and history_age>7*86400:item['bucket']='older'
     items.sort(key=lambda r:({'attention':0,'active':1,'recent':2,'older':3}[r['bucket']],-(datetime.fromisoformat(r['updatedAt']).timestamp() if r['updatedAt'] else 0)))
     return items
 

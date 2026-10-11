@@ -39,6 +39,7 @@ export function workLane(row) {
 }
 export function nextAction(row) {
  const lane=workLane(row);
+ if(row.executionUnconfirmed)return 'Reconcile the saved run with backend execution and provider outcome. Do not submit another paid run until its outcome is known.';
  if(row.workflow==='research_decision')return 'Inspect the recorded issue, then save a follow-up review or a new review date. No thesis or portfolio action is automatic.';
  const intakeActions={paused:'Review automatic source intake settings before enabling comparisons.',credentials:'Add the required server-side key in Settings; never send credentials in chat.',budget:'Inspect the monthly budget in Settings before changing it.',daily_limit:'Pending sources are retained. Wait for the UTC reset or deliberately change the daily limit.',baseline:'Save a thesis for this company before enabling automatic comparison.',review:'Open evidence proposals and record your review of the existing proposal.',in_progress:'Inspect the existing company comparison before submitting another run.',worker:'No decision is currently identified. The worker will recheck eligibility before dispatch.'};
  if(row.waitCode&&intakeActions[row.waitCode])return intakeActions[row.waitCode];
