@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { researchAlerts } from './research-alert-model.mjs';
+import { researchAlerts, incompleteResearchAlerts } from './research-alert-model.mjs';
 import { activityDestination } from './activity-model.mjs';
 export function ResearchAlerts({
   api,
@@ -23,7 +23,7 @@ export function ResearchAlerts({
         var d = await r.json();
         if (alive) {
           setData(d);
-          setUnavailable(!!d.unavailable?.length);
+          setUnavailable(incompleteResearchAlerts(d));
         }
       } catch {
         if (alive) setUnavailable(true);
@@ -68,7 +68,7 @@ export function ResearchAlertBanner({
   return /*#__PURE__*/React.createElement("aside", {
     role: "alert",
     className: "research-global-alert"
-  }, /*#__PURE__*/React.createElement("style", null, `.research-global-alert{flex-shrink:0;background:#fff2da;color:#171510;border-bottom:1px solid #d3b77d;padding:12px 24px;display:flex;align-items:center;gap:16px;font:15px/1.4 Calibri,sans-serif}.research-global-alert p{margin:0;flex:1;min-width:0;overflow-wrap:anywhere}.research-global-alert button{font:inherit;color:#171510;background:#fff;border:1px solid #a58d61;border-radius:5px;padding:7px 12px;flex-shrink:0}@media(max-width:650px){.research-global-alert{padding:10px 14px;flex-wrap:wrap;gap:8px}.research-global-alert p{flex-basis:100%}}`), /*#__PURE__*/React.createElement("p", null, row ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("strong", null, row.ticker, " research needs attention."), " ", row.error || row.step || 'Open the saved issue before retrying.', count > 1 && ` ${count - 1} other companies also need attention.`) : /*#__PURE__*/React.createElement("strong", null, "Research alerts cannot be refreshed."), " ", unavailable && 'Status may be out of date. Check Activity.'), /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("style", null, `.research-global-alert{flex-shrink:0;background:#fff2da;color:#171510;border-bottom:1px solid #d3b77d;padding:12px 24px;display:flex;align-items:center;gap:16px;font:15px/1.4 Calibri,sans-serif}.research-global-alert p{margin:0;flex:1;min-width:0;overflow-wrap:anywhere}.research-global-alert button{font:inherit;color:#171510;background:#fff;border:1px solid #a58d61;border-radius:5px;padding:7px 12px;flex-shrink:0}@media(max-width:650px){.research-global-alert{padding:10px 14px;flex-wrap:wrap;gap:8px}.research-global-alert p{flex-basis:100%}}`), /*#__PURE__*/React.createElement("p", null, row ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("strong", null, row.ticker, " research needs attention."), " ", row.error || row.step || 'Open the saved issue before retrying.', count > 1 && ` ${count - 1} other companies also need attention.`) : /*#__PURE__*/React.createElement("strong", null, "Research alerts may be incomplete."), " ", unavailable && 'Some statuses may be missing or out of date. Check Activity and the company workspace.'), /*#__PURE__*/React.createElement("button", {
     onClick: () => {
       if (row) {
         var dest = activityDestination(row);

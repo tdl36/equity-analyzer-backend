@@ -4,3 +4,8 @@ export function researchAlerts(data,dismissed={}) {
  .sort((a,b)=>(a.workflow==='research_assignment'?0:1)-(b.workflow==='research_assignment'?0:1))
  .filter((r,i,all)=>all.findIndex(a=>a.ticker===r.ticker)===i).filter(r=>!dismissed[r.alertKey]);
 }
+
+export function incompleteResearchAlerts(data) {
+ return !!data?.unavailable?.length || (data?.truncated||[]).some(label=>
+  ['Research workflows','Stock analysis','Company research','Investment committee'].some(prefix=>label===prefix||label===prefix+' (attention)'));
+}

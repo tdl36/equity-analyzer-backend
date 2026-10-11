@@ -2,6 +2,59 @@
 
 Updated: October 11, 2026
 
+## T185 — protect blocked-job alert visibility (release in progress)
+
+Activity selection now uses independent 200-row attention and active budgets,
+with explicit truncation categories; global alerts warn on incomplete blocked
+research coverage. Synthetic regression covers >200 active jobs plus blocked
+assignment visibility and >200 blocked jobs. 1037 backend / 140 frontend tests
+and frontend build passed. Python compile and unchanged model-policy gate against fcc2598 also passed.
+Releasing source and generated assets; live ABT visibility verification pending.
+Three release markers set T185. Preserve unrelated dirty state.
+
+Historical audit of the first assistant proposal (superseded below): audit found
+it does not: 4 pillars comply with 3–5, but 17 signposts exceed 4–6 and 16 risks
+exceed 3–5. Descriptions/summary exceed sentence limits; named broker narrative
+also conflicts with native style rules. Existing import schema validates only
+structural compatibility (1–100 items), not the product writing contract. The
+assistant incorrectly preserved the bloated baseline instead of consolidating.
+User informed candidly. Proposal remains pending, unapproved. It is a cautious
+selected-page evidence update, not an objectively strong finished investment
+thesis; measurable signposts, prioritization, valuation/variant-view analysis and
+broader source coverage remain weaknesses. Do not describe it as compliant.
+
+## ABT rebuilt proposal — October 11, 2026
+
+User-authorized rebuild saved separately as pending draft
+39df605a-c074-4f8f-8f2d-03e6e05a2807; read-back verified pending, non-stale,
+matching fingerprint and 4 pillars / 6 signposts / 5 risks. Selection prioritizes
+economic materiality, measurable monitoring and explicit valuation assumptions.
+Selected originals and public primary sources were reviewed; source references,
+arithmetic, unchanged original hashes and a three-page Calibri PDF were checked.
+Private files remain outside the repository. This is investor-review work, not
+approval or proof of future returns. The old bloated draft remains preserved.
+The automated parent remains attention: the separate draft does not retroactively
+pass its source gate or complete the parent. Do not launch another paid retry.
+
+## Collection monitor check — October 11, 20:53 UTC
+
+Null local claim; no Chrome opened. Authenticated Activity reports zero pending
+collection commands, fresh Mac/collection snapshots, no unavailable reads.
+Direct assignment reads confirm unchanged ABT attention and separately prepared
+thesis draft pending/non-stale; UNH complete and SYK known collection attention.
+No retry or dispatch sent.
+
+New alerting defect: Activity reports Research workflows truncation and omits
+ABT's blocked parent from its items, although /api/research/assignments returns
+it. The global research banner derives alerts exclusively from Activity items,
+so the new banner cannot reliably surface this blocked assignment. Activity SQL
+sorts attention rows after other nonterminal rows before the 200-row limit.
+Recovery priority for implementation continuation: fetch bounded blocked jobs
+independently of other active/history rows (or use an explicit alert endpoint),
+expose incomplete alert coverage, and add a synthetic >200-active-row regression.
+Do not describe T183 global alerts as fully reliable until this is corrected.
+Five-minute worker checks read assignments directly and still detect this state.
+
 ## ABT recovery outcome after T184
 
 The bounded quality attempt completed all 12 stages but again produced no

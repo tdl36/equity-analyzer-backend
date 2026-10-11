@@ -123,14 +123,19 @@ def create_blueprint(get_db):
                     if not cur.fetchone()['name']:continue
                     ticker="''::text" if table=='transcription_jobs' else 'ticker'
                     error='NULL::text' if table=='agent_runs' else 'error'
-                    # Active work is selected independently of recent history: old
-                    # blocked jobs must never disappear behind newer completions.
+                    # Independent budgets prevent busy queues from hiding blocked work.
                     projection=f'id,{ticker} AS ticker,status,{error} AS error,created_at,{updated} AS updated_at,{extra}'
-                    cur.execute(f'SELECT {projection} FROM {table} WHERE status NOT IN %s ORDER BY CASE WHEN status IN %s THEN 1 ELSE 0 END,{updated} DESC LIMIT 201',(TERMINAL,ATTENTION))
-                    active=list(cur.fetchall())
-                    if len(active)>200:truncated.append(label)
-                    cur.execute(f'SELECT {projection} FROM {table} WHERE status IN %s AND {updated}>NOW()-INTERVAL \'24 hours\' ORDER BY {updated} DESC LIMIT 20',(TERMINAL,))
-                    for r in active[:200]+list(cur.fetchall()):rows.append({**dict(r),'source':table,'label':label,'view':view})
+                    selected=[]
+                    for condition,params,kind in (
+                        ('status IN %s',(ATTENTION,), 'attention'),
+                        ('status NOT IN %s AND status NOT IN %s',(TERMINAL,ATTENTION), 'active'),
+                    ):
+                        cur.execute(f'SELECT {projection} FROM {table} WHERE {condition} ORDER BY {updated} DESC,id DESC LIMIT 201',params)
+                        group=list(cur.fetchall())
+                        if len(group)>200:truncated.append(label+' ('+kind+')')
+                        selected.extend(group[:200])
+                    cur.execute(f"SELECT {projection} FROM {table} WHERE status IN %s AND {updated}>NOW()-INTERVAL '24 hours' ORDER BY {updated} DESC LIMIT 20",(TERMINAL,))
+                    for r in selected+list(cur.fetchall()):rows.append({**dict(r),'source':table,'label':label,'view':view})
             except Exception:unavailable.append(label)
         collection={}; collected_at=None; agent=None
         try:

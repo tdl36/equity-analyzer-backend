@@ -10,3 +10,11 @@ test('dismissal does not suppress a new failure on the same job',()=>{
  assert.equal(researchAlerts({items:[item]},{[key]:true}).length,0);
  assert.equal(researchAlerts({items:[{...item,error:'second'}]},{[key]:true}).length,1);
 });
+
+import {incompleteResearchAlerts} from '../../src/research-alert-model.mjs';
+test('warns when blocked research coverage is capped or unavailable',()=>{
+ assert.equal(incompleteResearchAlerts({truncated:['Research workflows (attention)']}),true);
+ assert.equal(incompleteResearchAlerts({truncated:['Research workflows']}),true);
+ assert.equal(incompleteResearchAlerts({unavailable:['Stock analysis']}),true);
+ assert.equal(incompleteResearchAlerts({truncated:['Research workflows (active)','Audio processing (attention)']}),false);
+});

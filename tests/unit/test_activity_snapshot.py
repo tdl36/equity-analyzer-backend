@@ -65,7 +65,7 @@ class ActivityPostgresTests(unittest.TestCase):
   with self.db(True) as (_,c):c.execute("INSERT INTO mp_jobs SELECT 'review-'||i,'evidence_amendment','TEST','needs_review',NULL,'{}','{}',NOW(),NOW() FROM generate_series(1,205)i")
   try:
    app=Flask(__name__);app.register_blueprint(create_blueprint(self.db));d=app.test_client().get('/api/activity').json
-   self.assertTrue(any(r['jobId']=='old' for r in d['items']));self.assertIn('Research workflows',d['truncated'])
+   self.assertTrue(any(r['jobId']=='old' for r in d['items']));self.assertIn('Research workflows (attention)',d['truncated'])
   finally:
    with self.db(True) as (_,c):c.execute("DELETE FROM mp_jobs WHERE id LIKE 'review-%'")
 
@@ -135,6 +135,23 @@ class ActivityPostgresTests(unittest.TestCase):
     c.execute('SELECT status,report FROM agent_runs WHERE id=%s',(run,));r=c.fetchone();self.assertEqual(r['status'],'running');self.assertEqual(r['report'],'private report')
   finally:
    with self.db(True) as (_,c):c.execute('DROP TABLE agent_runs')
+ def test_blocked_assignment_survives_more_than_200_active_jobs(self):
+  with self.db(True) as (_,c):
+   c.execute("INSERT INTO mp_jobs SELECT 'alert-active-'||i,'pipeline','TEST','running',NULL,'{}','{}',NOW(),NOW() FROM generate_series(1,205)i")
+   c.execute("INSERT INTO mp_jobs VALUES('alert-blocked','research_assignment','ABT','attention','Needs source review','{}','{}',NOW()-INTERVAL '1 day',NOW()-INTERVAL '1 day')")
+  try:
+   app=Flask(__name__);app.register_blueprint(create_blueprint(self.db));d=app.test_client().get('/api/activity').json
+   self.assertTrue(any(x['jobId']=='alert-blocked' and x['status']=='attention' for x in d['items']))
+   self.assertIn('Research workflows (active)',d['truncated'])
+   self.assertNotIn('Research workflows (attention)',d['truncated'])
+   with self.db(True) as (_,c):
+    c.execute("INSERT INTO mp_jobs SELECT 'alert-attention-'||i,'research_assignment','TEST','attention','Review','{}','{}',NOW(),NOW() FROM generate_series(1,205)i")
+   d=app.test_client().get('/api/activity').json
+   self.assertIn('Research workflows (attention)',d['truncated'])
+   with self.db() as (_,c):
+    c.execute("SELECT status FROM mp_jobs WHERE id='alert-blocked'");self.assertEqual(c.fetchone()['status'],'attention')
+  finally:
+   with self.db(True) as (_,c):c.execute("DELETE FROM mp_jobs WHERE id LIKE 'alert-%'")
  def test_delivery_aggregate_includes_old_commands_beyond_recent_history(self):
   with self.db(True) as (_,c):
    c.execute("INSERT INTO mp_jobs SELECT 'delivery-'||i,'collection_control','TEST','applied',NULL,'{}','{}',NOW(),NOW() FROM generate_series(1,60)i")
