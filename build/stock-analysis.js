@@ -283,7 +283,9 @@ export function StockAnalysis({
     className: "sa-heading"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("small", null, "CHARLIE / STOCK RESEARCH STUDIO"), /*#__PURE__*/React.createElement("h3", null, "Understand the business.", /*#__PURE__*/React.createElement("br", null), "Test the investment case."), /*#__PURE__*/React.createElement("p", null, "Structured research, a source-linked visual, and a record of what changed.")), /*#__PURE__*/React.createElement("div", {
     className: "sa-company"
-  }, /*#__PURE__*/React.createElement("strong", null, ticker), /*#__PURE__*/React.createElement("span", null, revision ? 'Case baseline R' + revision : 'No saved case baseline'))), /*#__PURE__*/React.createElement(ResearchAssignment, {
+  }, /*#__PURE__*/React.createElement("strong", null, ticker), /*#__PURE__*/React.createElement("span", null, revision ? 'Case baseline R' + revision : 'No saved case baseline'))), /*#__PURE__*/React.createElement("details", {
+    open: !focusId
+  }, /*#__PURE__*/React.createElement("summary", null, focusId ? 'Related assignments and new research' : 'Collect originals and prepare drafts'), /*#__PURE__*/React.createElement(ResearchAssignment, {
     focusId: assignmentFocus,
     onClearFocus: () => onWorkChange?.(''),
     api: api,
@@ -294,7 +296,7 @@ export function StockAnalysis({
       setSelected(id);
       setReload(x => x + 1);
     }
-  }), !assignmentFocus && /*#__PURE__*/React.createElement(React.Fragment, null, error && /*#__PURE__*/React.createElement("p", {
+  })), !assignmentFocus && /*#__PURE__*/React.createElement(React.Fragment, null, error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
   }, error, " ", /*#__PURE__*/React.createElement("button", {
     onClick: () => setReload(x => x + 1)

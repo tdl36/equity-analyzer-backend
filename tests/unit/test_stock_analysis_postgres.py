@@ -109,6 +109,15 @@ class StockPostgresTests(unittest.TestCase):
         self.assertEqual(self.client.get(path).status_code,409)
         self.assertEqual(len(self.calls),calls)
 
+    def test_clipped_non_pdf_stops_before_any_paid_call(self):
+        import sys
+        with patch.object(sys.modules['notegen'],'extract_file_text',return_value='x'*160001):
+            r=self.start()
+        self.assertEqual(r['status'],'attention')
+        self.assertIn('extraction bound',r['error'])
+        self.assertEqual(self.calls,[])
+        self.assertEqual(r['sources'],[])
+
     def test_unknown_outcome_requires_explicit_retry_and_rechecks_sources(self):
         self.simulate_failure=True;r=self.start();self.assertEqual(r['status'],'attention');self.assertEqual(r['state']['inFlight'],'report-0')
         path='/api/research/stock-analysis-run/'+r['id']

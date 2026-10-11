@@ -78,4 +78,10 @@ not an expert quality score. Assignment focus hides unrelated report selection.
 
 Verified-original downloads from source citations across stock/company/committee
 research. Exact frozen/current byte checks, authenticated read-only attachment,
-browser rehash, no research dispatch. 966 backend tests, 117 frontend tests and compile/build pass. Deployment pending.
+browser rehash, no research dispatch. 966 backend tests, 117 frontend tests and compile/build pass. Backend 9ae97ea and hosted T155 verified. Real frozen original read matched; unauthenticated blocked.
+
+## T156 in progress
+
+Reject silently clipped originals before model calls; record full returned text
+coverage and format limitations. Preserve existing research and source bytes.
+Direct report navigation collapses setup. 971 backend tests, 117 frontend tests, compile/build pass; deployment verification pending.

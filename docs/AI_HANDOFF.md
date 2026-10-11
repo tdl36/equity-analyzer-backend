@@ -2,6 +2,19 @@
 
 Updated: October 10, 2026
 
+## T156 — extraction completeness before model calls
+
+New company/committee/stock runs reject an oversized or silently clipped
+per-document extraction before any research call. The 160,000-character bound is
+unchanged. New frozen sources record exact returned-extraction ranges and hashes;
+shared-pack selection replaces this metadata only where text was actually omitted.
+Word/table-order, cached spreadsheet-value and decoding limitations are explicit.
+Full returned extraction is not full-document review or factual validation.
+Existing frozen sources, reports and originals are not reprocessed.
+
+Direct report links now put the saved report ahead of new-assignment setup.
+971 backend tests, 117 frontend tests, compilation and build pass. Deployment verification pending.
+
 ## T155 — exact-original evidence downloads
 
 Stock Analysis, Deep Research and Committee source/evidence views offer verified
@@ -14,7 +27,7 @@ No extraction, model call, collection or job wakeup is added. Originals remain
 unchanged. Human source inspection does not approve the research.
 
 Synthetic exact-byte/tamper/unknown-source tests and focused disposable-PostgreSQL
-route tests pass. 966 backend tests, 117 frontend tests, compilation and build pass. Deployment verification pending.
+route tests pass. 966 backend tests, 117 frontend tests, compilation and build pass. Backend 9ae97ea and hosted T155 assets verified. Read-only UNH original download matched the frozen SHA-256; anonymous access returned 401.
 
 ## T154 — research coverage and review checklist
 

@@ -237,9 +237,9 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
                         if sha!=row['input']['hashes'].get(d['filename']):raise ValueError('Selected source changed after submission. Start a new revision.')
                         text=notegen.extract_pdf_text(d,max_tokens=40001) if d['filename'].lower().endswith('.pdf') else notegen.extract_file_text(d,max_chars=160001)
                         total+=len(text)
-                        if not text.strip() or (not studio and total>160000) or 'middle of document omitted to fit context' in text:raise ValueError('Sources unreadable or exceed the per-document extraction bound. Use a smaller readable pack.')
-                        sources.append({'id':'src-'+digest([sha,d['filename']]),'filename':d['filename'],'originalHash':sha,'extractionHash':hashlib.sha256(text.encode()).hexdigest(),'sourceUrl':(d.get('metadata') or {}).get('sourceUrl','') if isinstance(d.get('metadata'),dict) else '', 'text':text})
-                        if d.get('textExtraction'):sources[-1]['textExtraction']=d['textExtraction']
+                        if not studio and total>160000:raise ValueError('The selected pack exceeds the shared extraction bound. Use a smaller readable pack.')
+                        from research_extraction import frozen_source
+                        sources.append(frozen_source(d,sha,text,'src-'+digest([sha,d['filename']])))
                     if studio:
                         from research_source_budget import fit_sources
                         sources=fit_sources(sources)

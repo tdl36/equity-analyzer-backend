@@ -197,7 +197,7 @@ export function CompanyResearch({
   }, error, " ", /*#__PURE__*/React.createElement("button", {
     onClick: () => setRefresh(x => x + 1)
   }, "Reload research")), /*#__PURE__*/React.createElement("details", {
-    open: !inventory?.runs.length
+    open: !focusId && !inventory?.runs.length
   }, /*#__PURE__*/React.createElement("summary", null, committee ? 'Prepare a committee review' : 'Prepare a new Deep Research revision'), /*#__PURE__*/React.createElement("p", null, "Baseline: saved case R", revision, !revision ? ' · initiation, no saved case yet' : '', ". Confirm the issuer in the originals; filing under a ticker alone does not establish identity."), /*#__PURE__*/React.createElement("fieldset", {
     disabled: disabled || busy || !!error || !inventory || active
   }, /*#__PURE__*/React.createElement("div", {
