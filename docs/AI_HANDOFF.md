@@ -2,6 +2,21 @@
 
 Updated: October 10, 2026
 
+## T147 — saved-evidence change brief (release in progress)
+
+The investment-case workspace adds What changed, a read-only brief combining case
+revision differences, newly accepted evidence links and unresolved investment-case
+proposals. Its default cutoff is an actual recorded evidence-proposal review, not
+an inferred whole-thesis approval. If no usable baseline exists, the investor must
+choose a saved revision. Pending proposals before the cutoff remain visible; their
+updated timestamp identifies later repairs. Excerpts, source filenames, provenance
+and unresolved checks remain visible. Coverage is bounded to the existing 100-item
+history and 30-proposal windows, not a complete news/document scan. No model calls,
+review decisions or thesis mutations occur. Unsaved editor changes are excluded.
+
+This is the first increment of the authorized two-hour investor workflow session;
+see docs/investor-workflow-progress.md for the checkpoint and finite cutoff.
+
 ## T145 / T146 — investor exception inbox
 
 Activity defaults to Needs you, separating investor review/proposals from jobs

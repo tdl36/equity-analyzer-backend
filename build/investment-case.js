@@ -4,6 +4,7 @@ import { InvestorFramework } from './investor-framework';
 import { ResearchDecisions } from './research-decisions';
 import { ResearchWorkbench } from './research-workbench';
 import { UnderweightMonitor } from './underweight-monitor';
+import { ResearchChanges } from './research-changes';
 import { ThesisEvolution } from './thesis-evolution';
 import { CaseSignals } from './case-signals';
 import { OperatingModel } from './operating-model';
@@ -205,7 +206,7 @@ export function InvestmentCase({
   }, /*#__PURE__*/React.createElement("h3", null, active, " \xB7 ", revision ? `Revision ${revision}` : 'New investment case'), /*#__PURE__*/React.createElement("span", null, dirty ? 'Unsaved changes' : 'Saved working assumptions')), /*#__PURE__*/React.createElement("nav", {
     className: "lifecycle-tabs",
     "aria-label": "Investment thesis workspace"
-  }, [['snapshot', 'Snapshot'], ['stock-analysis', 'Stock analysis'], ['research', 'Deep Research'], ['committee', 'Committee'], ['case', 'Current thesis'], ['model', 'Operating scenarios'], ['evidence', 'Evidence & proposals'], ['reviews', 'Decisions & underweights'], ['signals', 'Case signals'], ['evolution', 'Evolution']].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
+  }, [['snapshot', 'Snapshot'], ['stock-analysis', 'Stock analysis'], ['research', 'Deep Research'], ['committee', 'Committee'], ['case', 'Current thesis'], ['model', 'Operating scenarios'], ['changes', 'What changed'], ['evidence', 'Evidence & proposals'], ['reviews', 'Decisions & underweights'], ['signals', 'Case signals'], ['evolution', 'Evolution']].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
     key: id,
     "aria-pressed": workspaceTab === id,
     onClick: () => setWorkspaceTab(id)
@@ -410,7 +411,15 @@ export function InvestmentCase({
     body: body,
     disabled: busy || dirty,
     onCommit: save
-  })), workspaceTab === 'signals' && /*#__PURE__*/React.createElement(CaseSignals, {
+  })), workspaceTab === 'changes' && /*#__PURE__*/React.createElement(ResearchChanges, {
+    key: active,
+    api: api,
+    ticker: active,
+    revision: revision,
+    dirty: dirty,
+    onEvidence: () => setWorkspaceTab('evidence'),
+    onHistory: () => setWorkspaceTab('evolution')
+  }), workspaceTab === 'signals' && /*#__PURE__*/React.createElement(CaseSignals, {
     key: active + '-signals',
     api: api,
     body: body,

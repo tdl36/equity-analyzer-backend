@@ -191,7 +191,7 @@ def create_blueprint(get_db):
     def source_proposals(ticker):
         if not re.fullmatch(r'[A-Z0-9][A-Z0-9.\-]{0,19}',ticker):return jsonify(error='Choose a valid ticker.'),400
         with get_db() as (_,cur):
-            cur.execute("SELECT id,status,result,error,created_at,input->>'target' AS target FROM mp_jobs WHERE ticker=%s AND stage='evidence_amendment' AND (status IN ('awaiting_approval','applied') OR (input->>'target'='investment_case' AND status IN ('queued','running','failed','dismissed'))) ORDER BY created_at DESC LIMIT 30",(ticker,))
+            cur.execute("SELECT id,status,result,error,created_at,updated_at,input->>'target' AS target FROM mp_jobs WHERE ticker=%s AND stage='evidence_amendment' AND (status IN ('awaiting_approval','applied') OR (input->>'target'='investment_case' AND status IN ('queued','running','failed','dismissed'))) ORDER BY created_at DESC LIMIT 30",(ticker,))
             rows=[dict(r) for r in cur.fetchall()]
             cur.execute('SELECT filename FROM document_files WHERE ticker=%s ORDER BY filename',(ticker,))
             documents=[r['filename'] for r in cur.fetchall()]

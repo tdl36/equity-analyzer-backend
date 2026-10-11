@@ -4,6 +4,7 @@ import {InvestorFramework} from './investor-framework';
 import {ResearchDecisions} from './research-decisions';
 import {ResearchWorkbench} from './research-workbench';
 import {UnderweightMonitor} from './underweight-monitor';
+import {ResearchChanges} from './research-changes';
 import {ThesisEvolution} from './thesis-evolution';
 import {CaseSignals} from './case-signals';
 import {OperatingModel} from './operating-model';
@@ -36,7 +37,7 @@ export function InvestmentCase({api,analyses=[],initialTicker='',initialTab='sna
  {dirty&&<p>Save your edits before switching companies. To discard them, use <button disabled={busy} onClick={()=>{setDirty(false);setMessage('Edits remain visible until you open a company again.');}}>Allow reload without saving</button>.</p>}
  <p role="status">{message}</p>
  {active&&<><div className="workspace-section-heading"><h3>{active} · {revision?`Revision ${revision}`:'New investment case'}</h3><span>{dirty?'Unsaved changes':'Saved working assumptions'}</span></div>
- <nav className="lifecycle-tabs" aria-label="Investment thesis workspace">{[['snapshot','Snapshot'],['stock-analysis','Stock analysis'],['research','Deep Research'],['committee','Committee'],['case','Current thesis'],['model','Operating scenarios'],['evidence','Evidence & proposals'],['reviews','Decisions & underweights'],['signals','Case signals'],['evolution','Evolution']].map(([id,label])=><button key={id} aria-pressed={workspaceTab===id} onClick={()=>setWorkspaceTab(id)}>{label}</button>)}</nav>
+ <nav className="lifecycle-tabs" aria-label="Investment thesis workspace">{[['snapshot','Snapshot'],['stock-analysis','Stock analysis'],['research','Deep Research'],['committee','Committee'],['case','Current thesis'],['model','Operating scenarios'],['changes','What changed'],['evidence','Evidence & proposals'],['reviews','Decisions & underweights'],['signals','Case signals'],['evolution','Evolution']].map(([id,label])=><button key={id} aria-pressed={workspaceTab===id} onClick={()=>setWorkspaceTab(id)}>{label}</button>)}</nav>
  {workspaceTab==='model'&&<OperatingModel key={active} api={api} ticker={active} body={body} revision={revision} busy={busy} dirty={dirty} onChange={edit} onSave={save} onResearch={()=>setWorkspaceTab('research')}/>}
  {workspaceTab==='stock-analysis'&&<StockAnalysis key={active+'-stock-analysis'} api={api} ticker={active} revision={revision} disabled={busy||dirty} onDraft={draft=>{edit({...empty(),...draft});setWorkspaceTab('case');setMessage('Stock analysis draft loaded. Review changes and source passages before saving; no thesis change has been approved.');}}/>}
  {workspaceTab==='research'&&<CompanyResearch key={active} api={api} ticker={active} revision={revision} disabled={busy||dirty} onUpdate={context=>{setResearchContext(context);setWorkspaceTab('evidence');}} onDraft={draft=>{edit(draft);setWorkspaceTab('case');}}/>}
@@ -50,6 +51,7 @@ export function InvestmentCase({api,analyses=[],initialTicker='',initialTab='sna
  </div><div hidden={workspaceTab!=='reviews'}><ResearchWorkbench initialKind="underweight" key={active+'-work'} api={api} ticker={active} caseRevision={revision} assumptions={body.assumptions} disabled={busy||dirty}/>
  <ResearchDecisions key={active+'-decisions'} api={api} ticker={active}/>
  </div><div hidden={workspaceTab!=='evidence'}><CaseEvidence researchContext={researchContext} key={active+(researchContext?.id||'')} revision={revision} api={api} ticker={active} body={body} disabled={busy||dirty} onCommit={save}/></div>
+ {workspaceTab==='changes'&&<ResearchChanges key={active} api={api} ticker={active} revision={revision} dirty={dirty} onEvidence={()=>setWorkspaceTab('evidence')} onHistory={()=>setWorkspaceTab('evolution')}/>}
  {workspaceTab==='signals'&&<CaseSignals key={active+'-signals'} api={api} body={body} disabled={busy} onChange={edit} onSave={save} message={message}/>}
  {workspaceTab==='evolution'&&<ThesisEvolution key={active} api={api} ticker={active} revision={revision}/>}
  <button disabled={busy||dirty||!revision} onClick={()=>{const blob=new Blob([JSON.stringify({ticker:active,revision,body},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`${active}-investment-case-r${revision}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}}>Download saved case with evidence · JSON</button>
