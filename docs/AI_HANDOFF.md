@@ -20,14 +20,24 @@ LangChain callback contract were inspected; callback/database behavior is verifi
 with synthetic fixtures, not a paid live model call. Tests cover isolation, strict
 metadata filtering, malformed evidence and propagation of persistence failure.
 Validation: 1021 safe backend tests, 134 frontend tests, Python compile, production
-build and unchanged model-policy gate against 1357b54 passed. Deployment verification
-is pending; existing active jobs were not restarted.
+build and unchanged model-policy gate against 1357b54 passed. Backend revision
+6633bd19a9a882019806071b6d125e2143f55630 reports healthy. Hosted T177 JS/CSS/service
+worker match exact local bytes; Cloudflare version d866da5c-8908-4fb5-b135-5a0ec0752943.
+Authenticated saved-run inspection shows the new bounded modelCalls evidence.
+Legacy WELL remains running/unenrolled with zero recorded callbacks and unverified
+provider outcome. Mac heartbeat fresh at 18:43:09 UTC; agent code unchanged.
 
 ABT live collection evidence (October 11): the user-authorized assignment completed
 all four collection categories with eight eligible originals, iCloud preservation
-and eight exact-byte Charlie receipts. Parent assignment advanced to Research and
-source review with no saved artifacts at inspection. This is collection acceptance
-evidence only, not proof of completed thesis/summary/one-pager or all eight phases.
+and eight exact-byte Charlie receipts. Parent assignment advanced to research, then
+stopped with a JSON parsing failure. Read-only inspection after deployment confirms
+attention, inFlight=report-0, zero saved responses/completed stages and no artifacts.
+No retry was issued. This is collection acceptance evidence only, not completed
+thesis/summary/one-pager or all eight phases. Next phase-1 priority: preserve returned
+company-research responses before parsing, classify parse failures explicitly, and
+provide a safe inspection/recovery path. Current parser throws before the response
+is saved; a paid retry requires inspection of usage and explicit acknowledgment.
+Do not treat the existing ABT reservation as proof that no call ran.
 
 ## T176 — explicit execution evidence in Activity
 
