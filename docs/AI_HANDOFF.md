@@ -13,8 +13,15 @@ legacy uncertain jobs retain provider-outcome reconciliation. These flags are
 saved evidence, never proof a worker is live. Exact-run inspection now labels the
 creation timestamp Created rather than implying execution started then.
 
-Validation and deployment pending. No research, provider calls or job mutations
-for QA. Next: durable batch concurrency, submission deduplication and supported
+Validation: 1012 safe backend and 126 frontend tests pass; compile/build and
+unchanged model-policy gate pass. Isolated PostgreSQL tests cover fresh/delayed/
+old queued work with and without recovery, and reservation switching to uncertain
+execution. Backend 4b4f405f5aaf20d50476359e7e9760e956229329 and exact hosted T171
+JS/CSS/service-worker bytes verified; Cloudflare
+03eafaf4-46be-4c8f-b641-a11a0ece9d56. Live Activity has no unavailable sources;
+legacy WELL remains running/attention with execution unconfirmed, not pending
+start. Mac heartbeat current at 16:11:02 UTC; no agent code change/restart.
+No research, provider calls or job mutations for QA. Next: durable batch concurrency, submission deduplication and supported
 interrupted-attempt reconciliation, then further research workspace simplification.
 
 ## T170 — recover single analyst jobs before first execution
