@@ -20,7 +20,15 @@ No ambiguous attempt is retried or marked complete. Activity recognizes new batc
 start recovery. This is per-batch concurrency fencing, not a global distributed
 concurrency cap or live-provider reconciliation.
 
-Validation/deployment pending. Next in phase 1: supported interrupted-attempt
+Validation: 1015 safe backend and 134 frontend tests pass; final focused tests
+also cover missing-child refusal. Python compile, production build and unchanged
+model-policy gate pass. Isolated database tests cover concurrent batch retries,
+frozen-input conflicts, cross-worker concurrency, slot retention/release and
+recovery fairness. No paid research or production submission used for QA.
+Backend 7f99ba4b99819030358d995dd565d4025350d1e1 and exact hosted T175
+JS/CSS/service-worker bytes verified; Cloudflare
+30ac85b1-ec20-4a58-9988-75e1cf8d409c. Authenticated capabilities and Activity checked;
+Mac code unchanged/no restart. Next in phase 1: supported interrupted-attempt
 reconciliation and operational recovery controls, including legacy WELL. Later
 phases and the full one-click update experience are not complete.
 
