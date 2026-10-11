@@ -6,6 +6,10 @@ class OnePagerTests(unittest.TestCase):
     def setUp(self):
         self.run={'id':'synthetic','ticker':'TEST','sources':[{'id':'s1','filename':'original.pdf','sourceUrl':'javascript:alert(1)'}],'state':{'citations':{}}}
     def add(self,path,text,**kw):
+        node=self.run['state'].setdefault('report',{})
+        parts=path.strip('/').split('/')
+        for key in parts[:-1]:node=node.setdefault(key,{})
+        node[parts[-1]]=text
         self.run['state']['citations'][path]={'statement':text,'review':'supported','passageMatched':True,'evidence':[{'sourceId':'s1','matched':True}],**kw}
     def test_no_orphan_valuation_or_cross_debate_pair(self):
         self.add('/valuation/metrics/0/historical_range','Sector 0.88x')

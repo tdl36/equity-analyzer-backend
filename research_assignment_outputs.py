@@ -3,10 +3,11 @@ from research_extraction import has_omissions
 import copy
 import html
 from stock_analysis_visual import supported
+from stock_evidence import valid_citations
 
 
 def fields(run,prefix):
-    return [(p,c) for p,c in run['state'].get('citations',{}).items()
+    return [(p,c) for p,c in valid_citations(run).items()
             if p.startswith(prefix) and supported(c) and c.get('statement')]
 
 
@@ -30,7 +31,7 @@ def note(run,kind,assignment):
             field_label=' · '.join(str(int(x)+1) if x.isdigit() else x.replace('_',' ') for x in path.strip('/').split('/')[1:])
             if path.startswith('/financials/historical/'):
                 period_path='/'.join(path.split('/')[:4])+'/period'
-                period=run['state'].get('citations',{}).get(period_path)
+                period=valid_citations(run).get(period_path)
                 field_label+=' · '+(period['statement'] if supported(period) else 'period needs review')
             lines.append('<p><b>'+esc(field_label)+'</b><br>'+esc(text)+' <small>['+', '.join(map(str,ids))+'] · '+esc(c.get('basis','interpretation').replace('_',' '))+'</small></p>')
         sections.append('<section><h2>'+esc(title)+'</h2>'+(''.join(lines) or '<p>Source-supported coverage unavailable.</p>')+'</section>')

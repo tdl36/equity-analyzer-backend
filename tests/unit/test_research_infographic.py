@@ -7,6 +7,10 @@ class EditorialTests(unittest.TestCase):
         self.run={'ticker':'TEST','sources':[{'id':'s','filename':'source.pdf','sourceUrl':'javascript:bad'}],'state':{'citations':{}}}
         self.f={'annuals':[],'quote':None,'sourceUrl':'https://www.sec.gov/','sourceHash':'a','asOf':'2026-10-10','retrievedAt':'2026-10-10'}
     def add(self,path,statement,**kw):
+        node=self.run['state'].setdefault('report',{})
+        parts=path.strip('/').split('/')
+        for key in parts[:-1]:node=node.setdefault(key,{})
+        node[parts[-1]]=statement
         self.run['state']['citations'][path]=dict(statement=statement,review='supported',passageMatched=True,evidence=[dict(sourceId='s',matched=True)]) | kw
     def test_rank_distinct_evidence_and_keep_full_qualified_claim(self):
         self.add('/summary/investment_thesis/0','MA margins could recover, but only if costs stabilize')
@@ -65,3 +69,11 @@ class EditorialTests(unittest.TestCase):
         self.add('/catalysts/0/timing','Next month',evidence=[{'sourceId':'timing','matched':True}])
         h=render(self.run,{},self.f)
         self.assertIn('Next month<sup><a href="#source-2">2</a></sup>',h)
+
+    def test_thesis_prefers_complete_ownership_argument_to_short_driver(self):
+        self.add('/summary/investment_thesis/0','Margins can recover if renewal prices exceed medical cost growth.')
+        self.add('/summary/top_drivers/0','2027 margin recovery')
+        picked=Editor(self.run).select(['/summary/investment_thesis/','/summary/top_drivers/'],1,prefer_prefix=True)
+        self.assertEqual(picked[0]['statement'],'Margins can recover if renewal prices exceed medical cost growth.')
+        h=render(self.run,{},self.f)
+        self.assertNotIn('What must be true for the investment case to work?',h)

@@ -93,7 +93,7 @@ class AssignmentPostgresTests(unittest.TestCase):
         raise AssertionError(endpoint)
     def report(self):
         c={'statement':'Synthetic company evidence.','basis':'reported_fact','passageMatched':True,'review':'supported','evidence':[{'sourceId':'S1','matched':True,'excerpt':self.raw.decode()}]}
-        return dict(id=child(self.ident,'stock-analysis'),ticker=self.ticker,status=self.report_status,baselineStale=self.stale,input={},sources=[{'id':'S1','filename':'one.txt','originalHash':self.sha,'sourceUrl':'https://research.alpha-sense.com/doc/one'}],state={'completed':['a']*12,'report':{},'citations':{p:copy.deepcopy(c) for p in ['/summary/investment_thesis/0','/summary/one_liner','/risks/0/risk','/monitor/0/metric']}})
+        return dict(id=child(self.ident,'stock-analysis'),ticker=self.ticker,status=self.report_status,baselineStale=self.stale,input={},sources=[{'id':'S1','filename':'one.txt','originalHash':self.sha,'sourceUrl':'https://research.alpha-sense.com/doc/one'}],state={'completed':['a']*12,'report':{'summary':{'investment_thesis':[c['statement']],'one_liner':c['statement']},'risks':[{'risk':c['statement']}],'monitor':[{'metric':c['statement']}]},'citations':{p:copy.deepcopy(c) for p in ['/summary/investment_thesis/0','/summary/one_liner','/risks/0/risk','/monitor/0/metric']}})
     def start(self,outputs=None):
         p={**P,'ticker':self.ticker,'requestId':self.ident}
         if outputs:p['outputs']=outputs
@@ -137,7 +137,7 @@ class AssignmentPostgresTests(unittest.TestCase):
         original=self.client.get(path+'?render=original')
         self.assertEqual(original.status_code,200)
         refreshed=self.client.get(path)
-        self.assertIn(b'research-onepager-v2',refreshed.data)
+        self.assertIn(b'research-onepager-v3',refreshed.data)
         self.assertEqual(before,self.co.read(self.ident))
         self.assertEqual(len(self.submits),1)
         self.report_status='running'

@@ -59,7 +59,8 @@ def leaves(value, path=''):
 
 
 def missing(value):
-    return not value or value.casefold().startswith(('unavailable','not available','not recorded'))
+    from stock_evidence import missing_value
+    return missing_value(value)
 
 
 def validate_report(raw, group, sources, mode):
@@ -168,8 +169,8 @@ def compare(prior,state,sources,baseline):
     def receipts(st,src,section):
         hashes={s['id']:s['originalHash'] for s in src}
         return sorted({digest([hashes.get(e['sourceId']), ' '.join(e['excerpt'].split())])
-                       for p,c in st.get('citations',{}).items() if p.split('/')[1]==section and c.get('review')=='supported'
-                       for e in c.get('evidence',[]) if e.get('matched')})
+                       for p,c in st.get('citations',{}).items() if p.startswith('/'+section+'/') and c.get('review')=='supported' and c.get('passageMatched') is True
+                       for e in c.get('evidence',[]) if e.get('matched') is True and e.get('sourceId') in hashes})
     sections=[]
     for section in TITLES:
         before=old.get('report',{}).get(section);after=state.get('report',{}).get(section)

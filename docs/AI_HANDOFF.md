@@ -2,6 +2,22 @@
 
 Updated: October 10, 2026
 
+## T159 — derivative evidence identity and fuller thesis arguments
+
+New visual renders, summary drafts, stock summaries and thesis handoffs require
+an unchanged populated report field, model-reviewed matched passage metadata and
+an original belonging to the frozen report. Orphan/stale/unavailable citations
+cannot enter a derivative. Original saved exports and research are retained.
+The fallback one-pager denominator counts populated report fields, not just the
+accepted subset. Source-change comparisons still distinguish wording from receipt
+changes. Zero-valued fields remain valid; this is consistency, not factual proof.
+
+The illustrated map now prioritizes complete investment-thesis arguments over
+short driver labels. A generic investment-question placeholder is removed; an
+actual question appears only if supported. Whole-claim length budgets remain.
+Saved UNH and public-only DE/SYK layouts remain one A4 page with Calibri/black text
+and no outside-page text. 986 backend tests, 120 frontend tests, compilation and build pass. Deployment verification pending.
+
 ## T158 — due issue reviews and consistent evidence status
 
 Activity and the existing research follow-through queue share the same issue selection.
@@ -17,7 +33,7 @@ share the same current-field/source identity check. Orphan citations, changed
 wording, absent originals and unavailable placeholders cannot earn a matched
 badge or enter a thesis draft. Reported zero is preserved. These checks remain
 mechanical passage/model-review metadata, not independent factual adjudication.
-982 backend tests, 120 frontend tests, compile/build pass. Full extraction metadata no longer implies excerpts in derivative warnings. Deployment verification pending.
+982 backend tests, 120 frontend tests, compile/build pass. Full extraction metadata no longer implies excerpts in derivative warnings. Backend 851a4b6 and exact hosted T158 verified; Mac healthy.
 
 ## T157 — financial vintages and calculation register
 

@@ -97,4 +97,10 @@ of saved reports. UNH/DE/SYK one-page print checks pass. 978 backend tests, 117 
 Activity reminders for recorded issue review dates, exact decision links and
 follow-up drafts; consistent field evidence checks and zero-value display.
 No paid calls, approvals, source changes or external notifications. Focused tests
-pass. 982 backend tests, 120 frontend tests, compile/build pass; deployment verification pending.
+pass. 982 backend tests, 120 frontend tests, compile/build pass. Backend 851a4b6 and hosted T158 verified.
+
+## T159 in progress
+
+Read-time field/source identity checks across all derivative outputs; intact thesis
+arguments preferred over driver fragments. Existing research/exports retained.
+Saved UNH and DE/SYK public-only one-page checks pass. 986 backend tests, 120 frontend tests, compilation and build pass. Deployment verification pending.

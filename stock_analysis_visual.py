@@ -7,6 +7,7 @@ from decimal import Decimal, InvalidOperation
 from flask import jsonify, request
 from company_research import eligible, digest
 from stock_analysis import missing
+from stock_evidence import valid_citations
 
 RENDER_VERSION='stock-visual-v1'
 PANELS=[('Company at a glance',['summary','industry']),('How the business makes money',['business']),
@@ -14,7 +15,7 @@ PANELS=[('Company at a glance',['summary','industry']),('How the business makes 
         ('What the market is debating',['debates','expectations']),('Catalysts and risks',['catalysts','risks']),
         ('Valuation and peers',['valuation','peers']),('What to monitor',['monitor']),
         ('Bottom line and diligence',['infographic','management','diligence_questions'])]
-esc=lambda v:html.escape(str(v or ''),quote=True)
+esc=lambda v:html.escape(str(v if v is not None else ''),quote=True)
 
 
 def label(value):return value.replace('_',' ').capitalize()
@@ -65,11 +66,12 @@ def chart(report,citations):
 
 def document(run,visual=False):
     report=run.get('state',{}).get('report',{});citations=run.get('state',{}).get('citations',{})
+    matched=valid_citations(run)
     sources=run.get('sources',[]);refs={s['id']:str(i+1) for i,s in enumerate(sources)}
     def visible(value,path):
         if isinstance(value,dict):return any(visible(v,path+'/'+k) for k,v in value.items())
         if isinstance(value,list):return any(visible(v,path+'/'+str(i)) for i,v in enumerate(value))
-        return not missing(value) and supported(citations.get(path))
+        return not missing(value) and path in matched
     def render(value,path):
         if isinstance(value,dict):
             return ''.join(f'<div class="field"><h4>{esc(label(k))}</h4>{render(v,path+"/"+k)}</div>' for k,v in value.items() if not visual or visible(v,path+"/"+k))
@@ -77,9 +79,9 @@ def document(run,visual=False):
             return '<div class="rows">'+''.join('<article>'+render(v,path+'/'+str(i))+'</article>' for i,v in enumerate(value))+'</div>' if value else '<p>Unavailable in this source pack.</p>'
         if missing(value):return '<p>Unavailable in this source pack.</p>'
         c=citations.get(path,{})
-        if visual and not supported(c):return '<p>Not included · requires source review.</p>'
+        if visual and path not in matched:return '<p>Not included · requires source review.</p>'
         numbers=', '.join(refs.get(e['sourceId'],'?') for e in c.get('evidence',[]) if e.get('matched'))
-        status='Source passage matched; model reviewed' if supported(c) else 'Needs review'
+        status='Source passage matched; model reviewed' if path in matched else 'Needs review'
         result=f'<p>{esc(value)}</p><small>{esc(c.get("basis","interpretation").replace("_"," "))} · {status}'+(f' [{numbers}]' if numbers else '')+'</small>'
         if not visual:
             result+='<details><summary>Source passages and review</summary><p>'+esc(c.get('reviewReason','Review pending'))+'</p>'+''.join(f'<blockquote>[{esc(refs.get(e["sourceId"],"?"))}] {esc(e["excerpt"])}</blockquote>' for e in c.get('evidence',[]))+'</details>'
@@ -87,7 +89,7 @@ def document(run,visual=False):
     sections=''
     for i,(title,keys) in enumerate(PANELS):
         content=''.join(f'<div><h3>{esc(label(k))}</h3>{render(report[k],"/"+k)}</div>' for k in keys if k in report and (not visual or visible(report[k],"/"+k)))
-        if i==2 and visual:content=chart(report,citations)+content
+        if i==2 and visual:content=chart(report,matched)+content
         sections+=f'<section><header><b>{i+1:02}</b><h2>{esc(title)}</h2></header>{content or "<p>Source-supported coverage unavailable in this report. Inspect the full report for gaps and unresolved fields.</p>"}</section>'
     source_html=''.join(f'<article><h3>[{i+1}] {esc(s["filename"])}</h3><p>{esc(s.get("sourceUrl") or "Observed URL unavailable")}</p><small>Original SHA-256: {esc(s["originalHash"])}<br>Extraction SHA-256: {esc(s.get("extractionHash"))}</small></article>' for i,s in enumerate(sources))
     return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(run['ticker'])} · Stock analysis</title><style>

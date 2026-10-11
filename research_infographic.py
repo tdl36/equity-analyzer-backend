@@ -8,8 +8,9 @@ from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlparse
 from visual_business_profiles import PROFILES
+from stock_evidence import valid_citations
 
-VERSION='stock-infographic-v7'
+VERSION='stock-infographic-v8'
 e=lambda value:html.escape(str(value if value is not None else ''),quote=True)
 
 @lru_cache(maxsize=3)
@@ -29,10 +30,8 @@ class Editor:
     def __init__(self,run):
         self.sources=run.get('sources',[])
         self.refs={s['id']:i+1 for i,s in enumerate(self.sources)}
-        self.cs={p:c for p,c in run.get('state',{}).get('citations',{}).items() if self.valid(c)}
+        self.cs=valid_citations(run)
         self.used=[];self.used_refs=set();self.omitted=set()
-    def valid(self,c):
-        return bool(c and c.get('statement') and c.get('review')=='supported' and c.get('passageMatched') and any(x.get('matched') and x.get('sourceId') in self.refs for x in c.get('evidence',[])))
     def get(self,path):return self.cs.get(path)
     def fits(self,c,limit):
         if not c:return False
@@ -45,10 +44,11 @@ class Editor:
         p,c=item;t=c['statement']
         sources=len({x.get('sourceId') for x in c.get('evidence',[]) if x.get('matched')})
         return (sources*3+(4 if topic(c)!='Investment debate' and topic(c)==topic(self.cs.get('/infographic/headline',{'statement':''})) else 0)+min(3,len(re.findall(r'\d',t)))+(2 if c.get('basis') in ('reported_fact','reported fact') else 0),-len(t),p)
-    def select(self,prefixes,limit=2,exclude=(),budget=300):
+    def select(self,prefixes,limit=2,exclude=(),budget=300,prefer_prefix=False):
         items=[x for x in self.cs.items() if any(x[0].startswith(p) for p in prefixes) and not any(x[0].endswith(z) for z in exclude)]
         selected=[]
-        for _,c in sorted(items,key=self.score,reverse=True):
+        rank=lambda item: ((-next(i for i,p in enumerate(prefixes) if item[0].startswith(p)),) if prefer_prefix else ())+self.score(item)
+        for _,c in sorted(items,key=rank,reverse=True):
             if not self.fits(c,min(240,budget)) or not self.fresh(c):continue
             if any(topic(c)==topic(prior) and topic(c)!='Investment debate' for prior in selected):continue
             selected.append(c);budget-=len(c['statement']);self.used.append(sentence_key(c['statement']))
@@ -155,8 +155,10 @@ def render(run,assignment,fundamentals):
         if ed.fits(resolution,min(220,monitor_budget)):
             monitor.append((title,resolution));monitor_budget-=len(resolution['statement'])
     debate='<table class="debates"><thead><tr><th>Market argument</th><th>Counterpoint</th></tr></thead><tbody>'+''.join('<tr><td><h3>'+e(title)+'</h3>'+ed.claim(a)+'</td><td>'+ed.claim(b)+'</td></tr>' for a,b,title in debates)+'</tbody></table>' if debates else '<p>Paired evidence unavailable at one-page length; inspect the full research.</p>'
-    thesis_claims=ed.select(['/summary/investment_thesis/','/summary/top_drivers/'],2)
-    thesis='<div class="question"><b>Investment test</b><p>What must be true for the investment case to work?</p></div>'+(''.join(ed.claim(c) for c in thesis_claims) or '<p>Source-supported thesis evidence unavailable.</p>')
+    thesis_claims=ed.select(['/summary/investment_thesis/','/summary/top_drivers/'],2,budget=380,prefer_prefix=True)
+    question=ed.get('/summary/core_question')
+    question_html='<div class="question"><b>Investment question</b>'+ed.claim(question)+'</div>' if ed.fits(question,180) else ''
+    thesis=question_html+(''.join(ed.claim(c) for c in thesis_claims) or '<p>Source-supported thesis evidence unavailable.</p>')
 
     catalysts=[];catalyst_budget=240
     for i in range(15):
