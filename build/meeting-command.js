@@ -297,12 +297,7 @@ export function MeetingCommand({
     className: "workspace-error"
   }, issueFor(j)), j.meeting_id && /*#__PURE__*/React.createElement("button", {
     onClick: () => {
-      window.dispatchEvent(new CustomEvent('charlie-open-meeting', {
-        detail: {
-          id: Number(j.meeting_id)
-        }
-      }));
-      onNavigate('meetingprep');
+      onNavigate('meetingprep', j.ticker, '', 'meeting:' + j.meeting_id);
     }
   }, "Open ", j.ticker, " meeting \u2192"), j.prep_status === 'failed' && /*#__PURE__*/React.createElement("button", {
     disabled: busy,

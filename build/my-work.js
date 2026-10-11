@@ -97,12 +97,7 @@ export function MyWork({
     onSection: onSection
   }), i.job?.meeting_id && /*#__PURE__*/React.createElement("button", {
     onClick: () => {
-      window.dispatchEvent(new CustomEvent('charlie-open-meeting', {
-        detail: {
-          id: Number(i.job.meeting_id)
-        }
-      }));
-      onNavigate('meetingprep');
+      onNavigate('meetingprep', i.ticker, '', 'meeting:' + i.job.meeting_id);
     }
   }, "Open question pack \u2192"), i.activity && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Read recap and evidence"), i.activity.output?.synthesisMarkdown ? renderHtml ? /*#__PURE__*/React.createElement("div", {
     className: "desk-report-prose",

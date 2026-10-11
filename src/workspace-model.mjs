@@ -17,6 +17,7 @@ export const SECTIONS = {
 export const validSection = (view, section) => SECTIONS[view]?.includes(section) ? section : '';
 // A work link selects a saved item; it never authorizes starting or resuming it.
 export function validWork(view,section,value='') {
+ if(view==='meetingprep'&&!section&&/^meeting:[1-9][0-9]{0,9}$/.test(value)&&Number(String(value).split(':')[1])<=2147483647)return value;
  const allowed={'stockanalysis:stock-analysis':['assignment','analysis'],'stockanalysis:research':['research'],'stockanalysis:committee':['committee'],'stockanalysis:reviews':['decision'],'desk:collection':['collection']};
  const [kind,id,...rest]=String(value).split(':');
  return !rest.length&&allowed[`${view}:${section}`]?.includes(kind)&&/^(?:[a-f0-9]{32}|[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})$/i.test(id||'')?`${kind}:${id.toLowerCase()}`:'';

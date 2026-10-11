@@ -66,3 +66,36 @@ class HandoffTests(unittest.TestCase):
         self.assertTrue(client.post(url,json=data(run)).json['reused'])
         self.assertEqual(client.post(url,json=[]).status_code,400)
         cur.run=None;self.assertEqual(client.get(url).status_code,404)
+
+from tests.unit import test_stock_analysis_postgres as pg_tests
+@unittest.skipUnless((pg_tests.PG/'initdb').exists(),'Disposable PostgreSQL unavailable')
+class HandoffPostgresTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        pg_tests.StockPostgresTests.setUpClass.__func__(cls)
+        with cls.db(True) as (_,c):
+            c.execute('''CREATE TABLE stock_analysis_runs(id TEXT PRIMARY KEY,ticker TEXT,status TEXT,state JSONB,sources JSONB,created_at TIMESTAMP DEFAULT NOW());
+            CREATE TABLE mp_meetings(id SERIAL PRIMARY KEY,company_id INTEGER REFERENCES mp_companies(id),meeting_date DATE,meeting_type TEXT,notes TEXT);
+            CREATE TABLE mp_question_sets(id SERIAL PRIMARY KEY,meeting_id INTEGER REFERENCES mp_meetings(id) ON DELETE CASCADE,version INTEGER,status TEXT,topics_json TEXT,generation_model TEXT,generation_tokens INTEGER);
+            CREATE TABLE mp_past_questions(id SERIAL PRIMARY KEY,company_id INTEGER,meeting_id INTEGER REFERENCES mp_meetings(id) ON DELETE CASCADE,question TEXT,topic TEXT,status TEXT);''')
+    @classmethod
+    def tearDownClass(cls):pg_tests.StockPostgresTests.tearDownClass.__func__(cls)
+    def test_concurrent_save_restart_and_deleted_destination(self):
+        import json
+        from concurrent.futures import ThreadPoolExecutor
+        run=fixture()
+        with self.db(True) as (_,c):
+            c.execute('INSERT INTO stock_analysis_runs(id,ticker,status,state,sources) VALUES(%s,%s,%s,%s::jsonb,%s::jsonb)',(RID,run['ticker'],run['status'],json.dumps(run['state']),json.dumps(run['sources'])))
+            c.execute("INSERT INTO mp_companies(ticker,name) VALUES('SYNTH','Existing company name')")
+        def submit():
+            app=Flask(__name__);app.register_blueprint(create_blueprint(self.db));r=app.test_client().post(f'/api/research/stock-analysis-run/{RID}/meeting-prep',json=data(run));self.assertEqual(r.status_code,200,r.json);return r.json
+        with ThreadPoolExecutor(max_workers=2) as pool:a,b=list(pool.map(lambda _:submit(),range(2)))
+        self.assertEqual(a['meetingId'],b['meetingId']);self.assertEqual(sum(x['reused'] for x in (a,b)),1)
+        self.assertTrue(submit()['reused'])
+        with self.db() as (_,c):
+            c.execute('SELECT COUNT(*) AS n FROM mp_meetings');self.assertEqual(c.fetchone()['n'],1)
+            c.execute('SELECT status FROM mp_past_questions');self.assertEqual([x['status'] for x in c.fetchall()],['planned','planned'])
+            c.execute("SELECT name FROM mp_companies WHERE ticker='SYNTH'");self.assertEqual(c.fetchone()['name'],'Existing company name')
+            c.execute('SELECT generation_tokens,topics_json FROM mp_question_sets');q=c.fetchone();self.assertEqual(q['generation_tokens'],0);self.assertEqual(json.loads(q['topics_json'])[0]['questions'][0]['question'],run['state']['report']['diligence_questions'][0])
+        with self.db(True) as (_,c):c.execute('DELETE FROM mp_meetings WHERE id=%s',(a['meetingId'],))
+        app=Flask(__name__);app.register_blueprint(create_blueprint(self.db));r=app.test_client().post(f'/api/research/stock-analysis-run/{RID}/meeting-prep',json=data(run));self.assertEqual(r.status_code,400);self.assertIn('deleted',r.json['error'])

@@ -110,4 +110,10 @@ Saved UNH and DE/SYK public-only one-page checks pass. 986 backend tests, 120 fr
 Saved research questions to dated Meeting Prep, explicit selection and planned
 answers, exact report provenance, transactional/idempotent duplicate protection.
 991 backend tests and 122 frontend tests pass. Synthetic browser save/open/answer/
-duplicate flow passes. No paid QA or production test meeting. Release pending.
+duplicate flow passes. No paid QA or production test meeting. Backend a4148a7 and exact hosted T160 verified; Mac healthy. Live UNH selector inspected without submission.
+
+## T161 in progress
+
+Read-only upcoming meeting agenda and exact meeting links, with company guards,
+reload/Back handling and stale response protection. 995 backend tests, 123 frontend
+tests, compile/build pass. Deployment verification pending.

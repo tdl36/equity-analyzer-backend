@@ -12,7 +12,7 @@ export function MyWork({api,activities,onNavigate,onSection,renderHtml}){
  {i.manual&&<p>{i.job.completed||0}/{i.job.total||'?'} documents analyzed · {i.job.profile?.format?.replaceAll('_',' ')||'Original settings'}</p>}
  {i.job?.options?.meetingPrep&&<p>{i.job.options.meetingPrep.format?.replaceAll('_',' ')||'Conference'} · {i.job.options.meetingPrep.meetingDate}</p>}
  {i.job&&!i.manual&&<AssignmentWorkspace api={api} id={i.id} onNavigate={onNavigate} onSection={onSection}/>}
- {i.job?.meeting_id&&<button onClick={()=>{window.dispatchEvent(new CustomEvent('charlie-open-meeting',{detail:{id:Number(i.job.meeting_id)}}));onNavigate('meetingprep');}}>Open question pack →</button>}
+ {i.job?.meeting_id&&<button onClick={()=>{onNavigate('meetingprep',i.ticker,'','meeting:'+i.job.meeting_id);}}>Open question pack →</button>}
  {i.activity&&<><details><summary>Read recap and evidence</summary>{i.activity.output?.synthesisMarkdown?(renderHtml?<div className="desk-report-prose" dangerouslySetInnerHTML={{__html:renderHtml(i.activity.output.synthesisMarkdown)}}/>:<pre style={{whiteSpace:'pre-wrap'}}>{i.activity.output.synthesisMarkdown}</pre>):<p>No completed recap is attached yet. Open Analyst inbox for this item’s full details.</p>}</details><button onClick={()=>onNavigate('analysts')}>Review in Analyst inbox →</button></>}
  {(i.bucket==='failed'||i.bucket==='needs_me')&&i.job&&!i.manual&&<button onClick={()=>onSection(i.kind==='Meeting pack'?'command':'collection')}>Resolve / retry →</button>}
  </article>)}</div>{!items.length&&!error&&<p>No recent assignments or inbox items loaded.</p>}</section>;

@@ -106,6 +106,11 @@ def create_blueprint(get_db):
             items=reviews+items
             if more:truncated.append('Research issue reviews')
         except Exception:unavailable.append('Research issue reviews')
+        meetings=None
+        try:
+            from meeting_agenda import upcoming
+            with get_db() as (_,cur):meetings=upcoming(cur,now)
+        except Exception:unavailable.append('Meeting preparation agenda')
         intake=[r for r in items if r.get('workflow')=='auto_evidence_intake' and r['status']=='waiting']
         if intake:
             try:
@@ -119,7 +124,7 @@ def create_blueprint(get_db):
                 for r in intake:r['step']=r['waitReason']
             except Exception:unavailable.append('Intake eligibility')
         response=jsonify(items=items,counts={b:sum(r['bucket']==b for r in items) for b in ('active','attention','recent','older')},
-            asOf=now.isoformat(),agentLastSeen=agent,collectionLastSeen=collected_at,collectionDelivery=delivery,unavailable=unavailable,truncated=truncated,
+            meetingAgenda=meetings,asOf=now.isoformat(),agentLastSeen=agent,collectionLastSeen=collected_at,collectionDelivery=delivery,unavailable=unavailable,truncated=truncated,
             scope='Saved research, collection, document and audio jobs, plus due analyst issue reviews (New York dates). Work unchanged for more than seven days is retained under Older unfinished. Recent history shows up to 20 results per workflow from the last 24 hours. Browser collection needs the Mac awake, Codex running and AlphaSense signed in.')
         response.headers['Cache-Control']='no-store';return response
     return bp

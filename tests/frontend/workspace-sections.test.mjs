@@ -17,3 +17,8 @@ test('activity opens the relevant review, collection, or research surface',()=>{
  assert.deepEqual(activityDestination({id:'collection:123',view:'desk'}),{view:'desk',section:'collection'});
  assert.deepEqual(activityDestination({workflow:'unknown',view:'summary'}),{view:'summary',section:''});
 });
+test('saved meeting links survive reload and reject invalid or misplaced ids',()=>{
+ assert.deepEqual(readRoute(routeHash('meetingprep','UNH','','meeting:42')),{view:'meetingprep',ticker:'UNH',work:'meeting:42'});
+ for(const value of ['meeting:0','meeting:-1','meeting:01','meeting:2147483648','meeting:1:2','meeting:<script>'])assert.equal(readRoute('#view=meetingprep&work='+encodeURIComponent(value)).work,undefined);
+ assert.equal(readRoute('#view=desk&work=meeting%3A42').work,undefined);
+});

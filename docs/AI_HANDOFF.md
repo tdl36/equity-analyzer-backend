@@ -2,6 +2,22 @@
 
 Updated: October 10, 2026
 
+## T161 — meeting preparation agenda and exact saved-meeting links
+
+Activity includes a bounded seven-day preparation agenda using New York dates.
+Saved question packs are distinguished from meetings needing preparation; neither
+means analyst review or attendance. Completed/cancelled/archived meetings are
+excluded. Undated and out-of-window meetings remain in Meeting Preparation.
+The agenda does not create work, sync an external calendar or change job counts.
+
+Meeting links now retain the specific meeting across reload and Back, including
+links from research assignments and the research desk. Company mismatches and
+missing meetings remain visible; stale reads cannot replace a newer selection.
+A background meeting reload cannot redirect another workspace.
+995 backend tests, 123 frontend tests, compilation and build pass. Additional
+isolated PostgreSQL tests verify concurrent handoff reuse and deleted destination
+handling. Release verification pending.
+
 ## T160 — saved research questions to Meeting Prep
 
 Completed Stock Analysis reports can copy 1–10 selected diligence questions into
@@ -18,7 +34,7 @@ a deleted destination is not silently recreated. Inspecting the selector is read
 991 backend tests, 122 frontend tests, compilation and build pass. Isolated browser
 save/open/answer/duplicate flows passed with synthetic data, including native date
 input handling. No production meeting or answer was created for QA. Deployment
-verification pending.
+Backend a4148a7 and exact hosted T160 verified; Mac healthy.
 
 ## T159 — derivative evidence identity and fuller thesis arguments
 

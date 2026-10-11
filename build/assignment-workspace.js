@@ -63,12 +63,7 @@ export function AssignmentWorkspace({
     key: i
   }, r.name, " \xB7 ", r.analyst || 'all analysts', " \xB7 ", r.ticker || r.subsector || 'all companies', " \xB7 ", r.disposition))), data.meetingId && /*#__PURE__*/React.createElement("button", {
     onClick: () => {
-      window.dispatchEvent(new CustomEvent('charlie-open-meeting', {
-        detail: {
-          id: Number(data.meetingId)
-        }
-      }));
-      onNavigate('meetingprep');
+      onNavigate('meetingprep', data.command.ticker, '', 'meeting:' + data.meetingId);
     }
   }, "Open questions and supporting passages \u2192"), /*#__PURE__*/React.createElement("button", {
     onClick: () => onSection('collection')

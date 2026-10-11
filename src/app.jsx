@@ -97,7 +97,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-10-10T160';
+        const BUILD_VERSION = '2026-10-10T161';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -2138,6 +2138,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
             // Meeting Prep tab state
             const [mpMeetings, setMpMeetings] = useState([]);
             const [mpSelectedMeeting, setMpSelectedMeeting] = useState(null);
+            const mpReadSerial = useRef(0);
+            const mpViewRef = useRef(activeTab);mpViewRef.current=activeTab;
+            const [mpLoadMessage,setMpLoadMessage] = useState('');
             // Meetings were listed in one flat run of generated-date order, so
             // every question set a company had ever had was scattered through the
             // list. Thesis groups by ticker for exactly this reason.
@@ -10179,7 +10182,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     if (view === 'deepdive') setDdTicker(ticker);
                     if (view === 'review') setReviewTicker(ticker);
                     if (view === 'explain') setDecipherTicker(ticker);
-                    if (view === 'meetingprep') setMpNewTicker(ticker);
+                    if (view === 'meetingprep') {setMpNewTicker(ticker);setWorkspaceTicker(ticker);}
                     if (view === 'slides') setSlideNewTicker(ticker);
                 }
                 switchTab(view);
@@ -11011,7 +11014,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
             }, []);
 
             React.useEffect(() => {
-                const open = event => { if (Number.isInteger(event.detail?.id) && event.detail.id > 0) loadMpMeeting(event.detail.id); };
+                const open = event => { if (Number.isInteger(event.detail?.id) && event.detail.id > 0) {setWorkspaceTicker(event.detail.ticker||'');navigateWorkspace('meetingprep','','','meeting:'+event.detail.id);} };
                 window.addEventListener('charlie-open-meeting', open);
                 return () => window.removeEventListener('charlie-open-meeting', open);
             }, []);
@@ -11050,28 +11053,38 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 return () => { stopped = true; clearTimeout(timer); };
             }, [mpSelectedMeeting?.id, activeTab]);
 
-            const loadMpMeeting = async (meetingId) => {
+            const loadMpMeeting = async (meetingId, expectedTicker = '', remember = true) => {
+                const serial = ++mpReadSerial.current;
+                setMpLoadMessage('Loading saved meeting…');
+                setMpSelectedMeeting(null);setMpDocuments([]);setMpQuestionSet(null);setMpPastQuestions([]);
                 try {
-                    const res = await fetch(`${API_URL}/api/mp/meetings/${meetingId}`);
-                    if (!res.ok) throw new Error('Meeting not found');
+                    const res = await fetch(`${API_URL}/api/mp/meetings/${meetingId}`,{signal:AbortSignal.timeout(20000)});
+                    if (!res.ok) throw new Error('Saved meeting could not be loaded. Check the link or choose a meeting below.');
                     const data = await res.json();
-                    setMpSelectedMeeting(data.meeting);
-                    setMpDocuments(data.documents);
-                    setMpQuestionSet(data.questionSet);
-                    setMpExpandedTopics(new Set());
-                    setMpPipelineError(null);
-                    // Load past questions
+                    if (expectedTicker && data.meeting.ticker !== expectedTicker) throw new Error('This meeting belongs to another company. Check the saved link.');
+                    if(serial!==mpReadSerial.current)return;
+                    ReactDOM.unstable_batchedUpdates(()=>{
+                        setMpSelectedMeeting(data.meeting);setMpDocuments(data.documents);setMpQuestionSet(data.questionSet);
+                        setMpExpandedTopics(new Set());setMpPipelineError(null);setMpLoadMessage('');
+                        if(remember&&mpViewRef.current==='meetingprep'){setWorkspaceTicker(data.meeting.ticker);setWorkspaceSection('');setWorkspaceWork('meeting:'+meetingId);}
+                    });
                     if (data.meeting.ticker) {
                         try {
-                            const pqRes = await fetch(`${API_URL}/api/mp/companies/${data.meeting.ticker}/past-questions`);
+                            const pqRes = await fetch(`${API_URL}/api/mp/companies/${data.meeting.ticker}/past-questions`,{signal:AbortSignal.timeout(20000)});
                             if (pqRes.ok) {
                                 const pqData = await pqRes.json();
-                                setMpPastQuestions(pqData.pastQuestions || []);
+                                if(serial===mpReadSerial.current)setMpPastQuestions(pqData.pastQuestions || []);
                             }
-                        } catch (e) { console.error('Failed to load past questions:', e); }
+                        } catch (e) { if(serial===mpReadSerial.current)setMpLoadMessage('Meeting opened; past-question history could not be loaded.'); }
                     }
-                } catch (err) { console.error('Failed to load meeting:', err); }
+                } catch (err) { if(serial===mpReadSerial.current)setMpLoadMessage(err.message); }
             };
+            React.useEffect(()=>{
+                if(activeTab!=='meetingprep'){mpReadSerial.current++;return;}
+                const id=/^meeting:([1-9][0-9]*)$/.exec(workspaceWork)?.[1];
+                if(id){if(String(mpSelectedMeeting?.id)!==id||workspaceTicker&&mpSelectedMeeting?.ticker!==workspaceTicker)loadMpMeeting(Number(id),workspaceTicker,false);}
+                else {mpReadSerial.current++;setMpSelectedMeeting(null);setMpDocuments([]);setMpQuestionSet(null);setMpLoadMessage('');}
+            },[activeTab,workspaceWork,workspaceTicker]);
 
             const createMpMeeting = async () => {
                 if (!mpNewTicker.trim()) return;
@@ -11100,6 +11113,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 if (!confirm('Delete this meeting and all its documents?')) return;
                 try {
                     await fetch(`${API_URL}/api/mp/meetings/${meetingId}`, { method: 'DELETE' });
+                    setWorkspaceWork('');
                     setMpSelectedMeeting(null);
                     setMpDocuments([]);
                     setMpQuestionSet(null);
@@ -15367,7 +15381,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     {/* MAIN CONTENT AREA */}
                     <div id="workspace-content" tabIndex={-1} className="workspace-content flex-1 flex overflow-hidden">
                         
-                        {activeTab === 'stockanalysis' && <div className="workspace-page research-desk"><InvestmentCase onMeeting={id=>{setMpSelectedMeeting(null);navigateWorkspace('meetingprep');loadMpMeetings();loadMpMeeting(id);}} key={workspaceTicker} initialTab="stock-analysis" onCompanyChange={changeWorkspaceCompany} routeSection={workspaceSection} onSectionChange={changeWorkspaceSection} routeWork={workspaceWork} onWorkChange={setWorkspaceWork} initialTicker={workspaceTicker} api={API_URL} analyses={savedAnalyses} /></div>}
+                        {activeTab === 'stockanalysis' && <div className="workspace-page research-desk"><InvestmentCase onMeeting={id=>{navigateWorkspace('meetingprep',workspaceTicker,'','meeting:'+id);loadMpMeetings();}} key={workspaceTicker} initialTab="stock-analysis" onCompanyChange={changeWorkspaceCompany} routeSection={workspaceSection} onSectionChange={changeWorkspaceSection} routeWork={workspaceWork} onWorkChange={setWorkspaceWork} initialTicker={workspaceTicker} api={API_URL} analyses={savedAnalyses} /></div>}
                         {activeTab === 'desk' && <ResearchDesk key={workspaceTicker} routeSection={workspaceSection} onSectionChange={changeWorkspaceSection} routeWork={workspaceWork} onWorkChange={setWorkspaceWork} initialTicker={workspaceTicker} renderRecapHtml={value => sanitizeHtml(/^\s*</.test(value) ? value : renderMarkdown(value))} renderHtml={value => sanitizeHtml(renderMarkdown(value))} api={API_URL} analyses={savedAnalyses} onCompany={openWorkspaceCompany} onNavigate={navigateWorkspace} />}
                         {activeTab === 'activity' && <ActivityWorkspace api={API_URL} onNavigate={(view,ticker,section,work)=>ticker?openWorkspaceCompany(ticker,view,section,work):navigateWorkspace(view,undefined,section,work)} />}
                         {activeTab === 'today' && <TodayWorkspace api={API_URL} analyses={savedAnalyses} overviews={savedOverviews}
@@ -21646,11 +21660,12 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         {/* MEETING PREP TAB */}
                         {activeTab === 'meetingprep' && (
                             <div className="flex-1 flex flex-col overflow-hidden pb-24 md:pb-0">
+                                {mpLoadMessage&&<p role="status" className="p-4 border-b border-white/10">{mpLoadMessage}</p>}
                                 {mpSelectedMeeting ? (
                                     /* Meeting Detail View */
                                     <div className="flex-1 flex flex-col overflow-hidden">
                                         <div className="bg-white/[0.04] backdrop-blur-lg border-b border-white/[0.08] p-4">
-                                            <button onClick={() => { setMpSelectedMeeting(null); setMpDocuments([]); setMpQuestionSet(null); setMpPipelineError(null); }} className="text-sm text-slate-400 hover:text-amber-400 mb-2">&larr; All Meetings</button>
+                                            <button onClick={() => { mpReadSerial.current++;setWorkspaceWork('');setMpSelectedMeeting(null); setMpDocuments([]); setMpQuestionSet(null); setMpPipelineError(null); }} className="text-sm text-slate-400 hover:text-amber-400 mb-2">&larr; All Meetings</button>
                                             <div className="flex items-center justify-between">
                                                 <div>
                                                     <h1 className="text-xl font-bold">

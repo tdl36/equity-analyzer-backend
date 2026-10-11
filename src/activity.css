@@ -5,3 +5,5 @@
 .activity-health{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:18px 0}.activity-health>div{padding:14px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}.activity-health .needs-check{background:var(--surface);border-color:var(--accent)}.activity-health small,.activity-health strong{display:block}.activity-health small{margin-bottom:6px}.activity-health p{font-size:13px;line-height:1.5;margin:8px 0 0}@media(max-width:700px){.activity-health{grid-template-columns:1fr}}
 
 .activity-next{color:var(--ink);background:var(--surface);padding:9px 11px;border-radius:6px}
+
+.activity-agenda{border:1px solid var(--line);padding:18px;margin:22px 0;border-radius:8px}.activity-agenda>summary{font-weight:600;cursor:pointer}.activity-agenda>p{font-size:13px;color:var(--muted);margin:12px 0}.activity-agenda .activity-row:last-child{padding-bottom:0}
