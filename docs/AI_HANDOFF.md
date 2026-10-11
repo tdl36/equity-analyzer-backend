@@ -2,6 +2,26 @@
 
 Updated: October 10, 2026
 
+## T182 — lossless report-envelope recovery
+
+Diagnosed ABT report-1's preserved return privately: one premature root closing
+brace before citations. Removing only that brace parses both report sections and
+all 39 citations without editing their values. New stock-report fallback handles
+only this exact envelope defect, rejects duplicate keys/truncation/extra fields,
+and retains the original receipt. It does not synthesize missing research.
+Explicit recoverSavedResponse on a saved known-failure resume validates the
+recovered report against its frozen sources/schema before queuing; stores parsed
+response for existing stage reuse and records the repair method. No paid call for
+the recovered report stage. Remaining review/research stages retain normal budget,
+source, model/version, worker ownership and investor-review checks. Assignment
+resume forwards this explicit option; plain resume behavior is unchanged.
+
+Focused isolated PostgreSQL checks passed for stage reuse/no repurchase and
+unrepairable rejection without dispatch. 1034 safe backend tests and 137 frontend
+tests passed; touched Python compile, build and unchanged model gate passed.
+Deployment pending.
+Do not retry ABT blindly; use this explicit local-recovery path after deployment.
+
 ## T181 — private saved-response inspection
 
 Explicit per-run/per-stage response download returns only saved text and
@@ -10,6 +30,10 @@ CSP and private/no-store prevent treating model text as executable content or
 shared cached content. Missing runs/stages return 404. No key lookup, worker
 wakeup, model call or research mutation. Normal run APIs still redact raw text.
 This enables diagnosis of preserved malformed responses without a paid retry.
+T181 verified: 1030 backend / 137 frontend tests; compile/build/model gate passed.
+Backend 98d85b2a4799f5e756938cad160090b516018746 healthy; hosted JS/SW exact bytes,
+CSS unchanged. Cloudflare a5f9779a-7f48-44b9-98ee-a74d43c3f75b. Private ABT
+download succeeded; raw response saved outside repo and not logged.
 
 ABT at 20:07 UTC is attention on report-1 with invalid JSON; report-0/review-0
 remain complete. Its current failed return is preserved (13,709 characters,

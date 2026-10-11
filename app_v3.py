@@ -29345,7 +29345,12 @@ def _company_research_call(prompt, key, tokens, run_id, stage, usage_kind="compa
     try:
         parsed = _extract_json(result.get('text') or '')
     except ValueError:
-        raise company_research.KnownResponseError('Research returned invalid JSON; saved stages are retained.') from None
+        try:
+            if usage_kind!='stock-analysis':raise ValueError('Unsupported workflow')
+            from research_json_recovery import recover_report_envelope
+            parsed=recover_report_envelope(result.get('text'))
+        except ValueError:
+            raise company_research.KnownResponseError('Research returned invalid JSON; saved stages are retained.') from None
     if not isinstance(parsed,dict):raise company_research.KnownResponseError('Research returned invalid JSON; saved stages are retained.')
     return parsed
 

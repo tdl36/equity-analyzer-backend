@@ -264,7 +264,7 @@ class Coordinator:
                     if code not in (200,404):return jsonify(report),code
                     repair=code==200 and report['status']=='complete' and (row.get('error') or '').startswith('No supported thesis statements')
                     if code==200 and (report['status']!='complete' or repair):
-                        response,status=self.invoke('stock_analysis.control','POST',{'acknowledgeRetry':d.get('acknowledgeRetry') is True,'repairThesis':repair},dict(ident=state['reportId'],action='resume'))
+                        response,status=self.invoke('stock_analysis.control','POST',{'acknowledgeRetry':d.get('acknowledgeRetry') is True,'recoverSavedResponse':d.get('recoverSavedResponse') is True,'repairThesis':repair},dict(ident=state['reportId'],action='resume'))
                         if repair and status<400:
                             state['step']='Retrying unsupported thesis group; previous output retained'
                             if state.get('artifacts'):state.setdefault('artifactRevisions',[]).append(state.pop('artifacts'))

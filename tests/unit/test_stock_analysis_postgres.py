@@ -155,6 +155,34 @@ class StockPostgresTests(unittest.TestCase):
         self.simulate_known=False
         self.thread.call_args.kwargs['target'](*self.thread.call_args.kwargs['args'])
         r=self.client.get(path).json;self.assertEqual(r['status'],'complete');self.assertEqual(r['state']['retries'],['report-0'])
+    def test_lossless_saved_report_recovery_avoids_rebuying_stage(self):
+        self.simulate_known=True;r=self.start();path='/api/research/stock-analysis-run/'+r['id']
+        raw=result(GROUPS[0])
+        for c in raw['citations']:
+            for e in c['evidence']:e['sourceId']=r['sources'][0]['id']
+        text=json.dumps({'report':raw['report']})+',"citations":'+json.dumps(raw['citations'])+'}'
+        with self.db(True) as (_,cur):
+            cur.execute('UPDATE stock_analysis_runs SET state=state || %s::jsonb WHERE id=%s',
+                        (json.dumps({'returnedResponses':{'report-0':{'text':text,'stop_reason':'end_turn'}}}),r['id']))
+        self.assertEqual(self.client.post(path+'/resume',json={'recoverSavedResponse':True}).status_code,200)
+        self.simulate_known=False;self.calls=[]
+        self.thread.call_args.kwargs['target'](*self.thread.call_args.kwargs['args'])
+        recovered=self.client.get(path).json
+        self.assertEqual(recovered['status'],'complete',recovered.get('error'))
+        self.assertNotIn('report-0',self.calls)
+        self.assertEqual(recovered['state']['localRecoveries'][0]['stage'],'report-0')
+        self.assertNotIn('knownFailure',recovered['state'])
+        self.assertIn('report-0',recovered['responseRecovery']['savedStages'])
+
+    def test_unrepairable_saved_response_rejects_without_dispatch(self):
+        self.simulate_known=True;r=self.start();path='/api/research/stock-analysis-run/'+r['id'];count=self.thread.call_count
+        with self.db(True) as (_,cur):
+            cur.execute('UPDATE stock_analysis_runs SET state=state || %s::jsonb WHERE id=%s',
+                        (json.dumps({'returnedResponses':{'report-0':{'text':'invalid','stop_reason':'end_turn'}}}),r['id']))
+        response=self.client.post(path+'/resume',json={'recoverSavedResponse':True})
+        self.assertEqual(response.status_code,409);self.assertEqual(self.thread.call_count,count)
+        self.assertEqual(self.client.get(path).json['status'],'attention')
+
     def test_legacy_output_limit_reservation_is_not_network_uncertainty(self):
         self.simulate_failure=True;r=self.start();path='/api/research/stock-analysis-run/'+r['id']
         with self.db(True) as (_,cur):

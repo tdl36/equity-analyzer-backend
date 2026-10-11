@@ -443,6 +443,21 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
                 if state.get('inFlight') and row.get('error') in KNOWN_RESPONSE_ERRORS:
                     state['knownFailure']={'stage':state.pop('inFlight'),'reason':row['error']}
                 if state.get('inFlight') and data.get('acknowledgeRetry') is not True:return jsonify(error='Previous model call outcome is unknown. Check usage and acknowledge that retry may incur another charge.'),409
+                if data.get('recoverSavedResponse') is True:
+                    failure=state.get('knownFailure') or {};stage=failure.get('stage','')
+                    receipt=state.get('returnedResponses',{}).get(stage)
+                    if not studio or not re.fullmatch(r'report-[0-5]',stage) or not isinstance(receipt,dict) or receipt.get('stop_reason') not in ('end_turn','stop'):
+                        return jsonify(error='No eligible saved report response to recover.'),409
+                    from research_json_recovery import recover_report_envelope
+                    from stock_analysis import GROUPS as report_groups, validate_report
+                    try:
+                        recovered=recover_report_envelope(receipt.get('text'))
+                        validate_report(recovered,report_groups[int(stage[-1])],row['sources'],row['input'].get('mode','deep'))
+                    except ValueError:
+                        return jsonify(error='Saved response cannot be recovered with the lossless envelope repair. No new call was sent.'),409
+                    state.setdefault('responses',{})[stage]=recovered
+                    state.setdefault('localRecoveries',[]).append({'stage':stage,'method':'remove-premature-report-closure-v1'})
+                    state.pop('knownFailure',None)
                 if state.get('knownFailure'):
                     from research_response_receipts import archive_for_retry
                     archive_for_retry(state,state['knownFailure']['stage'])
