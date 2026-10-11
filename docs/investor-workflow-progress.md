@@ -123,4 +123,11 @@ tests, compile/build pass. Backend 4616ce9 and exact hosted T161 assets verified
 Report Infographic view now shares the saved assignment evidence/current layout,
 with snapshot vintage and separate original export. Read-only rendering; no paid
 calls or automatic data refresh. 998 backend tests, 123 frontend tests and build
-pass. Deployment verification pending.
+pass. Backend a48ac3f and exact hosted T162 assets verified; Mac healthy.
+
+## T163 — financial workbook
+
+Saved financial history Excel export with observation register, filing links, typed
+values and explicit blanks/unit guards. 1002 backend and 124 frontend tests pass;
+compile/build pass. Both sheets visually inspected from the retained UNH snapshot.
+Export does not refresh, dispatch or mutate research. Deployment verification pending.

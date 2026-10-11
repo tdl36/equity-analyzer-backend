@@ -106,6 +106,22 @@ class AssignmentPostgresTests(unittest.TestCase):
     def advance(self):
         with self.app.app_context():self.co.advance(self.ident)
         return self.co.read(self.ident)
+    def test_financial_workbook_uses_saved_values_without_dispatch_or_mutation(self):
+        from io import BytesIO
+        from openpyxl import load_workbook
+        from tests.unit.test_financial_workbook import WorkbookTests
+        self.start(['visual']);self.collected();self.advance()
+        path='/api/research/assignments/'+self.ident+'/financial-history'
+        self.assertEqual(self.client.get(path).status_code,409)
+        with self.db(True) as (_,cur):
+            cur.execute("UPDATE mp_jobs SET result=jsonb_set(result,'{visualFundamentals}',%s::jsonb) WHERE id=%s",(json.dumps(WorkbookTests().fixture()),self.ident))
+        before=self.co.read(self.ident);count=len(self.submits)
+        response=self.client.get(path)
+        self.assertEqual(response.status_code,200);self.assertEqual(response.headers['Cache-Control'],'no-store')
+        book=load_workbook(BytesIO(response.data));self.assertEqual(book['Financial history']['C6'].value,1000)
+        self.assertEqual(self.co.read(self.ident),before);self.assertEqual(len(self.submits),count)
+        self.assertEqual(self.client.get(path.replace(self.ident,str(uuid.uuid4()))).status_code,404)
+
     def test_focused_read_keeps_identity_company_and_does_not_dispatch(self):
         from unittest.mock import Mock
         self.start();self.co.wake=Mock()

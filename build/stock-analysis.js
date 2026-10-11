@@ -1,4 +1,5 @@
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
+import { financialWorkbook, saveFinancialWorkbook } from './financial-workbook-download.mjs';
 import { ResearchMeetingHandoff } from './research-meeting-handoff';
 import { unavailable as missingValue, pointer } from './stock-analysis-evidence.mjs';
 import { verifiedOriginal, saveOriginal } from './research-originals.mjs';
@@ -493,7 +494,13 @@ export function StockAnalysis({
     })
   }, "Generate infographic")), visual && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
     onClick: () => downloadText(visual.html, `${ticker}-investment-infographic-${run.id}.html`)
-  }, "Export infographic \xB7 printable HTML"), visual.assignmentId ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "Current layout of the saved assignment \xB7 ", visual.rendererVersion, ". Opening this view does not refresh the research or market data.", visual.publicDataAsOf ? ' Public-data snapshot as of ' + visual.publicDataAsOf + '.' : '', " Review figures and periods before use."), /*#__PURE__*/React.createElement("button", {
+  }, "Export infographic \xB7 printable HTML"), visual.assignmentId ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
+    disabled: busy,
+    onClick: () => mutate(async () => {
+      saveFinancialWorkbook(await financialWorkbook(api, visual.assignmentId), ticker, visual.assignmentId);
+      setNotice('Financial workbook exported from the saved snapshot. No data was refreshed.');
+    })
+  }, "Export financial history \xB7 Excel"), /*#__PURE__*/React.createElement("p", null, "Current layout of the saved assignment \xB7 ", visual.rendererVersion, ". Opening this view does not refresh the research or market data.", visual.publicDataAsOf ? ' Public-data snapshot as of ' + visual.publicDataAsOf + '.' : '', " Review figures and periods before use."), /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: () => mutate(async () => {
       var r = await fetch(api + visual.originalUrl, {

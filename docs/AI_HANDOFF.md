@@ -2,6 +2,22 @@
 
 Updated: October 10, 2026
 
+## T163 — saved financial history workbook
+
+Research assignment and report visual views can export the retained annual financial
+observations as Excel. Financial history and a separate observation register preserve
+native units, zero/negative values, dates, source tags/calculations and filing links.
+Missing values stay blank; incompatible units are withheld from standardized history
+while the original observation remains inspectable. Calibri/black text, light fills,
+frozen headers and filters support analyst use. This is a saved-value workbook, not
+a forecast model or live market-data refresh. Export is authenticated and read-only;
+no model, new research, thesis approval or mutation is performed.
+
+1002 safe backend tests and 124 frontend tests pass, with compile/build.
+Read-only export, missing data and unchanged assignment state are covered by isolated
+PostgreSQL tests. Both workbook sheets rendered and inspected using saved UNH data.
+Deployment verification pending.
+
 ## T162 — consistent visual across report and assignment
 
 The Stock Analysis Infographic tab now uses its matching assignment's saved
@@ -14,7 +30,7 @@ its cache version was bumped for the current evidence checks.
 
 998 backend tests, 123 frontend tests, compile/build pass. Isolated PostgreSQL
 coverage verifies the report route returns the assignment layout, preserves the
-original and creates no Studio output or model call. Deployment verification pending.
+original and creates no Studio output or model call. Backend a48ac3f and exact hosted T162 assets verified; Mac healthy.
 
 ## T161 — meeting preparation agenda and exact saved-meeting links
 

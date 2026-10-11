@@ -271,6 +271,18 @@ class Coordinator:
                         if status>=400:return jsonify(response),status
                 self.store(ident,state,'running')
             self.wake();return jsonify(resumed=True)
+        @bp.get('/api/research/assignments/<ident>/financial-history')
+        def financial_history(ident):
+            row=self.read(ident)
+            if not row:return jsonify(error='Assignment not found.'),404
+            state=obj(row['result'])
+            if 'visual' not in state.get('artifacts',{}):return jsonify(error='No saved visual financial snapshot is available.'),409
+            from financial_workbook import export
+            try:raw=export(row['ticker'],state.get('visualFundamentals'),ident)
+            except ValueError as exc:return jsonify(error=str(exc)),409
+            filename=row['ticker']+'-financial-history-'+ident[:8]+'.xlsx'
+            return Response(raw,mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',headers={
+                'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Disposition':'attachment; filename="'+filename+'"'})
         @bp.get('/api/research/assignments/<ident>/artifact/<kind>')
         def artifact(ident,kind):
             row=self.read(ident);item=obj(row['result']).get('artifacts',{}).get(kind) if row else None
