@@ -154,3 +154,19 @@ class StockPostgresTests(unittest.TestCase):
         self.assertEqual(retried['status'],'complete');self.assertEqual(len(retried['state']['qualityRevisions']),1)
         self.assertEqual(self.calls.count('report-1'),1);self.assertEqual(self.calls.count('report-0'),2)
         self.assertEqual(self.client.post(path+'/resume',json={'repairThesis':True}).status_code,409)
+    def test_infographic_uses_assignment_visual_without_new_model_or_saved_output(self):
+        run=self.start();calls=len(self.calls);assignment=str(uuid.uuid4())
+        with self.db(True) as (_,c):
+            c.execute('CREATE TABLE IF NOT EXISTS mp_jobs(id TEXT PRIMARY KEY,stage TEXT,ticker TEXT,input JSONB,result JSONB,created_at TIMESTAMP DEFAULT NOW())')
+            result={'reportId':run['id'],'artifacts':{'visual':{'html':'preserved original'}}}
+            c.execute("INSERT INTO mp_jobs(id,stage,ticker,input,result) VALUES(%s,'research_assignment',%s,'{}',%s::jsonb)",(assignment,self.ticker,json.dumps(result)))
+        try:
+            r=self.client.get('/api/research/stock-analysis-run/'+run['id']+'/infographic')
+            self.assertEqual(r.status_code,200,r.json);self.assertEqual(r.json['assignmentId'],assignment)
+            self.assertEqual(r.json['rendererVersion'],'research-onepager-v3');self.assertIn('research-onepager-v3',r.json['html'])
+            self.assertEqual(r.headers['Cache-Control'],'no-store');self.assertEqual(len(self.calls),calls)
+            with self.db() as (_,c):
+                c.execute('SELECT result FROM mp_jobs WHERE id=%s',(assignment,));self.assertEqual(c.fetchone()['result'],result)
+                c.execute("SELECT COUNT(*) AS n FROM studio_outputs WHERE source_config->>'stockAnalysisId'=%s",(run['id'],));self.assertEqual(c.fetchone()['n'],0)
+        finally:
+            with self.db(True) as (_,c):c.execute('DELETE FROM mp_jobs WHERE id=%s',(assignment,))

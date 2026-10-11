@@ -493,7 +493,16 @@ export function StockAnalysis({
     })
   }, "Generate infographic")), visual && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
     onClick: () => downloadText(visual.html, `${ticker}-investment-infographic-${run.id}.html`)
-  }, "Export infographic \xB7 printable HTML"), /*#__PURE__*/React.createElement("p", null, "Saved in Studio \xB7 #", visual.id, ". Open the exported file to print or save as PDF."), /*#__PURE__*/React.createElement("iframe", {
+  }, "Export infographic \xB7 printable HTML"), visual.assignmentId ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "Current layout of the saved assignment \xB7 ", visual.rendererVersion, ". Opening this view does not refresh the research or market data.", visual.publicDataAsOf ? ' Public-data snapshot as of ' + visual.publicDataAsOf + '.' : '', " Review figures and periods before use."), /*#__PURE__*/React.createElement("button", {
+    disabled: busy,
+    onClick: () => mutate(async () => {
+      var r = await fetch(api + visual.originalUrl, {
+        signal: AbortSignal.timeout(30000)
+      });
+      if (!r.ok) throw Error('The original saved visual could not be loaded.');
+      downloadText(await r.text(), `${ticker}-original-saved-visual-${visual.assignmentId}.html`);
+    })
+  }, "Export original saved visual")) : /*#__PURE__*/React.createElement("p", null, "Saved in Studio \xB7 #", visual.id, ". Open the exported file to print or save as PDF."), /*#__PURE__*/React.createElement("iframe", {
     title: `${ticker} investment infographic`,
     sandbox: "",
     srcDoc: visual.html,

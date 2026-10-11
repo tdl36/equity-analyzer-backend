@@ -116,4 +116,11 @@ duplicate flow passes. No paid QA or production test meeting. Backend a4148a7 an
 
 Read-only upcoming meeting agenda and exact meeting links, with company guards,
 reload/Back handling and stale response protection. 995 backend tests, 123 frontend
-tests, compile/build pass. Deployment verification pending.
+tests, compile/build pass. Backend 4616ce9 and exact hosted T161 assets verified; Mac healthy.
+
+## T162 in progress
+
+Report Infographic view now shares the saved assignment evidence/current layout,
+with snapshot vintage and separate original export. Read-only rendering; no paid
+calls or automatic data refresh. 998 backend tests, 123 frontend tests and build
+pass. Deployment verification pending.

@@ -2,6 +2,20 @@
 
 Updated: October 10, 2026
 
+## T162 — consistent visual across report and assignment
+
+The Stock Analysis Infographic tab now uses its matching assignment's saved
+research/public-data snapshot and current one-pager renderer. Viewing and exporting
+never refresh prices, run a model or rewrite the original export. Snapshot date and
+renderer version are visible; the original saved visual has a separate export.
+Company/report identity and ambiguous-parent guards prevent picking another
+assignment's visual. Standalone legacy Studio visuals remain a separate workflow;
+its cache version was bumped for the current evidence checks.
+
+998 backend tests, 123 frontend tests, compile/build pass. Isolated PostgreSQL
+coverage verifies the report route returns the assignment layout, preserves the
+original and creates no Studio output or model call. Deployment verification pending.
+
 ## T161 — meeting preparation agenda and exact saved-meeting links
 
 Activity includes a bounded seven-day preparation agenda using New York dates.
@@ -16,7 +30,7 @@ missing meetings remain visible; stale reads cannot replace a newer selection.
 A background meeting reload cannot redirect another workspace.
 995 backend tests, 123 frontend tests, compilation and build pass. Additional
 isolated PostgreSQL tests verify concurrent handoff reuse and deleted destination
-handling. Release verification pending.
+handling. Backend 4616ce9 and exact hosted T161 assets verified; Mac healthy.
 
 ## T160 — saved research questions to Meeting Prep
 

@@ -9,7 +9,7 @@ from company_research import eligible, digest
 from stock_analysis import missing
 from stock_evidence import valid_citations
 
-RENDER_VERSION='stock-visual-v1'
+RENDER_VERSION='stock-visual-v2'
 PANELS=[('Company at a glance',['summary','industry']),('How the business makes money',['business']),
         ('Financial performance',['financials','earnings']),('Investment thesis and scenarios',['scenarios']),
         ('What the market is debating',['debates','expectations']),('Catalysts and risks',['catalysts','risks']),
@@ -109,6 +109,12 @@ def register_routes(bp,get_db,ensure,read):
         ensure();run=read(ident)
         if not run:return jsonify(error='Report not found'),404
         if run['status']!='complete':return jsonify(error='Complete and review the report first.'),409
+        from research_visual_view import assignment_view
+        try:
+            with get_db() as (_,cur):current=assignment_view(cur,run)
+            if current:
+                response=jsonify(current);response.headers['Cache-Control']='no-store';return response
+        except ValueError as exc:return jsonify(error=str(exc)),409
         fingerprint=digest([RENDER_VERSION,ident,run['state'].get('report'),run['state'].get('citations')])
         with get_db(commit=True) as (_,cur):
             cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',('stock-visual:'+ident,))
