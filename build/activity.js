@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { activityRows, activityAge, collectionHealth } from './activity-model.mjs';
+import { activityRows, activityAge, collectionHealth, workLane, nextAction, workOverview, focusRows } from './activity-model.mjs';
 export function ActivityWorkspace({
   api,
   onNavigate,
@@ -7,7 +7,7 @@ export function ActivityWorkspace({
 }) {
   var [data, setData] = React.useState(null),
     [error, setError] = React.useState(''),
-    [filter, setFilter] = React.useState('active'),
+    [filter, setFilter] = React.useState('focus'),
     [query, setQuery] = React.useState(''),
     [limit, setLimit] = React.useState(20);
   var [loading, setLoading] = React.useState(false);
@@ -58,8 +58,17 @@ export function ActivityWorkspace({
   }, [api]);
   React.useEffect(() => setLimit(20), [filter, query]);
   var matching = activityRows(data, filter, query);
-  var rows = compact ? (data?.items || []).filter(r => ['active', 'attention'].includes(r.bucket)).sort((a, b) => (a.title === 'End-to-end research' ? 0 : 1) - (b.title === 'End-to-end research' ? 0 : 1)).slice(0, 4) : matching.slice(0, limit);
-  var counts = data?.counts || {};
+  var rows = compact ? focusRows(data).slice(0, 4) : matching.slice(0, limit);
+  var counts = workOverview(data);
+  counts.focus = counts.blocked + counts.review;
+  var lanes = {
+    blocked: 'Check progress',
+    review: 'Your review',
+    processing: 'Processing',
+    waiting: 'Waiting',
+    recent: 'Finished',
+    older: 'Older unfinished'
+  };
   return /*#__PURE__*/React.createElement("section", {
     className: compact ? 'workspace-panel activity-compact' : 'workspace-page activity-page',
     "aria-label": compact ? 'Work in progress' : 'Activity'
@@ -67,7 +76,7 @@ export function ActivityWorkspace({
     className: "workspace-section-heading activity-heading"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
     className: "workspace-eyebrow"
-  }, "ACROSS YOUR RESEARCH"), compact ? /*#__PURE__*/React.createElement("h2", null, "Work in progress") : /*#__PURE__*/React.createElement("h1", null, "Activity."), /*#__PURE__*/React.createElement("p", null, compact ? 'Your active jobs and anything needing attention.' : 'See what Charlie is working on, what is waiting, and what is ready to review.')), /*#__PURE__*/React.createElement("button", {
+  }, "ACROSS YOUR RESEARCH"), compact ? /*#__PURE__*/React.createElement("h2", null, "Work in progress") : /*#__PURE__*/React.createElement("h1", null, "Activity."), /*#__PURE__*/React.createElement("p", null, compact ? 'Decisions and stalled work first, then progress across your companies.' : 'See what Charlie is working on, what is waiting, and what is ready to review.')), /*#__PURE__*/React.createElement("button", {
     onClick: compact ? () => onNavigate('activity') : load,
     disabled: !compact && loading
   }, compact ? 'View all activity ↗' : loading ? 'Refreshing…' : 'Refresh')), error && /*#__PURE__*/React.createElement("p", {
@@ -87,7 +96,7 @@ export function ActivityWorkspace({
   }, /*#__PURE__*/React.createElement("small", null, h.label), /*#__PURE__*/React.createElement("strong", null, h.value), !compact && /*#__PURE__*/React.createElement("p", null, h.detail)))), !compact && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "activity-counters",
     "aria-label": "Activity filters"
-  }, [['active', 'Active & queued'], ['attention', 'Needs attention'], ['recent', 'Recently finished'], ['older', 'Older unfinished']].map(([key, label]) => /*#__PURE__*/React.createElement("button", {
+  }, [['focus', 'Needs you'], ['processing', 'Processing'], ['waiting', 'Waiting'], ['recent', 'Finished'], ['older', 'Older unfinished']].map(([key, label]) => /*#__PURE__*/React.createElement("button", {
     key: key,
     "aria-pressed": filter === key,
     onClick: () => setFilter(key)
@@ -102,7 +111,7 @@ export function ActivityWorkspace({
     role: "status"
   }, "Loading activity\u2026"), data && !rows.length && /*#__PURE__*/React.createElement("p", {
     className: "workspace-empty"
-  }, query ? 'No matching work.' : compact ? 'No current unfinished work. Older unresolved records remain in Activity.' : filter === 'active' ? 'No work currently in progress.' : filter === 'attention' ? 'No jobs currently need attention.' : filter === 'older' ? 'No older unfinished records in this snapshot.' : 'No recently finished work in the last 24 hours.'), /*#__PURE__*/React.createElement("div", {
+  }, query ? 'No matching work.' : compact ? 'No current unfinished work. Older unresolved records remain in Activity.' : filter === 'focus' ? 'No current decisions or stalled jobs in this snapshot.' : filter === 'processing' ? 'No jobs currently reporting processing.' : filter === 'waiting' ? 'No jobs currently waiting.' : filter === 'older' ? 'No older unfinished records in this snapshot.' : 'No recently finished work in the last 24 hours.'), /*#__PURE__*/React.createElement("div", {
     className: "activity-list"
   }, rows.map(r => /*#__PURE__*/React.createElement("article", {
     className: 'activity-row activity-' + r.bucket,
@@ -115,13 +124,15 @@ export function ActivityWorkspace({
     className: "activity-row-title"
   }, /*#__PURE__*/React.createElement("strong", null, r.step), /*#__PURE__*/React.createElement("span", {
     className: "activity-status"
-  }, r.bucket === 'attention' ? 'Needs attention' : r.status.replaceAll('_', ' '))), r.stages != null && /*#__PURE__*/React.createElement("p", null, r.stages, "/12 research stages saved"), r.warning && /*#__PURE__*/React.createElement("p", {
+  }, lanes[workLane(r)])), r.stages != null && /*#__PURE__*/React.createElement("p", null, r.stages, "/12 research stages saved"), r.warning && /*#__PURE__*/React.createElement("p", {
     className: "activity-warning"
   }, r.warning), r.error && /*#__PURE__*/React.createElement("p", {
     className: "activity-warning"
   }, r.error), r.stale && /*#__PURE__*/React.createElement("p", {
     className: "activity-warning"
-  }, "No saved progress for ", r.quietMinutes == null ? 'an unknown period' : r.quietMinutes + ' minutes', ". Open the job to inspect what is waiting."), /*#__PURE__*/React.createElement("small", null, "Updated ", activityAge(r.updatedAt), " \xB7 Started ", activityAge(r.createdAt))), /*#__PURE__*/React.createElement("button", {
+  }, "No saved progress for ", r.quietMinutes == null ? 'an unknown period' : r.quietMinutes + ' minutes', ". Open the job to inspect what is waiting."), /*#__PURE__*/React.createElement("p", {
+    className: "activity-next"
+  }, /*#__PURE__*/React.createElement("strong", null, "Next:"), " ", nextAction(r)), /*#__PURE__*/React.createElement("small", null, "Updated ", activityAge(r.updatedAt), " \xB7 Started ", activityAge(r.createdAt))), /*#__PURE__*/React.createElement("button", {
     className: "activity-open",
     onClick: () => onNavigate(r.view, r.ticker)
   }, "Open work \u2197", /*#__PURE__*/React.createElement("span", {

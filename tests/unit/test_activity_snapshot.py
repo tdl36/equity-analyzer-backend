@@ -27,6 +27,11 @@ class ActivityTests(unittest.TestCase):
   self.assertEqual(result['0']['bucket'],'attention');self.assertEqual(result['1']['bucket'],'attention')
   self.assertEqual(result['2']['bucket'],'attention');self.assertEqual(result['3']['bucket'],'recent')
   self.assertEqual(result['4']['bucket'],'attention');self.assertEqual(result['old']['bucket'],'older')
+ def test_catalyst_reason_and_workflow_are_projected_without_payload(self):
+  r=row();r.update(stage='catalyst_signal',status='needs_review',reason='Check possible duplicate',input={'private':'secret'})
+  item=assemble([r],{},NOW)[0]
+  self.assertEqual(item['title'],'Catalyst signal');self.assertEqual(item['workflow'],'catalyst_signal')
+  self.assertEqual(item['step'],'Check possible duplicate');self.assertNotIn('input',item)
  def test_timestamps_are_utc(self):
   self.assertEqual(stamp(NOW.replace(tzinfo=None)),NOW.isoformat());self.assertEqual(stamp(NOW.timestamp()),NOW.isoformat());self.assertIsNone(stamp('invalid'))
 

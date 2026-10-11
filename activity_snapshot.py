@@ -5,10 +5,10 @@ from flask import Blueprint, jsonify
 TERMINAL = ('complete','completed','done','cancelled','stopped','applied','skipped','submitted')
 ATTENTION = ('attention','needs_auth','failed','error','interrupted','needs_review','awaiting_approval','proposed','detected','blocked')
 ACTIVE=('queued','running','pending','waiting','starting','processing','transcribing','downloading','uploading','collecting','collection_queued')
-WORKFLOW_LABELS={'evidence_amendment':'Evidence proposal','catalyst_watch':'Catalyst monitoring','research_assignment':'End-to-end research','collection_control':'Collection request','auto_evidence_intake':'Evidence processing','command_meeting':'Meeting preparation','pipeline':'Meeting research','thesis':'Thesis draft','fanout':'Analyst research','orchestrate':'Research coordination'}
+WORKFLOW_LABELS={'evidence_amendment':'Evidence proposal','catalyst_watch':'Catalyst monitoring','catalyst_signal':'Catalyst signal','research_assignment':'End-to-end research','collection_control':'Collection request','auto_evidence_intake':'Evidence processing','command_meeting':'Meeting preparation','pipeline':'Meeting research','thesis':'Thesis draft','fanout':'Analyst research','orchestrate':'Research coordination'}
 # Identifiers/projections are constants, never request input. No source bodies or keys.
 SOURCES = [
- ('mp_jobs','Research workflows','desk',"stage, result->>'step' AS step, result->>'reportId' AS report_id, result->>'refreshRequestId' AS refresh_id, result->>'researchStages' AS stages, result->>'delayWarning' AS warning, COALESCE(input->>'assignmentId',input#>>'{payload,assignmentId}') AS assignment_id",'updated_at'),
+ ('mp_jobs','Research workflows','desk',"stage, result->>'step' AS step, result->>'reportId' AS report_id, result->>'refreshRequestId' AS refresh_id, result->>'researchStages' AS stages, result->>'delayWarning' AS warning, result->>'reason' AS reason, COALESCE(input->>'assignmentId',input#>>'{payload,assignmentId}') AS assignment_id",'updated_at'),
  ('research_pipeline_jobs','Document processing','pipeline','job_type AS stage, current_step AS step','updated_at'),
  ('stock_analysis_runs','Stock analysis','stockanalysis',"jsonb_array_length(COALESCE(state->'completed','[]'::jsonb)) AS stages, state->>'inFlight' AS step",'updated_at'),
  ('company_research_runs','Company research','portfolio',"NULL::text AS step",'updated_at'),
@@ -42,7 +42,8 @@ def assemble(rows, collection, now):
         stages=r.get('stages');stages=int(stages) if str(stages).isdigit() else None
         items.append(dict(id=r['source']+':'+str(r['id']),jobId=str(r['id']),ticker=r.get('ticker') or '',
             title=WORKFLOW_LABELS.get(r.get('stage'),r['label']),status=status,bucket=bucket(status),
-            step=r.get('step') or ('Waiting for Mac collection' if is_parent else status.replace('_',' ')),
+            step=r.get('step') or r.get('reason') or ('Waiting for Mac collection' if is_parent else status.replace('_',' ')),
+            workflow=r.get('stage') or r['source'],
             stages=stages,warning=r.get('warning'),error=(r.get('error') or '')[:600],
             createdAt=stamp(r.get('created_at')),updatedAt=stamp(r.get('updated_at')),
             view='stockanalysis' if is_parent else r['view']))

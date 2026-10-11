@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {activityRows,activityAge,macConnected,collectionHealth} from '../../src/activity-model.mjs';
+import {activityRows,activityAge,macConnected,collectionHealth,workLane,nextAction,workOverview,focusRows} from '../../src/activity-model.mjs';
 import {readRoute,routeHash,VIEWS} from '../../src/workspace-model.mjs';
 test('activity is reachable without company context',()=>{assert.ok(VIEWS.includes('activity'));assert.deepEqual(readRoute(routeHash('activity')),{view:'activity',ticker:''});});
 test('filters find work across tickers without mixing attention and active',()=>{const data={items:[{ticker:'UNH',title:'Research',step:'Review',bucket:'active'},{ticker:'SYK',title:'Collection',step:'Sign in',bucket:'attention'}]};assert.equal(activityRows(data,'active','unh').length,1);assert.equal(activityRows(data,'attention','SYK').length,1);assert.equal(activityRows(data,'active','SYK').length,0);});
@@ -13,4 +13,23 @@ test('delivery health separates heartbeat, sync and full command queue',()=>{
  assert.deepEqual(collectionHealth({...data,asOf:'2026-10-10T11:00:00Z'},now).map(x=>x.ok),[false,false,false]);
  assert.equal(macConnected('2026-10-11T12:00:00Z',now),false);
  assert.equal(collectionHealth({...data,collectionDelivery:{pending:1,oldestPendingAt:'2026-10-10T12:01:00Z'}},now)[2].ok,false);
+});
+
+test('exception inbox distinguishes decisions, waiting and reported processing',()=>{
+ const rows=[
+ {id:'w',bucket:'active',status:'waiting',stale:true,workflow:'auto_evidence_intake'},
+ {id:'p',bucket:'active',status:'processing',stale:false},
+ {id:'b',bucket:'active',status:'running',stale:true},
+ {id:'r',bucket:'attention',status:'awaiting_approval'},
+ {id:'o',bucket:'older',status:'running',stale:true},
+ {id:'d',bucket:'recent',status:'complete'}];
+ assert.deepEqual(rows.map(workLane),['waiting','processing','blocked','review','older','recent']);
+ assert.deepEqual(workOverview({items:rows}),{waiting:1,processing:1,blocked:1,review:1,older:1,recent:1});
+ assert.deepEqual(focusRows({items:rows}).map(r=>r.id),['b','r','p','w']);
+ assert.equal(activityRows({items:rows},'focus').length,2);
+ assert.equal(activityRows({items:rows},'waiting').length,1);
+ assert.match(nextAction(rows[0]),/daily limits/);
+ assert.match(nextAction(rows[2]),/may still be running/);
+ assert.match(nextAction(rows[3]),/will not approve/);
+ assert.match(nextAction({status:'needs_auth',bucket:'attention'}),/directly in the source app/);
 });

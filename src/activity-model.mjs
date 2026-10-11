@@ -1,7 +1,7 @@
 import {parseTimestamp} from './workspace-model.mjs';
 export function activityRows(data,filter='active',query='') {
  const q=query.trim().toLowerCase();
- return (data?.items||[]).filter(r=>(filter==='all'||r.bucket===filter)&&(r.ticker+' '+r.title+' '+r.step).toLowerCase().includes(q));
+ return (data?.items||[]).filter(r=>(filter==='all'||(filter==='focus'?['blocked','review'].includes(workLane(r)):['processing','waiting','review','blocked'].includes(filter)?workLane(r)===filter:r.bucket===filter))&&(r.ticker+' '+r.title+' '+r.step).toLowerCase().includes(q));
 }
 export function activityAge(value,now=Date.now()) {
  const date=parseTimestamp(value);if(!date)return 'Time unavailable';
@@ -25,4 +25,37 @@ export function collectionHealth(data,now=Date.now()) {
   {key:'report',label:'Collection updates',ok:report,value:report?'Current':'Stale or unavailable',detail:report?'The Mac collection report is current. This does not mean every collection is complete.':'Check collection sync on the Mac, even if the agent is connected.'},
   {key:'delivery',label:'Requests reaching Mac',ok:timely,value:!known?'Unknown':pending===0?'No pending delivery':`${pending} awaiting receipt`,detail:!known?'Delivery could not be verified. Refresh Activity before submitting again.':pending===0?'Cloud collection commands have been acknowledged. Browser collection may still be waiting.':timely?'Waiting for the Mac to acknowledge queued collection commands.':'A collection command has not been acknowledged within five minutes, or its time is unknown. Check collection controls and Mac sync before resubmitting.'}
  ];
+}
+
+// These lanes describe saved state, never infer that a model or browser is running.
+export function workLane(row) {
+ if(row.bucket==='older')return 'older';
+ if(row.bucket==='recent')return 'recent';
+ if(['needs_review','awaiting_approval','proposed','detected'].includes(row.status))return 'review';
+ if(row.bucket==='attention')return 'blocked';
+ if(['queued','pending','waiting','collection_queued'].includes(row.status))return 'waiting';
+ if(row.stale)return 'blocked';
+ return 'processing';
+}
+export function nextAction(row) {
+ const lane=workLane(row);
+ if(row.status==='needs_auth')return 'Complete sign-in or MFA directly in the source app, then resume collection.';
+ if(lane==='review')return row.workflow==='catalyst_signal'?'Review the detected event and source choices before requesting collection.':'Review the saved draft or proposal. Charlie will not approve it for you.';
+ if(lane==='blocked')return row.stale&&row.bucket==='active'?'Check the last saved step and dependency before retrying. A quiet job may still be running.':'Open the saved issue and retained progress. Confirm any uncertain paid call before retrying.';
+ if(lane==='waiting'&&row.workflow==='auto_evidence_intake')return 'Check automation settings, daily limits and pending proposals for this company.';
+ if(lane==='waiting'&&['collection_queued','queued'].includes(row.status))return 'Check the collection delivery panels when this work requires Mac collection.';
+ if(lane==='waiting')return 'Waiting for a dependency or available worker. Open the workflow for its saved state.';
+ if(lane==='processing')return 'No decision requested. Charlie is reporting work in progress.';
+ if(lane==='older')return 'Inspect retained unfinished work before restarting or submitting a duplicate.';
+ return 'Open the saved output; completion does not mean investor approval.';
+}
+export function workOverview(data) {
+ const counts={blocked:0,review:0,processing:0,waiting:0,recent:0,older:0};
+ for(const row of data?.items||[])counts[workLane(row)]++;
+ return counts;
+}
+export function focusRows(data) {
+ const rank={blocked:0,review:1,processing:2,waiting:3,recent:4,older:5};
+ return [...(data?.items||[])].filter(r=>!['older','recent'].includes(workLane(r)))
+  .sort((a,b)=>rank[workLane(a)]-rank[workLane(b)]||(a.title==='End-to-end research'?0:1)-(b.title==='End-to-end research'?0:1));
 }
