@@ -2,6 +2,22 @@
 
 Updated: October 10, 2026
 
+## T170 — recover single analyst jobs before first execution
+
+New single-company analyst jobs opt into restart discovery. Every minute the
+backend checks up to ten enrolled queued jobs older than two minutes, using their
+saved ticker/date/provider/model. The existing committed atomic reservation fences
+normal dispatch, concurrent recovery loops and process restarts. Once reserved,
+an attempt is never automatically retried, even after a crash. Legacy and batch
+jobs are excluded; batch concurrency is not yet durable. A retired model fails
+before graph imports rather than acquiring a replacement. Recovery runs serially
+within each process's loop; this is not a global concurrency queue. Capabilities
+report single-start recovery separately from durable batch execution.
+
+Validation/deployment pending. No paid research QA. Next: batch concurrency
+persistence, submission deduplication, interrupted-attempt reconciliation, and
+clearer recovery status in Activity. Existing legacy WELL state is untouched.
+
 ## T169 — truthful saved-report presence
 
 Activity's exact analyst-run inspection excludes batch enrollment metadata and

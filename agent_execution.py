@@ -3,9 +3,13 @@ import json
 from uuid import uuid4
 
 
-def queued_log():
-    return json.dumps([{'event': 'execution_queued', 'agent': 'system',
-                        'message': 'Queued for one execution attempt.'}])
+def queued_log(recover_single=False):
+    entries = [{'event': 'execution_queued', 'agent': 'system',
+                'message': 'Queued for one execution attempt.'}]
+    if recover_single:
+        entries.append({'event': 'recover_single_v1', 'agent': 'system',
+                        'message': 'May resume only before the first execution reservation.'})
+    return json.dumps(entries)
 
 
 def claim(get_db, run_id):
@@ -28,3 +32,39 @@ def claim(get_db, run_id):
             RETURNING id
         """, (attempt, run_id))
         return attempt if cur.fetchone() else None
+
+
+def recover_pending(get_db, run):
+    """Discover only new opted-in singles; run must take the atomic claim first.
+
+    Never take over a started attempt. Two-minute grace avoids competing with the
+    normal immediate dispatch. Batch jobs are not opted in: their concurrency
+    settings are not yet durable. Read parameters from the saved row, not defaults.
+    """
+    with get_db() as (_, cur):
+        cur.execute("""
+            SELECT id,ticker,analysis_date,llm_provider,llm_model FROM agent_runs
+            WHERE status='queued' AND completed_at IS NULL
+              AND created_at < NOW()-INTERVAL '2 minutes'
+              AND logs @> '[{"event":"execution_queued"},{"event":"recover_single_v1"}]'::jsonb
+              AND NOT logs @> '[{"event":"execution_started"}]'::jsonb
+            ORDER BY created_at LIMIT 10
+        """)
+        rows = list(cur.fetchall())
+    for row in rows:
+        run(str(row['id']), row['ticker'], str(row['analysis_date']),
+            row['llm_provider'], row['llm_model'])
+    return len(rows)
+
+
+def start_recovery(get_db, run):
+    import threading
+    def loop():
+        # Sequential within this recovery loop; graph entry fences all processes.
+        pause = threading.Event()
+        while not pause.wait(60):
+            try:
+                recover_pending(get_db, run)
+            except Exception as exc:
+                print('[Analyst queue recovery]', type(exc).__name__)
+    threading.Thread(target=loop, daemon=True, name='analyst-queue-recovery').start()

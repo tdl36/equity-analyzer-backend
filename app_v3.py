@@ -3926,6 +3926,7 @@ def _run_trading_agent(run_id, ticker, date_str, provider, model):
             with get_db(commit=True) as (conn, cur):
                 cur.execute("UPDATE agent_runs SET logs = logs || %s::jsonb WHERE id = %s", (entry, run_id))
 
+        model_registry.ensure_active(model)
         _append_log("system", f"Starting TradingAgents: {ticker} @ {date_str} using {provider}/{model}")
 
         from tradingagents.graph.trading_graph import TradingAgentsGraph
@@ -20605,7 +20606,7 @@ def start_agent_run():
         cur.execute('''
             INSERT INTO agent_runs (id, ticker, analysis_date, llm_provider, llm_model, status, logs)
             VALUES (%s, %s, %s, %s, %s, 'queued', %s::jsonb)
-        ''', (run_id, ticker, date_str, provider, model, queued_log()))
+        ''', (run_id, ticker, date_str, provider, model, queued_log(recover_single=True)))
 
     threading.Thread(target=_run_trading_agent, args=(run_id, ticker, date_str, provider, model), daemon=True).start()
 
@@ -21518,7 +21519,8 @@ def save_agent_to_research(run_id):
 def agent_execution_capabilities():
     from agent_batch import MAX_CONCURRENCY, MAX_BATCH_SIZE
     return jsonify({'maxConcurrency': MAX_CONCURRENCY, 'maxBatchSize': MAX_BATCH_SIZE,
-                    'execution': 'background-thread', 'durableQueue': False})
+                    'execution': 'background-thread', 'durableQueue': False,
+                    'singleStartRecovery': True, 'interruptedAttemptRetry': False})
 
 
 @app.route('/api/agents/batch-run', methods=['POST'])
@@ -29288,6 +29290,9 @@ def _resume_manual_meeting(job_id,inp,checkpoint):
 manual_meeting_recovery.start(get_db,_resume_manual_meeting,
     lambda:bool(os.environ.get('ANTHROPIC_API_KEY','')))
 
+
+import agent_execution
+agent_execution.start_recovery(get_db, _run_trading_agent)
 
 import summary_lab
 summary_lab_bp = summary_lab.create_blueprint(
