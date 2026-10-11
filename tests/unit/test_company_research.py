@@ -123,6 +123,20 @@ class ApiTests(unittest.TestCase):
     def payload(self):
         import uuid
         return {'requestId':str(uuid.uuid4()),'filenames':['Original.txt'],'revision':self.revision,'confirmed':True}
+    def test_private_saved_response_download_does_not_dispatch_or_expose_headers(self):
+        p=self.payload();self.client.post('/api/research/company/ABC',json=p)
+        self.rows[p['requestId']]['state']={'returnedResponses':{'group-0':{
+            'text':'<script>untrusted synthetic response</script>','headers':'SECRET','stop_reason':'end_turn'}}}
+        calls=self.thread.call_count
+        path='/api/research/company-run/'+p['requestId']+'/response/'
+        r=self.client.get(path+'group-0')
+        self.assertEqual(r.status_code,200);self.assertIn('attachment',r.headers['Content-Disposition'])
+        self.assertEqual(r.headers['Cache-Control'],'private, no-store')
+        self.assertEqual(r.headers['X-Content-Type-Options'],'nosniff')
+        self.assertEqual(r.json['text'],'<script>untrusted synthetic response</script>')
+        self.assertNotIn('SECRET',r.get_data(as_text=True));self.assertEqual(self.thread.call_count,calls)
+        self.assertEqual(self.client.get(path+'missing').status_code,404)
+
     def test_usage_evidence_is_read_only_and_missing_run_is_404(self):
         p=self.payload();self.client.post('/api/research/company/ABC',json=p)
         calls=self.thread.call_count

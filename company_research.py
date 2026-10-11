@@ -360,6 +360,25 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
         result=public_run(row);result['baselineStale']=current['revision']!=row['baseline']['revision'];result['currentRevision']=current['revision']
         response=jsonify(result);response.headers['Cache-Control']='no-store';return response
 
+    @bp.get(f'/api/research/{route}-run/<ident>/response/<stage>')
+    def saved_response(ident,stage):
+        # Explicit private inspection only; never render model text as HTML.
+        ensure();row=read(ident)
+        if not row:return jsonify(error='Research revision not found'),404
+        receipt=(row.get('state') or {}).get('returnedResponses',{}).get(stage)
+        if not isinstance(receipt,dict):return jsonify(error='Saved response not found'),404
+        from flask import send_file
+        from io import BytesIO
+        from research_response_receipts import receipt_metadata
+        payload={'metadata':receipt_metadata(stage,receipt),'text':receipt.get('text')}
+        response=send_file(BytesIO(json.dumps(payload,ensure_ascii=False).encode('utf-8')),
+                           mimetype='application/json',as_attachment=True,
+                           download_name='saved-research-response.json',max_age=0)
+        response.headers['Cache-Control']='private, no-store'
+        response.headers['X-Content-Type-Options']='nosniff'
+        response.headers['Content-Security-Policy']="sandbox; default-src 'none'"
+        return response
+
     @bp.get(f'/api/research/{route}-run/<ident>/usage-evidence')
     def usage_evidence(ident):
         # Read-only reconciliation: no key lookup, worker wakeup or paid calls.

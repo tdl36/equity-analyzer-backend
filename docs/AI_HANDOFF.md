@@ -2,6 +2,20 @@
 
 Updated: October 10, 2026
 
+## T181 — private saved-response inspection
+
+Explicit per-run/per-stage response download returns only saved text and
+allowlisted diagnostic metadata as an attachment. JSON MIME, nosniff, sandbox
+CSP and private/no-store prevent treating model text as executable content or
+shared cached content. Missing runs/stages return 404. No key lookup, worker
+wakeup, model call or research mutation. Normal run APIs still redact raw text.
+This enables diagnosis of preserved malformed responses without a paid retry.
+
+ABT at 20:07 UTC is attention on report-1 with invalid JSON; report-0/review-0
+remain complete. Its current failed return is preserved (13,709 characters,
+end_turn); one archived response is also reported. No resume was issued this wake.
+Inspect the saved response before any retry. Phase 1 is still incomplete.
+
 ## T180 — read-only research usage reconciliation
 
 Each company/committee/stock research run now has a no-store GET usage-evidence
@@ -16,8 +30,23 @@ assignment; its first response was not preserved by the older release.
 Validation: 1029 safe backend tests, 137 frontend tests, touched Python compile,
 production build and unchanged model gate against 67aa5c3 passed. Route tests
 verify missing-run 404, no-store and no worker start; query tests verify exact
-job/feature binding and field allowlisting. No paid QA. Deployment verification
-and actual ABT reconciliation remain pending. Phase 1 remains incomplete.
+job/feature binding and field allowlisting. No paid QA. Backend revision
+5ea4f92c0594f2fef30215f3d028e5a01cb60c4c verified healthy; hosted T180 JS/service
+worker bytes match; CSS unchanged from T179. Cloudflare version
+33c00234-fc73-4cc2-ae9f-fac28398a4df. Mac healthy at 19:56:34 UTC.
+
+ABT user explicitly requested continued work after retry-cost disclosure. Read-only
+ledger reconciliation found one report-0 returned usage record at 18:37:59 UTC:
+Opus 4.6, 57,575 input / 6,077 output tokens, estimated $0.4398. Together with the
+saved parser failure this establishes a returned failed attempt, not a live call;
+it is not a provider invoice. Sent exactly one acknowledged resume to the parent
+assignment at about 19:56 UTC, HTTP 200. Report f94fc11b-0bbc-561a-a340-99de8684e5dc
+has now saved report-0 (15,375 characters, end_turn) and advanced to review-0
+using the same eight sources. First stage recovery is verified; the full report
+and requested outputs are not complete. Do not repeat resume. Do not
+push/deploy while this user-authorized research is active. This handoff update is
+intentionally local pending the live outcome; verify stages/artifacts before
+claiming success. Phase 1 remains incomplete.
 
 ## T179 — visible saved-response recovery evidence
 
