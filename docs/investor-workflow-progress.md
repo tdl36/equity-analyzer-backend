@@ -11,8 +11,8 @@ runtime changes must remain untouched. Never pytest or paid research for QA.
 ## Closing release checkpoint
 
 T164 source: `47390604cf6ac3a90b2a2b19243d610507f78fa2`.
-18 application increments (T147–T164) were committed and deployed during the
-session. Final safe suites: 1003 backend tests, 124 frontend tests; compile/build
+19 application increments (T147–T165) were committed and deployed during the
+session. Final safe suites: 1004 backend tests, 124 frontend tests; compile/build
 pass. Hosted bytes, authenticated reads, unauthorized rejection and Mac health
 verified. No model defaults, paid QA, research approvals or originals changed.
 
@@ -210,3 +210,12 @@ page look complete. Broker estimates and interpretations retain their labels.
 The saved market/financial snapshot has its own vintage; opening the visual does
 not make it current. Native app export remains printable HTML; the PDF shared for
 this session was rendered locally from the authenticated production output.
+
+## T165 — printed source links
+
+Final PDF inspection exposed zero links because citation anchors lived inside the
+hidden print register. Renderer v10 moves targets to the visible source footer
+and links the original documents, SEC observations, business description and
+market snapshot where safe URLs exist. UNH/DE/SYK remain one-page Calibri/black
+exports without out-of-page text. 1004 backend/124 frontend tests, compile/build
+and focused final footer tests pass. Deployment verification pending.

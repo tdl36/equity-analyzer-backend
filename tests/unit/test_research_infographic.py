@@ -82,3 +82,12 @@ class EditorialTests(unittest.TestCase):
         h=render(self.run,{},self.f)
         self.assertIn('Saved GAAP history',h)
         self.assertNotIn('Latest-filed GAAP history',h)
+
+    def test_printed_footer_keeps_citation_targets_and_safe_source_links(self):
+        self.run['sources'][0]['sourceUrl']='https://example.com/original'
+        self.add('/summary/one_liner','Complete supported statement')
+        h=render(self.run,{},self.f)
+        footer=h.split('<div class="footer">',1)[1].split('</main>',1)[0]
+        self.assertIn('id="source-1"',footer)
+        self.assertIn('href="https://example.com/original"',footer)
+        self.assertEqual(h.count('id="source-1"'),1)

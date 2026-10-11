@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 from visual_business_profiles import PROFILES
 from stock_evidence import valid_citations
 
-VERSION='stock-infographic-v9'
+VERSION='stock-infographic-v10'
 e=lambda value:html.escape(str(value if value is not None else ''),quote=True)
 
 @lru_cache(maxsize=3)
@@ -183,17 +183,17 @@ def render(run,assignment,fundamentals):
     if not ed.fits(bottom_claim,240):bottom_claim=None
     bottom=ed.claim(bottom_claim)
     glossary=profile.get('glossary','EPS = earnings per share · P/E = price / earnings · FCF = free cash flow')
+    def link(url,label):return '<a href="'+e(url)+'">'+e(label)+'</a>' if urlparse(url or '').scheme in ('https','http') else e(label)
     source_names=[]
     for n,s in enumerate(ed.sources,1):
         name=s.get('publisher') or s.get('filename','Source')
         if not s.get('publisher'):
             name=re.sub(r'--[a-f0-9]+(?=\.)','',name);name=re.sub(r'\.pdf$','',name);name=name.replace(ticker+'-','',1);name=re.sub(r'^\d{4}-','',name).replace('-',' ')
-        source_names.append(f'<span>[{n}] '+e(name if len(name)<=65 else name[:62]+'…')+'</span>')
-    footer='<div class="footer"><p>'+('Some supported text omitted for length. Read the full research. ' if ed.omitted else '')+'Selected highlights; source matching does not establish investment accuracy.</p><p><b>Dates:</b> Events '+window+' · Financials '+e(latest.get('year',''))+' · Quote '+e(q.get('observedAt','Unavailable')[:10])+'.</p><p>'+e(glossary)+'</p><p>'+ ' · '.join(source_names)+' · [F/B] SEC / company filings · [M] Yahoo Finance. Illustration is conceptual.</p></div>'
+        source_names.append(f'<span id="source-{n}">[{n}] '+link(s.get('sourceUrl',''),name if len(name)<=65 else name[:62]+'…')+'</span>')
+    footer='<div class="footer"><p>'+('Some supported text omitted for length. Read the full research. ' if ed.omitted else '')+'Selected highlights; source matching does not establish investment accuracy.</p><p><b>Dates:</b> Events '+window+' · Financials '+e(latest.get('year',''))+' · Quote '+e(q.get('observedAt','Unavailable')[:10])+'.</p><p>'+e(glossary)+'</p><p>'+ ' · '.join(source_names)+' · [F] '+link(f.get('sourceUrl',''),'SEC filings')+' · [B] '+link(profile.get('source',''),'Business')+' · [M] '+link(q.get('sourceUrl',''),'Market data')+'. Illustration is conceptual.</p></div>'
     from financial_provenance import register
     details='<details><summary>Source register, dates and calculation inputs</summary>'+register(f)
-    def link(url,label):return '<a href="'+e(url)+'">'+e(label)+'</a>' if urlparse(url or '').scheme in ('https','http') else e(label)
-    for n,s in enumerate(ed.sources,1):details+=f'<p id="source-{n}">[{n}] '+link(s.get('sourceUrl',''),s.get('filename','Original'))+'</p>'
+    for n,s in enumerate(ed.sources,1):details+=f'<p id="register-source-{n}">[{n}] '+link(s.get('sourceUrl',''),s.get('filename','Original'))+'</p>'
     details+='<p>[F] '+link(f.get('sourceUrl',''),'SEC company facts')+' · SHA-256 '+e(f.get('sourceHash',''))+'</p>'
     if f.get('segmentSource'):details+='<p>'+link(f['segmentSource']['url'],'Segment filing')+' · SHA-256 '+e(f['segmentSource']['sha256'])+'</p>'
     if profile:details+='<p>[B] '+link(profile['source'],'Business description and dated segment structure')+'</p>'

@@ -2,6 +2,16 @@
 
 Updated: October 10, 2026
 
+## T165 — preserve citations in printed visuals
+
+Renderer v10 places citation destinations and safe original source links in the
+visible footer. The expandable register is omitted from printing; its hidden
+anchors previously left the one-page PDF without working citation destinations.
+Source wording and original artifacts remain unchanged. 1004 backend tests, 124
+frontend tests, compile/build pass; final footer change also passes focused tests.
+UNH/DE/SYK render as one page with Calibri/black text and valid source links.
+Deployment verification pending.
+
 ## T164 — precise saved-data labeling
 
 Illustrated renderer v9 calls the financial series "Saved GAAP history". Replaying
