@@ -2,6 +2,37 @@
 
 Updated: October 11, 2026
 
+## ABT recovery outcome after T184
+
+The bounded quality attempt completed all 12 stages but again produced no
+supported thesis statement. Its quotation matched; review rejected compound
+wording (notably double-digit CRM versus Q2 9.5%). Direct original inspection
+also showed the reviewer overclaimed that 8.5% did not describe Medical Devices:
+the Q2 transcript explicitly says both Medical Devices and cardiovascular 8.5%.
+Do not treat model review as infallible or relax source gates to force completion.
+Parent f9e363e4-597e-4394-b9d4-36d83def935f remains attention, with saved summary
+and visual verified HTTP 200 (9,335 and 60,837 bytes respectively). No further
+paid retry was sent. Automatic workflow acceptance remains incomplete.
+
+Used the documented thesis_handoff prepare/read/submit workflow for a separate
+assistant-authored proposal. Eight originals were selectively reviewed (physical
+page coverage recorded in the private package); 41 other inventoried originals
+were not reviewed. Updated four pillars, 17 signposts and 16 risks, retaining
+legacy identities and exposing unverified assumptions. No investor approval.
+Draft 0d9203a9-f590-4e0d-854b-3e310bd1dcf3 verified pending, stale=false, eight
+source-register records; fingerprint read-back matched. Review destination:
+`?thesisDraft=0d9203a9-f590-4e0d-854b-3e310bd1dcf3#view=thesisimports&ticker=ABT`.
+Private workspace is outside repository and watched source folders. No private
+research or source bodies belong in commits. This draft does not relabel the
+failed automated report as reviewed/supported and is not yet linked in the parent.
+
+Next recovery improvements: show exhausted quality repair as a specific manual
+review path (current parent error still suggests retry although the server blocks
+another quality revision); link a matching separately prepared proposal to its
+originating assignment with baseline/source checks; improve author/reviewer
+claim granularity and review disagreement handling using synthetic fixtures.
+Do not purchase another ABT call for QA or automatically approve the saved draft.
+
 ## T184 — bounded thesis quality recovery
 
 ABT finished all 12 T183 stages and saved its summary and visual. Parent remains
@@ -19,7 +50,11 @@ failure retry limits remain unchanged. Repeated quality repair is refused.
 
 Validation: 1036 safe backend tests, 139 frontend tests, Python compile, production
 build and unchanged model policy gate against fcc2598. No paid QA. Deployment
-and the explicitly disclosed two-call live ABT quality repair remain pending.
+verified at backend 009dece1b5b3c500d11eb9e237642d2dfc122a59; hosted JS/SW
+exact bytes matched. Cloudflare 61bac0fa-580a-4630-a42d-6df28fbb238f.
+Sent exactly one parent resume, HTTP 200. ABT is running report-0 with ten
+completed stages, qualityRetries report-0/review-0, one prior quality revision
+retained. Subsequent final outcome is recorded above; the run has settled.
 
 ## T183 — quarantine bad citations and surface research failures
 
