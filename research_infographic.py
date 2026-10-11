@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 from visual_business_profiles import PROFILES
 from stock_evidence import valid_citations
 
-VERSION='stock-infographic-v8'
+VERSION='stock-infographic-v9'
 e=lambda value:html.escape(str(value if value is not None else ''),quote=True)
 
 @lru_cache(maxsize=3)
@@ -138,7 +138,7 @@ def render(run,assignment,fundamentals):
     bridge='<div class="bridge"><div><small>Consolidated revenue</small><b>'+money(val('revenue'))+'</b></div><span>→</span><div><small>Operating earnings</small><b>'+money(val('operatingIncome'))+'</b></div><span>→</span><div><small>Net income</small><b>'+money(val('netIncome'))+'</b></div></div>'
     company='<div class="company-hero"><div>'+company+'</div><div>'+artwork+'</div></div>' if artwork else company
     business='<div class="segments" style="--segment-count:'+str(max(1,min(4,len(segments))))+'">'+cards+'</div>'+bridge+'<p class="micro">'+e(latest.get('year',''))+' reported figures [F].'+segment_scope+' Segment definitions may include internal sales; do not add to group revenue. '+(e(profile.get('basis',''))+' [B]' if profile else '')+'</p>'
-    history='<div class="charts">'+charts(rows)+'</div><p class="micro">Latest-filed GAAP history [F]; may include restatements. Calculated FCF = operating cash flow − capex; margin = operating income / sales. '+e(profile.get('financialNote',''))+'</p>'
+    history='<div class="charts">'+charts(rows)+'</div><p class="micro">Saved GAAP history [F]; may include restatements. Calculated FCF = operating cash flow − capex; margin = operating income / sales. '+e(profile.get('financialNote',''))+'</p>'
     # Reserve whole paired arguments before selecting other sections. Never cross-pair topics.
     candidates=[];debates=[];monitor=[];debate_budget=650;monitor_budget=300
     for i in range(20):

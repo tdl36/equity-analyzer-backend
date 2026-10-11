@@ -9,7 +9,7 @@ class VisualViewTests(unittest.TestCase):
         before=copy.deepcopy(row)
         with patch('research_visual_view.render',return_value='current') as render:
             result=current_view(run,row)
-            self.assertEqual(result['rendererVersion'],'stock-infographic-v8');self.assertEqual(result['html'],'current')
+            self.assertEqual(result['rendererVersion'],'stock-infographic-v9');self.assertEqual(result['html'],'current')
             self.assertEqual(render.call_args.args[1]['_visualFundamentals'],row['fundamentals'])
         self.assertEqual(result['originalUrl'],'/api/research/assignments/assignment/artifact/visual?render=original');self.assertEqual(row,before)
         for changed in ({**row,'ticker':'SYK'},{**row,'report_id':'other'}):

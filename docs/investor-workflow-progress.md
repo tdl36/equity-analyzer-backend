@@ -130,4 +130,12 @@ pass. Backend a48ac3f and exact hosted T162 assets verified; Mac healthy.
 Saved financial history Excel export with observation register, filing links, typed
 values and explicit blanks/unit guards. 1002 backend and 124 frontend tests pass;
 compile/build pass. Both sheets visually inspected from the retained UNH snapshot.
-Export does not refresh, dispatch or mutate research. Deployment verification pending.
+Export does not refresh, dispatch or mutate research. Backend 8d72ac1 and exact
+hosted T163 verified; Mac healthy. Actual UNH workbook returns five periods and
+source observations; anonymous access rejected. Live report Excel control verified.
+
+## T164 — saved-data caption
+
+Corrected the visual caption so an older retained snapshot does not imply a fresh
+latest-filing retrieval. Renderer v9. 1003 backend tests, 124 frontend tests and
+compile/build pass. Deployment verification pending.

@@ -77,3 +77,8 @@ class EditorialTests(unittest.TestCase):
         self.assertEqual(picked[0]['statement'],'Margins can recover if renewal prices exceed medical cost growth.')
         h=render(self.run,{},self.f)
         self.assertNotIn('What must be true for the investment case to work?',h)
+
+    def test_saved_history_does_not_claim_fresh_retrieval(self):
+        h=render(self.run,{},self.f)
+        self.assertIn('Saved GAAP history',h)
+        self.assertNotIn('Latest-filed GAAP history',h)

@@ -2,6 +2,14 @@
 
 Updated: October 10, 2026
 
+## T164 — precise saved-data labeling
+
+Illustrated renderer v9 calls the financial series "Saved GAAP history". Replaying
+an older snapshot must not imply it was refreshed with the latest filing-selection
+logic. Existing snapshot dates, observation register and original exports remain.
+This is a caption correction, not a data refresh. 1003 backend tests, 124 frontend
+tests, compile/build pass. Deployment verification pending.
+
 ## T163 — saved financial history workbook
 
 Research assignment and report visual views can export the retained annual financial
@@ -16,7 +24,8 @@ no model, new research, thesis approval or mutation is performed.
 1002 safe backend tests and 124 frontend tests pass, with compile/build.
 Read-only export, missing data and unchanged assignment state are covered by isolated
 PostgreSQL tests. Both workbook sheets rendered and inspected using saved UNH data.
-Deployment verification pending.
+Backend 8d72ac1 and exact hosted T163 verified; Mac healthy. Live UNH workbook
+downloaded and parsed, with anonymous access rejected. No research dispatched.
 
 ## T162 — consistent visual across report and assignment
 
