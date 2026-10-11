@@ -3917,6 +3917,9 @@ def _update_pipeline_job(job_id, **kwargs):
 
 def _run_trading_agent(run_id, ticker, date_str, provider, model):
     """Run TradingAgents analysis in background thread."""
+    from agent_execution import claim
+    if not claim(get_db, run_id):
+        return  # Already attempted, terminal, or legacy: never replay a paid graph.
     try:
         def _append_log(agent, message):
             entry = json.dumps([{"ts": datetime.utcnow().isoformat(), "agent": agent, "message": str(message)[:500]}])
@@ -20583,6 +20586,7 @@ def refresh_agent_providers():
 
 @app.route('/api/agents/run', methods=['POST'])
 def start_agent_run():
+    from agent_execution import queued_log
     data = request.get_json()
     ticker = data.get('ticker', '').upper().strip()
     date_str = data.get('date', '')
@@ -20599,9 +20603,9 @@ def start_agent_run():
     run_id = str(uuid.uuid4())
     with get_db(commit=True) as (conn, cur):
         cur.execute('''
-            INSERT INTO agent_runs (id, ticker, analysis_date, llm_provider, llm_model, status)
-            VALUES (%s, %s, %s, %s, %s, 'running')
-        ''', (run_id, ticker, date_str, provider, model))
+            INSERT INTO agent_runs (id, ticker, analysis_date, llm_provider, llm_model, status, logs)
+            VALUES (%s, %s, %s, %s, %s, 'queued', %s::jsonb)
+        ''', (run_id, ticker, date_str, provider, model, queued_log()))
 
     threading.Thread(target=_run_trading_agent, args=(run_id, ticker, date_str, provider, model), daemon=True).start()
 
@@ -21520,6 +21524,7 @@ def agent_execution_capabilities():
 @app.route('/api/agents/batch-run', methods=['POST'])
 def start_agent_batch_run():
     """Run TradingAgents on multiple tickers."""
+    from agent_execution import queued_log
     from agent_batch import validate_batch, run_batch_jobs
     data = request.get_json(silent=True) or {}
     if not isinstance(data, dict):
@@ -21547,9 +21552,9 @@ def start_agent_batch_run():
         for ticker in tickers:
             run_id = str(uuid.uuid4())
             cur.execute('''
-                INSERT INTO agent_runs (id, ticker, analysis_date, llm_provider, llm_model, status, report)
-                VALUES (%s, %s, %s, %s, %s, 'queued', %s)
-            ''', (run_id, ticker.upper().strip(), date_str, provider, model, json.dumps({'batchId': batch_id})))
+                INSERT INTO agent_runs (id, ticker, analysis_date, llm_provider, llm_model, status, report, logs)
+                VALUES (%s, %s, %s, %s, %s, 'queued', %s, %s::jsonb)
+            ''', (run_id, ticker.upper().strip(), date_str, provider, model, json.dumps({'batchId': batch_id}), queued_log()))
             run_ids.append({'id': run_id, 'ticker': ticker.upper().strip()})
 
     # Independent company teams share a bounded process-level batch pool.

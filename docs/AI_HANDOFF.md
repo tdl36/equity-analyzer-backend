@@ -2,6 +2,22 @@
 
 Updated: October 10, 2026
 
+## T168 — one-shot analyst execution reservation
+
+New single and batch analyst runs enroll as queued with a durable marker. Before
+loading the research graph, a PostgreSQL conditional update reserves exactly one
+execution attempt and records its identity/time. Concurrent workers, terminal
+runs, already-attempted runs and legacy unmarked runs cannot start that saved job.
+Reservation commits before provider work. No expiry/takeover or automatic paid
+retry is added: interruption after reservation remains an uncertain outcome.
+This does not deduplicate separate submissions or resume pre-dispatch queued work;
+those are next steps. Existing logs, reports, model pins and legacy states remain.
+
+Disposable PostgreSQL tests cover concurrent claims, replay refusal, legacy and
+terminal states. A synthetic graph-entry test proves reservation refusal returns
+before graph imports or writes. Broad safe suite, frontend tests, compile/build
+and release verification recorded after completion. No paid research QA.
+
 ## T167 — inspect the exact analyst run from Activity
 
 Analyst-team rows open a read-only inline inspection of that exact saved run,
