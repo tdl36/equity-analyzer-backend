@@ -39,6 +39,7 @@ export function workLane(row) {
 }
 export function nextAction(row) {
  const lane=workLane(row);
+ if(row.workflow==='research_decision')return 'Inspect the recorded issue, then save a follow-up review or a new review date. No thesis or portfolio action is automatic.';
  const intakeActions={paused:'Review automatic source intake settings before enabling comparisons.',credentials:'Add the required server-side key in Settings; never send credentials in chat.',budget:'Inspect the monthly budget in Settings before changing it.',daily_limit:'Pending sources are retained. Wait for the UTC reset or deliberately change the daily limit.',baseline:'Save a thesis for this company before enabling automatic comparison.',review:'Open evidence proposals and record your review of the existing proposal.',in_progress:'Inspect the existing company comparison before submitting another run.',worker:'No decision is currently identified. The worker will recheck eligibility before dispatch.'};
  if(row.waitCode&&intakeActions[row.waitCode])return intakeActions[row.waitCode];
  if(row.status==='needs_auth')return 'Complete sign-in or MFA directly in the source app, then resume collection.';
@@ -63,6 +64,7 @@ export function focusRows(data) {
 }
 
 export function activityDestination(row) {
+ if(row.workflow==='research_decision')return {view:'stockanalysis',section:'reviews',...workLink(row,'stockanalysis','reviews','decision')};
  const sections={auto_evidence_intake:'evidence',evidence_amendment:'evidence',catalyst_signal:'collection',catalyst_watch:'collection',collection_control:'collection',command_meeting:'command',agent_runs:'runs'};
  if(row.id?.startsWith('collection:'))return {view:'desk',section:'collection',...workLink(row,'desk','collection','collection')};
  if(sections[row.workflow])return {view:'desk',section:sections[row.workflow]};

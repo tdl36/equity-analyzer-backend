@@ -421,7 +421,9 @@ export function InvestmentCase({
   }), /*#__PURE__*/React.createElement(ResearchDecisions, {
     key: active + '-decisions',
     api: api,
-    ticker: active
+    ticker: active,
+    routeWork: routeWork,
+    onWorkChange: onWorkChange
   })), /*#__PURE__*/React.createElement("div", {
     hidden: workspaceTab !== 'evidence'
   }, /*#__PURE__*/React.createElement(CaseEvidence, {

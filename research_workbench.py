@@ -155,20 +155,16 @@ def create_blueprint(get_db):
                 (SELECT DISTINCT ON(id) * FROM research_work_versions ORDER BY id,revision DESC) latest
                 WHERE body->>'status'='open' ORDER BY body->>'dueDate',ticker LIMIT 200''')
             work=[dict(r) for r in c.fetchall()]
-            c.execute("SELECT to_regclass('research_decisions') AS name")
-            issues=[]
-            if c.fetchone()['name']:
-                c.execute('''SELECT d.id,d.ticker,d.revision,d.body FROM research_decisions d
-                    WHERE coalesce(d.body->>'reviewDate','')<>'' AND NOT EXISTS
-                    (SELECT 1 FROM research_decisions n WHERE n.ticker=d.ticker AND n.body->>'supersedes'=d.id)
-                    ORDER BY d.body->>'reviewDate',d.ticker LIMIT 200''')
-                issues=[dict(r) for r in c.fetchall()]
-        today=date.today().isoformat()
+            from research_review_due import issue_reviews
+            issues,more_issues=issue_reviews(c)
+        from datetime import datetime,timezone
+        from zoneinfo import ZoneInfo
+        today=datetime.now(timezone.utc).astimezone(ZoneInfo('America/New_York')).date().isoformat()
         for row in work:row['dueDate']=row['body']['dueDate'];row['title']=row['body']['title'];row['kind']=row['body']['kind']
         for row in issues:row['dueDate']=row['body']['reviewDate'];row['title']=row['body'].get('issue') or row['body']['decision'];row['kind']='issue_review'
         rows=sorted(work+issues,key=lambda r:(r['dueDate'],r['ticker']))
         for row in rows:row['due']=row['dueDate']<=today
-        r=jsonify(items=rows,asOf=today,scope='Live date-based queue, up to 200 work records and 200 issue reviews. No external reminders or semantic event monitoring.');r.headers['Cache-Control']='no-store';return r
+        r=jsonify(items=rows,asOf=today,moreIssueReviews=more_issues,scope='Live date-based queue (New York), up to 200 work records and 200 issue reviews. No external reminders or semantic event monitoring.');r.headers['Cache-Control']='no-store';return r
 
     @bp.get('/api/research/workbench/<ticker>/<ident>/history')
     def history(ticker,ident):

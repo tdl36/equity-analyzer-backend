@@ -1,4 +1,5 @@
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
+import { unavailable as missingValue, pointer } from './stock-analysis-evidence.mjs';
 import { verifiedOriginal, saveOriginal } from './research-originals.mjs';
 import { ResearchCoverage } from './research-coverage';
 import { workId } from './workspace-model.mjs';
@@ -32,17 +33,18 @@ function Field({
     key: k
   }, /*#__PURE__*/React.createElement("h5", null, label(k)), /*#__PURE__*/React.createElement(Field, {
     value: v,
-    path: `${path}/${k}`,
+    path: `${path}/${pointer(k)}`,
     citations: citations,
     sources: sources,
     onOriginal: onOriginal,
     busy: busy
   }))));
   var c = citations?.[path];
-  var unavailable = !value || /^unavailable|^not available|^not recorded/i.test(value);
-  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", null, value || 'Unavailable'), !unavailable && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("small", {
-    className: supported(c) ? 'sa-evidence' : 'sa-warning'
-  }, label(c?.basis || 'interpretation'), " \xB7 ", supported(c) ? 'Source matched · model reviewed' : 'Needs review'), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Inspect evidence"), /*#__PURE__*/React.createElement("p", null, c?.reviewReason || 'No source review is available.'), (c?.evidence || []).map((e, i) => /*#__PURE__*/React.createElement("blockquote", {
+  var unavailable = missingValue(value);
+  var matched = supported(c, value, sources);
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", null, value == null || value === '' ? 'Unavailable' : String(value)), !unavailable && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("small", {
+    className: matched ? 'sa-evidence' : 'sa-warning'
+  }, label(c?.basis || 'interpretation'), " \xB7 ", matched ? 'Source matched · model reviewed' : 'Needs review'), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Inspect evidence"), /*#__PURE__*/React.createElement("p", null, c?.reviewReason || 'No source review is available.'), (c?.evidence || []).map((e, i) => /*#__PURE__*/React.createElement("blockquote", {
     key: i
   }, /*#__PURE__*/React.createElement("strong", null, sources?.find(s => s.id === e.sourceId)?.filename || 'Source unavailable', " \xB7 ", e.matched ? 'Passage matched' : 'Unmatched'), /*#__PURE__*/React.createElement("p", null, e.excerpt), sources?.find(s => s.id === e.sourceId) && /*#__PURE__*/React.createElement("button", {
     disabled: busy,
@@ -387,7 +389,7 @@ export function StockAnalysis({
     value: r.id
   }, new Date(r.created_at).toLocaleString(), " \xB7 ", r.status, " \xB7 ", r.id.slice(0, 8))))), run && run.id === selected && run.ticker === ticker && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "sa-report-heading"
-  }, /*#__PURE__*/React.createElement("h4", null, label(run.input.mode || 'deep'), " \xB7 ", run.status), /*#__PURE__*/React.createElement("p", null, stats.stages, "/12 stages \xB7 ", stats.supported, " source-supported fields \xB7 ", stats.unresolved, " fields need review"), /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("h4", null, label(run.input.mode || 'deep'), " \xB7 ", run.status), /*#__PURE__*/React.createElement("p", null, stats.stages, "/12 stages \xB7 ", stats.supported, " matched fields \xB7 ", stats.unresolved, " need source review \xB7 ", stats.unavailable, " unavailable items"), /*#__PURE__*/React.createElement("button", {
     onClick: () => setView('coverage')
   }, "Inspect coverage and unresolved evidence"), /*#__PURE__*/React.createElement("small", null, "Report ", run.id, " \xB7 Company ID ", run.input.companyId, " \xB7 ", run.model)), run.error && /*#__PURE__*/React.createElement("p", {
     role: "alert"

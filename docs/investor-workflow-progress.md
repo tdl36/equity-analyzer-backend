@@ -90,4 +90,11 @@ Direct report navigation collapses setup. 971 backend tests, 117 frontend tests,
 
 Latest-filing financial tags, explicit ambiguity/vintage gaps, source-readable
 calculation register and public SEC history fixtures. No paid calls or rewriting
-of saved reports. UNH/DE/SYK one-page print checks pass. 978 backend tests, 117 frontend tests and compile/build pass; deployment verification pending.
+of saved reports. UNH/DE/SYK one-page print checks pass. 978 backend tests, 117 frontend tests and compile/build pass. Backend 7e9aa42 and hosted T157 verified.
+
+## T158 in progress
+
+Activity reminders for recorded issue review dates, exact decision links and
+follow-up drafts; consistent field evidence checks and zero-value display.
+No paid calls, approvals, source changes or external notifications. Focused tests
+pass. 982 backend tests, 120 frontend tests, compile/build pass; deployment verification pending.

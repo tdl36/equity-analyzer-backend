@@ -3,6 +3,7 @@
 Keep claims whole, attach references, and never present an orphan numeric field as
 an identified metric or a sector multiple as company valuation.
 """
+from research_extraction import has_omissions
 import html
 import re
 from urllib.parse import urlparse
@@ -117,7 +118,7 @@ def render(run, assignment):
             + panel(6, 'What to monitor', monitor, 'monitor')
             + panel(7, 'Valuation discipline', valuation, 'valuation')
             + panel(8, 'Scenario & history gaps', scenario, 'scenarios'))
-    partial = any(s.get('coverage') for s in sources)
+    partial = has_omissions(sources)
     supported_count = sum(valid(c) for c in citations.values())
     total = len(citations)
     source_rows = []

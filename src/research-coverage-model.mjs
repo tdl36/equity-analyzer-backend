@@ -1,6 +1,4 @@
-import {sections} from './stock-analysis-model.mjs';
-const unavailable=value=>value==null||String(value).trim()===''||/^(unavailable|not available|not provided|not disclosed|not recorded|n\/?a)(?:\b|[.:])/i.test(String(value));
-const pointer=value=>String(value).replaceAll('~','~0').replaceAll('/','~1');
+import {sections,unavailable,pointer,supported} from './stock-analysis-evidence.mjs';
 function leaves(value,path,out,depth=0) {
  if(out.length>=2000||depth>12)return;
  if(Array.isArray(value)) {if(!value.length)out.push({path,value:'',missing:true});else value.forEach((v,i)=>leaves(v,path+'/'+i,out,depth+1));}
@@ -12,8 +10,8 @@ export function researchCoverage(run) {
  const rows=sections.map(([id,title])=>{
   const fields=[];leaves(report[id],'/'+id,fields);
   const checked=fields.map(field=>{
-   const c=citations[field.path];const evidence=(c?.evidence||[]).filter(e=>e.matched&&ids.has(e.sourceId));
-   const valid=!field.missing&&c?.statement===field.value&&c.review==='supported'&&c.passageMatched&&evidence.length>0;
+   const c=citations[field.path];const evidence=(c?.evidence||[]).filter(e=>e.matched===true&&ids.has(e.sourceId));
+   const valid=supported(c,field.value,sources);
    const status=field.missing?'unavailable':valid?'matched':'review';
    const reason=field.missing?'No populated item in this saved section.':!c?'No field-level evidence record.':c.statement!==field.value?'The evidence record does not match the saved wording.':!evidence.length?'No matched passage linked to a frozen source.':c.reviewReason||'Check the source passage and its qualifications.';
    return {...field,status,reason,basis:c?.basis||'Unclassified',sourceIds:[...new Set(evidence.map(e=>e.sourceId))]};

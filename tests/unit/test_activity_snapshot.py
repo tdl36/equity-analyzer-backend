@@ -84,3 +84,17 @@ class ActivityPostgresTests(unittest.TestCase):
    with self.db(True) as (_,c):
     c.execute("DELETE FROM mp_jobs WHERE id='intake-fixture'")
     c.execute("DELETE FROM app_settings WHERE key='research_auto_intake_v1'")
+
+ def test_due_review_excludes_superseded_and_future_without_mutation(self):
+  with self.db(True) as (_,c):
+   c.execute('CREATE TABLE research_decisions(id TEXT,ticker TEXT,revision INTEGER,body JSONB,created_at TIMESTAMP)')
+   c.execute("INSERT INTO research_decisions VALUES('old','TEST',1,'{\"issue\":\"Old question\",\"reviewDate\":\"2000-01-01\"}',NOW()-INTERVAL '20 days'),('followup','TEST',2,'{\"issue\":\"Old question\",\"supersedes\":\"old\",\"reviewDate\":\"2099-01-01\"}',NOW()),('due','TEST',3,'{\"issue\":\"Current question\",\"reviewDate\":\"2000-01-01\"}',NOW()-INTERVAL '20 days')")
+  try:
+   app=Flask(__name__);app.register_blueprint(create_blueprint(self.db));d=app.test_client().get('/api/activity').json
+   rows=[r for r in d['items'] if r['workflow']=='research_decision']
+   self.assertEqual([r['jobId'] for r in rows],['due']);self.assertEqual(rows[0]['bucket'],'attention')
+   self.assertEqual(d['unavailable'],[])
+   with self.db() as (_,c):
+    c.execute('SELECT COUNT(*) AS n FROM research_decisions');self.assertEqual(c.fetchone()['n'],3)
+  finally:
+   with self.db(True) as (_,c):c.execute('DROP TABLE research_decisions')

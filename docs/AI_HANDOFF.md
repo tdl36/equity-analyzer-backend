@@ -2,6 +2,23 @@
 
 Updated: October 10, 2026
 
+## T158 — due issue reviews and consistent evidence status
+
+Activity and the existing research follow-through queue share the same issue selection.
+Activity includes unsuperseded analyst issue reviews due on or before the current
+New York date. Old due reviews remain in Needs you instead of aging into Older
+unfinished. Reads are bounded, do not mark a review complete, and never dispatch
+research or change a thesis. Exact links open the saved decision, with a deliberate
+follow-up draft action. A superseding review/date preserves the prior history.
+Business conditions are not automatically evaluated; there are no external alerts.
+
+Stock report badges, counts, review checklist and thesis-draft preparation now
+share the same current-field/source identity check. Orphan citations, changed
+wording, absent originals and unavailable placeholders cannot earn a matched
+badge or enter a thesis draft. Reported zero is preserved. These checks remain
+mechanical passage/model-review metadata, not independent factual adjudication.
+982 backend tests, 120 frontend tests, compile/build pass. Full extraction metadata no longer implies excerpts in derivative warnings. Deployment verification pending.
+
 ## T157 — financial vintages and calculation register
 
 Annual observations now select the newest filing across supported tags; an old
@@ -17,7 +34,7 @@ Frozen public SEC UNH/SYK/DE facts support five-year parser replays. DE's 2023/2
 operating margins are withheld because inputs come from different filings. These
 are parser regressions, not independent investment-quality certification.
 Saved UNH and DE/SYK public-only layouts remain one A4 page, Calibri/black, no
-outside-page text. 978 backend tests, 117 frontend tests, compile/build pass; deployment verification pending.
+outside-page text. 978 backend tests, 117 frontend tests, compile/build pass. Backend 7e9aa42 and exact hosted T157 assets verified; Mac healthy.
 
 ## T156 — extraction completeness before model calls
 

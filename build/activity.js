@@ -87,7 +87,7 @@ export function ActivityWorkspace({
     className: "activity-warning"
   }, "Some activity is unavailable: ", data.unavailable.join(', '), ". This is a partial snapshot."), !!data?.truncated?.length && /*#__PURE__*/React.createElement("p", {
     className: "activity-warning"
-  }, "Showing the first 200 unfinished jobs in ", data.truncated.join(', '), ". Open that workspace for more."), data && /*#__PURE__*/React.createElement("div", {
+  }, "Showing the first 200 unfinished items in ", data.truncated.join(', '), ". Open that workspace for more."), data && /*#__PURE__*/React.createElement("div", {
     className: "activity-health",
     "aria-label": "Collection delivery health"
   }, collectionHealth(data).map(h => /*#__PURE__*/React.createElement("div", {

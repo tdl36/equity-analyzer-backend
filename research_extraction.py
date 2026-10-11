@@ -30,3 +30,12 @@ def frozen_source(document, original_hash, text, ident):
     details['limitations']=list(dict.fromkeys(limitations))
     if details:result['textExtraction']=details
     return result
+
+
+def has_omissions(sources):
+    """Metadata existence alone does not mean text was omitted."""
+    for source in sources:
+        coverage=source.get('coverage') or {}
+        count=coverage.get('omittedCharacters')
+        if coverage.get('mode')=='bounded_excerpts' or (isinstance(count,(int,float)) and not isinstance(count,bool) and count>0):return True
+    return False

@@ -29,3 +29,9 @@ class ExtractionTests(unittest.TestCase):
         self.assertEqual(fitted[2]['coverage']['mode'],'full_returned_extraction')
         self.assertEqual(fitted[0]['coverage']['mode'],'bounded_excerpts')
         self.assertEqual(fitted[0]['coverage']['fullExtractionHash'],pack[0]['extractionHash'])
+    def test_full_coverage_metadata_is_not_an_excerpt_warning(self):
+        from research_extraction import has_omissions
+        full=frozen_source({'filename':'one.txt'},'a'*64,'text','one')
+        self.assertFalse(has_omissions([full]));self.assertFalse(has_omissions([{'coverage':None},{}]))
+        self.assertTrue(has_omissions([{'coverage':{'omittedCharacters':100}}]))
+        self.assertTrue(has_omissions([{'coverage':{'mode':'bounded_excerpts'}}]))

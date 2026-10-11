@@ -41,3 +41,9 @@ test('Activity carries the exact supported job identity without inventing links'
  assert.equal(activityDestination({id:'collection:'+jobId,jobId}).work,'collection:'+jobId);
  assert.equal(activityDestination({workflow:'research_assignment',jobId:'bad'}).work,undefined);
 });
+
+test('due research issue opens its exact saved review and requests an investor follow-up',()=>{
+ const row={workflow:'research_decision',jobId:'00000000-0000-4000-8000-000000000001',bucket:'attention',status:'needs_review'};
+ assert.equal(workLane(row),'review');assert.match(nextAction(row),/follow-up review/);
+ assert.deepEqual(activityDestination(row),{view:'stockanalysis',section:'reviews',work:'decision:'+row.jobId});
+});

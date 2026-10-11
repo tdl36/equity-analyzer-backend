@@ -1,3 +1,4 @@
+import { workId } from './workspace-model.mjs';
 import * as React from 'react';
 var blank = () => ({
   decision: '',
@@ -19,8 +20,12 @@ var dispositions = {
 };
 export function ResearchDecisions({
   api,
-  ticker
+  ticker,
+  routeWork = '',
+  onWorkChange
 }) {
+  var focusId = workId(routeWork, 'decision');
+  var inspection = React.useRef(0);
   var [draft, setDraft] = React.useState(blank),
     [rows, setRows] = React.useState([]),
     [revision, setRevision] = React.useState(null),
@@ -92,9 +97,10 @@ export function ResearchDecisions({
     }
   };
   var inspect = async id => {
+    var seq = ++inspection.current;
     try {
       var d = await json(undefined, '?id=' + encodeURIComponent(id));
-      if (alive.current) {
+      if (alive.current && seq === inspection.current) {
         setInspected(d.decisions[0] || null);
         if (!d.decisions.length) setMessage('Earlier decision not found.');
       }
@@ -109,6 +115,13 @@ export function ResearchDecisions({
       alive.current = false;
     };
   }, []);
+  React.useEffect(() => {
+    setInspected(null);
+    if (focusId) inspect(focusId);
+    return () => {
+      inspection.current++;
+    };
+  }, [focusId]);
   var change = (key, value) => {
     setDraft(d => ({
       ...d,
@@ -151,10 +164,39 @@ export function ResearchDecisions({
     }
   };
   return /*#__PURE__*/React.createElement("details", {
-    className: "research-decision-log"
+    className: "research-decision-log",
+    open: !!focusId
   }, /*#__PURE__*/React.createElement("summary", null, "Decision log \xB7 ", rows.length, " loaded records"), /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
-  }, "Record your reasoning and what would make you revisit it. Entries are retained; superseding a record preserves its history. These are research decisions, not trade instructions. Revisit conditions are not yet automatically monitored."), /*#__PURE__*/React.createElement("fieldset", {
+  }, "Record your reasoning and what would make you revisit it. Entries are retained; superseding a record preserves its history. These are research decisions, not trade instructions. Recorded review dates appear in Activity when due; business conditions are not automatically evaluated."), inspected && /*#__PURE__*/React.createElement("aside", {
+    style: {
+      border: '1px solid var(--border, #bbb)',
+      padding: 12
+    }
+  }, /*#__PURE__*/React.createElement("strong", null, "Earlier record #", inspected.revision, " \xB7 ", inspected.body.decisionDate, " \xB7 ", inspected.superseded ? 'Superseded' : 'Recorded decision'), /*#__PURE__*/React.createElement("h4", null, inspected.body.decision), inspected.body.reviewedSources?.length > 0 && /*#__PURE__*/React.createElement("p", null, "Reviewed sources: ", inspected.body.reviewedSources.map(s => s.filename).join(', ')), inspected.body.issue && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, inspected.body.issue), " \xB7 ", dispositions[inspected.body.disposition] || inspected.body.disposition, inspected.body.reviewDate && ` · Review ${inspected.body.reviewDate}`), /*#__PURE__*/React.createElement("p", {
+    style: {
+      whiteSpace: 'pre-wrap'
+    }
+  }, inspected.body.rationale), /*#__PURE__*/React.createElement("p", null, "Revisit when: ", inspected.body.revisitWhen), inspected.body.supersedes && /*#__PURE__*/React.createElement("button", {
+    onClick: () => inspect(inspected.body.supersedes)
+  }, "Read preceding decision"), /*#__PURE__*/React.createElement("button", {
+    disabled: inspected.superseded,
+    onClick: () => {
+      setChosen(inspected);
+      setDraft({
+        ...blank(),
+        supersedes: inspected.id,
+        issue: inspected.body.issue || '',
+        disposition: 'unresolved'
+      });
+      setMessage('Follow-up draft prepared below. Record your actual reasoning before saving.');
+    }
+  }, "Prepare follow-up review"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setInspected(null);
+      if (focusId) onWorkChange?.('');
+    }
+  }, "Close earlier record")), /*#__PURE__*/React.createElement("fieldset", {
     disabled: busy || loading
   }, /*#__PURE__*/React.createElement("label", null, "Decision date", /*#__PURE__*/React.createElement("input", {
     type: "date",
@@ -173,7 +215,7 @@ export function ResearchDecisions({
   }, Object.entries(dispositions).map(([value, label]) => /*#__PURE__*/React.createElement("option", {
     key: value,
     value: value
-  }, label)))), /*#__PURE__*/React.createElement("label", null, "Next review date \xB7 reminder not scheduled", /*#__PURE__*/React.createElement("input", {
+  }, label)))), /*#__PURE__*/React.createElement("label", null, "Next review date \xB7 appears in Activity when due", /*#__PURE__*/React.createElement("input", {
     type: "date",
     value: draft.reviewDate,
     onChange: e => change('reviewDate', e.target.value)
@@ -291,20 +333,7 @@ export function ResearchDecisions({
       change('evidenceDocumentIds', []);
       change('evidenceHashes', {});
     }
-  }, "Clear source selection"))), inspected && /*#__PURE__*/React.createElement("aside", {
-    style: {
-      border: '1px solid var(--border, #bbb)',
-      padding: 12
-    }
-  }, /*#__PURE__*/React.createElement("strong", null, "Earlier record #", inspected.revision, " \xB7 ", inspected.body.decisionDate, " \xB7 ", inspected.superseded ? 'Superseded' : 'Recorded decision'), /*#__PURE__*/React.createElement("h4", null, inspected.body.decision), inspected.body.reviewedSources?.length > 0 && /*#__PURE__*/React.createElement("p", null, "Reviewed sources: ", inspected.body.reviewedSources.map(s => s.filename).join(', ')), inspected.body.issue && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, inspected.body.issue), " \xB7 ", dispositions[inspected.body.disposition] || inspected.body.disposition, inspected.body.reviewDate && ` · Review ${inspected.body.reviewDate}`), /*#__PURE__*/React.createElement("p", {
-    style: {
-      whiteSpace: 'pre-wrap'
-    }
-  }, inspected.body.rationale), /*#__PURE__*/React.createElement("p", null, "Revisit when: ", inspected.body.revisitWhen), inspected.body.supersedes && /*#__PURE__*/React.createElement("button", {
-    onClick: () => inspect(inspected.body.supersedes)
-  }, "Read preceding decision"), /*#__PURE__*/React.createElement("button", {
-    onClick: () => setInspected(null)
-  }, "Close earlier record")), message && /*#__PURE__*/React.createElement("p", {
+  }, "Clear source selection"))), message && /*#__PURE__*/React.createElement("p", {
     role: "status"
   }, message), rows.map(r => /*#__PURE__*/React.createElement("article", {
     key: r.id,

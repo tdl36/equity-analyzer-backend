@@ -51,7 +51,7 @@ export function InvestmentCase({api,analyses=[],initialTicker='',initialTab='sna
  <button className="workspace-primary" onClick={()=>save()}>{busy?'Saving…':'Save investment case revision'}</button></fieldset>
  {!dirty&&Object.keys(bridge).length>0&&<div style={{overflowX:'auto'}}><h3>Saved scenario sensitivities</h3><table><thead><tr><th>Scenario</th><th>Implied price ({body.scenarios.currency})</th><th>Price return</th></tr></thead><tbody>{Object.entries(bridge).map(([name,v])=><tr key={name}><th>{name}</th><td>{v.impliedPrice}</td><td>{v.priceReturnPct}%</td></tr>)}</tbody></table></div>}
  </div><div hidden={workspaceTab!=='reviews'}><ResearchWorkbench initialKind="underweight" key={active+'-work'} api={api} ticker={active} caseRevision={revision} assumptions={body.assumptions} disabled={busy||dirty}/>
- <ResearchDecisions key={active+'-decisions'} api={api} ticker={active}/>
+ <ResearchDecisions key={active+'-decisions'} api={api} ticker={active} routeWork={routeWork} onWorkChange={onWorkChange}/>
  </div><div hidden={workspaceTab!=='evidence'}><CaseEvidence researchContext={researchContext} key={active+(researchContext?.id||'')} revision={revision} api={api} ticker={active} body={body} disabled={busy||dirty} onCommit={save}/></div>
  {workspaceTab==='changes'&&<ResearchChanges key={active} api={api} ticker={active} revision={revision} dirty={dirty} onCase={()=>setWorkspaceTab('case')} onEvidence={()=>setWorkspaceTab('evidence')} onHistory={()=>setWorkspaceTab('evolution')}/>}
  {workspaceTab==='signals'&&<CaseSignals key={active+'-signals'} api={api} body={body} disabled={busy} onChange={edit} onSave={save} message={message}/>}
