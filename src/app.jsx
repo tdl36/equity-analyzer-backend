@@ -4,7 +4,7 @@
 // existing `React.createElement`, `React.Fragment`, and `ReactDOM.render`
 // calls inside the main app body continue to work unchanged.
 import * as React from 'react';
-import {agentRunPending,agentRunTerminal,agentRunHeading,mergeAgentSnapshot,savedSubmission} from './agent-run-state.mjs';
+import {agentRunPending,agentRunTerminal,agentRunHeading,mergeAgentSnapshot,savedSubmission,selectedAgentRun,rememberAgentRun,observeAgentRun} from './agent-run-state.mjs';
 import {explainRequest} from './explain-request.mjs';
 import {createReadScheduler} from './api-read-scheduler.mjs';
 import {CatalystComparison} from './catalyst-comparison';
@@ -98,7 +98,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-10-11T173';
+        const BUILD_VERSION = '2026-10-11T174';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -1798,7 +1798,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [agentDate, setAgentDate] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().split('T')[0]; });
             const [agentProvider, setAgentProvider] = useState('anthropic');
             const [agentModel, setAgentModel] = useState('claude-haiku-4-5-20251001');
-            const [agentActiveRun, setAgentActiveRun] = useState(null);
+            const [agentActiveRun, setAgentActiveRun] = useState(()=>{try{return selectedAgentRun(sessionStorage);}catch{return null;}});
             const [agentSubmitting,setAgentSubmitting]=useState(false),[agentSubmitError,setAgentSubmitError]=useState('');
             const agentSubmitRef=React.useRef(false);
             const [agentHistory, setAgentHistory] = useState([]);
@@ -1911,7 +1911,6 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [agentComparison, setAgentComparison] = useState(null);
             const [agentBatchTickers, setAgentBatchTickers] = useState([]);
             const [agentConfig, setAgentConfig] = useState({ debateRounds: 1, riskRounds: 1 });
-            const agentPollRef = React.useRef(null);
             const agentLogEndRef = React.useRef(null);
             const [researchQuery, setResearchQuery] = useState('');
             const [researchMode, setResearchMode] = useState('topic');
@@ -7781,8 +7780,17 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     fetchPipelineUniverse();
                     fetchResearchHistory();
                 }
-                return () => { clearInterval(agentPollRef.current); clearInterval(researchPollRef.current); };
+                return () => { clearInterval(researchPollRef.current); };
             }, [activeTab]);
+
+            React.useEffect(()=>{
+                if(activeTab!=='agents'||!agentActiveRun?.runId)return;
+                const runId=agentActiveRun.runId;
+                return observeAgentRun({api:API_URL,runId,
+                    onSnapshot:(snapshot,first)=>setAgentActiveRun(prev=>mergeAgentSnapshot(first&&prev?.runId===runId?{...prev,logs:[]}:prev,runId,snapshot)),
+                    onError:message=>setAgentActiveRun(prev=>prev?.runId===runId?{...prev,readError:message}:prev),
+                    onComplete:()=>fetchAgentHistory()});
+            },[activeTab,agentActiveRun?.runId]);
 
             // Infographic job recovery on mount
             React.useEffect(() => {
@@ -8533,7 +8541,6 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const startAgentRun = async () => {
                 if (!agentTicker || !agentDate || agentSubmitRef.current || agentRunPending(agentActiveRun?.status)) return;
                 agentSubmitRef.current=true;setAgentSubmitting(true);setAgentSubmitError('');
-                clearInterval(agentPollRef.current);
                 const submitController=new AbortController(),submitTimer=setTimeout(()=>submitController.abort(),30000);
                 try {
                     const payload={ticker:agentTicker,date:agentDate,provider:agentProvider,model:agentModel};
@@ -8548,33 +8555,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     if (res.ok) {
                         const data = await res.json();
                         if(data.runId!==submission.id)throw new Error('Saved run identity could not be confirmed. Inspect Activity before submitting again.');
+                        rememberAgentRun(sessionStorage,data.runId,agentTicker);
                         sessionStorage.removeItem(submission.key);
-                        setAgentActiveRun({ runId: data.runId, status: 'queued', logs: [], decision: null });
+                        setAgentActiveRun({ runId: data.runId, ticker:agentTicker,status: 'queued', logs: [], decision: null });
                         setAgentView('new');
-                        // Start polling
-                        let logIndex = 0, reading = false;
-                        const poll = setInterval(async () => {
-                            if (reading) return;
-                            reading = true;
-                            const controller = new AbortController(), timeout = setTimeout(()=>controller.abort(),15000);
-                            try {
-                                const r = await fetch(`${API_URL}/api/agents/status/${data.runId}?since=${logIndex}`,{signal:controller.signal});
-                                if (!r.ok) throw new Error('Saved run read failed');
-                                const d = await r.json();
-                                if (!Array.isArray(d.newLogs) || !Number.isInteger(d.totalLogs) || d.totalLogs < logIndex || typeof d.status !== 'string') throw new Error('Invalid saved run state');
-                                if (agentPollRef.current !== poll) return;
-                                logIndex = d.totalLogs;
-                                setAgentActiveRun(prev => mergeAgentSnapshot(prev, data.runId, d));
-                                if (agentRunTerminal(d.status)) {
-                                    clearInterval(poll);
-                                    fetchAgentHistory();
-                                }
-                            } catch (e) {
-                                if (agentPollRef.current === poll) setAgentActiveRun(prev => prev?.runId === data.runId ? {...prev,readError:'Status refresh failed. Showing the last saved state; Charlie will retry this read.'} : prev);
-                            }
-                            finally { clearTimeout(timeout); reading = false; }
-                        }, 3000);
-                        agentPollRef.current = poll;
+
                     }
                 } catch (e) { setAgentSubmitError(e.message || 'Submission outcome is uncertain. Inspect Activity before retrying.'); }
                 finally { clearTimeout(submitTimer);agentSubmitRef.current=false;setAgentSubmitting(false); }
@@ -28613,7 +28598,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     </div>
                                                     <button onClick={startAgentRun} disabled={agentSubmitting || !agentTicker || !agentDate || agentRunPending(agentActiveRun?.status)}
                                                         className="w-full mt-3 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors">
-                                                        {agentSubmitting ? 'Saving request…' : agentActiveRun?.status === 'queued' ? 'Waiting to start…' : agentActiveRun?.status === 'running' ? 'Running...' : 'Run Analysis'}
+                                                        {agentSubmitting ? 'Saving request…' : agentActiveRun?.status === 'restoring' ? 'Restoring saved run…' : agentActiveRun?.status === 'queued' ? 'Waiting to start…' : agentActiveRun?.status === 'running' ? 'Running...' : 'Run Analysis'}
                                                     </button>
                                                     {agentSubmitError && <p role="alert" className="text-xs text-amber-300 mt-2">{agentSubmitError}</p>}
                                                     <p className="text-[9px] text-slate-600 mt-1.5 text-center">Uses yfinance for market data. Runs take 5-15 min. Cost depends on model.</p>
@@ -28623,7 +28608,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 {agentActiveRun && (
                                                     <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4">
                                                         <div className="flex items-center justify-between mb-3">
-                                                            <span className="text-sm font-semibold">{agentRunHeading(agentActiveRun.status)}</span>
+                                                            <span className="text-sm font-semibold">{agentActiveRun.ticker && `${agentActiveRun.ticker} · `}{agentRunHeading(agentActiveRun.status)}</span>
                                                             <span className={`text-xs font-mono ${
                                                                 agentRunPending(agentActiveRun.status) ? 'text-yellow-400' :
                                                                 agentActiveRun.status === 'complete' ? 'text-green-400' : 'text-red-400'

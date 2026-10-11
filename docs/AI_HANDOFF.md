@@ -2,6 +2,21 @@
 
 Updated: October 10, 2026
 
+## T174 — resume observing selected analyst work
+
+Analyst polling now follows the selected run and screen lifecycle. Returning to
+the analyst screen immediately reads its saved state; leaving aborts pending reads
+and fences late responses. The first read replaces old logs and later reads append
+new entries. The confirmed run ID and ticker are retained in session storage;
+same-tab reload starts in Restoring saved run and reads status when the screen
+opens. No report bodies are cached, and no POST/research retry occurs on restore.
+Unavailable browser storage does not crash startup. Selected completed runs can
+be restored too; recognized terminal states stop observation.
+
+Validation/deployment pending. Next: durable batch recovery, batch submission
+identity and supported interrupted-attempt reconciliation. This restores only the
+last confirmed single-run selection in this tab, not cross-device navigation.
+
 ## T173 — duplicate-safe single analyst submission
 
 The single-run screen retains a request UUID in session storage for the exact
