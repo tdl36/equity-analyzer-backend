@@ -2,6 +2,33 @@
 
 Updated: October 10, 2026
 
+## T177 — durable graph model-call evidence
+
+New analyst executions attach a run-scoped LangChain callback through the pinned
+TradingAgents propagator arguments. Before each graph model invocation, save the
+Charlie execution/call UUID; record return/error events and allowlisted provider
+response IDs when available. No prompts, source text, headers or exception bodies
+enter this ledger. Evidence persistence errors propagate; no paid retry is added.
+Activity Recovery evidence now summarizes recorded calls, returns, errors and
+starts without a recorded outcome. Missing/error records never prove no charge,
+cancellation or safe replay. Provider outcome remains unverified.
+
+Coverage is explicitly graph callbacks only: initialization, non-model tools and
+final signal processing can occur outside it. This does not reconcile legacy WELL
+or recover interrupted calls. The pinned TradingAgents graph args path and upstream
+LangChain callback contract were inspected; callback/database behavior is verified
+with synthetic fixtures, not a paid live model call. Tests cover isolation, strict
+metadata filtering, malformed evidence and propagation of persistence failure.
+Validation: 1021 safe backend tests, 134 frontend tests, Python compile, production
+build and unchanged model-policy gate against 1357b54 passed. Deployment verification
+is pending; existing active jobs were not restarted.
+
+ABT live collection evidence (October 11): the user-authorized assignment completed
+all four collection categories with eight eligible originals, iCloud preservation
+and eight exact-byte Charlie receipts. Parent assignment advanced to Research and
+source review with no saved artifacts at inspection. This is collection acceptance
+evidence only, not proof of completed thesis/summary/one-pager or all eight phases.
+
 ## T176 — explicit execution evidence in Activity
 
 Saved analyst-run inspection now exposes execution enrollment, reservation count

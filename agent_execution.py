@@ -1,6 +1,7 @@
 """One-shot durable execution reservation; never retries ambiguous provider calls."""
 import json
 from uuid import uuid4
+from agent_call_evidence import summary as call_summary
 
 
 def queued_log(recover_single=False):
@@ -163,4 +164,5 @@ def execution_evidence(logs):
         'reservationIds': ids[:5],
         'reservationIdsTruncated': len(ids) > 5,
         'providerOutcome': 'unverified',
+        'modelCalls': call_summary(entries),
     }

@@ -3918,7 +3918,8 @@ def _update_pipeline_job(job_id, **kwargs):
 def _run_trading_agent(run_id, ticker, date_str, provider, model):
     """Run TradingAgents analysis in background thread."""
     from agent_execution import claim
-    if not claim(get_db, run_id):
+    execution_id = claim(get_db, run_id)
+    if not execution_id:
         return  # Already attempted, terminal, or legacy: never replay a paid graph.
     try:
         def _append_log(agent, message):
@@ -3946,6 +3947,8 @@ def _run_trading_agent(run_id, ticker, date_str, provider, model):
 
         _append_log("system", "Initializing agent graph...")
         ta = TradingAgentsGraph(debug=True, config=config)
+        from agent_call_evidence import attach
+        attach(ta, get_db, run_id, execution_id)
 
         # Never replace builtins.print: multiple company teams share this
         # process and a global hook mixes logs between runs. Keep explicit,
