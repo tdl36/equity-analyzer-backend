@@ -38,4 +38,10 @@ that enable/rebudget live paid automation for QA.
 
 Conservative saved-company-name/ticker attribution for catalyst candidates.
 23 focused tests, 956 full backend tests, 103 frontend tests, compilation and
-build pass. Deployment verification pending. No paid QA.
+build pass. Backend d2ccf67 and hosted T149 bytes verified. No paid QA.
+
+## T150 in progress
+
+Direct workflow sections from Activity; URL/reload/back-forward support for
+Research desk and Stock Analysis. Company navigation preserves ticker context.
+No job submission/review side effects. 106 frontend tests/build pass. Release/live navigation verification pending.

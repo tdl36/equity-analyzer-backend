@@ -61,3 +61,12 @@ export function focusRows(data) {
  return [...(data?.items||[])].filter(r=>!['older','recent'].includes(workLane(r)))
   .sort((a,b)=>rank[workLane(a)]-rank[workLane(b)]||(a.title==='End-to-end research'?0:1)-(b.title==='End-to-end research'?0:1));
 }
+
+export function activityDestination(row) {
+ const sections={auto_evidence_intake:'evidence',evidence_amendment:'evidence',catalyst_signal:'collection',catalyst_watch:'collection',collection_control:'collection',command_meeting:'command',agent_runs:'runs'};
+ if(row.id?.startsWith('collection:'))return {view:'desk',section:'collection'};
+ if(sections[row.workflow])return {view:'desk',section:sections[row.workflow]};
+ const cases={company_research_runs:'research',investment_committee_runs:'committee',stock_analysis_runs:'stock-analysis',research_assignment:'stock-analysis'};
+ if(cases[row.workflow])return {view:'stockanalysis',section:cases[row.workflow]};
+ return {view:row.view,section:''};
+}

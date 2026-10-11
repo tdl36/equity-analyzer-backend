@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { activityRows, activityAge, collectionHealth, workLane, nextAction, workOverview, focusRows } from './activity-model.mjs';
+import { activityRows, activityAge, collectionHealth, workLane, nextAction, workOverview, focusRows, activityDestination } from './activity-model.mjs';
 export function ActivityWorkspace({
   api,
   onNavigate,
@@ -136,7 +136,10 @@ export function ActivityWorkspace({
     className: "activity-next"
   }, /*#__PURE__*/React.createElement("strong", null, "Next:"), " ", nextAction(r)), /*#__PURE__*/React.createElement("small", null, "Updated ", activityAge(r.updatedAt), " \xB7 Started ", activityAge(r.createdAt))), /*#__PURE__*/React.createElement("button", {
     className: "activity-open",
-    onClick: () => onNavigate(r.view, r.ticker)
+    onClick: () => {
+      var d = activityDestination(r);
+      onNavigate(d.view, r.ticker, d.section);
+    }
   }, "Open work \u2197", /*#__PURE__*/React.createElement("span", {
     className: "sr-only"
   }, " ", r.ticker, " ", r.title))))), !compact && matching.length > limit && /*#__PURE__*/React.createElement("button", {

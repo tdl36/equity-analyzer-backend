@@ -19,11 +19,13 @@ function ReportContent({value,renderHtml,depth=0}) {
   const text=typeof value==='object'?JSON.stringify(value,null,2):String(value);
   return renderHtml?<div className="desk-report-prose" dangerouslySetInnerHTML={{__html:renderHtml(text)}}/>:<pre>{text}</pre>;
 }
-export function ResearchDesk({api,analyses,onCompany,onNavigate,renderHtml,renderRecapHtml,initialTicker=''}) {
+export function ResearchDesk({api,analyses,onCompany,onNavigate,renderHtml,renderRecapHtml,initialTicker='',routeSection='',onSectionChange}) {
  const [workTicker,setWorkTicker]=useState(initialTicker);
   const [data,setData]=useState({runs:[],activities:[],failed:[],analysts:[],providers:{},capabilities:{maxConcurrency:1,maxBatchSize:12}});
   const [errors,setErrors]=useState([]),[loading,setLoading]=useState(true),[updated,setUpdated]=useState(null);
-  const [section,setSection]=useState(()=>{try{if(sessionStorage.getItem('charlie.openMeetingCommand')){sessionStorage.removeItem('charlie.openMeetingCommand');return 'command';}}catch{}return 'work';}),[days,setDays]=useState(90),[query,setQuery]=useState('');
+  const [section,setLocalSection]=useState(routeSection||'work'),[days,setDays]=useState(90),[query,setQuery]=useState('');
+  const setSection=value=>{setLocalSection(value);onSectionChange?.(value);};
+  useEffect(()=>{if(onSectionChange)setLocalSection(routeSection||'work');},[routeSection]);
   const [tickers,setTickers]=useState(''),[provider,setProvider]=useState('anthropic'),[model,setModel]=useState('');
   const [date,setDate]=useState(new Date().toLocaleDateString('en-CA')),[concurrency,setConcurrency]=useState(1);
   const [review,setReview]=useState(false),[busy,setBusy]=useState(false),[message,setMessage]=useState('');

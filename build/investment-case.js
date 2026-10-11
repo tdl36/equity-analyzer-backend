@@ -25,7 +25,10 @@ export function InvestmentCase({
   api,
   analyses = [],
   initialTicker = '',
-  initialTab = 'snapshot'
+  initialTab = 'snapshot',
+  routeSection = '',
+  onSectionChange,
+  onCompanyChange
 }) {
   var [ticker, setTicker] = React.useState(initialTicker),
     [active, setActive] = React.useState(''),
@@ -37,7 +40,14 @@ export function InvestmentCase({
     [message, setMessage] = React.useState(''),
     [dirty, setDirty] = React.useState(false),
     [selectedVersion, setSelectedVersion] = React.useState('');
-  var [workspaceTab, setWorkspaceTab] = React.useState(initialTab);
+  var [workspaceTab, setTab] = React.useState(routeSection || initialTab);
+  var setWorkspaceTab = value => {
+    setTab(value);
+    onSectionChange?.(value);
+  };
+  React.useEffect(() => {
+    if (onSectionChange) setTab(routeSection || initialTab);
+  }, [routeSection, initialTab]);
   var [researchContext, setResearchContext] = React.useState(null);
   var pending = React.useRef(null),
     lock = React.useRef(false),
@@ -65,6 +75,10 @@ export function InvestmentCase({
     try {
       var t = (typeof selectedTicker === 'string' ? selectedTicker : ticker).trim().toUpperCase();
       setTicker(t);
+      if (onCompanyChange && t !== initialTicker) {
+        onCompanyChange(t);
+        return;
+      }
       var d = await json('/api/research/investment-case/' + encodeURIComponent(t));
       if (!alive.current) return;
       setActive(t);

@@ -15,14 +15,16 @@ import {CaseEvidence} from './investment-case-evidence';
 
 const empty=()=>({thesis:'',variantView:'',marketBaseline:'',changeConditions:'',assumptions:[],scenarios:{}});
 const fields=[['thesis','Investment thesis'],['variantView','Where my view differs'],['marketBaseline','Market expectations · include source and date'],['changeConditions','What would change my mind']];
-export function InvestmentCase({api,analyses=[],initialTicker='',initialTab='snapshot'}) {
+export function InvestmentCase({api,analyses=[],initialTicker='',initialTab='snapshot',routeSection='',onSectionChange,onCompanyChange}) {
  const [ticker,setTicker]=React.useState(initialTicker),[active,setActive]=React.useState(''),[body,setBody]=React.useState(empty),[revision,setRevision]=React.useState(0),[versions,setVersions]=React.useState([]),[bridge,setBridge]=React.useState({}),[busy,setBusy]=React.useState(false),[message,setMessage]=React.useState(''),[dirty,setDirty]=React.useState(false),[selectedVersion,setSelectedVersion]=React.useState('');
- const [workspaceTab,setWorkspaceTab]=React.useState(initialTab);
+ const [workspaceTab,setTab]=React.useState(routeSection||initialTab);
+ const setWorkspaceTab=value=>{setTab(value);onSectionChange?.(value);};
+ React.useEffect(()=>{if(onSectionChange)setTab(routeSection||initialTab);},[routeSection,initialTab]);
  const [researchContext,setResearchContext]=React.useState(null);
  const pending=React.useRef(null),lock=React.useRef(false),alive=React.useRef(true);
  React.useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
  const json=async(path,options={})=>{const r=await fetch(api+path,{...options,signal:AbortSignal.timeout(20000)});const d=await r.json();if(!r.ok)throw Error(d.error||'Investment case unavailable');return d;};
- const load=async(selectedTicker=ticker)=>{if(lock.current)return;lock.current=true;setBusy(true);setMessage('');try{const t=(typeof selectedTicker==='string'?selectedTicker:ticker).trim().toUpperCase();setTicker(t);const d=await json('/api/research/investment-case/'+encodeURIComponent(t));if(!alive.current)return;setActive(t);setResearchContext(null);setRevision(d.revision);setBody({...empty(),...d.body});setVersions(d.versions);setBridge(d.bridge);setDirty(false);setSelectedVersion('');pending.current=null;}catch(e){if(alive.current)setMessage(e.message);}finally{lock.current=false;if(alive.current)setBusy(false);}};
+ const load=async(selectedTicker=ticker)=>{if(lock.current)return;lock.current=true;setBusy(true);setMessage('');try{const t=(typeof selectedTicker==='string'?selectedTicker:ticker).trim().toUpperCase();setTicker(t);if(onCompanyChange&&t!==initialTicker){onCompanyChange(t);return;}const d=await json('/api/research/investment-case/'+encodeURIComponent(t));if(!alive.current)return;setActive(t);setResearchContext(null);setRevision(d.revision);setBody({...empty(),...d.body});setVersions(d.versions);setBridge(d.bridge);setDirty(false);setSelectedVersion('');pending.current=null;}catch(e){if(alive.current)setMessage(e.message);}finally{lock.current=false;if(alive.current)setBusy(false);}};
  React.useEffect(()=>{if(initialTicker)load();},[]);
  const edit=next=>{setBody(next);setDirty(true);pending.current=null;setMessage('Unsaved changes');};
  const save=async(operation={body})=>{if(lock.current)return;lock.current=true;setBusy(true);setMessage('Saving…');const signature=JSON.stringify({revision,...operation});const payload=pending.current?.signature===signature?pending.current.payload:{requestId:crypto.randomUUID(),revision,...operation};pending.current={signature,payload};

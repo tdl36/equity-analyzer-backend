@@ -64,7 +64,9 @@ export function ResearchDesk({
   onNavigate,
   renderHtml,
   renderRecapHtml,
-  initialTicker = ''
+  initialTicker = '',
+  routeSection = '',
+  onSectionChange
 }) {
   var [workTicker, setWorkTicker] = useState(initialTicker);
   var [data, setData] = useState({
@@ -81,17 +83,16 @@ export function ResearchDesk({
   var [errors, setErrors] = useState([]),
     [loading, setLoading] = useState(true),
     [updated, setUpdated] = useState(null);
-  var [section, setSection] = useState(() => {
-      try {
-        if (sessionStorage.getItem('charlie.openMeetingCommand')) {
-          sessionStorage.removeItem('charlie.openMeetingCommand');
-          return 'command';
-        }
-      } catch {}
-      return 'work';
-    }),
+  var [section, setLocalSection] = useState(routeSection || 'work'),
     [days, setDays] = useState(90),
     [query, setQuery] = useState('');
+  var setSection = value => {
+    setLocalSection(value);
+    onSectionChange?.(value);
+  };
+  useEffect(() => {
+    if (onSectionChange) setLocalSection(routeSection || 'work');
+  }, [routeSection]);
   var [tickers, setTickers] = useState(''),
     [provider, setProvider] = useState('anthropic'),
     [model, setModel] = useState('');

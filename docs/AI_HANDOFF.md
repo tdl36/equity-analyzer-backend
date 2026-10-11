@@ -2,6 +2,18 @@
 
 Updated: October 10, 2026
 
+## T150 — direct workflow navigation
+
+Activity and Today route known job types to the appropriate research-desk or
+Stock Analysis section. Those sections have bounded URL parameters, survive reload
+and browser Back/Forward, and can be bookmarked. Stock Analysis company switches
+also update the address. Navigation does not dispatch research or apply proposals.
+Links select a company/workflow, not an individual job ID; the saved job selector
+remains necessary when multiple jobs share that company/workflow.
+
+Validation: 106 frontend tests and production build pass. The preceding backend
+change passed 956 tests. Live navigation/release verification pending.
+
 ## T149 — conservative catalyst issuer attribution
 
 New catalyst candidates require an explicit ticker prefix or a saved company-name
@@ -13,7 +25,8 @@ collection still must verify the issuer, actual event date and materiality. Exis
 frozen requests are unchanged. No new provider/model lookup is introduced.
 
 Validation: 956 safe backend tests, 103 frontend tests, Python compilation and
-production build pass. Deployment verification pending.
+production build pass. Backend d2ccf67 and exact hosted T149 bytes verified.
+Cloudflare 790b863b-6f4c-4c6e-aa74-15999d48bf89. No paid QA.
 
 ## T148 — explain waiting intake and expose its existing daily cap
 
