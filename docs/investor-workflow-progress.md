@@ -10,7 +10,7 @@ runtime changes must remain untouched. Never pytest or paid research for QA.
 
 ## Closing release checkpoint
 
-T164 source: `47390604cf6ac3a90b2a2b19243d610507f78fa2`.
+T165 source: `9a2549de094288593c3353174d5de69f060310f7`.
 19 application increments (T147–T165) were committed and deployed during the
 session. Final safe suites: 1004 backend tests, 124 frontend tests; compile/build
 pass. Hosted bytes, authenticated reads, unauthorized rejection and Mac health
@@ -22,13 +22,14 @@ not marked complete. Upcoming meeting agenda correctly showed no dated meetings
 in its seven-day window; no meetings were created merely to populate it.
 
 User-facing exports preserved outside the repository:
-- Downloads/UNH-investment-map-T164.pdf — current production HTML rendered locally;
+- Downloads/UNH-investment-map-T165.pdf — current production HTML rendered locally;
   one A4 page, Calibri/Calibri Bold, black text, no text outside page bounds.
 - Downloads/UNH-financial-history-T163.xlsx — authenticated production export;
   five retained annual periods, source observations and filing links.
 
-The two-hour continuation is finite; remove `continue-charlie-overnight` at the
-03:16 UTC cutoff. Regular collection/model-maintenance automations are separate.
+The two-hour continuation `continue-charlie-overnight` was removed at the
+03:16 UTC cutoff. Regular collection/model-maintenance automations were preserved.
+The isolated Meeting Prep test server and its preview tab were closed.
 
 ## Initial increment
 
@@ -218,4 +219,7 @@ hidden print register. Renderer v10 moves targets to the visible source footer
 and links the original documents, SEC observations, business description and
 market snapshot where safe URLs exist. UNH/DE/SYK remain one-page Calibri/black
 exports without out-of-page text. 1004 backend/124 frontend tests, compile/build
-and focused final footer tests pass. Deployment verification pending.
+and focused final footer tests pass. Backend 9a2549d and exact hosted T165 bundle/service-worker bytes verified.
+Cloudflare 88aa4cf7-f3a7-40f3-a028-edd617356cb0; Mac healthy. Authenticated
+production UNH export renders one page with 23 citation/source links, Calibri/black
+text, and no text outside page bounds. No model calls or approvals used for QA.

@@ -10,7 +10,10 @@ anchors previously left the one-page PDF without working citation destinations.
 Source wording and original artifacts remain unchanged. 1004 backend tests, 124
 frontend tests, compile/build pass; final footer change also passes focused tests.
 UNH/DE/SYK render as one page with Calibri/black text and valid source links.
-Deployment verification pending.
+Backend 9a2549d and exact hosted T165 bundle/service-worker bytes verified.
+Cloudflare 88aa4cf7-f3a7-40f3-a028-edd617356cb0; Mac healthy. Authenticated
+production UNH export renders one page with 23 citation/source links, Calibri/black
+text, and no text outside page bounds. No model calls or approvals used for QA.
 
 ## T164 — precise saved-data labeling
 
