@@ -10,7 +10,16 @@ status and preserves every stored report, batch marker, log and job state. The
 endpoint still returns only presence flags, never report bodies. Disposable
 PostgreSQL coverage exercises queued/running/failed/complete states, metadata,
 empty fields and genuine Markdown, and verifies unchanged records after reads.
-Release validation and hosted verification pending. No paid research QA.
+1011 safe backend tests and 125 frontend tests pass, with focused database tests,
+compile, production build and unchanged model-policy gate. Backend revision
+782b046f510ab3592a657b8d9704fd0cae459c5e and exact hosted T169 JS/CSS/service-worker
+bytes verified; Cloudflare a3463efd-1e0a-4e40-82c5-31490009de8f. Live read-only
+WELL inspection remains running with 22 logs and no saved outputs; it was not
+restarted or altered. Mac heartbeat current at 15:11:16 UTC, collection delivery
+pending zero. No Mac code change/restart or paid research QA. Next: safe recovery
+of enrolled jobs that never started, separate-submission deduplication and
+supported reconciliation of interrupted attempts; never automatically replay
+an uncertain paid request.
 
 ## T168 — one-shot analyst execution reservation
 
