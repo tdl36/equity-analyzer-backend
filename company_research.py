@@ -93,7 +93,7 @@ def apply_review(sections, raw):
         if ident not in claims or ident in seen or status not in ('supported','needs_review'): raise ValueError('Invalid or duplicate reviewed claim.')
         seen.add(ident); c=indexed[ident]
         c['review']='supported' if status=='supported' and c['passageMatched'] else 'needs_review'
-        c['reviewReason']=bounded(finding.get('reason'),1500)
+        c['reviewReason']=('Source attribution remains unresolved. ' if c.get('rejectedSourceIds') else '')+bounded(finding.get('reason'),1500)
     return result
 
 

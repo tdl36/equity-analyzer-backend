@@ -20,6 +20,16 @@ def result(group):
     return {'report':report,'citations':citations}
 
 class StudioTests(unittest.TestCase):
+    def test_unknown_source_is_quarantined_and_cannot_be_promoted_by_review(self):
+        from company_research import apply_review
+        raw=result(GROUPS[0]);raw['citations'][0]['evidence'][0]['sourceId']='invented'
+        report,refs=validate_report(raw,GROUPS[0],[SOURCE],'deep')
+        c=refs['/summary/one_liner']
+        self.assertEqual(report,raw['report']);self.assertFalse(c['passageMatched'])
+        self.assertEqual(c['rejectedSourceIds'],['invented']);self.assertEqual(c['evidence'],[])
+        reviewed=apply_review([{'id':'fields','claims':[c]}],{'findings':[{'claimId':c['id'],'status':'supported','reason':'Model agrees'}]})
+        self.assertEqual(reviewed[0]['claims'][0]['review'],'needs_review')
+
     def test_options_reject_invalid_modes_and_types(self):
         self.assertEqual(options({})['mode'],'deep')
         for data in ({'mode':'fake'},{'horizon':23},{'question':'x'*12001},{'priorId':3}):
@@ -28,7 +38,7 @@ class StudioTests(unittest.TestCase):
     def test_shape_identity_and_field_citations(self):
         raw=result(GROUPS[0]);report,c=validate_report(raw,GROUPS[0],[SOURCE],'deep')
         self.assertTrue(c['/summary/one_liner']['passageMatched'])
-        for change in ('field','source','path','duplicate','basis'):
+        for change in ('field','path','duplicate','basis'):
             raw=result(GROUPS[0])
             if change=='field':del raw['report']['industry']
             if change=='source':raw['citations'][0]['evidence'][0]['sourceId']='invented'

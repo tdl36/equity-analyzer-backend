@@ -75,9 +75,20 @@ def validate_report(raw, group, sources, mode):
             raise ValueError('Unknown or duplicate field citation.')
         path=ref['path']
         # Reuse source identity, quotation matching and evidence classification rules.
-        claim={'statement':fields[path], 'basis':ref.get('basis'), 'evidence':ref.get('evidence',[])}
+        evidence=ref.get('evidence',[])
+        if not isinstance(evidence,list) or len(evidence)>3 or any(not isinstance(e,dict) for e in evidence):
+            raise ValueError('Invalid evidence references.')
+        known={s['id'] for s in sources}
+        rejected=[e for e in evidence if e.get('sourceId') not in known]
+        claim={'statement':fields[path], 'basis':ref.get('basis'),
+               'evidence':[e for e in evidence if e.get('sourceId') in known]}
         checked=validate_sections({'sections':[{'id':'field','claims':[claim],'gaps':[]}]},[('field','Field')],sources)[0]['claims'][0]
         checked['id']=path
+        if rejected:
+            # Preserve the draft, but never guess attribution or promote this field.
+            checked.update(passageMatched=False,review='needs_review',
+                           reviewReason='A citation referenced a source outside the frozen pack. Verify attribution before use.',
+                           rejectedSourceIds=[str(e.get('sourceId',''))[:200] for e in rejected])
         citations[path]=checked
     for path,value in fields.items():
         if not missing(value) and path not in citations:

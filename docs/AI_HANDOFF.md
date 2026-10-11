@@ -2,6 +2,31 @@
 
 Updated: October 10, 2026
 
+## T183 — quarantine bad citations and surface research failures
+
+User reported repeated ABT stalls and missing proactive alerts. ABT report-4 has
+one citation with a source ID absent from the frozen pack. Stock validation now
+retains the draft while excluding unknown references and forcing that field to
+needs_review/passageMatched=false. Rejected source IDs remain diagnostic metadata;
+no guessed attribution or invented source is inserted. Later model review cannot
+promote it, and its unresolved attribution stays in the review reason. Shape,
+field paths, evidence types/bounds and other validation remain enforced. Other
+research workflows retain their existing strict source behavior.
+
+A global research-failure banner polls Activity every 30 seconds while Charlie
+is mounted, including first-load failures, with exact saved-work navigation.
+Parent/child failures group by company; session dismissal does not suppress a
+changed error. Failed/partial Activity refresh is explicit. This is an in-app
+banner, not OS push or an always-on offline delivery guarantee. Background
+AlphaSense/downstream checking is now every five minutes, with explicit checks
+of active/recently blocked parent assignments even when collection is finished.
+Mac/Codex availability remains required; unchanged failures remain deduplicated.
+
+Validation: 1035 safe backend tests and 139 frontend tests, Python compile,
+production build and unchanged model gate passed. Synthetic CUA desktop/390px
+banner inspection passed. No paid QA. Deployment and ABT resume pending; preserve
+its eight completed stages and saved report-4 response. Do not create a new job.
+
 ## T182 — lossless report-envelope recovery
 
 Diagnosed ABT report-1's preserved return privately: one premature root closing
@@ -19,8 +44,15 @@ resume forwards this explicit option; plain resume behavior is unchanged.
 Focused isolated PostgreSQL checks passed for stage reuse/no repurchase and
 unrepairable rejection without dispatch. 1034 safe backend tests and 137 frontend
 tests passed; touched Python compile, build and unchanged model gate passed.
-Deployment pending.
-Do not retry ABT blindly; use this explicit local-recovery path after deployment.
+Backend f72a861fcd8570364e1aa4dd1d77a01911825ca2 verified healthy; hosted T182
+JS/service-worker bytes match, CSS unchanged. Cloudflare version
+113ca9e5-182e-4862-a82b-2eff41b77e5e. Mac healthy at 20:15:54 UTC.
+Sent exactly one parent-assignment resume with recoverSavedResponse=true, HTTP
+200. Live ABT state now records the repair and completed report-1; review-1 is
+running. Ledger report-1 entries remain the two earlier returns at 20:01:26 and
+20:02:57 UTC (estimated $0.4234/$0.4115), not new report-stage calls from recovery.
+Full outputs remain pending. Do not repeat resume or deploy while active. This
+verification note is intentionally local to avoid interrupting the live job.
 
 ## T181 — private saved-response inspection
 

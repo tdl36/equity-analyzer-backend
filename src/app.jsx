@@ -1,3 +1,4 @@
+import {ResearchAlerts} from './research-alerts';
 // Auto-generated entry point — prepends deps to the extracted babel block.
 // The original script relied on React/ReactDOM globals from CDN UMD bundles;
 // we now bundle them explicitly but keep them globally accessible so that
@@ -98,7 +99,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-10-11T182';
+        const BUILD_VERSION = '2026-10-11T183';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -15379,6 +15380,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         onCompany={openWorkspaceCompany} local={_useLocalBackend} health={agentHealth}
                         themeControl={<ThemeSwitch alwaysLabel />} />
 
+                    <ResearchAlerts api={API_URL} onNavigate={navigateWorkspace} />
                     {_useLocalBackend && <aside className="workspace-data-notice" aria-label="Data connection">
                         <span><strong>Local test database</strong> · Saved production theses and pipeline companies are not shown here.</span>
                         <a href={`?local=0${routeHash(activeTab, workspaceTicker, workspaceSection, workspaceWork)}`}>Connect to saved production research →</a>
