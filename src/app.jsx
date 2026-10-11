@@ -98,7 +98,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-10-11T174';
+        const BUILD_VERSION = '2026-10-11T175';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -1799,8 +1799,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [agentProvider, setAgentProvider] = useState('anthropic');
             const [agentModel, setAgentModel] = useState('claude-haiku-4-5-20251001');
             const [agentActiveRun, setAgentActiveRun] = useState(()=>{try{return selectedAgentRun(sessionStorage);}catch{return null;}});
+            const [agentBatchSubmitting,setAgentBatchSubmitting]=useState(false);
             const [agentSubmitting,setAgentSubmitting]=useState(false),[agentSubmitError,setAgentSubmitError]=useState('');
-            const agentSubmitRef=React.useRef(false);
+            const agentSubmitRef=React.useRef(false),agentBatchSubmitRef=React.useRef(false);
             const [agentHistory, setAgentHistory] = useState([]);
             const [agentView, setAgentView] = useState('new'); // 'new' | 'history' | 'detail'  (decipher moved to the Explain tab)
             // Decipher sub-tab state — one-shot agent that explains industry jargon
@@ -8589,20 +8590,23 @@ Regulatory, execution, or macro risks that could derail the thesis:
             };
 
             const startAgentBatchRun = async () => {
-                if (agentBatchTickers.length === 0) return;
+                if (agentBatchTickers.length === 0 || agentBatchSubmitRef.current) return;
+                agentBatchSubmitRef.current=true;setAgentBatchSubmitting(true);
+                const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),30000);
                 try {
+                    const payload={tickers:agentBatchTickers,date:agentDate,provider:agentProvider,model:agentModel};
+                    const submission=savedSubmission(sessionStorage,payload);
                     const res = await fetch(`${API_URL}/api/agents/batch-run`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ tickers: agentBatchTickers, date: agentDate, provider: agentProvider, model: agentModel }),
-                    });
-                    if (res.ok) {
-                        const data = await res.json();
-                        alert(`Batch started: ${data.count} stocks queued`);
-                        setAgentView('history');
-                        fetchAgentHistory();
-                    }
-                } catch (e) { alert('Batch run failed: ' + e.message); }
+                        method:'POST',signal:controller.signal,headers:{'Content-Type':'application/json'},
+                        body:JSON.stringify({...payload,requestId:submission.id})});
+                    if(!res.ok)throw new Error('Batch submission is unconfirmed. Check Activity or retry with the same settings to reuse the saved request.');
+                    const data=await res.json();
+                    if(data.batchId!==submission.id)throw new Error('Batch identity could not be confirmed. Check Activity.');
+                    sessionStorage.removeItem(submission.key);
+                    alert(`Batch saved: ${data.count} stocks. Open Activity for progress.`);
+                    setAgentView('history');fetchAgentHistory();
+                } catch(e){alert(e.message || 'Batch outcome is uncertain. Check Activity before submitting again.');}
+                finally{clearTimeout(timeout);agentBatchSubmitRef.current=false;setAgentBatchSubmitting(false);}
             };
 
             const startDeepResearch = async () => {
@@ -28745,9 +28749,9 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         ))}
                                                     </div>
                                                 </div>
-                                                <button onClick={startAgentBatchRun} disabled={agentBatchTickers.length === 0}
+                                                <button onClick={startAgentBatchRun} disabled={agentBatchSubmitting || agentBatchTickers.length === 0}
                                                     className="w-full py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white text-sm font-medium rounded-lg">
-                                                    Run {agentBatchTickers.length} Stocks
+                                                    {agentBatchSubmitting ? 'Saving batch…' : `Run ${agentBatchTickers.length} Stocks`}
                                                 </button>
                                                 <p className="text-[9px] text-slate-600 text-center">Estimated cost: ~${(agentBatchTickers.length * (agentModel.includes('haiku') ? 0.02 : agentModel.includes('sonnet') ? 0.10 : 0.30)).toFixed(2)} ({agentModel})</p>
                                             </div>

@@ -2,7 +2,7 @@ import ast
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import unittest
-from agent_execution import claim, queued_log, recover_pending, enqueue_single
+from agent_execution import claim, queued_log, recover_pending, enqueue_single, enqueue_batch
 from tests.unit import test_stock_analysis_postgres as pg
 
 @unittest.skipUnless((pg.PG/'initdb').exists(),'Disposable PostgreSQL unavailable')
@@ -11,9 +11,13 @@ class ExecutionTests(unittest.TestCase):
  def setUpClass(cls):
   pg.StockPostgresTests.setUpClass.__func__(cls)
   with cls.db(True) as (_,c):
-   c.execute('CREATE TABLE agent_runs(id TEXT PRIMARY KEY,status TEXT,logs JSONB,completed_at TIMESTAMP,created_at TIMESTAMP DEFAULT NOW(),ticker TEXT,analysis_date DATE,llm_provider TEXT,llm_model TEXT)')
+   c.execute('CREATE TABLE app_settings(key TEXT PRIMARY KEY,value JSONB,updated_at TIMESTAMP)')
+   c.execute('CREATE TABLE agent_runs(id TEXT PRIMARY KEY,status TEXT,logs JSONB,completed_at TIMESTAMP,created_at TIMESTAMP DEFAULT NOW(),ticker TEXT,analysis_date DATE,llm_provider TEXT,llm_model TEXT,report TEXT)')
  @classmethod
  def tearDownClass(cls):pg.StockPostgresTests.tearDownClass.__func__(cls)
+ def setUp(self):
+  with self.db(True) as (_,c):
+   c.execute('DELETE FROM agent_runs');c.execute('DELETE FROM app_settings')
  def add(self,id,status='queued',logs=None):
   with self.db(True) as (_,c):c.execute('INSERT INTO agent_runs(id,status,logs,completed_at) VALUES(%s,%s,%s,NULL)',(id,status,logs if logs is not None else queued_log()))
  def test_concurrent_claims_reserve_exactly_once(self):
@@ -59,11 +63,38 @@ class ExecutionTests(unittest.TestCase):
   with self.db() as (_,c):
    c.execute('SELECT ticker,status FROM agent_runs WHERE id=%s',(request,));row=c.fetchone()
   self.assertEqual(row['ticker'],'TEST');self.assertEqual(row['status'],'running')
+ def test_batch_receipt_and_distributed_concurrency_survive_replay(self):
+  request='00000000-0000-4000-8000-000000000175'
+  def submit():return enqueue_batch(self.db,['ONE','TWO','THREE'],'2026-10-11','fixture','pinned',2,request)
+  with ThreadPoolExecutor(max_workers=4) as pool:receipts=list(pool.map(lambda _:submit(),range(4)))
+  self.assertEqual(sum(created for _,_,created in receipts),1)
+  runs=receipts[0][1];self.assertTrue(all(r[1]==runs for r in receipts))
+  with ThreadPoolExecutor(max_workers=3) as pool:claims=list(pool.map(lambda r:claim(self.db,r['id']),runs))
+  self.assertEqual(sum(bool(c) for c in claims),2)
+  waiting=next(r for r,c in zip(runs,claims) if not c)
+  self.assertIsNone(claim(self.db,waiting['id']))
+  self.assertEqual(submit()[1],runs)
+  with self.assertRaises(ValueError):enqueue_batch(self.db,['ONE','TWO','THREE'],'2026-10-11','fixture','pinned',3,request)
+  finished=next(r for r,c in zip(runs,claims) if c)
+  with self.db(True) as (_,c):c.execute("UPDATE agent_runs SET status='complete',completed_at=NOW() WHERE id=%s",(finished['id'],))
+  self.assertIsNotNone(claim(self.db,waiting['id']))
+  self.assertIsNone(claim(self.db,finished['id']))
+  with self.db(True) as (_,c):c.execute('DELETE FROM agent_runs WHERE id=%s',(finished['id'],))
+  with self.assertRaises(ValueError):submit()
+ def test_full_batch_does_not_starve_unrelated_recovery(self):
+  _,runs,_=enqueue_batch(self.db,[f'T{i}' for i in range(12)],'2026-10-11','fixture','pinned',1)
+  self.assertIsNotNone(claim(self.db,runs[0]['id']))
+  single,_=enqueue_single(self.db,'FREE','2026-10-11','fixture','pinned')
+  with self.db(True) as (_,c):
+   c.execute("UPDATE agent_runs SET created_at=NOW()-INTERVAL '30 minutes' WHERE id=ANY(%s)",([r['id'] for r in runs],))
+   c.execute("UPDATE agent_runs SET created_at=NOW()-INTERVAL '10 minutes' WHERE id=%s",(single,))
+  seen=[];recover_pending(self.db,lambda *args:seen.append(args[0]))
+  self.assertIn(single,seen);self.assertFalse(any(r['id'] in seen for r in runs))
  def test_batch_and_single_enroll_and_graph_reserves_before_import(self):
   tree=ast.parse(Path('app_v3.py').read_text())
   funcs={n.name:n for n in tree.body if isinstance(n,ast.FunctionDef)}
   self.assertIn('enqueue_single',ast.unparse(funcs['start_agent_run']))
-  self.assertIn('queued_log',ast.unparse(funcs['start_agent_batch_run']))
+  self.assertIn('enqueue_batch',ast.unparse(funcs['start_agent_batch_run']))
   self.assertNotIn('recover_single=True',ast.unparse(funcs['start_agent_batch_run']))
   graph=ast.unparse(funcs['_run_trading_agent'])
   self.assertLess(graph.index('claim(get_db, run_id)'),graph.index('TradingAgentsGraph'))

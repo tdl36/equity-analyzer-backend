@@ -61,3 +61,14 @@ test('leaving cancels old responses; returning restarts from saved state without
  const returned=observeAgentRun({api:'fixture',runId:'a',interval:()=>2,cancel:()=>{},fetcher:async(url,options)=>{requested={url,options};return {ok:true,json:async()=>({status:'complete',newLogs:[],totalLogs:0})};},onSnapshot:()=>updates++,onError:()=>{},onComplete:()=>{}});
  await new Promise(r=>setImmediate(r));assert.match(requested.url,/since=0$/);assert.equal(requested.options.method,undefined);assert.equal(updates,1);returned();
 });
+
+test('batch screen reuses the saved identity and blocks simultaneous submission',async()=>{
+ const {readFileSync}=await import('node:fs'),source=readFileSync(new URL('../../src/app.jsx',import.meta.url),'utf8'),prefix='const startAgentBatchRun = ';
+ const body=source.slice(source.indexOf(prefix)+prefix.length,source.indexOf('const startDeepResearch =')).trim().replace(/;$/,'');
+ let calls=0,removed=false,payload;
+ const env={agentBatchTickers:['ONE','TWO'],agentBatchSubmitRef:{current:false},setAgentBatchSubmitting:()=>{},agentDate:'2026-10-11',agentProvider:'fixture',agentModel:'pinned',API_URL:'fixture',sessionStorage:{removeItem:()=>removed=true},savedSubmission:()=>({id:'batch-id',key:'batch-key'}),
+ fetch:async(_url,options)=>{calls++;payload=JSON.parse(options.body);return {ok:true,json:async()=>({batchId:'batch-id',count:2})};},alert:()=>{},setAgentView:()=>{},fetchAgentHistory:()=>{}};
+ const start=new Function(...Object.keys(env),'return ('+body+');')(...Object.values(env));await Promise.all([start(),start()]);
+ assert.equal(calls,1);assert.equal(payload.requestId,'batch-id');assert.equal(removed,true);
+ env.fetch=async()=>({ok:false});removed=false;await new Function(...Object.keys(env),'return ('+body+');')(...Object.values(env))();assert.equal(removed,false);
+});

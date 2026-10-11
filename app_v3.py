@@ -21523,13 +21523,13 @@ def agent_execution_capabilities():
     from agent_batch import MAX_CONCURRENCY, MAX_BATCH_SIZE
     return jsonify({'maxConcurrency': MAX_CONCURRENCY, 'maxBatchSize': MAX_BATCH_SIZE,
                     'execution': 'background-thread', 'durableQueue': False,
-                    'singleStartRecovery': True, 'interruptedAttemptRetry': False})
+                    'singleStartRecovery': True, 'batchStartRecovery': True, 'interruptedAttemptRetry': False})
 
 
 @app.route('/api/agents/batch-run', methods=['POST'])
 def start_agent_batch_run():
     """Run TradingAgents on multiple tickers."""
-    from agent_execution import queued_log
+    from agent_execution import enqueue_batch
     from agent_batch import validate_batch, run_batch_jobs
     data = request.get_json(silent=True) or {}
     if not isinstance(data, dict):
@@ -21546,21 +21546,18 @@ def start_agent_batch_run():
         return jsonify({'error': 'tickers and date required'}), 400
 
     try:
-        datetime.strptime(date_str, '%Y-%m-%d')
+        date_str=datetime.strptime(date_str, '%Y-%m-%d').strftime('%Y-%m-%d')
     except (ValueError, TypeError):
         return jsonify({'error': 'Use an analysis date in YYYY-MM-DD format.'}), 400
 
-    batch_id = str(uuid.uuid4())
-    run_ids = []
-
-    with get_db(commit=True) as (conn, cur):
-        for ticker in tickers:
-            run_id = str(uuid.uuid4())
-            cur.execute('''
-                INSERT INTO agent_runs (id, ticker, analysis_date, llm_provider, llm_model, status, report, logs)
-                VALUES (%s, %s, %s, %s, %s, 'queued', %s, %s::jsonb)
-            ''', (run_id, ticker.upper().strip(), date_str, provider, model, json.dumps({'batchId': batch_id}), queued_log()))
-            run_ids.append({'id': run_id, 'ticker': ticker.upper().strip()})
+    try:
+        if not isinstance(provider,str) or not isinstance(model,str):raise ValueError('Invalid model settings')
+        model_registry.ensure_active(model)
+        request_id=data.get('requestId')
+        if request_id is not None:request_id=str(uuid.UUID(request_id))
+        batch_id,run_ids,created=enqueue_batch(get_db,tickers,date_str,provider,model,concurrency,request_id)
+    except (ValueError,TypeError,AttributeError) as exc:
+        return jsonify(error=str(exc)),409
 
     # Independent company teams share a bounded process-level batch pool.
     def _run_batch():
@@ -21569,10 +21566,10 @@ def start_agent_batch_run():
         def failed(info, exc):
             print(f"[agent-batch] Failed {info['ticker']}: {exc}")
             with get_db(commit=True) as (_conn, cur):
-                cur.execute("UPDATE agent_runs SET status = 'error', completed_at = NOW() WHERE id = %s", (info['id'],))
+                cur.execute("UPDATE agent_runs SET status = 'error', completed_at = NOW() WHERE id = %s AND status='queued' AND NOT logs @> '[{\"event\":\"execution_started\"}]'::jsonb", (info['id'],))
         run_batch_jobs(run_ids, run, concurrency, failed)
 
-    threading.Thread(target=_run_batch, daemon=True).start()
+    if created:threading.Thread(target=_run_batch, daemon=True).start()
 
     return jsonify({'batchId': batch_id, 'runs': run_ids, 'count': len(run_ids), 'concurrency': concurrency})
 

@@ -2,6 +2,28 @@
 
 Updated: October 10, 2026
 
+## T175 — durable batch identity and pre-execution recovery
+
+The user approved the eight-phase order and one-click latest-source refresh;
+follow docs/charlie-investor-workflow-plan.md. Continuation now explicitly follows
+that plan. All phases remain in progress, with phase 1 first.
+
+New batch submissions atomically save frozen inputs, child run IDs and a request
+receipt. Same-ID retries reuse children without dispatching another worker;
+changed-input reuse is rejected. The browser retains uncertain submission IDs in
+session storage and blocks simultaneous clicks. Batch enrollment logs persist
+identity and concurrency; a database advisory transaction lock serializes claims
+per batch. Outstanding running attempts retain their slots after interruption.
+Recovery discovers only never-started new jobs; saturated batches cannot hide
+unrelated eligible jobs. Existing single recovery and all legacy rows are retained.
+No ambiguous attempt is retried or marked complete. Activity recognizes new batch
+start recovery. This is per-batch concurrency fencing, not a global distributed
+concurrency cap or live-provider reconciliation.
+
+Validation/deployment pending. Next in phase 1: supported interrupted-attempt
+reconciliation and operational recovery controls, including legacy WELL. Later
+phases and the full one-click update experience are not complete.
+
 ## T174 — resume observing selected analyst work
 
 Analyst polling now follows the selected run and screen lifecycle. Returning to

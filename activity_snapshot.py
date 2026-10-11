@@ -15,7 +15,7 @@ SOURCES = [
  ('company_research_runs','Company research','portfolio',"NULL::text AS step",'updated_at'),
  ('investment_committee_runs','Investment committee','portfolio',"NULL::text AS step",'updated_at'),
  ('analysis_jobs','Thesis processing','portfolio','progress AS step','updated_at'),
- ('agent_runs','Analyst team','desk',"NULL::text AS step, logs->-1->>'ts' AS last_log_at, (status='queued' AND completed_at IS NULL AND logs @> '[{\"event\":\"execution_queued\"}]'::jsonb AND NOT logs @> '[{\"event\":\"execution_started\"}]'::jsonb) AS pending_start, logs @> '[{\"event\":\"recover_single_v1\"}]'::jsonb AS start_recovery",'COALESCE(completed_at,created_at)'),
+ ('agent_runs','Analyst team','desk',"NULL::text AS step, logs->-1->>'ts' AS last_log_at, (status='queued' AND completed_at IS NULL AND logs @> '[{\"event\":\"execution_queued\"}]'::jsonb AND NOT logs @> '[{\"event\":\"execution_started\"}]'::jsonb) AS pending_start, (logs @> '[{\"event\":\"recover_single_v1\"}]'::jsonb OR logs @> '[{\"event\":\"batch_enrolled_v1\"}]'::jsonb) AS start_recovery",'COALESCE(completed_at,created_at)'),
  ('transcription_jobs','Audio processing','summary','progress AS step','updated_at'),
 ]
 
