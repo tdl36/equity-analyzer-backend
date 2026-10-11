@@ -16,7 +16,12 @@ Validation: focused PostgreSQL tests verify bounded logs, invalid/missing IDs,
 no report-body disclosure and unchanged database state. Synthetic browser checks
 cover desktop/phone, long messages, read failure/refresh, close and GET-only
 requests. 1007 safe backend tests, 125 frontend tests, Python compile, production build
-and unchanged model-policy gate pass. Release verification pending. Next: durable
+and unchanged model-policy gate pass. Backend c9e427f74330b8c64ddff1985d9352892ab7af2d
+and exact hosted T167 JS/CSS/service-worker bytes verified. Cloudflare
+a713b887-368f-4e32-94a1-9905d2bee23a. Live authenticated WELL inspection
+returns 22 saved log entries and no report/decision; anonymous access is 401.
+Mac agent code unchanged and not restarted; observed heartbeat 14:11:41 UTC.
+No production job or research mutation. Next: durable
 execution ownership and a supported reconciliation action for interrupted runs.
 
 ## T166 — visible reconciliation for legacy analyst jobs
