@@ -2,7 +2,7 @@
 
 Updated: October 10, 2026
 
-## T145 — investor exception inbox
+## T145 / T146 — investor exception inbox
 
 Activity defaults to Needs you, separating investor review/proposals from jobs
 whose progress needs checking. Processing and Waiting have separate counts and
@@ -10,24 +10,34 @@ filters. Today prioritizes exceptions before routine progress. Long-waiting queu
 work stays Waiting; a stale processing state prompts inspection, never asserts
 that a paid call stopped. Every row includes a next action. Catalyst signals now
 show their saved review reason and workflow name rather than a generic status.
-This is read-only triage: no jobs are resumed, proposals approved or limits changed.
+T146 removes duplicate collection issue headings and folds long diagnostics into
+expandable details for mobile readability. Catalyst roundups, personal share-dealing
+headlines and ambiguous multi-company feed associations now require review before
+automatic collection, without consuming collection quota. This is a conservative
+triage rule, not complete issuer/date verification; existing jobs are unchanged.
+The Activity inbox is read-only triage: no jobs are resumed, proposals approved or limits changed.
 
 Investor workflow priorities, in order:
 1. Reliable exception handling and clear dependencies (T144/T145 improve this).
-2. Evidence-led change briefs: material changes since the investor's last reviewed
+2. Strengthen catalyst issuer/event-date validation before expanding automatic
+   collection. Live attention records include mismatched issuer and stale-event
+   signals; existing frozen requests must be reviewed, never silently relabeled.
+3. Evidence-led change briefs: material changes since the investor's last reviewed
    thesis, with source links, contradictions and explicit proposed edits.
-3. Reusable coverage policies and event-triggered research with transparent budgets;
+4. Reusable coverage policies and event-triggered research with transparent budgets;
    extend existing intake/catalyst automation rather than creating duplicate engines.
-4. Consistent professional one-pagers across issuers, then valuation history and
+5. Consistent professional one-pagers across issuers, then valuation history and
    defensible scenario assumptions; expand real-source analyst quality benchmarks.
-5. Meeting/earnings preparation assembled from saved research and open questions;
+6. Meeting/earnings preparation assembled from saved research and open questions;
    test recovery across every upstream dependency before calling this unattended.
 
 Do not market complete automation: AlphaSense access/source restrictions,
 ambiguous paid outcomes and investment approvals still require human involvement.
-Validation: 946 safe backend tests and 98 frontend tests pass; Python compilation
+Validation: 947 safe backend tests and 98 frontend tests pass; Python compilation
 and production build pass. Dark-theme inspection identified and corrected health
-panel contrast by using theme variables. Production verification follows deployment.
+panel contrast by using theme variables. T145 backend revision was verified as
+c022253098e5cfeb6a75761deaa93fba4a235037, with matching hosted assets and
+390px mobile layout without horizontal overflow. T146 verification follows deployment.
 
 ## T144 — collection delivery visibility and public-data recovery
 

@@ -122,13 +122,15 @@ export function ActivityWorkspace({
     className: "activity-detail"
   }, /*#__PURE__*/React.createElement("div", {
     className: "activity-row-title"
-  }, /*#__PURE__*/React.createElement("strong", null, r.step), /*#__PURE__*/React.createElement("span", {
+  }, /*#__PURE__*/React.createElement("strong", null, r.error && r.step === r.error ? 'Collection needs attention' : r.step), /*#__PURE__*/React.createElement("span", {
     className: "activity-status"
   }, lanes[workLane(r)])), r.stages != null && /*#__PURE__*/React.createElement("p", null, r.stages, "/12 research stages saved"), r.warning && /*#__PURE__*/React.createElement("p", {
     className: "activity-warning"
-  }, r.warning), r.error && /*#__PURE__*/React.createElement("p", {
+  }, r.warning), r.error && (r.error.length > 200 ? /*#__PURE__*/React.createElement("details", {
     className: "activity-warning"
-  }, r.error), r.stale && /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("summary", null, r.error.slice(0, 180), "\u2026 ", /*#__PURE__*/React.createElement("span", null, "View full issue")), /*#__PURE__*/React.createElement("p", null, r.error)) : /*#__PURE__*/React.createElement("p", {
+    className: "activity-warning"
+  }, r.error)), r.stale && /*#__PURE__*/React.createElement("p", {
     className: "activity-warning"
   }, "No saved progress for ", r.quietMinutes == null ? 'an unknown period' : r.quietMinutes + ' minutes', ". Open the job to inspect what is waiting."), /*#__PURE__*/React.createElement("p", {
     className: "activity-next"

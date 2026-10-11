@@ -32,6 +32,12 @@ RULES=(
 
 REVIEW_CATEGORIES={'commercial','ownership','workforce'}
 
+# Roundups and personal share dealings are associated with many companies;
+# their event keywords must not create an unattended issuer assignment.
+ROUNDUP_HEADLINE = re.compile(
+    r'\b(?:stock movers|stocks to watch|market movers|congressman|congresswoman|'
+    r'congressional|senator|lawmakers?|insider (?:buys?|sells?|trading))\b', re.I)
+
 # Feed association is not proof of a new issuer event. Keep commentary discoverable
 # without spending a browser assignment (or the daily automatic quota) on it.
 COMMENTARY_HEADLINE = re.compile(
@@ -66,9 +72,13 @@ def candidate(ticker,article,after,now):
     # stay reviewable; never infer the issuer from a destination employer mention.
     leadership_review=category=='leadership' and not issuer_explicit
     commentary=bool(COMMENTARY_HEADLINE.search(title))
-    requires_review=commentary or leadership_review or third_party_purchase or (category=='corporate' and not issuer_explicit) or category in REVIEW_CATEGORIES
+    associated={x.strip().upper() for x in related.split(',') if x.strip()} if isinstance(related,str) else set()
+    mixed_issuer=bool(ROUNDUP_HEADLINE.search(title)) or (len(associated)>1 and not issuer_explicit)
+    requires_review=mixed_issuer or commentary or leadership_review or third_party_purchase or (category=='corporate' and not issuer_explicit) or category in REVIEW_CATEGORIES
     if commentary:
         triage='This headline appears to be commentary or an industry comparison. Verify a distinct new issuer event and check existing coverage before collection.'
+    elif mixed_issuer:
+        triage='This is a multi-company or personal share-dealing signal. Verify which issuer the event belongs to and its actual event date before collection; feed association and publication date are not proof.'
     elif third_party_purchase:
         triage='Hardware purchase may be a customer event, not a material issuer transaction.'
     elif leadership_review:

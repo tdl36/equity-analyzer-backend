@@ -87,6 +87,18 @@ class WatchDispatchTests(unittest.TestCase):
         self.assertEqual(len([j for j in self.jobs.values() if j['stage']=='collection_control']),1)
         self.assertEqual(len([j for j in self.jobs.values() if j.get('status')=='detected']),1)
 
+    def test_roundup_and_mixed_issuer_signals_do_not_spend_collection_quota(self):
+        articles=[
+            {**self.article,'headline':'PepsiCo lowers guidance; Microsoft gains: Stock Movers'},
+            {**self.article,'headline':'Congressman sells ABBV ahead of quarterly results'},
+            {**self.article,'headline':'Drugmaker receives FDA approval','related':'ABBV,PFE'},
+        ]
+        self.state['dailyLimit']=10;self.tick(articles)
+        self.assertEqual(len(self.jobs),3)
+        self.assertTrue(all(j['status']=='needs_review' for j in self.jobs.values()))
+        self.assertTrue(all('actual event date' in j['result']['reason'] for j in self.jobs.values()))
+        self.assertEqual(self.state['used'],0)
+
     def test_detection_only_does_not_queue_collection(self):
         self.state['automatic']=False;self.tick([self.article])
         self.assertEqual(len(self.jobs),1);self.assertEqual(next(iter(self.jobs.values()))['status'],'detected')
