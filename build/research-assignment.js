@@ -228,7 +228,7 @@ export function ResearchAssignment({
     role: "status"
   }, "Public-data gaps: ", j.result.visualFundamentals.gaps.join('; '), ". Retrying retrieves public data only; it does not rerun research. Your previous snapshot stays available if retrieval fails."), /*#__PURE__*/React.createElement("div", {
     className: "sa-actions"
-  }, j.status === 'complete' && j.result.artifacts?.some(a => a.kind === 'visual') && (!j.result.visualFundamentals || j.result.visualFundamentals.version < 2 || j.result.visualFundamentals.gaps?.length) && /*#__PURE__*/React.createElement("button", {
+  }, j.status === 'complete' && j.result.artifacts?.some(a => a.kind === 'visual') && (!j.result.visualFundamentals || j.result.visualFundamentals.version < 2 || j.result.visualFundamentals.gaps?.length > 0) && /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: () => mutate(async () => {
       await request(`assignments/${j.id}/visual-supplement`, {

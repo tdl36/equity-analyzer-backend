@@ -65,4 +65,11 @@ Actual saved UNH plus DE/SYK public-data-only PDFs each one page; stress fixture
 
 Exact saved-work links and inspection-only assignment lookup; company/identity
 guards, reload/Back routing, explicit missing snapshot messages. 22 focused
-backend tests and 111 frontend tests pass. 964 backend tests, compile/build pass. Deployment pending.
+backend tests and 111 frontend tests pass. 964 backend tests, compile/build pass. Backend b5c46da and hosted T153 verified; exact UNH link/reload inspected.
+
+## T154 in progress
+
+Coverage & review checklist, source omissions and safe HTML export. Saved UNH
+structural audit: 65 populated matched fields, 171 unresolved, 27 unavailable;
+not an expert quality score. Assignment focus hides unrelated report selection.
+115 frontend tests pass. Build/deployment verification pending.

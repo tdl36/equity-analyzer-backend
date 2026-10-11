@@ -1,4 +1,5 @@
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
+import { ResearchCoverage } from './research-coverage';
 import { workId } from './workspace-model.mjs';
 import * as React from 'react';
 import { ResearchAssignment } from './research-assignment';
@@ -47,7 +48,8 @@ export function StockAnalysis({
   routeWork = '',
   onWorkChange
 }) {
-  var focusId = workId(routeWork, 'analysis');
+  var focusId = workId(routeWork, 'analysis'),
+    assignmentFocus = workId(routeWork, 'assignment');
   var [inventory, setInventory] = React.useState(null),
     [run, setRun] = React.useState(null),
     [selected, setSelected] = React.useState(focusId),
@@ -111,7 +113,7 @@ export function StockAnalysis({
         if (live) {
           setInventory(d);
           setError('');
-          setSelected(s => s || focusId || d.runs[0]?.id || '');
+          setSelected(s => s || focusId || (assignmentFocus ? '' : d.runs[0]?.id) || '');
         }
       } catch (e) {
         if (live) setError(e.message);
@@ -125,7 +127,7 @@ export function StockAnalysis({
       live = false;
       clearInterval(timer);
     };
-  }, [ticker, api, reload, focusId]);
+  }, [ticker, api, reload, focusId, assignmentFocus]);
   React.useEffect(() => {
     var live = true;
     var load = async () => {
@@ -262,8 +264,8 @@ export function StockAnalysis({
     className: "sa-heading"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("small", null, "CHARLIE / STOCK RESEARCH STUDIO"), /*#__PURE__*/React.createElement("h3", null, "Understand the business.", /*#__PURE__*/React.createElement("br", null), "Test the investment case."), /*#__PURE__*/React.createElement("p", null, "Structured research, a source-linked visual, and a record of what changed.")), /*#__PURE__*/React.createElement("div", {
     className: "sa-company"
-  }, /*#__PURE__*/React.createElement("strong", null, ticker), /*#__PURE__*/React.createElement("span", null, "Saved thesis R", revision))), /*#__PURE__*/React.createElement(ResearchAssignment, {
-    focusId: workId(routeWork, 'assignment'),
+  }, /*#__PURE__*/React.createElement("strong", null, ticker), /*#__PURE__*/React.createElement("span", null, revision ? 'Case baseline R' + revision : 'No saved case baseline'))), /*#__PURE__*/React.createElement(ResearchAssignment, {
+    focusId: assignmentFocus,
     onClearFocus: () => onWorkChange?.(''),
     api: api,
     ticker: ticker,
@@ -273,7 +275,7 @@ export function StockAnalysis({
       setSelected(id);
       setReload(x => x + 1);
     }
-  }), error && /*#__PURE__*/React.createElement("p", {
+  }), !assignmentFocus && /*#__PURE__*/React.createElement(React.Fragment, null, error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
   }, error, " ", /*#__PURE__*/React.createElement("button", {
     onClick: () => setReload(x => x + 1)
@@ -364,7 +366,9 @@ export function StockAnalysis({
     value: r.id
   }, new Date(r.created_at).toLocaleString(), " \xB7 ", r.status, " \xB7 ", r.id.slice(0, 8))))), run && run.id === selected && run.ticker === ticker && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "sa-report-heading"
-  }, /*#__PURE__*/React.createElement("h4", null, label(run.input.mode || 'deep'), " \xB7 ", run.status), /*#__PURE__*/React.createElement("p", null, stats.stages, "/12 stages \xB7 ", stats.supported, " source-supported fields \xB7 ", stats.unresolved, " fields need review"), /*#__PURE__*/React.createElement("small", null, "Report ", run.id, " \xB7 Company ID ", run.input.companyId, " \xB7 ", run.model)), run.error && /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("h4", null, label(run.input.mode || 'deep'), " \xB7 ", run.status), /*#__PURE__*/React.createElement("p", null, stats.stages, "/12 stages \xB7 ", stats.supported, " source-supported fields \xB7 ", stats.unresolved, " fields need review"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setView('coverage')
+  }, "Inspect coverage and unresolved evidence"), /*#__PURE__*/React.createElement("small", null, "Report ", run.id, " \xB7 Company ID ", run.input.companyId, " \xB7 ", run.model)), run.error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
   }, run.error), run.baselineStale && /*#__PURE__*/React.createElement("p", {
     className: "sa-warning"
@@ -382,7 +386,7 @@ export function StockAnalysis({
     onClick: () => control('stop')
   }, "Stop analysis"), /*#__PURE__*/React.createElement("p", null, "After a restart, resume explicitly. A currently active worker will reject a second start.")), /*#__PURE__*/React.createElement("nav", {
     "aria-label": "Stock analysis views"
-  }, [['report', 'Research report'], ['changes', 'What changed?'], ['sources', 'Sources & baseline'], ['visual', 'Infographic']].map(([id, title]) => /*#__PURE__*/React.createElement("button", {
+  }, [['report', 'Research report'], ['coverage', 'Coverage & review'], ['changes', 'What changed?'], ['sources', 'Sources & baseline'], ['visual', 'Infographic']].map(([id, title]) => /*#__PURE__*/React.createElement("button", {
     key: id,
     "aria-pressed": view === id,
     onClick: () => setView(id)
@@ -425,7 +429,13 @@ export function StockAnalysis({
     key: c.section
   }, /*#__PURE__*/React.createElement("h4", null, label(c.section), " \xB7 ", label(c.kind)), /*#__PURE__*/React.createElement("p", null, c.note), /*#__PURE__*/React.createElement("div", {
     className: "sa-form-grid"
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h5", null, "Earlier report"), /*#__PURE__*/React.createElement("pre", null, JSON.stringify(c.before, null, 2))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h5", null, "This report"), /*#__PURE__*/React.createElement("pre", null, JSON.stringify(c.after, null, 2)))))), /*#__PURE__*/React.createElement("h4", null, "Frozen investor thesis \xB7 R", run.baseline.revision), /*#__PURE__*/React.createElement("p", null, run.baseline.body.thesis || 'No saved investor thesis at submission.'), /*#__PURE__*/React.createElement("p", null, "Changes in source selection require review. No thesis breaker is automatically marked as triggered, and no thesis is automatically approved.")), view === 'sources' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h4", null, "Frozen originals"), run.sources.map(s => /*#__PURE__*/React.createElement("article", {
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h5", null, "Earlier report"), /*#__PURE__*/React.createElement("pre", null, JSON.stringify(c.before, null, 2))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h5", null, "This report"), /*#__PURE__*/React.createElement("pre", null, JSON.stringify(c.after, null, 2)))))), /*#__PURE__*/React.createElement("h4", null, "Frozen investor thesis \xB7 R", run.baseline.revision), /*#__PURE__*/React.createElement("p", null, run.baseline.body.thesis || 'No saved investor thesis at submission.'), /*#__PURE__*/React.createElement("p", null, "Changes in source selection require review. No thesis breaker is automatically marked as triggered, and no thesis is automatically approved.")), view === 'coverage' && /*#__PURE__*/React.createElement(ResearchCoverage, {
+    run: run,
+    onSection: id => {
+      setSection(id);
+      setView('report');
+    }
+  }), view === 'sources' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h4", null, "Frozen originals"), run.sources.map(s => /*#__PURE__*/React.createElement("article", {
     key: s.id
   }, /*#__PURE__*/React.createElement("h5", null, s.filename), /*#__PURE__*/React.createElement("p", null, s.sourceUrl || 'Observed URL unavailable'), s.coverage?.limitation && /*#__PURE__*/React.createElement("p", {
     role: "alert"
@@ -462,6 +472,6 @@ export function StockAnalysis({
     }
   }))), /*#__PURE__*/React.createElement("p", {
     className: "sa-footnote"
-  }, "Draft decision support. Facts, guidance, estimates and interpretations remain distinct. Source-pack coverage is not exhaustive current market coverage. Review before saving a thesis change.")));
+  }, "Draft decision support. Facts, guidance, estimates and interpretations remain distinct. Source-pack coverage is not exhaustive current market coverage. Review before saving a thesis change."))));
 }
 var styles = `.stock-analysis{font:16px/1.5 Calibri,sans-serif;color:#000;background:#fff;padding:28px;border:1px solid #d8dedd;border-radius:12px}.stock-analysis *{color:#000!important;box-sizing:border-box;overflow-wrap:anywhere}.stock-analysis h3{font-size:34px;font-weight:700;line-height:1.12;margin:12px 0}.stock-analysis h4{font-size:22px;font-weight:700;margin:16px 0 8px}.stock-analysis h5{font-size:17px;font-weight:700;margin:12px 0 6px}.stock-analysis p{margin:8px 0 14px;white-space:pre-wrap}.stock-analysis small{display:block;font-size:13px}.sa-heading{display:flex;justify-content:space-between;gap:24px;border-bottom:1px solid #ccd7de;padding-bottom:24px;margin-bottom:24px}.sa-heading small{letter-spacing:.12em}.sa-company{padding:18px;background:#edf4f6;border-radius:8px;align-self:flex-start;min-width:130px}.sa-company strong{display:block;font-size:30px}.sa-company span{font-size:13px}.stock-analysis label{display:block;margin:14px 0}.stock-analysis input:not([type=checkbox]),.stock-analysis select,.stock-analysis textarea{width:100%;font:inherit;background:#fff!important;border:1px solid #aebcbe;border-radius:5px;padding:10px;margin-top:6px}.stock-analysis button{font:inherit;background:#eef2f2!important;border:1px solid #aebcbe;padding:9px 14px;border-radius:5px;cursor:pointer;max-width:100%}.stock-analysis button[aria-pressed=true],.stock-analysis .sa-primary{background:#d5e8ed!important;border-color:#718e99;font-weight:700}.stock-analysis button:disabled{opacity:.5;cursor:default}.stock-analysis button:focus-visible,.stock-analysis input:focus-visible{outline:2px solid #000;outline-offset:2px}.stock-analysis nav,.sa-actions{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0}.sa-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.sa-source-list{max-height:270px;overflow:auto;border-top:1px solid #ddd;border-bottom:1px solid #ddd}.stock-analysis .sa-check{display:flex;align-items:flex-start;gap:10px}.sa-check input{margin-top:5px;flex-shrink:0}.stock-analysis summary{cursor:pointer;font-weight:700;padding:12px 0}.sa-prepare{background:#f7f8f6;border:1px solid #dce2de;padding:16px;border-radius:8px}.sa-report{display:grid;grid-template-columns:200px minmax(0,1fr);gap:24px;border-top:1px solid #ccd7de;padding-top:18px}.sa-report>nav{display:flex;flex-direction:column;align-self:start}.sa-report>nav button{text-align:left}.sa-rows{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:14px}.stock-analysis article{border:1px solid #dce2de;background:#f8faf9;padding:18px;border-radius:6px;margin:12px 0}.sa-field{margin-bottom:20px}.sa-evidence,.sa-warning{background:#ecf4ed;padding:6px 10px;border-radius:4px}.sa-warning{background:#fff1d9}.stock-analysis blockquote{border-left:3px solid #bccbd0;padding:12px;margin:12px 0;background:#fff}.stock-analysis pre{white-space:pre-wrap;font:14px Calibri,sans-serif;max-width:100%;overflow-wrap:anywhere}.sa-footnote{border-top:1px solid #ddd;padding-top:20px;font-size:14px}.stock-analysis fieldset{min-width:0}.sa-report-body{min-width:0}@media(max-width:750px){.stock-analysis{padding:14px}.sa-heading{display:block}.sa-heading h3{font-size:28px}.sa-company{display:inline-block;margin-top:12px}.sa-form-grid,.sa-report{grid-template-columns:1fr}.sa-report>nav{flex-direction:row;flex-wrap:nowrap;overflow-x:auto;max-width:100%}.sa-report>nav button{font-size:14px;flex-shrink:0}.sa-rows{grid-template-columns:1fr}}`;

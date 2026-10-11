@@ -2,6 +2,23 @@
 
 Updated: October 10, 2026
 
+## T154 — research coverage and review checklist
+
+Stock Analysis has a deterministic Coverage & review tab and export. It walks
+saved report fields, distinguishes unavailable items from unresolved claims, and
+counts a match only when unchanged wording has model review plus a matched passage
+from a frozen original. Orphan citations cannot inflate coverage. Source selection
+omissions, extraction limitations and missing coverage metadata remain visible.
+Section links open the underlying report; no research or thesis is changed.
+Counts include labels and periods and are not an investment-quality score.
+
+Saved UNH inspection found 65 populated matched fields, 171 needing source review,
+27 unavailable items, two limited originals and four without coverage metadata.
+These are metadata/structural observations, not new factual adjudication. No paid
+research was started. Exact assignment focus now hides the unrelated default
+report until its explicit report link is opened; R0 no longer says saved thesis.
+115 frontend tests and build pass. Deployment verification pending.
+
 ## T153 — exact saved-work links
 
 Activity links select a specific research assignment, stock analysis, Deep Research,
@@ -12,7 +29,7 @@ Collection remains limited to the latest 50-request Mac snapshot and states when
 the linked request is outside it. Focused assignment reads use exact ID + company
 and do not wake the coordinator. Existing authentication and mutation gates remain.
 Assignment setup is collapsed while inspecting a direct link. No paid calls used.
-964 backend tests, 111 frontend tests, compile/build pass. Deployment verification pending.
+964 backend tests, 111 frontend tests, compile/build pass. Backend b5c46da and exact hosted T153 assets verified. Activity opened the specific UNH assignment; reload retained its identity.
 
 ## T152 — collection follow-through and bounded investment maps
 
