@@ -1,0 +1,32 @@
+[
+  {
+    "ticker": "UNH",
+    "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000731766.json",
+    "retrievedDate": "2026-10-11",
+    "fixtureSHA256": "4a3d91ffe7b5efad97d7287c7c70875aeb3f7f55173294e5500adc77e54d267b",
+    "scope": "Public SEC facts only; selected tags, annual forms, fiscal periods 2021 onward. Parser replay, not independent investment validation.",
+    "rows": 5,
+    "warnings": []
+  },
+  {
+    "ticker": "SYK",
+    "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000310764.json",
+    "retrievedDate": "2026-10-11",
+    "fixtureSHA256": "61f6e9bc70489411e98b67de9c354b45b4506e37fdc3c07481dfe4d0670432a4",
+    "scope": "Public SEC facts only; selected tags, annual forms, fiscal periods 2021 onward. Parser replay, not independent investment validation.",
+    "rows": 5,
+    "warnings": []
+  },
+  {
+    "ticker": "DE",
+    "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000315189.json",
+    "retrievedDate": "2026-10-11",
+    "fixtureSHA256": "66987e20c9576e74d1ae882e9f27fb6b14bee6bd66c0ebe3766bd91d9e819555",
+    "scope": "Public SEC facts only; selected tags, annual forms, fiscal periods 2021 onward. Parser replay, not independent investment validation.",
+    "rows": 5,
+    "warnings": [
+      "operatingMargin for 2023-10-29 withheld: inputs have different filings or an invalid denominator.",
+      "operatingMargin for 2024-10-27 withheld: inputs have different filings or an invalid denominator."
+    ]
+  }
+]

@@ -42,3 +42,26 @@ class FundamentalsTests(unittest.TestCase):
             for delta in [dict(symbol='OTHER'),dict(currency='EUR'),dict(regularMarketTime=now.timestamp()+60),dict(regularMarketTime=now.timestamp()-8*86400)]:
                 ticker.return_value.get_info.return_value=valid|delta
                 with self.assertRaises(ValueError):quote('UNH',now)
+
+    def test_latest_filing_wins_across_changed_revenue_tags(self):
+        raw={'facts':{'us-gaap':{'Revenues':{'units':{'USD':[self.fact(100)]}},
+            'RevenueFromContractWithCustomerExcludingAssessedTax':{'units':{'USD':[{**self.fact(120),'filed':'2026-03-01','accn':'0000000001-26-000002','form':'10-K/A'}]}}}}}
+        row=annuals(raw,'2026-10-10')[0]
+        self.assertEqual(row['revenue']['value'],120)
+        self.assertEqual(row['revenue']['form'],'10-K/A')
+        self.assertEqual(annuals(raw,'2026-02-15')[0]['revenue']['value'],100)
+        raw['facts']['us-gaap']['Revenues']['units']['USD'].append({**self.fact(119),'filed':'2026-03-01'})
+        issues=[];self.assertEqual(annuals(raw,'2026-10-10',issues),[])
+        self.assertIn('conflicting values',issues[0])
+
+    def test_invalid_dates_boolean_units_and_filing_are_not_history(self):
+        values=[{**self.fact(100),**change} for change in [dict(val=True),dict(filed='not-a-date'),dict(accn='bad'),dict(filed='2025-11-01'),dict(start='2025-09-01')]]
+        raw={'facts':{'us-gaap':{'Revenues':{'units':{'USD':values,'EUR':[self.fact(100)]}}}}}
+        self.assertEqual(annuals(raw,'2026-10-10'),[])
+
+    def test_derived_overflow_and_mixed_filing_are_withheld(self):
+        raw={'facts':{'us-gaap':{key:{'units':{'USD':[self.fact(value)]}} for key,value in [('Revenues',1e-300),('OperatingIncomeLoss',1e300)]}}}
+        self.assertNotIn('operatingMargin',annuals(raw,'2026-10-10')[0])
+        raw['facts']['us-gaap']['Revenues']['units']['USD'][0]['val']=100
+        raw['facts']['us-gaap']['OperatingIncomeLoss']['units']['USD'][0]['accn']='0000000001-26-000002'
+        issues=[];self.assertNotIn('operatingMargin',annuals(raw,'2026-10-10',issues)[0]);self.assertTrue(issues)

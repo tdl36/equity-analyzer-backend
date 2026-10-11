@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 from visual_business_profiles import PROFILES
 
-VERSION='stock-infographic-v6'
+VERSION='stock-infographic-v7'
 e=lambda value:html.escape(str(value if value is not None else ''),quote=True)
 
 @lru_cache(maxsize=3)
@@ -138,7 +138,7 @@ def render(run,assignment,fundamentals):
     bridge='<div class="bridge"><div><small>Consolidated revenue</small><b>'+money(val('revenue'))+'</b></div><span>→</span><div><small>Operating earnings</small><b>'+money(val('operatingIncome'))+'</b></div><span>→</span><div><small>Net income</small><b>'+money(val('netIncome'))+'</b></div></div>'
     company='<div class="company-hero"><div>'+company+'</div><div>'+artwork+'</div></div>' if artwork else company
     business='<div class="segments" style="--segment-count:'+str(max(1,min(4,len(segments))))+'">'+cards+'</div>'+bridge+'<p class="micro">'+e(latest.get('year',''))+' reported figures [F].'+segment_scope+' Segment definitions may include internal sales; do not add to group revenue. '+(e(profile.get('basis',''))+' [B]' if profile else '')+'</p>'
-    history='<div class="charts">'+charts(rows)+'</div><p class="micro">Reported GAAP inputs [F]. Calculated FCF = operating cash flow − capex; margin = operating income / sales. '+e(profile.get('financialNote',''))+'</p>'
+    history='<div class="charts">'+charts(rows)+'</div><p class="micro">Latest-filed GAAP history [F]; may include restatements. Calculated FCF = operating cash flow − capex; margin = operating income / sales. '+e(profile.get('financialNote',''))+'</p>'
     # Reserve whole paired arguments before selecting other sections. Never cross-pair topics.
     candidates=[];debates=[];monitor=[];debate_budget=650;monitor_budget=300
     for i in range(20):
@@ -171,7 +171,7 @@ def render(run,assignment,fundamentals):
     peer_table='<table class="peers"><thead><tr><th>Company</th><th>Mkt cap</th><th>Trailing P/E</th><th>Forward P/E</th></tr></thead><tbody>'
     for peer in peers:
         pq=peer['quote'];peer_table+='<tr><td><b>'+e(peer['ticker'])+'</b>'+'</td><td>'+money(pq.get('marketCap'))+'</td><td>'+multiples(pq,'trailingPE')+'</td><td>'+multiples(pq,'forwardPE')+'</td></tr>'
-    peer_table+='</tbody></table><p class="micro">'+e(profile.get('peerBasis','Peer set not curated.'))+' Same-date provider multiples where supplied. [M]</p>'
+    peer_table+='</tbody></table><p class="micro">'+e(profile.get('peerBasis','Peer set not curated.'))+' Quote dates matched; multiple definitions and estimate periods are provider-defined. [M]</p>'
     valuation='<div class="valuation"><div><h3>Market comparison</h3>'+peer_table+'</div><div><h3>Price sensitivity—not price targets</h3>'+sensitivity(q)+'</div></div>'
     monitor_rows=''.join('<tr><th>'+e(name)+'</th><td>'+ed.claim(c,True)+'</td></tr>' for name,c in monitor[:3])
     if not monitor_rows:
@@ -188,7 +188,8 @@ def render(run,assignment,fundamentals):
             name=re.sub(r'--[a-f0-9]+(?=\.)','',name);name=re.sub(r'\.pdf$','',name);name=name.replace(ticker+'-','',1);name=re.sub(r'^\d{4}-','',name).replace('-',' ')
         source_names.append(f'<span>[{n}] '+e(name if len(name)<=65 else name[:62]+'…')+'</span>')
     footer='<div class="footer"><p>'+('Some supported text omitted for length. Read the full research. ' if ed.omitted else '')+'Selected highlights; source matching does not establish investment accuracy.</p><p><b>Dates:</b> Events '+window+' · Financials '+e(latest.get('year',''))+' · Quote '+e(q.get('observedAt','Unavailable')[:10])+'.</p><p>'+e(glossary)+'</p><p>'+ ' · '.join(source_names)+' · [F/B] SEC / company filings · [M] Yahoo Finance. Illustration is conceptual.</p></div>'
-    details='<details><summary>Source register, dates and calculation inputs</summary>'
+    from financial_provenance import register
+    details='<details><summary>Source register, dates and calculation inputs</summary>'+register(f)
     def link(url,label):return '<a href="'+e(url)+'">'+e(label)+'</a>' if urlparse(url or '').scheme in ('https','http') else e(label)
     for n,s in enumerate(ed.sources,1):details+=f'<p id="source-{n}">[{n}] '+link(s.get('sourceUrl',''),s.get('filename','Original'))+'</p>'
     details+='<p>[F] '+link(f.get('sourceUrl',''),'SEC company facts')+' · SHA-256 '+e(f.get('sourceHash',''))+'</p>'

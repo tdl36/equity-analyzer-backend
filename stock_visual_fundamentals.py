@@ -11,39 +11,50 @@ METRICS={'revenue':('Revenues','RevenueFromContractWithCustomerExcludingAssessed
  'operatingCashFlow':('NetCashProvidedByUsedInOperatingActivities',),
  'capex':('PaymentsToAcquirePropertyPlantAndEquipment',),'netIncome':('NetIncomeLoss',)}
 
-def annuals(raw, as_of):
-    """Latest filed annual observations, same period and accession for arithmetic.
+def annuals(raw, as_of, issues=None):
+    """Latest filed annual observations across supported tags; never mix vintages.
 
-    Non-calendar fiscal years are supported by start/end duration. Quarterly,
-    future-filed, non-10K and conflicting same-filing values are not charted.
+    Conflicting latest-filing values are withheld, rather than falling back to an
+    older value. Arithmetic requires identical periods and filing accessions.
     """
-    result={};facts=raw.get('facts',{}).get('us-gaap',{})
+    result={};facts=raw.get('facts',{}).get('us-gaap',{});issues=issues if issues is not None else []
+    cutoff=date.fromisoformat(as_of);pending=[]
     for metric,tags in METRICS.items():
-        unit='USD/shares' if metric=='eps' else 'USD'
+        unit='USD/shares' if metric=='eps' else 'USD';candidates={}
         for tag in tags:
-            candidates={}
             for f in facts.get(tag,{}).get('units',{}).get(unit,[]):
                 try:
-                    start=date.fromisoformat(f['start']);end=date.fromisoformat(f['end'])
-                    if f['filed']>as_of or f['end']>as_of or f['form'] not in ('10-K','10-K/A') or not 330<=(end-start).days<=380:continue
+                    start=date.fromisoformat(f['start']);end=date.fromisoformat(f['end']);filed=date.fromisoformat(f['filed'])
+                    if filed>cutoff or end>cutoff or filed<end or f['form'] not in ('10-K','10-K/A') or not 330<=(end-start).days<=380:continue
+                    if isinstance(f['val'],bool) or not re.fullmatch(r'\d{10}-\d{2}-\d{6}',f['accn']):continue
                     val=float(f['val'])
                     if not math.isfinite(val):continue
-                except (ValueError,KeyError,TypeError):continue
-                candidates.setdefault((f['start'],f['end']),[]).append(f)
-            for period,fs in candidates.items():
-                latest=max(f['filed'] for f in fs);same=[f for f in fs if f['filed']==latest]
-                if len({float(f['val']) for f in same})!=1:continue
-                f=sorted(same,key=lambda x:x['accn'])[-1]
-                row=result.setdefault(period,{'start':period[0],'end':period[1],'year':period[1][:4]})
-                if metric not in row:row[metric]={'value':f['val'],'unit':unit,'tag':tag,'filed':f['filed'],'accession':f['accn']}
+                except (ValueError,KeyError,TypeError,OverflowError):continue
+                candidates.setdefault((f['start'],f['end']),[]).append((tag,f,val))
+        for period,fs in candidates.items():
+            latest=max(f['filed'] for _,f,_ in fs);same=[x for x in fs if x[1]['filed']==latest]
+            if len({v for _,_,v in same})!=1:
+                pending.append((period[1],f'{metric} for {period[1]} withheld: conflicting values in the latest filed observations ({latest}).'))
+                continue
+            tag,f,value=min(same,key=lambda x:(tags.index(x[0]),x[1]['accn']))
+            row=result.setdefault(period,{'start':period[0],'end':period[1],'year':period[1][:4]})
+            row[metric]={'value':value,'unit':unit,'tag':tag,'filed':f['filed'],'accession':f['accn'],
+                         'form':f['form'],'observationBasis':'Latest filed observation available at retrieval; may include restatements.'}
     ends=[r['end'] for r in result.values()]
+    for end in sorted(set(ends)):
+        if ends.count(end)>1:issues.append(f'Annual history ending {end} withheld: more than one annual start date.')
     rows=sorted([r for r in result.values() if ends.count(r['end'])==1],key=lambda r:r['end'])[-5:]
+    recent_ends={r['end'] for r in rows} or set(sorted({end for end,_ in pending})[-5:])
+    issues.extend(message for end,message in pending if end in recent_ends)
     for row in rows:
         for target,a,b,scale in [('operatingMargin','operatingIncome','revenue',100),('freeCashFlow','operatingCashFlow','capex',1)]:
             x,y=row.get(a),row.get(b)
             if x and y and x['accession']==y['accession'] and (target!='operatingMargin' or y['value']>0):
                 value=(x['value']/y['value']*scale) if target=='operatingMargin' else x['value']-y['value']
+                if not math.isfinite(value):continue
                 row[target]={'value':value,'unit':'%' if target=='operatingMargin' else 'USD','calculation':f'{a} / {b} × 100' if target=='operatingMargin' else f'{a} − {b}','accession':x['accession'],'filed':x['filed']}
+            elif x and y:
+                issues.append(f'{target} for {row["end"]} withheld: inputs have different filings or an invalid denominator.')
     return rows
 
 def positive_number(value):
@@ -67,9 +78,10 @@ def collect(ticker):
     cik=int(matches[0]['cik_str']);url=f'https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json'
     raw,sha=public_json(url)
     if int(raw.get('cik',-1))!=cik:raise ValueError('SEC issuer identity mismatch.')
-    rows=annuals(raw,asof)
+    issues=[];rows=annuals(raw,asof,issues)
     if len([r for r in rows if 'revenue' in r])<3:raise ValueError('At least three comparable annual revenue observations are required.')
-    out={'version':2,'ticker':ticker,'company':raw.get('entityName'),'cik':cik,'retrievedAt':now.isoformat(),'asOf':asof,'annuals':rows,'sourceUrl':url,'sourceHash':sha,'quote':None,'gaps':[]}
+    out={'version':3,'ticker':ticker,'company':raw.get('entityName'),'cik':cik,'retrievedAt':now.isoformat(),'asOf':asof,'annuals':rows,'sourceUrl':url,'sourceHash':sha,'quote':None,'gaps':[], 'financialWarnings':issues,
+         'historyBasis':'Latest filed annual observations as of retrieval, including restatements; not a historical point-in-time backtest.'}
     try:out['quote']=quote(ticker,now)
     except Exception:out['gaps'].append('Current market quote unavailable or not validated; no current valuation inferred.')
     from visual_business_profiles import PROFILES

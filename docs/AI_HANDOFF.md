@@ -2,6 +2,23 @@
 
 Updated: October 10, 2026
 
+## T157 — financial vintages and calculation register
+
+Annual observations now select the newest filing across supported tags; an old
+revenue tag cannot mask a later amendment or changed tag. Conflicting newest
+values are withheld, never replaced with an older value. Dates, accession format,
+units, non-finite values and same-filing arithmetic are checked. New snapshots
+record warnings and the restatement basis. Existing frozen snapshots are retained.
+The visual's source register adds readable periods, unscaled values, definitions,
+calculation formulas and SEC filing links. Quote dates do not certify the vintage
+of provider-defined estimate multiples. No calibrated targets are inferred.
+
+Frozen public SEC UNH/SYK/DE facts support five-year parser replays. DE's 2023/2024
+operating margins are withheld because inputs come from different filings. These
+are parser regressions, not independent investment-quality certification.
+Saved UNH and DE/SYK public-only layouts remain one A4 page, Calibri/black, no
+outside-page text. 978 backend tests, 117 frontend tests, compile/build pass; deployment verification pending.
+
 ## T156 — extraction completeness before model calls
 
 New company/committee/stock runs reject an oversized or silently clipped
@@ -13,7 +30,7 @@ Full returned extraction is not full-document review or factual validation.
 Existing frozen sources, reports and originals are not reprocessed.
 
 Direct report links now put the saved report ahead of new-assignment setup.
-971 backend tests, 117 frontend tests, compilation and build pass. Deployment verification pending.
+971 backend tests, 117 frontend tests, compilation and build pass. Backend 5bb9e55 and hosted T156 verified; direct UNH report links keep setup collapsed.
 
 ## T155 — exact-original evidence downloads
 

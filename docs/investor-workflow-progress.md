@@ -84,4 +84,10 @@ browser rehash, no research dispatch. 966 backend tests, 117 frontend tests and 
 
 Reject silently clipped originals before model calls; record full returned text
 coverage and format limitations. Preserve existing research and source bytes.
-Direct report navigation collapses setup. 971 backend tests, 117 frontend tests, compile/build pass; deployment verification pending.
+Direct report navigation collapses setup. 971 backend tests, 117 frontend tests, compile/build pass. Backend 5bb9e55 and hosted T156 verified; direct-report setup collapsed.
+
+## T157 in progress
+
+Latest-filing financial tags, explicit ambiguity/vintage gaps, source-readable
+calculation register and public SEC history fixtures. No paid calls or rewriting
+of saved reports. UNH/DE/SYK one-page print checks pass. 978 backend tests, 117 frontend tests and compile/build pass; deployment verification pending.
