@@ -2,6 +2,27 @@
 
 Updated: October 11, 2026
 
+## Phase-1 evidence review — October 11, 23:57 UTC
+
+Read the exact legacy WELL saved-run record through the authenticated inspection
+API. It was created March 23 at 18:53:21 UTC using anthropic/claude-sonnet-4-6;
+system logs record graph initialization and analysis entry. Its 22 entries end
+at 18:57:12 UTC. No saved report, decision, completion, execution reservation or
+provider response reference exists. This proves recorded execution entry and
+missing saved output, not absence of provider charges or a safe replay. Neither
+current backend health nor repeated empty collection claims resolve it.
+
+Next bounded recovery work: add a supported, audited disposition for old legacy
+runs whose provider outcome cannot be established. Preserve originals/logs and
+unknown outcome, avoid claiming success/cancellation, never create a replacement
+attempt or release a reserved batch slot. Distinguish this disposition from proof
+of provider reconciliation. New executions also need durable worker-liveness
+evidence so future interruptions can be distinguished from stale database labels.
+Do not manufacture retrospective ownership for legacy rows. Phase 1 acceptance
+remains open; do not keep adding response-display changes as a substitute for
+these operational controls. One-pager code/reference inventory was inspected
+read-only; no source benchmark or investor acceptance was performed this wake.
+
 ## T188 — provider response references for recovery
 
 Activity's recovery evidence now exposes up to 20 distinct saved provider response
@@ -13,7 +34,14 @@ or permission to replay. Legacy WELL has no callback evidence, so this does not
 resolve its outcome. No provider calls, approvals or job-state mutations occur.
 Focused synthetic tests cover deduplication, malformed metadata and bounded output.
 1041 backend and 140 frontend tests passed; Python compilation, model policy
-against 75097e5 and production build passed. Deployment verification pending.
+against 75097e5 and production build passed. Backend revision
+bec3a69295a6ccdcf24abbdbe97ae6dd4374e2a7 verified healthy; Render automatic
+deploy observed. Transient 502s during switchover cleared. Cloudflare version
+e16ff17a-c903-4a86-9fa2-03f5b3e380af; hosted JS/SW exact bytes verified.
+Mac heartbeat 23:31:22 UTC, no unavailable Activity reads. Live WELL evidence
+returns empty references and unchanged unverified outcome. UI reference rendering
+validated by production build; populated-reference behavior has synthetic evidence
+only, not a live provider call. No paid QA.
 Continue phase-1 reconciliation.
 
 ## T187 — separate proposal association (verified live)
