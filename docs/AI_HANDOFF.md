@@ -13,7 +13,15 @@ opens. No report bodies are cached, and no POST/research retry occurs on restore
 Unavailable browser storage does not crash startup. Selected completed runs can
 be restored too; recognized terminal states stop observation.
 
-Validation/deployment pending. Next: durable batch recovery, batch submission
+Validation: 1013 safe backend and 133 frontend tests pass, production build and
+unchanged model-policy gate pass. Synthetic observer tests cover immediate reads,
+queued/running/complete, failed reads, cancellation, late-response fencing and
+return reads from cursor zero. Selection tests verify identity-only restoration.
+Backend a494b80bf4289cb7b70a79214becc0ebd055a6ca and exact hosted T174
+JS/CSS/service-worker bytes verified; Cloudflare
+74258956-9b0e-42d0-9254-1acae9e709fa. Activity health checked after rollout;
+Mac code unchanged/no restart. No paid research, approvals or production job
+mutations for QA. Next: durable batch recovery, batch submission
 identity and supported interrupted-attempt reconciliation. This restores only the
 last confirmed single-run selection in this tab, not cross-device navigation.
 
