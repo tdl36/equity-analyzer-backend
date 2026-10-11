@@ -53,7 +53,10 @@ def thesis(run,prepared,assignment_id):
                  'supportType':c.get('basis','interpretation')}
                 for e in c.get('evidence',[]) if e.get('matched') and e['sourceId'] in sources]
     claims=fields(run,'/summary/investment_thesis/')
-    if not claims:raise ValueError('No supported thesis statements were produced. Resume explicitly to retry the first author and source-review pair; this may add two paid calls. Other completed stages and prior output are retained.')
+    if not claims:
+        if run.get('state',{}).get('qualityRevisions'):
+            raise ValueError('No supported thesis statements were produced. The bounded quality retry is exhausted. Review the saved research and prepare a separate source-checked thesis proposal in Import & review thesis. Originals and completed outputs are retained; no further automatic paid retry is available.')
+        raise ValueError('No supported thesis statements were produced. Resume explicitly to retry the first author and source-review pair; this may add two paid calls. Other completed stages and prior output are retained.')
     initial=p['baseline']['mode']=='initial'
     if initial:a={'thesis':{'summary':'','pillars':[]},'signposts':[],'threats':[]}
     if not isinstance(a.get('thesis'),dict) or not isinstance(a['thesis'].get('pillars'),list):raise ValueError('Existing thesis structure needs review before automatic draft preparation.')

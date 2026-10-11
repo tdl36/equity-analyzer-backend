@@ -305,6 +305,24 @@ class AssignmentPostgresTests(unittest.TestCase):
         state=self.co.read(self.ident)['result'];self.assertNotIn('artifacts',state);self.assertEqual(state['artifactRevisions'][0],before)
         self.assertNotIn('artifactRevisions',self.co.public(self.co.read(self.ident))['result'])
         self.report=original;r=self.advance();self.assertEqual(r['status'],'complete');self.assertTrue(r['result']['thesisDraftId'])
+    def test_exhausted_quality_retry_exposes_manual_path_without_dispatch(self):
+        original=self.report
+        def exhausted():
+            r=original();r['state']['citations']['/summary/investment_thesis/0']['review']='needs_review'
+            r['state']['qualityRevisions']=[{'reason':'Prior explicit repair'}];return r
+        self.report=exhausted;self.start();self.collected();r=self.advance()
+        self.assertEqual(r['status'],'attention');self.assertIn('exhausted',r['error'])
+        # Older saved errors also get accurate read-only recovery guidance.
+        r['error']='No supported thesis statements were produced. Resume explicitly.'
+        invoke=self.co.invoke;calls=[]
+        def recording(endpoint,method,body,params):
+            calls.append((endpoint,method));return invoke(endpoint,method,body,params)
+        self.co.invoke=recording
+        out=self.co.public(r)
+        self.assertTrue(out['result']['manualThesisReviewRequired'])
+        self.assertIn('no further automatic paid retry',out['error'])
+        self.assertEqual(calls,[('stock_analysis.detail','GET')])
+        self.assertTrue(out['result']['artifacts']);self.assertNotIn('thesisDraftId',out['result'])
     def test_legacy_risk_schema_gets_explicit_gap_only_in_pending_draft(self):
         from tests.unit.test_thesis_imports import sample
         old=sample(self.ticker);old['analysis']['threats'][0].pop('triggerPoints',None)

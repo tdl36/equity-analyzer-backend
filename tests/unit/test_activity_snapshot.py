@@ -7,6 +7,12 @@ PG=pg_tests.PG
 NOW=datetime(2026,10,10,tzinfo=timezone.utc)
 def row(**kw):return dict(id='1',source='mp_jobs',stage='research_assignment',label='Workflow',view='desk',ticker='UNH',status='running',created_at=NOW-timedelta(days=1),updated_at=NOW-timedelta(hours=2),**kw)
 class ActivityTests(unittest.TestCase):
+ def test_quality_alert_does_not_promise_another_paid_retry(self):
+  r=row();r.update(status='attention',error='No supported thesis statements were produced. Resume explicitly to retry.')
+  item=assemble([r],{},NOW)[0]
+  self.assertIn('manual-review options',item['error']);self.assertNotIn('Resume explicitly',item['error'])
+  self.assertIn('Resume explicitly',r['error'])
+
  def test_parent_deduplicates_children_and_keeps_unrelated(self):
   p=row(report_id='r1',refresh_id='c1')
   child={**p,'source':'stock_analysis_runs','stage':None,'id':'r1'}

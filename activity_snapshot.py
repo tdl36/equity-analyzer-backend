@@ -40,12 +40,15 @@ def assemble(rows, collection, now):
     for r in rows:
         if r.get('assignment_id') in parent_ids or (r['source']=='stock_analysis_runs' and str(r['id']) in reports):continue
         is_parent=r.get('stage')=='research_assignment';status=r.get('status') or 'unknown'
+        error=r.get('error') or ''
+        if is_parent and error.startswith('No supported thesis statements'):
+            error='Thesis source review needs attention. Open the saved assignment for available recovery or manual-review options; completed outputs are retained.'
         stages=r.get('stages');stages=int(stages) if str(stages).isdigit() else None
         items.append(dict(id=r['source']+':'+str(r['id']),jobId=str(r['id']),ticker=r.get('ticker') or '',
             title=WORKFLOW_LABELS.get(r.get('stage'),r['label']),status=status,bucket=bucket(status),
             step=r.get('step') or r.get('reason') or ('Waiting for Mac collection' if is_parent else status.replace('_',' ')),
             workflow=r.get('stage') or r['source'],
-            stages=stages,warning=r.get('warning'),error=(r.get('error') or '')[:600],
+            stages=stages,warning=r.get('warning'),error=error[:600],
             createdAt=stamp(r.get('created_at')),updatedAt=(stamp(r.get('last_log_at')) or stamp(r.get('updated_at'))) if r['source']=='agent_runs' and status in ACTIVE else stamp(r.get('updated_at')),
             pendingStart=bool(r.get('pending_start')) if r['source']=='agent_runs' else False,
             startRecovery=bool(r.get('start_recovery')) if r['source']=='agent_runs' else False,

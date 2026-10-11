@@ -289,7 +289,9 @@ export function ResearchAssignment({
       border: '1px solid #d8dedd',
       marginTop: 12
     }
-  })), j.status === 'attention' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", {
+  })), j.status === 'attention' && j.result.manualThesisReviewRequired && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("a", {
+    href: routeHash('thesisimports', ticker)
+  }, "Import & review thesis"), " \xB7 Review the saved report above before preparing a separate proposal. Your accepted thesis is unchanged."), j.status === 'attention' && !j.result.manualThesisReviewRequired && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", {
     className: "sa-check"
   }, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",

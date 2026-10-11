@@ -149,12 +149,19 @@ class Coordinator:
                 self.store(ident,state,'attention',str(exc)[:900])
     def public(self,row):
         p=obj(row['input']);s=copy.deepcopy(obj(row.get('result')))
+        error=row.get('error')
+        if row['status']=='attention' and (error or '').startswith('No supported thesis statements') and s.get('reportId'):
+            # Inspect saved state only; never resume or purchase research during a read.
+            report,code=self.invoke('stock_analysis.detail','GET',None,dict(ident=s['reportId']))
+            if code==200 and report.get('state',{}).get('qualityRevisions'):
+                s['manualThesisReviewRequired']=True
+                error='The bounded thesis quality retry is exhausted. Review the saved research and prepare a separate source-checked proposal in Import & review thesis. Originals and completed outputs are retained; no further automatic paid retry is available.'
         if s.get('visualFundamentals'):
             f=s['visualFundamentals'];s['visualFundamentals']={k:f.get(k) for k in ('version','asOf','retrievedAt','gaps')}
         s.pop('visualFundamentalRevisions',None);s.pop('thesisPackage',None);s.pop('researchInput',None);s.pop('artifactRevisions',None)
         if s.get('collection'):s['collection']={k:s['collection'].get(k) for k in ('status','issue','sourceProgress')}
         s['artifacts']=[{'kind':k,'url':'/api/research/assignments/'+row['id']+'/artifact/'+k,'reviewRequired':True} for k in s.get('artifacts',{})]
-        return dict(id=row['id'],ticker=row['ticker'],status=row['status'],error=row.get('error'),created_at=row.get('created_at'),updated_at=row.get('updated_at'),input={k:v for k,v in p.items() if k not in ('thesisBaseline','sourcePolicy')},result=s)
+        return dict(id=row['id'],ticker=row['ticker'],status=row['status'],error=error,created_at=row.get('created_at'),updated_at=row.get('updated_at'),input={k:v for k,v in p.items() if k not in ('thesisBaseline','sourcePolicy')},result=s)
     def routes(self):
         bp=self.bp
         @bp.route('/api/research/assignment-defaults',methods=['GET','PUT'])

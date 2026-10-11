@@ -2,6 +2,18 @@
 
 Updated: October 11, 2026
 
+## T186 — exhausted thesis recovery guidance (release in progress)
+
+Assignments inspect the saved report on read to identify an already-used quality
+revision. The review screen then offers Import & review thesis rather than another
+Resume action. Newly exhausted proposals record explicit manual-review guidance;
+legacy Activity alerts point to available recovery options without promising a
+paid retry. Originals, outputs and accepted theses remain untouched. Read-only
+inspection dispatches no research. Regression covers both legacy saved errors and
+new exhausted reports. 1038 backend tests, 140 frontend tests, plus 15 focused
+Activity tests after the final alert-copy change passed; compile, model-policy gate
+and frontend build passed. Live release verification pending.
+
 ## T185 — protect blocked-job alert visibility (verified)
 
 Activity selection now uses independent 200-row attention and active budgets,
