@@ -103,4 +103,11 @@ pass. 982 backend tests, 120 frontend tests, compile/build pass. Backend 851a4b6
 
 Read-time field/source identity checks across all derivative outputs; intact thesis
 arguments preferred over driver fragments. Existing research/exports retained.
-Saved UNH and DE/SYK public-only one-page checks pass. 986 backend tests, 120 frontend tests, compilation and build pass. Deployment verification pending.
+Saved UNH and DE/SYK public-only one-page checks pass. 986 backend tests, 120 frontend tests, compilation and build pass. Backend dda7b9b and exact hosted T159 assets verified; Mac healthy.
+
+## T160 in progress
+
+Saved research questions to dated Meeting Prep, explicit selection and planned
+answers, exact report provenance, transactional/idempotent duplicate protection.
+991 backend tests and 122 frontend tests pass. Synthetic browser save/open/answer/
+duplicate flow passes. No paid QA or production test meeting. Release pending.

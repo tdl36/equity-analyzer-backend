@@ -97,7 +97,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-10-10T159';
+        const BUILD_VERSION = '2026-10-10T160';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -15367,7 +15367,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     {/* MAIN CONTENT AREA */}
                     <div id="workspace-content" tabIndex={-1} className="workspace-content flex-1 flex overflow-hidden">
                         
-                        {activeTab === 'stockanalysis' && <div className="workspace-page research-desk"><InvestmentCase key={workspaceTicker} initialTab="stock-analysis" onCompanyChange={changeWorkspaceCompany} routeSection={workspaceSection} onSectionChange={changeWorkspaceSection} routeWork={workspaceWork} onWorkChange={setWorkspaceWork} initialTicker={workspaceTicker} api={API_URL} analyses={savedAnalyses} /></div>}
+                        {activeTab === 'stockanalysis' && <div className="workspace-page research-desk"><InvestmentCase onMeeting={id=>{setMpSelectedMeeting(null);navigateWorkspace('meetingprep');loadMpMeetings();loadMpMeeting(id);}} key={workspaceTicker} initialTab="stock-analysis" onCompanyChange={changeWorkspaceCompany} routeSection={workspaceSection} onSectionChange={changeWorkspaceSection} routeWork={workspaceWork} onWorkChange={setWorkspaceWork} initialTicker={workspaceTicker} api={API_URL} analyses={savedAnalyses} /></div>}
                         {activeTab === 'desk' && <ResearchDesk key={workspaceTicker} routeSection={workspaceSection} onSectionChange={changeWorkspaceSection} routeWork={workspaceWork} onWorkChange={setWorkspaceWork} initialTicker={workspaceTicker} renderRecapHtml={value => sanitizeHtml(/^\s*</.test(value) ? value : renderMarkdown(value))} renderHtml={value => sanitizeHtml(renderMarkdown(value))} api={API_URL} analyses={savedAnalyses} onCompany={openWorkspaceCompany} onNavigate={navigateWorkspace} />}
                         {activeTab === 'activity' && <ActivityWorkspace api={API_URL} onNavigate={(view,ticker,section,work)=>ticker?openWorkspaceCompany(ticker,view,section,work):navigateWorkspace(view,undefined,section,work)} />}
                         {activeTab === 'today' && <TodayWorkspace api={API_URL} analyses={savedAnalyses} overviews={savedOverviews}

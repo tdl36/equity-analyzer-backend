@@ -30,7 +30,8 @@ export function InvestmentCase({
   onSectionChange,
   routeWork = '',
   onWorkChange,
-  onCompanyChange
+  onCompanyChange,
+  onMeeting
 }) {
   var [ticker, setTicker] = React.useState(initialTicker),
     [active, setActive] = React.useState(''),
@@ -238,6 +239,7 @@ export function InvestmentCase({
     onSave: save,
     onResearch: () => setWorkspaceTab('research')
   }), workspaceTab === 'stock-analysis' && /*#__PURE__*/React.createElement(StockAnalysis, {
+    onMeeting: onMeeting,
     routeWork: routeWork,
     onWorkChange: onWorkChange,
     key: active + '-stock-analysis',

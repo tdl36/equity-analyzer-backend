@@ -1,3 +1,4 @@
+import { originLink } from './research-meeting-model.mjs';
 import * as React from 'react';
 export function MeetingSession({
   api,
@@ -46,7 +47,7 @@ export function MeetingSession({
     role: "alert"
   }, error), quality && (open || history) && /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
-  }, quality.questions, " generated items \xB7 ", quality.highPriority, " must-ask \xB7 ", quality.withVerifiedPassages, " with verified passage records \xB7 ", quality.citedSources, "/", quality.availableSources, " sources cited \xB7 ", quality.duplicateQuestions, " exact duplicates. ", quality.scope), quality?.nonQuestionItems?.length > 0 && (open || history) && /*#__PURE__*/React.createElement("p", {
+  }, quality.questions, " saved items \xB7 ", quality.highPriority, " must-ask \xB7 ", quality.withVerifiedPassages, " with verified passage records \xB7 ", quality.citedSources, "/", quality.availableSources, " sources cited \xB7 ", quality.duplicateQuestions, " exact duplicates. ", quality.scope), quality?.nonQuestionItems?.length > 0 && (open || history) && /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
   }, "Review items ", quality.nonQuestionItems.join(', '), ": they may be coverage notes rather than management questions. Ask Charlie to revise these before using them in a meeting."), quality?.numericPremisesToReview?.length > 0 && (open || history) && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Numeric premises to review \xB7 ", quality.numericPremisesToReview.length, " questions"), /*#__PURE__*/React.createElement("p", null, "These values were not found verbatim in their attached passages. They may be valid periods, requested targets or calculations; check the original before treating them as established facts."), quality.numericPremisesToReview.map(r => /*#__PURE__*/React.createElement("p", {
     key: r.question
@@ -67,7 +68,9 @@ export function MeetingSession({
   }, /*#__PURE__*/React.createElement("h4", null, t.topic), t.questions.filter(q => !high || q.priority === 'high').map((q, j) => /*#__PURE__*/React.createElement("article", {
     className: "workspace-panel",
     key: q.question
-  }, /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, q.question)), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Evidence and follow-up"), /*#__PURE__*/React.createElement("p", null, q.context), /*#__PURE__*/React.createElement("p", null, q.source), q.supporting_quotes?.map((c, k) => /*#__PURE__*/React.createElement("blockquote", {
+  }, /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, q.question)), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Evidence and follow-up"), /*#__PURE__*/React.createElement("p", null, q.context), /*#__PURE__*/React.createElement("p", null, q.source), originLink(q.research_origin) && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("a", {
+    href: originLink(q.research_origin)
+  }, "Open the saved ", q.research_origin.ticker, " research report"), " \xB7 ", q.research_origin.path), q.supporting_quotes?.map((c, k) => /*#__PURE__*/React.createElement("blockquote", {
     key: k
   }, c.quote, /*#__PURE__*/React.createElement("cite", null, " \u2014 ", c.filename))), /*#__PURE__*/React.createElement("p", null, q.follow_up_angle)), /*#__PURE__*/React.createElement(AnswerCapture, {
     api: api,

@@ -2,6 +2,24 @@
 
 Updated: October 10, 2026
 
+## T160 — saved research questions to Meeting Prep
+
+Completed Stock Analysis reports can copy 1–10 selected diligence questions into
+a dated meeting without a model call. Exact wording and originating report/path
+are retained; source review status remains explicit. Selected questions become
+must-ask planned questions with the existing answer-capture and version views.
+No source passages are certified or copied into the meeting; originals stay with
+the report. No thesis, decision or actual answer is inferred.
+
+A single transaction saves the meeting, question set, planned answer records and
+durable receipt. Identical report/selection/date/type submissions reuse the saved
+meeting, including after a reload. Changed question fingerprints are rejected;
+a deleted destination is not silently recreated. Inspecting the selector is read-only.
+991 backend tests, 122 frontend tests, compilation and build pass. Isolated browser
+save/open/answer/duplicate flows passed with synthetic data, including native date
+input handling. No production meeting or answer was created for QA. Deployment
+verification pending.
+
 ## T159 — derivative evidence identity and fuller thesis arguments
 
 New visual renders, summary drafts, stock summaries and thesis handoffs require
@@ -16,7 +34,7 @@ The illustrated map now prioritizes complete investment-thesis arguments over
 short driver labels. A generic investment-question placeholder is removed; an
 actual question appears only if supported. Whole-claim length budgets remain.
 Saved UNH and public-only DE/SYK layouts remain one A4 page with Calibri/black text
-and no outside-page text. 986 backend tests, 120 frontend tests, compilation and build pass. Deployment verification pending.
+and no outside-page text. 986 backend tests, 120 frontend tests, compilation and build pass. Backend dda7b9b and exact hosted T159 assets verified; Mac healthy.
 
 ## T158 — due issue reviews and consistent evidence status
 

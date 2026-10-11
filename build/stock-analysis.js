@@ -1,4 +1,5 @@
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
+import { ResearchMeetingHandoff } from './research-meeting-handoff';
 import { unavailable as missingValue, pointer } from './stock-analysis-evidence.mjs';
 import { verifiedOriginal, saveOriginal } from './research-originals.mjs';
 import { ResearchCoverage } from './research-coverage';
@@ -58,7 +59,8 @@ export function StockAnalysis({
   disabled,
   onDraft,
   routeWork = '',
-  onWorkChange
+  onWorkChange,
+  onMeeting
 }) {
   var focusId = workId(routeWork, 'analysis'),
     assignmentFocus = workId(routeWork, 'assignment');
@@ -442,7 +444,12 @@ export function StockAnalysis({
     onClick: () => setSection(id)
   }, title))), /*#__PURE__*/React.createElement("div", {
     className: "sa-report-body"
-  }, /*#__PURE__*/React.createElement("h4", null, sections.find(s => s[0] === section)?.[1]), run.state?.report?.[section] !== undefined ? /*#__PURE__*/React.createElement(Field, _extends({
+  }, /*#__PURE__*/React.createElement("h4", null, sections.find(s => s[0] === section)?.[1]), section === 'diligence_questions' && run.status === 'complete' && /*#__PURE__*/React.createElement(ResearchMeetingHandoff, {
+    key: run.id,
+    api: api,
+    runId: run.id,
+    onMeeting: onMeeting
+  }), run.state?.report?.[section] !== undefined ? /*#__PURE__*/React.createElement(Field, _extends({
     value: run.state.report[section],
     path: '/' + section
   }, sourceProps)) : /*#__PURE__*/React.createElement("p", null, "This section has not been generated yet. Completed stages are saved as they arrive."))), view === 'changes' && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h4", null, "Evidence changes and changes in interpretation"), /*#__PURE__*/React.createElement("p", null, run.state?.comparison?.note || 'Comparison becomes available when the report completes.'), run.state?.comparison?.sourceChanges?.map((c, i) => /*#__PURE__*/React.createElement("p", {
