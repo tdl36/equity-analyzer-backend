@@ -19,7 +19,11 @@ claim to resolve the WELL provider outcome or clear the model-maintenance gate.
 
 Validation: 1006 safe backend tests and 125 frontend tests pass; Python compile,
 production build and unchanged model-policy gate pass. Disposable PostgreSQL
-coverage verifies projection and unchanged stored status. Deployment pending.
+coverage verifies projection and unchanged stored status. Backend revision
+04712d4d6547625770eaf60a78620524786640c7 and exact hosted T166 bundle/service-worker
+bytes verified; Cloudflare 91c4cff6-0c84-4781-ae31-c30f98a1e37e. Authenticated
+Activity places the existing WELL job in attention with execution unconfirmed.
+Mac heartbeat current; no agent restart, research dispatch or job mutation.
 
 ## T165 — preserve citations in printed visuals
 
