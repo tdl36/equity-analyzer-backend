@@ -91,6 +91,8 @@ class ApiTests(unittest.TestCase):
                 if sql.startswith(('CREATE','ALTER','SELECT pg_advisory')):return
                 if 'to_regclass' in sql:self.result=[{'name':'investment_case_versions'}]
                 elif 'FROM investment_case_versions' in sql:self.result=[{'revision':outer.revision,'body':{'thesis':'Synthetic baseline'}}]
+                elif 'FROM llm_usage' in sql:
+                    outer.usage_args=args;self.result=[]
                 elif 'FROM document_files' in sql:self.result=[{'filename':'Original.txt','file_data':base64.b64encode(b'Synthetic original content').decode(),'metadata':{'usage':'reference_only' if outer.restricted else 'research'}}]
                 elif sql.startswith('SELECT') and 'FROM company_research_runs' in sql:
                     if 'WHERE id=' in sql:self.result=[copy.deepcopy(outer.rows[args[0]])] if args[0] in outer.rows else []
@@ -121,6 +123,17 @@ class ApiTests(unittest.TestCase):
     def payload(self):
         import uuid
         return {'requestId':str(uuid.uuid4()),'filenames':['Original.txt'],'revision':self.revision,'confirmed':True}
+    def test_usage_evidence_is_read_only_and_missing_run_is_404(self):
+        p=self.payload();self.client.post('/api/research/company/ABC',json=p)
+        calls=self.thread.call_count
+        result=self.client.get('/api/research/company-run/'+p['requestId']+'/usage-evidence')
+        self.assertEqual(result.status_code,200)
+        self.assertEqual(result.json['records'],[])
+        self.assertEqual(self.usage_args,(p['requestId'],'company-research'))
+        self.assertEqual(self.thread.call_count,calls)
+        self.assertEqual(result.headers['Cache-Control'],'no-store')
+        self.assertEqual(self.client.get('/api/research/company-run/missing/usage-evidence').status_code,404)
+
     def test_submission_retry_is_idempotent_and_freezes_case_and_hashes(self):
         p=self.payload();url='/api/research/company/ABC'
         self.assertEqual(self.client.post(url,json=p).status_code,202)

@@ -360,6 +360,16 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
         result=public_run(row);result['baselineStale']=current['revision']!=row['baseline']['revision'];result['currentRevision']=current['revision']
         response=jsonify(result);response.headers['Cache-Control']='no-store';return response
 
+    @bp.get(f'/api/research/{route}-run/<ident>/usage-evidence')
+    def usage_evidence(ident):
+        # Read-only reconciliation: no key lookup, worker wakeup or paid calls.
+        ensure()
+        if not read(ident):return jsonify(error='Research revision not found'),404
+        from research_usage_evidence import read_usage
+        feature='stock-analysis' if studio else 'investment-committee' if committee else 'company-research'
+        with get_db() as (_,cur):evidence=read_usage(cur,ident,feature)
+        response=jsonify(evidence);response.headers['Cache-Control']='no-store';return response
+
     @bp.get(f'/api/research/{route}-run/<ident>/source/<source_id>')
     def original(ident,source_id):
         # Human inspection only: no extraction, model calls, or job wakeup.

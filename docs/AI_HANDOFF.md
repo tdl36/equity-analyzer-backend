@@ -2,6 +2,23 @@
 
 Updated: October 10, 2026
 
+## T180 — read-only research usage reconciliation
+
+Each company/committee/stock research run now has a no-store GET usage-evidence
+endpoint. It verifies the saved run exists and reads at most 100 accounting
+records for that exact run ID and feature, with explicit truncation. Only stage,
+provider/model, time, token counts, attempt and estimated cost are returned; no
+raw detail/source text or credentials. This does not contact a model, wake a
+worker, approve research or infer a safe retry from missing records. Charlie's
+ledger is not a provider invoice. Added to investigate the user's stalled ABT
+assignment; its first response was not preserved by the older release.
+
+Validation: 1029 safe backend tests, 137 frontend tests, touched Python compile,
+production build and unchanged model gate against 67aa5c3 passed. Route tests
+verify missing-run 404, no-store and no worker start; query tests verify exact
+job/feature binding and field allowlisting. No paid QA. Deployment verification
+and actual ABT reconciliation remain pending. Phase 1 remains incomplete.
+
 ## T179 — visible saved-response recovery evidence
 
 Stock Analysis, Deep Research and committee review show a shared recovery panel
