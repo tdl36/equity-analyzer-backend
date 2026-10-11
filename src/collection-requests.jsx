@@ -1,0 +1,16 @@
+import * as React from 'react';
+import {collectionRequests,collectionOpen,collectionTime,collectionNext} from './collection-request-model.mjs';
+export function CollectionRequests({requests=[],query,onQuery,busy,onAction,available}) {
+ const [finished,setFinished]=React.useState(false);
+ const rows=collectionRequests(requests,query,finished);
+ return <section className="workspace-panel" aria-label="Collection requests"><div className="workspace-section-heading"><div><p className="workspace-eyebrow">COLLECTION / FOLLOW-THROUGH</p><h3>{query?`${query.toUpperCase()} collection`:'Collection requests'}</h3></div><button disabled={!query} onClick={()=>onQuery('')}>Show all companies</button></div>
+ <div className="desk-filter"><label>Find collection company<input value={query} maxLength={20} onChange={e=>onQuery(e.target.value.toUpperCase())} placeholder="Ticker"/></label><label><input type="checkbox" checked={finished} onChange={e=>setFinished(e.target.checked)}/>Include completed and cancelled</label></div>
+ <p className="desk-explainer">{rows.length} matching requests in the latest {requests.length} reported by this Mac (up to 50). Search and document counts describe collection progress, not report completion.</p>
+ {!available?<p role="status">Waiting for a Mac collection snapshot.</p>:!rows.length?<p>No {finished?'matching':'unfinished'} collection requests in this snapshot.</p>:rows.map(r=><article className="workspace-panel" key={r.id}><div className="workspace-section-heading"><h4>{r.ticker} · {String(r.status||'unknown').replaceAll('_',' ')}</h4><small>Submitted {collectionTime(r.created)?.toLocaleString()||'time unavailable'}</small></div>
+ {r.issue&&<p className="workspace-error" style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{r.issue}</p>}<p><strong>Next:</strong> {collectionNext(r)}</p>
+ {r.result?.newDocuments!=null&&<p>{r.result.newDocuments} new eligible originals reported.</p>}
+ <details><summary>Saved searches and originals</summary>{r.sourceProgress?.tasks?.length?<ul>{r.sourceProgress.tasks.map((t,i)=><li key={i}>{t.kind} · {t.status}{t.expected!=null?` · ${t.expected} expected`:''}</li>)}</ul>:<p>No search-progress receipt available.</p>}{Object.entries(r.sourceProgress?.documents||{}).map(([state,count])=><p key={state}>{String(state).replaceAll('_',' ')}: {count}</p>)}<p className="desk-explainer">Request {r.id}. Staged or handed-off counts alone do not prove cloud import or downstream research completion.</p></details>
+ <div className="desk-filter">{['attention','needs_auth'].includes(r.status)&&<button disabled={busy} onClick={()=>onAction('retry',{ticker:r.ticker,refreshRequestId:r.id})}>{r.status==='needs_auth'?'Signed in on Mac — resume':'Retry after resolving'}</button>}{collectionOpen(r)&&<button disabled={busy} onClick={()=>onAction('cancel',{ticker:r.ticker,refreshRequestId:r.id})}>Cancel this refresh</button>}</div>
+ </article>)}<p className="desk-explainer">Cancellation takes effect when acknowledged on Mac; an active download may finish. Sign-in and MFA happen directly in AlphaSense.</p>
+ </section>;
+}

@@ -424,7 +424,8 @@ export function ResearchDesk({
     onPlan: prepare
   })), section === 'collection' && /*#__PURE__*/React.createElement(CollectionCloud, {
     api: api,
-    coverage: analyses
+    coverage: analyses,
+    initialTicker: initialTicker
   }), section === 'queue' && /*#__PURE__*/React.createElement("section", {
     className: "workspace-panel"
   }, /*#__PURE__*/React.createElement("div", {

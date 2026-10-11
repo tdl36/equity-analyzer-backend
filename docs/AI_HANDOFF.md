@@ -2,6 +2,24 @@
 
 Updated: October 10, 2026
 
+## T152 — collection follow-through and bounded investment maps
+
+Collection opens with unfinished requests, attention first, scoped to the company
+in the route. Investors can search companies, inspect saved searches/document
+states, include finished requests, and use the existing exact-request recovery
+controls. Policy creation is collapsed; current policies stay editable. Counts
+explicitly describe the latest bounded Mac snapshot, not downstream completion.
+Stale GET responses cannot overwrite newer reads. No frozen requests changed.
+
+Investment maps retain whole source-supported claims and whole paired debates
+within section budgets. Oversized claims are omitted with a full-research notice,
+not truncated or automatically rewritten. Monitors remain paired with selected
+debates and catalyst timing retains citations. Saved UNH and public-data-only
+DE/SYK render as one A4 page with Calibri/black text and no outside-page text;
+synthetic 200/400/800-character claims also stay one page. These checks do not
+establish research completeness or universal layout fit. Existing saved outputs
+are not overwritten. 963 backend tests, 109 frontend tests, compilation and build pass. Deployment verification pending.
+
 ## T151 — issuer-specific visuals and segment fidelity
 
 The investment map adds sourced Deere/Stryker business profiles, bounded peer
@@ -13,7 +31,7 @@ remain explicit. Existing stored originals/reports/fundamentals are unchanged.
 
 See docs/visual-business-profile-validation.md for public-source regressions,
 actual retrieval observations and PDF checks. 960 backend tests, 106 frontend
-tests, compilation and build pass. Deployment verification pending.
+tests, compilation and build pass. Backend 35e2e1f and exact hosted T151 assets verified; Mac agent current.
 
 ## T150 — direct workflow navigation
 

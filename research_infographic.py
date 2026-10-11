@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 from visual_business_profiles import PROFILES
 
-VERSION='stock-infographic-v5'
+VERSION='stock-infographic-v6'
 e=lambda value:html.escape(str(value if value is not None else ''),quote=True)
 
 @lru_cache(maxsize=3)
@@ -30,10 +30,14 @@ class Editor:
         self.sources=run.get('sources',[])
         self.refs={s['id']:i+1 for i,s in enumerate(self.sources)}
         self.cs={p:c for p,c in run.get('state',{}).get('citations',{}).items() if self.valid(c)}
-        self.used=[];self.used_refs=set()
+        self.used=[];self.used_refs=set();self.omitted=set()
     def valid(self,c):
         return bool(c and c.get('statement') and c.get('review')=='supported' and c.get('passageMatched') and any(x.get('matched') and x.get('sourceId') in self.refs for x in c.get('evidence',[])))
     def get(self,path):return self.cs.get(path)
+    def fits(self,c,limit):
+        if not c:return False
+        if len(c['statement'])<=limit:return True
+        self.omitted.add(c['statement']);return False
     def fresh(self,c):
         k=sentence_key(c['statement'])
         return all(len(k & old)/max(1,len(k | old))<.62 for old in self.used)
@@ -41,13 +45,13 @@ class Editor:
         p,c=item;t=c['statement']
         sources=len({x.get('sourceId') for x in c.get('evidence',[]) if x.get('matched')})
         return (sources*3+(4 if topic(c)!='Investment debate' and topic(c)==topic(self.cs.get('/infographic/headline',{'statement':''})) else 0)+min(3,len(re.findall(r'\d',t)))+(2 if c.get('basis') in ('reported_fact','reported fact') else 0),-len(t),p)
-    def select(self,prefixes,limit=2,exclude=()):
+    def select(self,prefixes,limit=2,exclude=(),budget=300):
         items=[x for x in self.cs.items() if any(x[0].startswith(p) for p in prefixes) and not any(x[0].endswith(z) for z in exclude)]
         selected=[]
         for _,c in sorted(items,key=self.score,reverse=True):
-            if not self.fresh(c):continue
+            if not self.fits(c,min(240,budget)) or not self.fresh(c):continue
             if any(topic(c)==topic(prior) and topic(c)!='Investment debate' for prior in selected):continue
-            selected.append(c);self.used.append(sentence_key(c['statement']))
+            selected.append(c);budget-=len(c['statement']);self.used.append(sentence_key(c['statement']))
             if len(selected)>=limit:break
         return selected
     def refs_html(self,c):
@@ -111,6 +115,7 @@ def render(run,assignment,fundamentals):
     ed=Editor(run);money=lambda value:'$'+format(value/1e9,'.1f')+'bn' if numeric(value) else 'Not available'
     val=lambda k:latest.get(k,{}).get('value')
     headline=ed.get('/infographic/headline')
+    if not ed.fits(headline,180):headline=None
     headline_text=re.sub(r'^'+re.escape(ticker)+r'\s*:\s*','',headline['statement']) if headline else 'The business, the evidence and the investment case'
     headline_refs=ed.refs_html(headline) if headline else ''
     if headline:ed.used.append(sentence_key(headline['statement']))
@@ -135,23 +140,30 @@ def render(run,assignment,fundamentals):
     business='<div class="segments" style="--segment-count:'+str(max(1,min(4,len(segments))))+'">'+cards+'</div>'+bridge+'<p class="micro">'+e(latest.get('year',''))+' reported figures [F].'+segment_scope+' Segment definitions may include internal sales; do not add to group revenue. '+(e(profile.get('basis',''))+' [B]' if profile else '')+'</p>'
     history='<div class="charts">'+charts(rows)+'</div><p class="micro">Reported GAAP inputs [F]. Calculated FCF = operating cash flow − capex; margin = operating income / sales. '+e(profile.get('financialNote',''))+'</p>'
     # Reserve whole paired arguments before selecting other sections. Never cross-pair topics.
-    debates=[];monitor=[]
+    candidates=[];debates=[];monitor=[];debate_budget=650;monitor_budget=300
     for i in range(20):
-        prefix=f'/debates/{i}/';a=ed.get(prefix+'market_view') or ed.get(prefix+'evidence_for_market');b=ed.get(prefix+'alternative_view') or ed.get(prefix+'evidence_for_alternative');resolution=ed.get(prefix+'resolution_signal')
-        if a and b:
-            debates.append((a,b));ed.used.extend([sentence_key(a['statement']),sentence_key(b['statement'])])
-            if resolution:monitor.append((topic(a),resolution))
-    debates=sorted(debates,key=lambda pair:-(ed.score(('',pair[0]))[0]+ed.score(('',pair[1]))[0]))[:3]
-    debate='<table class="debates"><thead><tr><th>Market argument</th><th>Counterpoint</th></tr></thead><tbody>'+''.join('<tr><td><h3>'+e(topic(a))+'</h3>'+ed.claim(a)+'</td><td>'+ed.claim(b)+'</td></tr>' for a,b in debates)+'</tbody></table>' if debates else '<p>Paired source evidence needs review.</p>'
+        prefix=f'/debates/{i}/';a=ed.get(prefix+'market_view') or ed.get(prefix+'evidence_for_market');b=ed.get(prefix+'alternative_view') or ed.get(prefix+'evidence_for_alternative');resolution=ed.get(prefix+'resolution_signal');name=ed.get(prefix+'topic')
+        if a and b:candidates.append((a,b,resolution,name))
+    for a,b,resolution,name in sorted(candidates,key=lambda pair:-(ed.score(('',pair[0]))[0]+ed.score(('',pair[1]))[0])):
+        size=len(a['statement'])+len(b['statement'])
+        if len(debates)>=2:break
+        if size>debate_budget or not ed.fits(a,350) or not ed.fits(b,350):
+            ed.omitted.update([a['statement'],b['statement']]);continue
+        title=name['statement'] if ed.fits(name,55) else topic(a)
+        debates.append((a,b,title));debate_budget-=size
+        ed.used.extend([sentence_key(a['statement']),sentence_key(b['statement'])])
+        if ed.fits(resolution,min(220,monitor_budget)):
+            monitor.append((title,resolution));monitor_budget-=len(resolution['statement'])
+    debate='<table class="debates"><thead><tr><th>Market argument</th><th>Counterpoint</th></tr></thead><tbody>'+''.join('<tr><td><h3>'+e(title)+'</h3>'+ed.claim(a)+'</td><td>'+ed.claim(b)+'</td></tr>' for a,b,title in debates)+'</tbody></table>' if debates else '<p>Paired evidence unavailable at one-page length; inspect the full research.</p>'
     thesis_claims=ed.select(['/summary/investment_thesis/','/summary/top_drivers/'],2)
     thesis='<div class="question"><b>Investment test</b><p>What must be true for the investment case to work?</p></div>'+(''.join(ed.claim(c) for c in thesis_claims) or '<p>Source-supported thesis evidence unavailable.</p>')
 
-    catalysts=[]
+    catalysts=[];catalyst_budget=240
     for i in range(15):
         prefix=f'/catalysts/{i}/';c=ed.get(prefix+'catalyst')
-        if c and ed.fresh(c):
+        if c and len(catalysts)<2 and ed.fits(c,min(200,catalyst_budget)) and ed.fresh(c):
             impact=ed.get(prefix+'impact');timing=ed.get(prefix+'timing')
-            catalysts.append(ed.claim(c,True)+(('<small>'+e(timing['statement'])+'</small>') if timing else ''))
+            catalysts.append(ed.claim(c,True)+(('<small>'+e(timing['statement'])+ed.refs_html(timing)+'</small>') if ed.fits(timing,80) else ''));catalyst_budget-=len(c['statement'])
     risks=ed.select(['/financials/weakened/','/industry/disruption_risks/','/monitor/breakers/'],2)
     triggers='<div class="triggers"><div class="positive"><h3>Upcoming checkpoints</h3>'+(''.join(catalysts[:2]) or '<p>No source-supported catalyst selected.</p>')+'</div><div class="negative"><h3>Downside exposures</h3>'+(''.join(ed.claim(c) for c in risks) or '<p>No source-supported risk selected.</p>')+'</div></div>'
     multiples=lambda quote,key:f'{quote[key]:.1f}×' if numeric(quote.get(key)) and quote[key]>0 else 'n/a'
@@ -166,6 +178,7 @@ def render(run,assignment,fundamentals):
         monitor_rows=''.join('<tr><th>Evidence to watch</th><td>'+ed.claim(c)+'</td></tr>' for c in ed.select(['/monitor/strengtheners/','/monitor/breakers/'],2))
     watch='<table class="watch"><thead><tr><th>Decision area</th><th>Evidence that resolves the debate</th></tr></thead><tbody>'+(monitor_rows or '<tr><td colspan="2">Source-supported monitoring evidence unavailable.</td></tr>')+'</tbody></table>'
     bottom_claim=ed.get('/summary/earnings_direction')
+    if not ed.fits(bottom_claim,240):bottom_claim=None
     bottom=ed.claim(bottom_claim)
     glossary=profile.get('glossary','EPS = earnings per share · P/E = price / earnings · FCF = free cash flow')
     source_names=[]
@@ -173,8 +186,8 @@ def render(run,assignment,fundamentals):
         name=s.get('publisher') or s.get('filename','Source')
         if not s.get('publisher'):
             name=re.sub(r'--[a-f0-9]+(?=\.)','',name);name=re.sub(r'\.pdf$','',name);name=name.replace(ticker+'-','',1);name=re.sub(r'^\d{4}-','',name).replace('-',' ')
-        source_names.append(f'<span>[{n}] '+e(name)+'</span>')
-    footer='<div class="footer"><p><b>Dates:</b> Events '+window+' · Financials '+e(latest.get('year',''))+' · Quote '+e(q.get('observedAt','Unavailable')[:10])+'.</p><p>'+e(glossary)+'</p><p>'+ ' · '.join(source_names)+' · [F/B] SEC / company filings · [M] Yahoo Finance. Illustration is conceptual.</p></div>'
+        source_names.append(f'<span>[{n}] '+e(name if len(name)<=65 else name[:62]+'…')+'</span>')
+    footer='<div class="footer"><p>'+('Some supported text omitted for length. Read the full research. ' if ed.omitted else '')+'Selected highlights; source matching does not establish investment accuracy.</p><p><b>Dates:</b> Events '+window+' · Financials '+e(latest.get('year',''))+' · Quote '+e(q.get('observedAt','Unavailable')[:10])+'.</p><p>'+e(glossary)+'</p><p>'+ ' · '.join(source_names)+' · [F/B] SEC / company filings · [M] Yahoo Finance. Illustration is conceptual.</p></div>'
     details='<details><summary>Source register, dates and calculation inputs</summary>'
     def link(url,label):return '<a href="'+e(url)+'">'+e(label)+'</a>' if urlparse(url or '').scheme in ('https','http') else e(label)
     for n,s in enumerate(ed.sources,1):details+=f'<p id="source-{n}">[{n}] '+link(s.get('sourceUrl',''),s.get('filename','Original'))+'</p>'
@@ -187,7 +200,7 @@ def render(run,assignment,fundamentals):
     return '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+e(ticker)+' · Investment map</title><style>'+CSS+'</style><body><main data-render-version="'+VERSION+'">'+body+'</main>'+details+'</body></html>'
 
 CSS='''
-@page{size:A4 portrait;margin:9mm}*{box-sizing:border-box;color:#000;font-family:Calibri,Carlito,sans-serif}body{margin:0;background:#edf1f3;font-size:13px;line-height:1.2}main{max-width:1000px;margin:20px auto;background:#fff;padding:24px 28px}.mast{display:flex;justify-content:space-between;font-size:10px;letter-spacing:1px;border-bottom:2px solid #75a9c7;padding-bottom:7px}.title{display:flex;align-items:center;justify-content:space-between;margin-top:9px}h1{font-size:34px;letter-spacing:-1px;line-height:1;margin:0}.symbol{font-size:25px;font-weight:700;border-bottom:4px solid #abd2e4}h2.headline{font-size:23px;line-height:1.06;font-weight:400;margin:8px 0 12px;max-width:90%}h2{font-size:16px;margin:0}h3{font-size:12px;margin:0 0 4px}p{margin:0 0 5px}small,.micro{font-size:10px;line-height:1.18}.micro{margin:4px 0 0}sup{font-size:8px;white-space:nowrap}a{color:#000}.panel{margin-top:9px;break-inside:avoid}header{display:flex;align-items:center;gap:7px;background:linear-gradient(90deg,#dfedf6,#f5f9fb);border-top:1px solid #c8dce8;padding:3px 6px;margin-bottom:6px}.number{display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;border:1px solid #7ea8c2;border-radius:50%;background:#c6dfee;width:22px;height:22px;flex-shrink:0}.sub{font-size:10px;margin-left:auto}.overview{display:grid;grid-template-columns:1fr 1fr;gap:15px;align-items:center}.overview>p{font-size:13px;margin:0}.facts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px}.facts>div{background:#edf5f8;padding:7px}.facts b{display:block;font-size:17px}.facts small{display:block}.value-chain{width:100%;display:block;max-height:150px;object-fit:cover;object-position:center 48%}.art-note{display:block;font-size:9px;text-align:right;margin-top:-3px}.segments{display:grid;grid-template-columns:repeat(var(--segment-count,4),minmax(0,1fr));gap:5px;margin-top:3px}.segment{padding:6px 8px;background:#e9f4fa;border-top:3px solid #64a6c7}.segment.c1{background:#e9f3ee;border-color:#6eaa8d}.segment.c2{background:#f0eaf6;border-color:#a28bbb}.segment.c3{background:#fbf1e4;border-color:#d9aa68}.segment-value{font-size:18px;display:block;margin:3px 0}.segment p{font-size:12px}.segment small{display:block}.bridge{display:flex;align-items:center;justify-content:space-around;background:#f1f5f6;border-bottom:1px solid #c5d9e3;margin-top:5px;padding:5px}.bridge>div{display:flex;align-items:baseline;gap:7px}.bridge b{font-size:16px}.bridge>span{font-size:22px}.charts{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}.chart{margin:0;padding:5px 4px;border-right:1px solid #d6e1e8}.chart:last-child{border:0}.chart h3{font-size:12px}.chart h3 span{font-size:10px}.change{display:block;font-size:19px;line-height:1.05}.chart small{display:block;font-size:9px}.chart svg{width:100%;display:block}.research-grid{display:grid;grid-template-columns:.8fr 1.2fr;gap:10px}.research-grid>.panel{min-width:0}.question{background:#eaf3f7;border-left:3px solid #6d9fb7;padding:6px;margin-bottom:6px}.question p{margin-top:3px}.claim{margin:0 0 6px}.basis{font-weight:700;font-size:9px;letter-spacing:.2px;text-transform:uppercase}.thesis-note{background:#f6f2e6;padding:5px;font-size:10px}.triggers{display:grid;grid-template-columns:1fr 1fr;gap:8px}.triggers>div{padding:6px 8px}.positive{background:#ebf4ec}.negative{background:#faeeee}.valuation{display:grid;grid-template-columns:1.1fr 1fr;gap:10px}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px}th,td{padding:5px;vertical-align:top;text-align:left;border-bottom:1px solid #d7e2e9}th{background:#edf4f8;font-weight:700}td .claim:last-child{margin-bottom:0}.debates td{width:50%;font-size:12px}.peers th,.peers td{font-size:11px}.peers td small{display:block;font-size:9px}.peers tr:first-child td{background:#edf5f8}.sensitivity td,.sensitivity th{text-align:center;font-size:12px;padding:4px}.sensitivity small{display:block;font-size:9px}.sensitivity td.center{background:#dcefe4;font-weight:700}.watch th:first-child{width:23%}.watch .claim{margin:0}.footer{border-top:1px solid #bbcfdc;margin-top:8px;padding-top:5px;font-size:9px;line-height:1.18}.footer p{margin:0 0 3px}.missing{font-style:italic}details{max-width:1000px;margin:20px auto;background:white;padding:20px}details pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px}details p{overflow-wrap:anywhere}summary{cursor:pointer;font-weight:700}
+@page{size:A4 portrait;margin:9mm}*{box-sizing:border-box;color:#000;font-family:Calibri,Carlito,sans-serif}body{margin:0;background:#edf1f3;font-size:13px;line-height:1.2}main{max-width:1000px;margin:20px auto;background:#fff;padding:24px 28px}.mast{display:flex;justify-content:space-between;font-size:10px;letter-spacing:1px;border-bottom:2px solid #75a9c7;padding-bottom:7px}.title{display:flex;align-items:center;justify-content:space-between;margin-top:9px}h1{font-size:34px;letter-spacing:-1px;line-height:1;margin:0}.symbol{font-size:25px;font-weight:700;border-bottom:4px solid #abd2e4}main{overflow-wrap:anywhere}h2.headline{font-size:23px;line-height:1.06;font-weight:400;margin:8px 0 12px;max-width:90%}h2{font-size:16px;margin:0}h3{font-size:12px;margin:0 0 4px}p{margin:0 0 5px}small,.micro{font-size:10px;line-height:1.18}.micro{margin:4px 0 0}sup{font-size:8px;white-space:nowrap}a{color:#000}.panel{margin-top:9px;break-inside:avoid}header{display:flex;align-items:center;gap:7px;background:linear-gradient(90deg,#dfedf6,#f5f9fb);border-top:1px solid #c8dce8;padding:3px 6px;margin-bottom:6px}.number{display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;border:1px solid #7ea8c2;border-radius:50%;background:#c6dfee;width:22px;height:22px;flex-shrink:0}.sub{font-size:10px;margin-left:auto}.overview{display:grid;grid-template-columns:1fr 1fr;gap:15px;align-items:center}.overview>p{font-size:13px;margin:0}.facts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px}.facts>div{background:#edf5f8;padding:7px}.facts b{display:block;font-size:17px}.facts small{display:block}.value-chain{width:100%;display:block;max-height:150px;object-fit:cover;object-position:center 48%}.art-note{display:block;font-size:9px;text-align:right;margin-top:-3px}.segments{display:grid;grid-template-columns:repeat(var(--segment-count,4),minmax(0,1fr));gap:5px;margin-top:3px}.segment{padding:6px 8px;background:#e9f4fa;border-top:3px solid #64a6c7}.segment.c1{background:#e9f3ee;border-color:#6eaa8d}.segment.c2{background:#f0eaf6;border-color:#a28bbb}.segment.c3{background:#fbf1e4;border-color:#d9aa68}.segment-value{font-size:18px;display:block;margin:3px 0}.segment p{font-size:12px}.segment small{display:block}.bridge{display:flex;align-items:center;justify-content:space-around;background:#f1f5f6;border-bottom:1px solid #c5d9e3;margin-top:5px;padding:5px}.bridge>div{display:flex;align-items:baseline;gap:7px}.bridge b{font-size:16px;white-space:nowrap}.bridge>span{font-size:22px}.charts{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}.chart{margin:0;padding:5px 4px;border-right:1px solid #d6e1e8}.chart:last-child{border:0}.chart h3{font-size:12px}.chart h3 span{font-size:10px}.change{display:block;font-size:19px;line-height:1.05}.chart small{display:block;font-size:9px}.chart svg{width:100%;display:block}.research-grid{display:grid;grid-template-columns:.8fr 1.2fr;gap:10px}.research-grid>.panel{min-width:0}.question{background:#eaf3f7;border-left:3px solid #6d9fb7;padding:6px;margin-bottom:6px}.question p{margin-top:3px}.claim{margin:0 0 6px}.basis{font-weight:700;font-size:9px;letter-spacing:.2px;text-transform:uppercase}.thesis-note{background:#f6f2e6;padding:5px;font-size:10px}.triggers{display:grid;grid-template-columns:1fr 1fr;gap:8px}.triggers>div{padding:6px 8px}.positive{background:#ebf4ec}.negative{background:#faeeee}.valuation{display:grid;grid-template-columns:1.1fr 1fr;gap:10px}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px}th,td{padding:5px;vertical-align:top;text-align:left;border-bottom:1px solid #d7e2e9}th{background:#edf4f8;font-weight:700}td .claim:last-child{margin-bottom:0}.debates td{width:50%;font-size:12px}.peers th,.peers td{font-size:11px}.peers td small{display:block;font-size:9px}.peers tr:first-child td{background:#edf5f8}.sensitivity td,.sensitivity th{text-align:center;font-size:12px;padding:4px}.sensitivity small{display:block;font-size:9px}.sensitivity td.center{background:#dcefe4;font-weight:700}.watch th:first-child{width:23%}.watch .claim{margin:0}.footer{border-top:1px solid #bbcfdc;margin-top:8px;padding-top:5px;font-size:9px;line-height:1.18}.footer p{margin:0 0 3px}.missing{font-style:italic}details{max-width:1000px;margin:20px auto;background:white;padding:20px}details pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px}details p{overflow-wrap:anywhere}summary{cursor:pointer;font-weight:700}
 @media print{body{background:white;font-size:9pt;line-height:1.14}main{margin:0;padding:0;max-width:none}.mast{font-size:7pt;padding-bottom:4px}.title{margin-top:6px}h1{font-size:25pt}.symbol{font-size:19pt}h2.headline{font-size:16pt;margin:5px 0 7px}h2{font-size:11pt}h3{font-size:9pt}.panel{margin-top:6px}header{padding:2px 4px;margin-bottom:4px}.number{width:17px;height:17px;font-size:10pt}.sub{font-size:7pt}.overview>p{font-size:9pt}.facts>div{padding:4px}.facts b{font-size:11pt}small,.micro{font-size:7pt}.value-chain{max-height:103px}.art-note{font-size:6pt}.segment{padding:4px 5px}.segment-value{font-size:12pt}.segment p{font-size:8pt}.segment small{font-size:7pt}.bridge{padding:4px;margin-top:4px}.bridge b{font-size:11pt}.bridge small{font-size:7pt}.chart h3{font-size:8pt}.chart h3 span{font-size:7pt}.change{font-size:14pt}.chart small{font-size:6pt}.chart svg{max-height:68px}.claim{margin-bottom:4px}.basis{font-size:6pt}.question{padding:4px}.thesis-note{font-size:7pt}.research-grid{gap:7px}.triggers>div{padding:4px 6px}table,.debates td{font-size:8pt}th,td{padding:4px}.peers th,.peers td{font-size:8pt}.peers td small{font-size:6pt}.sensitivity td,.sensitivity th{font-size:8pt;padding:3px}.sensitivity small{font-size:6pt}.footer{font-size:6pt;margin-top:6px}.micro{font-size:6.5pt}.watch .claim{font-size:8pt}sup{font-size:6pt}details{display:none}}
 @media screen and (max-width:650px){main{margin:0;padding:15px}h1{font-size:29px}.headline{font-size:21px!important}.mast{font-size:8px;gap:8px}.overview,.research-grid,.valuation,.triggers{display:block}.facts{margin-top:8px}.facts b{font-size:15px}.segments{grid-template-columns:repeat(2,minmax(0,1fr))}.value-chain{max-height:none;object-fit:contain}.bridge{flex-wrap:wrap;gap:6px}.bridge>div{display:block}.charts{grid-template-columns:repeat(2,minmax(0,1fr))}.charts>figure:last-child{grid-column:1 / span 2;max-width:60%}.chart svg{max-height:160px}.sub{display:none}.triggers>div{margin-bottom:6px}.valuation>div{margin-bottom:10px}table,.debates td{font-size:13px}small,.micro,.footer{font-size:11px}.basis{font-size:10px}.watch th:first-child{width:28%}}
 '''

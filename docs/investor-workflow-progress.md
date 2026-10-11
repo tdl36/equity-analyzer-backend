@@ -52,4 +52,11 @@ to SYK collection inspected.
 Deere/Stryker profiles, art and verified segment mappings; generic renderer no
 longer inherits UNH copy. Real public financial retrieval succeeded. DE/SYK public
 data-only and saved UNH PDFs each one page, Calibri/black text, no clipping.
-See visual-business-profile-validation.md. 960 backend tests, 106 frontend tests, compile/build pass. Release pending.
+See visual-business-profile-validation.md. 960 backend tests, 106 frontend tests, compile/build pass. Backend 35e2e1f and hosted T151 bytes verified; Mac healthy.
+
+## T152 in progress
+
+Collection exceptions first and company-scoped; whole-claim infographic content
+budgets prevent tested overflow, preserve paired arguments and linked monitors.
+Actual saved UNH plus DE/SYK public-data-only PDFs each one page; stress fixtures
+200/400/800 characters pass. 963 backend tests, 109 frontend tests, compile/build pass. Deployment pending.

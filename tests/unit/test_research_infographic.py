@@ -35,3 +35,33 @@ class EditorialTests(unittest.TestCase):
     def test_escaping_preserves_source_content(self):
         self.add('/summary/one_liner','<script>unsafe</script>')
         h=render(self.run,{},self.f);self.assertIn('&lt;script&gt;',h);self.assertNotIn('<script>',h)
+
+    def test_long_claim_is_omitted_whole_with_disclosure(self):
+        long='A qualified statement ' * 40 + 'only if demand holds.'
+        self.add('/summary/investment_thesis/0',long)
+        self.add('/summary/investment_thesis/1','A shorter complete claim, conditional on demand holding.')
+        h=render(self.run,{},self.f)
+        self.assertNotIn('A qualified statement',h)
+        self.assertIn('A shorter complete claim, conditional on demand holding.',h)
+        self.assertIn('Some supported text omitted for length',h)
+
+    def test_long_debate_skips_both_sides_and_its_monitor(self):
+        self.add('/debates/0/market_view','Long argument ' * 60)
+        self.add('/debates/0/alternative_view','Short orphan counterpoint')
+        self.add('/debates/0/resolution_signal','Orphan monitor')
+        self.add('/debates/1/market_view','Whole market view')
+        self.add('/debates/1/alternative_view','Whole alternative view')
+        self.add('/debates/1/topic','Demand')
+        self.add('/debates/1/resolution_signal','Demand monitor')
+        h=render(self.run,{},self.f)
+        for text in ['Long argument','Short orphan counterpoint','Orphan monitor']:
+            self.assertNotIn(text,h)
+        for text in ['Whole market view','Whole alternative view','Demand monitor']:
+            self.assertIn(text,h)
+
+    def test_catalyst_timing_retains_evidence_reference(self):
+        self.run['sources'].append({'id':'timing','filename':'timing.pdf'})
+        self.add('/catalysts/0/catalyst','Upcoming investor meeting')
+        self.add('/catalysts/0/timing','Next month',evidence=[{'sourceId':'timing','matched':True}])
+        h=render(self.run,{},self.f)
+        self.assertIn('Next month<sup><a href="#source-2">2</a></sup>',h)
