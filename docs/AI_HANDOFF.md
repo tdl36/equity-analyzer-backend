@@ -2,7 +2,28 @@
 
 Updated: October 12, 2026
 
-## T222 — independent meeting/thesis output recovery (release prepared)
+## T223 — missing investment-section proposals (release prepared)
+
+The existing source-checked editorial workflow can now propose missing company
+one-liner, central investment question, investment view, up to three ownership
+claims and two paired debate rows (including resolution signals). These are exact
+allowlisted paths; malformed containers and arbitrary fields cannot be replaced.
+Only selected proposals enter a separate pending edition. Original report/citation
+state remains unchanged, gaps stay gaps, and investor review remains required.
+Existing source-byte, restriction, passage, baseline and edition gates apply.
+The UI labels new fields generically rather than calling all additions scenarios.
+Private handoffs must prepare again to obtain the expanded permitted field list.
+
+1179 backend and 148 frontend tests, touched Python compilation, model-policy
+baseline 75097e5 and production build passed. Synthetic tests cover source-backed
+pending additions, exact row positions, original preservation, stale baselines and
+malformed/forbidden structures. Isolated Chrome verified a missing ownership claim
+with two originals, submission payload and saved pending display at desktop/mobile
+widths (fixture CSS only). No live claim, thesis or edition was changed or approved.
+Real-source quality, investor acceptance and all eight priorities remain open.
+Deployment verification follows this source commit.
+
+## T222 — independent meeting/thesis output recovery (verified live)
 
 After completed research, an expected meeting-selection/handoff validation failure
 no longer prevents independent thesis proposal preparation. Each meeting/thesis
@@ -20,7 +41,12 @@ meeting failure preserves the thesis/visual, resume never recreates the saved
 thesis, and simultaneous failures both remain visible. Synthetic Chrome checked
 partial failure and retained output links at desktop/mobile sizes without writes;
 fixture CSS only. Full unattended acceptance and all eight priorities remain
-incomplete. Deployment verification follows this source commit.
+incomplete. Backend ddb345ee4b9c5d011a5025213fc291c221f9e413 verified healthy;
+Cloudflare f5d354f8-92bc-4cfa-89f6-301b3f2c8386 deployed and hosted JS/service-worker
+exact bytes matched. Mac heartbeat 18:28:36 UTC, collection snapshot 18:27:25 UTC,
+zero pending deliveries and no unavailable sources. Existing ABT/UNH/SYK states
+and artifact counts unchanged. No agent source change/restart. Post-deployment
+receipt retained for next source commit.
 
 ## T221 — assignment submission survives reload (verified live)
 

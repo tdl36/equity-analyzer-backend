@@ -107,7 +107,7 @@ export function OnepagerCorrections({
     onClick: load
   }, "Reload saved corrections"), !pack ? /*#__PURE__*/React.createElement("p", null, "Loading saved evidence\u2026") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("fieldset", {
     disabled: busy
-  }, /*#__PURE__*/React.createElement("label", null, "Claim or scenario input", /*#__PURE__*/React.createElement("select", {
+  }, /*#__PURE__*/React.createElement("label", null, "Claim or missing investment field", /*#__PURE__*/React.createElement("select", {
     value: path,
     onChange: e => setPath(e.target.value)
   }, /*#__PURE__*/React.createElement("option", {
@@ -119,7 +119,7 @@ export function OnepagerCorrections({
     style: {
       whiteSpace: 'pre-wrap'
     }
-  }, selected.before === null ? 'New scenario input; no saved value.' : selected.before || 'Unavailable')), /*#__PURE__*/React.createElement("label", null, "Proposed wording", /*#__PURE__*/React.createElement("textarea", {
+  }, selected.before === null ? 'New proposed field; no saved value.' : selected.before || 'Unavailable')), /*#__PURE__*/React.createElement("label", null, "Proposed wording", /*#__PURE__*/React.createElement("textarea", {
     value: statement,
     onChange: e => setStatement(e.target.value),
     maxLength: 2000,
@@ -216,7 +216,7 @@ export function OnepagerCorrections({
     style: {
       whiteSpace: 'pre-wrap'
     }
-  }, c.proposal.before === null ? 'New scenario input; no saved value.' : c.proposal.before)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h5", null, "Proposed"), /*#__PURE__*/React.createElement("p", {
+  }, c.proposal.before === null ? 'New proposed field; no saved value.' : c.proposal.before)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h5", null, "Proposed"), /*#__PURE__*/React.createElement("p", {
     style: {
       whiteSpace: 'pre-wrap'
     }

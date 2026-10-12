@@ -66,8 +66,8 @@ def editorial_label(claim):
 def _replace(report, path, statement):
     """Replace one prevalidated scalar using canonical JSON pointer segments."""
     if report_fields(report).get(path) is None:
-        from onepager_editorial_fields import add_scenario_field
-        add_scenario_field(report, path, statement)
+        from onepager_editorial_fields import add_editorial_field
+        add_editorial_field(report, path, statement)
         return
     parts = [part.replace('~1', '/').replace('~0', '~') for part in path.split('/')[1:]]
     current = report

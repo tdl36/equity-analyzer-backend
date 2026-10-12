@@ -48,5 +48,5 @@ class ScenarioAdditionTests(unittest.TestCase):
             if cases and (isinstance(cases,dict) or cases[0].get('name')):
                 first=result[0] if isinstance(result,list) else result['0'];self.assertEqual(first['name'],'Bear')
         run,doc,body=fixture();fields=preparation(run)['fields']
-        self.assertEqual(len([f for f in fields if f['before'] is None]),27)
+        self.assertEqual(len([f for f in fields if f['before'] is None and f['path'].startswith('/scenarios/')]),27)
         with self.assertRaises(ValueError):prepare(run,{**body,'path':'/scenarios/3/name'},doc)
