@@ -133,3 +133,57 @@ Run the full safe suites, compile, build, three release markers and complete
 Render/Cloudflare/Mac verification under AGENTS.md. Investor-scored real-source
 acceptance remains separate. The existing pending ABT thesis proposal is not
 adopted by this feature, and the legacy WELL outcome remains unresolved.
+
+## Accepted-render adapter checkpoint — October 12, 09:00 UTC
+
+T202 capture is live; acceptance remains deliberately unavailable. Code inspection
+found that accepting a correction cannot safely be implemented by adding a new
+accepted status to `stock_evidence.valid_citations`: that function is shared by
+assignment outputs, existing report visuals and readiness checks. A global
+relaxation would spread editorial acceptance beyond the selected one-pager and
+could affect thesis derivation. `research_onepager.render` also has a second
+local `review == supported` check, while `research_infographic.Editor` reads
+valid citations directly. Both paths need an explicit adapter, not fake model
+review fields or a change to the shared original-evidence contract.
+
+The next implementation should use a dedicated accepted edition with these
+boundaries:
+
+- A server-loaded, immutable edition binds assignment ID, report fingerprint,
+  exact ordered correction IDs and saved fundamentals digest. The POST decision
+  must name all those values and recheck original bytes, current usage policy
+  and source passages in one transaction. A changed report, source, quote or
+  selected correction is a conflict, never a silent rebase.
+- Store edition decisions and provenance separately from T202 pending records.
+  Keep T202 submissions immutable, including their original wording and meaning-
+  review caveats. Reject competing corrections to the same path within an
+  edition. A request cannot change ticker, add sources, or select a correction
+  belonging to another report. Do not derive acceptance from a client flag.
+- Pass a typed editorial selection explicitly to the two one-pager renderers.
+  Its claims have `reviewOrigin=investor`, edition/correction identity and the
+  retained original evidence provenance. Original report citations remain
+  untouched. Render the factual basis and human-review provenance distinctly;
+  matching a quote is not an automatic judgment that it supports the wording.
+- The ordinary report, original visual and thesis-import path continue using
+  `valid_citations(run)` unchanged. Only a URL explicitly naming the accepted
+  edition invokes the adapter. A pending preview must be labeled pending and
+  cannot become the default export or acquire an accepted edition footer.
+- Reuse claim-length limits and same-row scenario assembly. If a reviewed claim
+  does not fit, diagnose the omission; acceptance must not truncate a qualification
+  or force the claim into the page. Accepted corrections also need updated
+  readiness diagnosis using the same explicit edition selection.
+- A printed edition footer includes report ID, edition ID, decision time and
+  source/public-data vintage. Human acceptance does not certify source accuracy,
+  normalize earnings, approve a thesis, or establish investment materiality.
+
+Acceptance tests must check the brief and illustrated renderer separately,
+plus unchanged original/assignment/thesis output paths. Use poisoned client
+`reviewOrigin`, unrelated correction IDs, same-path conflicts, stale fundamentals,
+source restriction changes and concurrent competing decisions as negative cases.
+The explicit investor action is tested with synthetic disposable data only;
+automation must never accept a live correction to obtain a passing test.
+
+T202 currently captures one existing field with one source. New rows, compound
+scenario packages, multi-source support, specific edition navigation and a private
+preparation helper remain unimplemented. No investor acceptance is implied by
+this checkpoint.

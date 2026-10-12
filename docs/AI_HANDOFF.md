@@ -2,7 +2,19 @@
 
 Updated: October 11, 2026
 
-## T202 — pending source-linked corrections (release prepared)
+## Accepted-edition adapter checkpoint — October 12, 09:00 UTC
+
+Traced the original-evidence gate across the brief/illustrated renderers,
+readiness and assignment derivatives. Do not extend the shared valid_citations
+function to accept human edits: that could promote them into unrelated outputs.
+Recorded a dedicated, explicitly selected accepted-edition adapter contract in
+docs/onepager-editorial-handoff.md, including stale/source/policy checks and
+same-path concurrency conflicts. Existing pending corrections remain immutable;
+acceptance and derived rendering are still unimplemented. This documentation
+checkpoint also commits T202's verified production receipts. No live research,
+correction, source or approval was written and no runtime behavior changed.
+
+## T202 — pending source-linked corrections (verified live)
 
 Completed stock reports can capture a proposed correction to an existing scalar
 claim, with unchanged original wording, claim type, reason, frozen source passage
@@ -20,7 +32,14 @@ rollback, source restrictions/hash changes, stale fingerprints, forged review
 fields and original-state preservation. 1096 backend and 140 frontend tests,
 compilation, model policy baseline 75097e5 and production build passed. Synthetic
 UI save/reload and 390px wrapping inspected with the real component and workspace
-styles; production proposals were not created for QA. Deployment pending.
+styles; production proposals were not created for QA. Backend revision
+c1f8beee8ced266a520134400fd21cb5bf46fa29 verified healthy after rollout 502s.
+Cloudflare c507a651-2504-48ea-9147-d712427f729b deployed; hosted JS and SW
+match tested bytes. Read-only ABT/UNH correction preparation returned 268/263
+fields, 8/6 sources and zero pending records with private/no-store caching.
+Mac heartbeat 08:40:35 UTC, collection 08:39:00, pending delivery zero and
+unavailable reads empty. No agent changes or restart. Acceptance and application
+remain unimplemented; existing exports and research are unchanged.
 
 ## Editorial handoff implementation contract — October 12, 08:00 UTC
 
