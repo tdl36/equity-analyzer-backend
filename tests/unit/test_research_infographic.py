@@ -139,3 +139,47 @@ class EditorialTests(unittest.TestCase):
         self.assertIn('id="source-1"',footer)
         self.assertIn('href="https://example.com/original"',footer)
         self.assertEqual(h.count('id="source-1"'),1)
+
+    def test_historical_strengthener_is_not_a_forward_signpost(self):
+        self.add('/monitor/strengtheners/0','A settlement was reached last year.')
+        h=render(self.run,{},self.f)
+        self.assertNotIn('A settlement was reached last year.',h)
+        self.assertIn('Source-supported monitoring evidence unavailable.',h)
+
+    def test_structured_kpis_preserve_row_identity_qualifiers_and_citations(self):
+        self.add('/monitor/kpis/0/metric','Order growth')
+        self.add('/monitor/kpis/0/current','2% in Q2')
+        self.add('/monitor/kpis/0/bull_threshold','Above 5% in Q3, if pricing holds')
+        self.add('/monitor/kpis/1/current','ORPHAN BASELINE')
+        self.add('/monitor/kpis/1/bear_threshold','ORPHAN THRESHOLD')
+        self.add('/monitor/kpis/0/bear_threshold','UNREVIEWED THRESHOLD',review='needs_review')
+        before=copy.deepcopy(self.run);h=render(self.run,{},self.f)
+        self.assertIn('Above 5% in Q3, if pricing holds<sup>',h)
+        self.assertIn('2% in Q2<sup>',h)
+        for text in ['ORPHAN BASELINE','ORPHAN THRESHOLD','UNREVIEWED THRESHOLD']:
+            self.assertNotIn(text,h)
+        self.assertIn('Not established in saved evidence',h)
+        self.assertEqual(before,self.run)
+
+    def test_structured_risks_preserve_impact_timing_and_early_warning(self):
+        for key,value in {'risk':'Reimbursement cuts','earnings_impact':'Margin pressure if rates fall',
+                          'window':'Next contract year','early_warning':'Proposed rate notice'}.items():
+            self.add('/risks/0/'+key,value)
+        self.add('/risks/1/earnings_impact','ORPHAN RISK IMPACT')
+        self.add('/financials/weakened/0','Secondary historical weakness')
+        h=render(self.run,{},self.f)
+        for value in ['Reimbursement cuts','Margin pressure if rates fall','Next contract year','Proposed rate notice']:
+            self.assertIn(value+'<sup>',h)
+        self.assertNotIn('ORPHAN RISK IMPACT',h)
+        self.assertNotIn('Secondary historical weakness',h)
+
+    def test_overlong_structured_row_is_omitted_whole(self):
+        self.add('/monitor/kpis/0/metric','Omitted metric')
+        self.add('/monitor/kpis/0/bull_threshold','Conditional threshold ' * 30)
+        self.add('/monitor/kpis/1/metric','Whole metric')
+        self.add('/monitor/kpis/1/bull_threshold','Above 5% next quarter')
+        h=render(self.run,{},self.f)
+        self.assertNotIn('Omitted metric',h)
+        self.assertNotIn('Conditional threshold',h)
+        self.assertIn('Whole metric',h)
+        self.assertIn('Some supported text omitted for length',h)

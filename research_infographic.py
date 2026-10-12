@@ -11,7 +11,7 @@ from visual_business_profiles import PROFILES
 from stock_evidence import valid_citations
 from onepager_editorial import ordered_candidates, statement_identity
 
-VERSION='stock-infographic-v12'
+VERSION='stock-infographic-v13'
 e=lambda value:html.escape(str(value if value is not None else ''),quote=True)
 
 @lru_cache(maxsize=3)
@@ -55,6 +55,29 @@ class Editor:
         if remember:self.used.append(statement_identity(c['statement']))
         basis={'broker_estimate':'Estimate','broker estimate':'Estimate','interpretation':'Interpretation'}.get(c.get('basis'),'Source view')
         return '<p class="claim"><span class="basis">'+basis+'</span> '+e(c['statement'])+self.refs_html(c)+'</p>'
+
+def structured_rows(ed, prefix, anchor, fields, limit=2, budget=600):
+    """Keep supported fields attached to their own row; never splice or infer."""
+    rows=[]
+    for path,claim in ordered_candidates(ed.cs,[prefix]):
+        if not path.endswith('/'+anchor):continue
+        row_path=path.rsplit('/',1)[0]+'/'
+        row={key:ed.get(row_path+key) for key in fields}
+        claims=[c for c in row.values() if c]
+        size=sum(len(c['statement']) for c in claims)
+        if size>budget or any(len(c['statement'])>240 for c in claims):
+            ed.omitted.update(c['statement'] for c in claims);continue
+        rows.append(row);budget-=size
+        if len(rows)>=limit:break
+    return rows
+
+
+def labeled_fields(ed,row,labels):
+    return ''.join('<div class="structured-field"><b>'+e(label)+':</b> '+
+                   (ed.claim(row[key]) if row.get(key) else
+                    '<span class="missing">Not established in saved evidence</span>')+
+                   '</div>' for key,label in labels)
+
 
 def metric_change(points,metric):
     if len(points)<2:return 'History unavailable'
@@ -154,8 +177,15 @@ def render(run,assignment,fundamentals):
         if c and len(catalysts)<2 and ed.fits(c,min(200,catalyst_budget)) and ed.fresh(c):
             impact=ed.get(prefix+'impact');timing=ed.get(prefix+'timing')
             catalysts.append(ed.claim(c,True)+(('<small>'+e(timing['statement'])+ed.refs_html(timing)+'</small>') if ed.fits(timing,80) else ''));catalyst_budget-=len(c['statement'])
-    risks=ed.select(['/financials/weakened/','/industry/disruption_risks/','/monitor/breakers/'],2)
-    triggers='<div class="triggers"><div class="positive"><h3>Upcoming checkpoints</h3>'+(''.join(catalysts[:2]) or '<p>No source-supported catalyst selected.</p>')+'</div><div class="negative"><h3>Downside exposures</h3>'+(''.join(ed.claim(c) for c in risks) or '<p>No source-supported risk selected.</p>')+'</div></div>'
+    risk_rows=structured_rows(ed,'/risks/','risk',
+                              ['risk','window','earnings_impact','early_warning'])
+    risk_html=''.join(ed.claim(row['risk'])+labeled_fields(ed,row,[
+        ('earnings_impact','Earnings impact'),('window','Timing'),
+        ('early_warning','Early warning')]) for row in risk_rows)
+    if not risk_html:
+        risks=ed.select(['/financials/weakened/','/industry/disruption_risks/'],2)
+        risk_html=''.join(ed.claim(c) for c in risks)
+    triggers='<div class="triggers"><div class="positive"><h3>Upcoming checkpoints</h3>'+(''.join(catalysts[:2]) or '<p>No source-supported catalyst selected.</p>')+'</div><div class="negative"><h3>Downside exposures</h3>'+(risk_html or '<p>No source-supported risk selected.</p>')+'</div></div>'
     multiples=lambda quote,key:f'{quote[key]:.1f}×' if numeric(quote.get(key)) and quote[key]>0 else 'n/a'
     peers=[dict(ticker=ticker,name=profile.get('name') or f.get('company'),quote=q)]+f.get('peers',[])
     peer_table='<table class="peers"><thead><tr><th>Company</th><th>Mkt cap</th><th>Trailing P/E</th><th>Forward P/E</th></tr></thead><tbody>'
@@ -163,10 +193,19 @@ def render(run,assignment,fundamentals):
         pq=peer['quote'];peer_table+='<tr><td><b>'+e(peer['ticker'])+'</b>'+'</td><td>'+money(pq.get('marketCap'))+'</td><td>'+multiples(pq,'trailingPE')+'</td><td>'+multiples(pq,'forwardPE')+'</td></tr>'
     peer_table+='</tbody></table><p class="micro">'+e(profile.get('peerBasis','Peer set not curated.'))+' Quote dates matched; multiple definitions and estimate periods are provider-defined. [M]</p>'
     valuation='<div class="valuation"><div><h3>Market comparison</h3>'+peer_table+'</div><div><h3>Price sensitivity—not price targets</h3>'+sensitivity(q)+'</div></div>'
-    monitor_rows=''.join('<tr><th>'+e(name)+'</th><td>'+ed.claim(c,True)+'</td></tr>' for name,c in monitor[:3])
-    if not monitor_rows:
-        monitor_rows=''.join('<tr><th>Evidence to watch</th><td>'+ed.claim(c)+'</td></tr>' for c in ed.select(['/monitor/strengtheners/','/monitor/breakers/'],2))
-    watch='<table class="watch"><thead><tr><th>Decision area</th><th>Evidence that resolves the debate</th></tr></thead><tbody>'+(monitor_rows or '<tr><td colspan="2">Source-supported monitoring evidence unavailable.</td></tr>')+'</tbody></table>'
+    kpis=structured_rows(ed,'/monitor/kpis/','metric',
+                         ['metric','current','bull_threshold','bear_threshold','why_it_matters'])
+    monitor_rows=''.join('<tr><th>'+ed.claim(row['metric'])+'</th><td>'+labeled_fields(ed,row,[
+        ('current','Baseline'),('bull_threshold','Positive threshold'),
+        ('bear_threshold','Negative threshold'),('why_it_matters','Investment relevance')])+
+        '</td></tr>' for row in kpis)
+    if monitor_rows:
+        monitoring_note='Thresholds retain their saved qualifiers and periods. A missing period is not an established monitoring deadline.'
+    else:
+        # Historical strengtheners/breakers are not prospective signposts.
+        monitor_rows=''.join('<tr><th>'+e(name)+'</th><td>'+ed.claim(c,True)+'</td></tr>' for name,c in monitor[:2])
+        monitoring_note='Debate resolution evidence only; structured metric, baseline, thresholds and timing are not established here.'
+    watch='<table class="watch"><thead><tr><th>Decision area</th><th>Monitoring evidence</th></tr></thead><tbody>'+(monitor_rows or '<tr><td colspan="2">Source-supported monitoring evidence unavailable.</td></tr>')+'</tbody></table><p class="micro">'+monitoring_note+'</p>'
     bottom_claim=ed.get('/summary/earnings_direction')
     if not ed.fits(bottom_claim,240):bottom_claim=None
     bottom=ed.claim(bottom_claim)
@@ -222,3 +261,5 @@ CSS += '.lower-grid{column-gap:10px;row-gap:0}.lower-grid>.panel:nth-child(2){gr
 CSS += '.coverage-note{background:#f6f2e6;border-left:3px solid #b4a575;padding:8px;font-size:12px;line-height:1.35;margin:8px 0}@media print{.coverage-note{font-size:8pt;padding:4px;margin:4px 0}}'
 
 CSS += '.title{gap:12px}.title h1{min-width:0}.symbol{flex-shrink:0;white-space:nowrap}'
+
+CSS += ".structured-field{margin-bottom:5px}.structured-field .claim{display:inline}.structured-field>b{font-size:inherit}"

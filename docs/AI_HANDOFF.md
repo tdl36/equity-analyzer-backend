@@ -2,7 +2,27 @@
 
 Updated: October 11, 2026
 
-## T192 — preserve research order in one-pager selection (verification pending)
+## T193 — structured risk and monitoring evidence
+
+One-pagers now render supported risk rows with their own earnings impact, timing
+and early warning, plus supported KPI rows with baseline, positive/negative
+thresholds and investment relevance. Each field retains its own citation and
+qualifiers. Missing fields remain explicit; unanchored fields cannot migrate to
+another row. Whole overlong rows are omitted with disclosure. Historical
+strengtheners/breakers no longer masquerade as forward signposts. Where no KPI
+metric is supported, paired debate resolution evidence remains separately labeled
+and does not claim quantified thresholds or timing. No new periods are inferred.
+1060 backend and 140 frontend tests, touched Python compilation, model policy
+against 75097e5 and production build passed. Synthetic structured rows inspected
+at desktop and 390px, with no horizontal overflow. Saved ABT/UNH privately
+re-rendered without model calls or research changes. ABT loses the misleading
+historical monitoring fallback and remains incomplete; this does not repair its
+missing thesis or certify either example. Print pagination still unverified.
+Deployment verification pending below. Next: explicit scenario valuation inputs,
+historical valuation and financial reconciliation, then real-source benchmark
+acceptance. Phase-1 legacy WELL outcome and later phases remain open.
+
+## T192 — preserve research order in one-pager selection (verified live)
 
 Extracted stable evidence ordering into onepager_editorial.py. Removed numeric
 and citation-count scoring, managed-care keyword bonuses, inferred topic labels,
@@ -18,7 +38,13 @@ No model, token cap, saved research or source pack changed, and no paid QA.
 1056 backend and 140 frontend tests, touched-module compilation, policy against
 75097e5 and frontend build passed. Saved ABT/UNH were re-rendered privately;
 ABT remains incomplete. UNH desktop and 390px layouts inspected; no horizontal
-overflow. Neither example is professionally accepted. Deployment pending.
+overflow. Neither example is professionally accepted. Backend revision
+5dfccd9c691e9f6b03c202e165225f545774b02f verified healthy after transient
+rollout 502s. Cloudflare 7cf33567-2b5d-4006-bb12-7fd0ff582b7d deployed;
+hosted JS/SW exact bytes verified. Both production ABT/UNH v12 artifacts match
+the privately inspected HTML exactly. Mac heartbeat 02:33:19 UTC; no unavailable
+Activity reads. Predeploy bounded Activity showed no non-queued active work;
+truncated historical buckets were not treated as an exhaustive inventory.
 Next: structured prospective signposts and scenario valuation inputs with
 provenance; do not confuse this deterministic selection fix with expert judgment.
 
