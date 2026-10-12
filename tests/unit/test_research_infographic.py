@@ -195,7 +195,7 @@ class EditorialTests(unittest.TestCase):
         self.assertIn('FY2027 adjusted EPS $5, conditional on demand<sup>',h)
         self.assertIn('10% versus $72.73 on 2026-10-01; excludes dividends<sup>',h)
         self.assertIn('Returns are not rebased',h)
-        self.assertIn('arithmetic is not independently verified',h)
+        self.assertIn('Arithmetic unverified:',h)
         self.assertEqual(self.run,before)
         scenario=h.split('<table class="scenario-values">')[1].split('</table>')[0]
         rows=scenario.split('<tbody>')[1].split('</tr>')[:3]
@@ -219,3 +219,19 @@ class EditorialTests(unittest.TestCase):
         h=render(self.run,{},self.f)
         self.assertIn('Source-supported scenario inputs unavailable.',h)
         self.assertIn('Mechanical sensitivity is not a bull/base/bear valuation.',h)
+
+    def test_explicit_scenario_arithmetic_only_uses_supported_fields(self):
+        values={'name':'Base','eps_or_fcf':'FY2027 adjusted diluted EPS USD 6.00/share',
+                'valuation_multiple':'18.0x FY2027 adjusted diluted EPS; rationale: peer recovery',
+                'implied_value':'USD 108.00/share',
+                'upside_downside':'+8.43% price return vs USD 99.60/share on 2026-10-09'}
+        for key,value in values.items(): self.add('/scenarios/0/'+key,value)
+        self.assertIn('EPS × P/E and price return agree',render(self.run,{},self.f))
+        self.add('/scenarios/0/implied_value','USD 109.00/share')
+        h=render(self.run,{},self.f)
+        self.assertIn('implied value does not equal EPS',h)
+        self.assertIn('USD 109.00/share<sup>',h)
+        self.add('/scenarios/0/implied_value','USD 108.00/share',review='needs_review')
+        h=render(self.run,{},self.f)
+        self.assertNotIn('EPS × P/E and price return agree',h)
+        self.assertIn('Arithmetic unverified:',h)

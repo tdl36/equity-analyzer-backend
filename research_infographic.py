@@ -10,8 +10,9 @@ from urllib.parse import urlparse
 from visual_business_profiles import PROFILES
 from stock_evidence import valid_citations
 from onepager_editorial import ordered_candidates, statement_identity
+from scenario_arithmetic import check as check_scenario_arithmetic
 
-VERSION='stock-infographic-v16'
+VERSION='stock-infographic-v17'
 e=lambda value:html.escape(str(value if value is not None else ''),quote=True)
 
 @lru_cache(maxsize=3)
@@ -91,10 +92,10 @@ def scenario_valuation(ed):
             ('business_conditions','Operating assumptions'),('revenue_growth','Growth'),
             ('operating_margin','Margin'),('eps_or_fcf','Earnings / cash flow'),
             ('valuation_multiple','Valuation multiple'),('major_risks','Failure conditions')])+'</td><td>'+labeled_fields(ed,row,[
-            ('implied_value','Implied value'),('upside_downside','Return versus saved reference price')])+'</td></tr>'
+            ('implied_value','Implied value'),('upside_downside','Return versus saved reference price')])+'<p class="micro scenario-check">'+e(check_scenario_arithmetic(row)['message'])+'</p></td></tr>'
     return ('<table class="scenario-values"><thead><tr><th>Scenario</th><th>Assumptions and inputs</th><th>Saved valuation</th></tr></thead><tbody>'+body+
             '</tbody></table><p class="micro">Conditional source-backed scenarios, not assigned probabilities or approved targets. '
-            'Values are reproduced from the saved research; arithmetic is not independently verified here. '
+            'Values remain as saved. Explicit P/E arithmetic checks are shown per row; other methods remain unverified. '
             'Keep the cited valuation year, accounting basis, units and reference-price date together; '
             'missing details require review. Returns are not rebased to the market snapshot above.</p>')
 
@@ -260,7 +261,7 @@ def render(run,assignment,fundamentals):
     if f.get('segmentSource'):details+='<p>'+link(f['segmentSource']['url'],'Segment filing')+' · SHA-256 '+e(f['segmentSource']['sha256'])+'</p>'
     if profile:details+='<p>[B] '+link(profile['source'],'Business description and dated segment structure')+'</p>'
     for peer in peers:details+='<p>[M] '+e(peer['ticker'])+' '+link(peer['quote'].get('sourceUrl',''),'Market snapshot')+' · '+e(peer['quote'].get('observedAt',''))+'</p>'
-    details+='<p>AI source review does not replace investor review. Some originals were excerpted; omitted text was not reviewed. Saved scenario assumptions are reproduced with their evidence; arithmetic and calibrated price targets are not independently established by this page. Historical multiples are not supplied. Generated artwork is conceptual.</p><pre>'+e(json.dumps(f,indent=2))+'</pre></details>'
+    details+='<p>AI source review does not replace investor review. Some originals were excerpted; omitted text was not reviewed. Saved scenario assumptions are reproduced with their evidence; only explicitly formatted P/E arithmetic is checked; calibrated price targets are not established by this page. Historical multiples are not supplied. Generated artwork is conceptual.</p><pre>'+e(json.dumps(f,indent=2))+'</pre></details>'
     body=head+coverage+section(1,'The company',company)+section(2,profile.get('businessTitle','How the business makes money'),business)+section(3,'Growth is only half the story',history,'Five-year financial record')+'<div class="research-grid">'+section(4,'The investment thesis',thesis)+section(5,'What the market is debating',debate)+'</div><div class="lower-grid">'+section(6,'Catalysts & risks',triggers)+section(7,'Valuation & peer context',valuation)+section(8,'What to monitor',watch)+'</div>'+scenario_panel+section(9,'The investment view',bottom)+footer
     return '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+e(ticker)+' · Investment map</title><style>'+CSS+'</style><body><main data-render-version="'+VERSION+'">'+body+'</main>'+details+'</body></html>'
 

@@ -2,7 +2,26 @@
 
 Updated: October 11, 2026
 
-## T196 — Calibri export verification (deployment pending)
+## T197 — explicit saved-scenario arithmetic (deployment pending)
+
+Added a conservative read-only P/E and price-return check to supported scenario
+rows. Same fiscal year, GAAP/adjusted diluted-EPS basis, currency, positive inputs,
+real reference date and explicit multiple rationale are required. Decimal arithmetic
+compares saved output precision; missing/narrative/range/EV/FCF/total-return inputs
+remain unverified. Mismatched results require review and are never overwritten.
+Passing arithmetic does not certify assumptions, source accuracy or price targets.
+See docs/scenario-arithmetic.md for the deliberately strict supported grammar.
+No research schema/prompt, model, cap, source pack or active job changed. Existing
+ABT/UNH have no supported scenario rows, so this does not fill their valuation gaps.
+Synthetic valid/mismatch/missing rows inspected in native Chrome; saved ABT/UNH
+privately re-rendered. Seven new tests cover arithmetic, metadata, precision,
+invalid/oversized input, no mutation and supported-only renderer integration.
+1070 safe backend tests, 140 frontend tests, touched Python compilation, model
+policy against 75097e5 and production build passed. Predeploy bounded Activity
+showed no running/processing items or unavailable reads; historical buckets are
+truncated. Later typed authoring and broader valuation/reconciliation remain outstanding.
+
+## T196 — Calibri export verification (verified live)
 
 Installed existing Office Calibri regular/bold/italic/bold-italic copies in this
 Mac user's Library/Fonts without replacing originals or publishing font binaries.
@@ -18,7 +37,11 @@ or hosted assets. ABT evidence gaps, valuation/reconciliation work, real-source
 benchmarks and all eight-phase acceptance remain open. No paid research or
 investor approvals performed. Browser test tab closed; existing tabs preserved.
 Validation: 1063 backend and 140 frontend tests, Python compilation, model policy
-against 75097e5 and production build passed.
+against 75097e5 and production build passed. Backend revision
+6e44f6668678b74a58c06562c546676f21b3e7c4 healthy after transient rollout
+502; Cloudflare c0dc0235-5027-45b1-bf84-1d0052aad0fc live. Hosted JS/SW
+and live ABT/UNH v16 renders match verified local bytes. Mac heartbeat
+04:32:30 UTC; no pending collection delivery or unavailable reads.
 
 ## T195 — print pagination correction (verified live)
 
