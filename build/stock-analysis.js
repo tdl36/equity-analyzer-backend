@@ -1,4 +1,5 @@
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
+import { OnepagerCorrections } from './onepager-corrections';
 import { ResearchRecovery } from './research-recovery';
 import { financialWorkbook, saveFinancialWorkbook } from './financial-workbook-download.mjs';
 import { ResearchMeetingHandoff } from './research-meeting-handoff';
@@ -401,6 +402,11 @@ export function StockAnalysis({
     className: "sa-warning"
   }, "The saved thesis has changed since this report started. Its frozen baseline remains R", run.baseline.revision, ". Start a new analysis before preparing a thesis draft."), /*#__PURE__*/React.createElement(ResearchRecovery, {
     run: run
+  }), run.status === 'complete' && /*#__PURE__*/React.createElement(OnepagerCorrections, {
+    key: run.id,
+    api: api,
+    run: run,
+    onOriginal: openOriginal
   }), run.status !== 'complete' && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
     className: "sa-check"
   }, /*#__PURE__*/React.createElement("input", {

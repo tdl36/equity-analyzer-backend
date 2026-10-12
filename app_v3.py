@@ -29320,6 +29320,9 @@ summary_comparison_bp.start_recovery()
 import earnings_decks
 app.register_blueprint(earnings_decks.create_blueprint(get_db))
 
+import onepager_corrections
+app.register_blueprint(onepager_corrections.create_blueprint(get_db))
+
 import research_meeting_handoff
 app.register_blueprint(research_meeting_handoff.create_blueprint(get_db))
 

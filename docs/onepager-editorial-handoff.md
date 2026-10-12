@@ -1,8 +1,11 @@
 # Versioned one-pager editorial handoff
 
-Implementation contract, October 12, 2026. This is planned work, not a shipped
-feature or authorization to approve research. T201 provides read-only evidence
-readiness; it does not repair the saved investment argument.
+Implementation contract, October 12, 2026. T202 implements a bounded first
+stage: immutable pending corrections to existing scalar fields, one frozen source
+per correction, with a before/after review list. No acceptance, new rows, derived
+rendering or authoring helper is implemented. The remaining contract below is
+planned, not authorization to approve research. T201 readiness and T202 pending
+corrections do not repair or replace the saved investment argument.
 
 ## Why a separate revision is required
 
@@ -113,7 +116,8 @@ Keep the print export Calibri, black text and a readable review/version footer.
 ## Safe acceptance evidence
 
 Implement the pure schema/digest contract first, then persistence/routes, then
-review UI and a private preparation helper as one end-to-end release. Do not
+review UI and a private preparation helper. Pending capture may ship separately
+only when visibly labeled as pending and unable to change current outputs. Do not
 ship an active Apply control before all server checks exist. Use synthetic
 fixtures and disposable database data; never pytest or paid generation for QA.
 

@@ -2,6 +2,26 @@
 
 Updated: October 11, 2026
 
+## T202 — pending source-linked corrections (release prepared)
+
+Completed stock reports can capture a proposed correction to an existing scalar
+claim, with unchanged original wording, claim type, reason, frozen source passage
+and locator. Server checks current report fingerprint, original bytes/hash,
+source restrictions and exact normalized passage matching before insertion.
+Schema and record are transactional; a submission UUID plus payload digest makes
+same-key retries idempotent and changed payloads conflict. GET is read-only and
+returns at most 50 recent pending records, labeling stale baselines. Original
+report/citation state, thesis and one-pager exports are never updated. There is
+no acceptance or apply endpoint/control. New rows, multi-source changes, reviewed
+rendering, acceptance and private authoring helper remain future work. This is
+a separate review record, not a corrected brief or completed phase.
+Seven new tests include disposable-Postgres concurrent submission/restart,
+rollback, source restrictions/hash changes, stale fingerprints, forged review
+fields and original-state preservation. 1096 backend and 140 frontend tests,
+compilation, model policy baseline 75097e5 and production build passed. Synthetic
+UI save/reload and 390px wrapping inspected with the real component and workspace
+styles; production proposals were not created for QA. Deployment pending.
+
 ## Editorial handoff implementation contract — October 12, 08:00 UTC
 
 Inspected report/source download, assignment visual rendering, current/original
