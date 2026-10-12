@@ -5,6 +5,7 @@ from flask import Blueprint, jsonify, request, Response
 from onepager_corrections import digest, evidence_items
 from onepager_edition_contract import baseline, prepare_edition
 from onepager_decisions import read_lineage, record_decision
+from onepager_scenario_review import scenario_review
 
 
 def create_blueprint(get_db, investor_identity=lambda: None):
@@ -86,6 +87,7 @@ def create_blueprint(get_db, investor_identity=lambda: None):
                                                 if k != 'parentId' or not item['decision'])
                             item['status'] = ('accepted' if item['decision']['action']=='accept' else 'rejected') if item['decision'] else 'pending'
                             item['currentAccepted'] = str(item['id']) == parent
+                            item['scenarioReview'] = None if item['stale'] else scenario_review(run, item['record'])
                             if item['decision'] and digest(item['record']) != item['decision']['editionDigest']:
                                 raise ValueError('The decided edition content changed. Inspect saved lineage.')
                     accepted = None

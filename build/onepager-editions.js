@@ -190,6 +190,21 @@ export function OnepagerEditions({
       }, "Download verified original") : /*#__PURE__*/React.createElement("p", null, "The original no longer matches this report. Inspect the saved source pack."), /*#__PURE__*/React.createElement("small", null, "Original SHA-256 ", e.sha256));
     }), /*#__PURE__*/React.createElement("small", null, "Claim ", p.path));
   }
+  function arithmetic(edition) {
+    return /*#__PURE__*/React.createElement("section", {
+      "aria-label": "Scenario arithmetic review"
+    }, /*#__PURE__*/React.createElement("h5", null, "Scenario arithmetic"), /*#__PURE__*/React.createElement("p", null, "Saved calculations only. This check does not reverify originals, judge assumptions or certify valuation quality."), edition.scenarioReview === null ? /*#__PURE__*/React.createElement("p", null, "Baseline changed. Prepare a new edition before checking its calculations.") : !edition.scenarioReview?.length ? /*#__PURE__*/React.createElement("p", null, "No saved scenario calculation inputs available.") : edition.scenarioReview.map(row => /*#__PURE__*/React.createElement("div", {
+      key: row.index,
+      style: {
+        overflowWrap: 'anywhere',
+        marginBottom: 12
+      }
+    }, /*#__PURE__*/React.createElement("strong", null, row.label), /*#__PURE__*/React.createElement("p", {
+      role: row.status === 'mismatch' ? 'alert' : undefined
+    }, row.message), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Inspect calculation inputs"), [['eps_or_fcf', 'Earnings per share'], ['valuation_multiple', 'P/E and rationale'], ['implied_value', 'Implied value'], ['upside_downside', 'Return and reference price']].map(([key, label]) => /*#__PURE__*/React.createElement("p", {
+      key: key
+    }, /*#__PURE__*/React.createElement("b", null, label, ":"), " ", row.inputs[key] || 'Not established in saved evidence'))))));
+  }
   var selectionError = '';
   if (selected.length && pack) try {
     editionSelection(pack, rows, selected, '');
@@ -245,14 +260,14 @@ export function OnepagerEditions({
         setReviewing(e);
         setAck(false);
       }
-    }, "Review edition decision"), e.record.claims.map(c => /*#__PURE__*/React.createElement("details", {
+    }, "Review edition decision"), arithmetic(e), e.record.claims.map(c => /*#__PURE__*/React.createElement("details", {
       key: c.correctionId
     }, /*#__PURE__*/React.createElement("summary", null, claimLabel(c.proposal.path)), /*#__PURE__*/React.createElement("div", {
       className: "sa-form-grid"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h5", null, "Original"), /*#__PURE__*/React.createElement("p", null, c.proposal.before === null ? 'New scenario input; no saved value.' : c.proposal.before)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h5", null, "Proposed \xB7 ", basisLabel(c.proposal.basis)), /*#__PURE__*/React.createElement("p", null, c.proposal.statement))), /*#__PURE__*/React.createElement("p", null, c.proposal.reason), evidence(c.proposal), /*#__PURE__*/React.createElement("small", null, "Correction ", c.correctionId))));
   }), reviewing && /*#__PURE__*/React.createElement("section", {
     "aria-label": "Review editorial decision"
-  }, /*#__PURE__*/React.createElement("h4", null, "Review this exact edition"), /*#__PURE__*/React.createElement("p", null, "Edition ", reviewing.id, ". This complete selection replaces the previous editorial selection; it does not add to it. Original research and thesis stay unchanged."), reviewing.record.claims.map(c => /*#__PURE__*/React.createElement("article", {
+  }, /*#__PURE__*/React.createElement("h4", null, "Review this exact edition"), /*#__PURE__*/React.createElement("p", null, "Edition ", reviewing.id, ". This complete selection replaces the previous editorial selection; it does not add to it. Original research and thesis stay unchanged."), arithmetic(reviewing), reviewing.record.claims.map(c => /*#__PURE__*/React.createElement("article", {
     key: c.correctionId
   }, /*#__PURE__*/React.createElement("h5", null, claimLabel(c.proposal.path)), /*#__PURE__*/React.createElement("p", null, "Original: ", c.proposal.before === null ? 'New scenario input; no saved value.' : c.proposal.before), /*#__PURE__*/React.createElement("p", null, "Proposed: ", c.proposal.statement), evidence(c.proposal))), /*#__PURE__*/React.createElement("h5", null, "Changes removed from the previous accepted edition"), removedEditionClaims(reviewing, pack).length ? removedEditionClaims(reviewing, pack).map(c => /*#__PURE__*/React.createElement("p", {
     key: c.correctionId

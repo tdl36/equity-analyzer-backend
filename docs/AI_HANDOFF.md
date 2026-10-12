@@ -2,7 +2,24 @@
 
 Updated: October 12, 2026
 
-## T218 — bounded missing scenario inputs (release prepared)
+## T219 — scenario arithmetic in edition review (release prepared)
+
+Edition history and the explicit investor decision panel now display P/E scenario
+arithmetic diagnostics with inspectable EPS, multiple, implied value and dated
+return inputs. Inputs come only from saved supported claims plus that edition's
+explicit proposals. Unsupported originals do not fill gaps; stale editions withhold
+diagnostics. The read-only check neither revalidates originals nor approves or
+blocks an investor decision. Source/assumption accuracy is explicitly separate.
+Original calculations and reports are never rewritten or rebased to live prices.
+Three new tests cover unchanged versus overridden claims, unsupported gaps,
+missing rows, incomplete inputs and year/basis mismatches. 1172 backend and 146
+frontend tests, compile, model-policy baseline 75097e5 and build passed. Synthetic
+Chrome desktop/mobile review displayed a mismatch and its inputs without any
+write or decision; fixture CSS is not full workspace visual acceptance.
+Real-source one-pager quality and origin-specific refresh remain open. All eight
+priorities remain incomplete. Deployment pending.
+
+## T218 — bounded missing scenario inputs (verified live)
 
 Editorial preparation exposes missing/null fields for up to three scenario rows
 and nine named inputs. Existing fields still use replacement corrections; new
@@ -14,12 +31,17 @@ unchanged. Every addition uses existing source/policy checks and explicit editio
 review. Partial rows remain partial, not a complete or accepted valuation.
 Three new synthetic tests cover absent/list/dict/null containers, source-backed
 pending additions, retained originals, bounds and stale baselines. Full safe
-backend/frontend suites, compile, model policy baseline 75097e5 and build passed.
+suites passed 1169 backend and 146 frontend tests; compile, model policy baseline
+75097e5 and production build passed.
 Isolated Chrome desktop/mobile checks exercised a missing input and two-source
 submission using synthetic data and fixture CSS. No live research or proposal
 was changed. Real scenario content/accuracy, full workspace visual acceptance,
 origin-specific refresh and the eight-priority acceptance remain open.
-Deployment pending; carry the exact receipt into the next source commit.
+Backend bd76b9e938b8f1d92dc82d3a8b1fee7be5048171 verified healthy after
+rollout 502s. Cloudflare ba3dee71-1ea2-472d-b52a-88e5935ee9f4 deployed;
+hosted JS/service-worker exact bytes verified. Mac heartbeat current at
+16:30:10 UTC with zero pending collection deliveries and no unavailable sources.
+No agent source change/restart. Receipt retained for next source commit.
 
 ## T217 — multiple originals per editorial claim (verified live)
 
