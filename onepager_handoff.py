@@ -65,12 +65,12 @@ def submit(path,call=request):
         fcntl.flock(lock,fcntl.LOCK_EX)
         prep=read(p/'preparation.json');pack=prep['baseline'];proposal=read(p/'proposal.json')
         claims=proposal.get('claims') if isinstance(proposal,dict) and set(proposal)=={'claims'} else None
-        if not isinstance(claims,list) or not 1<=len(claims)<=20:raise ValueError('Supply 1–20 replacement claims.')
+        if not isinstance(claims,list) or not 1<=len(claims)<=20:raise ValueError('Supply 1–20 editorial claims.')
         paths={f['path'] for f in prep['fields']};sources={s['id'] for s in prep['sources']};seen=set()
         for c in claims:
             if not isinstance(c,dict) or set(c)-{'additionalEvidence'}!=CLAIM_KEYS:raise ValueError('Unknown or missing claim fields; review flags are forbidden.')
             if not isinstance(c['path'],str) or c['path'] not in paths or c['path'] in seen or any(e['sourceId'] not in sources for e in submission_evidence(c)):
-                raise ValueError('Choose distinct existing fields and frozen source IDs.')
+                raise ValueError('Choose distinct permitted fields and frozen source IDs.')
             seen.add(c['path'])
         signature=digest({'preparation':prep,'proposal':proposal})
         journal=p/'submission.json'

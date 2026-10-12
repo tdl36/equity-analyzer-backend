@@ -331,8 +331,12 @@ It saves permitted existing scalar paths and frozen source identities, plus an e
 folders. Inspect the registered originals separately; preparation is not review.
 Fill `claims` with 1–20 objects containing exactly `path`, `statement`, `basis`,
 `reason`, `sourceId`, `excerpt`, `locator`. Use the existing correction limits and
-basis vocabulary; the server matches passages and rechecks bytes/usage. New rows
-remain unsupported; do not fabricate paths. A claim may also supply optional
+basis vocabulary; the server matches passages and rechecks bytes/usage. The preparation now lists bounded missing scenario inputs with `before: null`: up
+to three indexed rows and nine named scenario fields. Select only these supplied
+paths; arbitrary report additions remain forbidden. Additions live only in the
+explicit pending/accepted edition, never in the original report. A partial case
+is not a complete valuation; year, accounting basis, units and assumptions must
+still be stated and source-reviewed. A claim may also supply optional
 `additionalEvidence`: 1–7 objects containing exactly `sourceId`, `excerpt`,
 `locator`, each naming a different original from the frozen pack. Every passage,
 original hash and usage restriction is checked through edition review/export.

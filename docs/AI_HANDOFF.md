@@ -2,7 +2,26 @@
 
 Updated: October 12, 2026
 
-## T217 — multiple originals per editorial claim (release prepared)
+## T218 — bounded missing scenario inputs (release prepared)
+
+Editorial preparation exposes missing/null fields for up to three scenario rows
+and nine named inputs. Existing fields still use replacement corrections; new
+inputs carry before=null and appear explicitly as additions in investor review.
+Invalid scenario containers, unknown paths, extra rows and structure replacement
+are forbidden. Pending preview inserts only selected additions into a private
+copy in any selection order; original reports and financial snapshots remain
+unchanged. Every addition uses existing source/policy checks and explicit edition
+review. Partial rows remain partial, not a complete or accepted valuation.
+Three new synthetic tests cover absent/list/dict/null containers, source-backed
+pending additions, retained originals, bounds and stale baselines. Full safe
+backend/frontend suites, compile, model policy baseline 75097e5 and build passed.
+Isolated Chrome desktop/mobile checks exercised a missing input and two-source
+submission using synthetic data and fixture CSS. No live research or proposal
+was changed. Real scenario content/accuracy, full workspace visual acceptance,
+origin-specific refresh and the eight-priority acceptance remain open.
+Deployment pending; carry the exact receipt into the next source commit.
+
+## T217 — multiple originals per editorial claim (verified live)
 
 One-pager corrections now support a primary original plus up to seven additional
 frozen originals. The browser and private handoff share the bounded contract.
@@ -19,7 +38,12 @@ form validation passed at desktop and 390px mobile widths, including the exact
 submitted two-source payload and saved evidence display; fixture CSS only, not
 full workspace visual acceptance. No live correction was submitted.
 New scenario-row authoring, real-source editorial benchmarks, origin-specific
-refresh and full eight-priority acceptance remain open. Deployment pending.
+refresh and full eight-priority acceptance remain open. Backend revision
+0391b627909bdfe4c716f32ef03dae4b5e5c2dcc verified healthy after rollout
+502; Cloudflare 3ea1291a-4f62-4f0e-b3b4-89c5ab49f721 deployed. Hosted JS and
+service-worker exact bytes verified. Agent snapshot available with zero pending
+collection deliveries; no agent source change or restart. Post-deploy receipt
+retained for the next source commit to avoid a docs-only backend restart.
 
 ## T216 — resumable private editorial handoff (verified live)
 

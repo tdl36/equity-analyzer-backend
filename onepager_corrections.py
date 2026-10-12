@@ -3,7 +3,7 @@ import hashlib
 import json
 import uuid
 from flask import Blueprint, jsonify, request
-from stock_evidence import report_fields
+from onepager_editorial_fields import editable_fields
 from company_research import eligible
 from research_originals import verified_original
 
@@ -14,8 +14,7 @@ def digest(value):
 
 def preparation(run):
     if run.get('status')!='complete':raise ValueError('Choose a completed saved report.')
-    fields=report_fields(run.get('state',{}).get('report',{}))
-    fields={p:v for p,v in fields.items() if isinstance(v,str) and len(v)<=12000}
+    fields=editable_fields(run.get('state',{}).get('report',{}))
     baseline=digest({k:run.get(k) for k in ('id','ticker','input','baseline','sources','state')})
     return {'runId':str(run['id']),'ticker':run['ticker'],'fingerprint':baseline,
             'fields':[{'path':p,'before':v} for p,v in fields.items()],
@@ -55,7 +54,7 @@ def prepare(run,body,document):
     pack=preparation(run)
     if body['fingerprint']!=pack['fingerprint']:raise ValueError('The saved report or sources changed. Reload before preparing a correction.')
     fields={f['path']:f['before'] for f in pack['fields']}
-    if not isinstance(body['path'],str) or body['path'] not in fields:raise ValueError('Choose an existing saved claim.')
+    if not isinstance(body['path'],str) or body['path'] not in fields:raise ValueError('Choose a saved claim or permitted scenario field.')
     for key,limit in [('statement',2000),('reason',2000),('excerpt',4000),('locator',200)]:
         if not isinstance(body[key],str) or not body[key].strip() or len(body[key])>limit:raise ValueError('Correction text is missing or exceeds its limit.')
     if body['statement']==fields[body['path']]:raise ValueError('The proposed wording is unchanged.')
