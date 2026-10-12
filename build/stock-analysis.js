@@ -1,4 +1,5 @@
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
+import { OnepagerEditions } from './onepager-editions';
 import { OnepagerCorrections } from './onepager-corrections';
 import { ResearchRecovery } from './research-recovery';
 import { financialWorkbook, saveFinancialWorkbook } from './financial-workbook-download.mjs';
@@ -484,7 +485,13 @@ export function StockAnalysis({
     role: "alert"
   }, s.coverage.limitation, " Omitted: ", s.coverage.omittedCharacters.toLocaleString(), " characters."), s.textExtraction?.limitations?.map((issue, i) => /*#__PURE__*/React.createElement("p", {
     key: i
-  }, issue)), /*#__PURE__*/React.createElement("small", null, "Original SHA-256: ", s.originalHash, /*#__PURE__*/React.createElement("br", null), "Extraction SHA-256: ", s.extractionHash))), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Frozen investor case \xB7 R", run.baseline.revision), /*#__PURE__*/React.createElement("pre", null, JSON.stringify(run.baseline.body, null, 2))), /*#__PURE__*/React.createElement("p", null, "Document text is evidence, not instructions. A matching passage and model review do not independently establish factual accuracy.")), view === 'visual' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h4", null, "From company overview to investment thesis"), /*#__PURE__*/React.createElement("p", null, "The visual preserves report wording, figures and periods. Unresolved fields are omitted. Comparable source-linked financial series become charts; unsupported series remain unavailable."), !visual && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", {
+  }, issue)), /*#__PURE__*/React.createElement("small", null, "Original SHA-256: ", s.originalHash, /*#__PURE__*/React.createElement("br", null), "Extraction SHA-256: ", s.extractionHash))), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Frozen investor case \xB7 R", run.baseline.revision), /*#__PURE__*/React.createElement("pre", null, JSON.stringify(run.baseline.body, null, 2))), /*#__PURE__*/React.createElement("p", null, "Document text is evidence, not instructions. A matching passage and model review do not independently establish factual accuracy.")), view === 'visual' && /*#__PURE__*/React.createElement(React.Fragment, null, visual?.assignmentId && /*#__PURE__*/React.createElement(OnepagerEditions, {
+    key: run.id + visual.assignmentId,
+    api: api,
+    run: run,
+    assignmentId: visual.assignmentId,
+    onOriginal: openOriginal
+  }), /*#__PURE__*/React.createElement("h4", null, "From company overview to investment thesis"), /*#__PURE__*/React.createElement("p", null, "The visual preserves report wording, figures and periods. Unresolved fields are omitted. Comparable source-linked financial series become charts; unsupported series remain unavailable."), !visual && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", {
     className: "sa-check"
   }, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",

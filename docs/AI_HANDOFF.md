@@ -2,7 +2,28 @@
 
 Updated: October 11, 2026
 
-## T204 — durable pending edition selections (verification pending)
+## T205 — pending edition review screen (verification pending)
+
+The saved assignment infographic now includes “One-pager editions · pending review.”
+Users can group 1–20 existing corrections, inspect original/proposed full wording,
+claim type, reason, passage and verified original links, save an immutable pending
+edition, and reload its retained comparisons. Report/assignment identity and stale
+or competing paths are checked; an unchanged retry retains its submission UUID.
+The screen explicitly states that acceptance and revised exports are unavailable.
+No pending edition changes original exports, research or thesis state. It shows
+up to 50 recent corrections and 20 editions; older navigation remains future work.
+Three frontend tests cover ordered identity, bounds, stale/conflicting selections
+and labels. Synthetic UI save/reload, desktop comparison and 390px mobile wrapping
+were inspected using the actual component and workspace styles (no overflow).
+1109 backend and 143 frontend tests, model policy baseline 75097e5 and the
+production build passed. Hosted release verification is pending.
+The harness used synthetic in-memory API responses with the pure edition validator;
+T204's disposable database tests cover persistence. No production POST or paid call.
+Next: explicit accepted/pending evidence adapters, transaction-safe investor decisions
+and version-specific exports. Investor approval and substantive benchmark acceptance
+remain open; grouping corrections is not a repaired professional one-pager.
+
+## T204 — durable pending edition selections (verified live)
 
 Added private/no-store GET/POST at /api/research/assignments/<id>/onepager-editions.
 GET returns a baseline and up to 20 immutable pending records, marks changed
@@ -16,7 +37,14 @@ cannot receive new editions. Original reports, citations, corrections, assignmen
 outputs and theses remain unchanged. There is no acceptance endpoint, rendering,
 preview or UI control yet; pending selections cannot become default exports.
 1109 backend and 140 frontend tests, compilation, policy baseline 75097e5 and
-the production build passed. Deployment/read-only verification is pending.
+the production build passed. Backend revision
+55f45a923f69c25d29202cc99865e4c9a3e59002 verified healthy; Cloudflare
+b79c7fde-72c6-4062-8606-e3a54462ceb5 deployed. Hosted JS and service worker
+match tested bytes. Authenticated ABT/UNH preparation returned pending_only,
+zero saved editions and private/no-store caching; no production POST was made.
+Transient rollout 502s cleared, including a retried read-only UNH check. Mac last
+seen 10:03:39 UTC, collection 10:03:20, pending delivery zero, unavailable empty.
+No agent change or restart. No new UI/print acceptance is claimed.
 Five disposable-PostgreSQL tests cover read-only preparation, concurrent replay,
 restart, stale snapshots, restrictions, rollback, forged status and retained originals.
 Next: explicit edition review navigation, renderer evidence adapters and transactional

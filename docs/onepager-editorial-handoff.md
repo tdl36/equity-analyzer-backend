@@ -213,3 +213,13 @@ bytes. No accepted lineage exists yet, so parentId must be null. Acceptance must
 add separate decision storage and lineage locking before any Apply control ships.
 There is still no edition renderer, review UI or accepted export. Do not use a
 pending record as evidence approval or modify valid_citations to accommodate it.
+
+## Pending edition review UI — October 12, 10:30 UTC
+
+The saved assignment's Infographic view now exposes the pending edition selector
+and retained before/after comparisons. It loads the specific report and assignment,
+shows claim types and frozen evidence, rejects stale or same-path selections and
+keeps an unchanged submission's identity while retrying in the mounted screen.
+Only 50 recent corrections and 20 recent editions are shown; deep links and older
+pagination remain open. Acceptance and revised exports are still unavailable.
+No renderer evidence adapter or accepted lineage is implied by this interface.
