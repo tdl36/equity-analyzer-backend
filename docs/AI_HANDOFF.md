@@ -2,7 +2,28 @@
 
 Updated: October 12, 2026
 
-## T210 — internal decision persistence (release verification pending)
+## T211 — edition lineage reads (release prepared)
+
+Edition listing and preparation now read the separate decision history under the
+assignment lock, carry the current accepted parent, and fail closed on missing or
+inconsistent lineage/content. Recorded decisions are shown separately from immutable
+pending content without exposing the investor authentication principal. Decided
+editions cannot open pending previews; a new pending successor uses the current
+parent. Replayed submissions report their effective decision state. No decision
+write route or investor acceptance control is exposed, and accepted export remains
+unavailable. Original research and default artifacts remain unchanged.
+1139 backend and 145 frontend tests passed, plus focused tests, Python compilation,
+model policy against 75097e5 and the required frontend build.
+Three additional disposable PostgreSQL cases cover list/replay states, successor
+preparation/preview and damaged lineage; frontend coverage checks decided preview
+suppression. Synthetic real-blueprint UI inspection verified pending, rejected and
+current accepted cards and the successor preview on desktop; the 390px viewport
+had no horizontal overflow. This is synthetic evidence, not investor acceptance.
+Next: accepted evidence/render/export and authenticated investor decision UI; keep
+the write helper internal until those paths are coherent. All eight priorities
+remain incomplete. No live decision, paid call or original-source change occurred.
+
+## T210 — internal decision persistence (verified live; internal only)
 
 Added an internal transaction helper for explicit investor decisions, without a
 public route, UI control or automatic caller. It serializes each assignment's
@@ -24,6 +45,11 @@ investor review UI. Existing pending APIs are deliberately not wired to this sto
 never expose its write operation before those read/lineage paths are coherent.
 1136 backend and 144 frontend tests passed, plus Python compilation, model policy
 against 75097e5 and the required frontend build. No product UI changed.
+Backend f6345fe16464248d6b513f12cef8d39fbd3d9e49 verified healthy at
+13:36:36 UTC after transient rollout 502s. Cloudflare
+db271dd0-e923-4fa6-84fb-7a5ce13e7c52 deployed; hosted JS and service-worker
+bytes match the tested build. Mac last seen 13:36:22, collection 13:35:55,
+pending delivery zero and unavailable empty. No agent change or restart.
 No live approval, paid call, research mutation or source changes occurred.
 
 ## T209 — decision identity contract (verified live; internal only)

@@ -146,3 +146,42 @@ class DecisionPersistenceTests(unittest.TestCase):
                         c.execute("UPDATE document_files SET metadata='{\"usage\":\"reference_only\"}'::jsonb")
             finally:release.set()
             self.assertFalse(future.result()['reused'])
+
+    def test_reads_expose_separate_decision_and_prevent_pending_preview(self):
+        for action in ('accept','reject'):
+            self.setUp();self.submit({**self.decision,'action':action})
+            result=self.client().get(self.url)
+            self.assertEqual(result.status_code,200,result.json)
+            row=result.json['editions'][0]
+            self.assertEqual(row['record'],self.record)
+            self.assertEqual(row['status'],'accepted' if action=='accept' else 'rejected')
+            self.assertEqual(row['currentAccepted'],action=='accept')
+            self.assertFalse(row['stale'])
+            self.assertNotIn('synthetic-investor',str(result.json))
+            self.assertEqual(result.json['parentId'],EID if action=='accept' else None)
+            preview=self.client().get(self.url+'/'+EID+'/preview')
+            self.assertEqual(preview.status_code,409);self.assertNotIn('html',preview.json)
+            replay=self.client().post(self.url,json=self.body)
+            self.assertTrue(replay.json['reused']);self.assertEqual(replay.json['status'],row['status'])
+
+    def test_new_pending_selection_binds_current_parent_and_previews(self):
+        self.submit()
+        stale=self.client().post(self.url,json={**self.body,'requestId':OTHER})
+        self.assertEqual(stale.status_code,400)
+        successor={**self.body,'requestId':OTHER,'parentId':EID}
+        result=self.client().post(self.url,json=successor)
+        self.assertEqual(result.status_code,201,result.json)
+        preview=self.client().get(self.url+'/'+OTHER+'/preview')
+        self.assertEqual(preview.status_code,200,preview.json)
+        self.assertEqual(preview.json['status'],'pending')
+        self.assertIn('not accepted',preview.json['html'])
+
+    def test_inconsistent_pointer_or_decided_content_fails_read_closed(self):
+        for mutation in ('DELETE FROM onepager_accepted_heads',
+                "UPDATE onepager_accepted_heads SET decision_id='c998e805-0bd4-49ce-aafa-2af123e1aace'",
+                "UPDATE onepager_editions SET record=jsonb_set(record,'{caveat}','\"Changed\"'::jsonb)"):
+            self.setUp();self.submit()
+            with self.db(True) as (_,c):c.execute(mutation)
+            result=self.client().get(self.url)
+            self.assertEqual(result.status_code,400,result.json)
+            self.assertNotIn('editions',result.json)

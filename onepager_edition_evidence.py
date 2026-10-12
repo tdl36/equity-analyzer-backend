@@ -36,7 +36,7 @@ def _replace(report, path, statement):
         current[parts[-1]] = statement
 
 
-def pending_evidence(run, assignment, record, corrections, documents, financials):
+def pending_evidence(run, assignment, record, corrections, documents, financials, *, parent_id=None):
     """Revalidate a persisted pending selection and return an isolated preview.
 
     All arguments must be server-loaded. Future routes must lock/reload them in
@@ -49,7 +49,7 @@ def pending_evidence(run, assignment, record, corrections, documents, financials
     body = {key: record.get(key) for key in
             ('assignmentId', 'runId', 'fingerprint', 'fundamentalsDigest', 'parentId', 'correctionIds')}
     body['requestId'] = record.get('id')
-    checked = prepare_edition(run, assignment, body, corrections, documents, financials)
+    checked = prepare_edition(run, assignment, body, corrections, documents, financials, parent_id=parent_id)
     if checked != record:
         raise ValueError('The saved edition evidence changed. Prepare a new edition.')
     derived = copy.deepcopy(run)

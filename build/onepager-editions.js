@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { editionSelection, claimLabel, basisLabel, verifiedEditionPreview } from './onepager-edition-model.mjs';
+import { editionSelection, claimLabel, basisLabel, verifiedEditionPreview, editionReviewState } from './onepager-edition-model.mjs';
 export function OnepagerEditions({
   api,
   run,
@@ -88,7 +88,7 @@ export function OnepagerEditions({
       if (alive.current) {
         pending.current = null;
         setSelected([]);
-        setNotice(`Pending edition ${result.id} saved. No correction has been accepted or applied.`);
+        setNotice(result.status === 'pending' ? `Pending edition ${result.id} saved. No correction has been accepted or applied.` : `Edition ${result.id} already has a saved ${result.status} decision. Reloaded its retained review.`);
         await load();
       }
     } catch (e) {
@@ -129,7 +129,7 @@ export function OnepagerEditions({
   }
   return /*#__PURE__*/React.createElement("details", {
     className: "sa-prepare"
-  }, /*#__PURE__*/React.createElement("summary", null, "One-pager editions \xB7 pending review"), /*#__PURE__*/React.createElement("p", null, "Group source-linked corrections into a saved edition for this assignment. Review the complete wording and evidence together, then open a labeled pending preview. Acceptance and revised exports are not available yet."), /*#__PURE__*/React.createElement("small", null, "Assignment ", assignmentId, " \xB7 Report ", run.id), /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("summary", null, "One-pager editions \xB7 review history"), /*#__PURE__*/React.createElement("p", null, "Group source-linked corrections into a saved edition for this assignment. Review the complete wording and evidence together, then open a labeled pending preview. Decision controls and revised exports are not available yet."), /*#__PURE__*/React.createElement("small", null, "Assignment ", assignmentId, " \xB7 Report ", run.id), /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: reload
   }, "Reload editions and corrections"), error && /*#__PURE__*/React.createElement("p", {
@@ -154,19 +154,22 @@ export function OnepagerEditions({
   }, selectionError), /*#__PURE__*/React.createElement("button", {
     disabled: !selected.length || !!selectionError,
     onClick: save
-  }, busy ? 'Working…' : `Save pending edition (${selected.length}/20)`)), /*#__PURE__*/React.createElement("h4", null, "Saved editions"), /*#__PURE__*/React.createElement("p", null, "Showing up to ", pack.limit, " most recent editions. A saved edition is a review record, not an approved one-pager. Original availability and usage restrictions are rechecked when saving; opening this list does not reverify them."), pack.editions.map(e => /*#__PURE__*/React.createElement("article", {
-    key: e.id
-  }, /*#__PURE__*/React.createElement("h5", null, "Pending edition \xB7 ", new Date(e.created_at).toLocaleString()), /*#__PURE__*/React.createElement("small", null, "Edition ", e.id, e.stale ? ' · Baseline changed; prepare a new edition' : ''), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("button", {
-    disabled: busy || e.stale,
-    onClick: () => openPreview(e.id, 'illustrated')
-  }, "Preview pending investment map"), /*#__PURE__*/React.createElement("button", {
-    disabled: busy || e.stale,
-    onClick: () => openPreview(e.id, 'brief')
-  }, "Preview pending brief")), e.record.claims.map(c => /*#__PURE__*/React.createElement("details", {
-    key: c.correctionId
-  }, /*#__PURE__*/React.createElement("summary", null, claimLabel(c.proposal.path)), /*#__PURE__*/React.createElement("div", {
-    className: "sa-form-grid"
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h5", null, "Original"), /*#__PURE__*/React.createElement("p", null, c.proposal.before)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h5", null, "Proposed \xB7 ", basisLabel(c.proposal.basis)), /*#__PURE__*/React.createElement("p", null, c.proposal.statement))), /*#__PURE__*/React.createElement("p", null, c.proposal.reason), evidence(c.proposal), /*#__PURE__*/React.createElement("small", null, "Correction ", c.correctionId))))), preview && /*#__PURE__*/React.createElement("section", {
+  }, busy ? 'Working…' : `Save pending edition (${selected.length}/20)`)), /*#__PURE__*/React.createElement("h4", null, "Saved editions"), /*#__PURE__*/React.createElement("p", null, "Showing up to ", pack.limit, " most recent editions. Saving an edition alone does not approve it; any recorded decision is shown separately. Original availability and usage restrictions are rechecked when saving; opening this list does not reverify them."), pack.editions.map(e => {
+    var review = editionReviewState(e);
+    return /*#__PURE__*/React.createElement("article", {
+      key: e.id
+    }, /*#__PURE__*/React.createElement("h5", null, review.label, " \xB7 ", new Date(e.created_at).toLocaleString()), /*#__PURE__*/React.createElement("small", null, "Edition ", e.id, e.stale ? ' · Baseline or parent changed; new decisions require fresh preparation' : ''), e.decision ? /*#__PURE__*/React.createElement("p", null, "Investor decision recorded ", new Date(e.decision.decidedAt).toLocaleString(), ". Original research remains unchanged. Accepted-version exports are not available yet.") : /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("button", {
+      disabled: busy || !review.canPreview,
+      onClick: () => openPreview(e.id, 'illustrated')
+    }, "Preview pending investment map"), /*#__PURE__*/React.createElement("button", {
+      disabled: busy || !review.canPreview,
+      onClick: () => openPreview(e.id, 'brief')
+    }, "Preview pending brief")), e.record.claims.map(c => /*#__PURE__*/React.createElement("details", {
+      key: c.correctionId
+    }, /*#__PURE__*/React.createElement("summary", null, claimLabel(c.proposal.path)), /*#__PURE__*/React.createElement("div", {
+      className: "sa-form-grid"
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h5", null, "Original"), /*#__PURE__*/React.createElement("p", null, c.proposal.before)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h5", null, "Proposed \xB7 ", basisLabel(c.proposal.basis)), /*#__PURE__*/React.createElement("p", null, c.proposal.statement))), /*#__PURE__*/React.createElement("p", null, c.proposal.reason), evidence(c.proposal), /*#__PURE__*/React.createElement("small", null, "Correction ", c.correctionId))));
+  }), preview && /*#__PURE__*/React.createElement("section", {
     "aria-label": "Pending edition preview"
   }, /*#__PURE__*/React.createElement("h4", null, "Pending preview \xB7 not accepted"), /*#__PURE__*/React.createElement("small", null, "Edition ", preview.id, " \xB7 ", preview.layout === 'brief' ? 'Brief' : 'Investment map'), /*#__PURE__*/React.createElement("p", null, preview.caveat), /*#__PURE__*/React.createElement("button", {
     onClick: () => setPreview(null)

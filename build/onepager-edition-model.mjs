@@ -7,6 +7,13 @@ export function editionSelection(pack, corrections, ids, requestId) {
 export const claimLabel = path => path.replace(/^\//,'').split('/').map(x=>/^\d+$/.test(x)?String(Number(x)+1):x.replaceAll('_',' ')).join(' · ');
 export const basisLabel = value => ({reported_fact:'Reported fact',management_guidance:'Management guidance',broker_estimate:'Broker estimate',interpretation:'Interpretation',hypothesis:'Hypothesis'}[value]||'Claim type unavailable');
 
+export function editionReviewState(edition) {
+ const action=edition.decision?.action;
+ if(action==='accept')return {label:edition.currentAccepted?'Accepted edition · current review version':'Accepted edition · prior review version',canPreview:false};
+ if(action==='reject')return {label:'Rejected edition',canPreview:false};
+ return {label:'Pending edition',canPreview:!edition.stale&&!edition.decision&&(!edition.status||edition.status==='pending')};
+}
+
 export function verifiedEditionPreview(value, editionId, assignmentId, runId, ticker) {
  if(!value||value.id!==editionId||value.assignmentId!==assignmentId||value.runId!==runId||value.ticker!==ticker||value.status!=='pending'||!['illustrated','brief'].includes(value.layout)||typeof value.html!=='string'||!value.html.trim())throw Error('The preview does not match this pending edition. Reload the saved assignment.');
  return value;

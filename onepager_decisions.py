@@ -10,6 +10,44 @@ from onepager_edition_contract import _uuid
 from onepager_decision_contract import validate_decision
 
 
+def read_lineage(cur, aid):
+    """Read retained decisions without DDL; caller holds the assignment lock.
+
+    Return only review metadata, never the authentication principal. Immutable
+    pending content remains separate from the effective decision status.
+    """
+    cur.execute("SELECT to_regclass('onepager_decisions') AS decisions, to_regclass('onepager_accepted_heads') AS heads")
+    schema = cur.fetchone()
+    if not schema['decisions'] and not schema['heads']:
+        return None, {}
+    if not schema['decisions'] or not schema['heads']:
+        raise ValueError('Editorial decision history is incomplete. Inspect saved lineage.')
+    cur.execute('SELECT id,edition_id,record FROM onepager_decisions WHERE assignment_id=%s', (aid,))
+    decisions = {}
+    for row in cur.fetchall():
+        r = row['record']; eid = str(row['edition_id'])
+        if (not isinstance(r, dict) or r.get('requestId') != str(row['id']) or
+                r.get('editionId') != eid or r.get('assignmentId') != aid or
+                r.get('action') not in ('accept', 'reject') or not r.get('decidedAt') or
+                not isinstance(r.get('editionDigest'), str) or len(r['editionDigest']) != 64):
+            raise ValueError('Saved decision identity is inconsistent. Inspect saved lineage.')
+        decisions[eid] = {k:r[k] for k in ('requestId','editionId','action','decidedAt','editionDigest')}
+    cur.execute('SELECT edition_id,decision_id FROM onepager_accepted_heads WHERE assignment_id=%s', (aid,))
+    head = cur.fetchone()
+    if not head:
+        if any(d['action'] == 'accept' for d in decisions.values()):
+            raise ValueError('The accepted edition pointer is missing. Inspect saved lineage.')
+        return None, decisions
+    eid = str(head['edition_id']); decision = decisions.get(eid)
+    if not decision or decision['action'] != 'accept' or decision['requestId'] != str(head['decision_id']):
+        raise ValueError('The accepted edition pointer is inconsistent. Inspect saved lineage.')
+    cur.execute('SELECT record FROM onepager_editions WHERE id=%s AND assignment_id=%s', (eid, aid))
+    edition = cur.fetchone()
+    if not edition or digest(edition['record']) != decision['editionDigest']:
+        raise ValueError('The accepted edition content is missing or changed. Inspect saved lineage.')
+    return eid, decisions
+
+
 def record_decision(get_db, aid, eid, body, *, investor_id):
     if not isinstance(investor_id, str) or not investor_id.strip() or len(investor_id) > 200:
         raise ValueError('An authenticated investor identity is required.')
@@ -59,9 +97,7 @@ def record_decision(get_db, aid, eid, body, *, investor_id):
         record = saved['record']
         if not isinstance(record, dict) or record.get('id') != eid:
             raise ValueError('Saved edition identity changed.')
-        cur.execute('SELECT edition_id FROM onepager_accepted_heads WHERE assignment_id=%s FOR UPDATE', (aid,))
-        head = cur.fetchone()
-        parent = str(head['edition_id']) if head else None
+        parent, _ = read_lineage(cur, aid)
         cur.execute('SELECT id,ticker,status,input,baseline,sources,state FROM stock_analysis_runs WHERE id=%s FOR SHARE', (saved['run_id'],))
         row = cur.fetchone()
         if not row:

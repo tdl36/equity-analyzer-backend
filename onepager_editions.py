@@ -4,6 +4,7 @@ import uuid
 from flask import Blueprint, jsonify, request
 from onepager_corrections import digest
 from onepager_edition_contract import baseline, prepare_edition
+from onepager_decisions import read_lineage
 
 
 def create_blueprint(get_db):
@@ -24,12 +25,14 @@ def create_blueprint(get_db):
                 raise ValueError('Invalid or oversized edition selection.')
             with get_db(commit=writing) as (_, cur):
                 # Lock the coordinating assignment before its report and evidence.
-                # This is a pending record only: no accepted lineage exists yet.
-                cur.execute("SELECT id,ticker,status,input,result FROM mp_jobs WHERE id=%s AND stage='research_assignment'" + (' FOR SHARE' if writing else ''), (aid,))
+                # Shared lock also gives read responses a coherent lineage while
+                # the separate decision store serializes on this assignment.
+                cur.execute("SELECT id,ticker,status,input,result FROM mp_jobs WHERE id=%s AND stage='research_assignment' FOR SHARE", (aid,))
                 assignment = cur.fetchone()
                 if not assignment:
                     return jsonify(error='Saved assignment not found.'), 404
                 assignment = dict(assignment)
+                parent, decisions = read_lineage(cur, aid)
                 if writing and assignment['status'] in ('cancelled', 'stopped'):
                     return jsonify(error='This assignment was stopped. No new edition was saved.'), 409
                 if writing:
@@ -45,7 +48,8 @@ def create_blueprint(get_db):
                     if previous:
                         if previous['assignment_id'] != aid or previous['payload_hash'] != digest(body):
                             return jsonify(error='This submission identity belongs to a different edition selection.'), 409
-                        return jsonify(id=ident, status='pending', reused=True)
+                        decision = decisions.get(ident)
+                        return jsonify(id=ident, status=('accepted' if decision['action']=='accept' else 'rejected') if decision else 'pending', reused=True)
                 result = assignment.get('result') or {}
                 rid = result.get('reportId')
                 if not rid:
@@ -56,7 +60,7 @@ def create_blueprint(get_db):
                     return jsonify(error='Saved report not found.'), 404
                 run = dict(run)
                 financials = result.get('visualFundamentals')
-                pack = baseline(run, assignment, financials)
+                pack = baseline(run, assignment, financials, parent_id=parent)
                 if not writing:
                     cur.execute("SELECT to_regclass('onepager_editions') AS name")
                     rows = []
@@ -64,7 +68,13 @@ def create_blueprint(get_db):
                         cur.execute('SELECT id,record,created_at FROM onepager_editions WHERE assignment_id=%s ORDER BY created_at DESC LIMIT 20', (aid,))
                         rows = [dict(r) for r in cur.fetchall()]
                         for item in rows:
-                            item['stale'] = any(item['record'].get(k) != v for k, v in pack.items())
+                            item['decision'] = decisions.get(str(item['id']))
+                            item['stale'] = any(item['record'].get(k) != v for k, v in pack.items()
+                                                if k != 'parentId' or not item['decision'])
+                            item['status'] = ('accepted' if item['decision']['action']=='accept' else 'rejected') if item['decision'] else 'pending'
+                            item['currentAccepted'] = str(item['id']) == parent
+                            if item['decision'] and digest(item['record']) != item['decision']['editionDigest']:
+                                raise ValueError('The decided edition content changed. Inspect saved lineage.')
                     return jsonify(**pack, editions=rows, limit=20, status='pending_only',
                                    caveat='No edition can be accepted or used as an export yet. Reading does not reverify original bytes or usage restrictions.')
                 ids = body.get('correctionIds')
@@ -87,7 +97,7 @@ def create_blueprint(get_db):
                     if len(matches) != 1:
                         raise ValueError('An original is missing or ambiguous. Inspect the saved evidence.')
                     documents[filename] = dict(matches[0])
-                record = prepare_edition(run, assignment, body, corrections, documents, financials)
+                record = prepare_edition(run, assignment, body, corrections, documents, financials, parent_id=parent)
                 cur.execute('INSERT INTO onepager_editions(id,assignment_id,run_id,payload_hash,record) VALUES(%s,%s,%s,%s,%s::jsonb)',
                             (record['id'], aid, str(rid), digest(body), json.dumps(record)))
                 return jsonify(id=record['id'], status='pending', reused=False), 201
@@ -111,6 +121,9 @@ def create_blueprint(get_db):
                 if not assignment:
                     return jsonify(error='Saved assignment not found.'), 404
                 assignment = dict(assignment)
+                parent, decisions = read_lineage(cur, aid)
+                if eid in decisions:
+                    raise ValueError('This edition already has an investor decision. Pending preview is unavailable; inspect its saved review.')
                 cur.execute("SELECT to_regclass('onepager_editions') AS name")
                 if not cur.fetchone()['name']:
                     return jsonify(error='Saved edition not found.'), 404
@@ -158,7 +171,7 @@ def create_blueprint(get_db):
                 from research_onepager import render as brief
                 from research_infographic import render as illustrated
                 financials = result.get('visualFundamentals')
-                context = pending_evidence(run, assignment, record, corrections, documents, financials)
+                context = pending_evidence(run, assignment, record, corrections, documents, financials, parent_id=parent)
                 html = (illustrated(run, assignment['input'], financials, preview=context) if layout == 'illustrated'
                         else brief(run, assignment['input'], preview=context))
                 return jsonify(id=eid, assignmentId=aid, runId=str(rid), ticker=run['ticker'],
