@@ -223,3 +223,15 @@ keeps an unchanged submission's identity while retrying in the mounted screen.
 Only 50 recent corrections and 20 recent editions are shown; deep links and older
 pagination remain open. Acceptance and revised exports are still unavailable.
 No renderer evidence adapter or accepted lineage is implied by this interface.
+
+## Explicit preview evidence adapter — October 12, 11:00 UTC
+
+`onepager_edition_evidence.pending_evidence` revalidates a server-loaded pending
+record, isolates a derived report and returns a typed context with a separate
+claim map. Changed claims retain pending_editorial provenance and never masquerade
+as model-supported reviews. Their original citations remain untouched and cannot
+pass the shared original-evidence gate with changed wording. The adapter is not
+yet connected to either renderer. Integration must preserve pending labels on
+individual claims and the printed page, update readiness using the same explicit
+context, and keep original/default/thesis paths unchanged. Accepted decisions,
+accepted lineage, API preview and version-specific export remain unimplemented.

@@ -2,7 +2,27 @@
 
 Updated: October 11, 2026
 
-## T205 — pending edition review screen (verification pending)
+## T206 — isolated pending-preview evidence adapter (verification pending)
+
+Added onepager_edition_evidence.py as an internal, currently unused adapter.
+It revalidates a server-loaded pending edition and its current original evidence,
+then creates a deep-copied report and a separate explicit claim map. Corrections
+carry pending_editorial provenance, edition/correction IDs and original source
+metadata; they never acquire review=supported or passageMatched on the claim.
+Original citations remain untouched and the shared valid_citations gate rejects
+changed wording. Canonical array/escaped-key paths preserve same-case identity.
+Four synthetic tests cover isolation, original retention, shared-gate exclusion,
+source/report drift, tampered/accepted records and exact pointer replacement.
+1113 backend and 143 frontend tests, compilation, model-policy baseline 75097e5
+and the production build passed; hosted verification is pending.
+No renderer or endpoint consumes this adapter yet. Pending-preview layout, evidence
+readiness, footer labels and both render entry points still require integration;
+there is no new export, investor decision or source refresh in this increment.
+The future server caller must lock/reload inputs in the transaction and pass the
+typed context explicitly. Do not enable proposals via a client flag or broaden
+shared evidence rules. T205 release receipts are also retained in this checkpoint.
+
+## T205 — pending edition review screen (verified live)
 
 The saved assignment infographic now includes “One-pager editions · pending review.”
 Users can group 1–20 existing corrections, inspect original/proposed full wording,
@@ -16,7 +36,13 @@ Three frontend tests cover ordered identity, bounds, stale/conflicting selection
 and labels. Synthetic UI save/reload, desktop comparison and 390px mobile wrapping
 were inspected using the actual component and workspace styles (no overflow).
 1109 backend and 143 frontend tests, model policy baseline 75097e5 and the
-production build passed. Hosted release verification is pending.
+production build passed. Backend e7ad825248b149c60e163d4b6b80834d5b941b8e
+verified healthy; Cloudflare 93c06dde-52e9-44b5-b2e1-022828a04f8f deployed.
+Hosted JS and service worker match tested bytes. Mac last seen 10:34:52 UTC,
+collection 10:35:03, pending delivery zero and unavailable reads empty. No agent
+change/restart. Generated bundle diff flags pre-existing Markdown hard-break
+spaces in an unrelated template literal; source whitespace checks pass and the
+literal was preserved. Synthetic desktop evidence: /tmp/charlie-edition-ui/desktop.png.
 The harness used synthetic in-memory API responses with the pure edition validator;
 T204's disposable database tests cover persistence. No production POST or paid call.
 Next: explicit accepted/pending evidence adapters, transaction-safe investor decisions
