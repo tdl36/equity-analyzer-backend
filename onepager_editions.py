@@ -2,7 +2,7 @@
 import json
 import uuid
 from flask import Blueprint, jsonify, request, Response
-from onepager_corrections import digest
+from onepager_corrections import digest, evidence_items
 from onepager_edition_contract import baseline, prepare_edition
 from onepager_decisions import read_lineage, record_decision
 
@@ -107,7 +107,7 @@ def create_blueprint(get_db, investor_identity=lambda: None):
                 # Only fetch originals named by this report; validation rejects
                 # unrelated correction IDs, ambiguous documents and stale records.
                 files = sorted({s['filename'] for s in run.get('sources', [])
-                                if s.get('id') in {r['proposal'].get('sourceId') for r in corrections}})
+                                if s.get('id') in {e.get('sourceId') for r in corrections for e in evidence_items(r['proposal'])}})
                 documents = {}
                 for filename in files:
                     cur.execute('SELECT filename,file_data,metadata FROM document_files WHERE ticker=%s AND filename=%s FOR SHARE', (run['ticker'], filename))

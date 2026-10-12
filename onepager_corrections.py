@@ -22,8 +22,33 @@ def preparation(run):
             'sources':[{'id':s['id'],'filename':s['filename'],'sha256':s.get('originalHash')} for s in run.get('sources',[])]}
 
 
+def evidence_items(proposal):
+    """Primary plus explicitly supplied additional originals, preserving old records."""
+    return [proposal] + proposal.get('additionalEvidence', [])
+
+
+def submission_evidence(body):
+    extra=body.get('additionalEvidence', [])
+    if not isinstance(extra,list) or ('additionalEvidence' in body and not 1<=len(extra)<=7):
+        raise ValueError('Add between one and seven additional originals.')
+    items=[{k:body.get(k) for k in ('sourceId','excerpt','locator')}]
+    for item in extra:
+        if not isinstance(item,dict) or set(item)!={'sourceId','excerpt','locator'}:
+            raise ValueError('Additional evidence must contain only source ID, passage and locator.')
+        items.append(item)
+    ids=[]
+    for item in items:
+        if not isinstance(item['sourceId'],str) or not item['sourceId'] or item['sourceId'] in ids:
+            raise ValueError('Choose distinct frozen originals for each evidence passage.')
+        ids.append(item['sourceId'])
+        for key,limit in [('excerpt',4000),('locator',200)]:
+            if not isinstance(item[key],str) or not item[key].strip() or len(item[key])>limit:
+                raise ValueError('Evidence text is missing or exceeds its limit.')
+    return items
+
+
 def prepare(run,body,document):
-    if not isinstance(body,dict) or set(body)!={'requestId','fingerprint','path','statement','basis','reason','sourceId','excerpt','locator'}:
+    if not isinstance(body,dict) or set(body)-{'additionalEvidence'}!={'requestId','fingerprint','path','statement','basis','reason','sourceId','excerpt','locator'}:
         raise ValueError('Use the correction form; unknown review or approval fields are not accepted.')
     try:identity=str(uuid.UUID(body['requestId']))
     except (ValueError,TypeError,AttributeError):raise ValueError('Invalid correction identity.') from None
@@ -35,17 +60,22 @@ def prepare(run,body,document):
         if not isinstance(body[key],str) or not body[key].strip() or len(body[key])>limit:raise ValueError('Correction text is missing or exceeds its limit.')
     if body['statement']==fields[body['path']]:raise ValueError('The proposed wording is unchanged.')
     if body['basis'] not in ('reported_fact','management_guidance','broker_estimate','interpretation','hypothesis'):raise ValueError('Choose a claim type.')
-    source=next((s for s in run.get('sources',[]) if s['id']==body['sourceId']),None)
-    if not source:raise ValueError('Choose a source from this frozen report.')
-    if not document or not eligible(document.get('metadata') or {}):raise ValueError('The source is unavailable or restricted. Restore eligible original evidence before submitting.')
-    verified_original(source,document,(run.get('input',{}).get('hashes') or {}).get(source['filename']))
-    excerpt=' '.join(body['excerpt'].split())
-    if len(excerpt)<30 or excerpt not in ' '.join(str(source.get('text') or '').split()):
-        raise ValueError('The passage was not matched in this report’s frozen extracted source. Inspect the original; do not substitute another source.')
+    checked=[]
+    for item in submission_evidence(body):
+        source=next((s for s in run.get('sources',[]) if s['id']==item['sourceId']),None)
+        if not source:raise ValueError('Choose a source from this frozen report.')
+        doc=document.get(source['filename']) if isinstance(document,dict) and 'file_data' not in document else document
+        if not doc or not eligible(doc.get('metadata') or {}):raise ValueError('The source is unavailable or restricted. Restore eligible original evidence before submitting.')
+        verified_original(source,doc,(run.get('input',{}).get('hashes') or {}).get(source['filename']))
+        excerpt=' '.join(item['excerpt'].split())
+        if len(excerpt)<30 or excerpt not in ' '.join(str(source.get('text') or '').split()):
+            raise ValueError('The passage was not matched in this report’s frozen extracted source. Inspect the original; do not substitute another source.')
+        checked.append({**item,'filename':source['filename'],'sha256':source['originalHash']})
     proposal={k:body[k] for k in ('path','statement','basis','reason','sourceId','excerpt','locator')}
-    proposal.update(before=fields[body['path']],filename=source['filename'],sha256=source['originalHash'],
+    proposal.update(before=fields[body['path']],filename=checked[0]['filename'],sha256=checked[0]['sha256'],
                     passageMatched=True,review='pending',
                     caveat='Passage matches frozen extracted text and original bytes. Claim meaning, completeness and locator still require investor review. No research or thesis was changed.')
+    if 'additionalEvidence' in body:proposal['additionalEvidence']=checked[1:]
     return identity,digest(body),proposal
 
 
@@ -60,7 +90,7 @@ def create_blueprint(get_db):
         try:
             uuid.UUID(rid)
             body=request.get_json(silent=True) if request.method=='POST' else None
-            if request.method=='POST' and (not isinstance(body,dict) or len(json.dumps(body))>20000):raise ValueError('Invalid or oversized correction.')
+            if request.method=='POST' and (not isinstance(body,dict) or len(json.dumps(body))>50000):raise ValueError('Invalid or oversized correction.')
             with get_db(commit=request.method=='POST') as (_,cur):
                 cur.execute('SELECT id,ticker,status,input,baseline,sources,state FROM stock_analysis_runs WHERE id=%s'+(' FOR SHARE' if request.method=='POST' else ''),(rid,))
                 row=cur.fetchone()
@@ -88,10 +118,13 @@ def create_blueprint(get_db):
                 if prior:
                     if str(prior['run_id'])!=rid or prior['payload_hash']!=digest(body):return jsonify(error='This submission identity belongs to different wording. Reload saved corrections.'),409
                     return jsonify(id=ident,reused=True,status='pending')
-                source=next((s for s in run.get('sources',[]) if s['id']==body.get('sourceId')),None)
-                if not source:raise ValueError('Choose a source from this frozen report.')
-                cur.execute('SELECT filename,file_data,metadata FROM document_files WHERE ticker=%s AND filename=%s FOR SHARE',(run['ticker'],source['filename']))
-                ident,signature,proposal=prepare(run,body,cur.fetchone())
+                documents={}
+                for item in submission_evidence(body):
+                    source=next((s for s in run.get('sources',[]) if s['id']==item['sourceId']),None)
+                    if not source:raise ValueError('Choose a source from this frozen report.')
+                    cur.execute('SELECT filename,file_data,metadata FROM document_files WHERE ticker=%s AND filename=%s FOR SHARE',(run['ticker'],source['filename']))
+                    documents[source['filename']]=cur.fetchone()
+                ident,signature,proposal=prepare(run,body,documents)
                 cur.execute('INSERT INTO onepager_corrections(id,run_id,fingerprint,payload_hash,proposal) VALUES(%s,%s,%s,%s,%s::jsonb)',(ident,rid,pack['fingerprint'],signature,json.dumps(proposal)))
                 return jsonify(id=ident,reused=False,status='pending'),201
         except (ValueError,TypeError,AttributeError) as exc:return jsonify(error=str(exc)),400

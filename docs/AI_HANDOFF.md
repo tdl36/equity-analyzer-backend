@@ -2,7 +2,26 @@
 
 Updated: October 12, 2026
 
-## T216 — resumable private editorial handoff (verification pending)
+## T217 — multiple originals per editorial claim (release prepared)
+
+One-pager corrections now support a primary original plus up to seven additional
+frozen originals. The browser and private handoff share the bounded contract.
+Each passage, exact original bytes and current usage restrictions are checked;
+edition creation, preview, investor decision and export retain every citation.
+Existing single-source payloads and records retain their signatures and shape.
+No source discovery, paid call, research overwrite or investor approval is added.
+Four new synthetic tests cover multi-source preview retention, changed/missing/
+restricted secondary originals, forged evidence, HTTP replay and legacy records.
+Full suite passed 1165 backend tests before the final additional HTTP test; all
+four new tests passed together afterward. Frontend 146 tests, compile, model
+policy baseline 75097e5 and production build passed. Isolated headless Chrome
+form validation passed at desktop and 390px mobile widths, including the exact
+submitted two-source payload and saved evidence display; fixture CSS only, not
+full workspace visual acceptance. No live correction was submitted.
+New scenario-row authoring, real-source editorial benchmarks, origin-specific
+refresh and full eight-priority acceptance remain open. Deployment pending.
+
+## T216 — resumable private editorial handoff (verified live)
 
 Added onepager_handoff.py prepare/submit using fixed authenticated correction and
 edition routes. Private local preparation freezes report, financials and accepted
@@ -19,6 +38,11 @@ baseline 75097e5 and production frontend build passed.
 Seven synthetic tests cover pending handoff, lost responses, stale baselines,
 changed content, prohibited fields/locations and receipt mismatch. New scenario
 rows, multi-source claims and real-source quality acceptance remain open.
+Backend 3d97e538e39b227ef1b27e2af659156676f5ce32 verified healthy after rollout
+502s; Cloudflare 41b2158f-182f-4637-b7f9-4389a0455383 deployed, hosted JS and
+service-worker exact bytes verified. No Mac agent source change/restart. Final
+receipts and documentation clarification retained for the next source commit.
+
 
 ## T215 — bounded metadata recovery (verified live)
 

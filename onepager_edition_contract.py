@@ -88,8 +88,10 @@ def prepare_edition(run, assignment, body, corrections, documents, fundamentals,
             raise ValueError('Select only one correction for each claim.')
         replay = {name: proposal.get(name) for name in
                   ('path', 'statement', 'basis', 'reason', 'sourceId', 'excerpt', 'locator')}
+        if 'additionalEvidence' in proposal:
+            replay['additionalEvidence']=[{k:e.get(k) for k in ('sourceId','excerpt','locator')} for e in proposal['additionalEvidence']]
         replay.update(requestId=key, fingerprint=current['fingerprint'])
-        _, signature, checked = prepare(run, replay, documents.get(proposal.get('filename')))
+        _, signature, checked = prepare(run, replay, documents)
         if row.get('payload_hash') != signature or proposal != checked:
             raise ValueError('Saved correction evidence changed. Prepare a new correction.')
         paths.add(checked['path'])

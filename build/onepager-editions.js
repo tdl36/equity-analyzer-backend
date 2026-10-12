@@ -180,11 +180,15 @@ export function OnepagerEditions({
     }
   }
   function evidence(p) {
-    var source = run.sources.find(s => s.id === p.sourceId && s.filename === p.filename && s.originalHash === p.sha256);
-    return /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Inspect evidence and provenance"), /*#__PURE__*/React.createElement("p", null, basisLabel(p.basis), " \xB7 ", p.filename, " \xB7 ", p.locator), /*#__PURE__*/React.createElement("blockquote", null, p.excerpt), /*#__PURE__*/React.createElement("p", null, p.caveat), source ? /*#__PURE__*/React.createElement("button", {
-      disabled: busy,
-      onClick: () => onOriginal(source)
-    }, "Download verified original") : /*#__PURE__*/React.createElement("p", null, "The original no longer matches this report. Inspect the saved source pack."), /*#__PURE__*/React.createElement("small", null, "Claim ", p.path, " \xB7 Original SHA-256 ", p.sha256));
+    return /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Inspect evidence and provenance"), /*#__PURE__*/React.createElement("p", null, basisLabel(p.basis), " \xB7 ", p.caveat), [p, ...(p.additionalEvidence || [])].map((e, i) => {
+      var source = run.sources.find(s => s.id === e.sourceId && s.filename === e.filename && s.originalHash === e.sha256);
+      return /*#__PURE__*/React.createElement("div", {
+        key: i
+      }, /*#__PURE__*/React.createElement("p", null, e.filename, " \xB7 ", e.locator), /*#__PURE__*/React.createElement("blockquote", null, e.excerpt), source ? /*#__PURE__*/React.createElement("button", {
+        disabled: busy,
+        onClick: () => onOriginal(source)
+      }, "Download verified original") : /*#__PURE__*/React.createElement("p", null, "The original no longer matches this report. Inspect the saved source pack."), /*#__PURE__*/React.createElement("small", null, "Original SHA-256 ", e.sha256));
+    }), /*#__PURE__*/React.createElement("small", null, "Claim ", p.path));
   }
   var selectionError = '';
   if (selected.length && pack) try {

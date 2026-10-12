@@ -1,11 +1,12 @@
 # Versioned one-pager editorial handoff
 
-Implementation contract, October 12, 2026. T202 implements a bounded first
-stage: immutable pending corrections to existing scalar fields, one frozen source
-per correction, with a before/after review list. No acceptance, new rows, derived
-rendering or authoring helper is implemented. The remaining contract below is
-planned, not authorization to approve research. T201 readiness and T202 pending
-corrections do not repair or replace the saved investment argument.
+Implementation contract and dated implementation history, October 12, 2026.
+Through T216, existing scalar corrections, explicit pending editions, investor
+accept/reject decisions, version-specific rendering/export and private resumable
+handoff are implemented. New rows and multi-source corrections remain planned.
+Earlier checkpoint sections describe their state at that checkpoint, not current
+availability. The contract never authorizes the assistant to approve research;
+matching passages and saving a proposal do not establish investment quality.
 
 ## Why a separate revision is required
 
@@ -331,7 +332,12 @@ folders. Inspect the registered originals separately; preparation is not review.
 Fill `claims` with 1–20 objects containing exactly `path`, `statement`, `basis`,
 `reason`, `sourceId`, `excerpt`, `locator`. Use the existing correction limits and
 basis vocabulary; the server matches passages and rechecks bytes/usage. New rows
-and multiple sources per claim are still unsupported; do not fabricate paths.
+remain unsupported; do not fabricate paths. A claim may also supply optional
+`additionalEvidence`: 1–7 objects containing exactly `sourceId`, `excerpt`,
+`locator`, each naming a different original from the frozen pack. Every passage,
+original hash and usage restriction is checked through edition review/export.
+The browser supports the same bounded additions; older single-source records retain
+their original shape and identities.
 
 `onepager_handoff.py submit --workspace /private/local/path` journals identities
 before posting pending corrections and a complete pending edition selection.

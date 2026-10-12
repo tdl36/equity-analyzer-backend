@@ -7,7 +7,7 @@ import re
 import uuid
 import requests
 from thesis_handoff import secret, save, read
-from onepager_corrections import digest
+from onepager_corrections import digest, submission_evidence
 
 BASE='https://equity-analyzer-backend.onrender.com'
 KEYS=('assignmentId','runId','ticker','fingerprint','fundamentalsDigest','parentId')
@@ -68,8 +68,8 @@ def submit(path,call=request):
         if not isinstance(claims,list) or not 1<=len(claims)<=20:raise ValueError('Supply 1–20 replacement claims.')
         paths={f['path'] for f in prep['fields']};sources={s['id'] for s in prep['sources']};seen=set()
         for c in claims:
-            if not isinstance(c,dict) or set(c)!=CLAIM_KEYS:raise ValueError('Unknown or missing claim fields; review flags are forbidden.')
-            if not isinstance(c['path'],str) or c['path'] not in paths or c['path'] in seen or c['sourceId'] not in sources:
+            if not isinstance(c,dict) or set(c)-{'additionalEvidence'}!=CLAIM_KEYS:raise ValueError('Unknown or missing claim fields; review flags are forbidden.')
+            if not isinstance(c['path'],str) or c['path'] not in paths or c['path'] in seen or any(e['sourceId'] not in sources for e in submission_evidence(c)):
                 raise ValueError('Choose distinct existing fields and frozen source IDs.')
             seen.add(c['path'])
         signature=digest({'preparation':prep,'proposal':proposal})

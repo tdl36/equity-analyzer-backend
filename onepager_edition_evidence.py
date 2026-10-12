@@ -6,7 +6,7 @@ pending editorial proposals, never model-supported or investor-accepted claims.
 import copy
 from dataclasses import dataclass
 from onepager_edition_contract import prepare_edition
-from onepager_corrections import digest
+from onepager_corrections import digest, evidence_items
 from stock_evidence import valid_citations, report_fields
 
 
@@ -105,9 +105,9 @@ def pending_evidence(run, assignment, record, corrections, documents, financials
             'statement': p['statement'], 'basis': p['basis'],
             'reviewOrigin': 'pending_editorial', 'editionId': checked['id'],
             'correctionId': entry['correctionId'],
-            'evidence': [{'sourceId': p['sourceId'], 'excerpt': p['excerpt'],
-                          'locator': p['locator'], 'originalHash': p['sha256'],
-                          'matched': True}],
+            'evidence': [{'sourceId': e['sourceId'], 'excerpt': e['excerpt'],
+                          'locator': e['locator'], 'originalHash': e['sha256'],
+                          'matched': True} for e in evidence_items(p)],
             'caveat': p['caveat'],
         }
     return PendingEditionEvidence(checked['id'], derived, claims,

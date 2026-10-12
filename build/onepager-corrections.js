@@ -14,6 +14,7 @@ export function OnepagerCorrections({
     [sourceId, setSource] = React.useState(''),
     [excerpt, setExcerpt] = React.useState(''),
     [locator, setLocator] = React.useState('');
+  var [additionalEvidence, setAdditionalEvidence] = React.useState([]);
   var locked = React.useRef(false),
     pending = React.useRef(null),
     alive = React.useRef(true);
@@ -65,7 +66,10 @@ export function OnepagerCorrections({
         reason,
         sourceId,
         excerpt,
-        locator
+        locator,
+        ...(additionalEvidence.length ? {
+          additionalEvidence
+        } : {})
       };
       var signature = JSON.stringify(value);
       if (pending.current?.signature !== signature) pending.current = {
@@ -82,6 +86,7 @@ export function OnepagerCorrections({
         setReason('');
         setExcerpt('');
         setLocator('');
+        setAdditionalEvidence([]);
         await load();
       }
     } catch (e) {
@@ -150,8 +155,55 @@ export function OnepagerCorrections({
     value: locator,
     onChange: e => setLocator(e.target.value),
     maxLength: 200
+  })), additionalEvidence.map((e, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    style: {
+      borderTop: '1px solid #ddd',
+      paddingTop: 12,
+      marginTop: 12
+    }
+  }, /*#__PURE__*/React.createElement("h5", null, "Additional original ", i + 1), /*#__PURE__*/React.createElement("label", null, "Frozen source", /*#__PURE__*/React.createElement("select", {
+    value: e.sourceId,
+    onChange: event => setAdditionalEvidence(items => items.map((x, j) => j === i ? {
+      ...x,
+      sourceId: event.target.value
+    } : x))
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "Choose another original"), pack.sources.map(x => /*#__PURE__*/React.createElement("option", {
+    key: x.id,
+    value: x.id
+  }, x.filename)))), e.sourceId && /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: () => onOriginal(run.sources.find(x => x.id === e.sourceId))
+  }, "Download verified original"), /*#__PURE__*/React.createElement("label", null, "Exact supporting passage", /*#__PURE__*/React.createElement("textarea", {
+    rows: 4,
+    maxLength: 4000,
+    value: e.excerpt,
+    onChange: event => setAdditionalEvidence(items => items.map((x, j) => j === i ? {
+      ...x,
+      excerpt: event.target.value
+    } : x))
+  })), /*#__PURE__*/React.createElement("label", null, "Page or section locator", /*#__PURE__*/React.createElement("input", {
+    maxLength: 200,
+    value: e.locator,
+    onChange: event => setAdditionalEvidence(items => items.map((x, j) => j === i ? {
+      ...x,
+      locator: event.target.value
+    } : x))
   })), /*#__PURE__*/React.createElement("button", {
-    disabled: !path || !statement.trim() || !reason.trim() || !sourceId || !excerpt.trim() || !locator.trim(),
+    type: "button",
+    onClick: () => setAdditionalEvidence(items => items.filter((_, j) => j !== i))
+  }, "Remove additional original"))), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    disabled: additionalEvidence.length >= 7,
+    onClick: () => setAdditionalEvidence(items => [...items, {
+      sourceId: '',
+      excerpt: '',
+      locator: ''
+    }])
+  }, "Add another supporting original"), /*#__PURE__*/React.createElement("button", {
+    disabled: !path || !statement.trim() || !reason.trim() || !sourceId || !excerpt.trim() || !locator.trim() || additionalEvidence.some(e => !e.sourceId || !e.excerpt.trim() || !e.locator.trim()),
     onClick: submit
   }, busy ? 'Saving…' : 'Save pending correction')), /*#__PURE__*/React.createElement("h4", null, "Pending corrections"), /*#__PURE__*/React.createElement("p", null, "Showing up to ", pack.limit, " most recent records. No correction is accepted automatically."), pack.corrections.length ? pack.corrections.map(c => /*#__PURE__*/React.createElement("article", {
     key: c.id,
@@ -168,5 +220,7 @@ export function OnepagerCorrections({
     style: {
       whiteSpace: 'pre-wrap'
     }
-  }, c.proposal.statement))), /*#__PURE__*/React.createElement("p", null, c.proposal.reason), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Inspect supporting evidence"), /*#__PURE__*/React.createElement("p", null, c.proposal.filename, " \xB7 ", c.proposal.locator), /*#__PURE__*/React.createElement("blockquote", null, c.proposal.excerpt), /*#__PURE__*/React.createElement("p", null, c.proposal.caveat), /*#__PURE__*/React.createElement("small", null, "Correction ", c.id, " \xB7 ", c.proposal.path)))) : /*#__PURE__*/React.createElement("p", null, "No saved corrections for this report.")));
+  }, c.proposal.statement))), /*#__PURE__*/React.createElement("p", null, c.proposal.reason), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Inspect supporting evidence"), [c.proposal, ...(c.proposal.additionalEvidence || [])].map((e, i) => /*#__PURE__*/React.createElement("div", {
+    key: i
+  }, /*#__PURE__*/React.createElement("p", null, e.filename, " \xB7 ", e.locator), /*#__PURE__*/React.createElement("blockquote", null, e.excerpt))), /*#__PURE__*/React.createElement("p", null, c.proposal.caveat), /*#__PURE__*/React.createElement("small", null, "Correction ", c.id, " \xB7 ", c.proposal.path)))) : /*#__PURE__*/React.createElement("p", null, "No saved corrections for this report.")));
 }
