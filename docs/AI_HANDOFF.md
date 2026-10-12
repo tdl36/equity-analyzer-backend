@@ -2,7 +2,22 @@
 
 Updated: October 12, 2026
 
-## T228 — pending illustrated review layout (release verification pending)
+## T229 — print continuation review status (verification pending)
+
+Illustrated renderer v24 repeats a pending/not-accepted review header and page X
+of Y in A4 print margin boxes. Ordinary report prints carry a research-review-draft
+header. Existing notices, source citations, financials and approval state stay intact;
+Calibri/black text and body sizes are preserved. Screen layout is unchanged.
+Modern Chrome PDF validation of the actual ABT preview with candidate styles found
+two pages, both with the pending header and correct page count; page 2 inspected.
+This does not achieve the one-page or substantive valuation acceptance criteria.
+1190 backend and 148 frontend tests, compile, model-policy baseline 75097e5 and
+production build passed. Desktop/phone screenshots were pixel-identical to T228.
+Activity showed no running/processing jobs before release.
+No paid research, source changes or investor decisions. Further editorial reduction
+requires preserving the conditional arguments; do not hide content to force a page.
+
+## T228 — pending illustrated review layout (verified live)
 
 Fix invalid nested paragraph markup in the company overview: a source-backed claim
 now stays in its own description column beside the market facts. Pending claim
@@ -18,6 +33,13 @@ phone widths without horizontal overflow. A4 print still takes TWO pages; no
 professional one-page acceptance is claimed. Historical valuation, fundamental
 scenarios and investor acceptance remain open. Abandoned private grid experiments
 were not incorporated. Continue editorial/layout work without hiding qualifications.
+
+Backend b020cb4d26ffe45684f5000d34916a9fa9904ba7 verified healthy after rollout;
+Cloudflare e549d8b0-8893-42f3-bc9b-3bbb120cb98a deployed. Hosted bundle and
+service worker match local bytes. Live ABT preview returned pending with the corrected
+container; desktop/phone checks and A4 page count reconfirmed (two pages). Mac agent
+reported current, zero pending collection delivery and no unavailable inventories.
+No local-agent change/restart. This receipt is retained for the next source commit.
 
 ## ABT real-source pending edition — October 12, 21:56 UTC wake
 

@@ -42,6 +42,13 @@ class PendingRenderTests(unittest.TestCase):
         self.assertIsNone(dom.select_one('p p'))
         self.assertIn('Pending editorial preview — not accepted', dom.get_text())
 
+    def test_print_continuations_keep_pending_status_and_page_count(self):
+        args=fixture();preview=pending_evidence(*args)
+        render=lambda **kw:illustrated(args[0],args[1]['input'],args[5],**kw)
+        self.assertIn('Charlie / Pending review - not accepted',render(preview=preview))
+        self.assertNotIn('Charlie / Pending review - not accepted',render())
+        self.assertIn('counter(page) " of " counter(pages)',render(preview=preview))
+
     def test_pending_readiness_is_not_supported_or_investor_accepted(self):
         args=fixture();preview=pending_evidence(*args)
         row=readiness(args[0],{'view':True},preview=preview)[2]
