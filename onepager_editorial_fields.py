@@ -11,6 +11,8 @@ def editable_fields(report):
     fields={p:v for p,v in report_fields(report).items() if isinstance(v,str) and len(v)<=12000}
     from onepager_core_fields import missing_fields
     fields.update(missing_fields(report))
+    from onepager_monitor_fields import missing_fields as missing_monitor_fields
+    fields.update(missing_monitor_fields(report))
     cases=report.get('scenarios')
     if cases is None:cases=[]
     if isinstance(cases,list):
@@ -40,5 +42,8 @@ def add_scenario_field(report,path,statement):
 def add_editorial_field(report,path,statement):
     if path.startswith('/scenarios/'):
         return add_scenario_field(report,path,statement)
+    if path.startswith('/monitor/kpis/'):
+        from onepager_monitor_fields import add_field
+        return add_field(report,path,statement)
     from onepager_core_fields import add_field
     return add_field(report,path,statement)

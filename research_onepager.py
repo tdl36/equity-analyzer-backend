@@ -10,7 +10,7 @@ import html
 import re
 from urllib.parse import urlparse
 
-VERSION = 'research-onepager-v3'
+VERSION = 'research-onepager-v4'
 
 
 def esc(value):
@@ -103,7 +103,19 @@ def render(run, assignment, *, preview=None):
         if name and value:
             valuations.append(claim(value, labeled_statement(name)))
     valuation = ''.join(valuations[:2]) or gap('Current company valuation and comparable historical multiples are not established in this evidence pack. No price target or fair-value conclusion is presented.')
-    monitor = group('/monitor/breakers/', 2) or group('/risks/', 1) or gap('Monitoring evidence requires further review.')
+    monitoring=[]
+    for i in range(3):
+        prefix=f'/monitor/kpis/{i}/'
+        metric=get(prefix+'metric')
+        if not metric:continue
+        row=claim(metric)
+        for key,label in [('current','Baseline'),('bull_threshold','Positive threshold'),
+                          ('bear_threshold','Negative threshold'),('timing','Timing'),
+                          ('why_it_matters','Investment relevance')]:
+            field=get(prefix+key)
+            row+=claim(field,label) if field else gap(label+': not established in saved evidence.')
+        monitoring.append(row)
+    monitor = ''.join(monitoring[:2]) or group('/monitor/breakers/', 2) or group('/risks/', 1) or gap('Monitoring evidence requires further review.')
     # Only a complete named scenario is usable; never print an unlabelled implied price.
     scenarios = []
     for i in range(3):

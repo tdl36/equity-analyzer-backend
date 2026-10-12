@@ -198,7 +198,7 @@ class AssignmentPostgresTests(unittest.TestCase):
         original=self.client.get(path+'?render=original')
         self.assertEqual(original.status_code,200)
         refreshed=self.client.get(path)
-        self.assertIn(b'research-onepager-v3',refreshed.data)
+        self.assertIn(b'research-onepager-v4',refreshed.data)
         self.assertEqual(before,self.co.read(self.ident))
         self.assertEqual(len(self.submits),1)
         self.report_status='running'

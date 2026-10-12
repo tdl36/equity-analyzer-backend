@@ -13,7 +13,7 @@ from onepager_edition_evidence import render_evidence, editorial_label, labeled_
 from onepager_editorial import ordered_candidates, statement_identity
 from scenario_arithmetic import check as check_scenario_arithmetic
 
-VERSION='stock-infographic-v21'
+VERSION='stock-infographic-v22'
 e=lambda value:html.escape(str(value if value is not None else ''),quote=True)
 
 @lru_cache(maxsize=3)
@@ -248,10 +248,10 @@ def render(run,assignment,fundamentals, *, preview=None):
     else:
         valuation+='<div class="scenario-gap"><h3>Scenario valuation assumptions</h3>'+scenario_content+'</div>'
     kpis=structured_rows(ed,'/monitor/kpis/','metric',
-                         ['metric','current','bull_threshold','bear_threshold','why_it_matters'])
+                         ['metric','current','bull_threshold','bear_threshold','timing','why_it_matters'])
     monitor_rows=''.join('<tr><th>'+ed.claim(row['metric'])+'</th><td>'+labeled_fields(ed,row,[
         ('current','Baseline'),('bull_threshold','Positive threshold'),
-        ('bear_threshold','Negative threshold'),('why_it_matters','Investment relevance')])+
+        ('bear_threshold','Negative threshold'),('timing','Timing'),('why_it_matters','Investment relevance')])+
         '</td></tr>' for row in kpis)
     if monitor_rows:
         monitoring_note='Thresholds retain their saved qualifiers and periods. A missing period is not an established monitoring deadline.'

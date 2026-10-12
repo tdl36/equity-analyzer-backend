@@ -2,7 +2,48 @@
 
 Updated: October 12, 2026
 
-## T225 — editorial source-policy preflight (verification pending)
+## T226 — source-checked monitoring proposals (release in progress)
+
+The existing editorial form/private handoff now allow missing fields in three
+monitoring rows: metric, baseline, positive and negative thresholds, explicit timing
+and investment relevance. Additions use exact paths, retain row positions, refuse
+malformed containers and stay pending with existing source-policy, byte, passage,
+baseline and investor decision gates. Neither deadlines nor thresholds are inferred.
+Both brief and illustrated renderers keep monitoring inputs in their own anchored
+row, preserve qualifications and show missing inputs explicitly. Historical saved
+exports remain unchanged. No live claims, approval or paid research were created.
+
+Synthetic source/edition tests cover additions, malformed paths, unchanged originals,
+pending labels, orphan timing and qualified timing in both renderers. Synthetic
+Chrome desktop/phone checks showed no horizontal overflow and monitoring sections
+were inspected visually; these are not real-source or full print acceptance.
+1187 backend and 148 frontend tests passed. Production build, compile and
+model-policy baseline 75097e5 passed. Release receipt follows after deployment. ABT/UNH restrictions remain held;
+legacy WELL, historical valuation, investor benchmarks and full one-click acceptance
+remain open.
+
+## UNH source-policy finding — October 12, 20:54 UTC wake
+
+UNH's six frozen originals were retrieved through verified read routes and matched
+independently to their saved SHA-256 values. PDF extraction is not substantive
+review; no investment-content assessment or new proposal was completed. The
+Evercore September 14 original contains explicit AI-input/use restrictions on
+PDF page 7, despite passing saved metadata preflight. Written consent is not
+established. T224 restriction recording set aiAllowed=false for that exact source;
+T225 live preflight then returned sourcePolicyReady=false and identified it.
+Originals and the completed UNH report/outputs remain preserved; no paid replay,
+approval or report rewrite. Existing completion does not certify source permission.
+
+Private receipts and held status:
+`/Users/tonydlee/.charlie-workspaces/onepager-unh-20261012-source-review`.
+Both ABT and UNH editorial packs now require permission resolution or an explicitly
+eligible new source pack. Their saved research must not be silently repurposed to
+bypass the restriction. No code change/deployment in this wake; production T225.
+Continue independent implementation within the eight priorities while these real
+source benchmark packs remain held. Metadata preflight is not a substitute for
+original disclosure inspection. This finding was notified once; deduplicate it.
+
+## T225 — editorial source-policy preflight (verified live)
 
 Editorial preparation now reads current document metadata for every frozen source
 and labels each eligible, restricted or missing. This read-only metadata check is
@@ -16,6 +57,12 @@ blocked by this preflight. Transactional submission/export checks remain authori
 1183 backend and 148 frontend tests, Python compile, model-policy baseline
 75097e5 and production build passed. Synthetic Chrome verified the hold and readable history at desktop/mobile widths,
 read-only reload and restored-policy form access, with no POST; fixture CSS only.
+Backend 58e1e6347efb616f10c134a8e83bfc1bb371e6fa verified healthy after rollout;
+Cloudflare d162f00e-7737-4cc6-a7ab-e2af179a72c1 and hosted bundle/service-worker
+exact bytes verified. Live read-only ABT preflight returns sourcePolicyReady=false
+and identifies the restricted JPMorgan original. Mac/collection snapshots remain
+current with no pending delivery. No agent change/restart. Post-release receipt
+retained for the next source commit.
 No live research, proposal, approval or paid run was created. ABT remains held by
 the observed source restriction. Full priority/one-click acceptance remains open.
 
