@@ -2,7 +2,33 @@
 
 Updated: October 11, 2026
 
-## T207 — explicit pending renderer context (release prepared)
+## T208 — revalidated pending preview access (release prepared)
+
+Saved editions now expose Preview pending investment map and Preview pending
+brief. The private/no-store GET route names both assignment and edition and rejects
+unknown layouts/approval flags. It locks the assignment, edition, report, corrections
+and every frozen original through revalidation and rendering. All pack originals,
+including unchanged claim sources, must retain exact bytes and eligible usage.
+Missing/changed/restricted evidence or stale financial/report baselines returns an
+error without HTML. No schema writes, provider calls, acceptance or research changes.
+The UI checks returned edition/report/company identity, uses an empty-sandbox iframe,
+clears prior previews before opening/reloading and retains explicit pending labels.
+Four disposable PostgreSQL tests cover both layouts, scoped/private read-only access,
+no GET schema creation, unchanged-source restrictions, stale/tampered evidence and
+concurrent updates blocked until rendering releases locks. One frontend identity
+test rejects unrelated or accepted preview responses. 1122 backend and 144 frontend
+tests, Python compilation, policy baseline 75097e5 and the production build passed.
+Source whitespace checks pass; the generated bundle retains pre-existing Markdown
+hard-break spaces in an unrelated template literal. Synthetic desktop and
+390px mobile UI opened/switched both layouts against the real blueprint backed by
+an isolated disposable database; reload clears the previous preview. Outer mobile
+page width remained 390px. Evidence: /tmp/charlie-t208-ui/preview-desktop.png.
+The test server and temporary browser tab were closed. No live proposal was created
+or approved. Actual PDF acceptance, investor decisions/lineage, accepted exports,
+new rows and multi-source correction packages remain unfinished. This is preview
+access, not completion of professional one-pager or one-click refresh acceptance.
+
+## T207 — explicit pending renderer context (verified live)
 
 Both brief and illustrated renderers now accept a typed pending edition only via
 an explicit internal argument. Ordinary render calls retain identical HTML in
@@ -19,7 +45,12 @@ readiness and whole-claim omission. Synthetic desktop and 390px mobile HTML were
 visually inspected: pending labels/readiness are present, with no horizontal
 page overflow. No actual PDF or investor quality acceptance is claimed.
 1118 backend and 143 frontend tests, Python compilation, model policy against
-75097e5 and the production build passed. Deployment verification follows.
+75097e5 and the production build passed. Backend revision
+b7a9b08f5092b8ad765a4b65d81aaeda93ac47d5 verified healthy after transient
+rollout 502s. Cloudflare 6a1291d3-5ca3-4f0d-ac76-7fe8be4d2e89 deployed;
+hosted JS/service-worker bytes match the tested build. Mac last seen 11:37:57
+UTC, collection 11:38:12, pending delivery zero and unavailable empty. No
+agent change/restart, live proposal mutation, paid call or investor approval.
 No production route consumes this context yet; the next step is a private,
 explicit edition preview route that locks/reloads server evidence in one transaction,
 plus review UI navigation. Accepted decisions/lineage and revised exports remain

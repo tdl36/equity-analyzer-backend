@@ -1,24 +1,28 @@
 import * as React from 'react';
-import {editionSelection,claimLabel,basisLabel} from './onepager-edition-model.mjs';
+import {editionSelection,claimLabel,basisLabel,verifiedEditionPreview} from './onepager-edition-model.mjs';
 
 export function OnepagerEditions({api,run,assignmentId,onOriginal}){
- const [pack,setPack]=React.useState(null),[rows,setRows]=React.useState([]),[selected,setSelected]=React.useState([]),[error,setError]=React.useState(''),[notice,setNotice]=React.useState(''),[busy,setBusy]=React.useState(false);
+ const [pack,setPack]=React.useState(null),[rows,setRows]=React.useState([]),[selected,setSelected]=React.useState([]),[error,setError]=React.useState(''),[notice,setNotice]=React.useState(''),[busy,setBusy]=React.useState(false),[preview,setPreview]=React.useState(null);
  const alive=React.useRef(true),locked=React.useRef(false),pending=React.useRef(null);
  const url=api+`/api/research/assignments/${assignmentId}/onepager-editions`;
  async function read(path,body){const r=await fetch(path,{...(body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(30000)});let d;try{d=await r.json();}catch{throw Error('The response could not be read. Reload saved editions before retrying.');}if(!r.ok)throw Error(d.error||'Editions unavailable');return d;}
  async function load(){const [p,c]=await Promise.all([read(url),read(api+`/api/research/stock-analysis-run/${run.id}/corrections`)]);if(p.runId!==run.id||p.assignmentId!==assignmentId||p.ticker!==run.ticker||c.runId!==run.id)throw Error('The saved edition belongs to another report. Reopen its assignment.');if(alive.current){setPack(p);setRows(c.corrections);}}
- async function reload(){if(locked.current)return;locked.current=true;setBusy(true);setError('');try{await load();}catch(e){if(alive.current)setError(e.message);}finally{locked.current=false;if(alive.current)setBusy(false);}}
+ async function reload(){if(locked.current)return;setPreview(null);locked.current=true;setBusy(true);setError('');try{await load();}catch(e){if(alive.current)setError(e.message);}finally{locked.current=false;if(alive.current)setBusy(false);}}
  React.useEffect(()=>{alive.current=true;reload();return()=>{alive.current=false;};},[url,run.id]);
- async function save(){if(locked.current)return;locked.current=true;setBusy(true);setError('');setNotice('');try{
+ async function save(){if(locked.current)return;setPreview(null);locked.current=true;setBusy(true);setError('');setNotice('');try{
   const value=editionSelection(pack,rows,selected,'');const signature=JSON.stringify(value);
   if(pending.current?.signature!==signature)pending.current={signature,body:{...value,requestId:crypto.randomUUID()}};
   const result=await read(url,pending.current.body);
   if(alive.current){pending.current=null;setSelected([]);setNotice(`Pending edition ${result.id} saved. No correction has been accepted or applied.`);await load();}
  }catch(e){if(alive.current)setError(e.message+' Inspect saved editions before retrying. An unchanged selection keeps its submission identity.');}finally{locked.current=false;if(alive.current)setBusy(false);}}
+ async function openPreview(id,layout){if(locked.current)return;locked.current=true;setBusy(true);setError('');setPreview(null);try{
+  const value=verifiedEditionPreview(await read(url+`/${encodeURIComponent(id)}/preview?layout=${layout}`),id,assignmentId,run.id,run.ticker);
+  if(alive.current)setPreview(value);
+ }catch(e){if(alive.current)setError(e.message);}finally{locked.current=false;if(alive.current)setBusy(false);}}
  function evidence(p){const source=run.sources.find(s=>s.id===p.sourceId&&s.filename===p.filename&&s.originalHash===p.sha256);return <details><summary>Inspect evidence and provenance</summary><p>{basisLabel(p.basis)} · {p.filename} · {p.locator}</p><blockquote>{p.excerpt}</blockquote><p>{p.caveat}</p>{source?<button disabled={busy} onClick={()=>onOriginal(source)}>Download verified original</button>:<p>The original no longer matches this report. Inspect the saved source pack.</p>}<small>Claim {p.path} · Original SHA-256 {p.sha256}</small></details>;}
  let selectionError='';if(selected.length&&pack)try{editionSelection(pack,rows,selected,'');}catch(e){selectionError=e.message;}
  return <details className="sa-prepare"><summary>One-pager editions · pending review</summary>
- <p>Group source-linked corrections into a saved edition for this assignment. Review the complete wording and evidence together. Acceptance and revised exports are not available yet.</p>
+ <p>Group source-linked corrections into a saved edition for this assignment. Review the complete wording and evidence together, then open a labeled pending preview. Acceptance and revised exports are not available yet.</p>
  <small>Assignment {assignmentId} · Report {run.id}</small>
  <button disabled={busy} onClick={reload}>Reload editions and corrections</button>
  {error&&<p role="alert">{error}</p>}{notice&&<p role="status">{notice}</p>}
@@ -28,9 +32,10 @@ export function OnepagerEditions({api,run,assignmentId,onOriginal}){
  <label className="sa-check"><input type="checkbox" checked={selected.includes(c.id)} disabled={c.stale||c.fingerprint!==pack.fingerprint||(!selected.includes(c.id)&&selected.length>=20)} onChange={e=>setSelected(ids=>e.target.checked?[...ids,c.id]:ids.filter(id=>id!==c.id))}/><span>{claimLabel(c.proposal.path)}{c.stale||c.fingerprint!==pack.fingerprint?' · Baseline changed; prepare again':''}</span></label>
  <div className="sa-form-grid"><div><h5>Original</h5><p>{c.proposal.before}</p></div><div><h5>Proposed · {basisLabel(c.proposal.basis)}</h5><p>{c.proposal.statement}</p></div></div><p>{c.proposal.reason}</p>{evidence(c.proposal)}</article>)}
  {!rows.length&&<p>No pending corrections have been saved for this report.</p>}
- {selectionError&&<p role="alert">{selectionError}</p>}<button disabled={!selected.length||!!selectionError} onClick={save}>{busy?'Saving…':`Save pending edition (${selected.length}/20)`}</button></fieldset>
+ {selectionError&&<p role="alert">{selectionError}</p>}<button disabled={!selected.length||!!selectionError} onClick={save}>{busy?'Working…':`Save pending edition (${selected.length}/20)`}</button></fieldset>
  <h4>Saved editions</h4><p>Showing up to {pack.limit} most recent editions. A saved edition is a review record, not an approved one-pager. Original availability and usage restrictions are rechecked when saving; opening this list does not reverify them.</p>
- {pack.editions.map(e=><article key={e.id}><h5>Pending edition · {new Date(e.created_at).toLocaleString()}</h5><small>Edition {e.id}{e.stale?' · Baseline changed; prepare a new edition':''}</small>{e.record.claims.map(c=><details key={c.correctionId}><summary>{claimLabel(c.proposal.path)}</summary><div className="sa-form-grid"><div><h5>Original</h5><p>{c.proposal.before}</p></div><div><h5>Proposed · {basisLabel(c.proposal.basis)}</h5><p>{c.proposal.statement}</p></div></div><p>{c.proposal.reason}</p>{evidence(c.proposal)}<small>Correction {c.correctionId}</small></details>)}</article>)}
+ {pack.editions.map(e=><article key={e.id}><h5>Pending edition · {new Date(e.created_at).toLocaleString()}</h5><small>Edition {e.id}{e.stale?' · Baseline changed; prepare a new edition':''}</small><div><button disabled={busy||e.stale} onClick={()=>openPreview(e.id,'illustrated')}>Preview pending investment map</button><button disabled={busy||e.stale} onClick={()=>openPreview(e.id,'brief')}>Preview pending brief</button></div>{e.record.claims.map(c=><details key={c.correctionId}><summary>{claimLabel(c.proposal.path)}</summary><div className="sa-form-grid"><div><h5>Original</h5><p>{c.proposal.before}</p></div><div><h5>Proposed · {basisLabel(c.proposal.basis)}</h5><p>{c.proposal.statement}</p></div></div><p>{c.proposal.reason}</p>{evidence(c.proposal)}<small>Correction {c.correctionId}</small></details>)}</article>)}
+ {preview&&<section aria-label="Pending edition preview"><h4>Pending preview · not accepted</h4><small>Edition {preview.id} · {preview.layout==='brief'?'Brief':'Investment map'}</small><p>{preview.caveat}</p><button onClick={()=>setPreview(null)}>Close pending preview</button><iframe title={`${run.ticker} pending edition ${preview.id}`} sandbox="" srcDoc={preview.html} style={{width:'100%',height:850,border:'1px solid #ccd7de',background:'white'}}/></section>}
  {!pack.editions.length&&<p>No saved editions for this assignment.</p>}</>}
  </details>;
 }

@@ -249,3 +249,16 @@ constructing this context. No public/client preview flag enables the adapter.
 Synthetic HTML desktop/mobile checks and tests cover this internal integration;
 actual PDF, explicit preview route/UI navigation, investor decisions, accepted
 lineage and accepted exports remain future work.
+
+
+## Explicit pending preview access — October 12, 12:00 UTC
+
+GET /api/research/assignments/<aid>/onepager-editions/<eid>/preview now revalidates
+and renders only that saved pending edition. The layout is illustrated (default)
+or brief. Shared locks retain assignment/edition/report/correction/original state
+through rendering; every frozen original, not only corrected-claim sources, is
+checked for exact bytes and current usage eligibility. Stale inputs fail without
+HTML. Reads do not create schema or work. The review UI offers both pending layouts
+in a sandboxed frame and checks the returned identity. Original/default artifact
+routes remain unchanged. No accepted decision, default promotion, revised export,
+private authoring helper, new rows or actual PDF acceptance is implemented.

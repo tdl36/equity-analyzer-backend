@@ -104,3 +104,87 @@ class EditionPersistenceTests(unittest.TestCase):
             self.assertEqual(r.status_code, 400, r.json)
         with self.db(True) as (_, c): c.execute("UPDATE mp_jobs SET status='cancelled'")
         self.assertEqual(self.client().post(self.url, json=self.body).status_code, 409)
+
+    def test_preview_both_layouts_private_readonly_and_scoped(self):
+        path=self.url+'/'+EID+'/preview'
+        self.assertEqual(self.client().get(path).status_code,404)
+        with self.db() as (_,c):
+            c.execute("SELECT to_regclass('onepager_editions') AS name");self.assertIsNone(c.fetchone()['name'])
+        self.assertEqual(self.client().post(self.url,json=self.body).status_code,201)
+        for layout in ('brief','illustrated'):
+            r=self.client().get(path+'?layout='+layout)
+            self.assertEqual(r.status_code,200,r.json)
+            self.assertEqual(r.headers['Cache-Control'],'private, no-store')
+            self.assertEqual(r.json['id'],EID);self.assertEqual(r.json['status'],'pending')
+            self.assertIn('Proposed claim',r.json['html'])
+            self.assertIn('Pending editorial proposal — not accepted',r.json['html'])
+            self.assertNotIn('Synthetic source',r.json['html'])
+        self.assertEqual(self.client().get(path+'?accepted=true').status_code,400)
+        self.assertEqual(self.client().get(path+'?layout=accepted').status_code,400)
+        self.assertEqual(self.client().get(path.replace(AID,EID)).status_code,404)
+        with self.db() as (_,c):
+            c.execute('SELECT state FROM stock_analysis_runs');self.assertEqual(c.fetchone()['state'],self.run['state'])
+            c.execute('SELECT result FROM mp_jobs');self.assertEqual(c.fetchone()['result'],self.assignment['result'])
+            c.execute('SELECT count(*) AS n FROM onepager_editions');self.assertEqual(c.fetchone()['n'],1)
+
+    def test_preview_rechecks_snapshot_policy_bytes_and_record(self):
+        for mutation in ("UPDATE mp_jobs SET result=jsonb_set(result,'{visualFundamentals,price}','101'::jsonb)",
+                         "UPDATE document_files SET metadata='{\"usage\":\"reference_only\"}'::jsonb",
+                         "UPDATE document_files SET file_data='Y2hhbmdlZA=='",
+                         "UPDATE onepager_editions SET record=jsonb_set(record,'{status}','\"accepted\"'::jsonb)",
+                         "UPDATE onepager_corrections SET payload_hash='changed'"):
+            self.setUp()
+            self.assertEqual(self.client().post(self.url,json=self.body).status_code,201)
+            with self.db(True) as (_,c):c.execute(mutation)
+            r=self.client().get(self.url+'/'+EID+'/preview')
+            self.assertEqual(r.status_code,409,r.json)
+            self.assertNotIn('html',r.json)
+            self.assertEqual(r.headers['Cache-Control'],'private, no-store')
+
+    def test_preview_locks_evidence_through_render(self):
+        from threading import Event
+        from unittest.mock import patch
+        import psycopg2
+        from research_infographic import render
+        entered,release=Event(),Event()
+        self.assertEqual(self.client().post(self.url,json=self.body).status_code,201)
+        def held(*args,**kwargs):
+            entered.set()
+            if not release.wait(5):raise AssertionError('Synthetic lock test timed out')
+            return render(*args,**kwargs)
+        with patch('research_infographic.render',side_effect=held),ThreadPoolExecutor(max_workers=1) as pool:
+            future=pool.submit(lambda:self.client().get(self.url+'/'+EID+'/preview'))
+            try:
+                self.assertTrue(entered.wait(5))
+                with self.assertRaises(psycopg2.errors.LockNotAvailable):
+                    with self.db(True) as (_,c):
+                        c.execute("SET LOCAL lock_timeout='100ms'")
+                        c.execute("UPDATE document_files SET metadata='{\"usage\":\"reference_only\"}'::jsonb")
+            finally:release.set()
+            self.assertEqual(future.result().status_code,200)
+
+    def test_preview_rechecks_unchanged_source_as_well_as_corrected_source(self):
+        import copy
+        from onepager_corrections import preparation,prepare
+        run=copy.deepcopy(self.run)
+        other=copy.deepcopy(run['sources'][0]);other.update(id='s2',filename='unchanged.txt')
+        run['sources'].append(other)
+        run['input'].setdefault('hashes',{})['unchanged.txt']=other['originalHash']
+        fingerprint=preparation(run)['fingerprint']
+        with self.db(True) as (_,c):
+            c.execute('SELECT * FROM onepager_corrections');row=c.fetchone();p=row['proposal']
+            c.execute('SELECT filename,file_data,metadata FROM document_files');doc=dict(c.fetchone())
+            body={k:p[k] for k in ('path','statement','basis','reason','sourceId','excerpt','locator')}
+            body.update(requestId=str(row['id']),fingerprint=fingerprint)
+            _,signature,proposal=prepare(run,body,doc)
+            c.execute('UPDATE stock_analysis_runs SET input=%s::jsonb,sources=%s::jsonb',(json.dumps(run['input']),json.dumps(run['sources'])))
+            c.execute('UPDATE onepager_corrections SET fingerprint=%s,payload_hash=%s,proposal=%s::jsonb',(fingerprint,signature,json.dumps(proposal)))
+            c.execute("INSERT INTO document_files(ticker,filename,file_data,metadata) VALUES('TEST','unchanged.txt',%s,'{}'::jsonb)",(doc['file_data'],))
+        self.body.update({k:v for k,v in baseline(run,self.assignment,self.assignment['result']['visualFundamentals']).items() if k!='ticker'})
+        self.assertEqual(self.client().post(self.url,json=self.body).status_code,201)
+        path=self.url+'/'+EID+'/preview'
+        self.assertEqual(self.client().get(path).status_code,200)
+        with self.db(True) as (_,c):c.execute("UPDATE document_files SET metadata='{\"usage\":\"reference_only\"}'::jsonb WHERE filename='unchanged.txt'")
+        r=self.client().get(path)
+        self.assertEqual(r.status_code,409,r.json)
+        self.assertIn('restricted',r.json['error'])
