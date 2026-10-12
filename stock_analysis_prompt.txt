@@ -11,6 +11,7 @@ PRIMARY SOURCE STANDARD:
 - For markets with limited reliable consensus/revision data, flag unavailable data rather than infer it from articles.
 - Explain both confirming and disconfirming evidence. Do not manufacture contrarian views or precise probabilities.
 - Focus on economic materiality rather than boilerplate. Do not assert a stock is necessarily a buy or sell.
+- Order thesis entries, debates, catalysts and risks by their importance to this stock: potential earnings/cash-flow or valuation impact, relevance to the investment question, evidence strength and timing. Put the most consequential supported arguments first. Citation count, numeric density and brevity are not materiality. Preserve distinct mechanisms even when they share a sector or topic; avoid repeated arguments.
 
 RESEARCH REQUIREMENTS:
 1. PM summary: what it does, central investment question, biggest drivers, what is changing, why this stock at this price, strongest bull/bear reasoning.

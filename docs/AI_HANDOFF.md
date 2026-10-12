@@ -2,6 +2,26 @@
 
 Updated: October 11, 2026
 
+## T192 — preserve research order in one-pager selection (verification pending)
+
+Extracted stable evidence ordering into onepager_editorial.py. Removed numeric
+and citation-count scoring, managed-care keyword bonuses, inferred topic labels,
+and topic-based suppression. Supported claims follow their saved category and
+numeric row order; whole-claim page limits and missing-section notices remain.
+Duplicate suppression compares repeated text within a selected section, so a
+headline or debate cannot consume the only thesis statement. Distinct arguments
+sharing sector terminology remain eligible. Debates stay paired with their own
+resolution evidence; unsupported topic labels become neutral numbered debates.
+Future generation instructions request financially material arguments first;
+existing report order is not retroactively certified as materiality ranking.
+No model, token cap, saved research or source pack changed, and no paid QA.
+1056 backend and 140 frontend tests, touched-module compilation, policy against
+75097e5 and frontend build passed. Saved ABT/UNH were re-rendered privately;
+ABT remains incomplete. UNH desktop and 390px layouts inspected; no horizontal
+overflow. Neither example is professionally accepted. Deployment pending.
+Next: structured prospective signposts and scenario valuation inputs with
+provenance; do not confuse this deterministic selection fix with expert judgment.
+
 ## Phase-1 process-interruption acceptance — October 12, 02:00 UTC
 
 Added real subprocess death/concurrency tests around the production reservation,
@@ -17,7 +37,11 @@ the earlier thread-level tests to OS process interruption; it is still synthetic
 provider evidence, not proof of live provider cancellation or bill reconciliation.
 All 1054 backend tests passed, including these four subprocess checks; the new
 test module compiles. No runtime behavior or frontend assets changed; this is a
-test/documentation increment. Keep T191 as the product release. The legacy WELL
+test/documentation increment. Commit 65c74d31a2b49282d44df4eb9900a73231fb0fa4
+pushed; automatic Render rollout verified healthy after transient 502s. Hosted
+JS/SW remain exact T191 bytes; no Cloudflare redeploy was needed. Mac heartbeat
+02:03:57 UTC; no unavailable Activity reads. Keep T191 as the product release.
+The legacy WELL
 provider outcome and user-driven end-to-end live acceptance remain unresolved.
 Continue the one-pager editorial/valuation work recorded in the saved-output audit;
 do not replace missing investment content with more success labels.

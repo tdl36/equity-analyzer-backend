@@ -12,13 +12,13 @@ class EditorialTests(unittest.TestCase):
         for key in parts[:-1]:node=node.setdefault(key,{})
         node[parts[-1]]=statement
         self.run['state']['citations'][path]=dict(statement=statement,review='supported',passageMatched=True,evidence=[dict(sourceId='s',matched=True)]) | kw
-    def test_rank_distinct_evidence_and_keep_full_qualified_claim(self):
+    def test_preserve_distinct_same_sector_arguments_and_full_qualifiers(self):
         self.add('/summary/investment_thesis/0','MA margins could recover, but only if costs stabilize')
-        self.add('/summary/investment_thesis/1','MA margins improving with pricing')
+        self.add('/summary/investment_thesis/1','MA margins face regulatory pressure independent of costs')
         self.add('/summary/investment_thesis/2','Medicaid rates could improve from a loss')
         editor=Editor(self.run);picked=editor.select(['/summary/investment_thesis/'],2)
         self.assertEqual(len(picked),2)
-        self.assertEqual(sum('MA margins' in c['statement'] for c in picked),1)
+        self.assertEqual(sum('MA margins' in c['statement'] for c in picked),2)
         self.assertIn('only if costs stabilize',editor.claim(editor.get('/summary/investment_thesis/0')))
     def test_two_debates_no_crosspair_and_no_unreviewed_claim(self):
         for i in range(2):
@@ -73,7 +73,7 @@ class EditorialTests(unittest.TestCase):
     def test_thesis_prefers_complete_ownership_argument_to_short_driver(self):
         self.add('/summary/investment_thesis/0','Margins can recover if renewal prices exceed medical cost growth.')
         self.add('/summary/top_drivers/0','2027 margin recovery')
-        picked=Editor(self.run).select(['/summary/investment_thesis/','/summary/top_drivers/'],1,prefer_prefix=True)
+        picked=Editor(self.run).select(['/summary/investment_thesis/','/summary/top_drivers/'],1)
         self.assertEqual(picked[0]['statement'],'Margins can recover if renewal prices exceed medical cost growth.')
         h=render(self.run,{},self.f)
         self.assertNotIn('What must be true for the investment case to work?',h)
@@ -108,6 +108,28 @@ class EditorialTests(unittest.TestCase):
         self.add('/summary/earnings_direction','Long statement ' * 30)
         h=render(self.run,{},self.f)
         self.assertIn('Missing from this page: investment view.',h)
+
+    def test_report_order_beats_numeric_density_source_count_and_citation_insertion(self):
+        self.add('/summary/investment_thesis/10','Medical costs: 123%, 456 basis points.',
+                 evidence=[{'sourceId':'s','matched':True}]*3)
+        self.add('/summary/investment_thesis/2','Pricing may improve margins if demand holds.')
+        self.add('/summary/investment_thesis/0','Cash conversion depends on inventory normalizing.')
+        editor=Editor(self.run)
+        picked=editor.select(['/summary/investment_thesis/'],2,budget=380)
+        self.assertEqual([c['statement'] for c in picked],[
+            'Cash conversion depends on inventory normalizing.',
+            'Pricing may improve margins if demand holds.'])
+
+    def test_same_thesis_as_headline_is_not_lost_and_exact_duplicates_are_suppressed(self):
+        statement='Margins can recover if prices outpace costs.'
+        self.add('/infographic/headline',statement)
+        self.add('/summary/investment_thesis/0',statement)
+        self.add('/summary/investment_thesis/1','  '+statement.upper()+'  ')
+        self.add('/summary/investment_thesis/2','Cash conversion depends on inventories.')
+        h=render(self.run,{},self.f)
+        self.assertNotIn('Source-supported thesis evidence unavailable.',h)
+        self.assertIn('Cash conversion depends on inventories.',h)
+        self.assertNotIn(statement.upper(),h)
 
     def test_printed_footer_keeps_citation_targets_and_safe_source_links(self):
         self.run['sources'][0]['sourceUrl']='https://example.com/original'

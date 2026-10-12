@@ -9,8 +9,9 @@ from pathlib import Path
 from urllib.parse import urlparse
 from visual_business_profiles import PROFILES
 from stock_evidence import valid_citations
+from onepager_editorial import ordered_candidates, statement_identity
 
-VERSION='stock-infographic-v11'
+VERSION='stock-infographic-v12'
 e=lambda value:html.escape(str(value if value is not None else ''),quote=True)
 
 @lru_cache(maxsize=3)
@@ -22,11 +23,8 @@ def industry_art(kind):
 def numeric(value):
     return isinstance(value,(int,float)) and not isinstance(value,bool) and math.isfinite(value)
 
-def sentence_key(text):
-    return set(re.findall(r'[a-z0-9]+',text.lower()))-{'the','a','and','of','to','in','with','for','by','is','at'}
-
 class Editor:
-    """Rank supported evidence by relevance and strength, then suppress repeated ideas."""
+    """Retain saved research order and whole claims within the page budget."""
     def __init__(self,run):
         self.sources=run.get('sources',[])
         self.refs={s['id']:i+1 for i,s in enumerate(self.sources)}
@@ -38,20 +36,14 @@ class Editor:
         if len(c['statement'])<=limit:return True
         self.omitted.add(c['statement']);return False
     def fresh(self,c):
-        k=sentence_key(c['statement'])
-        return all(len(k & old)/max(1,len(k | old))<.62 for old in self.used)
-    def score(self,item):
-        p,c=item;t=c['statement']
-        sources=len({x.get('sourceId') for x in c.get('evidence',[]) if x.get('matched')})
-        return (sources*3+(4 if topic(c)!='Investment debate' and topic(c)==topic(self.cs.get('/infographic/headline',{'statement':''})) else 0)+min(3,len(re.findall(r'\d',t)))+(2 if c.get('basis') in ('reported_fact','reported fact') else 0),-len(t),p)
-    def select(self,prefixes,limit=2,exclude=(),budget=300,prefer_prefix=False):
-        items=[x for x in self.cs.items() if any(x[0].startswith(p) for p in prefixes) and not any(x[0].endswith(z) for z in exclude)]
-        selected=[]
-        rank=lambda item: ((-next(i for i,p in enumerate(prefixes) if item[0].startswith(p)),) if prefer_prefix else ())+self.score(item)
-        for _,c in sorted(items,key=rank,reverse=True):
-            if not self.fits(c,min(240,budget)) or not self.fresh(c):continue
-            if any(topic(c)==topic(prior) and topic(c)!='Investment debate' for prior in selected):continue
-            selected.append(c);budget-=len(c['statement']);self.used.append(sentence_key(c['statement']))
+        return statement_identity(c['statement']) not in self.used
+    def select(self,prefixes,limit=2,exclude=(),budget=300):
+        selected=[];seen=set()
+        for _,c in ordered_candidates(self.cs,prefixes,exclude):
+            identity=statement_identity(c['statement'])
+            if not self.fits(c,min(240,budget)) or identity in seen:continue
+            seen.add(identity)
+            selected.append(c);budget-=len(c['statement']);self.used.append(statement_identity(c['statement']))
             if len(selected)>=limit:break
         return selected
     def refs_html(self,c):
@@ -60,7 +52,7 @@ class Editor:
         return '<sup>'+','.join(f'<a href="#source-{n}">{n}</a>' for n in ids)+'</sup>'
     def claim(self,c,remember=False):
         if not c:return '<span class="missing">Evidence needed</span>'
-        if remember:self.used.append(sentence_key(c['statement']))
+        if remember:self.used.append(statement_identity(c['statement']))
         basis={'broker_estimate':'Estimate','broker estimate':'Estimate','interpretation':'Interpretation'}.get(c.get('basis'),'Source view')
         return '<p class="claim"><span class="basis">'+basis+'</span> '+e(c['statement'])+self.refs_html(c)+'</p>'
 
@@ -101,12 +93,6 @@ def sensitivity(q):
         out+='</tr>'
     return out+'</tbody></table><p class="micro">±10% EPS / P/E; EPS = price ÷ forward P/E. Mechanical values, not forecasts. [M]</p>'
 
-def topic(c):
-    t=c['statement'].lower()
-    for name,words in [('Star ratings',('star','cahps')),('Commercial pricing',('idr','commercial')),('Optum recovery',('optum','oh ')),('Medical costs',('utilization','medical')),('Medicaid',('medicaid',)),('Medicare margins',('ma margin','medicare advantage')),('Capital returns',('buyback','debt/'))]:
-        if any(w in t for w in words):return name
-    return 'Investment debate'
-
 def section(n,title,body,sub=''):
     return f'<section class="panel"><header><span class="number">{n}</span><h2>{e(title)}</h2><span class="sub">{e(sub)}</span></header>{body}</section>'
 
@@ -118,7 +104,7 @@ def render(run,assignment,fundamentals):
     if not ed.fits(headline,180):headline=None
     headline_text=re.sub(r'^'+re.escape(ticker)+r'\s*:\s*','',headline['statement']) if headline else 'The business, the evidence and the investment case'
     headline_refs=ed.refs_html(headline) if headline else ''
-    if headline:ed.used.append(sentence_key(headline['statement']))
+    if headline:ed.used.append(statement_identity(headline['statement']))
     overview=e(profile['overview'])+' <sup>[B]</sup>' if profile.get('overview') else ed.claim(ed.get('/summary/one_liner'))
     asof=e(f.get('asOf',''));window=e(assignment.get('since',''))+' — '+e(assignment.get('until',''))
     head='<div class="mast"><b>CHARLIE / INVESTMENT MAP</b><span>'+e(ticker)+' · '+asof+' · REVIEW DRAFT</span></div><div class="title"><h1>'+e(profile.get('name') or f.get('company') or ticker)+'</h1><div class="symbol">'+e(ticker)+'</div></div><h2 class="headline">'+e(headline_text)+headline_refs+'</h2>'
@@ -144,14 +130,14 @@ def render(run,assignment,fundamentals):
     for i in range(20):
         prefix=f'/debates/{i}/';a=ed.get(prefix+'market_view') or ed.get(prefix+'evidence_for_market');b=ed.get(prefix+'alternative_view') or ed.get(prefix+'evidence_for_alternative');resolution=ed.get(prefix+'resolution_signal');name=ed.get(prefix+'topic')
         if a and b:candidates.append((a,b,resolution,name))
-    for a,b,resolution,name in sorted(candidates,key=lambda pair:-(ed.score(('',pair[0]))[0]+ed.score(('',pair[1]))[0])):
+    for a,b,resolution,name in candidates:
         size=len(a['statement'])+len(b['statement'])
         if len(debates)>=2:break
         if size>debate_budget or not ed.fits(a,350) or not ed.fits(b,350):
             ed.omitted.update([a['statement'],b['statement']]);continue
-        title=name['statement'] if ed.fits(name,55) else topic(a)
+        title=name['statement'] if ed.fits(name,55) else f'Debate {len(debates)+1}'
         debates.append((a,b,title));debate_budget-=size
-        ed.used.extend([sentence_key(a['statement']),sentence_key(b['statement'])])
+        ed.used.extend([statement_identity(a['statement']),statement_identity(b['statement'])])
         if ed.fits(resolution,min(220,monitor_budget)):
             monitor.append((title,resolution));monitor_budget-=len(resolution['statement'])
     debate='<table class="debates"><thead><tr><th>Market argument</th><th>Counterpoint</th></tr></thead><tbody>'+''.join('<tr><td><h3>'+e(title)+'</h3>'+ed.claim(a)+'</td><td>'+ed.claim(b)+'</td></tr>' for a,b,title in debates)+'</tbody></table>' if debates else '<p>Paired evidence unavailable at one-page length; inspect the full research.</p>'
@@ -201,7 +187,7 @@ def render(run,assignment,fundamentals):
         if not s.get('publisher'):
             name=re.sub(r'--[a-f0-9]+(?=\.)','',name);name=re.sub(r'\.pdf$','',name);name=name.replace(ticker+'-','',1);name=re.sub(r'^\d{4}-','',name).replace('-',' ')
         source_names.append(f'<span id="source-{n}">[{n}] '+link(s.get('sourceUrl',''),name if len(name)<=65 else name[:62]+'…')+'</span>')
-    footer='<div class="footer"><p>'+('Some supported text omitted for length. Read the full research. ' if ed.omitted else '')+'Selected highlights; source matching does not establish investment accuracy.</p><p><b>Dates:</b> Events '+window+' · Financials '+e(latest.get('year',''))+' · Quote '+e(q.get('observedAt','Unavailable')[:10])+'.</p><p>'+e(glossary)+'</p><p>'+ ' · '.join(source_names)+' · [F] '+link(f.get('sourceUrl',''),'SEC filings')+' · [B] '+link(profile.get('source',''),'Business')+' · [M] '+link(q.get('sourceUrl',''),'Market data')+'. Illustration is conceptual.</p></div>'
+    footer='<div class="footer"><p>'+('Some supported text omitted for length. Read the full research. ' if ed.omitted else '')+'Selected highlights in saved research order; source matching does not establish investment accuracy.</p><p><b>Dates:</b> Events '+window+' · Financials '+e(latest.get('year',''))+' · Quote '+e(q.get('observedAt','Unavailable')[:10])+'.</p><p>'+e(glossary)+'</p><p>'+ ' · '.join(source_names)+' · [F] '+link(f.get('sourceUrl',''),'SEC filings')+' · [B] '+link(profile.get('source',''),'Business')+' · [M] '+link(q.get('sourceUrl',''),'Market data')+'. Illustration is conceptual.</p></div>'
     from financial_provenance import register
     details='<details><summary>Source register, dates and calculation inputs</summary>'+register(f)
     for n,s in enumerate(ed.sources,1):details+=f'<p id="register-source-{n}">[{n}] '+link(s.get('sourceUrl',''),s.get('filename','Original'))+'</p>'
