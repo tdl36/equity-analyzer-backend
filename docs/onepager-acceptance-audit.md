@@ -117,3 +117,11 @@ Evidence snapshot SHA-256 receipts (private v18 HTML, not source originals):
 The separate ABT thesis review proposal remains pending and is not certified by
 this one-pager audit. Phase-1 live interruption and legacy provider-outcome
 acceptance also remain open. Later workflow phases remain outstanding.
+
+## Implementation checkpoint — October 12, 08:00 UTC
+
+T199–T201 now expose the core-section and per-case evidence gaps described
+above. The next implementation is the versioned editorial handoff specified in
+`docs/onepager-editorial-handoff.md`, rather than further renderer exceptions.
+Its persistence, source-validation adapter, investor review and UI are planned,
+not implemented. No saved claim or review status changed in this checkpoint.

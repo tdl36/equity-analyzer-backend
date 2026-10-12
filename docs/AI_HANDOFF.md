@@ -2,7 +2,19 @@
 
 Updated: October 11, 2026
 
-## T201 — scenario evidence repair checklist (release prepared)
+## Editorial handoff implementation contract — October 12, 08:00 UTC
+
+Inspected report/source download, assignment visual rendering, current/original
+view, stock-analysis UI and transactional meeting handoff. Documented the next
+bounded end-to-end implementation in docs/onepager-editorial-handoff.md: immutable
+proposal identity, source/hash checks, distinct human review, idempotent pending
+submission, conflict-safe investor acceptance and original/preview/export
+separation. The human-evidence renderer adapter remains a design requirement;
+do not forge supported citations or change original research to preview edits.
+No API, schema, helper, acceptance control or new runtime behavior was added.
+This documentation checkpoint also records T201's already verified deployment.
+
+## T201 — scenario evidence repair checklist (verified live)
 
 The one-pager's collapsed Evidence readiness disclosure now lists the saved
 scenario row and exact paths for eight operating, valuation and failure-condition
@@ -19,7 +31,12 @@ array/object input, bounds and no mutation. 1089 backend and 140 frontend tests
 pass, along with compilation, policy baseline 75097e5 and production build.
 Desktop Chrome disclosure inspected. ABT/UNH print bodies are byte-identical
 after normalizing only the renderer version; no new PDF or mobile inspection.
-Deployment verification follows this commit.
+Backend 0f3c6601c84f1f9964de52cf2de47751e2055dda verified healthy after
+rollout 502s. Cloudflare 4d70eca0-ab65-4064-800b-0a342899add0 deployed.
+Hosted JS/SW and both ABT/UNH v21 HTML match local bytes. No agent change
+or restart, paid model run, research edit, approval or original mutation.
+Activity initially timed out during rollout; read-only retry succeeded. Mac last
+seen 07:37:25 UTC, collection 07:38:01, pending delivery zero, unavailable empty.
 
 ## T200 — distinguish case labels from financial claims (verified live)
 
