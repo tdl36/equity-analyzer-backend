@@ -25,6 +25,23 @@ class PendingRenderTests(unittest.TestCase):
         self.assertEqual(args,before)
         self.assertNotIn('/summary/earnings_direction',valid_citations(preview.run))
 
+    def test_company_claim_has_valid_container_and_visible_pending_marker(self):
+        args=fixture('/summary/one_liner', {'summary':{'one_liner':'Old claim'}})
+        preview=pending_evidence(*args)
+        rendered=illustrated(args[0],args[1]['input'],args[5],preview=preview)
+        from bs4 import BeautifulSoup
+        dom=BeautifulSoup(rendered,'html.parser')
+        overview=dom.select_one('.overview')
+        self.assertEqual([n.get('class') for n in overview.find_all(recursive=False)],
+                         [['company-description'],['facts']])
+        claim=overview.select_one('.company-description .claim')
+        self.assertIn('Proposed claim',claim.get_text())
+        marker=claim.select_one('.editorial-marker')
+        self.assertEqual(marker.get_text(strip=True),'Pending proposal')
+        self.assertEqual(marker['title'],'Pending editorial proposal — not accepted')
+        self.assertIsNone(dom.select_one('p p'))
+        self.assertIn('Pending editorial preview — not accepted', dom.get_text())
+
     def test_pending_readiness_is_not_supported_or_investor_accepted(self):
         args=fixture();preview=pending_evidence(*args)
         row=readiness(args[0],{'view':True},preview=preview)[2]

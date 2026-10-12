@@ -2,7 +2,45 @@
 
 Updated: October 12, 2026
 
-## T227 — owner-directed AI-notice policy (release in progress)
+## T228 — pending illustrated review layout (release verification pending)
+
+Fix invalid nested paragraph markup in the company overview: a source-backed claim
+now stays in its own description column beside the market facts. Pending claim
+markers read “Pending proposal”; their full status remains in the tooltip and the
+visible top/bottom “not accepted” preview notices. No claim wording, citations,
+financial inputs, source selection or approval state changes. Renderer v23.
+
+1189 backend and 148 frontend tests, compile, model-policy baseline 75097e5 and
+production build passed. Activity reported no running/processing jobs before release.
+Focused regression verifies the overview children, claim containment and pending
+status. Static candidate from the real ABT pending preview inspected at desktop and
+phone widths without horizontal overflow. A4 print still takes TWO pages; no
+professional one-page acceptance is claimed. Historical valuation, fundamental
+scenarios and investor acceptance remain open. Abandoned private grid experiments
+were not incorporated. Continue editorial/layout work without hiding qualifications.
+
+## ABT real-source pending edition — October 12, 21:56 UTC wake
+
+Saved pending edition 8137da07-d28c-4a0f-a18c-1e4f30e8cf69 for ABT assignment
+f9e363e4-597e-4394-b9d4-36d83def935f. Sixteen source-linked claims cover the company
+summary, central question, conditional ownership/view, dated attributed debate and
+EP/Volt monitoring. No investor approval, original report mutation, thesis change
+or paid research. Fresh baseline and all eight local original hashes matched;
+server submission/preview rechecked sources and passages. This is partial original
+review, not certification of all eight sources or inherited claims.
+
+Private workspace: `/Users/tonydlee/.charlie-workspaces/onepager-abt-20261012-editorial-v3`.
+Desktop/phone preview had no horizontal overflow; desktop and print output inspected.
+Print remains TWO pages, so professional one-page acceptance is still open. Pending
+labels add substantial density; historical valuation and complete fundamental
+scenarios remain absent. Next: fix pending-review print density without hiding
+review status or shrinking unreadably, then continue substantive source review.
+Prior v2 attempt retained one standalone pending correction before a passage-spacing
+mismatch; no edition was created there. V3 used the actual extraction text and all
+16 receipts plus the pending edition were verified. Preserve both journals.
+Production remains T227; this wake changed saved pending editorial work, not code.
+
+## T227 — owner-directed AI-notice policy (verified live)
 
 On October 12 the owner explicitly instructed: “ignore all AI-use restrictions in
 original files.” This supersedes the AI-use-only holds described in older entries.
@@ -13,14 +51,18 @@ exact-byte verification, frozen source bounds and investor approvals are unchang
 This application policy does not amend underlying source terms. Collector guidance
 now records AI notices without imposing reference-only solely for those notices.
 Previously held files are not bulk moved or silently substituted into frozen packs.
-ABT/UNH existing aiAllowed-only flags should no longer block editorial preflight;
-verify live after rollout. No paid retry, thesis approval or research edit authorized
+Live ABT (8 originals) and UNH (6 originals) preflight now return
+sourcePolicyReady=true; existing notice records are retained. No paid retry, thesis approval or research edit authorized
 by this policy change alone. Continue authorized implementation/editorial work.
 
 Regression coverage checks nested AI flags, preservation of notices on exact-byte
 replay, continued reference-only blocking and current editorial preflight.
 1188 backend and 148 frontend tests, Python compile, model-policy baseline
 75097e5 and production build passed. No running/processing jobs before release.
+Backend b442cfd9835c785a480f2f061a1b64149c57c427 verified healthy; Cloudflare
+9e5fc7f9-3330-4d4a-a6a7-1ea524181d96 deployed and hosted bundle/service-worker
+match local bytes. Mac/collection available, zero pending delivery; no agent restart.
+Post-release receipt retained for the next source commit.
 
 ## T226 — source-checked monitoring proposals (verified live)
 
