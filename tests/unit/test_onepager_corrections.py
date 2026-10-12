@@ -68,6 +68,19 @@ class CorrectionTests(unittest.TestCase):
   c.run['baseline']['revision']=2
   self.assertTrue(client.get(url).json['corrections'][0]['stale'])
   self.assertFalse(any(q.startswith('UPDATE') for q in c.sql))
+ def test_policy_preflight_exposes_restriction_and_keeps_history_readable(self):
+  c=Cursor()
+  @contextmanager
+  def db(commit=False):
+   self.assertFalse(commit);yield None,c
+  app=Flask(__name__);app.register_blueprint(create_blueprint(db));client=app.test_client();url=f'/api/research/stock-analysis-run/{RID}/corrections'
+  self.assertTrue(client.get(url).json['sourcePolicyReady'])
+  c.doc['metadata']={'aiAllowed':False}
+  data=client.get(url).json
+  self.assertFalse(data['sourcePolicyReady']);self.assertEqual(data['sources'][0]['policyStatus'],'restricted');self.assertIn('corrections',data)
+  c.doc=None
+  self.assertEqual(client.get(url).json['sources'][0]['policyStatus'],'missing')
+  self.assertFalse(any('UPDATE' in q or 'INSERT' in q for q in c.sql))
  def test_invalid_body_and_incomplete_report(self):
   run,doc,body=fixture()
   with self.assertRaises(ValueError):preparation({**run,'status':'running'})

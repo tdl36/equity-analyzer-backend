@@ -16,7 +16,7 @@ class HandoffTests(unittest.TestCase):
  def call(self,path,body=None):
   self.calls.append((path,copy.deepcopy(body)))
   if body is None:
-   if path.endswith('/corrections'):return dict(runId=R,ticker='TEST',fingerprint='frozen',fields=[{'path':CLAIM['path'],'before':'Original'}],sources=[{'id':'S1','filename':'one.pdf','sha256':'abc'}])
+   if path.endswith('/corrections'):return dict(sourcePolicyReady=True,runId=R,ticker='TEST',fingerprint='frozen',fields=[{'path':CLAIM['path'],'before':'Original'}],sources=[{'id':'S1','filename':'one.pdf','sha256':'abc'}])
    return {**PACK,**({'parentId':A} if self.changed else {})}
   key=body['requestId'];self.records.setdefault(key,copy.deepcopy(body));assert self.records[key]==body
   result={'id':key,'status':'pending'}
@@ -57,3 +57,18 @@ class HandoffTests(unittest.TestCase):
    return self.call(path,body)
   with self.assertRaisesRegex(ValueError,'receipt mismatch'):submit(self.root,call)
   self.assertEqual(read(self.root/'submission.json')['receipts'],[])
+
+ def test_policy_hold_blocks_preparation_and_unsent_claims_but_not_receipt_reconciliation(self):
+  def blocked(path,body=None):
+   result=self.call(path,body)
+   if body is None and path.endswith('/corrections'):result['sourcePolicyReady']=False
+   return result
+  with tempfile.TemporaryDirectory() as other:
+   with self.assertRaisesRegex(ValueError,'policy preflight'):prepare(A,other,blocked)
+   self.assertFalse((Path(other)/'preparation.json').exists())
+  with self.assertRaisesRegex(ValueError,'restricted originals'):submit(self.root,blocked)
+  self.assertFalse(self.records)
+  self.fail='/onepager-editions'
+  with self.assertRaises(ValueError):submit(self.root,self.call)
+  self.calls=[];submit(self.root,blocked)
+  self.assertEqual(len(self.calls),1)

@@ -2,7 +2,24 @@
 
 Updated: October 12, 2026
 
-## T224 — exact-original restriction recording (release verification pending)
+## T225 — editorial source-policy preflight (verification pending)
+
+Editorial preparation now reads current document metadata for every frozen source
+and labels each eligible, restricted or missing. This read-only metadata check is
+not original-byte verification or permission certification. The correction form
+holds drafting when any source is unavailable/restricted or preflight is absent,
+while keeping saved corrections/history and reload available. Private handoff
+preparation fails before saving a baseline; unsent claims recheck policy. Existing
+edition-response reconciliation retains its exact replay identity and is not
+blocked by this preflight. Transactional submission/export checks remain authoritative.
+
+1183 backend and 148 frontend tests, Python compile, model-policy baseline
+75097e5 and production build passed. Synthetic Chrome verified the hold and readable history at desktop/mobile widths,
+read-only reload and restored-policy form access, with no POST; fixture CSS only.
+No live research, proposal, approval or paid run was created. ABT remains held by
+the observed source restriction. Full priority/one-click acceptance remains open.
+
+## T224 — exact-original restriction recording (verified live)
 
 ABT original-source review found an explicit third-party AI restriction in the
 October 2 JPMorgan preview (disclosures, PDF page 10), while current cloud metadata
@@ -20,8 +37,14 @@ Existing eligible() gates reject the resulting metadata. No paid replay is allow
 1181 backend and 148 frontend tests passed, including disposable PostgreSQL
 concurrent restriction/replay and invalid hash/bytes/body checks. Python compile,
 model-policy baseline 75097e5 and production build passed. No running/processing
-activity was observed before release. Release and live restriction receipt must
-be verified before calling this resolved.
+activity was observed before release.
+
+Verified backend ada5c387ffa7e649244d43562a5fa6044d5b15d8 and Cloudflare
+8be1306b-c6db-43ca-9f0f-c4475d2c1347; hosted /dist/app.js and service-worker
+match local bytes. The exact JPMorgan original now has aiAllowed=false, preserves
+its prior metadata/hash, and fails eligible(). Private restriction receipt saved
+with the source-review workspace. No agent code changed or restart performed.
+This resolves recording the restriction, not permission or the affected research.
 Saved ABT outputs may already contain this source; they are not silently removed or
 rewritten. New proposed editions using the full pack should fail current-policy
 checks. Recovery requires resolving permission or explicitly preparing a new

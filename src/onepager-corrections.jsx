@@ -9,17 +9,18 @@ export function OnepagerCorrections({api,run,onOriginal}){
  async function call(body){const r=await fetch(url,{...(body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(30000)});const d=await r.json();if(!r.ok)throw Error(d.error||'Corrections unavailable');return d;}
  async function load(){try{const d=await call();if(alive.current){setPack(d);setError('');}}catch(e){if(alive.current)setError(e.message);}}
  React.useEffect(()=>{alive.current=true;load();return()=>{alive.current=false;};},[url]);
- async function submit(){if(locked.current)return;locked.current=true;setBusy(true);setError('');try{
+ async function submit(){if(locked.current||policyBlocked)return;locked.current=true;setBusy(true);setError('');try{
   const value={fingerprint:pack.fingerprint,path,statement,basis,reason,sourceId,excerpt,locator,...(additionalEvidence.length?{additionalEvidence}:{})};const signature=JSON.stringify(value);
   if(pending.current?.signature!==signature)pending.current={signature,body:{...value,requestId:crypto.randomUUID()}};
   await call(pending.current.body);if(alive.current){pending.current=null;setStatement('');setReason('');setExcerpt('');setLocator('');setAdditionalEvidence([]);await load();}
  }catch(e){if(alive.current)setError(e.message+' Inspect saved corrections before retrying; unchanged form data retains its submission identity.');}finally{locked.current=false;if(alive.current)setBusy(false);}}
+ const policyBlocked=pack?.sourcePolicyReady!==true;
  const selected=pack?.fields.find(f=>f.path===path);
  const title=p=>p.replace(/^\//,'').split('/').map(x=>/^\d+$/.test(x)?String(Number(x)+1):x.replaceAll('_',' ')).join(' · ');
  return <details className="sa-prepare"><summary>Propose a correction for review</summary>
  <p>Save proposed wording separately from this report. The passage is checked against the frozen source and original file. Meaning and completeness still need investor review. These pending records cannot be applied or published here; the current report, one-pager and thesis stay unchanged.</p>
  {error&&<p role="alert">{error}</p>}<button disabled={busy} onClick={load}>Reload saved corrections</button>
- {!pack?<p>Loading saved evidence…</p>:<><fieldset disabled={busy}>
+ {!pack?<p>Loading saved evidence…</p>:<>{policyBlocked&&<div role="alert"><p>Editorial preparation is on hold. This frozen pack has a missing or restricted original, or its policy check is unavailable. Resolve source access or prepare a new eligible pack. Saved research and corrections remain available.</p><ul>{pack.sources.filter(s=>s.policyStatus!=='eligible').map(s=><li key={s.id}>{s.filename} · {s.policyStatus||'Policy not checked'}</li>)}</ul></div>}<p>Source policy is a metadata preflight; original bytes and current restrictions are checked again when submitting and exporting.</p><fieldset disabled={busy||policyBlocked}>
  <label>Claim or missing investment field<select value={path} onChange={e=>setPath(e.target.value)}><option value="">Choose a permitted field</option>{pack.fields.map(f=><option key={f.path} value={f.path}>{title(f.path)}{f.before===null?' · Add missing input':''}</option>)}</select></label>
  {selected&&<><h5>Original wording</h5><p style={{whiteSpace:'pre-wrap'}}>{selected.before===null?'New proposed field; no saved value.':selected.before||'Unavailable'}</p></>}
  <label>Proposed wording<textarea value={statement} onChange={e=>setStatement(e.target.value)} maxLength={2000} rows={4}/></label>

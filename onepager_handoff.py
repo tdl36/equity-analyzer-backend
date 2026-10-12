@@ -51,6 +51,8 @@ def prepare(assignment,path,call=request):
         if pack['assignmentId']!=assignment:raise ValueError('Assignment identity changed.')
         pack={k:pack[k] for k in KEYS}
         claims=call(routes(pack)[1])
+        if claims.get('sourcePolicyReady') is not True:
+            raise ValueError('Frozen source pack has missing or restricted originals, or policy preflight is unavailable. Resolve the source pack before editorial preparation.')
         if any(claims[k]!=pack[k] for k in ('runId','ticker','fingerprint')):raise ValueError('Report changed during preparation; prepare again.')
         # Original inspection is a separate human/assistant step, never inferred from inventory.
         save(p/'preparation.json',{'baseline':pack,'fields':claims['fields'],'sources':claims['sources']})
@@ -85,6 +87,9 @@ def submit(path,call=request):
         if not state.get('editionSubmitted'):
             current=call(edition_route)
             if any(current.get(k)!=pack[k] for k in KEYS):raise ValueError('Frozen report, financials or parent changed. Prepare a new proposal; prior pending corrections are retained.')
+            policy=call(claim_route)
+            if policy.get('sourcePolicyReady') is not True:
+                raise ValueError('Frozen source pack has missing or restricted originals. Pending receipts are retained; no new claims were submitted.')
             for c in state['claims']:
                 if c['requestId'] in state['receipts']:continue
                 receipt=call(claim_route,c)

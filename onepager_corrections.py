@@ -96,6 +96,12 @@ def create_blueprint(get_db):
                 if not row:return jsonify(error='Saved report not found.'),404
                 run=dict(row);pack=preparation(run)
                 if request.method=='GET':
+                    # Policy metadata preflight only; writes/export still verify exact bytes.
+                    for source in pack['sources']:
+                        cur.execute('SELECT metadata FROM document_files WHERE ticker=%s AND filename=%s', (run['ticker'], source['filename']))
+                        document=cur.fetchone()
+                        source['policyStatus']='missing' if document is None else 'eligible' if eligible(document.get('metadata') or {}) else 'restricted'
+                    pack['sourcePolicyReady']=bool(pack['sources']) and all(s['policyStatus']=='eligible' for s in pack['sources'])
                     cur.execute("SELECT to_regclass('onepager_corrections') AS name")
                     exists=cur.fetchone()['name'];rows=[]
                     if exists:

@@ -53,7 +53,7 @@ export function OnepagerCorrections({
     };
   }, [url]);
   async function submit() {
-    if (locked.current) return;
+    if (locked.current || policyBlocked) return;
     locked.current = true;
     setBusy(true);
     setError('');
@@ -96,6 +96,7 @@ export function OnepagerCorrections({
       if (alive.current) setBusy(false);
     }
   }
+  var policyBlocked = pack?.sourcePolicyReady !== true;
   var selected = pack?.fields.find(f => f.path === path);
   var title = p => p.replace(/^\//, '').split('/').map(x => /^\d+$/.test(x) ? String(Number(x) + 1) : x.replaceAll('_', ' ')).join(' · ');
   return /*#__PURE__*/React.createElement("details", {
@@ -105,8 +106,12 @@ export function OnepagerCorrections({
   }, error), /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: load
-  }, "Reload saved corrections"), !pack ? /*#__PURE__*/React.createElement("p", null, "Loading saved evidence\u2026") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("fieldset", {
-    disabled: busy
+  }, "Reload saved corrections"), !pack ? /*#__PURE__*/React.createElement("p", null, "Loading saved evidence\u2026") : /*#__PURE__*/React.createElement(React.Fragment, null, policyBlocked && /*#__PURE__*/React.createElement("div", {
+    role: "alert"
+  }, /*#__PURE__*/React.createElement("p", null, "Editorial preparation is on hold. This frozen pack has a missing or restricted original, or its policy check is unavailable. Resolve source access or prepare a new eligible pack. Saved research and corrections remain available."), /*#__PURE__*/React.createElement("ul", null, pack.sources.filter(s => s.policyStatus !== 'eligible').map(s => /*#__PURE__*/React.createElement("li", {
+    key: s.id
+  }, s.filename, " \xB7 ", s.policyStatus || 'Policy not checked')))), /*#__PURE__*/React.createElement("p", null, "Source policy is a metadata preflight; original bytes and current restrictions are checked again when submitting and exporting."), /*#__PURE__*/React.createElement("fieldset", {
+    disabled: busy || policyBlocked
   }, /*#__PURE__*/React.createElement("label", null, "Claim or missing investment field", /*#__PURE__*/React.createElement("select", {
     value: path,
     onChange: e => setPath(e.target.value)
