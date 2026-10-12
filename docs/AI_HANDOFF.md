@@ -2,7 +2,29 @@
 
 Updated: October 12, 2026
 
-## T220 — one-pager refresh origin (release prepared)
+## T221 — assignment submission survives reload (release prepared)
+
+Research assignment submission now journals its exact request in browser-tab
+session storage before any POST. Reload or navigation retains ticker, dates,
+outputs, origin and request identity. An unresolved intent blocks a fresh
+submission and offers targeted read-only reconciliation or exact idempotent
+resubmission. A completed/attention assignment can be found without POST or
+paid-stage resume. Matching receipts clear the journal; unknown responses,
+receipt mismatches and storage errors fail closed. Only a first definitive
+400/409 rejection releases the intent for editing; uncertain retries retain it.
+This covers reloads in the same browser tab, not cross-device/global recovery.
+Corrupt storage retains a visible error while server-side assignments remain
+inspectable. Existing originals, outputs and paid-stage retry rules are unchanged.
+
+1175 backend and 148 frontend tests passed, production build and model-policy
+baseline 75097e5 passed. Synthetic isolated Chrome tested reload after lost
+response, exact body/identity retry, completed-record read-only reconciliation,
+initial rejection recovery and desktop/mobile widths. Fixture CSS only; no live
+submission or paid research. Full unattended acceptance, legacy WELL disposition,
+real-source editorial quality and remaining origin entry points are still open.
+All eight priorities remain incomplete. Deployment verification follows.
+
+## T220 — one-pager refresh origin (verified live)
 
 Saved one-pager edition history now opens a coordinated recent-source refresh,
 with visual output required and optional shared-pack outputs. Submission freezes
@@ -20,7 +42,13 @@ verified visual-only defaults, frozen origin payload and exact lost-response ret
 fixture CSS only, not full workspace visual acceptance. No paid research or live
 submission/approval. Thesis/meeting origin entry points, editorial carry-forward,
 real-source quality and unattended full-path acceptance remain open. All eight
-priorities remain incomplete. Deployment verification follows this source commit.
+priorities remain incomplete. Backend 22de183d35825e8ee4ccde93d00e67c6fadf186e
+verified healthy at 17:31:53 UTC after rollout 502s. Cloudflare version
+fc165c98-04bc-4fc0-bbcf-14e2396615a7 deployed; hosted JS and service-worker exact
+bytes verified. Mac heartbeat/collection snapshot available, zero pending delivery,
+no unavailable sources. ABT remains attention with two retained artifacts; no
+new downstream completion claimed. No agent source change/restart. This receipt
+is retained for the next source commit to avoid a docs-only backend restart.
 
 ## T219 — scenario arithmetic in edition review (verified live)
 

@@ -1,3 +1,4 @@
+import { submissionKey, readSubmission, reserveSubmission, clearSubmission, matchingReceipt } from './assignment-submission.mjs';
 import { financialWorkbook, saveFinancialWorkbook } from './financial-workbook-download.mjs';
 import * as React from 'react';
 import { parseTimestamp, routeHash } from './workspace-model.mjs';
@@ -31,10 +32,11 @@ export function ResearchAssignment({
     [message, setMessage] = React.useState(''),
     [error, setError] = React.useState(''),
     [ack, setAck] = React.useState(false),
-    [preview, setPreview] = React.useState(null);
+    [preview, setPreview] = React.useState(null),
+    [savedSubmission, setSavedSubmission] = React.useState(null);
+  var submissionStorageKey = submissionKey(api, ticker);
   var listPath = 'assignments?ticker=' + encodeURIComponent(ticker) + (focusId ? '&requestId=' + encodeURIComponent(focusId) : '');
   var locked = React.useRef(false),
-    pending = React.useRef(null),
     generation = React.useRef(0);
   var request = async (path, body, method = 'POST') => {
     var r = await fetch(api + '/api/research/' + path, {
@@ -53,7 +55,11 @@ export function ResearchAssignment({
     } catch {
       throw Error('Response unavailable. Your request identity is retained; check saved assignments before retrying.');
     }
-    if (!r.ok) throw Error(d.error || 'Research assignment unavailable');
+    if (!r.ok) {
+      var e = Error(d.error || 'Research assignment unavailable');
+      e.status = r.status;
+      throw e;
+    }
     return d;
   };
   React.useEffect(() => {
@@ -85,6 +91,10 @@ export function ResearchAssignment({
         if (live) {
           setJobs(d.assignments);
           setLoaded(true);
+        }
+        var saved = readSubmission(sessionStorage, submissionStorageKey, ticker);
+        if (live) {
+          setSavedSubmission(saved);
           setError('');
         }
       } catch (e) {
@@ -123,18 +133,36 @@ export function ResearchAssignment({
       setBusy(false);
     }
   };
+  async function sendSaved(body, fresh = false) {
+    var result;
+    try {
+      result = await request('assignments', body);
+    } catch (e) {
+      // Only the initial, definitive pre-dispatch rejection can release this intent.
+      // A retry after an ambiguous response must retain it for reconciliation.
+      if (fresh && [400, 409].includes(e.status)) {
+        clearSubmission(sessionStorage, submissionStorageKey, body);
+        setSavedSubmission(null);
+      }
+      throw e;
+    }
+    if (!matchingReceipt(result, body)) throw Error('Assignment receipt does not match the saved request. Inspect saved assignments before retrying.');
+    clearSubmission(sessionStorage, submissionStorageKey, body);
+    setSavedSubmission(null);
+    return 'Assignment saved. Charlie will collect originals and prepare your requested drafts. You can close this page.';
+  }
   var start = () => mutate(async () => {
     var p = {
       ticker,
       since,
       until,
-      ...(origin ? {
-        origin
-      } : {}),
       outputs: [...chosen].sort(),
       horizon,
       instruction,
       visualFundamentals,
+      ...(origin ? {
+        origin
+      } : {}),
       ...(chosen.includes('meeting_prep') ? {
         meeting: {
           date: meetingDate,
@@ -142,17 +170,28 @@ export function ResearchAssignment({
         }
       } : {})
     };
-    var signature = JSON.stringify(p);
-    if (pending.current?.signature !== signature) pending.current = {
-      signature,
-      body: {
-        ...p,
-        requestId: crypto.randomUUID()
-      }
-    };
-    await request('assignments', pending.current.body);
-    pending.current = null;
-    return 'Assignment saved. Charlie will collect originals and prepare your requested drafts. You can close this page.';
+    var old = readSubmission(sessionStorage, submissionStorageKey, ticker);
+    if (old) {
+      setSavedSubmission(old);
+      throw Error('Resolve the saved submission below before starting another assignment.');
+    }
+    var body = reserveSubmission(sessionStorage, submissionStorageKey, {
+      ...p,
+      requestId: crypto.randomUUID()
+    });
+    setSavedSubmission(body);
+    return await sendSaved(body, true);
+  });
+  var reconcile = () => mutate(async () => {
+    var body = readSubmission(sessionStorage, submissionStorageKey, ticker);
+    if (!body) throw Error('No saved submission remains. Reload assignments.');
+    var d = await request('assignments?requestId=' + encodeURIComponent(body.requestId));
+    if (!Array.isArray(d.assignments)) throw Error('Assignment lookup unavailable. Saved request retained.');
+    var found = d.assignments.find(j => j.id === body.requestId && j.ticker === ticker);
+    if (!found) throw Error('No saved assignment found yet. Retry the exact saved request below; its dates, origin and outputs remain frozen.');
+    clearSubmission(sessionStorage, submissionStorageKey, body);
+    setSavedSubmission(null);
+    return 'Saved assignment found (' + found.status + '). Submission reconciled without starting research again.';
   });
   var visibleJobs = jobs.filter(j => (!focusId || j.id === focusId) && j.ticker === ticker);
   var unfinished = jobs.some(j => ['queued', 'running', 'attention'].includes(j.status));
@@ -166,7 +205,7 @@ export function ResearchAssignment({
   }, "Show all assignments for ", ticker)), /*#__PURE__*/React.createElement("details", {
     open: !focusId
   }, /*#__PURE__*/React.createElement("summary", null, "Prepare a new research assignment"), /*#__PURE__*/React.createElement("fieldset", {
-    disabled: disabled || busy || unfinished || !!error || !!focusId
+    disabled: disabled || busy || unfinished || !!error || !!focusId || !!savedSubmission || !loaded
   }, /*#__PURE__*/React.createElement("div", {
     className: "sa-form-grid"
   }, /*#__PURE__*/React.createElement("label", null, "From", /*#__PURE__*/React.createElement("input", {
@@ -237,7 +276,19 @@ export function ResearchAssignment({
     className: "sa-primary",
     disabled: !chosen.length || !since || !until || !horizon.trim() || chosen.includes('meeting_prep') && !meetingDate,
     onClick: start
-  }, origin ? 'Start source refresh for' : 'Start research for', " ", ticker))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "One shared research run: up to eight selected originals and twelve model calls within your configured budget. Starting authorizes these calls; explicitly resumed failed stages may add charges. Draft outputs need investor review; a thesis update is never applied automatically.")), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "How automatic collection works"), /*#__PURE__*/React.createElement("p", null, "Charlie queues collection \u2192 Codex searches AlphaSense \u2192 originals are saved in iCloud STOCKS \u2192 your Mac imports and verifies them \u2192 Charlie researches and prepares the selected drafts. Keep your Mac awake, online, the agent running, and Codex with signed-in Chrome available. Collection starts on an available scheduled worker, usually the next 15-minute wake. Source restrictions, sign-in, source choices and uncertain paid-call outcomes can require your attention. The research uses the selected source pack; missing prices, consensus or financial periods remain gaps.")), error && /*#__PURE__*/React.createElement("p", {
+  }, origin ? 'Start source refresh for' : 'Start research for', " ", ticker))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "One shared research run: up to eight selected originals and twelve model calls within your configured budget. Starting authorizes these calls; explicitly resumed failed stages may add charges. Draft outputs need investor review; a thesis update is never applied automatically.")), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "How automatic collection works"), /*#__PURE__*/React.createElement("p", null, "Charlie queues collection \u2192 Codex searches AlphaSense \u2192 originals are saved in iCloud STOCKS \u2192 your Mac imports and verifies them \u2192 Charlie researches and prepares the selected drafts. Keep your Mac awake, online, the agent running, and Codex with signed-in Chrome available. Collection starts on an available scheduled worker, usually the next 15-minute wake. Source restrictions, sign-in, source choices and uncertain paid-call outcomes can require your attention. The research uses the selected source pack; missing prices, consensus or financial periods remain gaps.")), savedSubmission && /*#__PURE__*/React.createElement("section", {
+    "aria-label": "Recover assignment submission"
+  }, /*#__PURE__*/React.createElement("h4", null, "Resolve a saved submission"), /*#__PURE__*/React.createElement("p", null, savedSubmission.ticker, " \xB7 ", savedSubmission.since, "\u2013", savedSubmission.until, " \xB7 ", savedSubmission.outputs?.join(', '), ". A browser interruption left this request unresolved; this does not mean research failed. The exact request is retained across reloads in this browser tab."), /*#__PURE__*/React.createElement("p", null, "Request ", savedSubmission.requestId), /*#__PURE__*/React.createElement("button", {
+    disabled: busy,
+    onClick: reconcile
+  }, "Check whether assignment was saved"), /*#__PURE__*/React.createElement("button", {
+    disabled: busy,
+    onClick: () => mutate(async () => {
+      var body = readSubmission(sessionStorage, submissionStorageKey, ticker);
+      if (!body) throw Error('No saved request remains. Reload assignments.');
+      return await sendSaved(body);
+    })
+  }, "Retry exact saved request"), /*#__PURE__*/React.createElement("p", null, "Retrying uses the same identity and cannot restart an existing assignment. Existing failed research stages still require their separate recovery controls.")), error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
   }, error), /*#__PURE__*/React.createElement("p", {
     role: "status"
