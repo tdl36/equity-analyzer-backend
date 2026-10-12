@@ -88,4 +88,20 @@ class EndpointTests(unittest.TestCase):
     def test_concurrent_insert_does_not_claim_success(self):
         c,_=self.client([None,None]);self.assertEqual(c.post('/api/agent/collection-original',json=self.body).status_code,409)
 
+    def test_explicit_metadata_recovery_preserves_every_nonempty_record(self):
+        body={**self.body,'restoreEmptyMetadata':True}
+        c,cur=self.client([{'file_data':body['fileData'],'metadata':{}}])
+        self.assertEqual(c.post('/api/agent/collection-original',json=body).status_code,200)
+        writes=[x for x in cur.execute.call_args_list if x.args[0].startswith('UPDATE')]
+        self.assertEqual(len(writes),1)
+        recovered=json.loads(writes[0].args[1][0])
+        self.assertEqual(recovered['sha256'],body['sha256'])
+        for meta,status in [(recovered,200),({'usage':'reference_only'},409),({'custom':'retain'},409)]:
+            c,cur=self.client([{'file_data':body['fileData'],'metadata':meta}])
+            self.assertEqual(c.post('/api/agent/collection-original',json=body).status_code,status)
+            self.assertFalse(any(x.args[0].startswith('UPDATE') for x in cur.execute.call_args_list))
+        for old in [None,{'file_data':base64.b64encode(b'changed').decode(),'metadata':{}}]:
+            c,cur=self.client([old]);self.assertEqual(c.post('/api/agent/collection-original',json=body).status_code,409)
+            self.assertFalse(any(x.args[0].startswith(('UPDATE','INSERT')) for x in cur.execute.call_args_list))
+
 if __name__=='__main__':unittest.main()

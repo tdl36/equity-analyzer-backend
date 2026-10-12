@@ -2,6 +2,25 @@
 
 Updated: October 12, 2026
 
+## T215 — bounded metadata recovery (release verification pending)
+
+Audited the eight acknowledged startup uploads from 10:41 EDT. Two Agilent
+originals have empty cloud metadata but retained eligible collector records and
+matching local original hashes; six ABBV originals have empty metadata and no
+matching collector records. Prior ABBV metadata cannot be inferred. An earlier
+ABBV batch logged an ambiguous response, so eight acknowledgements are not proof
+of the complete affected set. No research rerun or unknown metadata repair.
+Added explicit restoreEmptyMetadata to the authenticated collector import route.
+Recovery requires an existing exact-byte original and validated collection payload;
+only an entirely empty metadata record can be filled. Nonempty metadata and usage
+restrictions remain untouched. Exact metadata replay succeeds without mutation;
+missing/different originals fail. Local source policy and original checks still
+apply before any recovery submission. Automatic import behavior is unchanged.
+Focused tests cover restoration, idempotency, restrictions, other metadata and
+missing/changed bytes. Recovery of the two known records is pending deployment.
+All eight priorities remain incomplete. Next return to the one-pager quality and
+origin-specific refresh work after verifying the bounded recovery.
+
 ## T214 — fail closed on unavailable startup inventory (verified live)
 
 A Mac restart during the T213 backend rollout exposed an existing recovery bug:

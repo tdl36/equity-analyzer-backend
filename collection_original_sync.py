@@ -119,6 +119,8 @@ def create_blueprint(get_db,is_agent):
     def receive():
         if not is_agent():return jsonify(error='Local agent authentication required.'),403
         data=request.get_json(silent=True)
+        if isinstance(data,dict) and 'restoreEmptyMetadata' in data and not isinstance(data['restoreEmptyMetadata'],bool):
+            return jsonify(error='Invalid metadata recovery option.'),400
         try:raw,digest=validate(data)
         except (ValueError,TypeError,AttributeError):return jsonify(error='Invalid collection original, usage or hash.'),400
         tk,name=data['ticker'],data['filename']
@@ -134,7 +136,17 @@ def create_blueprint(get_db,is_agent):
                 if not same:return jsonify(error='Different original already stored under this name; retained existing bytes.'),409
                 from company_research import eligible
                 if not eligible(meta):return jsonify(error='Existing original is restricted; restriction retained.'),409
+                if data.get('restoreEmptyMetadata'):
+                    recovered={k:data.get(k) for k in ('collectionRun','documentId','sourceUrl','publisher','published')}
+                    recovered.update(source='alphasense_collection',sha256=digest,usage='research')
+                    if meta and meta!=recovered:
+                        return jsonify(error='Existing metadata retained; recovery only fills an empty record.'),409
+                    if not meta:
+                        cur.execute('UPDATE document_files SET metadata=%s::jsonb WHERE ticker=%s AND filename=%s',
+                                    (json.dumps(recovered),tk,name))
             else:
+                if data.get('restoreEmptyMetadata'):
+                    return jsonify(error='Original missing; metadata recovery cannot create a document.'),409
                 meta={k:data.get(k) for k in ('collectionRun','documentId','sourceUrl','publisher','published')}
                 meta.update(source='alphasense_collection',sha256=digest,usage='research')
                 cur.execute('''INSERT INTO document_files(ticker,filename,file_data,file_type,mime_type,file_size,metadata)
