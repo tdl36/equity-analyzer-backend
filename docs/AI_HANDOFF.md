@@ -2,7 +2,27 @@
 
 Updated: October 12, 2026
 
-## T221 — assignment submission survives reload (release prepared)
+## T222 — independent meeting/thesis output recovery (release prepared)
+
+After completed research, an expected meeting-selection/handoff validation failure
+no longer prevents independent thesis proposal preparation. Each meeting/thesis
+failure is retained in outputErrors, while successful artifacts and receipts remain
+available. The assignment stays attention until all requested outputs are saved;
+explicit resume skips completed meeting/thesis outputs and clears resolved errors.
+Thesis failures retain their existing leading error text for bounded repair and
+manual-review gates. Unexpected exceptions still stop for inspection. No source
+policy relaxation, provider retry, approval or live research was introduced.
+The assignment UI displays each failed output alongside retained draft links.
+
+1177 backend and 148 frontend tests, Python compile, model-policy baseline
+75097e5 and production build passed. Disposable PostgreSQL tests verify that a
+meeting failure preserves the thesis/visual, resume never recreates the saved
+thesis, and simultaneous failures both remain visible. Synthetic Chrome checked
+partial failure and retained output links at desktop/mobile sizes without writes;
+fixture CSS only. Full unattended acceptance and all eight priorities remain
+incomplete. Deployment verification follows this source commit.
+
+## T221 — assignment submission survives reload (verified live)
 
 Research assignment submission now journals its exact request in browser-tab
 session storage before any POST. Reload or navigation retains ticker, dates,
@@ -22,7 +42,12 @@ response, exact body/identity retry, completed-record read-only reconciliation,
 initial rejection recovery and desktop/mobile widths. Fixture CSS only; no live
 submission or paid research. Full unattended acceptance, legacy WELL disposition,
 real-source editorial quality and remaining origin entry points are still open.
-All eight priorities remain incomplete. Deployment verification follows.
+All eight priorities remain incomplete. Backend fb33db0dfc9713a41816f205424e3438657fa7f9
+verified healthy after rollout timeout/502s. Cloudflare version
+54edb365-e516-4c9f-a182-d17b73ae8345 deployed; hosted JS/service-worker exact bytes
+verified. Activity recovered with Mac heartbeat 17:59:46 UTC, collection snapshot
+17:59:55 UTC, no pending deliveries or unavailable sources. No agent source
+change/restart. Receipt retained for the next source commit.
 
 ## T220 — one-pager refresh origin (verified live)
 

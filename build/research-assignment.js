@@ -309,7 +309,11 @@ export function ResearchAssignment({
     role: "alert"
   }, j.result.delayWarning), /*#__PURE__*/React.createElement("small", null, "Saved update: ", parseTimestamp(j.updated_at)?.toLocaleString() || 'Unavailable', j.result.macReportedAt ? ' · Mac report: ' + parseTimestamp(j.result.macReportedAt)?.toLocaleString() || 'Unavailable' : ''), j.result.sources && /*#__PURE__*/React.createElement("p", null, j.result.sources.length, " originals verified \xB7 ", j.result.researchStages || 0, "/12 research stages"), j.error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
-  }, j.error), j.result.visualFundamentals?.gaps?.length > 0 && /*#__PURE__*/React.createElement("p", {
+  }, j.error), Object.keys(j.result.outputErrors || {}).length > 0 && /*#__PURE__*/React.createElement("section", {
+    "aria-label": "Output recovery"
+  }, /*#__PURE__*/React.createElement("h5", null, "Outputs needing attention"), Object.entries(j.result.outputErrors).map(([kind, reason]) => /*#__PURE__*/React.createElement("p", {
+    key: kind
+  }, /*#__PURE__*/React.createElement("strong", null, outputs.find(x => x[0] === kind)?.[1] || kind, ":"), " ", reason)), /*#__PURE__*/React.createElement("p", null, "Completed outputs remain available below. An output failure does not mean the whole source pack or research report failed.")), j.result.visualFundamentals?.gaps?.length > 0 && /*#__PURE__*/React.createElement("p", {
     role: "status"
   }, "Public-data gaps: ", j.result.visualFundamentals.gaps.join('; '), ". Retrying retrieves public data only; it does not rerun research. Your previous snapshot stays available if retrieval fails."), /*#__PURE__*/React.createElement("div", {
     className: "sa-actions"

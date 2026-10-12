@@ -290,6 +290,35 @@ class AssignmentPostgresTests(unittest.TestCase):
         with self.db(True) as (_,cur):cur.execute("INSERT INTO portfolio_analyses(ticker,company,analysis) VALUES(%s,'Synthetic','{}')",(self.ticker,))
         r=self.advance();self.assertEqual(r['status'],'attention');self.assertEqual(len(r['result']['artifacts']),3)
 
+    def test_meeting_failure_preserves_thesis_and_only_missing_output_retried(self):
+        body={**P,'ticker':self.ticker,'requestId':self.ident,'outputs':['visual','thesis','meeting_prep'],'meeting':{'date':'2026-10-20','type':'management'}}
+        self.assertEqual(self.client.post('/api/research/assignments',json=body).status_code,202)
+        self.collected()
+        with patch('research_assignment_meeting.selection',side_effect=ValueError('No source-matched questions')):
+            row=self.advance()
+        self.assertEqual(row['status'],'attention');self.assertTrue(row['result']['thesisDraftId'])
+        self.assertIn('visual',row['result']['artifacts'])
+        self.assertEqual(row['result']['outputErrors'],{'meeting_prep':'No source-matched questions'})
+        draft=row['result']['thesisDraftId'];original=self.co.invoke
+        def invoke(endpoint,method,body,params):
+            if endpoint=='research_meeting_handoff.handoff':return {'meetingId':31,'questionSetId':41},200
+            if endpoint=='thesis_imports.drafts':raise AssertionError('Completed draft must not be recreated')
+            return original(endpoint,method,body,params)
+        self.assertEqual(self.client.post('/api/research/assignments/'+self.ident+'/resume',json={}).status_code,200)
+        with patch('research_assignment_meeting.selection',return_value={'frozen':'selection'}),patch.object(self.co,'invoke',side_effect=invoke):
+            row=self.advance()
+        self.assertEqual(row['status'],'complete',row['error']);self.assertEqual(row['result']['thesisDraftId'],draft)
+        self.assertEqual(row['result']['meetingId'],31);self.assertEqual(row['result']['outputErrors'],{})
+
+    def test_independent_output_failures_are_both_retained(self):
+        body={**P,'ticker':self.ticker,'requestId':self.ident,'outputs':['visual','thesis','meeting_prep'],'meeting':{'date':'2026-10-20','type':'management'}}
+        self.assertEqual(self.client.post('/api/research/assignments',json=body).status_code,202);self.collected()
+        with patch('research_assignment_meeting.selection',side_effect=ValueError('Missing questions')),patch('research_assignment_outputs.thesis',side_effect=ValueError('No supported thesis statements: synthetic')):
+            row=self.advance()
+        self.assertEqual(row['status'],'attention');self.assertIn('visual',row['result']['artifacts'])
+        self.assertEqual(set(row['result']['outputErrors']),{'meeting_prep','thesis'})
+        self.assertTrue(row['error'].startswith('No supported thesis statements'))
+
     def test_upgrade_preserves_old_ids_and_does_not_apply(self):
         from tests.unit.test_thesis_imports import sample
         old=sample(self.ticker)

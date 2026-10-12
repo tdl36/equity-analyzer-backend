@@ -138,23 +138,37 @@ class Coordinator:
                     if kind not in artifacts:
                         artifacts[kind]={'html':note(report,kind,{**p,'_visualFundamentals':state.get('visualFundamentals')}),'reviewRequired':True}
                         state['step']='Preparing requested deliverables';self.store(ident,state,'running')
+                output_errors={}
+                state['outputErrors']=output_errors
                 if 'meeting_prep' in p['outputs'] and not state.get('meetingId'):
-                    from research_assignment_meeting import selection
-                    if not state.get('meetingSelection'):
-                        state['meetingSelection']=selection(report,p['meeting'])
-                        state['step']='Preparing meeting questions from the shared research pack'
+                    try:
+                        from research_assignment_meeting import selection
+                        if not state.get('meetingSelection'):
+                            state['meetingSelection']=selection(report,p['meeting'])
+                            state['step']='Preparing meeting questions from the shared research pack'
+                            self.store(ident,state,'running')
+                        meeting=self.call('research_meeting_handoff.handoff','POST',state['meetingSelection'],rid=report_id)
+                        if not isinstance(meeting.get('meetingId'),int) or not isinstance(meeting.get('questionSetId'),int):
+                            raise ValueError('Meeting receipt is incomplete. Inspect saved meetings before retrying.')
+                        state.update(meetingId=meeting['meetingId'],meetingQuestionSetId=meeting['questionSetId'])
                         self.store(ident,state,'running')
-                    meeting=self.call('research_meeting_handoff.handoff','POST',state['meetingSelection'],rid=report_id)
-                    if not isinstance(meeting.get('meetingId'),int) or not isinstance(meeting.get('questionSetId'),int):
-                        raise ValueError('Meeting receipt is incomplete. Inspect saved meetings before retrying.')
-                    state.update(meetingId=meeting['meetingId'],meetingQuestionSetId=meeting['questionSetId'])
-                    self.store(ident,state,'running')
+                    except ValueError as exc:
+                        output_errors['meeting_prep']=str(exc)[:900]
+                        self.store(ident,state,'running')
                 if 'thesis' in p['outputs'] and not state.get('thesisDraftId'):
-                    if report.get('baselineStale'):raise ValueError('The saved investment case changed during research. Other outputs are retained; review the completed report and start a new assignment for thesis delivery.')
-                    if not state.get('thesisPackage'):
-                        state['thesisPackage']=thesis(report,p['thesisBaseline'],ident);self.store(ident,state,'running')
-                    draft=self.call('thesis_imports.drafts','POST',state['thesisPackage'])
-                    state['thesisDraftId']=draft['id']
+                    try:
+                        if report.get('baselineStale'):raise ValueError('The saved investment case changed during research. Other outputs are retained; review the completed report and start a new assignment for thesis delivery.')
+                        if not state.get('thesisPackage'):
+                            state['thesisPackage']=thesis(report,p['thesisBaseline'],ident);self.store(ident,state,'running')
+                        draft=self.call('thesis_imports.drafts','POST',state['thesisPackage'])
+                        state['thesisDraftId']=draft['id']
+                    except ValueError as exc:
+                        output_errors['thesis']=str(exc)[:900]
+                        self.store(ident,state,'running')
+                if output_errors:
+                    state['step']='Some outputs need attention; completed drafts are retained'
+                    # Keep thesis errors first for the existing bounded repair gate.
+                    raise ValueError(' · '.join(output_errors[k] for k in ('thesis','meeting_prep') if k in output_errors))
                 state['step']='Ready for investor review';self.store(ident,state,'complete')
             except ValueError as exc:
                 self.store(ident,state,'attention',str(exc)[:900])
