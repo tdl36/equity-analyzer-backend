@@ -2,7 +2,25 @@
 
 Updated: October 11, 2026
 
-## T195 — print pagination correction (release verification pending)
+## T196 — Calibri export verification (deployment pending)
+
+Installed existing Office Calibri regular/bold/italic/bold-italic copies in this
+Mac user's Library/Fonts without replacing originals or publishing font binaries.
+Chrome picks them up without a restart. Calibri metrics exposed a final-reference
+spill in UNH v15; v16 tightens section/header/footer spacing only. Research text,
+type sizes and source references remain intact. Native Chrome A4 PDF exports of
+saved ABT and UNH v16 each contain one page. Poppler confirms every embedded font
+is Calibri; rendered page images inspected with conclusion and references intact.
+Private QA files: Charlie-private/onepager-review-20261012/*-v16-Calibri.pdf.
+This resolves font availability on this Mac only: other devices still require
+Calibri or a licensed export solution. No proprietary fonts shipped in repository
+or hosted assets. ABT evidence gaps, valuation/reconciliation work, real-source
+benchmarks and all eight-phase acceptance remain open. No paid research or
+investor approvals performed. Browser test tab closed; existing tabs preserved.
+Validation: 1063 backend and 140 frontend tests, Python compilation, model policy
+against 75097e5 and production build passed.
+
+## T195 — print pagination correction (verified live)
 
 Native Chrome Save as PDF exposed a two-page UNH v14 map with the conclusion
 and references spilling. V15 places an absent-scenario notice beside valuation,
@@ -20,6 +38,11 @@ Validation: 1063 safe backend tests, 140 frontend tests, touched Python compile,
 model policy against 75097e5 and production build passed. Bounded predeploy
 Activity returned no running/processing items and no unavailable reads; historical
 buckets are truncated. No agent code or paid research changed.
+Backend 8b86396b643dc1f7f401414ed9b6c7d323291271 verified healthy after
+transient rollout 502; Cloudflare e0a5c6a9-040f-4b15-af93-d57fea951848 live.
+Hosted JS/SW and live ABT/UNH v15 renders exactly match verified local files.
+Mac heartbeat 04:06:21 UTC, collection 04:06:26, pending delivery zero and
+no unavailable reads. Private PDFs remain QA artifacts, not accepted deliverables.
 Next: Calibri-capable export, valuation inputs/arithmetic and historical/GAAP
 reconciliation; continue the eight-phase plan without marking it complete.
 

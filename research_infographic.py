@@ -11,7 +11,7 @@ from visual_business_profiles import PROFILES
 from stock_evidence import valid_citations
 from onepager_editorial import ordered_candidates, statement_identity
 
-VERSION='stock-infographic-v15'
+VERSION='stock-infographic-v16'
 e=lambda value:html.escape(str(value if value is not None else ''),quote=True)
 
 @lru_cache(maxsize=3)
@@ -297,3 +297,5 @@ CSS += "@media screen and (max-width:650px){.scenario-values thead{display:none}
 CSS += "@media print{@page{margin:6mm}.panel{margin-top:3px}header{margin-bottom:3px}.headline{margin-bottom:5px!important}.scenario-gap{margin-top:4px;font-size:7pt}.scenario-gap h3{font-size:7pt;margin-bottom:2px}.scenario-gap p{margin:0}.footer{margin-top:5px;padding-top:3px}}"
 
 CSS += "@media print{.peers th,.peers td{padding:2px 4px}.chart svg{max-height:40px}.footer p{margin-bottom:2px}}"
+
+CSS += "@media print{.panel{margin-top:2px}header{margin-bottom:1px}.footer{margin-top:3px}}"
